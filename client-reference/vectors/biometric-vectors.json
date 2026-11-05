@@ -1,0 +1,52 @@
+{
+  "note": "Тестовый ключ. Не использовать в продакшене.",
+  "algorithm": "ECDSA P-256, SHA-256, подпись DER, base64url",
+  "publicKey": {
+    "kty": "EC",
+    "crv": "P-256",
+    "x": "p_GaozHsJ6nqzK1ThtJLvTuuIE2fMF6cu4D269PSfBM",
+    "y": "v6V-Uv6M2o-NalYEDofHJyirncV85SKuERm8iQX6H4E"
+  },
+  "testOnlyPrivateKey": {
+    "kty": "EC",
+    "crv": "P-256",
+    "x": "p_GaozHsJ6nqzK1ThtJLvTuuIE2fMF6cu4D269PSfBM",
+    "y": "v6V-Uv6M2o-NalYEDofHJyirncV85SKuERm8iQX6H4E",
+    "d": "ZRt54ZTj0H2GjqDmP653zP_jBWauDweY9OV16KuXYYk"
+  },
+  "positive": [
+    {
+      "name": "подпись сообщения действия",
+      "input": {
+        "userId": "u0123456789abcdef01234567",
+        "deviceId": "BORIS_PHONE",
+        "action": "set-backup-email",
+        "nonce": "Zm9vYmFyYmF6cXV4MTIzNDU2Nzg5MGFiY2RlZg"
+      },
+      "message": "inone-stepup-v1|u0123456789abcdef01234567|BORIS_PHONE|set-backup-email|Zm9vYmFyYmF6cXV4MTIzNDU2Nzg5MGFiY2RlZg",
+      "signature": "MEUCIFI0KdLcf5nVUF8wAFN2T84C4JPxGU8-EvixdIjJMr2uAiEA3RsULJVjXBkGMEWxmPr8bafxN3TifHjLVMCBvqJ3ozk"
+    }
+  ],
+  "negative": [
+    {
+      "name": "другое действие: подпись не подходит",
+      "input": {
+        "userId": "u0123456789abcdef01234567",
+        "deviceId": "BORIS_PHONE",
+        "action": "remove-backup-email",
+        "nonce": "Zm9vYmFyYmF6cXV4MTIzNDU2Nzg5MGFiY2RlZg"
+      },
+      "signature": "MEUCIFI0KdLcf5nVUF8wAFN2T84C4JPxGU8-EvixdIjJMr2uAiEA3RsULJVjXBkGMEWxmPr8bafxN3TifHjLVMCBvqJ3ozk"
+    },
+    {
+      "name": "другой nonce: подпись не подходит",
+      "input": {
+        "userId": "u0123456789abcdef01234567",
+        "deviceId": "BORIS_PHONE",
+        "action": "set-backup-email",
+        "nonce": "Другой-nonce"
+      },
+      "signature": "MEUCIFI0KdLcf5nVUF8wAFN2T84C4JPxGU8-EvixdIjJMr2uAiEA3RsULJVjXBkGMEWxmPr8bafxN3TifHjLVMCBvqJ3ozk"
+    }
+  ]
+}

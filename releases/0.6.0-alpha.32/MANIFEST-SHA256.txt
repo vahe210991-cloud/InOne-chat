@@ -1,0 +1,3 @@
+14685ac4d32d89fc292b62e1b548f0c0256b283cb8d87aeeecd4b0d9420106db  inone-engine-poc-0.6.0-alpha.32.zip
+75e191799b8bccf4d16b9e8e1b30c3efdad9b3057071f9bc2c30565485c360e7  inone-engine-poc-0.6.0-alpha.32.zip.sha256
+bc495c83b94c7c40023be589b31ccffa8e2e19129166cbb6074b2136926427b8  TEST_REPORT_0.6.0-alpha.32.md
