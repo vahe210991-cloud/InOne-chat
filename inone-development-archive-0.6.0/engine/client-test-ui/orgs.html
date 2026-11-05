@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>Тест: мои организации</title></head>
+<body>
+<h1>Мои организации (тестовый экран)</h1>
+<p><label>Адрес сервера <input id="base-url" value="http://127.0.0.1:8080"></label></p>
+<p><label>Токен входа <input id="token" type="password"></label></p>
+<p><button id="load-orgs">Загрузить мои организации</button></p>
+<ul id="org-list"></ul>
+<p id="chosen">Не выбрана</p>
+<p><button id="leave-org">Выйти из выбранной организации</button></p>
+<p id="error-box" role="alert"></p>
+<script type="module" src="/test-ui/org-picker.mjs"></script>
+</body>
+</html>

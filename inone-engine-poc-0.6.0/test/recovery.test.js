@@ -1,0 +1,435 @@
+import { randomBytes } from 'node:crypto';
+// Восстановление после кражи (D1, D5, D8): код из SMS, ссылка из письма, окно 48 часов. Телефон аккаунта.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { createServer, RECOVERY_DELAY_MS } from '../src/server.js';
+import { ChatClient, DEFAULT_PASSWORD as PW } from '../src/client.js';
+import { createVerified, startRecovery, smsCodeFrom, linkTokenFrom, confirmLink } from './recovery-helpers.js';
+
+const FIXTURE_1 = randomBytes(16).toString('hex');
+const FIXTURE_2 = randomBytes(16).toString('hex');
+const FIXTURE_3 = randomBytes(16).toString('hex');
+const ROOM = '!room2:inone.test';
+const ALICE = '@alice:inone.test';
+const BOB = '@bob:inone.test';
+const PHONE_A = '+37477000001';
+const PHONE_B = '+37477000002';
+const NEW_PW = 'новый-пароль-2026';
+const IDENTITY_SUBJECT = 'Подтверждение входа после восстановления';
+const HOUR = 3600_000;
+
+async function start() {
+  const srv = createServer({ defaultOrgAutoJoin: true, registrationMode: 'open', requirePhone: false, pinPepper: 'test-pepper-0123456789-0123456789-abcd' });
+  await new Promise((resolve) => srv.server.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${srv.server.address().port}`;
+  return { srv, base, stop: () => new Promise((r) => srv.server.close(r)) };
+}
+
+async function post(base, path, body) {
+  const res = await fetch(base + path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  const text = await res.text();
+  if (!res.ok) {
+    const err = new Error(`${path} -> ${res.status} ${text}`);
+    err.status = res.status;
+    throw err;
+  }
+  return text ? JSON.parse(text) : {};
+}
+
+/** Вход без клиента: сервер может ответить просьбой ввести код из письма, а не токеном. */
+async function rawLogin(base, userId, password, deviceId, identityCode) {
+  const res = await fetch(`${base}/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ userId, password, deviceId, ...(identityCode ? { identityCode } : {}) }),
+  });
+  const text = await res.text();
+  return { status: res.status, body: text ? JSON.parse(text) : {} };
+}
+
+/** Код входа после восстановления приходит письмом (D1). */
+const identityCodeFrom = (srv, userId) => {
+  const mail = srv.mailbox(userId).filter((m) => m.subject === IDENTITY_SUBJECT).at(-1);
+  return mail.text.match(/Код: (\d{6})/)[1];
+};
+
+/** Сколько SMS с кодом восстановления ушло на номер. */
+const recoverySmsCount = (srv, phone) => srv.smsOutbox(phone).filter((m) => m.text.includes('Код восстановления')).length;
+
+test('вход требует пароль: неверный пароль и неизвестный логин дают одинаковый отказ', async () => {
+  const { base, stop } = await start();
+  try {
+    await ChatClient.create(base, ALICE, 'A_PHONE', PW);
+    await assert.rejects(ChatClient.login(base, ALICE, 'неверный-пароль', 'A_X'), (e) => e.status === 401);
+    await assert.rejects(ChatClient.login(base, '@nobody:inone.test', PW, 'A_X'), (e) => e.status === 401);
+  } finally {
+    await stop();
+  }
+});
+
+test('отключённое устройство перестаёт работать и не может войти под своим идентификатором', async () => {
+  const { base, stop } = await start();
+  try {
+    const phone = await ChatClient.create(base, ALICE, 'A_PHONE', PW);
+    const tablet = await ChatClient.loginFromNewDevice(base, ALICE, PW, 'A_TABLET', phone);
+    await tablet.publishKeys();
+    await phone.raw('DELETE', '/devices/A_TABLET');
+    await assert.rejects(tablet.sync(), (e) => e.status === 401);
+    await assert.rejects(ChatClient.login(base, ALICE, PW, 'A_TABLET'), (e) => e.status === 403);
+  } finally {
+    await stop();
+  }
+});
+
+test('восстановление: новый пароль сразу; первый вход с нового устройства — по коду из письма; отмена со старого устройства', async () => {
+  const { srv, base, stop } = await start();
+  try {
+    const phone = await createVerified(base, srv, ALICE, 'A_PHONE', PW, PHONE_A);
+    const code = await startRecovery(base, srv, ALICE, PHONE_A);
+    await assert.rejects(post(base, '/recovery/complete', { userId: ALICE, code: '000000', newPassword: NEW_PW }), (e) => e.status === 403);
+    await post(base, '/recovery/complete', { userId: ALICE, code, newPassword: NEW_PW });
+
+    // Старое устройство пока работает: отключаются они только через 48 часов.
+    await phone.sync();
+    assert.equal((await rawLogin(base, ALICE, PW, 'B_NEW')).status, 401, 'старый пароль больше не подходит');
+    // Новый пароль на новом устройстве: сначала код из письма (D1).
+    const first = await rawLogin(base, ALICE, NEW_PW, 'B_NEW');
+    assert.equal(first.status, 202);
+    assert.equal(first.body.status, 'identity_check_required');
+    assert.equal((await rawLogin(base, ALICE, NEW_PW, 'B_NEW', '000000')).status, 403);
+    assert.equal((await rawLogin(base, ALICE, NEW_PW, 'B_NEW', identityCodeFrom(srv, ALICE))).status, 200);
+
+    // Отмена со старого устройства (D8): прежний пароль, новое устройство отключается.
+    await phone.raw('POST', '/recovery/cancel');
+    assert.equal((await rawLogin(base, ALICE, NEW_PW, 'C_X')).status, 401);
+    assert.equal((await rawLogin(base, ALICE, PW, 'A_PHONE')).status, 200);
+    assert.equal((await rawLogin(base, ALICE, PW, 'B_NEW')).status, 403, 'устройство, добавленное после запроса, отключено');
+  } finally {
+    await stop();
+  }
+});
+
+test('через 48 часов после восстановления устройства, существовавшие до него, отключаются', async () => {
+  const { srv, base, stop } = await start();
+  try {
+    const phone = await createVerified(base, srv, ALICE, 'A_PHONE', PW, PHONE_A);
+    const code = await startRecovery(base, srv, ALICE, PHONE_A);
+    await post(base, '/recovery/complete', { userId: ALICE, code, newPassword: NEW_PW });
+    await phone.sync();
+    srv.advance(RECOVERY_DELAY_MS + 1000);
+    await assert.rejects(phone.sync(), (e) => e.status === 401);
+    assert.ok(srv.mailbox(ALICE).some((m) => m.subject === 'Старые устройства отключены'));
+  } finally {
+    await stop();
+  }
+});
+
+test('устройство, появившееся после запроса восстановления, отменить не может', async () => {
+  const { srv, base, stop } = await start();
+  try {
+    const phone = await createVerified(base, srv, ALICE, 'A_PHONE', PW, PHONE_A);
+    const code = await startRecovery(base, srv, ALICE, PHONE_A);
+    await post(base, '/recovery/complete', { userId: ALICE, code, newPassword: NEW_PW });
+    await rawLogin(base, ALICE, NEW_PW, 'B_NEW');
+    const entered = await rawLogin(base, ALICE, NEW_PW, 'B_NEW', identityCodeFrom(srv, ALICE));
+    const denied = await fetch(`${base}/recovery/cancel`, { method: 'POST', headers: { authorization: `Bearer ${entered.body.token}` } });
+    assert.equal(denied.status, 403, 'новое устройство отменить не может');
+    await phone.raw('POST', '/recovery/cancel');
+    assert.equal((await rawLogin(base, ALICE, PW, 'A_PHONE')).status, 200);
+  } finally {
+    await stop();
+  }
+});
+
+test('украденное старое устройство: после окна отключается и не читает новые сообщения', async () => {
+  const { srv, base, stop } = await start();
+  try {
+    const alice = await ChatClient.create(base, ALICE, 'A_PHONE', PW);
+    const bob = await createVerified(base, srv, BOB, 'B_PHONE', PW, PHONE_B); // этот телефон украдут
+    await bob.publishKeys();
+    await alice.publishKeys();
+    await alice.createRoom(ROOM, [ALICE, BOB]);
+    await alice.addPeers([ALICE, BOB]);
+    await alice.establishSessions([BOB]);
+    await alice.shareRoomKey(ROOM, [ALICE, BOB]);
+    await bob.sync();
+    await alice.sendText(ROOM, 'до кражи');
+
+    // Кража: Bob восстанавливает аккаунт и входит на новом устройстве по коду из письма.
+    const code = await startRecovery(base, srv, BOB, PHONE_B);
+    await post(base, '/recovery/complete', { userId: BOB, code, newPassword: NEW_PW });
+    await rawLogin(base, BOB, NEW_PW, 'B_NEW');
+    const bobNew = await ChatClient.login(base, BOB, NEW_PW, 'B_NEW', { identityCode: identityCodeFrom(srv, BOB) });
+    // Пока окно открыто, новое устройство ничего не меняет: ключи не публикуются.
+    await assert.rejects(bobNew.publishKeys(), (e) => e.status === 403);
+
+    // Окно закрывается: старые устройства отключаются, новое публикует ключи и меняет ключ комнаты.
+    srv.advance(RECOVERY_DELAY_MS + 1000);
+    await bobNew.publishKeys();
+    await bobNew.rotateRoom(ROOM, [ALICE, BOB]);
+
+    await alice.sync();
+    await alice.sendText(ROOM, 'после восстановления');
+    await bobNew.sync();
+    assert.equal((await bobNew.readText(ROOM)).at(-1).body, 'после восстановления');
+
+    // Украденное устройство отключено: синхронизация не работает, новые сообщения не расшифровать.
+    await assert.rejects(bob.sync(), (e) => e.status === 401);
+    const copy = (await srv.roomEvents(ROOM)).at(-1);
+    await assert.rejects(bob.decryptRaw(copy, ROOM));
+
+    // Честно зафиксированное ограничение: сообщение, полученное до кражи, на украденном устройстве остаётся читаемым.
+    assert.equal(await bob.decryptRaw((await srv.roomEvents(ROOM))[0], ROOM), 'до кражи');
+  } finally {
+    await stop();
+  }
+});
+
+test('после пяти неверных кодов восстановление закрыто на час; новый код этого не обходит', async () => {
+  const { srv, base, stop } = await start();
+  try {
+    await createVerified(base, srv, ALICE, 'A_PHONE', PW, PHONE_A);
+    await startRecovery(base, srv, ALICE, PHONE_A);
+    for (let i = 0; i < 5; i++) {
+      await assert.rejects(post(base, '/recovery/complete', { userId: ALICE, code: '000000', newPassword: NEW_PW }), (e) => e.status === 403);
+    }
+    await post(base, '/recovery/start', { userId: ALICE });
+    assert.equal(recoverySmsCount(srv, PHONE_A), 1, 'во время блокировки новый код не выдаётся');
+    srv.advance(HOUR + 1000);
+    await post(base, '/recovery/start', { userId: ALICE });
+    assert.equal(recoverySmsCount(srv, PHONE_A), 2, 'после часа код выдаётся снова');
+  } finally {
+    await stop();
+  }
+});
+
+test('не больше трёх кодов восстановления в час', async () => {
+  const { srv, base, stop } = await start();
+  try {
+    await createVerified(base, srv, ALICE, 'A_PHONE', PW, PHONE_A);
+    for (let i = 0; i < 3; i++) {
+      const code = await startRecovery(base, srv, ALICE, PHONE_A);
+      await post(base, '/recovery/complete', { userId: ALICE, code, newPassword: `пароль-${i}-2026` });
+    }
+    assert.equal(recoverySmsCount(srv, PHONE_A), 3);
+    await post(base, '/recovery/start', { userId: ALICE });
+    assert.equal(recoverySmsCount(srv, PHONE_A), 3, 'четвёртый код за час не выдаётся');
+  } finally {
+    await stop();
+  }
+});
+
+test('в окне восстановления старое устройство только читает и отменяет; второе новое устройство не добавляется', async () => {
+  const { srv, base, stop } = await start();
+  try {
+    const phone = await createVerified(base, srv, ALICE, 'A_PHONE', PW, PHONE_A);
+    const code = await startRecovery(base, srv, ALICE, PHONE_A);
+    await post(base, '/recovery/complete', { userId: ALICE, code, newPassword: NEW_PW });
+    await phone.sync(); // читать можно
+    await assert.rejects(phone.raw('POST', '/pin/set', { pin: '246810' }), (e) => e.status === 403, 'старое устройство в окне не меняет PIN');
+    await assert.rejects(phone.raw('POST', '/keys/upload', {}), (e) => e.status === 403, 'старое устройство в окне не меняет ключи');
+
+    // Первый вход по коду проходит; второе новое устройство в окне не добавляется.
+    await rawLogin(base, ALICE, NEW_PW, 'B_NEW');
+    assert.equal((await rawLogin(base, ALICE, NEW_PW, 'B_NEW', identityCodeFrom(srv, ALICE))).status, 200);
+    assert.equal((await rawLogin(base, ALICE, NEW_PW, 'C_NEW')).status, 403, 'второе новое устройство в окне не добавляется');
+
+    // Отмена со старого устройства по-прежнему работает.
+    await phone.raw('POST', '/recovery/cancel');
+    assert.equal((await rawLogin(base, ALICE, PW, 'A_PHONE')).status, 200);
+  } finally {
+    await stop();
+  }
+});
+
+test('устройство, добавленное во время окна, читает, но не меняет ничего и не отзывает; после окна работает как обычное', async () => {
+  const { srv, base, stop } = await start();
+  try {
+    const phone = await createVerified(base, srv, ALICE, 'A_PHONE', PW, PHONE_A);
+    const code = await startRecovery(base, srv, ALICE, PHONE_A);
+    await post(base, '/recovery/complete', { userId: ALICE, code, newPassword: NEW_PW });
+    await rawLogin(base, ALICE, NEW_PW, 'B_NEW');
+    const frozen = await ChatClient.login(base, ALICE, NEW_PW, 'B_NEW', { identityCode: identityCodeFrom(srv, ALICE) });
+
+    await frozen.sync(); // читать можно
+    await assert.rejects(frozen.raw('POST', '/pin/set', { pin: '246810' }), (e) => e.status === 403, 'PIN не ставится');
+    await assert.rejects(frozen.raw('POST', '/keys/upload', {}), (e) => e.status === 403, 'ключи не публикуются');
+    await assert.rejects(frozen.raw('POST', '/keys/claim', {}), (e) => e.status === 403, 'ключи собеседников не забираются');
+    await assert.rejects(frozen.raw('POST', '/rooms', { roomId: ROOM, members: [ALICE] }), (e) => e.status === 403, 'комнаты не создаются');
+    await assert.rejects(frozen.raw('DELETE', '/devices/A_PHONE'), (e) => e.status === 403, 'устройства не отзываются');
+    // Старое устройство в окне тоже ничего не отзывает; оно может только отменить восстановление (D8).
+    await assert.rejects(phone.raw('DELETE', '/devices/B_NEW'), (e) => e.status === 403, 'старое устройство в окне не отзывает');
+    await phone.raw('POST', '/recovery/cancel');
+    await assert.rejects(frozen.sync(), (e) => e.status === 401);
+  } finally {
+    await stop();
+  }
+});
+
+test('после окна устройство, добавленное в окне, работает как обычное', async () => {
+  const { srv, base, stop } = await start();
+  try {
+    const phone = await createVerified(base, srv, ALICE, 'A_PHONE', PW, PHONE_A);
+    const code = await startRecovery(base, srv, ALICE, PHONE_A);
+    await post(base, '/recovery/complete', { userId: ALICE, code, newPassword: NEW_PW });
+    await rawLogin(base, ALICE, NEW_PW, 'B_NEW');
+    const frozen = await ChatClient.login(base, ALICE, NEW_PW, 'B_NEW', { identityCode: identityCodeFrom(srv, ALICE) });
+    srv.advance(RECOVERY_DELAY_MS + 1000);
+    await frozen.raw('POST', '/pin/set', { pin: '246810' });
+    await assert.rejects(phone.sync(), (e) => e.status === 401, 'старое устройство отключено');
+  } finally {
+    await stop();
+  }
+});
+
+test('второе восстановление внутри окна не сдвигает окно и не меняет пароль, к которому откатывается отмена', async () => {
+  const { srv, base, stop } = await start();
+  try {
+    const phone = await createVerified(base, srv, ALICE, 'A_PHONE', PW, PHONE_A);
+    const code1 = await startRecovery(base, srv, ALICE, PHONE_A);
+    await post(base, '/recovery/complete', { userId: ALICE, code: code1, newPassword: NEW_PW });
+    await rawLogin(base, ALICE, NEW_PW, 'C_NEW');
+    const added = await ChatClient.login(base, ALICE, NEW_PW, 'C_NEW', { identityCode: identityCodeFrom(srv, ALICE) });
+
+    srv.advance(HOUR);
+    const SECOND_PW = 'второй-пароль-2026';
+    const code2 = await startRecovery(base, srv, ALICE, PHONE_A);
+    await post(base, '/recovery/complete', { userId: ALICE, code: code2, newPassword: SECOND_PW });
+
+    // Устройство, добавленное в первом окне, по-прежнему ограничено.
+    await assert.rejects(added.raw('DELETE', '/devices/A_PHONE'), (e) => e.status === 403);
+    // Отмена со старого устройства возвращает пароль, который был до первого восстановления.
+    await phone.raw('POST', '/recovery/cancel');
+    assert.equal((await rawLogin(base, ALICE, PW, 'A_PHONE')).status, 200);
+    assert.equal((await rawLogin(base, ALICE, SECOND_PW, 'X')).status, 401);
+  } finally {
+    await stop();
+  }
+});
+
+test('регистрация без телефона отклоняется, если телефон обязателен', async () => {
+  const srv = createServer({ defaultOrgAutoJoin: true, registrationMode: 'open', requirePhone: true, pinPepper: 'test-pepper-0123456789-0123456789-abcd' });
+  await new Promise((resolve) => srv.server.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${srv.server.address().port}`;
+  try {
+    await assert.rejects(ChatClient.create(base, ALICE, 'A_PHONE', PW), (e) => e.status === 400);
+    await assert.rejects(ChatClient.create(base, ALICE, 'A_PHONE', PW, { phone: 'не-номер' }), (e) => e.status === 400);
+  } finally {
+    await new Promise((r) => srv.server.close(r));
+  }
+});
+
+test('телефон подтверждается кодом из SMS; неверный код не подтверждает; подтверждённый телефон получает код восстановления', async () => {
+  const { srv, base, stop } = await start();
+  try {
+    const alice = await ChatClient.create(base, ALICE, 'A_PHONE', PW, { phone: PHONE_A });
+    await assert.rejects(alice.raw('POST', '/account/phone/confirm', { code: '000000' }), (e) => e.status === 403);
+    await alice.raw('POST', '/account/phone/confirm', { code: smsCodeFrom(srv, PHONE_A) });
+    await post(base, '/recovery/start', { userId: ALICE });
+    assert.equal(recoverySmsCount(srv, PHONE_A), 1, 'подтверждённый телефон получает код восстановления');
+  } finally {
+    await stop();
+  }
+});
+
+test('без подтверждения по ссылке из письма восстановление не проходит, даже с кодом из SMS', async () => {
+  const { srv, base, stop } = await start();
+  try {
+    await createVerified(base, srv, ALICE, 'A_PHONE', PW, PHONE_A);
+    await post(base, '/recovery/start', { userId: ALICE });
+    const code = smsCodeFrom(srv, PHONE_A);
+    await assert.rejects(post(base, '/recovery/complete', { userId: ALICE, code, newPassword: NEW_PW }), (e) => e.status === 403, 'без ссылки не проходит');
+    const wrong = await fetch(`${base}/recovery/confirm`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ user: ALICE, token: FIXTURE_1 }) });
+    assert.equal(wrong.status, 403, 'чужая ссылка не подтверждает');
+    await confirmLink(base, ALICE, linkTokenFrom(srv, ALICE));
+    await post(base, '/recovery/complete', { userId: ALICE, code, newPassword: NEW_PW });
+  } finally {
+    await stop();
+  }
+});
+
+test('восстановление для аккаунта без подтверждённого телефона ничего не отправляет', async () => {
+  const { srv, base, stop } = await start();
+  try {
+    await ChatClient.create(base, ALICE, 'A_PHONE', PW);
+    await post(base, '/recovery/start', { userId: ALICE });
+    assert.equal(srv.mailbox(ALICE).filter((m) => m.subject === 'Подтверждение восстановления').length, 0, 'ссылка не отправлена');
+    assert.equal(srv.smsOutbox(PHONE_A).length, 0, 'SMS не отправлено');
+  } finally {
+    await stop();
+  }
+});
+
+test('один подтверждённый телефон не может принадлежать двум аккаунтам', async () => {
+  const { srv, base, stop } = await start();
+  try {
+    await createVerified(base, srv, ALICE, 'A_PHONE', PW, PHONE_A);
+    const reg = await fetch(`${base}/register`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ userId: BOB, password: PW, phone: PHONE_A }) });
+    assert.equal(reg.status, 409, 'регистрация с занятым номером отклоняется');
+    const bob = await ChatClient.create(base, BOB, 'B_PHONE', PW);
+    await assert.rejects(bob.raw('POST', '/account/phone', { password: PW, phone: PHONE_A }), (e) => e.status === 409, 'занятый номер не принимается даже для SMS');
+  } finally {
+    await stop();
+  }
+});
+test('код подтверждения телефона приходит не чаще трёх раз в час', async () => {
+  const { srv, base, stop } = await start();
+  try {
+    const alice = await ChatClient.create(base, ALICE, 'A_PHONE', PW, { phone: PHONE_A }); // первый код
+    await alice.raw('POST', '/account/phone', { phone: PHONE_A, password: PW }); // второй
+    await alice.raw('POST', '/account/phone', { phone: PHONE_A, password: PW }); // третий
+    await assert.rejects(alice.raw('POST', '/account/phone', { phone: PHONE_A, password: PW }), (e) => e.status === 429);
+    assert.equal(srv.smsOutbox(PHONE_A).length, 3);
+  } finally {
+    await stop();
+  }
+});
+
+test('смена номера требует пароль: устройство без пароля номер не меняет', async () => {
+  const { srv, base, stop } = await start();
+  try {
+    const alice = await createVerified(base, srv, ALICE, 'A_PHONE', PW, PHONE_A);
+    await assert.rejects(alice.raw('POST', '/account/phone', { phone: '+37477000003' }), (e) => e.status === 403, 'без пароля не меняется');
+    await assert.rejects(alice.raw('POST', '/account/phone', { phone: '+37477000003', password: FIXTURE_2 }), (e) => e.status === 403, 'с чужим паролем не меняется');
+    await alice.raw('POST', '/account/phone', { phone: '+37477000003', password: PW });
+    assert.equal(srv.smsOutbox('+37477000003').length, 1, 'с паролем код уходит на новый номер');
+  } finally {
+    await stop();
+  }
+});
+
+test('открытие ссылки из письма не подтверждает восстановление: нужна кнопка на странице', async () => {
+  const { srv, base, stop } = await start();
+  try {
+    await createVerified(base, srv, ALICE, 'A_PHONE', PW, PHONE_A);
+    await post(base, '/recovery/start', { userId: ALICE });
+    const token = linkTokenFrom(srv, ALICE);
+    const page = await fetch(`${base}/recovery/confirm?user=${encodeURIComponent(ALICE)}&token=${token}`);
+    assert.equal(page.status, 200);
+    assert.match(await page.text(), /<form[^>]*method="post"/, 'страница с кнопкой подтверждения');
+    const code = smsCodeFrom(srv, PHONE_A);
+    await assert.rejects(post(base, '/recovery/complete', { userId: ALICE, code, newPassword: NEW_PW }), (e) => e.status === 403, 'после открытия ссылки без кнопки восстановление не проходит');
+    await post(base, '/recovery/confirm', { user: ALICE, token });
+    await post(base, '/recovery/complete', { userId: ALICE, code, newPassword: NEW_PW });
+  } finally {
+    await stop();
+  }
+});
+
+test('кнопка на странице подтверждения отправляет форму и показывает результат', async () => {
+  const { srv, base, stop } = await start();
+  try {
+    await createVerified(base, srv, ALICE, 'A_PHONE', PW, PHONE_A);
+    await post(base, '/recovery/start', { userId: ALICE });
+    const token = linkTokenFrom(srv, ALICE);
+    const form = { 'content-type': 'application/x-www-form-urlencoded' };
+    const ok = await fetch(`${base}/recovery/confirm`, { method: 'POST', headers: form, body: new URLSearchParams({ user: ALICE, token }).toString() });
+    assert.equal(ok.status, 200);
+    assert.match(await ok.text(), /Подтверждено/);
+    const wrong = await fetch(`${base}/recovery/confirm`, { method: 'POST', headers: form, body: new URLSearchParams({ user: ALICE, token: FIXTURE_3 }).toString() });
+    assert.equal(wrong.status, 403);
+    assert.match(await wrong.text(), /неверная/);
+  } finally {
+    await stop();
+  }
+});

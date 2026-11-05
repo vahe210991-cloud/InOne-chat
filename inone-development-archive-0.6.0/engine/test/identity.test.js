@@ -1,0 +1,173 @@
+import { randomBytes } from 'node:crypto';
+// Этап 1 модели аккаунта (спецификация IDENTITY_MODEL_2026-10-21.md):
+// регистрация по почте с кодом, одноразовый токен, никнейм, поиск по нику, лимиты.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { createServer } from '../src/server.js';
+import { freshEmailCode, requestEmailCode, checkEmailCode, useEmailToken } from '../src/email-code-rules.js';
+
+const PEPPER = randomBytes(24).toString('hex');
+const HOUR = 3600_000;
+const PW = 'длинный-пароль-1';
+
+async function start(extra = {}) {
+  const srv = createServer({ defaultOrgAutoJoin: true, pinPepper: PEPPER, ...extra });
+  await new Promise((resolve) => srv.server.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${srv.server.address().port}`;
+  return { srv, base, stop: () => new Promise((r) => srv.server.close(r)) };
+}
+
+async function call(base, method, path, { body, token } = {}) {
+  const res = await fetch(base + path, {
+    method,
+    headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const text = await res.text();
+  return { status: res.status, body: text ? JSON.parse(text) : {} };
+}
+
+/** Код из письма о подтверждении почты. */
+function codeFor(srv, email) {
+  const mail = srv.mailbox(email).filter((m) => m.subject === 'Код подтверждения InOne').at(-1);
+  return mail.text.match(/Код: (\d{6})/)[1];
+}
+
+/** Регистрация по почте целиком: письмо с кодом, токен, аккаунт. */
+async function registerByEmail(base, srv, email, nickname, password = PW) {
+  await call(base, 'POST', '/register/email', { body: { email } });
+  const confirmed = await call(base, 'POST', '/register/email/confirm', { body: { email, code: codeFor(srv, email) } });
+  return call(base, 'POST', '/register', {
+    body: { email, registrationToken: confirmed.body.registrationToken, password, nickname },
+  });
+}
+
+test('I1: регистрация по почте — код на почту, неверный код не подтверждает, аккаунт уровня 1, вход по почте', async () => {
+  const { srv, base, stop } = await start();
+  try {
+    await call(base, 'POST', '/register/email', { body: { email: 'anna@example.test' } });
+    assert.equal(srv.mailbox('anna@example.test').at(-1).subject, 'Код подтверждения InOne');
+    const wrong = await call(base, 'POST', '/register/email/confirm', { body: { email: 'anna@example.test', code: '000000' } });
+    assert.equal(wrong.status, 403, 'неверный код не даёт токен');
+    const confirmed = await call(base, 'POST', '/register/email/confirm', {
+      body: { email: 'anna@example.test', code: codeFor(srv, 'anna@example.test') },
+    });
+    assert.equal(confirmed.status, 200);
+    const reg = await call(base, 'POST', '/register', {
+      body: { email: 'anna@example.test', registrationToken: confirmed.body.registrationToken, password: PW, nickname: 'Anna.K' },
+    });
+    assert.equal(reg.status, 200, 'регистрация без телефона');
+    assert.equal(reg.body.verificationLevel, 1);
+    const login = await call(base, 'POST', '/login', { body: { email: 'anna@example.test', password: PW, deviceId: 'ANNA_PHONE' } });
+    assert.equal(login.status, 200, 'вход по почте и паролю');
+  } finally {
+    await stop();
+  }
+});
+
+test('I2: код истекает через 10 минут, токен регистрации — через 30', async () => {
+  const { srv, base, stop } = await start();
+  try {
+    await call(base, 'POST', '/register/email', { body: { email: 'anna@example.test' } });
+    const code = codeFor(srv, 'anna@example.test');
+    srv.advance(11 * 60_000);
+    assert.equal((await call(base, 'POST', '/register/email/confirm', { body: { email: 'anna@example.test', code } })).status, 410, 'код старше 10 минут не принимается');
+
+    await call(base, 'POST', '/register/email', { body: { email: 'anna@example.test' } });
+    const fresh = codeFor(srv, 'anna@example.test');
+    const confirmed = await call(base, 'POST', '/register/email/confirm', { body: { email: 'anna@example.test', code: fresh } });
+    assert.equal(confirmed.status, 200);
+    srv.advance(31 * 60_000);
+    const late = await call(base, 'POST', '/register', {
+      body: { email: 'anna@example.test', registrationToken: confirmed.body.registrationToken, password: PW, nickname: 'Anna.K' },
+    });
+    assert.equal(late.status, 410, 'токен старше 30 минут не принимается');
+  } finally {
+    await stop();
+  }
+});
+
+test('I3: одна подтверждённая почта — один аккаунт, повторный запрос кода не выдаёт письма', async () => {
+  const { srv, base, stop } = await start();
+  try {
+    assert.equal((await registerByEmail(base, srv, 'anna@example.test', 'Anna.K')).status, 200);
+    const again = await call(base, 'POST', '/register/email', { body: { email: 'anna@example.test' } });
+    assert.equal(again.status, 202, 'ответ тот же, что и для новой почты');
+    assert.equal(srv.mailbox('anna@example.test').length, 1, 'письмо на занятую почту не уходит');
+    const confirm = await call(base, 'POST', '/register/email/confirm', { body: { email: 'anna@example.test', code: '123456' } });
+    assert.equal(confirm.status, 409);
+  } finally {
+    await stop();
+  }
+});
+
+test('I4: ник — правила формата, зарезервированные имена и уникальность без учёта регистра', async () => {
+  const { srv, base, stop } = await start();
+  try {
+    await call(base, 'POST', '/register/email', { body: { email: 'anna@example.test' } });
+    const confirmed = await call(base, 'POST', '/register/email/confirm', { body: { email: 'anna@example.test', code: codeFor(srv, 'anna@example.test') } });
+    const token = confirmed.body.registrationToken;
+    for (const bad of ['ab', 'a'.repeat(21), '1abc', 'ann..a', 'ann_', 'admin', 'Аня']) {
+      const r = await call(base, 'POST', '/register', { body: { email: 'anna@example.test', registrationToken: token, password: PW, nickname: bad } });
+      assert.equal(r.status, 400, `ник «${bad}» отклоняется`);
+    }
+    // Отклонённый ник не сжигает токен: тот же токен принимает правильный ник.
+    assert.equal((await call(base, 'POST', '/register', { body: { email: 'anna@example.test', registrationToken: token, password: PW, nickname: 'Anna.K' } })).status, 200);
+    assert.equal((await registerByEmail(base, srv, 'boris@example.test', 'anna.k')).status, 409, 'ник занят без учёта регистра');
+  } finally {
+    await stop();
+  }
+});
+
+test('I5: поиск по нику — точное совпадение без учёта регистра, почта не отдаётся, лимит поисков', async () => {
+  const { srv, base, stop } = await start({ rateLimits: { searchPerAccount: [{ windowMs: HOUR, limit: 2 }] } });
+  try {
+    const anna = await registerByEmail(base, srv, 'anna@example.test', 'Anna.K');
+    assert.equal((await registerByEmail(base, srv, 'boris@example.test', 'Boris')).status, 200);
+    const login = await call(base, 'POST', '/login', { body: { email: 'boris@example.test', password: PW, deviceId: 'BORIS_PHONE' } });
+    const token = login.body.token;
+    const found = await call(base, 'GET', '/users/search?nickname=anna.k', { token });
+    assert.equal(found.status, 200);
+    assert.equal(found.body.userId, anna.body.userId);
+    assert.equal(JSON.stringify(found.body).includes('anna@example.test'), false, 'почта в ответе не появляется');
+    assert.equal((await call(base, 'GET', '/users/search?nickname=anna', { token })).status, 404, 'частичное совпадение не находит');
+    assert.equal((await call(base, 'GET', '/users/search?nickname=anna.k', { token })).status, 429, 'после лимита поиск закрыт');
+  } finally {
+    await stop();
+  }
+});
+
+test('I6: коды на одну почту приходят не чаще трёх раз в час', async () => {
+  const { srv, base, stop } = await start();
+  try {
+    for (let i = 0; i < 3; i++) {
+      assert.equal((await call(base, 'POST', '/register/email', { body: { email: 'anna@example.test' } })).status, 202);
+    }
+    assert.equal((await call(base, 'POST', '/register/email', { body: { email: 'anna@example.test' } })).status, 429);
+    assert.equal(srv.mailbox('anna@example.test').length, 3, 'четвёртое письмо не уходит');
+  } finally {
+    await stop();
+  }
+});
+
+test('I7: по умолчанию работает проверенная регистрация; старая регистрация по логину без почты не создаёт аккаунт', async () => {
+  const { base, stop } = await start();
+  try {
+    const legacy = await call(base, 'POST', '/register', { body: { userId: '@alice:inone.test', password: PW } });
+    assert.equal(legacy.status, 400, 'без почты и токена аккаунт не создаётся');
+    assert.equal((await call(base, 'POST', '/register/email', { body: {} })).status, 400);
+    assert.equal((await call(base, 'POST', '/login', { body: { userId: '@alice:inone.test', password: PW, deviceId: 'A_PHONE' } })).status, 401);
+  } finally {
+    await stop();
+  }
+});
+
+test('I8: код и токен регистрации одноразовые', () => {
+  const requested = requestEmailCode(freshEmailCode(), { nowMs: 0, codeHash: 'code-1' });
+  const first = checkEmailCode(requested, { nowMs: 1, codeOk: true, tokenHash: 'token-1' });
+  assert.equal(first.outcome, 'ok');
+  assert.equal(checkEmailCode(first.next, { nowMs: 2, codeOk: true, tokenHash: 'token-2' }).outcome, 'none', 'код второй раз не принимается');
+  const used = useEmailToken(first.next, { nowMs: 3, tokenOk: true });
+  assert.equal(used.outcome, 'ok');
+  assert.equal(useEmailToken(used.next, { nowMs: 4, tokenOk: true }).outcome, 'none', 'токен второй раз не принимается');
+});

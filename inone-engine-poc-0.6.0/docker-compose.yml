@@ -1,0 +1,26 @@
+# Сервер и база для проверки. Пароли — в файле .env, не в этом файле. Не проверено в этой среде.
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: change-me-set-in-your-environment
+      POSTGRES_USER: change-me-set-in-your-environment
+      POSTGRES_PASSWORD: change-me-set-in-your-environment
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U inone -d inone"]
+      interval: 5s
+      retries: 20
+  app:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://HOST:5432/DATABASE (логин и пароль задаются переменной окружения)
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+volumes:
+  pgdata:
