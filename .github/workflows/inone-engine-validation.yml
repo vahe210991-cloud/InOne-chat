@@ -1,0 +1,142 @@
+name: InOne engine validation
+
+on:
+  pull_request:
+    paths:
+      - "inone-development-archive-0.6.0/engine/**"
+      - ".github/workflows/inone-engine-validation.yml"
+  push:
+    branches: [main, development]
+    paths:
+      - "inone-development-archive-0.6.0/engine/**"
+      - ".github/workflows/inone-engine-validation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: inone-engine-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ENGINE_DIR: inone-development-archive-0.6.0/engine
+
+jobs:
+  node:
+    name: Node 22 — backend tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: inone-development-archive-0.6.0/engine
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: inone-development-archive-0.6.0/engine/package-lock.json
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Run Node test suite
+        run: npm test 2>&1 | tee "$RUNNER_TEMP/node-tests.log"
+      - name: Upload Node test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: node-test-log
+          path: ${{ runner.temp }}/node-tests.log
+          if-no-files-found: ignore
+          retention-days: 14
+
+  postgres:
+    name: Node 22 + PostgreSQL 16 — database and migration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: inone
+          POSTGRES_PASSWORD: inone-ci-password
+          POSTGRES_DB: inone_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U inone -d inone_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://inone:inone-ci-password@localhost:5432/inone_ci
+    defaults:
+      run:
+        working-directory: inone-development-archive-0.6.0/engine
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: inone-development-archive-0.6.0/engine/package-lock.json
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Run database and migration suite
+        run: npm run test:db 2>&1 | tee "$RUNNER_TEMP/postgres-tests.log"
+      - name: Upload PostgreSQL test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: postgres-test-log
+          path: ${{ runner.temp }}/postgres-tests.log
+          if-no-files-found: ignore
+          retention-days: 14
+
+  rust:
+    name: Rust 1.91 — MLS client and bridge
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    defaults:
+      run:
+        working-directory: inone-development-archive-0.6.0/engine
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: inone-development-archive-0.6.0/engine/package-lock.json
+      - name: Install Node engine dependencies
+        run: npm ci
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.91.0"
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            inone-development-archive-0.6.0/engine/mobile-mls/mls-client -> target
+            inone-development-archive-0.6.0/engine/mobile-mls/mls-bridge -> target
+      - name: Verify Rust formatting
+        run: |
+          cargo fmt --manifest-path mobile-mls/mls-client/Cargo.toml -- --check
+          cargo fmt --manifest-path mobile-mls/mls-bridge/Cargo.toml -- --check
+      - name: Check MLS client
+        run: cargo check --locked --all-targets --manifest-path mobile-mls/mls-client/Cargo.toml
+      - name: Test MLS client (Node engine harness)
+        run: cargo test --locked --all-targets --manifest-path mobile-mls/mls-client/Cargo.toml 2>&1 | tee "$RUNNER_TEMP/mls-client-tests.log"
+      - name: Check MLS bridge
+        run: cargo check --locked --all-targets --manifest-path mobile-mls/mls-bridge/Cargo.toml
+      - name: Test MLS bridge
+        run: cargo test --locked --all-targets --manifest-path mobile-mls/mls-bridge/Cargo.toml 2>&1 | tee "$RUNNER_TEMP/mls-bridge-tests.log"
+      - name: Upload Rust test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-test-logs
+          path: |
+            ${{ runner.temp }}/mls-client-tests.log
+            ${{ runner.temp }}/mls-bridge-tests.log
+          if-no-files-found: ignore
+          retention-days: 14
