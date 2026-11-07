@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { createPublicKey, createVerify, generateKeyPairSync, createSign } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createServer } from '../src/server.js';
-import { BiometricClient, SoftwareSigner, STATES } from '../client-reference/biometric-client.mjs';
+import { BiometricClient, SoftwareSigner, STATES } from '../../client-reference/biometric-client.mjs';
 
 const PEPPER = randomBytes(24).toString('hex');
 const PW = 'длинный-пароль-1';
@@ -52,7 +52,7 @@ async function registerByEmail(base, srv, email, nickname) {
 const loginRaw = (base, email, deviceId) => call(base, 'POST', '/login', { body: { email, password: PW, deviceId } });
 
 test('V1: тестовые векторы подписи проверяются тем же алгоритмом, что движок', () => {
-  const v = JSON.parse(readFileSync(new URL('../client-reference/vectors/biometric-vectors.json', import.meta.url), 'utf8'));
+  const v = JSON.parse(readFileSync(new URL('../../client-reference/vectors/biometric-vectors.json', import.meta.url), 'utf8'));
   const key = createPublicKey({ key: v.publicKey, format: 'jwk' });
   const check = (message, signature) =>
     createVerify('SHA256').update(message).verify({ key, dsaEncoding: 'der' }, Buffer.from(signature, 'base64url'));
