@@ -40,7 +40,7 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
       - name: Run Node test suite
-        run: npm test 2>&1 | tee "$RUNNER_TEMP/node-tests.log"
+        run: set -o pipefail; npm test 2>&1 | tee "$RUNNER_TEMP/node-tests.log"
       - name: Upload Node test log
         if: always()
         uses: actions/upload-artifact@v4
@@ -82,14 +82,18 @@ jobs:
           cache-dependency-path: inone-development-archive-0.6.0/engine/package-lock.json
       - name: Install locked dependencies
         run: npm ci
+      - name: Run Node suite with PostgreSQL available
+        run: set -o pipefail; npm test 2>&1 | tee "$RUNNER_TEMP/postgres-node-tests.log"
       - name: Run database and migration suite
-        run: npm run test:db 2>&1 | tee "$RUNNER_TEMP/postgres-tests.log"
+        run: set -o pipefail; npm run test:db 2>&1 | tee "$RUNNER_TEMP/postgres-tests.log"
       - name: Upload PostgreSQL test log
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: postgres-test-log
-          path: ${{ runner.temp }}/postgres-tests.log
+          path: |
+            ${{ runner.temp }}/postgres-node-tests.log
+            ${{ runner.temp }}/postgres-tests.log
           if-no-files-found: ignore
           retention-days: 14
 
@@ -125,11 +129,11 @@ jobs:
       - name: Check MLS client
         run: cargo check --locked --all-targets --manifest-path mobile-mls/mls-client/Cargo.toml
       - name: Test MLS client (Node engine harness)
-        run: cargo test --locked --all-targets --manifest-path mobile-mls/mls-client/Cargo.toml 2>&1 | tee "$RUNNER_TEMP/mls-client-tests.log"
+        run: set -o pipefail; cargo test --locked --all-targets --manifest-path mobile-mls/mls-client/Cargo.toml 2>&1 | tee "$RUNNER_TEMP/mls-client-tests.log"
       - name: Check MLS bridge
         run: cargo check --locked --all-targets --manifest-path mobile-mls/mls-bridge/Cargo.toml
       - name: Test MLS bridge
-        run: cargo test --locked --all-targets --manifest-path mobile-mls/mls-bridge/Cargo.toml 2>&1 | tee "$RUNNER_TEMP/mls-bridge-tests.log"
+        run: set -o pipefail; cargo test --locked --all-targets --manifest-path mobile-mls/mls-bridge/Cargo.toml 2>&1 | tee "$RUNNER_TEMP/mls-bridge-tests.log"
       - name: Upload Rust test logs
         if: always()
         uses: actions/upload-artifact@v4
