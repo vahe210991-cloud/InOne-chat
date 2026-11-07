@@ -83,14 +83,25 @@ jobs:
       - name: Install locked dependencies
         id: install
         run: npm ci
-      - name: Install PostgreSQL 16 client
+      - name: Use PostgreSQL 16 client from the service image
         if: always() && steps.install.outcome == 'success'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y postgresql-client-16
-          echo "/usr/lib/postgresql/16/bin" >> "$GITHUB_PATH"
-          /usr/lib/postgresql/16/bin/pg_dump --version
-          /usr/lib/postgresql/16/bin/pg_restore --version
+          mkdir -p "$RUNNER_TEMP/pg16-bin"
+          for tool in pg_dump pg_restore psql createdb dropdb; do
+            cat > "$RUNNER_TEMP/pg16-bin/$tool" <<'WRAPPER'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          tool="$(basename "$0")"
+          exec docker run --rm --network host \
+            -v "$PWD:$PWD" -v /tmp:/tmp -w "$PWD" \
+            -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD -e PGDATABASE \
+            postgres:16 "$tool" "$@"
+          WRAPPER
+            chmod +x "$RUNNER_TEMP/pg16-bin/$tool"
+          done
+          echo "$RUNNER_TEMP/pg16-bin" >> "$GITHUB_PATH"
+          pg_dump --version
+          pg_restore --version
       - name: Run database and migration suite
         if: always() && steps.install.outcome == 'success'
         run: set -o pipefail; npm run test:db 2>&1 | tee "$RUNNER_TEMP/postgres-tests.log"
