@@ -83,6 +83,14 @@ jobs:
       - name: Install locked dependencies
         id: install
         run: npm ci
+      - name: Install PostgreSQL 16 client
+        if: always() && steps.install.outcome == 'success'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-16
+          echo "/usr/lib/postgresql/16/bin" >> "$GITHUB_PATH"
+          /usr/lib/postgresql/16/bin/pg_dump --version
+          /usr/lib/postgresql/16/bin/pg_restore --version
       - name: Run database and migration suite
         if: always() && steps.install.outcome == 'success'
         run: set -o pipefail; npm run test:db 2>&1 | tee "$RUNNER_TEMP/postgres-tests.log"
