@@ -97,6 +97,24 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  rust-format:
+    name: Rust 1.91 — formatting
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: inone-development-archive-0.6.0/engine
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.91.0"
+          components: rustfmt
+      - name: Verify Rust formatting
+        run: |
+          cargo fmt --manifest-path mobile-mls/mls-client/Cargo.toml -- --check
+          cargo fmt --manifest-path mobile-mls/mls-bridge/Cargo.toml -- --check
+
   rust:
     name: Rust 1.91 — MLS client and bridge
     runs-on: ubuntu-latest
@@ -122,10 +140,6 @@ jobs:
           workspaces: |
             inone-development-archive-0.6.0/engine/mobile-mls/mls-client -> target
             inone-development-archive-0.6.0/engine/mobile-mls/mls-bridge -> target
-      - name: Verify Rust formatting
-        run: |
-          cargo fmt --manifest-path mobile-mls/mls-client/Cargo.toml -- --check
-          cargo fmt --manifest-path mobile-mls/mls-bridge/Cargo.toml -- --check
       - name: Check MLS client
         run: cargo check --locked --all-targets --manifest-path mobile-mls/mls-client/Cargo.toml
       - name: Test MLS client (Node engine harness)
