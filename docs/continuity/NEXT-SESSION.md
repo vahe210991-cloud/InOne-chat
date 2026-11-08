@@ -70,3 +70,11 @@ Tasks, Calendar, Cindy не добавлять в Beta 1.0 без нового �
 - [ ] Ссылки PR/Actions/commit добавлены, если они существуют.
 
 Никогда не заканчивать сессию так, чтобы следующий чат должен был восстанавливать контекст только из памяти предыдущей модели.
+
+## Update after the 2026-11-08 recovery attempt
+
+- The Library inventory confirms that the P0 bundles, backend MLS session ZIP, Beta 1.0 UI/API ZIP r2, and curated design-system HTML exist. Raw-byte materialization/read is currently denied by the Project Files layer; see [RECOVERY-ATTEMPT-2026-11-08](RECOVERY-ATTEMPT-2026-11-08.md). Do not repeat the same materialize call blindly or ask the owner to upload existing artifacts.
+- Re-check available file/source connectors and authorized export routes; if none can provide the existing bytes, explicitly identify the missing capability before considering a controlled source reconstruction.
+- Re-check GitHub refs before further writes. The audit branch head observed this session was `a07815227ecf004628f5b3b94154a4f16de8d1bd`; it is not the current P0/UI source.
+- Beta 1.0 database decision is now explicit: independent InOne DB/backend; shared InOne+Propo DB deferred to the next beta. Follow [ADR-011](ADR-011-BETA1-INDEPENDENT-DATABASE.md).
+- Immediate user-visible objective remains a runnable Beta 1.0 build, not additional planning documents. Once source bytes are available, prioritize importing and running the Flutter app and backend locally, then produce an installable test build as soon as the native MLS/security gates permit.
