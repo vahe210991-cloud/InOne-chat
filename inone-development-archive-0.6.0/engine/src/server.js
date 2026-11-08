@@ -48,6 +48,23 @@ const SEND_DEDUP_MS = 7 * 24 * 60 * 60 * 1000;             // повтор от�
 const MAX_LOCK_MS = 24 * 60 * 60 * 1000;
 
 const sha = (v) => createHash('sha256').update(v).digest('hex');
+const mlsCommitFingerprint = (roomId, senderId, deviceId, request) => {
+  const welcomes = request.welcomes
+    .map((w) => ({ userId: w.userId, deviceId: w.deviceId, welcome: w.welcome.toString('base64') }))
+    .sort((a, b) => a.userId.localeCompare(b.userId) || a.deviceId.localeCompare(b.deviceId) || a.welcome.localeCompare(b.welcome));
+  return sha(JSON.stringify({
+    version: 1, roomId, senderId, deviceId,
+    clientOperationId: request.clientOperationId,
+    epoch: request.epoch,
+    commit: request.commit.toString('base64'),
+    changes: {
+      adds: [...request.changes.adds].sort(),
+      removes: [...request.changes.removes].sort(),
+      removeDevices: [...request.changes.removeDevices].sort(),
+    },
+    welcomes,
+  }));
+};
 /** Ключевой хэш (HMAC с секретным перцем). Без перца значение из базы не проверить и не подобрать (C-08). */
 const keyedHash = (pepper, label, value) => createHmac('sha256', pepper).update(`${label}|${value}`).digest('hex');
 const sameHex = (a, b) => {
@@ -2169,11 +2186,32 @@ if (req.method === 'POST' && p === '/login') {
               const d = await authed(req);
               if (!d) return send(res, 401, { error: 'unauthorized' });
               const roomId = decodeURIComponent(mlsCommitRoute[1]);
+              const checked = parseCommitRequest(body);
+              if (checked.error) return send(res, 400, { error: checked.error });
+              const { clientOperationId } = checked.value;
+              const requestFingerprint = clientOperationId
+                ? mlsCommitFingerprint(roomId, d.userId, d.deviceId, checked.value)
+                : null;
+
+              // Replay precedes membership checks: an accepted commit may have removed its sender.
+              if (clientOperationId) {
+                const replay = await storage.mlsCommitOperation(roomId, d.userId, d.deviceId, clientOperationId, requestFingerprint);
+                if (replay) {
+                  if (!replay.ok && replay.reason === 'operation_id_reused') {
+                    return send(res, 409, { error: 'clientOperationId was reused with a different request', code: 'operation_id_reused' });
+                  }
+                  return send(res, 200, { epoch: replay.epoch, replayed: true });
+                }
+              }
+
               const r = await storage.getRoom(roomId);
               if (!r) return send(res, 404, { error: 'group not found' });
               if (!r.members.includes(d.userId)) return send(res, 403, { error: 'not a member' });
-              const checked = parseCommitRequest(body);
-              if (checked.error) return send(res, 400, { error: checked.error });
+              const currentEpoch = await storage.mlsGroupEpoch(roomId);
+              if (currentEpoch !== checked.value.epoch) {
+                return send(res, 409, { error: 'epoch is outdated', code: 'epoch_outdated', currentEpoch });
+              }
+
               const { adds, removes } = checked.value.changes;
               const isOwner = d.userId === r.owner;
               for (const t of removes) {
@@ -2191,22 +2229,33 @@ if (req.method === 'POST' && p === '/login') {
                 if (!checked.value.welcomes.some((w) => w.userId === u)) return send(res, 400, { error: `added member needs a welcome: ${u}` });
               }
               const pendingDevices = await storage.mlsPendingRemovalDevices(roomId);
-        for (const device of checked.value.changes.removeDevices) {
-          if (!pendingDevices.includes(device)) return send(res, 400, { error: `device is not waiting for removal in this group: ${device}` });
-        }
-        const afterMembers = new Set([...r.members.filter((m) => !removes.includes(m)), ...adds]);
-        const maxMembers = await effectiveMaxMembers(roomId);
-        if (afterMembers.size > maxMembers) return send(res, 409, { error: 'group is full', limit: maxMembers });
+              for (const device of checked.value.changes.removeDevices) {
+                if (!pendingDevices.includes(device)) return send(res, 400, { error: `device is not waiting for removal in this group: ${device}` });
+              }
+              const afterMembers = new Set([...r.members.filter((m) => !removes.includes(m)), ...adds]);
+              const maxMembers = await effectiveMaxMembers(roomId);
+              if (afterMembers.size > maxMembers) return send(res, 409, { error: 'group is full', limit: maxMembers });
               for (const w of checked.value.welcomes) {
                 if (!afterMembers.has(w.userId)) return send(res, 400, { error: 'welcome recipient is not a member' });
                 if (!(await storage.hasAccount(w.userId))) return send(res, 400, { error: 'welcome recipient is not a known account' });
               }
-              const result = await storage.mlsApplyCommit(roomId, checked.value.epoch, { senderId: d.userId, commit: checked.value.commit, welcomes: checked.value.welcomes, changes: checked.value.changes }, now());
-              if (result.ok && (adds.length > 0 || removes.length > 0)) await markRoomChanged(roomId, [...new Set([...r.members, ...adds])]);
+              const result = await storage.mlsApplyCommit(roomId, checked.value.epoch, {
+                senderId: d.userId, deviceId: d.deviceId, clientOperationId, requestFingerprint,
+                commit: checked.value.commit, welcomes: checked.value.welcomes, changes: checked.value.changes,
+              }, now());
+              if (!result.ok && result.reason === 'operation_id_reused') {
+                return send(res, 409, { error: 'clientOperationId was reused with a different request', code: 'operation_id_reused' });
+              }
+              if (!result.ok && result.reason === 'epoch_outdated') {
+                return send(res, 409, { error: 'epoch is outdated', code: 'epoch_outdated', currentEpoch: result.epoch });
+              }
+              if (result.ok && !result.replayed && (adds.length > 0 || removes.length > 0)) {
+                await markRoomChanged(roomId, [...new Set([...r.members, ...adds])]);
+              }
               if (!result.ok && result.reason === 'already-member') return send(res, 409, { error: 'already a member' });
               if (!result.ok && result.reason === 'recipient') return send(res, 400, { error: 'welcome recipient is not a known account' });
-              if (!result.ok) return send(res, 409, { error: 'epoch is outdated', currentEpoch: result.epoch });
-              return send(res, 200, { epoch: result.epoch });
+              if (!result.ok) return send(res, 409, { error: 'epoch is outdated', code: 'epoch_outdated', currentEpoch: result.epoch });
+              return send(res, 200, { epoch: result.epoch, replayed: !!result.replayed });
             }
             // Сообщение группы MLS: сервер проверяет группу и эпоху в открытом заголовке, шифротекст не читает.
             const mlsMessageRoute = p.match(/^\/mls\/groups\/([^/]+)\/messages$/);

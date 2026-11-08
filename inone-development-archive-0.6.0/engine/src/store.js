@@ -1170,17 +1170,41 @@ async mlsPendingRemovalsFor(userId) {
       return rows[0] ? Number(rows[0].epoch) : 0;
     },
 
-    /** Применяет коммит в одной транзакции: строка эпохи блокируется, поэтому гонки двух коммитов не создают развилку. */
-    async mlsApplyCommit(roomId, baseEpoch, { senderId, commit, welcomes, changes = { adds: [], removes: [] } }, nowMs) {
+    /** Durable idempotency lookup, deliberately available before membership authorization on replay. */
+    async mlsCommitOperation(roomId, senderId, deviceId, clientOperationId, requestFingerprint) {
+      const { rows } = await pool.query(
+        'SELECT request_fingerprint, resulting_epoch FROM mls_commit_operations WHERE room_id = $1 AND sender_id = $2 AND device_id = $3 AND client_operation_id = $4',
+        [roomId, senderId, deviceId, clientOperationId],
+      );
+      if (!rows[0]) return null;
+      if (rows[0].request_fingerprint !== requestFingerprint) return { ok: false, reason: 'operation_id_reused' };
+      return { ok: true, epoch: Number(rows[0].resulting_epoch), replayed: true };
+    },
+
+    /** Применяет коммит и idempotency receipt в одной транзакции. */
+    async mlsApplyCommit(roomId, baseEpoch, { senderId, deviceId, clientOperationId, requestFingerprint, commit, welcomes, changes = { adds: [], removes: [] } }, nowMs) {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
         await client.query('INSERT INTO mls_groups (room_id, epoch) VALUES ($1, 0) ON CONFLICT (room_id) DO NOTHING', [roomId]);
         const { rows } = await client.query('SELECT epoch FROM mls_groups WHERE room_id = $1 FOR UPDATE', [roomId]);
         const current = Number(rows[0].epoch);
+        if (clientOperationId) {
+          const { rows: operationRows } = await client.query(
+            'SELECT request_fingerprint, resulting_epoch FROM mls_commit_operations WHERE room_id = $1 AND sender_id = $2 AND device_id = $3 AND client_operation_id = $4 FOR UPDATE',
+            [roomId, senderId, deviceId, clientOperationId],
+          );
+          if (operationRows[0]) {
+            await client.query('COMMIT');
+            if (operationRows[0].request_fingerprint !== requestFingerprint) {
+              return { ok: false, reason: 'operation_id_reused', epoch: Number(operationRows[0].resulting_epoch) };
+            }
+            return { ok: true, epoch: Number(operationRows[0].resulting_epoch), replayed: true };
+          }
+        }
         if (current !== baseEpoch) {
           await client.query('ROLLBACK');
-          return { ok: false, epoch: current };
+          return { ok: false, reason: 'epoch_outdated', epoch: current };
         }
         for (const deviceId of changes.removeDevices ?? []) {
           await client.query('UPDATE mls_device_removals SET done_at = $3 WHERE room_id = $1 AND device_id = $2 AND done_at IS NULL', [roomId, deviceId, nowMs]);
@@ -1205,8 +1229,14 @@ async mlsPendingRemovalsFor(userId) {
         for (const w of welcomes) {
           await client.query('INSERT INTO mls_welcomes (room_id, epoch, user_id, device_id, welcome, created_at) VALUES ($1, $2, $3, $4, $5, $6)', [roomId, next, w.userId, w.deviceId, w.welcome, nowMs]);
         }
+        if (clientOperationId) {
+          await client.query(
+            'INSERT INTO mls_commit_operations (room_id, sender_id, device_id, client_operation_id, request_fingerprint, resulting_epoch, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+            [roomId, senderId, deviceId, clientOperationId, requestFingerprint, next, nowMs],
+          );
+        }
         await client.query('COMMIT');
-        return { ok: true, epoch: next };
+        return { ok: true, epoch: next, replayed: false };
       } catch (error) {
         await client.query('ROLLBACK').catch(() => {});
         if (error.code === '23505') return { ok: false, epoch: await this.mlsGroupEpoch(roomId) };

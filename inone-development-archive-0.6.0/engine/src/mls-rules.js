@@ -39,6 +39,10 @@ function decodeBase64Field(text, maxBytes) {
 export function parseCommitRequest(input) {
   if (!input || typeof input !== 'object') return { error: 'body must be an object' };
   if (!Number.isSafeInteger(input.epoch) || input.epoch < 0) return { error: 'epoch must be a non-negative integer' };
+  const clientOperationId = input.clientOperationId ?? null;
+  if (clientOperationId !== null && (typeof clientOperationId !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(clientOperationId))) {
+    return { error: 'clientOperationId must be 16-128 URL-safe characters' };
+  }
   const commit = decodeBase64Field(input.commit, MLS_COMMIT_MAX_BYTES);
   if (commit.error) return { error: `commit ${commit.error}` };
   const list = input.welcomes ?? [];
@@ -66,7 +70,7 @@ export function parseCommitRequest(input) {
   if (removes.error) return { error: removes.error };
   const removeDevices = names(changes.removeDevices, 'changes.removeDevices');
   if (removeDevices.error) return { error: removeDevices.error };
-  return { value: { epoch: input.epoch, commit: commit.value, welcomes, changes: { adds: adds.value, removes: removes.value, removeDevices: removeDevices.value } } };
+  return { value: { epoch: input.epoch, commit: commit.value, welcomes, changes: { adds: adds.value, removes: removes.value, removeDevices: removeDevices.value }, clientOperationId } };
 }
 
 // Сообщения группы: шифротекст MLS в поле message, до 64 КБ.
