@@ -1,0 +1,47 @@
+{
+  "format": "inone-biometric-signature-vectors-v1",
+  "curve": "P-256",
+  "hash": "SHA-256",
+  "signatureEncoding": "DER base64url",
+  "provenance": "Generated as a replacement validation fixture for the archived GitHub tree on 2026-11-08. This is not the original biometric-vectors.json from the recovered bundle; the original fixture bytes were unavailable. Positive vectors are valid signatures. Negative vectors reuse a valid signature against altered inputs.",
+  "publicKey": {
+    "kty": "EC",
+    "crv": "P-256",
+    "x": "t31D9dHS8JU9JLG_zpKMpgwZ1U-v7yy7WOkV79rxQCo",
+    "y": "asbP4PYLJ8ECU_2xhYmDjFsXNUhyJRsS5dB6XSqvlKI"
+  },
+  "positive": [
+    {
+      "name": "valid-set-backup-email",
+      "message": "inone-stepup-v1|user-vector-001|device-phone-001|set-backup-email|nonce-001",
+      "signature": "MEUCIFUHmJyxaHIHMlCeQYdXkibdrqt01oV2YmxVUo3cM1ZbAiEAjHUDTX-9vOQaTp6v8aCYvWldjq4csQ-hNuLwIBfGBeU"
+    },
+    {
+      "name": "valid-approve-device",
+      "message": "inone-stepup-v1|user-vector-002|device-tablet-002|approve-device|nonce-002",
+      "signature": "MEQCIHix0CjAvdGqgDJDAHbpdlu-pllRPSCLgbfw8ol9E6YnAiAse-iAG6hP0yVXSK9K0HKWZAe__GkmYIVaVOKx2GwrzA"
+    }
+  ],
+  "negative": [
+    {
+      "name": "wrong-user-id",
+      "input": {
+        "userId": "user-vector-X",
+        "deviceId": "device-phone-003",
+        "action": "set-backup-email",
+        "nonce": "nonce-003"
+      },
+      "signature": "MEUCIA_mtztDoV1mbYNFDjzG3Bq78gEIOoUEjQhgWakrNbWVAiEA1YetuCvpwL4Upy-zK3SfKgpCesHZo5b28Rf7Q50zcHQ"
+    },
+    {
+      "name": "wrong-action",
+      "input": {
+        "userId": "user-vector-003",
+        "deviceId": "device-phone-003",
+        "action": "approve-device",
+        "nonce": "nonce-003"
+      },
+      "signature": "MEUCIQC9ylDweQ6w3GlfBClai9BCIrp_T0osFNwxellQsBPFjwIgJRgXBtGQfJCIhtRiPVQJyf35Gdou4FwZ19CGSmtNl8E"
+    }
+  ]
+}
