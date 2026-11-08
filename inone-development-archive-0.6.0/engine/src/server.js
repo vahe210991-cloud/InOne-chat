@@ -2207,10 +2207,8 @@ if (req.method === 'POST' && p === '/login') {
               const r = await storage.getRoom(roomId);
               if (!r) return send(res, 404, { error: 'group not found' });
               if (!r.members.includes(d.userId)) return send(res, 403, { error: 'not a member' });
-              const currentEpoch = await storage.mlsGroupEpoch(roomId);
-              if (currentEpoch !== checked.value.epoch) {
-                return send(res, 409, { error: 'epoch is outdated', code: 'epoch_outdated', currentEpoch });
-              }
+              // The epoch check is repeated under the PostgreSQL room lock in mlsApplyCommit.
+              // Do not reject here: a concurrent exact retry may have been accepted while this request waited.
 
               const { adds, removes } = checked.value.changes;
               const isOwner = d.userId === r.owner;
