@@ -185,3 +185,11 @@ This section supersedes the earlier section 8 statement that no bundle bytes wer
 - Checked trees for `cto/inone-audit-2026-11-08`, `ci/inone-engine-validation-2026-11-07`, `recovery/p0-wave3-validation`, `development`, `engine-poc`, and `docs/inone-identity-design-localization`; no Flutter app found.
 - Consequence: a runnable phone Beta 1.0 cannot be built from current GitHub source alone. The original UI/API ZIP and exact design-system source need a supported import path. Do not recreate them from memory.
 - Detailed report: [development/REPO-AUDIT-2026-11-08.md](../../development/REPO-AUDIT-2026-11-08.md).
+
+
+## 18. P0 publish branch completeness correction — 2026-11-08
+
+- Review of workflow logic found a gap: validation job used the restored client-reference files from the PR head, but publish job recreated a clean branch from main and originally applied only the P0 patch, omitting those two restored files.
+- Fixed publish job to copy exact `biometric-client.mjs` and `biometric-vectors.json` from the PR head into the clean main-based recovery branch before applying the patch. Workflow commit: `e0a8c08ddf68864963c3f8a65ba16a0612381e39`.
+- Run [42457297299](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42457297299) was queued for the workflow correction; no result yet at time of record.
+- Run [42457116231](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42457116231) tests exact original fixture but predates publish-job correction. Neither run is accepted until all checks complete.
