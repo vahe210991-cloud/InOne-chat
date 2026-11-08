@@ -1171,7 +1171,7 @@ async mlsPendingRemovalsFor(userId) {
           }
         }
         const next = current + 1;
-        await client.query('INSERT INTO mls_commits (room_id, epoch, sender_id, commit, created_at) VALUES ($1, $2, $3, $4, $5)', [roomId, next, senderId, commit, nowMs]);
+        await client.query('INSERT INTO mls_commits (room_id, epoch, sender_id, commit, changes, welcome_recipients, created_at) VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7)', [roomId, next, senderId, commit, JSON.stringify({ adds: changes.adds ?? [], removes: changes.removes ?? [], removeDevices: changes.removeDevices ?? [] }), JSON.stringify(welcomes.map((w) => ({ userId: w.userId, deviceId: w.deviceId }))), nowMs]);
         await client.query('UPDATE mls_groups SET epoch = $2 WHERE room_id = $1', [roomId, next]);
         for (const w of welcomes) {
           await client.query('INSERT INTO mls_welcomes (room_id, epoch, user_id, device_id, welcome, created_at) VALUES ($1, $2, $3, $4, $5, $6)', [roomId, next, w.userId, w.deviceId, w.welcome, nowMs]);
@@ -1189,8 +1189,8 @@ async mlsPendingRemovalsFor(userId) {
     },
 
     async mlsCommitsSince(roomId, since, limit) {
-      const { rows } = await pool.query('SELECT epoch, sender_id, commit FROM mls_commits WHERE room_id = $1 AND epoch > $2 ORDER BY epoch LIMIT $3', [roomId, since, limit]);
-      return rows.map((r) => ({ epoch: Number(r.epoch), senderId: r.sender_id, commit: r.commit }));
+      const { rows } = await pool.query('SELECT epoch, sender_id, commit, changes, welcome_recipients FROM mls_commits WHERE room_id = $1 AND epoch > $2 ORDER BY epoch LIMIT $3', [roomId, since, limit]);
+      return rows.map((r) => ({ epoch: Number(r.epoch), senderId: r.sender_id, commit: r.commit, changes: r.changes, welcomeRecipients: r.welcome_recipients }));
     },
 
     async mlsPendingWelcomes(userId, deviceId) {
