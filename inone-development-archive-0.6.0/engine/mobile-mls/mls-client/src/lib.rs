@@ -1844,6 +1844,26 @@ impl Client {
         Ok(())
     }
 
+    pub fn welcome_receipt_status(
+        &self,
+        welcome_id: i64,
+    ) -> Result<Option<(String, Option<String>, bool)>, String> {
+        use rusqlite::OptionalExtension;
+        self.meta
+            .query_row(
+                "SELECT outcome, reason, acked_at FROM client_welcome_receipts WHERE welcome_id = ?1",
+                [welcome_id],
+                |row| {
+                    let outcome: String = row.get(0)?;
+                    let reason: Option<String> = row.get(1)?;
+                    let acked_at: Option<i64> = row.get(2)?;
+                    Ok((outcome, reason, acked_at.is_some()))
+                },
+            )
+            .optional()
+            .map_err(text)
+    }
+
     fn ack_welcome(&mut self, welcome_id: i64) -> Result<(), String> {
         let response = self.call(
             "POST",
