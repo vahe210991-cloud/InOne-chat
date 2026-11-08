@@ -1,7 +1,7 @@
 # InOne development workspace
 
 
-> **FINAL STATUS — 2026-11-08:** P0 backend/Rust/OpenMLS acceptance is CLOSED. PR [#25](https://github.com/vahe210991-cloud/InOne-chat/pull/25) was merged into `main` as `97024ab03ce9583e298ee946f3679565007405ca`. All six required CI jobs passed on PR head `addd47da245b6452c9f700c7e10b8d0585aad295` in [workflow run #124](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42496739362). The owner bundle is permanently retained on `artifacts/p0-bundles`; see [ARTIFACT-RETENTION](ARTIFACT-RETENTION.md) and [P0 closure report](recovered-source/P0-CLOSURE-2026-11-08.md). Historical status below is retained for chronology and is superseded by this final record. Native Flutter Beta 1.0 work is a separate scope.
+> **FINAL STATUS — 2026-11-08:** P0 backend/Rust/OpenMLS acceptance is CLOSED. PR [#25](https://github.com/vahe210991-cloud/InOne-chat/pull/25) was merged into `main` as `97024ab03ce9583e298ee946f3679565007405ca`. All six required CI jobs passed on PR head `addd47da245b6452c9f700c7e10b8d0585aad295` in [workflow run #124](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42496739362), and all six passed again on merged `main` in [post-merge run #134](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42503694744). The owner bundle is permanently retained on `artifacts/p0-bundles`; see [ARTIFACT-RETENTION](ARTIFACT-RETENTION.md) and [P0 closure report](recovered-source/P0-CLOSURE-2026-11-08.md). Historical status below is retained for chronology and is superseded by this final record. Native Flutter Beta 1.0 work is a separate scope.
 
 
 **Mandatory entry point for every developer, AI agent, or follow-up ChatGPT session.**
