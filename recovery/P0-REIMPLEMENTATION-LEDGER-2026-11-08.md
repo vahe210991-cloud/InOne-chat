@@ -1,5 +1,16 @@
 # P0 reimplementation ledger — 2026-11-08
 
+
+## Final acceptance — CLOSED 2026-11-08
+
+- PR [#25](https://github.com/vahe210991-cloud/InOne-chat/pull/25) merged to `main` as `97024ab03ce9583e298ee946f3679565007405ca`.
+- Exact PR head: `addd47da245b6452c9f700c7e10b8d0585aad295`.
+- All six CI jobs passed in [run #124](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42496739362).
+- Owner snapshot bundle retained permanently on `artifacts/p0-bundles`; SHA-256 `e76fdd39e2e9698d7f32061e3fd4fb3dbc52ef981bb075c6c252a7cce11f391e`.
+- This ledger is historical; current authoritative closure record: `development/recovered-source/P0-CLOSURE-2026-11-08.md`.
+- Native Flutter Beta 1.0 is explicitly outside this P0 closure.
+
+
 Repository: `vahe210991-cloud/InOne-chat`
 Branch: `recovery/p0-reimplementation`
 Draft PR: https://github.com/vahe210991-cloud/InOne-chat/pull/25
@@ -81,11 +92,10 @@ This branch is a reimplementation on the published Wave3 recovery snapshot. The 
 | F5 event identity | Implemented | OpenMLS event-identity regressions passed in run #116 |
 | P0.3 quarantine / WaitingForCommit | Implemented | Durable quarantine, restart, retry, room-isolation tests passed in run #116 |
 | KeyPackage claim/replay | Implemented | Node and PostgreSQL integration suites passed in run #116 |
-| Full P0 release gate | **OPEN pending final exact-SHA run** | Run #116 is green at its SHA; formatted head requires full revalidation |
+| Full P0 release gate | **CLOSED** | PR #25 merged; all six jobs passed on PR head in run #124 |
 
 ## Guardrails
 
-- Do not merge this draft PR or modify `main` without explicit user approval.
-- Do not close P0 until every acceptance item has runtime evidence on the final PR head.
-- Never label Wave3 recovery as the missing canonical P0 source.
-- After the final formatted tree is validated, do not make further source changes without another complete run.
+- P0 is closed by PR #25 merge commit `97024ab03ce9583e298ee946f3679565007405ca`.
+- Do not reopen P0 without a reproducible regression or a concrete missing acceptance requirement.
+- Preserve the owner bundle through `artifacts/p0-bundles`; do not request re-upload.
