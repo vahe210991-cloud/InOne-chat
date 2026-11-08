@@ -1226,16 +1226,19 @@ impl Client {
             // even if OpenMLS now reports NoMatchingKeyPackage because the original
             // KeyPackage was consumed. Detect it before attempting to decrypt/claim keys.
             // Keep the server item pending and make the room require explicit recovery.
-            eprintln!("[welcome-debug] room={room_id} id={welcome_id} group_present={} receipt_present=false", self.groups.contains_key(room_id));
-            if self.groups.contains_key(room_id) {
+            // The durable client_rooms row is authoritative even if the in-memory
+            // group cache is temporarily absent. A replay must never be interpreted
+            // as a fresh join merely because the cache lookup misses.
+            let locally_joined: bool = self.meta.query_row(
+                "SELECT EXISTS(SELECT 1 FROM client_rooms WHERE room_id = ?1)",
+                [room_id],
+                |row| row.get(0),
+            ).map_err(text)?;
+            if locally_joined || self.groups.contains_key(room_id) {
                 self.record_desync(
                     room_id,
                     "Duplicate Welcome for an already joined room; retain Welcome without ACK for explicit recovery",
                 )?;
-                eprintln!(
-                    "[welcome-debug] recovery marker persisted room={room_id} reason={:?}",
-                    self.desync_reason(room_id)
-                );
                 continue;
             }
 
