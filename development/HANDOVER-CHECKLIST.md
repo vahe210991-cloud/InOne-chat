@@ -46,11 +46,11 @@ A session is not handed back until the work is in GitHub or the exact blocker is
 
 ## P0-specific acceptance gate
 
-- [ ] Verify latest `recovery/p0-wave3-applied` HEAD; last checked: `7ebdeac8b322d7a1fe0b26add039f48b5f9f776f`.
-- [ ] Read `development/recovered-source/P0-GITHUB-RECOVERY-STATUS-2026-11-08.md` before editing P0.
-- [ ] Complete full 240-file original-bundle blob-hash audit; do not substitute path parity or PR #18 candidate parity.
-- [ ] Verify six substantive modified engine files and five added P0 test files against exact bundle/patch provenance.
-- [ ] Preserve source hashes before a separate rustfmt-only commit.
+- [x] Superseded recovery branch reviewed; accepted P0 source is merged through PR #25.
+- [x] Final P0 closure report recorded; do not reopen P0 without a reproducible regression.
+- [x] Compared owner bundle HEAD and accepted PR head through Git commit/tree comparison; common ancestor and complete 19-file P0 delta recorded.
+- [x] Reviewed the P0 source delta and regression coverage; full six-job CI passed on the accepted PR head.
+- [x] Rust 1.91 formatting applied and verified by final CI run #124.
 - [ ] Re-run the full GitHub Actions workflow on the exact resulting SHA; require formatting, Node, room regression, PostgreSQL, OpenMLS and Rust bridge jobs all green.
 - [x] PR #25 merged after source-provenance review and all six CI jobs passed.
 - [x] Original owner bundle permanently stored in GitHub; checksum recorded in ARTIFACT-RETENTION.md.
