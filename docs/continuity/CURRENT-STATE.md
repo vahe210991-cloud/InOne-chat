@@ -202,3 +202,12 @@ This section supersedes the earlier section 8 statement that no bundle bytes wer
 - `git bundle verify` succeeded: complete history; ref `refs/heads/engine/p0-wave3` at `a7f60b6fdc969941e4354a117e17d32bfc951fb9`; five commits; base `ea3b49ae9cdf1670a1b7499d4b5e608ee22fe1e9`.
 - Base tree contains 240 tracked blobs. Full binary bundle is still not committed to GitHub. GitHub connector does have base64 Git Data blob creation, but current tool boundary cannot transfer local mounted bytes to that action; local Git push also lacks network/DNS and credentials.
 - Corrected status and hashes in [development/recovered-source/README.md](../../development/recovered-source/README.md).
+
+
+## 20. P0 CI: Node and room regression pass; PostgreSQL client mismatch — 2026-11-08
+
+- Run [42457297299](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42457297299): patch apply PASS; Node backend **369/369 PASS**; P0 room-list regression **2/2 PASS**; PostgreSQL **42/43 PASS**; OpenMLS and Rust bridge skipped after DB failure.
+- Sole DB failure: backup/restore test; runner's newer pg_dump/pg_restore wrote `SET transaction_timeout=0`, unsupported by PostgreSQL 16 service. This is a CI client/server version mismatch.
+- Fixed workflow at commit `0e13b9726c5fcbecfdb8a9a45b05d4bb6eb02863` to pin `ubuntu-24.04`, install `postgresql-client-16`, and put its binaries first on PATH.
+- Fresh run [42457594088](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42457594088) was in progress at last check. No full P0 acceptance yet.
+- Detailed report: [development/recovered-source/CI-RESULT-42457297299.md](../../development/recovered-source/CI-RESULT-42457297299.md).
