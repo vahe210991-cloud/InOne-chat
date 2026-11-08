@@ -26,6 +26,10 @@ The GitHub repository `vahe210991-cloud/InOne-chat` is the only authoritative pr
 - [Bundle verification report](recovered-source/BUNDLE-VERIFICATION.txt)
 - [Initial CI failure and correction](recovered-source/CI-RESULT-42453233555.md)
 
+## Integration briefs
+
+- [InOne ↔ Propo authentication integration brief](integrations/INONE-PROPO-AUTH-INTEGRATION-BRIEF.md). This is a planned contract, not an implemented feature; open security/product decisions remain unresolved.
+
 ## Current status at a glance
 
 - P0 Wave 3 recovery bundle: verified locally from the owner-provided archive; details and checksum in [BASELINE-2026-11-08.md](BASELINE-2026-11-08.md).
