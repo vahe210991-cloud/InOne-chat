@@ -1,6 +1,18 @@
 # InOne development session log
 
 
+## 2026-11-08 — Post-merge P0 validation passed; stage closed
+
+- Added push-to-main validation for the P0 workflow in commit `e30fcd02380327cd9efed94d85c05a3e6dccf3ce`; formatting auto-commit remains limited to PR runs.
+- Post-merge GitHub Actions run [#134](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42503694744) completed with **success** on main code SHA `e30fcd02380327cd9efed94d85c05a3e6dccf3ce`.
+- All six jobs passed: Rust 1.91 format, P0 room-list regression, Backend Node suite, PostgreSQL integration suite, Rust bridge check/tests, OpenMLS client check/tests.
+- PR [#25](https://github.com/vahe210991-cloud/InOne-chat/pull/25) remains CLOSED / MERGED at `97024ab03ce9583e298ee946f3679565007405ca`; current main HEAD after documentation-only closeout updates is `a676f9bede7fbf21e2717cf35fc9ac5b1cc37918`.
+- P0 backend/Rust/OpenMLS acceptance is fully closed. Flutter Beta 1.0 native integration remains separate scope.
+- Permanent owner bundle path and no-reupload rule: `development/ARTIFACT-RETENTION.md`.
+- Final report: `development/recovered-source/P0-CLOSURE-2026-11-08.md`.
+
+
+
 ## 2026-11-08 — P0 accepted and merged
 
 - Final PR [#25](https://github.com/vahe210991-cloud/InOne-chat/pull/25) merged into `main`; merge commit `97024ab03ce9583e298ee946f3679565007405ca`.
