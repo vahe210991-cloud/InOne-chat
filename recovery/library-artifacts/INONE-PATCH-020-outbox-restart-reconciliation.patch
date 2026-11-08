@@ -1,0 +1,42 @@
+--- a/mobile-mls/mls-client/tests/membership_outbox.rs
++++ b/mobile-mls/mls-client/tests/membership_outbox.rs
+@@ -263,3 +263,39 @@
+     assert_eq!(texts, vec!["accepted once"]);
+     assert!(bob.sync().unwrap().is_empty(), "повторная синхронизация не создаёт дубликат");
+ }
++
++#[test]
++fn accepted_message_lost_response_survives_restart_and_reconciles_exactly_once() {
++    let mut engine = Engine::start();
++    let keys = MemoryKeyStore::default();
++    let alice_db = db("message-ack-restart-alice");
++    let mut alice = connect(&engine.base, ALICE, PW, "A_PHONE", &alice_db, &keys).unwrap();
++    let mut bob = connect(&engine.base, BOB, PW, "B_PHONE", &db("message-ack-restart-bob"), &keys).unwrap();
++    bob.ensure_key_packages(1).unwrap();
++    alice.create_room(ROOM).unwrap();
++    alice.invite(ROOM, BOB).unwrap();
++    bob.sync().unwrap();
++
++    alice.enqueue_text(ROOM, "survives client restart").unwrap();
++    engine.command("FAIL_MESSAGE_RESPONSE");
++    assert_eq!(alice.flush_outbox().unwrap(), 0, "потерянный HTTP-ответ не удаляет outbox");
++    assert_eq!(alice.outbox_len().unwrap(), 1);
++    drop(alice);
++
++    // Reopen the same encrypted SQLite database as a fresh process. The first sync
++    // must match the exact ciphertext from server history to the durable outbox row.
++    let mut alice = connect(&engine.base, ALICE, PW, "A_PHONE", &alice_db, &keys).unwrap();
++    assert!(alice.sync().unwrap().is_empty(), "собственное событие не должно стать входящим сообщением");
++    assert_eq!(alice.pending_incoming().unwrap().len(), 0);
++    assert_eq!(alice.outbox_len().unwrap(), 1, "очередь удаляется только после локального завершения операции");
++    assert_eq!(alice.flush_outbox().unwrap(), 1, "повтор после рестарта использует восстановленный event_id");
++    assert_eq!(alice.outbox_len().unwrap(), 0);
++
++    let received = bob.sync().unwrap();
++    let texts: Vec<String> = received.iter().filter_map(|item| match item {
++        Incoming::Text { text, .. } => Some(text.clone()),
++        _ => None,
++    }).collect();
++    assert_eq!(texts, vec!["survives client restart"]);
++    assert!(bob.sync().unwrap().is_empty(), "повторная синхронизация не создаёт дубликат");
++}
