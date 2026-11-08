@@ -114,3 +114,18 @@ Beta 1.0 использует независимые базу данных и ba
 - Доступны Git CLI и Node.js v22.16.0/npm.
 - Не установлены `cargo`, `rustc`, Flutter, Dart и PostgreSQL client/server (`psql` не найден).
 - Поэтому даже после текстового сохранения патчей нельзя запускать локальные Node/Rust/Flutter/DB тесты без восстановления соответствующего исходного дерева и зависимостей. GitHub Actions PR #10 остаётся проверкой только архивного 0.6.0 source.
+
+## 11. Recovery update — owner-provided P0 Wave 3 bundle (2026-11-08 08:56 UTC+3)
+
+This section supersedes the earlier section 8 statement that no bundle bytes were available in the working environment.
+
+- The owner uploaded `Bundle(1).zip`; it contains `inone-engine-p0-wave3.bundle`, `BUNDLE-VERIFICATION.txt`, and `ARCHITECTURE-MAP.md`.
+- Bundle SHA-256: `a226e578a732e5da886e3ec4bfb007102154405a95809c80fb28a2833493522f`; size 1,052,468 bytes.
+- `git bundle verify`: PASS; complete 5-commit history.
+- Ref `refs/heads/engine/p0-wave3`; HEAD `a7f60b6fdc969941e4354a117e17d32bfc951fb9`; base `ea3b49ae9cdf1670a1b7499d4b5e608ee22fe1e9`.
+- Bundle protocol says this history has no shared commit with GitHub main. Do not force-push or claim original ancestry has been merged.
+- PR [#18](https://github.com/vahe210991-cloud/InOne-chat/pull/18) stores a compressed patch derived from the bundle and a validation workflow. It is a patch-based recovery path; it does not preserve the bundle's original five-commit ancestry. Check live Actions status and any published source branch before making claims.
+- Local JavaScript/MJS syntax check: 135 files PASS (syntax only).
+- Product Flutter app source is not included in this P0 bundle. A runnable phone app is not yet established.
+- New mandatory development handover folder is `development/`; see [development README](../../development/README.md), [working rules](../../development/WORKING-RULES.md), [baseline](../../development/BASELINE-2026-11-08.md), and [session log](../../development/SESSION-LOG.md).
+- The original bundle bytes and architecture map are not yet confirmed as files committed to the GitHub repository. The PR patch is not a substitute for the full original bundle. Do not mark archive preservation complete until GitHub contains a verified retrievable copy or an approved artifact location and checksum.
