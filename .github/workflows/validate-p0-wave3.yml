@@ -84,13 +84,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Preserve patch and create source branch from main
+      - name: Publish source branch idempotently
         env:
           PULL_REQUEST_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
+          set -euo pipefail
           base64 -d recovery/p0-wave3-core.patch.gz.b64 > "$RUNNER_TEMP/p0-wave3.patch.gz"
           git fetch origin main
-          git checkout -b recovery/p0-wave3-applied origin/main
+          git checkout -b publish-recovery origin/main
           git diff --binary origin/main "$PULL_REQUEST_HEAD_SHA" -- inone-development-archive-0.6.0/engine/ > "$RUNNER_TEMP/restored-base-files.patch"
           if [ -s "$RUNNER_TEMP/restored-base-files.patch" ]; then
             git apply "$RUNNER_TEMP/restored-base-files.patch"
@@ -100,4 +101,16 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "feat: restore verified InOne P0 backend and MLS core"
-          git push origin recovery/p0-wave3-applied
+          candidate_tree="$(git rev-parse 'HEAD^{tree}')"
+
+          if git ls-remote --exit-code --heads origin recovery/p0-wave3-applied >/dev/null 2>&1; then
+            git fetch origin refs/heads/recovery/p0-wave3-applied:refs/remotes/origin/recovery/p0-wave3-applied
+            existing_tree="$(git rev-parse 'refs/remotes/origin/recovery/p0-wave3-applied^{tree}')"
+            if [ "$candidate_tree" != "$existing_tree" ]; then
+              echo "::error::recovery/p0-wave3-applied exists but its tree differs from the validated candidate; refusing to overwrite."
+              exit 1
+            fi
+            echo "The exact validated source tree is already published; no push is needed."
+          else
+            git push origin HEAD:refs/heads/recovery/p0-wave3-applied
+          fi
