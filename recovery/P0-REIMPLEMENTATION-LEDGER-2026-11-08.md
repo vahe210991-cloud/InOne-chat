@@ -6,15 +6,16 @@ Draft PR: https://github.com/vahe210991-cloud/InOne-chat/pull/25
 
 ## Source lineage and limitation
 
-This branch is a reimplementation on the published Wave3 recovery snapshot. The newer canonical local source `cto/p0-finalize-fixtures` / `cto/p0-exact-pending-commit` and its commits are not available through published GitHub refs. This ledger must not be interpreted as proof that the unavailable source was restored byte-for-byte.
+This branch is a reimplementation on the published Wave3 recovery snapshot. The newer canonical local source `cto/p0-finalize-fixtures` / `cto/p0-exact-pending-commit` and its commits are not available through published GitHub refs. This ledger does not claim byte-for-byte restoration of that unavailable source.
 
-## Verified CI snapshot
+## Latest complete CI evidence
 
-- Exact tested head: `e444a4c9e55c2451dddeff651fed2b948b10d96d`
-- Workflow run: [#33](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42473665033)
+- Workflow run: [#116](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42496187515)
+- Tested SHA: `e5260ab9259bf25de2c0ff46f6eb0b02e231d7e7`
 - Conclusion: `success`
-- Passed steps: Rust formatting, Node dependency install, backend Node suite, P0 room-list regression, PostgreSQL integration suite, OpenMLS client tests, Rust bridge tests.
-- This validates the code at the exact SHA above only. Any subsequent commit requires a new complete run.
+- All six independent jobs passed: Rust formatting, backend Node suite, P0 room-list regression, PostgreSQL integration suite, OpenMLS client check/tests, Rust bridge check/tests.
+- The OpenMLS job passed all integration-test targets, including the new F1, F4, and P0.3 recovery scenarios.
+- The formatting job advanced the PR branch to formatted SHA `0d6a1072c1ee9405fa3ba2321b286e64912d3bed`. Run #117 for that bot-created formatting commit is `action_required`; a subsequent source-path documentation commit is being used to trigger the same full workflow against the formatted tree. The P0 release gate remains open until that exact final head has a complete successful run.
 
 ## Implemented on this branch
 
@@ -25,42 +26,66 @@ This branch is a reimplementation on the published Wave3 recovery snapshot. The 
 - Commit-history response returns metadata; legacy rows remain represented as null.
 - Rust inspects staged OpenMLS Add/Remove proposals before `merge_staged_commit` and compares them with server metadata.
 - Node tests cover metadata persistence/round-trip for add/remove.
-- Rust negative integration scenario tampers with the server metadata and asserts the staged Commit is not merged and room sending is blocked.
-- CI run #33 passed the Rust integration and bridge test steps.
+- Rust negative integration scenario tampers with server metadata and asserts the staged Commit is not merged and room sending is blocked.
+
+### F1 — Welcome recovery
+
+- Duplicate Welcome detection checks both the in-memory group cache and durable `client_rooms` membership state.
+- `GroupAlreadyExists` is treated as an indeterminate duplicate, not proof of malformed Welcome; the room receives sticky `RecoveryRequired` and the duplicate Welcome is not ACKed.
+- Permanent malformed Welcome data is recorded in a durable receipt/quarantine transaction before ACK.
+- Library/storage failures remain indeterminate and are not quarantined or ACKed.
+- ACK failures leave the durable receipt pending; restart retries ACK for the same Welcome ID.
+- Tests cover duplicate Welcome retention, room isolation, quarantine receipt persistence, local receipt-write failure (no ACK), and ACK retry after restart.
+
+### F4 — membership journal and exact pending-Commit identity
+
+- Exact staged-Commit fingerprint is persisted atomically with the membership operation journal.
+- Server idempotency fingerprint binds room, epoch, sender/device, operation ID, claim ID, commit bytes, normalized membership changes, and Welcome recipients.
+- Exact replay returns the previously accepted result; reuse of an operation ID with different content is a conflict.
+- Client verifies the pending fingerprint before merge/clear. A mismatch retains the journal and sets sticky `RecoveryRequired`.
+- Retryable/network/access failures preserve pending state; epoch-outdated responses clear only a fingerprint-matching staged operation and safely rebase.
+- Tests cover accepted Commit with lost response and restart replay, journal-insert DB failure, settlement-delete DB failure, fingerprint mismatch, and stale-clear DB failure followed by safe rebase.
+
+### F5 — event identity and malformed response handling
+
+- Event identity/epoch contract validation remains enforced before processing.
+- Malformed identity is not marked processed and does not poison unrelated rooms.
+- Existing Rust regression coverage is included in the latest OpenMLS test run.
+
+### P0.3 — durable room-scoped recovery
+
+- `client_waiting_for_commit` stores room-scoped expected epoch and pending future-event IDs when a future-epoch event arrives without its Commit.
+- The marker survives restart, blocks sends only in the affected room, and clears when the missing Commit is applied.
+- `client_commit_quarantine` stores room, epoch, SHA-256 of exact Commit bytes, reason, and timestamp.
+- Permanent Commit parse/process/metadata failures are quarantined atomically with `RecoveryRequired`; an already quarantined Commit is not reprocessed.
+- Transient fetch/process/merge failures are returned as retryable and are not put into permanent quarantine.
+- Tests cover WaitingForCommit/restart/recovery, permanent Commit quarantine/restart, unrelated-room progress, and transient Commit-fetch retry.
+
+### KeyPackage claim/replay
+
+- Migration `0026-mls-key-package-claim-replay` adds durable claim records keyed by target user, requester user/device, and claim ID.
+- PostgreSQL reserves the claim and persists the exact package result in one transaction. Replays return saved bytes without consuming another package.
+- Memory store mirrors the idempotency contract.
+- API uses `POST /mls/key-packages/{userId}/claim` with required URL-safe `claimId`.
+- Rust stores per-room/user claim intent in encrypted local SQLite, reuses it on retry, verifies the response claim ID, and clears intent only after server commit acceptance (or an empty result).
+- Node replay/concurrency and PostgreSQL restart/replay coverage pass in the latest complete CI run.
 
 ## P0 acceptance status
 
-| Area | Status | Evidence / remaining work |
+| Area | Implementation status | Latest evidence |
 |---|---|---|
-| Published Wave3 validation | Verified at exact SHA | Workflow run #33 success |
-| P0.2 server metadata contract | Implemented; CI passed | Migration, PostgreSQL/memory store parity, API history, tests |
-| P0.2 client staged-proposal validation | Implemented; CI passed | OpenMLS integration tests in run #33 |
-| F1 Welcome recovery | Not implemented/verified on this branch | Implement per CTO checklist, including GroupAlreadyExists, LibraryError, transactional quarantine/ACK and room isolation |
-| F4 membership journal fingerprint | Not implemented/verified on this branch | Persist exact staged-commit fingerprint atomically with journal op; structured response classification and restart/replay tests |
-| F5 event identity | Existing checks in baseline; acceptance not yet fully re-run against malformed-response retry scenario | Add/verify CI integration regression |
-| P0.3 durable quarantine / WaitingForCommit | Not implemented/verified on this branch | Durable room-scoped state, retryable failures, recovery semantics |
-| KeyPackage claim/replay | Implemented; latest CI pending | Migration 0026; PostgreSQL transaction + JSONB result; memory-store parity; POST claimId API; encrypted client intent table; Node replay/concurrency and PostgreSQL restart/replay tests; OpenMLS integration awaits run #46 |
-| Full P0 release gate | OPEN | All above plus clean DB/upgrade migration and final exact-SHA CI |
+| P0.2 server metadata contract | Implemented | PostgreSQL + Node + OpenMLS tests in run #116 |
+| P0.2 staged-proposal validation | Implemented | Metadata tamper regression passed in run #116 |
+| F1 Welcome recovery | Implemented | Duplicate, quarantine, ACK retry, storage-failure tests passed in run #116 |
+| F4 membership journal fingerprint | Implemented | Lost response, replay, fingerprint mismatch, transaction-failure/rebase tests passed in run #116 |
+| F5 event identity | Implemented | OpenMLS event-identity regressions passed in run #116 |
+| P0.3 quarantine / WaitingForCommit | Implemented | Durable quarantine, restart, retry, room-isolation tests passed in run #116 |
+| KeyPackage claim/replay | Implemented | Node and PostgreSQL integration suites passed in run #116 |
+| Full P0 release gate | **OPEN pending final exact-SHA run** | Run #116 is green at its SHA; formatted head requires full revalidation |
 
 ## Guardrails
 
 - Do not merge this draft PR or modify `main` without explicit user approval.
-- Keep P0 issues open until every acceptance item has runtime evidence on one final SHA.
+- Do not close P0 until every acceptance item has runtime evidence on the final PR head.
 - Never label Wave3 recovery as the missing canonical P0 source.
-- Re-run the full CI workflow after every source change; only the final head's run counts.
-
-## Latest implementation increment — KeyPackage claim/replay (CI pending)
-
-Current branch head before CI rustfmt automation: `33043a7d6aff99ed24cc827d9f2e8c15d992ce06`.
-The workflow rustfmt step applied formatting and advanced the branch to `0c4d954b2412b0ec201bab4c96db1b31f6fa6b03`; workflow run #46 (`42474789065`) is validating the resulting tree.
-
-- Migration `0026-mls-key-package-claim-replay` adds durable claim records keyed by target user, requester user/device, and claim ID.
-- PostgreSQL reserves the claim and persists the exact package result in one transaction. Replays return the saved bytes without consuming another package.
-- Memory store mirrors the same idempotency contract.
-- API changed to `POST /mls/key-packages/{userId}/claim` with a required URL-safe `claimId`.
-- Rust stores a per-room/user claim intent in encrypted local SQLite metadata, reuses it on retry, verifies the response claim ID, and clears the intent only after server commit acceptance (or an empty result).
-- Added Node replay/concurrency coverage and PostgreSQL replay-after-server-restart coverage.
-- Workflow run #34 was cancelled when later source commits superseded its head; it is not acceptance evidence.
-- Workflow run #33 remains green at its earlier exact SHA and validates P0.2 only.
-
-**Current acceptance:** KeyPackage claim/replay implementation is authored but must pass the current full CI on the final head. It is not yet accepted.
+- After the final formatted tree is validated, do not make further source changes without another complete run.
