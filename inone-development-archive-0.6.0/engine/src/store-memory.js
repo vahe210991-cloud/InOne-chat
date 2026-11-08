@@ -860,7 +860,7 @@ export function createMemoryStore({ pinPepper }) {
       }
       const next = current + 1;
       mlsGroups.set(roomId, next);
-      mlsCommits.push({ roomId, epoch: next, senderId, commit: Buffer.from(commit), createdAt: nowMs });
+      mlsCommits.push({ roomId, epoch: next, senderId, commit: Buffer.from(commit), changes: structuredClone({ adds: changes.adds ?? [], removes: changes.removes ?? [], removeDevices: changes.removeDevices ?? [] }), welcomeRecipients: welcomes.map((w) => ({ userId: w.userId, deviceId: w.deviceId })), createdAt: nowMs });
       for (const w of welcomes) {
         mlsWelcomes.push({ id: mlsWelcomes.length + 1, roomId, epoch: next, userId: w.userId, deviceId: w.deviceId, welcome: Buffer.from(w.welcome), createdAt: nowMs, ackedAt: null });
       }
@@ -868,7 +868,7 @@ export function createMemoryStore({ pinPepper }) {
     },
     mlsCommitsSince(roomId, since, limit) {
       return mlsCommits.filter((c) => c.roomId === roomId && c.epoch > since).sort((a, b) => a.epoch - b.epoch).slice(0, limit)
-        .map((c) => ({ epoch: c.epoch, senderId: c.senderId, commit: Buffer.from(c.commit) }));
+        .map((c) => ({ epoch: c.epoch, senderId: c.senderId, commit: Buffer.from(c.commit), changes: c.changes ? structuredClone(c.changes) : null, welcomeRecipients: c.welcomeRecipients ? structuredClone(c.welcomeRecipients) : null }));
     },
     mlsPendingWelcomes(userId, deviceId) {
       return mlsWelcomes.filter((w) => w.userId === userId && w.deviceId === deviceId && w.ackedAt === null)
