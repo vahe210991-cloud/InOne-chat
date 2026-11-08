@@ -82,7 +82,13 @@ This section is a binding project instruction from the owner.
 
 > "Я отправляю файл в последний раз. Больше этот файл не буду отправлять."
 
-The owner has explicitly stated that the P0 bundle is being supplied for the last time and will not be uploaded again. **Never ask the owner to resend this bundle.** Do not restart a session by asking for it. First retrieve it from the permanent repository archive described in [ARTIFACT-RETENTION.md](ARTIFACT-RETENTION.md). If it is not immediately visible, inspect the artifact branch, repository history, and GitHub Actions artifacts before reporting a blocker.
+The owner has explicitly stated that the P0 bundle is being supplied for the last time and will not be uploaded again. **Never ask the owner to resend this bundle.** Do not restart a session by asking for it. First retrieve it from the permanent repository archive described in [ARTIFACT-RETENTION.md](ARTIFACT-RETENTION.md).
+
+The exact owner-supplied bytes are archived at:
+- Branch: `artifacts/p0-bundles`
+- Pointer file: `bundles/OWNER-SUPPLIED-ORIGINAL.txt`
+- Permanent file: `bundles/owner-upload-2026-11-08/InOne-P0-snapshot-2026-11-08.bundle`
+- SHA-256: `e76fdd39e2e9698d7f32061e3fd4fb3dbc52ef981bb075c6c252a7cce11f391e`
 
 For every binary/source bundle:
 - Save the actual bytes in a durable repository location (dedicated artifact branch or Git LFS), not only a chat attachment, model memory, expiring Actions artifact, or local workspace.
@@ -90,6 +96,6 @@ For every binary/source bundle:
 - Verify the stored copy by downloading it from GitHub and comparing its SHA-256 with the supplied file.
 - Keep the retention automation active so future snapshots are archived automatically.
 - A temporary Actions artifact is only a transport/backup copy; it is not the permanent source of truth.
-- Never mark an artifact as saved until the permanent branch/path and checksum have been verified.
+- Never mark an artifact as saved unless the permanent branch/path and checksum have been verified.
 
 Current supplied file: `InOne-P0-snapshot-2026-11-08.bundle`; SHA-256 `e76fdd39e2e9698d7f32061e3fd4fb3dbc52ef981bb075c6c252a7cce11f391e`; size 2,476,944 bytes; verified as a complete Git bundle with HEAD `16eab726106ae04b4979af2a1646c2052233b87c`. Permanent retention status is tracked in [ARTIFACT-RETENTION.md](ARTIFACT-RETENTION.md).
