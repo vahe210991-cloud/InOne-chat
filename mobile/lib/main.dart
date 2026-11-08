@@ -8,6 +8,7 @@ import 'approved_screens.dart';
 import 'core/session/inone_session.dart';
 import 'core/test_api/screen_api_catalog.dart';
 import 'test_screens.dart';
+import 'test_gallery_loader.dart';
 
 const _apiBaseUrl = String.fromEnvironment('INONE_API_BASE_URL');
 
@@ -49,6 +50,8 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
   bool _loading = true;
   bool _pageReady = false;
   String? _error;
+  String _currentSource = 'approved';
+  String? _testGalleryHtml;
 
   bool get _isApproved => _selectedKey.startsWith('approved:');
   String get _selectedId => _selectedKey.split(':').last;
@@ -106,7 +109,7 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
             });
           }
         },
-        onPageFinished: (_) => _waitForApprovedScreens(),
+        onPageFinished: (_) => _waitForCurrentScreens(),
         onWebResourceError: (error) {
           if (mounted) {
             setState(() {
@@ -179,9 +182,109 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
     ''');
   }
 
+  Future<void> _waitForCurrentScreens() async {
+    if (_currentSource == 'approved') {
+      await _waitForApprovedScreens();
+    } else {
+      await _waitForTestScreens();
+    }
+  }
+
+  Future<void> _waitForTestScreens() async {
+    for (var attempt = 0; attempt < 40; attempt++) {
+      if (!mounted) return;
+      try {
+        final count = await _controller.runJavaScriptReturningResult(
+          "document.querySelectorAll('.screen-card[data-title]').length",
+        );
+        if (count.toString().replaceAll('"', '') == '73') {
+          if (!mounted) return;
+          setState(() {
+            _pageReady = true;
+            _loading = false;
+          });
+          await _showSelectedTestScreen();
+          return;
+        }
+      } catch (_) {
+        // Retry while the bundled gallery document mounts its cards.
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    if (mounted) {
+      setState(() {
+        _loading = false;
+        _error = 'Не удалось подготовить 73 тестовых экрана';
+      });
+    }
+  }
+
+  Future<void> _loadTestGallery() async {
+    setState(() {
+      _loading = true;
+      _pageReady = false;
+      _error = null;
+    });
+    try {
+      _testGalleryHtml ??= await loadTestGalleryHtml();
+      if (!mounted) return;
+      _currentSource = 'test';
+      await _controller.loadHtmlString(
+        _testGalleryHtml!,
+        baseUrl: 'https://inone.local/',
+      );
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = error.toString();
+        });
+      }
+    }
+  }
+
+  Future<void> _showSelectedTestScreen() async {
+    final selected = _selectedTestScreen;
+    if (!_pageReady || selected == null || _currentSource != 'test') return;
+    final id = jsonEncode(selected.id);
+    await _controller.runJavaScript('''
+      (() => {
+        const cards = Array.from(document.querySelectorAll('.screen-card[data-title]'));
+        const selected = cards.find((card) =>
+          (card.getAttribute('data-title') || '').includes($id));
+        if (!selected) return;
+        cards.forEach((card) => { card.style.display = card === selected ? '' : 'none'; });
+        document.querySelectorAll('.category-section').forEach((section) => {
+          section.style.display = section.contains(selected) ? 'block' : 'none';
+        });
+        document.querySelectorAll('.screen-grid').forEach((grid) => {
+          grid.style.display = grid.contains(selected) ? 'grid' : 'none';
+        });
+        document.querySelectorAll('.topbar,.hero,.toolbar,.footer,.section-heading,.empty-filter')
+          .forEach((node) => { node.style.display = 'none'; });
+        selected.style.maxWidth = '440px';
+        selected.style.margin = '0 auto';
+        document.body.style.backgroundColor = '#F6F7F4';
+      })();
+    ''');
+  }
+
   void _selectScreen(String key) {
     setState(() => _selectedKey = key);
-    if (key.startsWith('approved:')) unawaited(_showSelectedScreen());
+    if (key.startsWith('approved:')) {
+      if (_currentSource != 'approved') {
+        _currentSource = 'approved';
+        unawaited(_controller.loadFlutterAsset(approvedScreensAssetPath));
+      } else if (_pageReady) {
+        unawaited(_showSelectedScreen());
+      }
+    } else {
+      if (_currentSource != 'test') {
+        unawaited(_loadTestGallery());
+      } else if (_pageReady) {
+        unawaited(_showSelectedTestScreen());
+      }
+    }
   }
 
   Future<void> _openScreenPicker() async {
@@ -230,32 +333,30 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
           ],
         ),
         body: SafeArea(
-          child: _isApproved
-              ? Stack(
-                  children: [
-                    WebViewWidget(controller: _controller),
-                    if (_loading || !_pageReady)
-                      const Align(
-                        alignment: Alignment.topCenter,
-                        child: LinearProgressIndicator(minHeight: 2),
-                      ),
-                    if (_error != null)
-                      Positioned(
-                        left: 16,
-                        right: 16,
-                        bottom: 16,
-                        child: Material(
-                          color: Theme.of(context).colorScheme.errorContainer,
-                          borderRadius: BorderRadius.circular(12),
-                          child: Padding(
-                            padding: const EdgeInsets.all(12),
-                            child: Text('Не удалось загрузить экран: ' + _error!),
-                          ),
-                        ),
-                      ),
-                  ],
-                )
-              : TestScreenPreview(screen: _selectedTestScreen!, onOpenApi: _openApiPanel),
+          child: Stack(
+            children: [
+              WebViewWidget(controller: _controller),
+              if (_loading || !_pageReady)
+                const Align(
+                  alignment: Alignment.topCenter,
+                  child: LinearProgressIndicator(minHeight: 2),
+                ),
+              if (_error != null)
+                Positioned(
+                  left: 16,
+                  right: 16,
+                  bottom: 16,
+                  child: Material(
+                    color: Theme.of(context).colorScheme.errorContainer,
+                    borderRadius: BorderRadius.circular(12),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Text('Не удалось загрузить экран: ' + _error!),
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       );
 }
@@ -347,106 +448,6 @@ class _ScreenPickerSheetState extends State<ScreenPickerSheet> {
           ],
         ),
       ),
-    );
-  }
-}
-
-class TestScreenPreview extends StatelessWidget {
-  const TestScreenPreview({required this.screen, required this.onOpenApi, super.key});
-  final TestScreen screen;
-  final VoidCallback onOpenApi;
-
-  @override
-  Widget build(BuildContext context) {
-    final probes = screenApiProbes[screen.id] ?? const <ScreenApiProbe>[];
-    final statusColor = screen.stage == ScreenStage.core
-        ? const Color(0xFF287A4B)
-        : screen.stage == ScreenStage.deferred
-            ? const Color(0xFF9B6A1C)
-            : const Color(0xFF5D6675);
-
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Card(
-          elevation: 0,
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: statusColor.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(_stageLabel(screen.stage),
-                          style: TextStyle(color: statusColor, fontWeight: FontWeight.w700)),
-                    ),
-                    const Spacer(),
-                    Text(screen.id, style: Theme.of(context).textTheme.labelLarge),
-                  ],
-                ),
-                const SizedBox(height: 22),
-                Text(screen.title, style: Theme.of(context).textTheme.headlineMedium),
-                const SizedBox(height: 8),
-                Text(screen.description, style: Theme.of(context).textTheme.bodyLarge),
-                const SizedBox(height: 18),
-                Text(screen.category, style: Theme.of(context).textTheme.labelLarge),
-                const SizedBox(height: 8),
-                Text(screen.status, style: Theme.of(context).textTheme.bodyMedium),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Card(
-          elevation: 0,
-          child: Padding(
-            padding: const EdgeInsets.all(18),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Подключение к backend', style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 8),
-                if (probes.isEmpty)
-                  const Text('Для этого экрана нет безопасного GET-запроса в текущем тестовом наборе. Записывающие операции подключаются отдельными формами с подтверждением.')
-                else
-                  for (final probe in probes)
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.cloud_outlined),
-                      title: Text(probe.label),
-                      subtitle: Text('GET ' + probe.path),
-                    ),
-                const SizedBox(height: 8),
-                FilledButton.icon(
-                  onPressed: onOpenApi,
-                  icon: const Icon(Icons.api_rounded),
-                  label: const Text('Открыть API-тест'),
-                ),
-              ],
-            ),
-          ),
-        ),
-        Card(
-          elevation: 0,
-          child: Padding(
-            padding: const EdgeInsets.all(18),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Режим тестирования', style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 8),
-                const Text('Экран зарегистрирован в общем каталоге и использует единый API-клиент. Этот тестовый контейнер пока не заменяет исходный дизайн-макет и не означает, что все записывающие операции уже реализованы.'),
-              ],
-            ),
-          ),
-        ),
-      ],
     );
   }
 }

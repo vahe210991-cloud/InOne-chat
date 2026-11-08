@@ -8,7 +8,7 @@ The Flutter host now exposes the 22 owner-approved visual variants and the compl
 - 51 Beta 0.7.1 test screens.
 - 1 deferred screen (CH-07, moved to 0.8).
 - 21 future concepts: calendar, tasks, files, CRM, Sindy AI, stories, geolocation and Propo map integration.
-- The 73 test entries are native QA shells with screen IDs, categories, scope/status and API probe access. They are not a claim that all future backend modules or pixel-perfect HTML layouts are implemented.
+- The 73 additional screens now load from the original owner-provided full-screen design gallery v0.8. The HTML is packaged as deterministic gzip/base64 text parts and reconstructed in memory without rewriting the source. Each Flutter catalogue ID selects its matching original gallery card.
 
 ## Backend connection
 
@@ -35,7 +35,7 @@ Only the stable device identifier is persisted, using platform secure storage. A
 ## Current integration boundary
 
 - The 22 approved screens remain visual previews; their HTML demo controls are not yet wired to production actions.
-- The 73 test entries are QA shells. The original full-screen HTML gallery is retained in the design source material but is not yet packaged as a Flutter asset in this increment.
+- The 73 test entries use the original full-screen HTML gallery. The gallery asset integrity test checks all 73 card IDs against the Flutter catalogue.
 - Generic API probing is read-only. POST/PUT/DELETE actions require dedicated forms, validated payloads and explicit confirmation.
 - Native Android/iOS MLS FFI, secure message database, upload flow, offline queue and two-device E2E are not completed by this increment.
 - The Flutter session temporarily owns refresh-token rotation. When the native MLS bridge is integrated, ownership must move to the native MLS session layer rather than running two refresh owners.

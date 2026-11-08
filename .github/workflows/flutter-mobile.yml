@@ -33,6 +33,8 @@ jobs:
         run: rm -f test/widget_test.dart
       - name: Verify approved cross-platform screen geometry
         run: node tool/verify_approved_html.mjs
+      - name: Verify original 73-screen test gallery
+        run: node tool/verify_test_gallery.mjs
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test

@@ -82,4 +82,4 @@ The current Flutter session temporarily rotates refresh tokens. After Android/iO
 - Offline queue, reconnect and restart recovery.
 - Full two-device end-to-end acceptance.
 
-The 73 test-screen entries are visible in the QA catalogue; their inclusion does not imply that all future modules have backend implementations.
+The original 73-card full-screen gallery is packaged and loaded by Flutter; an asset test verifies every card ID. Visual inclusion does not imply that all future modules have backend implementations or live API contracts.
