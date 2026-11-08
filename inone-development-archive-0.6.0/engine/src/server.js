@@ -2290,7 +2290,7 @@ if (req.method === 'POST' && p === '/login') {
               const since = Number(new URL(req.url, 'http://local').searchParams.get('since') ?? 0);
               if (!Number.isSafeInteger(since) || since < 0) return send(res, 400, { error: 'since must be a non-negative integer' });
               const rows = await storage.mlsCommitsSince(roomId, since, 100);
-              return send(res, 200, { commits: rows.map((c) => ({ epoch: c.epoch, sender: c.senderId, commit: c.commit.toString('base64') })) });
+              return send(res, 200, { commits: rows.map((c) => ({ epoch: c.epoch, sender: c.senderId, commit: c.commit.toString('base64'), changes: c.changes ?? null, welcomeRecipients: c.welcomeRecipients ?? null })) });
             }
             if (req.method === 'GET' && p === '/mls/welcomes') {
               const d = await authed(req);
