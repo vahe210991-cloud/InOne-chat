@@ -17,6 +17,25 @@ console.log(`URL=http://127.0.0.1:${srv.server.address().port}`);
 const hidden = new Set();
 const badMetadataRooms = new Set();
 const badEventIds = new Map();
+const welcomeArchive = new Map();
+const replayWelcomeByDevice = new Map();
+const replayWelcomeAckAttempts = new Set();
+let replayWelcomeId = 900000000;
+const originalMlsPendingWelcomes = store.mlsPendingWelcomes.bind(store);
+store.mlsPendingWelcomes = (userId, deviceId) => {
+  const pending = originalMlsPendingWelcomes(userId, deviceId);
+  for (const welcome of pending) welcomeArchive.set(`${userId}|${deviceId}|${welcome.roomId}`, structuredClone(welcome));
+  const replayRoom = replayWelcomeByDevice.get(`${userId}|${deviceId}`);
+  if (!replayRoom) return pending;
+  const archived = welcomeArchive.get(`${userId}|${deviceId}|${replayRoom}`);
+  if (!archived) return pending;
+  return [{ ...structuredClone(archived), id: replayWelcomeId++ }, ...pending];
+};
+const originalMlsAckWelcome = store.mlsAckWelcome.bind(store);
+store.mlsAckWelcome = (...args) => {
+  replayWelcomeAckAttempts.add(args[0]);
+  return originalMlsAckWelcome(...args);
+};
 const originalMlsCommitsSince = store.mlsCommitsSince.bind(store);
 store.mlsCommitsSince = (roomId, since, limit) => {
   const rows = originalMlsCommitsSince(roomId, since, limit);
@@ -42,6 +61,18 @@ store.roomEventRows = async (roomId, since) => {
 const rl = readline.createInterface({ input: process.stdin });
 rl.on('line', async (line) => {
   const parts = line.trim().split(' ');
+  if (parts[0] === 'REPLAY_WELCOME') {
+    const roomId = parts[1], userId = parts[2], deviceId = parts[3];
+    const archived = welcomeArchive.get(`${userId}|${deviceId}|${roomId}`);
+    if (!archived) { console.log('ERR нет ранее доставленного Welcome'); return; }
+    replayWelcomeByDevice.set(`${userId}|${deviceId}`, roomId);
+    console.log('OK');
+    return;
+  }
+  if (parts[0] === 'WELCOME_ACK_ATTEMPTED') {
+    console.log(replayWelcomeAckAttempts.has(Number(parts[1])) ? 'YES' : 'NO');
+    return;
+  }
   if (parts[0] === 'BAD_EVENT_ID') {
     badEventIds.set(parts[1], parts[2]);
     console.log('OK');
