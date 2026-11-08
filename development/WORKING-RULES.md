@@ -75,3 +75,8 @@ Stop before making risky edits. Add a concise blocker entry to SESSION-LOG.md an
 - what supported next step is needed.
 
 Do not ask the owner to resend an artifact already in GitHub or the shared project Library. Search the repository and documented artifact inventory first.
+
+
+## Permanent artifact rule — owner P0 bundle
+
+The owner-uploaded `InOne-P0-snapshot-2026-11-08.bundle` must never be requested again as a routine session prerequisite. Its permanent copy is in branch `artifacts/p0-bundles`, path `bundles/owner-upload-2026-11-08/InOne-P0-snapshot-2026-11-08.bundle`, SHA-256 `e76fdd39e2e9698d7f32061e3fd4fb3dbc52ef981bb075c6c252a7cce11f391e`. Read `development/ARTIFACT-RETENTION.md` and retrieve the bundle from GitHub when needed. Never say it is saved unless the branch/path is checked live.
