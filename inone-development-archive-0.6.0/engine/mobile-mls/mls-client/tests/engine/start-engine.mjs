@@ -24,12 +24,11 @@ let replayWelcomeId = 900000000;
 const originalMlsPendingWelcomes = store.mlsPendingWelcomes.bind(store);
 store.mlsPendingWelcomes = (userId, deviceId) => {
   const pending = originalMlsPendingWelcomes(userId, deviceId);
-  for (const welcome of pending) welcomeArchive.set(`${userId}|${deviceId}|${welcome.roomId}`, structuredClone(welcome));
+  for (const welcome of pending) welcomeArchive.set(`${userId}|${deviceId}|${welcome.roomId}`, { ...structuredClone(welcome), welcome: Buffer.from(welcome.welcome) });
   const replayRoom = replayWelcomeByDevice.get(`${userId}|${deviceId}`);
   const archived = replayRoom ? welcomeArchive.get(`${userId}|${deviceId}|${replayRoom}`) : null;
-  console.error(`[welcome-replay] user=${userId} device=${deviceId} replayRoom=${replayRoom ?? '<none>'} archived=${!!archived} pending=${pending.length}`);
   if (!replayRoom || !archived) return pending;
-  return [{ ...structuredClone(archived), id: replayWelcomeId++ }, ...pending];
+  return [{ ...structuredClone(archived), welcome: Buffer.from(archived.welcome), id: replayWelcomeId++ }, ...pending];
 };
 let dropNextCommitResponse = false;
 const originalMlsApplyCommit = store.mlsApplyCommit.bind(store);

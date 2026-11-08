@@ -1,5 +1,5 @@
 mod common;
-use common::{db, login, start_engine, PW};
+use common::{db, login, start_engine};
 use mls_client::MemoryKeyStore;
 
 const ROOM: &str = "!room-membership-journal:inone.test";
