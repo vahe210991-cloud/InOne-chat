@@ -22,7 +22,7 @@ Important: a newly generated bundle from a later commit may contain the same his
 
 ## Permanent repository location
 
-<badge label="PERMANENTLY ARCHIVED" color="success" />
+**Status: PERMANENTLY ARCHIVED — verified.**
 
 - Repository: `vahe210991-cloud/InOne-chat`
 - Permanent archive branch: `artifacts/p0-bundles`
