@@ -39,7 +39,7 @@ This branch is a reimplementation on the published Wave3 recovery snapshot. The 
 | F4 membership journal fingerprint | Not implemented/verified on this branch | Persist exact staged-commit fingerprint atomically with journal op; structured response classification and restart/replay tests |
 | F5 event identity | Existing checks in baseline; acceptance not yet fully re-run against malformed-response retry scenario | Add/verify CI integration regression |
 | P0.3 durable quarantine / WaitingForCommit | Not implemented/verified on this branch | Durable room-scoped state, retryable failures, recovery semantics |
-| KeyPackage claim/replay | Not implemented/verified on this branch | Stable claim ID, durable claim result, client intent journal, replay idempotency and concurrent claim tests |
+| KeyPackage claim/replay | Implemented; latest CI pending | Migration 0026; PostgreSQL transaction + JSONB result; memory-store parity; POST claimId API; encrypted client intent table; Node replay/concurrency and PostgreSQL restart/replay tests; OpenMLS integration awaits run #46 |
 | Full P0 release gate | OPEN | All above plus clean DB/upgrade migration and final exact-SHA CI |
 
 ## Guardrails
@@ -48,3 +48,19 @@ This branch is a reimplementation on the published Wave3 recovery snapshot. The 
 - Keep P0 issues open until every acceptance item has runtime evidence on one final SHA.
 - Never label Wave3 recovery as the missing canonical P0 source.
 - Re-run the full CI workflow after every source change; only the final head's run counts.
+
+## Latest implementation increment — KeyPackage claim/replay (CI pending)
+
+Current branch head before CI rustfmt automation: `33043a7d6aff99ed24cc827d9f2e8c15d992ce06`.
+The workflow rustfmt step applied formatting and advanced the branch to `0c4d954b2412b0ec201bab4c96db1b31f6fa6b03`; workflow run #46 (`42474789065`) is validating the resulting tree.
+
+- Migration `0026-mls-key-package-claim-replay` adds durable claim records keyed by target user, requester user/device, and claim ID.
+- PostgreSQL reserves the claim and persists the exact package result in one transaction. Replays return the saved bytes without consuming another package.
+- Memory store mirrors the same idempotency contract.
+- API changed to `POST /mls/key-packages/{userId}/claim` with a required URL-safe `claimId`.
+- Rust stores a per-room/user claim intent in encrypted local SQLite metadata, reuses it on retry, verifies the response claim ID, and clears the intent only after server commit acceptance (or an empty result).
+- Added Node replay/concurrency coverage and PostgreSQL replay-after-server-restart coverage.
+- Workflow run #34 was cancelled when later source commits superseded its head; it is not acceptance evidence.
+- Workflow run #33 remains green at its earlier exact SHA and validates P0.2 only.
+
+**Current acceptance:** KeyPackage claim/replay implementation is authored but must pass the current full CI on the final head. It is not yet accepted.
