@@ -318,6 +318,8 @@ CREATE TABLE mls_commits (
   epoch BIGINT NOT NULL,
   sender_id TEXT NOT NULL,
   commit BYTEA NOT NULL,
+  changes JSONB,
+  welcome_recipients JSONB,
   created_at BIGINT NOT NULL,
   PRIMARY KEY (room_id, epoch)
 );
