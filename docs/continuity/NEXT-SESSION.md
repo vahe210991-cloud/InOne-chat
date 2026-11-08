@@ -95,3 +95,12 @@ Tasks, Calendar, Cindy не добавлять в Beta 1.0 без нового �
 - Then verify whether the applied-source branch was created by CI. Open a separate source-code PR only from that verified branch.
 - Next product priority: locate/recover the actual Flutter Beta 1.0 source (not present in the P0 bundle), restore it into GitHub, connect the native MLS bridge securely, and produce a testable Android build as soon as the release gates allow.
 - Keep Beta 1.0 independent from Propo's operational database. Shared DB remains deferred.
+
+
+## PR #18 CI correction — 2026-11-08
+
+- Initial workflow run [42453233555](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42453233555) failed: Node suite 364/365, missing `client-reference/biometric-client.mjs`; PostgreSQL and Rust stages skipped.
+- Exact file restored from bundle base commit `ea3b49ae9cdf1670a1b7499d4b5e608ee22fe1e9`, blob `b03e72fe33c79e6b261d980bc86459babf03b388`, to PR #18 in commit `04a490e9a01cf7523fb45205a8077f5f357c2658`.
+- Workflow path filter update committed as `762e3eca8ccb2e34965441114cc29b63083aa0f9`. Verify a new Actions run for this exact head; it was not visible at the last check.
+- Re-evaluate full source-tree completeness: matching only the eight modified files did not prove the archived base was a complete match. Do not publish or merge the source branch until all validation steps pass.
+- Full original bundle bytes are still not stored in GitHub. The connector does not expose a binary Git/LFS upload route; use approved durable artifact storage or authenticated Git transport when available. Do not claim the patch file is a full bundle.
