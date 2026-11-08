@@ -241,3 +241,15 @@ This section supersedes stale earlier statements in this file that no applied P0
 - The P0 workflow runs from `inone-development-archive-0.6.0/engine/`. A separate `inone-engine-poc-0.6.0/` tree also exists; do not assume parity without blob comparison.
 - Original bundle SHA/ref/HEAD remain separately recorded in the recovery status document. Its original binary and original five-commit ancestry are not imported into GitHub main.
 - Flutter app source, native mobile MLS handlers, secure key storage and durable local message persistence remain separate blockers. Do not treat P0 backend CI as a runnable Beta 1.0 app.
+
+
+## 15. GitHub Codespaces test environment — draft only (2026-11-08)
+
+- Owner selected GitHub Codespaces as the development/test environment.
+- Draft scaffolding is committed on branch `feat/beta1-full-screen-api-harness`: `.devcontainer/devcontainer.json`, `.devcontainer/docker-compose.yml`, `.devcontainer/start-backend.sh`, and `docs/CODESPACES_TEST_ENVIRONMENT.md`.
+- Related mobile changes select a local backend URL by platform and document the local API panel. These are configuration/code declarations only.
+- Latest branch HEAD at the time of the session handoff: `88e68117957fc1a0846e790240db62cf14033b1b`. Draft PR [#28](https://github.com/vahe210991-cloud/InOne-chat/pull/28) remains open and unmerged.
+- **Verification: BLOCKED.** No complete repository clone/worktree was available in the tool environment. Codespaces was not created. Container build, PostgreSQL, migrations, backend health checks, Flutter analysis/tests and live API requests were not run.
+- Latest Actions run [#42509620990](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42509620990) was in progress when checked. Earlier Flutter runs failed at `flutter analyze`; investigate exact annotations before accepting the branch.
+- 34 screen API entries are configured, but they are not 34 verified live integrations. `GET /rooms/mine` is absent from the current engine source; `GR-01` and workspace list probes were removed. The target of 10 verified connected screens remains NOT MET / NOT VERIFIED.
+- Next required action: create a Codespace on `feat/beta1-full-screen-api-harness`, verify complete clone/history/refs and clean worktree, then validate this configuration before making more code changes. See [Codespaces test environment guide](../../docs/CODESPACES_TEST_ENVIRONMENT.md) and the latest [session log](../../development/SESSION-LOG.md).
