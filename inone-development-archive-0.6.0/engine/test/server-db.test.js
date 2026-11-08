@@ -581,13 +581,17 @@ dbTest('SD KeyPackage claim: replay after restart returns the same durable resul
 
   const secondServer = await start(store);
   try {
-    const replay = await bob.raw('POST', claimPath, { claimId });
+    const replayResponse = await req(secondServer.base, 'POST', claimPath, { body: { claimId }, token: bob.token });
+    assert.equal(replayResponse.status, 200);
+    const replay = replayResponse.json;
     assert.deepEqual(replay, first, 'claim result survives server restart and replays byte-for-byte');
-    assert.equal((await alice.raw('GET', '/mls/key-packages/count')).available, 1, 'replay does not consume a second KeyPackage');
-    const next = await bob.raw('POST', claimPath, { claimId: 'claim-intent-pg-next-0002' });
+    assert.equal((await req(secondServer.base, 'GET', '/mls/key-packages/count', { token: alice.token })).json.available, 1, 'replay does not consume a second KeyPackage');
+    const nextResponse = await req(secondServer.base, 'POST', claimPath, { body: { claimId: 'claim-intent-pg-next-0002' }, token: bob.token });
+    assert.equal(nextResponse.status, 200);
+    const next = nextResponse.json;
     assert.equal(next.packages.length, 1);
     assert.notEqual(next.packages[0].package, first.packages[0].package);
-    assert.equal((await alice.raw('GET', '/mls/key-packages/count')).available, 0);
+    assert.equal((await req(secondServer.base, 'GET', '/mls/key-packages/count', { token: alice.token })).json.available, 0);
   } finally {
     await secondServer.stop();
     await db.close();
