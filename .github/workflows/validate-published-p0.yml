@@ -6,6 +6,11 @@ on:
     paths:
       - "inone-development-archive-0.6.0/engine/**"
       - ".github/workflows/validate-published-p0.yml"
+  push:
+    branches: [main]
+    paths:
+      - "inone-development-archive-0.6.0/engine/**"
+      - ".github/workflows/validate-published-p0.yml"
 
 permissions:
   contents: read
@@ -41,6 +46,7 @@ jobs:
           cargo fmt --manifest-path mls-client/Cargo.toml
           cargo fmt --manifest-path mls-bridge/Cargo.toml
       - name: Commit formatting if needed
+        if: github.event_name == 'pull_request'
         run: |
           if ! git diff --quiet; then
             git config user.name "github-actions[bot]"
