@@ -2330,14 +2330,18 @@ if (req.method === 'POST' && p === '/login') {
         await storage.mlsStoreLastResort(d.userId, d.deviceId, checked.value[0], now());
         return send(res, 200, { stored: true });
       }
-      const mlsClaim = p.match(/^\/mls\/key-packages\/([^/]+)$/);
-      if (mlsClaim && req.method === 'GET') {
+      const mlsClaim = p.match(/^\\/mls\\/key-packages\\/([^/]+)\\/claim$/);
+      if (mlsClaim && req.method === 'POST') {
         const d = await authed(req);
         if (!d) return send(res, 401, { error: 'unauthorized' });
+        const claimId = body?.claimId;
+        if (typeof claimId !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(claimId)) {
+          return send(res, 400, { error: 'claimId must be 16-128 URL-safe characters' });
+        }
         const rate = await checkRate('mlsClaimPerAccount', d.userId);
         if (!rate.allowed) return send(res, 429, { error: 'too many key requests, try later' });
-        const claimed = await storage.mlsClaimKeyPackages(decodeURIComponent(mlsClaim[1]), now());
-        return send(res, 200, { packages: claimed.map((c) => ({ deviceId: c.deviceId, package: c.package.toString('base64') })) });
+        const claimed = await storage.mlsClaimKeyPackages(decodeURIComponent(mlsClaim[1]), d.userId, d.deviceId, claimId, now());
+        return send(res, 200, { claimId, packages: claimed.map((c) => ({ deviceId: c.deviceId, package: c.package.toString('base64') })) });
       }
 
       // Оформление группы. Право — edit_group_appearance.
