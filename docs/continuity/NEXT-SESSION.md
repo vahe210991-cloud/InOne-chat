@@ -119,3 +119,10 @@ Tasks, Calendar, Cindy не добавлять в Beta 1.0 без нового �
 - Current run [42457009510](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42457009510) must be inspected through every stage: Node, room-list, PostgreSQL, OpenMLS, Rust.
 - PR #19 closed as superseded. PR #18 remains unmerged.
 - If tests reveal more absent unchanged files, compare against exact bundle base and restore with provenance; do not silently manufacture artifacts or claim the full source tree matches.
+
+
+## Exact-source correction
+
+- The original biometric vector fixture was found in the root archived client-reference directory and copied to the engine-relative test path. Exact blob SHA: `5a00755946219df2527591f00058a19d167c7811`.
+- Latest PR #18 head is `c9eaf6e198d1b65549220d3742b5190d7bbc1a39`; run [42457116231](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42457116231) queued.
+- The generated replacement fixture was superseded before acceptance; use the exact restored source file only.
