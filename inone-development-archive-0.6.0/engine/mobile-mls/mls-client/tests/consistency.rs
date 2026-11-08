@@ -173,7 +173,7 @@ fn forged_commit_membership_metadata_is_rejected_before_merge() {
         &alice_db,
     );
     let mut bob = login(&engine, &keys, "@bob-meta:inone.test", "B_META", &bob_db);
-    let _carol = login(
+    let mut carol = login(
         &engine,
         &keys,
         "@carol-meta:inone.test",
@@ -181,6 +181,7 @@ fn forged_commit_membership_metadata_is_rejected_before_merge() {
         &carol_db,
     );
     bob.upload_key_packages(3).unwrap();
+    carol.upload_key_packages(3).unwrap();
     let room = "!room-p02-meta:inone.test";
     alice.create_room(room).unwrap();
     alice.invite(room, "@bob-meta:inone.test").unwrap();
