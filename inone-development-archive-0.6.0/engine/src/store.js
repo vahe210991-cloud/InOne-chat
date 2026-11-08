@@ -783,7 +783,18 @@ export function createStore({ pool, pinPepper }) {
       return rows.length > 0;
     },
 
-    async roomKind(roomId) {
+    // Комнаты, где пользователь участник (G1, этап 0.7.3): без чужих комнат.
+  async roomsOfUser(userId) {
+    const { rows } = await pool.query(
+      `SELECT r.room_id, r.kind, r.name, r.owner, m.is_admin
+         FROM room_members m JOIN rooms r ON r.room_id = m.room_id
+        WHERE m.user_id = $1 ORDER BY r.room_id`,
+      [userId],
+    );
+    return rows.map((r) => ({ roomId: r.room_id, kind: r.kind, name: r.name, owner: r.owner, isAdmin: r.is_admin }));
+  },
+
+  async roomKind(roomId) {
       const { rows } = await pool.query('SELECT kind FROM rooms WHERE room_id = $1', [roomId]);
       return rows[0]?.kind ?? null;
     },

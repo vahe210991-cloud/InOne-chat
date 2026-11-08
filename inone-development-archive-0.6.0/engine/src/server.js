@@ -108,8 +108,14 @@ const htmlPage = (title, bodyHtml) =>
 
 // Тестовый экран (шаг 5.9): только при testUi, только файлы из списка; в продакшене выключен.
 const TEST_UI_FILES = {
-  'orgs.html': { name: 'orgs.html', type: 'text/html; charset=utf-8' },
-  'org-picker.mjs': { name: 'org-picker.mjs', type: 'text/javascript; charset=utf-8' },
+  'orgs.html': { dir: 'client-test-ui', name: 'orgs.html', type: 'text/html; charset=utf-8' },
+  'org-picker.mjs': { dir: 'client-test-ui', name: 'org-picker.mjs', type: 'text/javascript; charset=utf-8' },
+  'auth/index.html': { dir: 'client-screens', name: 'auth/index.html', type: 'text/html; charset=utf-8' },
+  'auth/screens.mjs': { dir: 'client-screens', name: 'auth/screens.mjs', type: 'text/javascript; charset=utf-8' },
+  'auth/flow.mjs': { dir: 'client-screens', name: 'auth/flow.mjs', type: 'text/javascript; charset=utf-8' },
+  'common/api.mjs': { dir: 'client-screens', name: 'common/api.mjs', type: 'text/javascript; charset=utf-8' },
+  'common/state.mjs': { dir: 'client-screens', name: 'common/state.mjs', type: 'text/javascript; charset=utf-8' },
+  'common/device.mjs': { dir: 'client-screens', name: 'common/device.mjs', type: 'text/javascript; charset=utf-8' },
 };
 export function createServer({ pinPepper, mailer: externalMailer, store, trustProxy = false, sms, requirePhone = false, registrationMode = 'verified', sessionTtl = {}, objectStore, objectSecret = randomBytes(32).toString('hex'), filesDir = null, quotaBytes = null, pushSender = null, docsSecret = null, defaultOrgAutoJoin = false, testUi = false, providers = {}, providerKeysSource = null, publicUrl = 'https://inone.test', rateLimits = {}, bodyLimit = 4 * 1024 * 1024, logger = null, wireLogLimit = 2000, smsEnabled = true, phoneBlockedCountries = [], phoneAllowedCountries = [], devEmailCode = '' } = {}) {
   // Аккаунты и PIN: в базе (store.js) или в памяти по умолчанию (store-memory.js).
@@ -947,7 +953,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         const file = TEST_UI_FILES[p.slice('/test-ui/'.length)];
         if (!file) return send(res, 404, { error: 'not found' });
         res.writeHead(200, { 'content-type': file.type, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer' });
-        return res.end(readFileSync(new URL(`../client-test-ui/${file.name}`, import.meta.url)));
+        return res.end(readFileSync(new URL(`../${file.dir}/${file.name}`, import.meta.url)));
       }
       if (req.method === 'GET' && p === '/users/search') {
         const d = await authed(req);
@@ -2010,6 +2016,20 @@ if (req.method === 'POST' && p === '/login') {
       }
 
       // Поиск публичных групп: только публичные, только по названию, без списка участников.
+      // Комнаты текущего пользователя (G1, этап 0.7.3): для списка чатов. Только свои членства.
+      if (req.method === 'GET' && p === '/rooms/mine') {
+        const d = await authed(req);
+        if (!d) return send(res, 401, { error: 'unauthorized' });
+        const rows = await storage.roomsOfUser(d.userId);
+        return send(res, 200, {
+          rooms: rows.map((r) => ({
+            roomId: r.roomId,
+            kind: r.kind ?? 'group',
+            name: r.name ?? null,
+            role: r.owner === d.userId ? 'owner' : r.isAdmin ? 'admin' : 'member',
+          })),
+        });
+      }
       if (req.method === 'GET' && p === '/rooms/search') {
         const d = await authed(req);
         if (!d) return send(res, 401, { error: 'unauthorized' });

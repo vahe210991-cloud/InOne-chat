@@ -11,11 +11,76 @@ const { createMemoryStore } = await import(pathToFileURL(path.join(engineDir, 's
 const accessMs = process.env.INONE_ACCESS_TTL_MS ? Number(process.env.INONE_ACCESS_TTL_MS) : undefined;
 const PEPPER = 'test-pepper-0123456789-0123456789-abcd';
 const store = createMemoryStore({ pinPepper: PEPPER });
-const srv = createServer({ defaultOrgAutoJoin: true, registrationMode: 'open', requirePhone: false, pinPepper: PEPPER, store, sessionTtl: accessMs ? { accessMs } : {} });
+const srv = createServer({ defaultOrgAutoJoin: true, rateLimits: { registrationsPerAddress: [{ windowMs: 60 * 60_000, limit: 1000 }, { windowMs: 24 * 60 * 60_000, limit: 10000 }] }, registrationMode: 'open', requirePhone: false, pinPepper: PEPPER, store, sessionTtl: accessMs ? { accessMs } : {} });
 await new Promise((resolve) => srv.server.listen(0, '127.0.0.1', resolve));
 console.log(`URL=http://127.0.0.1:${srv.server.address().port}`);
+const hidden = new Set();
+const origRows = store.roomEventRows.bind(store);
+store.roomEventRows = async (roomId, since) => (await origRows(roomId, since)).filter((e) => !hidden.has(e.seq));
 const rl = readline.createInterface({ input: process.stdin });
 rl.on('line', async (line) => {
+  const parts = line.trim().split(' ');
+  if (parts[0] === 'ADD_MEMBER' || parts[0] === 'REMOVE_MEMBER') {
+    try {
+      if (parts[0] === 'ADD_MEMBER') await store.addRoomMember(parts[1], parts[2]);
+      else await store.removeRoomMember(parts[1], parts[2]);
+      console.log('OK');
+    } catch (error) {
+      console.log(`ERR ${error.message}`);
+    }
+    return;
+  }
+  if (parts[0] === 'HIDE') {
+    const rows = await origRows(parts[1], 0);
+    const last = rows.filter((e) => e.type === 'm.room.encrypted' && e.content && e.content.mls).at(-1);
+    if (!last) { console.log('ERR нет сообщения для скрытия'); return; }
+    hidden.add(last.seq);
+    console.log(`OK ${last.seq}`);
+    return;
+  }
+  if (parts[0] === 'SHOW') {
+    hidden.clear();
+    console.log('OK');
+    return;
+  }
+  if (parts[0] === 'BADCOMMIT') {
+    try {
+      const commits = await store.mlsCommitsSince(parts[1], 0, 1000);
+      const base = commits.length ? commits[commits.length - 1].epoch : 0;
+      const bad = Buffer.from('это не коммит MLS').toString('base64');
+      await store.mlsApplyCommit(parts[1], base, { senderId: parts[2], commit: bad, welcomes: [], changes: { adds: [], removes: [] } });
+      console.log(`OK ${base + 1}`);
+    } catch (error) {
+      console.log(`ERR ${error.message}`);
+    }
+    return;
+  }
+  if (parts[0] === 'BADB64') {
+    try {
+      const rows = await origRows(parts[1], 0);
+      const last = rows.filter((e) => e.type === 'm.room.encrypted' && e.content && e.content.mls).at(-1);
+      if (!last) { console.log('ERR нет отправителя'); return; }
+      const seq = await store.appendRoomEvent(parts[1], last.sender, 'm.room.encrypted', { mls: '%%%не base64%%%' }, Date.now());
+      console.log(`OK ${seq}`);
+    } catch (error) {
+      console.log(`ERR ${error.message}`);
+    }
+    return;
+  }
+  if (parts[0] === 'CORRUPT') {
+    try {
+      const rows = await store.roomEventRows(parts[1], 0);
+      const last = rows.filter((e) => e.type === 'm.room.encrypted' && e.content && e.content.mls).at(-1);
+      if (!last) { console.log('ERR нет сообщения для порчи'); return; }
+      const bytes = Buffer.from(last.content.mls, 'base64');
+      bytes[bytes.length - 1] ^= 0x01;
+      const seq = await store.appendRoomEvent(parts[1], last.sender, 'm.room.encrypted', { ...last.content, mls: bytes.toString('base64') }, Date.now());
+      console.log(`OK ${seq}`);
+    } catch (error) {
+      console.log(`ERR ${error.message}`);
+    }
+    return;
+  }
   const m = /^FLAG (\S+) (.+)$/.exec(line.trim());
   if (!m) {
     console.log('ERR неизвестная команда');

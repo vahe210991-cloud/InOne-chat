@@ -20,6 +20,27 @@ const CIPHERSUITE: Ciphersuite = Ciphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA2
 /// Сколько прошлых эпох хранит группа (см. mls-bridge: по умолчанию OpenMLS не хранит ни одной).
 const MAX_PAST_EPOCHS: usize = 16;
 
+/// Класс ошибки обработки сообщения (аудит, P0.1). Временная — событие не помечается обработанным,
+/// повтор при следующей синхронизации. Постоянная — сообщение нельзя расшифровать, причина пишется в диагностику.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Failure {
+    Transient,
+    Permanent(&'static str),
+}
+
+pub(crate) fn classify_process_error<S>(e: &openmls::prelude::ProcessMessageError<S>) -> Failure {
+    use openmls::prelude::ProcessMessageError as E;
+    match e {
+        E::StorageError(_) | E::LibraryError(_) => Failure::Transient,
+        E::IncompatibleWireFormat => Failure::Permanent("несовместимый формат сообщения"),
+        E::ValidationError(_) => Failure::Permanent("проверка сообщения не пройдена"),
+        E::GroupStateError(_) => Failure::Permanent("состояние группы не подходит для сообщения"),
+        E::InvalidCommit(_) => Failure::Permanent("недопустимый коммит"),
+        E::UnauthorizedExternalApplicationMessage | E::UnauthorizedExternalCommitMessage => Failure::Permanent("отправитель вне группы"),
+        _ => Failure::Permanent("сообщение не поддерживается"),
+    }
+}
+
 /// Что получено из комнаты при синхронизации.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Incoming {
@@ -259,6 +280,8 @@ fn build_client(agent: ureq::Agent, base: &str, tokens: (String, String), user_i
         "CREATE TABLE IF NOT EXISTS client_meta (key TEXT PRIMARY KEY, value BLOB NOT NULL);
          CREATE TABLE IF NOT EXISTS client_rooms (room_id TEXT PRIMARY KEY, join_epoch INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS client_processed (event_id TEXT PRIMARY KEY);
+         CREATE TABLE IF NOT EXISTS client_undecryptable (event_id TEXT PRIMARY KEY, room_id TEXT NOT NULL, reason TEXT NOT NULL);
+         CREATE TABLE IF NOT EXISTS client_desync (room_id TEXT PRIMARY KEY, reason TEXT NOT NULL);
          CREATE TABLE IF NOT EXISTS client_outbox (local_id TEXT PRIMARY KEY, room_id TEXT NOT NULL, body TEXT NOT NULL, seq INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS client_remote_config (id INTEGER PRIMARY KEY CHECK (id = 1), etag TEXT NOT NULL, body TEXT NOT NULL, fetched_at INTEGER NOT NULL);",
     )
@@ -355,6 +378,79 @@ impl Client {
     /// Идентификатор этого устройства на сервере.
     pub fn device_id(&self) -> &str {
         &self.device_id
+    }
+
+    /// Участники группы по протоколу, по пользователям (устройства объединяются).
+    fn mls_users(&self, room_id: &str) -> Result<std::collections::BTreeSet<String>, String> {
+        Ok(self.members_of(room_id)?.into_iter().filter_map(|id| id.rsplit_once('/').map(|(user, _)| user.to_string())).collect())
+    }
+
+    /// Участники комнаты по серверу. Если сервер больше не считает устройство участником, список пуст.
+    fn server_users(&self, room_id: &str) -> Result<std::collections::BTreeSet<String>, String> {
+        let body = match self.call("GET", &format!("/rooms/{}/members", urlencoding::encode(room_id)), None) {
+            Ok(body) => body,
+            Err(e) if e.contains("not a member") => return Ok(std::collections::BTreeSet::new()),
+            Err(e) => return Err(e),
+        };
+        let list = body["members"].as_array().ok_or("ответ без списка участников")?;
+        list.iter().map(|m| m.as_str().map(str::to_string).ok_or_else(|| "участник не строка".to_string())).collect()
+    }
+
+    /// Сверка состава (аудит, P0.2): сервер и протокол должны называть одних и тех же участников.
+    /// Расхождение фиксируется и приостанавливает отправку в комнату до выравнивания.
+    fn check_consistency(&mut self, room_id: &str) -> Result<(), String> {
+        let mls = self.mls_users(room_id)?;
+        let server = self.server_users(room_id)?;
+        if mls == server {
+            self.meta.execute("DELETE FROM client_desync WHERE room_id = ?1", [room_id]).map_err(text)?;
+            return Ok(());
+        }
+        let only_server: Vec<&String> = server.difference(&mls).collect();
+        let only_mls: Vec<&String> = mls.difference(&server).collect();
+        let reason = format!("на сервере без группы: {only_server:?}; в группе без сервера: {only_mls:?}");
+        self.meta
+            .execute(
+                "INSERT INTO client_desync (room_id, reason) VALUES (?1, ?2) ON CONFLICT(room_id) DO UPDATE SET reason = excluded.reason",
+                [room_id, reason.as_str()],
+            )
+            .map_err(text)?;
+        Ok(())
+    }
+
+    /// Пометка комнаты как требующей восстановления состояния (RecoveryRequired): отправка приостанавливается.
+    fn record_desync(&mut self, room_id: &str, reason: &str) -> Result<(), String> {
+        self.meta
+            .execute(
+                "INSERT INTO client_desync (room_id, reason) VALUES (?1, ?2) ON CONFLICT(room_id) DO UPDATE SET reason = excluded.reason",
+                [room_id, reason],
+            )
+            .map_err(text)?;
+        Ok(())
+    }
+
+    /// Причина приостановки отправки в комнату, если она рассинхронизирована.
+    pub fn desync_reason(&self, room_id: &str) -> Result<Option<String>, String> {
+        use rusqlite::OptionalExtension;
+        self.meta
+            .query_row("SELECT reason FROM client_desync WHERE room_id = ?1", [room_id], |r| r.get::<_, String>(0))
+            .optional()
+            .map_err(text)
+    }
+
+    fn record_unreadable(&mut self, room_id: &str, event_id: &str, reason: &str) -> Result<(), String> {
+        self.meta
+            .execute("INSERT OR IGNORE INTO client_undecryptable (event_id, room_id, reason) VALUES (?1, ?2, ?3)", [event_id, room_id, reason])
+            .map_err(text)?;
+        Ok(())
+    }
+
+    /// Нечитаемые события с причинами (для поддержки и отладки): (событие, комната, причина).
+    pub fn undecryptable(&self) -> Result<Vec<(String, String, String)>, String> {
+        let mut stmt = self.meta.prepare("SELECT event_id, room_id, reason FROM client_undecryptable ORDER BY event_id").map_err(text)?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)))
+            .map_err(text)?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(text)
     }
 
     fn mark_processed(&mut self, event_id: &str) -> Result<(), String> {
@@ -460,6 +556,9 @@ impl Client {
     /// Отправляет текст с идентификатором клиента: повтор с тем же идентификатором не создаёт дубля.
     pub fn send_text_with_id(&mut self, room_id: &str, plaintext: &str, client_message_id: &str) -> Result<String, String> {
         self.ensure_writable()?;
+        if let Some(reason) = self.desync_reason(room_id)? {
+            return Err(format!("комната рассинхронизирована, отправка приостановлена: {reason}"));
+        }
         let server = self.server_epoch(room_id)?;
         let body = {
             let group = self.groups.get_mut(room_id).ok_or("комната не создана на этом устройстве")?;
@@ -503,6 +602,46 @@ impl Client {
     }
 
     /// Читает комнату: сообщения идут по эпохам, коммит N -> N+1 применяется после сообщений эпохи N.
+    /// Обработка одного события комнаты (аудит, P0.1 и P0.3): расшифровка, постоянная или временная ошибка.
+    fn process_event(&mut self, room_id: &str, event_id: &str, bytes: &[u8], out: &mut Vec<Incoming>) -> Result<(), String> {
+        let parsed = MlsMessageIn::tls_deserialize_exact(bytes).ok().and_then(|m| m.try_into_protocol_message().ok());
+        let Some(protocol) = parsed else {
+            self.record_unreadable(room_id, event_id, "сообщение не разбирается")?;
+            self.mark_processed(event_id)?;
+            out.push(Incoming::Unreadable { room_id: room_id.to_string(), event_id: event_id.to_string() });
+            return Ok(());
+        };
+        let result = {
+            let group = self.groups.get_mut(room_id).ok_or("комната не создана на этом устройстве")?;
+            group.mls.process_message(&self.provider, protocol)
+        };
+        match result {
+            Ok(processed) => {
+                match processed.into_content() {
+                    ProcessedMessageContent::ApplicationMessage(app) => out.push(Incoming::Text {
+                        room_id: room_id.to_string(),
+                        event_id: event_id.to_string(),
+                        text: String::from_utf8(app.into_bytes()).map_err(text)?,
+                    }),
+                    _ => {
+                        self.record_unreadable(room_id, event_id, "не сообщение")?;
+                        out.push(Incoming::Unreadable { room_id: room_id.to_string(), event_id: event_id.to_string() });
+                    }
+                }
+                self.mark_processed(event_id)?;
+            }
+            Err(e) => match classify_process_error(&e) {
+                Failure::Transient => return Err(format!("временная ошибка обработки, повтор позже: {e}")),
+                Failure::Permanent(reason) => {
+                    self.record_unreadable(room_id, event_id, reason)?;
+                    out.push(Incoming::Unreadable { room_id: room_id.to_string(), event_id: event_id.to_string() });
+                    self.mark_processed(event_id)?;
+                }
+            },
+        }
+        Ok(())
+    }
+
     fn sync_room(&mut self, room_id: &str, out: &mut Vec<Incoming>) -> Result<(), String> {
         let events = self.call("GET", &format!("/rooms/{}/events", urlencoding::encode(room_id)), None)?;
         let mut pending: Vec<(u64, String, Vec<u8>)> = Vec::new();
@@ -512,8 +651,20 @@ impl Client {
             if self.processed.contains(&event_id) {
                 continue;
             }
-            let bytes = B64.decode(mls_b64).map_err(text)?;
-            let protocol = MlsMessageIn::tls_deserialize_exact(&bytes).map_err(text)?.try_into_protocol_message().map_err(text)?;
+            // Испорченный base64 — постоянная ошибка этого события, а не причина остановить комнату (аудит, P0.1).
+            let Ok(bytes) = B64.decode(mls_b64) else {
+                self.record_unreadable(room_id, &event_id, "сообщение не разбирается")?;
+                self.mark_processed(&event_id)?;
+                out.push(Incoming::Unreadable { room_id: room_id.to_string(), event_id: event_id.clone() });
+                continue;
+            };
+            let parsed = MlsMessageIn::tls_deserialize_exact(&bytes).ok().and_then(|m| m.try_into_protocol_message().ok());
+            let Some(protocol) = parsed else {
+                self.record_unreadable(room_id, &event_id, "сообщение не разбирается")?;
+                self.mark_processed(&event_id)?;
+                out.push(Incoming::Unreadable { room_id: room_id.to_string(), event_id: event_id.clone() });
+                continue;
+            };
             pending.push((protocol.epoch().as_u64(), event_id, bytes));
         }
         let current = self.groups.get(room_id).ok_or("комната не создана на этом устройстве")?.mls.epoch().as_u64();
@@ -539,20 +690,7 @@ impl Client {
                 .map(|(_, id, b)| (id.clone(), b.clone()))
                 .collect();
             for (event_id, bytes) in ready {
-                let protocol = MlsMessageIn::tls_deserialize_exact(&bytes).map_err(text)?.try_into_protocol_message().map_err(text)?;
-                let group = self.groups.get_mut(room_id).ok_or("комната не создана на этом устройстве")?;
-                match group.mls.process_message(&self.provider, protocol) {
-                    Ok(processed) => match processed.into_content() {
-                        ProcessedMessageContent::ApplicationMessage(app) => out.push(Incoming::Text {
-                            room_id: room_id.to_string(),
-                            event_id: event_id.clone(),
-                            text: String::from_utf8(app.into_bytes()).map_err(text)?,
-                        }),
-                        _ => out.push(Incoming::Unreadable { room_id: room_id.to_string(), event_id: event_id.clone() }),
-                    },
-                    Err(_) => out.push(Incoming::Unreadable { room_id: room_id.to_string(), event_id: event_id.clone() }),
-                }
-                self.mark_processed(&event_id)?;
+                self.process_event(room_id, &event_id, &bytes, out)?;
             }
             let Some((_, commit)) = commits.iter().find(|(e, _)| *e == epoch + 1) else { break };
             let protocol = MlsMessageIn::tls_deserialize_exact(commit).map_err(text)?.try_into_protocol_message().map_err(text)?;
@@ -565,6 +703,24 @@ impl Client {
                 _ => return Err("ожидался коммит".to_string()),
             }
         }
+
+        // Опоздавшие события (аудит, P0.3): их эпоха уже пройдена. Внутри окна пробуем расшифровать,
+        // за пределами окна — явная постоянная ошибка с причиной, а не молчаливый пропуск.
+        let final_epoch = self.groups[room_id].mls.epoch().as_u64();
+        let late: Vec<(String, Vec<u8>, u64)> = pending
+            .iter()
+            .filter(|(e, id, _)| *e < final_epoch && !self.processed.contains(id))
+            .map(|(e, id, b)| (id.clone(), b.clone(), *e))
+            .collect();
+        for (event_id, bytes, epoch) in late {
+            if final_epoch - epoch > MAX_PAST_EPOCHS as u64 {
+                self.record_unreadable(room_id, &event_id, "вне окна эпох: нужна пересинхронизация по приглашению")?;
+                self.mark_processed(&event_id)?;
+                out.push(Incoming::Unreadable { room_id: room_id.to_string(), event_id: event_id.clone() });
+            } else {
+                self.process_event(room_id, &event_id, &bytes, out)?;
+            }
+        }
         Ok(())
     }
 
@@ -574,7 +730,16 @@ impl Client {
         let rooms: Vec<String> = self.groups.keys().cloned().collect();
         let mut out = Vec::new();
         for room in rooms {
-            self.sync_room(&room, &mut out)?;
+            match self.sync_room(&room, &mut out) {
+                Ok(()) => self.check_consistency(&room)?,
+                // Сервер больше не пускает устройство в комнату: это расхождение состава, а не причина остановить все комнаты.
+                Err(e) if e.contains("not a member") => self.check_consistency(&room)?,
+                // Временная ошибка: синхронизация прерывается, событие повторится позже (аудит, P0.1).
+                Err(e) if e.contains("временная ошибка") => return Err(e),
+                // Состояние группы не восстанавливается (например, недопустимый коммит): комната переходит в RecoveryRequired,
+                // остальные комнаты синхронизируются (аудит, P0.1 и P0.2).
+                Err(e) => self.record_desync(&room, &format!("требуется восстановление состояния: {e}"))?,
+            }
         }
         Ok(out)
     }
@@ -747,5 +912,19 @@ mod retry_tests {
         });
         assert!(gave_up.is_err());
         assert_eq!(calls, 3, "не больше заданного числа попыток");
+    }
+}
+
+#[cfg(test)]
+mod classify_tests {
+    use super::{classify_process_error, Failure};
+    use openmls::prelude::ProcessMessageError as E;
+
+    #[test]
+    fn постоянные_ошибки_не_повторяются() {
+        assert_eq!(classify_process_error(&E::<()>::IncompatibleWireFormat), Failure::Permanent("несовместимый формат сообщения"));
+        assert_eq!(classify_process_error(&E::<String>::StorageError("диск недоступен".to_string())), Failure::Transient);
+        assert_eq!(classify_process_error(&E::<()>::UnauthorizedExternalApplicationMessage), Failure::Permanent("отправитель вне группы"));
+        assert_eq!(classify_process_error(&E::<()>::UnauthorizedExternalCommitMessage), Failure::Permanent("отправитель вне группы"));
     }
 }

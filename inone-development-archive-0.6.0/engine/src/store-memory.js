@@ -591,6 +591,15 @@ export function createMemoryStore({ pinPepper }) {
       }
       return false;
     },
+    // Комнаты, где пользователь участник (G1, этап 0.7.3): без чужих комнат.
+    roomsOfUser(userId) {
+      const out = [];
+      for (const [roomId, r] of rooms.entries()) {
+        if (![...r.members].includes(userId)) continue;
+        out.push({ roomId, kind: r.kind, name: r.name ?? null, owner: r.owner, isAdmin: [...r.admins].includes(userId) });
+      }
+      return out.sort((a, b) => (a.roomId < b.roomId ? -1 : a.roomId > b.roomId ? 1 : 0));
+    },
     roomKind(roomId) {
       return rooms.get(roomId)?.kind ?? null;
     },
