@@ -248,7 +248,7 @@ This section supersedes stale earlier statements in this file that no applied P0
 - Owner selected GitHub Codespaces as the development/test environment.
 - Draft scaffolding is committed on branch `feat/beta1-full-screen-api-harness`: `.devcontainer/devcontainer.json`, `.devcontainer/docker-compose.yml`, `.devcontainer/start-backend.sh`, and `docs/CODESPACES_TEST_ENVIRONMENT.md`.
 - Related mobile changes select a local backend URL by platform and document the local API panel. These are configuration/code declarations only.
-- Latest branch HEAD at the time of the session handoff: `88e68117957fc1a0846e790240db62cf14033b1b`. Draft PR [#28](https://github.com/vahe210991-cloud/InOne-chat/pull/28) remains open and unmerged.
+- Latest branch HEAD at the final handoff check: `bf6806cb669220addf3771ad458ebfa5a30357fa`. Draft PR [#28](https://github.com/vahe210991-cloud/InOne-chat/pull/28) remains open and unmerged.
 - **Verification: BLOCKED.** No complete repository clone/worktree was available in the tool environment. Codespaces was not created. Container build, PostgreSQL, migrations, backend health checks, Flutter analysis/tests and live API requests were not run.
 - Latest Actions run [#42509620990](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42509620990) was in progress when checked. Earlier Flutter runs failed at `flutter analyze`; investigate exact annotations before accepting the branch.
 - 34 screen API entries are configured, but they are not 34 verified live integrations. `GET /rooms/mine` is absent from the current engine source; `GR-01` and workspace list probes were removed. The target of 10 verified connected screens remains NOT MET / NOT VERIFIED.
