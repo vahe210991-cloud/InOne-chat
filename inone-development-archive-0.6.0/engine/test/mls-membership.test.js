@@ -47,6 +47,9 @@ test('владелец добавляет участника коммитом: �
     });
     assert.equal(r.epoch, 1);
     assert.ok((await members(g.alice)).includes(DAVE), 'Дэйв стал участником комнаты');
+    const history = await g.alice.raw('GET', `/mls/groups/${enc(ROOM)}/commits?since=0`);
+    assert.deepEqual(history.commits[0].changes, { adds: [DAVE], removes: [], removeDevices: [] });
+    assert.deepEqual(history.commits[0].welcomeRecipients, [{ userId: DAVE, deviceId: 'D_PHONE' }]);
     assert.equal((await g.dave.raw('GET', `/mls/groups/${enc(ROOM)}/commits?since=0`)).commits.length, 1, 'новый участник читает коммиты');
     assert.equal((await g.dave.raw('GET', '/mls/welcomes')).welcomes.length, 1, 'новый участник получил приветствие');
   } finally {
@@ -87,6 +90,8 @@ test('удалять участников может владелец или а�
     await assert.rejects(commit(g.bob, { epoch: 0, commit: b64('X'), changes: { adds: [], removes: [CAROL] } }), (e) => e.status === 403, 'Боб без права не удаляет Кэрол');
     await assert.rejects(commit(g.alice, { epoch: 0, commit: b64('X'), changes: { adds: [], removes: [ALICE] } }), (e) => e.status === 409, 'владелец не выходит');
     assert.equal((await commit(g.alice, { epoch: 0, commit: b64('REMOVE-CAROL'), changes: { adds: [], removes: [CAROL] } })).epoch, 1);
+    const history = await g.alice.raw('GET', `/mls/groups/${enc(ROOM)}/commits?since=0`);
+    assert.deepEqual(history.commits[0].changes, { adds: [], removes: [CAROL], removeDevices: [] });
     assert.ok(!(await members(g.alice)).includes(CAROL), 'Кэрол удалена из комнаты');
     await assert.rejects(g.carol.raw('GET', `/mls/groups/${enc(ROOM)}/commits?since=0`), (e) => e.status === 403, 'удалённая не читает коммиты');
   } finally {
