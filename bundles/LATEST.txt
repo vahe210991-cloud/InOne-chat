@@ -1,1 +1,1 @@
-bundles/426cae8876467cdab15d687950a969c63df794a0/InOne-P0-snapshot-2026-11-08.bundle
+bundles/0d2babf6d3d7dd4b19c61d13286f320f18a0e896/InOne-P0-snapshot-2026-11-08.bundle
