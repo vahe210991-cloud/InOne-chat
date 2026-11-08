@@ -2300,9 +2300,10 @@ impl Client {
                     "RecoveryRequired: Commit epoch {commit_epoch} is quarantined"
                 ));
             }
-            let protocol = match MlsMessageIn::tls_deserialize_exact(commit)
-                .and_then(|message| message.try_into_protocol_message())
-            {
+            let parsed = MlsMessageIn::tls_deserialize_exact(commit)
+                .map_err(text)
+                .and_then(|message| message.try_into_protocol_message().map_err(text));
+            let protocol = match parsed {
                 Ok(protocol) => protocol,
                 Err(error) => {
                     let reason = format!("Commit encoding is invalid: {error}");
@@ -2419,35 +2420,18 @@ impl Client {
         self.join_welcomes()?;
         let rooms: Vec<String> = self.groups.keys().cloned().collect();
         let mut out = Vec::new();
-        let mut retryable_error: Option<String> = None;
         for room in rooms {
             match self.sync_room(&room, &mut out) {
                 Ok(()) => self.check_consistency(&room)?,
                 // Сервер больше не пускает устройство в комнату: это расхождение состава, а не причина остановить все комнаты.
                 Err(e) if e.contains("not a member") => self.check_consistency(&room)?,
                 // Некорректный event identity — ошибка контракта ответа, а не повреждение MLS room.
-                Err(e) if e.starts_with("ошибка контракта ответа:") => {
-                    continue
-                }
-                // Сетевые/HTTP и локальные временные ошибки не повреждают MLS-состояние;
-                // остальные комнаты синхронизируются, а ошибка возвращается после обхода.
-                Err(e)
-                    if e.contains("временная ошибка")
-                        || is_retryable(&e)
-                        || is_access_failure(&e) =>
-                {
-                    if retryable_error.is_none() {
-                        retryable_error = Some(e);
-                    }
-                }
+                Err(e) if e.starts_with("ошибка контракта ответа:") => continue,
+                // Сетевые/HTTP и локальные временные ошибки возвращаются вызывающему коду без MLS-карантина.
+                Err(e) if e.contains("временная ошибка") || is_retryable(&e) || is_access_failure(&e) => return Err(e),
                 // Постоянная ошибка относится только к этой комнате; остальные комнаты продолжают синхронизацию.
-                Err(e) => {
-                    self.record_desync(&room, &format!("требуется восстановление состояния: {e}"))?
-                }
+                Err(e) => self.record_desync(&room, &format!("требуется восстановление состояния: {e}"))?,
             }
-        }
-        if let Some(error) = retryable_error {
-            return Err(error);
         }
         Ok(out)
     }
