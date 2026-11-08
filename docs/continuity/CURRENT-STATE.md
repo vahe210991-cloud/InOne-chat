@@ -193,3 +193,12 @@ This section supersedes the earlier section 8 statement that no bundle bytes wer
 - Fixed publish job to copy exact `biometric-client.mjs` and `biometric-vectors.json` from the PR head into the clean main-based recovery branch before applying the patch. Workflow commit: `e0a8c08ddf68864963c3f8a65ba16a0612381e39`.
 - Run [42457297299](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42457297299) was queued for the workflow correction; no result yet at time of record.
 - Run [42457116231](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42457116231) tests exact original fixture but predates publish-job correction. Neither run is accepted until all checks complete.
+
+
+## 19. Original P0 ZIP/bundle independently verified from current upload — 2026-11-08
+
+- Current conversation upload `Bundle(1).zip`: 1,061,251 bytes; SHA-256 `a7ccfc12ae810dc1788f1b737ef4d53e032cafaf35797412784073a2db57f5a0`.
+- Inner `inone-engine-p0-wave3.bundle`: 1,052,468 bytes; SHA-256 `a226e578a732e5da886e3ec4bfb007102154405a95809c80fb28a2833493522f`.
+- `git bundle verify` succeeded: complete history; ref `refs/heads/engine/p0-wave3` at `a7f60b6fdc969941e4354a117e17d32bfc951fb9`; five commits; base `ea3b49ae9cdf1670a1b7499d4b5e608ee22fe1e9`.
+- Base tree contains 240 tracked blobs. Full binary bundle is still not committed to GitHub. GitHub connector does have base64 Git Data blob creation, but current tool boundary cannot transfer local mounted bytes to that action; local Git push also lacks network/DNS and credentials.
+- Corrected status and hashes in [development/recovered-source/README.md](../../development/recovered-source/README.md).
