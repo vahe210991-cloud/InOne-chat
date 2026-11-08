@@ -3,6 +3,8 @@ import 'package:inone_mobile/test_gallery_loader.dart';
 import 'package:inone_mobile/test_screens.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   test('original full-screen design gallery contains every registered test screen', () async {
     final html = await loadTestGalleryHtml();
     final cards = RegExp(r'<article class="screen-card"').allMatches(html);
