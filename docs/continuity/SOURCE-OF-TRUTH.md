@@ -80,3 +80,16 @@ GitHub — постоянное хранилище кода, истории, р�
 - whether published to GitHub, PR URL and Actions run URL.
 
 Для каждого нового CI результата указывать commit SHA, workflow/run URL, job status и тестовый scope.
+
+## Дополнение — 2026-11-08: сохранённые текстовые артефакты
+
+Ветка `recovery/source-artifacts-2026-11-08` / draft PR [#17](https://github.com/vahe210991-cloud/InOne-chat/pull/17) содержит точные текстовые представления, прочитанные из Library:
+- Patches 016–020;
+- `P0-ACTUAL-STATE-2026-11-08.md`;
+- `P0-CTO-ACCEPTANCE.md`;
+- `MLS-FLUTTER-BRIDGE.md`;
+- `BETA-1.0-SCOPE.md`;
+- `InOne-screen-design-spec-v0.8.md`;
+- `PATCH-COMPATIBILITY-REPORT.md`.
+
+Они являются reference artifacts, не заменяют оригинальные ZIP/Git bundles и не содержат полный Flutter source. Проверка показала, что patch stack 016–020 нельзя применить к архивному GitHub 0.6.0 дереву. Оригинальные бинарные файлы остаются в Library и должны быть экспортированы через разрешённый raw-byte механизм, прежде чем выполнять source import.
