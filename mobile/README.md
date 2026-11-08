@@ -12,15 +12,27 @@ The Flutter host now exposes the 22 owner-approved visual variants and the compl
 
 ## Backend connection
 
-Set the backend origin at build/run time:
+The Flutter test host uses the local development backend by default; no public URL is required.
+
+- Android emulator: `http://10.0.2.2:8080` (the host computer's port 8080).
+- iOS simulator / desktop: `http://127.0.0.1:8080`.
+- Physical device: pass the host computer's private LAN address explicitly.
+
+Run the backend from `../inone-engine-poc-0.6.0` on port `8080` using its development instructions, then start the app:
 
 ```sh
 cd mobile
 flutter pub get
-flutter run --dart-define=INONE_API_BASE_URL=https://your-staging-api.example
+flutter run
 ```
 
-Do not commit production URLs, credentials or tokens to the repository.
+If the backend listens on another host or port, override the default without changing source code:
+
+```sh
+flutter run --dart-define=INONE_API_BASE_URL=http://192.168.1.20:8080
+```
+
+The LAN address above is an example only. Keep the backend bound to the local development network; do not expose it publicly. Never commit credentials or tokens.
 
 The API panel provides:
 - Email/password login against `POST /login`.
