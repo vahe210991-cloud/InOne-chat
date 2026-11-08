@@ -16,6 +16,7 @@ await new Promise((resolve) => srv.server.listen(0, '127.0.0.1', resolve));
 console.log(`URL=http://127.0.0.1:${srv.server.address().port}`);
 const hidden = new Set();
 const badMetadataRooms = new Set();
+const badEventIds = new Map();
 const originalMlsCommitsSince = store.mlsCommitsSince.bind(store);
 store.mlsCommitsSince = (roomId, since, limit) => {
   const rows = originalMlsCommitsSince(roomId, since, limit);
@@ -24,10 +25,33 @@ store.mlsCommitsSince = (roomId, since, limit) => {
     : rows;
 };
 const origRows = store.roomEventRows.bind(store);
-store.roomEventRows = async (roomId, since) => (await origRows(roomId, since)).filter((e) => !hidden.has(e.seq));
+store.roomEventRows = async (roomId, since) => {
+  const rows = (await origRows(roomId, since)).filter((e) => !hidden.has(e.seq));
+  const mode = badEventIds.get(roomId);
+  if (!mode) return rows;
+  return rows.map((event) => {
+    const copy = { ...event };
+    if (mode === 'missing') delete copy.event_id;
+    else if (mode === 'null') copy.event_id = null;
+    else if (mode === 'number') copy.event_id = 42;
+    else if (mode === 'empty') copy.event_id = '';
+    else if (mode === 'whitespace') copy.event_id = '   ';
+    return copy;
+  });
+};
 const rl = readline.createInterface({ input: process.stdin });
 rl.on('line', async (line) => {
   const parts = line.trim().split(' ');
+  if (parts[0] === 'BAD_EVENT_ID') {
+    badEventIds.set(parts[1], parts[2]);
+    console.log('OK');
+    return;
+  }
+  if (parts[0] === 'GOOD_EVENT_ID') {
+    badEventIds.delete(parts[1]);
+    console.log('OK');
+    return;
+  }
   if (parts[0] === 'BADMETADATA') {
     badMetadataRooms.add(parts[1]);
     console.log('OK');
