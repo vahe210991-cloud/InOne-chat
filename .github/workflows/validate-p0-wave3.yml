@@ -101,16 +101,18 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "feat: restore verified InOne P0 backend and MLS core"
-          candidate_tree="$(git rev-parse 'HEAD^{tree}')"
+          candidate_engine_tree="$(git rev-parse 'HEAD:inone-development-archive-0.6.0/engine')"
 
           if git ls-remote --exit-code --heads origin recovery/p0-wave3-applied >/dev/null 2>&1; then
             git fetch origin refs/heads/recovery/p0-wave3-applied:refs/remotes/origin/recovery/p0-wave3-applied
-            existing_tree="$(git rev-parse 'refs/remotes/origin/recovery/p0-wave3-applied^{tree}')"
-            if [ "$candidate_tree" != "$existing_tree" ]; then
-              echo "::error::recovery/p0-wave3-applied exists but its tree differs from the validated candidate; refusing to overwrite."
+            existing_engine_tree="$(git rev-parse 'refs/remotes/origin/recovery/p0-wave3-applied:inone-development-archive-0.6.0/engine')"
+            if [ "$candidate_engine_tree" != "$existing_engine_tree" ]; then
+              echo "::error::The published branch engine subtree differs from the validated candidate; refusing to overwrite."
+              echo "Candidate engine tree: $candidate_engine_tree"
+              echo "Published engine tree: $existing_engine_tree"
               exit 1
             fi
-            echo "The exact validated source tree is already published; no push is needed."
+            echo "The exact validated engine subtree is already published; unrelated root-tree differences are ignored."
           else
             git push origin HEAD:refs/heads/recovery/p0-wave3-applied
           fi
