@@ -71,3 +71,12 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Code review found the publish job would start from clean main and apply the P0 patch but omit the two restored client-reference files that were present during validation.
 - Updated workflow in PR #18 commit `e0a8c08ddf68864963c3f8a65ba16a0612381e39`: fetch exact client-reference files from PR head into new main-based recovery branch before patch application.
 - Run [42457297299](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42457297299) queued on workflow fix. Older exact-fixture run [42457116231](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42457116231) does not validate this publish-job correction.
+
+
+## 2026-11-08 — Original bundle reverified from mounted conversation upload
+
+- Located `/mnt/data/Bundle(1).zip` (outer ZIP 1,061,251 bytes; SHA-256 `a7ccfc12ae810dc1788f1b737ef4d53e032cafaf35797412784073a2db57f5a0`).
+- Extracted `inone-engine-p0-wave3.bundle` (1,052,468 bytes; SHA-256 `a226e578a732e5da886e3ec4bfb007102154405a95809c80fb28a2833493522f`).
+- `git bundle verify` succeeded: complete five-commit history, ref `engine/p0-wave3` at `a7f60b6fdc969941e4354a117e17d32bfc951fb9`, base `ea3b49ae9cdf1670a1b7499d4b5e608ee22fe1e9`, 240 tracked base blobs.
+- Corrected earlier statement: GitHub connector exposes `create_blob(encoding=base64)`; current limitation is getting mounted local bytes into the Code Mode action call. Container Git push attempted and failed at DNS resolution; no Git credentials configured.
+- Detailed status and hashes saved to `development/recovered-source/README.md` commit `4b3074c5a2c4f4310d58ab6fe10e8ef687846b9a`.
