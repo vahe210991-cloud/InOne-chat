@@ -16,6 +16,7 @@ const ALICE = '@alice:inone.test';
 const BOB = '@bob:inone.test';
 const CAROL = '@carol:inone.test';
 const enc = encodeURIComponent;
+const claimKeyPackage = (client, userId) => client.raw('POST', `/mls/key-packages/${enc(userId)}/claim`, { claimId: randomBytes(16).toString('hex') });
 const b64 = (text) => Buffer.from(text, 'utf8').toString('base64');
 
 async function start() {
@@ -40,7 +41,7 @@ async function group() {
   await bob.raw('POST', '/mls/key-packages', { packages: [bobId.keyPackageB64] });
   await carol.raw('POST', '/mls/key-packages', { packages: [carolId.keyPackageB64] });
   let aliceState = await createGroupState(aliceId, ROOM);
-  const addBob = await addMember(aliceState, parseKeyPackage((await alice.raw('GET', `/mls/key-packages/${enc(BOB)}`)).packages[0].package));
+  const addBob = await addMember(aliceState, parseKeyPackage((await claimKeyPackage(alice, BOB)).packages[0].package));
   await alice.raw('POST', `/mls/groups/${enc(ROOM)}/commits`, { epoch: 0, commit: addBob.commitB64, changes: { adds: [BOB], removes: [] }, welcomes: [{ userId: BOB, deviceId: 'B_PHONE', welcome: addBob.welcomeB64 }] });
   aliceState = addBob.newState;
   const bobState = await joinFromWelcome((await bob.raw('GET', '/mls/welcomes')).welcomes[0].welcome, bobId);
@@ -66,7 +67,7 @@ test('сообщение в старой эпохе отклоняется; по
   const g = await group();
   try {
     const old = await encryptText(g.aliceState, 'в эпохе один');
-    const addCarol = await addMember(g.aliceState, parseKeyPackage((await g.alice.raw('GET', `/mls/key-packages/${enc(CAROL)}`)).packages[0].package));
+    const addCarol = await addMember(g.aliceState, parseKeyPackage((await claimKeyPackage(g.alice, CAROL)).packages[0].package));
     await g.alice.raw('POST', `/mls/groups/${enc(ROOM)}/commits`, { epoch: 1, commit: addCarol.commitB64, changes: { adds: [CAROL], removes: [] }, welcomes: [{ userId: CAROL, deviceId: 'C_PHONE', welcome: addCarol.welcomeB64 }] });
     await assert.rejects(g.alice.raw('POST', `/mls/groups/${enc(ROOM)}/messages`, { message: old.messageB64 }), (e) => e.status === 409, 'старая эпоха');
     const fresh = await encryptText(addCarol.newState, 'в эпохе два');
