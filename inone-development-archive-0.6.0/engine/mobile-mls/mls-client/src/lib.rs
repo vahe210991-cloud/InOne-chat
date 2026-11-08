@@ -1582,7 +1582,8 @@ impl Client {
                 None => return Ok(()),
                 Some("claim_pending") => {}
                 Some("commit_pending") => {
-                    let reason = format!("commit_pending invite {operation_id} has no resolvable ACK");
+                    let reason =
+                        format!("commit_pending invite {operation_id} has no resolvable ACK");
                     self.record_desync(room_id, &reason)?;
                     return Err(format!("RecoveryRequired: {reason}"));
                 }
