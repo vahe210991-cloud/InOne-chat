@@ -1179,10 +1179,17 @@ impl Client {
         )?;
         let mut pending: Vec<(u64, String, Vec<u8>)> = Vec::new();
         for ev in events["events"].as_array().cloned().unwrap_or_default() {
+            let event_id = ev
+                .get("event_id")
+                .and_then(Value::as_str)
+                .filter(|id| !id.trim().is_empty())
+                .map(str::to_string)
+                .ok_or_else(|| {
+                    "ошибка контракта ответа: event_id отсутствует, не строка или пустой".to_string()
+                })?;
             let Some(mls_b64) = ev["content"]["mls"].as_str() else {
                 continue;
             };
-            let event_id = ev["event_id"].as_str().unwrap_or_default().to_string();
             if self.processed.contains(&event_id) {
                 continue;
             }
@@ -1329,6 +1336,9 @@ impl Client {
                 Ok(()) => self.check_consistency(&room)?,
                 // Сервер больше не пускает устройство в комнату: это расхождение состава, а не причина остановить все комнаты.
                 Err(e) if e.contains("not a member") => self.check_consistency(&room)?,
+                // Некорректный event identity — ошибка контракта ответа, а не повреждение MLS room.
+                // Не помечаем событие обработанным и продолжаем синхронизацию остальных комнат.
+                Err(e) if e.starts_with("ошибка контракта ответа:") => continue,
                 // Временная ошибка: синхронизация прерывается, событие повторится позже (аудит, P0.1).
                 Err(e) if e.contains("временная ошибка") => return Err(e),
                 // Состояние группы не восстанавливается (например, недопустимый коммит): комната переходит в RecoveryRequired,
