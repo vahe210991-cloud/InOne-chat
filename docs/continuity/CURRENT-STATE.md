@@ -140,3 +140,9 @@ This section supersedes the earlier section 8 statement that no bundle bytes wer
 - The first CI run proves the eight-file blob comparison was not sufficient to prove full base-tree identity. Check the entire source tree for additional missing files before acceptance.
 - PostgreSQL and Rust steps were skipped because Node test step failed. No P0 acceptance is established.
 - Detailed record: [development/recovered-source/CI-RESULT-42453233555.md](../../development/recovered-source/CI-RESULT-42453233555.md).
+
+
+## 13. InOne ↔ Propo integration brief preserved — 2026-11-08
+
+- Owner-provided `INONE_INTEGRATION_BRIEF.md` committed to `development/integrations/INONE-PROPO-AUTH-INTEGRATION-BRIEF.md`.
+- Status remains Planned; the document explicitly states no InOne-side implementation is assumed. Production integration is blocked on open contract/security decisions; it is not a Beta 1.0 release dependency.
