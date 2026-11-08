@@ -105,13 +105,11 @@ GitHub — постоянное хранилище кода, истории, р�
 - The original bundle bytes and companion architecture map still need to be placed in a durable, retrievable GitHub location with checksum verification. Until then, mark original archive preservation as pending.
 - JavaScript/MJS syntax check of extracted source: 135 files PASS (syntax only). Full Node/DB/Rust/Flutter/device acceptance remains separate and must be evidenced by CI or device runs.
 
-
 ## 7. InOne ↔ Propo authentication integration brief — 2026-11-08
 
 - The owner-provided `INONE_INTEGRATION_BRIEF.md` is preserved in [development/integrations/INONE-PROPO-AUTH-INTEGRATION-BRIEF.md](../../development/integrations/INONE-PROPO-AUTH-INTEGRATION-BRIEF.md).
 - It is explicitly marked Planned; no InOne-side implementation is assumed. Propo owns its own account mapping, challenge validation, UI, and session/token issuance.
 - Do not implement production integration until the listed identity subject, private chat initiation/delivery, S2S authentication, callback/receipt, consent, recovery, and retention decisions are resolved and the contract is versioned.
-
 
 ## 8. Repository tree audit and exact P0 test fixtures — 2026-11-08
 
@@ -120,13 +118,11 @@ GitHub — постоянное хранилище кода, истории, р�
 - Original vector fixture is in `inone-development-archive-0.6.0/client-reference/vectors/biometric-vectors.json`, blob SHA `5a00755946219df2527591f00058a19d167c7811`; same exact blob restored under engine/client-reference/vectors.
 - P0 recovery validation remains in PR #18. Current workflow correction commit `e0a8c08ddf68864963c3f8a65ba16a0612381e39` copies the restored reference files into the clean main-based published source branch before patch application.
 
-
 ## 9. Original bundle binary provenance — 2026-11-08
 
 - Current upload `Bundle(1).zip` outer SHA-256 `a7ccfc12ae810dc1788f1b737ef4d53e032cafaf35797412784073a2db57f5a0`; inner bundle SHA-256 `a226e578a732e5da886e3ec4bfb007102154405a95809c80fb28a2833493522f`.
 - Inner bundle verifies complete, 5 commits, P0 ref `engine/p0-wave3` at `a7f60b6fdc969941e4354a117e17d32bfc951fb9`, base `ea3b49ae9cdf1670a1b7499d4b5e608ee22fe1e9`.
 - Binary storage status and connector limitations: `development/recovered-source/README.md`. GitHub base64 blob API exists; current container-to-Code-Mode byte transfer is the blocker.
-
 
 ## 10. Published P0 recovery source — checked 2026-11-08 12:00 UTC+3
 
@@ -136,4 +132,14 @@ GitHub — постоянное хранилище кода, истории, р�
 - Exact-head Actions runs: [42465804591](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42465804591) and [42465808297](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42465808297). Node 369/369, room regression 2/2, PostgreSQL 43/43, OpenMLS client tests and Rust bridge 3/3 passed. Overall workflow failed only at Rust formatting (`cargo fmt -- --check`, 12 files).
 - Source-integrity audit remains open: complete 240-file blob-hash comparison against the original bundle manifest; review six modified source files and five added P0 tests against exact bundle/patch provenance.
 - Full details and exact next actions: [P0-GITHUB-RECOVERY-STATUS-2026-11-08.md](../../development/recovered-source/P0-GITHUB-RECOVERY-STATUS-2026-11-08.md).
-- Original bundle binary SHA-256 remains `a226e578a732e5da886e3ec4bfb007102154405a95809c80fb28a2833493522f`; the original binary and its original five-commit ancestry are not yet stored in GitHub. The published patch-derived branch must not be represented as that original bundle history.
+- Original bundle binary SHA-256 remains `a226e578a732e5da886e3ec4bfb007102154405a95809c80fb28a2833493522f`; the original binary and its original five-commit ancestry are not yet imported into GitHub. The published patch-derived branch must not be represented as that original bundle history.
+
+## 11. Final owner-supplied snapshot bundle — 2026-11-08
+
+- Owner uploaded `InOne-P0-snapshot-2026-11-08.bundle` and explicitly stated: "Я отправляю файл в последний раз. Больше этот файл не буду отправлять."
+- This is a separate snapshot bundle from the earlier `InOne-P0-2026-11-08.bundle` / `Bundle(1).zip` lineage described in sections 6 and 9. Do not conflate their checksums, refs, or purpose.
+- Exact SHA-256: `e76fdd39e2e9698d7f32061e3fd4fb3dbc52ef981bb075c6c252a7cce11f391e`; size 2,476,944 bytes; HEAD `16eab726106ae04b4979af2a1646c2052233b87c`; complete history; `git bundle verify` PASS.
+- The same exact bytes were extracted from Actions run #2 (run ID `42480781656`, artifact ID `13617261673`). The export workflow now verifies that exact checksum and writes the exact original file to the permanent branch `artifacts/p0-bundles`.
+- Exact permanent path: `bundles/owner-upload-2026-11-08/InOne-P0-snapshot-2026-11-08.bundle`; retrieval pointer: `bundles/OWNER-SUPPLIED-ORIGINAL.txt`.
+- See [development/ARTIFACT-RETENTION.md](../../development/ARTIFACT-RETENTION.md) for the no-resend instruction, exact paths, checksum verification, and retrieval procedure.
+- Future sessions must fetch the archive branch first and must never ask the owner to upload this file again.
