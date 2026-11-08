@@ -84,3 +84,14 @@ Tasks, Calendar, Cindy не добавлять в Beta 1.0 без нового �
 - Read-only compatibility audit proves patches 016–019 do not match the archived GitHub 0.6.0 source; Patch 020 targets a missing Rust test file. Do not apply this patch stack to that archive.
 - Library contains no standalone `.dart`, `pubspec.yaml`, or `.arb` files. The Flutter Beta 1.0 app source is only in the inaccessible UI/API ZIP r2.
 - Continue searching for an authorized way to export the existing Library bundle/ZIP bytes. If not possible, do not pretend the 0.6.0 archive is a substitute. Keep main unchanged until exact source import is possible.
+
+## Mandatory development workspace handover — 2026-11-08
+
+- Before any work, read `development/README.md`, `WORKING-RULES.md`, `BASELINE-2026-11-08.md`, `HANDOVER-CHECKLIST.md`, and `SESSION-LOG.md`.
+- Follow the full-repository copy/work/return protocol in `development/WORKING-RULES.md`. All meaningful deliverables must be committed to GitHub; no model-memory/local-only dependency.
+- The owner-provided P0 Wave 3 bundle is verified: SHA-256 `a226e578a732e5da886e3ec4bfb007102154405a95809c80fb28a2833493522f`, ref `engine/p0-wave3`, HEAD `a7f60b6fdc969941e4354a117e17d32bfc951fb9`, complete five-commit history. It has no shared commit with GitHub main.
+- PR [#18](https://github.com/vahe210991-cloud/InOne-chat/pull/18) is a patch-based validation/import path. Fetch live workflow status; do not claim checks passed until verified. It does not import the original Git ancestry.
+- Preserve the full original bundle and `ARCHITECTURE-MAP.md` in GitHub using a supported binary/Git transport or approved artifact storage; verify hashes. Do not treat the compressed patch as a complete archive.
+- Then verify whether the applied-source branch was created by CI. Open a separate source-code PR only from that verified branch.
+- Next product priority: locate/recover the actual Flutter Beta 1.0 source (not present in the P0 bundle), restore it into GitHub, connect the native MLS bridge securely, and produce a testable Android build as soon as the release gates allow.
+- Keep Beta 1.0 independent from Propo's operational database. Shared DB remains deferred.
