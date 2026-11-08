@@ -227,3 +227,54 @@ fn pending_commit_fingerprint_mismatch_keeps_journal_and_requires_recovery() {
         "mismatched journal is retained for explicit recovery"
     );
 }
+
+
+#[test]
+fn stale_commit_clear_storage_failure_retains_journal_then_rebases_safely() {
+    let mut engine = start_engine();
+    let keys = MemoryKeyStore::default();
+    let alice_db = db("alice-membership-stale-clear");
+    let mut alice = login(&engine, &keys, ALICE, "A_PHONE", &alice_db);
+    let mut dave = login(&engine, &keys, "@dave:inone.test", "D_PHONE", &db("dave-membership-stale-clear"));
+    let mut bob = login(&engine, &keys, BOB, "B_PHONE", &db("bob-membership-stale-clear"));
+    let mut eve = login(&engine, &keys, "@eve:inone.test", "E_PHONE", &db("eve-membership-stale-clear"));
+    bob.ensure_key_packages(1).unwrap();
+    eve.ensure_key_packages(1).unwrap();
+
+    alice.create_room(ROOM).unwrap();
+    alice.invite(ROOM, "@dave:inone.test").unwrap();
+    dave.sync().unwrap();
+    assert_eq!(dave.local_epoch(ROOM), Some(1));
+
+    assert_eq!(engine.command("FAIL_NEXT_COMMIT_BEFORE_APPLY"), "OK");
+    assert!(alice.invite(ROOM, BOB).unwrap_err().contains("-> 500"));
+    assert_eq!(alice.local_epoch(ROOM), Some(1));
+    assert_eq!(engine.command(&format!("COMMIT_COUNT {ROOM}")), "1");
+
+    // Another valid member advances the room while Alice's exact staged Commit is pending.
+    dave.invite(ROOM, "@eve:inone.test").unwrap();
+    assert_eq!(engine.command(&format!("COMMIT_COUNT {ROOM}")), "2");
+
+    let connection = open_device_db(&alice_db, &keys, ALICE, "A_PHONE");
+    connection.execute_batch(
+        "CREATE TRIGGER fail_stale_membership_delete
+         BEFORE DELETE ON client_membership_commits
+         BEGIN SELECT RAISE(FAIL, 'simulated stale journal delete failure'); END;",
+    ).unwrap();
+    drop(connection);
+
+    let error = alice.sync().unwrap_err();
+    assert!(error.contains("временная ошибка локального хранилища при очистке stale membership commit"), "{error}");
+    assert_eq!(alice.local_epoch(ROOM), Some(1), "failed stale-clear transaction rolls back OpenMLS state");
+    assert_eq!(engine.command(&format!("COMMIT_COUNT {ROOM}")), "2");
+    assert_eq!(alice.desync_reason(ROOM).unwrap(), None, "transient local storage failure is not RecoveryRequired");
+
+    let connection = open_device_db(&alice_db, &keys, ALICE, "A_PHONE");
+    connection.execute_batch("DROP TRIGGER fail_stale_membership_delete;").unwrap();
+    drop(connection);
+
+    alice.sync().unwrap();
+    assert_eq!(alice.local_epoch(ROOM), Some(3), "client catches up and rebases the same invite intent");
+    assert_eq!(engine.command(&format!("COMMIT_COUNT {ROOM}")), "3");
+    assert_eq!(alice.desync_reason(ROOM).unwrap(), None);
+}
