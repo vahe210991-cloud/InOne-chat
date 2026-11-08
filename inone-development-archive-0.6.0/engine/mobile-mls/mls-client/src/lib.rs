@@ -1,7 +1,7 @@
 //! Ядро клиента InOne на Rust: вход, ключевые пакеты, группы MLS, сообщения, догон после отсутствия,
 //! вход нового устройства по подтверждению и удаление отозванных устройств из групп.
 //! База устройства зашифрована (SQLCipher). Ключ передаёт платформа: Keychain на iOS, Keystore на Android.
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -476,6 +476,120 @@ fn build_client(
         processed,
         inbox: Vec::new(),
     })
+}
+
+
+/// Проверяет фактические Add/Remove proposals до merge staged commit.
+/// Legacy epochs without metadata (changes = NULL) remain readable but are not metadata-verified.
+fn verify_staged_membership_metadata(
+    group: &MlsGroup,
+    staged: &StagedCommit,
+    metadata: &Value,
+) -> Result<(), String> {
+    let changes = metadata.get("changes").filter(|v| !v.is_null())
+        .ok_or_else(|| "P0.2: отсутствуют metadata changes".to_string())?;
+    let string_set = |value: &Value, key: &str| -> Result<BTreeSet<String>, String> {
+        value.get(key).and_then(Value::as_array)
+            .ok_or_else(|| format!("P0.2: поле {key} отсутствует или не массив"))?
+            .iter()
+            .map(|v| v.as_str().map(str::to_string)
+                .ok_or_else(|| format!("P0.2: поле {key} содержит не строку")))
+            .collect()
+    };
+    let expected_adds = string_set(changes, "adds")?;
+    let expected_removes = string_set(changes, "removes")?;
+    let expected_remove_devices = string_set(changes, "removeDevices")?;
+
+    let recipients = metadata.get("welcomeRecipients").and_then(Value::as_array)
+        .ok_or_else(|| "P0.2: welcomeRecipients отсутствует или не массив".to_string())?;
+    let mut expected_welcome_identities = Vec::with_capacity(recipients.len());
+    for recipient in recipients {
+        let user = recipient.get("userId").and_then(Value::as_str)
+            .ok_or_else(|| "P0.2: Welcome recipient без userId".to_string())?;
+        let device = recipient.get("deviceId").and_then(Value::as_str)
+            .ok_or_else(|| "P0.2: Welcome recipient без deviceId".to_string())?;
+        expected_welcome_identities.push(format!("{user}/{device}"));
+    }
+    expected_welcome_identities.sort();
+
+    let mut actual_add_identities: Vec<String> = staged.add_proposals()
+        .map(|proposal| String::from_utf8_lossy(
+            proposal.add_proposal().key_package().leaf_node().credential().serialized_content()
+        ).to_string())
+        .collect();
+    actual_add_identities.sort();
+    if actual_add_identities != expected_welcome_identities {
+        return Err(format!(
+            "P0.2: Add proposals не совпадают с Welcome recipients (actual={actual_add_identities:?}, expected={expected_welcome_identities:?})"
+        ));
+    }
+
+    let actual_add_users: BTreeSet<String> = actual_add_identities.iter()
+        .map(|identity| identity.rsplit_once('/').map(|(user, _)| user.to_string())
+            .ok_or_else(|| "P0.2: credential Add имеет неверный формат user/device".to_string()))
+        .collect::<Result<_, _>>()?;
+    if actual_add_users != expected_adds {
+        return Err(format!(
+            "P0.2: Add users не совпадают с server changes (actual={actual_add_users:?}, expected={expected_adds:?})"
+        ));
+    }
+
+    let before: BTreeSet<String> = group.members()
+        .map(|member| String::from_utf8_lossy(member.credential.serialized_content()).to_string())
+        .collect();
+    let mut actual_remove_identities = Vec::new();
+    for proposal in staged.remove_proposals() {
+        let index = proposal.remove_proposal().removed();
+        let member = group.member_at(index)
+            .ok_or_else(|| format!("P0.2: Remove proposal ссылается на отсутствующий pre-merge leaf {index:?}"))?;
+        actual_remove_identities.push(
+            String::from_utf8_lossy(member.credential.serialized_content()).to_string()
+        );
+    }
+
+    let mut actual_after = before.clone();
+    for identity in &actual_remove_identities {
+        if !actual_after.remove(identity) {
+            return Err(format!("P0.2: Remove proposal удаляет отсутствующий identity {identity}"));
+        }
+    }
+    for identity in &actual_add_identities {
+        if !actual_after.insert(identity.clone()) {
+            return Err(format!("P0.2: Add proposal повторно добавляет identity {identity}"));
+        }
+    }
+    let users = |identities: &BTreeSet<String>| -> Result<BTreeSet<String>, String> {
+        identities.iter()
+            .map(|identity| identity.rsplit_once('/').map(|(user, _)| user.to_string())
+                .ok_or_else(|| "P0.2: credential имеет неверный формат user/device".to_string()))
+            .collect()
+    };
+    let before_users = users(&before)?;
+    let actual_after_users = users(&actual_after)?;
+    let mut expected_after_users = before_users;
+    for user in &expected_removes { expected_after_users.remove(user); }
+    for user in &expected_adds { expected_after_users.insert(user.clone()); }
+    if actual_after_users != expected_after_users {
+        return Err(format!(
+            "P0.2: итоговый MLS membership не совпадает с changes (actual={actual_after_users:?}, expected={expected_after_users:?})"
+        ));
+    }
+
+    let mut actual_remove_devices: Vec<String> = actual_remove_identities.iter()
+        .filter_map(|identity| {
+            let (user, device) = identity.rsplit_once('/')?;
+            if expected_removes.contains(user) { None } else { Some(device.to_string()) }
+        })
+        .collect();
+    actual_remove_devices.sort();
+    let mut expected_remove_devices: Vec<String> = expected_remove_devices.into_iter().collect();
+    expected_remove_devices.sort();
+    if actual_remove_devices != expected_remove_devices {
+        return Err(format!(
+            "P0.2: Remove device proposals не совпадают с changes.removeDevices (actual={actual_remove_devices:?}, expected={expected_remove_devices:?})"
+        ));
+    }
+    Ok(())
 }
 
 impl Client {
@@ -1029,7 +1143,7 @@ impl Client {
             ),
             None,
         )?;
-        let commits: Vec<(u64, Vec<u8>)> = commits["commits"]
+        let commits: Vec<(u64, Vec<u8>, Value)> = commits["commits"]
             .as_array()
             .cloned()
             .unwrap_or_default()
@@ -1039,6 +1153,10 @@ impl Client {
                     c["epoch"].as_u64().ok_or("нет эпохи")?,
                     B64.decode(c["commit"].as_str().ok_or("коммит не строка")?)
                         .map_err(text)?,
+                    json!({
+                        "changes": c.get("changes").cloned().unwrap_or(Value::Null),
+                        "welcomeRecipients": c.get("welcomeRecipients").cloned().unwrap_or(Value::Null),
+                    }),
                 ))
             })
             .collect::<Result<_, String>>()?;
@@ -1062,7 +1180,7 @@ impl Client {
             for (event_id, bytes) in ready {
                 self.process_event(room_id, &event_id, &bytes, out)?;
             }
-            let Some((_, commit)) = commits.iter().find(|(e, _)| *e == epoch + 1) else {
+            let Some((_, commit, metadata)) = commits.iter().find(|(e, _, _)| *e == epoch + 1) else {
                 break;
             };
             let protocol = MlsMessageIn::tls_deserialize_exact(commit)
@@ -1079,6 +1197,9 @@ impl Client {
                 .map_err(text)?;
             match processed.into_content() {
                 ProcessedMessageContent::StagedCommitMessage(staged) => {
+                    if !metadata["changes"].is_null() {
+                        verify_staged_membership_metadata(&group.mls, staged.as_ref(), metadata)?;
+                    }
                     group
                         .mls
                         .merge_staged_commit(&self.provider, *staged)
