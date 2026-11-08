@@ -104,3 +104,10 @@ GitHub — постоянное хранилище кода, истории, р�
 - PR [#18](https://github.com/vahe210991-cloud/InOne-chat/pull/18) contains a compressed base64 patch derived from this bundle and a CI workflow. It is not the original bundle and does not preserve its original commit ancestry.
 - The original bundle bytes and companion architecture map still need to be placed in a durable, retrievable GitHub location with checksum verification. Until then, mark original archive preservation as pending.
 - JavaScript/MJS syntax check of extracted source: 135 files PASS (syntax only). Full Node/DB/Rust/Flutter/device acceptance remains separate and must be evidenced by CI or device runs.
+
+
+## 7. InOne ↔ Propo authentication integration brief — 2026-11-08
+
+- The owner-provided `INONE_INTEGRATION_BRIEF.md` is preserved in [development/integrations/INONE-PROPO-AUTH-INTEGRATION-BRIEF.md](../../development/integrations/INONE-PROPO-AUTH-INTEGRATION-BRIEF.md).
+- It is explicitly marked Planned; no InOne-side implementation is assumed. Propo owns its own account mapping, challenge validation, UI, and session/token issuance.
+- Do not implement production integration until the listed identity subject, private chat initiation/delivery, S2S authentication, callback/receipt, consent, recovery, and retention decisions are resolved and the contract is versioned.
