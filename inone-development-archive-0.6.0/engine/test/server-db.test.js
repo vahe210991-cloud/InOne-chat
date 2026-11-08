@@ -557,3 +557,39 @@ dbTest('SD23: счётчики регистраций переживают пе�
     await db.close();
   }
 });
+
+
+dbTest('SD KeyPackage claim: replay after restart returns the same durable result', async () => {
+  const db = await testDatabase();
+  const store = createStore({ pool: db.pool, pinPepper: PEPPER });
+  let firstServer = await start(store);
+  let alice;
+  let bob;
+  let first;
+  const claimId = 'claim-intent-pg-restart-0001';
+  const claimPath = `/mls/key-packages/${encodeURIComponent(ALICE)}/claim`;
+  try {
+    alice = await ChatClient.create(firstServer.base, ALICE, 'A_PHONE', PW);
+    bob = await ChatClient.create(firstServer.base, BOB, 'B_PHONE', PW);
+    await alice.raw('POST', '/mls/key-packages', { packages: [Buffer.from('pg-key-package-1').toString('base64'), Buffer.from('pg-key-package-2').toString('base64')] });
+    first = await bob.raw('POST', claimPath, { claimId });
+    assert.equal(first.packages.length, 1);
+    assert.equal((await alice.raw('GET', '/mls/key-packages/count')).available, 1);
+  } finally {
+    await firstServer.stop();
+  }
+
+  const secondServer = await start(store);
+  try {
+    const replay = await bob.raw('POST', claimPath, { claimId });
+    assert.deepEqual(replay, first, 'claim result survives server restart and replays byte-for-byte');
+    assert.equal((await alice.raw('GET', '/mls/key-packages/count')).available, 1, 'replay does not consume a second KeyPackage');
+    const next = await bob.raw('POST', claimPath, { claimId: 'claim-intent-pg-next-0002' });
+    assert.equal(next.packages.length, 1);
+    assert.notEqual(next.packages[0].package, first.packages[0].package);
+    assert.equal((await alice.raw('GET', '/mls/key-packages/count')).available, 0);
+  } finally {
+    await secondServer.stop();
+    await db.close();
+  }
+});
