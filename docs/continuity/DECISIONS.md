@@ -60,3 +60,11 @@
 - Новое решение владельца имеет приоритет, но должно быть внесено сюда с датой.
 - Не считать техническое предложение утверждённым решением, пока владелец явно его не подтвердил.
 - Если документ/ветка расходится с этим списком, зафиксировать расхождение и запросить решение; не угадывать.
+
+
+## 6. Beta 1.0 database boundary — 2026-11-08
+
+- Owner decision: Beta 1.0 launches with an independent InOne database and backend.
+- A unified/shared operational database for InOne + Propo is deferred to the next beta release and must not block Beta 1.0.
+- Beta 1.0 should retain stable globally unique identifiers, explicit API/event boundaries, and migration-friendly schema design. It must not introduce runtime dependence on Propo.
+- See [ADR-011 — Independent InOne database for Beta 1.0](ADR-011-BETA1-INDEPENDENT-DATABASE.md).
