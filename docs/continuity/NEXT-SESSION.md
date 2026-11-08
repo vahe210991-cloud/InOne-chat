@@ -104,3 +104,10 @@ Tasks, Calendar, Cindy не добавлять в Beta 1.0 без нового �
 - Workflow path filter update committed as `762e3eca8ccb2e34965441114cc29b63083aa0f9`. Verify a new Actions run for this exact head; it was not visible at the last check.
 - Re-evaluate full source-tree completeness: matching only the eight modified files did not prove the archived base was a complete match. Do not publish or merge the source branch until all validation steps pass.
 - Full original bundle bytes are still not stored in GitHub. The connector does not expose a binary Git/LFS upload route; use approved durable artifact storage or authenticated Git transport when available. Do not claim the patch file is a full bundle.
+
+
+## Current live check status
+
+- PR #18 corrected head `762e3eca8ccb2e34965441114cc29b63083aa0f9`.
+- Duplicate validation trigger PR [#19](https://github.com/vahe210991-cloud/InOne-chat/pull/19) created from the same head. Keep #18 as the primary PR; close #19 after verification.
+- Runs [42454943853](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42454943853) and [42455077322](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42455077322) were in progress at last check. Node suite running; PostgreSQL/Rust not yet run.
