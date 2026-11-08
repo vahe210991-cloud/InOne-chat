@@ -1,0 +1,82 @@
+name: Validate published InOne P0 source
+
+on:
+  push:
+    branches:
+      - recovery/p0-wave3-applied
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "inone-development-archive-0.6.0/engine/**"
+      - ".github/workflows/validate-published-p0.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: published-p0-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: inone_test
+          POSTGRES_USER: inone
+          POSTGRES_PASSWORD: inone
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U inone -d inone_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://inone:inone@localhost:5432/inone_test
+      INONE_PIN_PEPPER: ci-only-pepper-not-used-outside-tests-2026
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: inone-development-archive-0.6.0/engine/package-lock.json
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.91"
+      - name: Install PostgreSQL 16 client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-16
+          echo "/usr/lib/postgresql/16/bin" >> "$GITHUB_PATH"
+          /usr/lib/postgresql/16/bin/pg_dump --version
+      - name: Install Node dependencies
+        working-directory: inone-development-archive-0.6.0/engine
+        run: npm ci
+      - name: Backend Node suite
+        working-directory: inone-development-archive-0.6.0/engine
+        run: npm test
+      - name: P0 room-list regression
+        working-directory: inone-development-archive-0.6.0/engine
+        run: node --test test/rooms-mine.test.js
+      - name: PostgreSQL integration suite
+        working-directory: inone-development-archive-0.6.0/engine
+        run: npm run test:db
+      - name: Rust formatting
+        working-directory: inone-development-archive-0.6.0/engine/mobile-mls
+        run: |
+          cargo fmt --manifest-path mls-client/Cargo.toml -- --check
+          cargo fmt --manifest-path mls-bridge/Cargo.toml -- --check
+      - name: OpenMLS client tests
+        working-directory: inone-development-archive-0.6.0/engine/mobile-mls/mls-client
+        run: cargo test --locked
+      - name: Rust bridge tests
+        working-directory: inone-development-archive-0.6.0/engine/mobile-mls/mls-bridge
+        run: cargo test --locked
