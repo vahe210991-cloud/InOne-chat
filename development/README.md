@@ -29,6 +29,7 @@ The GitHub repository `vahe210991-cloud/InOne-chat` is the only authoritative pr
 - [Architecture map](recovered-source/ARCHITECTURE-MAP-2026-11-06.md)
 - [Bundle verification report](recovered-source/BUNDLE-VERIFICATION.txt)
 - [Initial CI failure and correction](recovered-source/CI-RESULT-42453233555.md)
+- [Latest Node/PostgreSQL CI outcome](recovered-source/CI-RESULT-42457297299.md)
 - Exact biometric fixture recovery: documented in [current state](../docs/continuity/CURRENT-STATE.md#15-biometric-vector-fixture-gap-and-corrective-validation--2026-11-08) and in PR [#18](https://github.com/vahe210991-cloud/InOne-chat/pull/18).
 
 ## Integration briefs
