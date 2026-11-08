@@ -212,7 +212,6 @@ fn forged_commit_membership_metadata_is_rejected_before_merge() {
     );
 }
 
-
 #[test]
 fn malformed_event_ids_do_not_poison_room_and_retry_after_response_repair() {
     let mut engine = start_engine();
@@ -234,8 +233,13 @@ fn malformed_event_ids_do_not_poison_room_and_retry_after_response_repair() {
         alice.send_text(broken, &bad_text).unwrap();
         alice.send_text(healthy, &healthy_text).unwrap();
 
-        assert_eq!(engine.command(&format!("BAD_EVENT_ID {broken} {mode}")), "OK");
-        let got = bob.sync().expect("invalid event identity is a response-contract error, not MLS corruption");
+        assert_eq!(
+            engine.command(&format!("BAD_EVENT_ID {broken} {mode}")),
+            "OK"
+        );
+        let got = bob
+            .sync()
+            .expect("invalid event identity is a response-contract error, not MLS corruption");
         assert!(
             texts(&got).contains(&healthy_text),
             "healthy room keeps syncing when {mode} event_id is malformed"
@@ -247,7 +251,9 @@ fn malformed_event_ids_do_not_poison_room_and_retry_after_response_repair() {
         );
 
         assert_eq!(engine.command(&format!("GOOD_EVENT_ID {broken}")), "OK");
-        let retried = bob.sync().expect("the unprocessed event is retried after the response is repaired");
+        let retried = bob
+            .sync()
+            .expect("the unprocessed event is retried after the response is repaired");
         assert!(
             texts(&retried).contains(&bad_text),
             "the original event is not marked processed and is delivered after repair ({mode})"

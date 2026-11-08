@@ -1185,7 +1185,8 @@ impl Client {
                 .filter(|id| !id.trim().is_empty())
                 .map(str::to_string)
                 .ok_or_else(|| {
-                    "ошибка контракта ответа: event_id отсутствует, не строка или пустой".to_string()
+                    "ошибка контракта ответа: event_id отсутствует, не строка или пустой"
+                        .to_string()
                 })?;
             let Some(mls_b64) = ev["content"]["mls"].as_str() else {
                 continue;
@@ -1338,7 +1339,9 @@ impl Client {
                 Err(e) if e.contains("not a member") => self.check_consistency(&room)?,
                 // Некорректный event identity — ошибка контракта ответа, а не повреждение MLS room.
                 // Не помечаем событие обработанным и продолжаем синхронизацию остальных комнат.
-                Err(e) if e.starts_with("ошибка контракта ответа:") => continue,
+                Err(e) if e.starts_with("ошибка контракта ответа:") => {
+                    continue
+                }
                 // Временная ошибка: синхронизация прерывается, событие повторится позже (аудит, P0.1).
                 Err(e) if e.contains("временная ошибка") => return Err(e),
                 // Состояние группы не восстанавливается (например, недопустимый коммит): комната переходит в RecoveryRequired,
