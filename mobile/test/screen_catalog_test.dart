@@ -5,7 +5,6 @@ import 'package:inone_mobile/test_screens.dart';
 void main() {
   test('at least ten distinct screens are wired to safe backend GET probes', () {
     const requiredBindings = <String, String>{
-      'GR-01': '/rooms/mine',
       'GR-03': '/rooms/search?q=:query',
       'PR-05': '/devices/mine',
       'PR-07': '/approvals',
@@ -15,7 +14,6 @@ void main() {
       'ST-02': '/config',
       'ST-03': '/config/public',
       'SR-01': '/users/search?nickname=:query',
-      'workspace-light': '/rooms/mine',
       'personal-profile-light': '/profile',
       'messages-light': '/sync',
       'notifications-light': '/sync',
@@ -30,6 +28,10 @@ void main() {
     }
 
     expect(requiredBindings.length, greaterThanOrEqualTo(10));
+    expect(screenApiProbes.containsKey('GR-01'), isFalse,
+        reason: 'the current backend does not implement GET /rooms/mine');
+    expect(screenApiProbes.containsKey('workspace-light'), isFalse,
+        reason: 'workspace room listing is not yet implemented by the current backend');
     expect(screenApiProbes.keys.toSet().intersection(requiredBindings.keys.toSet()).length,
         greaterThanOrEqualTo(10));
   });
