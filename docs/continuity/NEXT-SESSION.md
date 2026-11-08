@@ -19,7 +19,7 @@ The owner selected GitHub Codespaces. A draft devcontainer is on branch `feat/be
 7. Audit the 34 route declarations against actual backend handlers and response schemas. Do not count a route declaration as a connected screen. The requirement remains at least 10 live, authenticated, response-verified screens.
 8. Keep PR #28 draft/open; do not merge until full CI and the required integration evidence pass.
 
-Current branch at handoff: `88e68117957fc1a0846e790240db62cf14033b1b`. Codespaces guide: [CODESPACES_TEST_ENVIRONMENT.md](../../docs/CODESPACES_TEST_ENVIRONMENT.md). Session evidence/blocker: [SESSION-LOG.md](../../development/SESSION-LOG.md).
+Current branch at handoff: `bf6806cb669220addf3771ad458ebfa5a30357fa`. Codespaces guide: [CODESPACES_TEST_ENVIRONMENT.md](../../docs/CODESPACES_TEST_ENVIRONMENT.md). Session evidence/blocker: [SESSION-LOG.md](../../development/SESSION-LOG.md).
 
 # InOne — инструкция следующему чату / исполнителю
 
