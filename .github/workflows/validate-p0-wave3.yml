@@ -1,0 +1,89 @@
+name: Validate recovered InOne P0 core
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "recovery/p0-wave3-core.patch.gz.b64"
+      - ".github/workflows/validate-p0-wave3.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: inone_test
+          POSTGRES_USER: inone
+          POSTGRES_PASSWORD: inone
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U inone -d inone_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://inone:inone@localhost:5432/inone_test
+      INONE_PIN_PEPPER: ci-only-pepper-not-used-outside-tests-2026
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: inone-development-archive-0.6.0/engine/package-lock.json
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.91"
+      - name: Decode and verify the P0 patch
+        run: |
+          base64 -d recovery/p0-wave3-core.patch.gz.b64 > "$RUNNER_TEMP/p0-wave3.patch.gz"
+          gzip -dc "$RUNNER_TEMP/p0-wave3.patch.gz" > "$RUNNER_TEMP/p0-wave3.patch"
+          git apply --check "$RUNNER_TEMP/p0-wave3.patch"
+          git apply "$RUNNER_TEMP/p0-wave3.patch"
+      - name: Install Node dependencies
+        working-directory: inone-development-archive-0.6.0/engine
+        run: npm ci
+      - name: Backend tests in memory
+        working-directory: inone-development-archive-0.6.0/engine
+        run: npm test
+      - name: P0 room-list regression test
+        working-directory: inone-development-archive-0.6.0/engine
+        run: node --test test/rooms-mine.test.js
+      - name: PostgreSQL integration tests
+        working-directory: inone-development-archive-0.6.0/engine
+        run: npm run test:db
+      - name: OpenMLS client tests
+        working-directory: inone-development-archive-0.6.0/engine/mobile-mls/mls-client
+        run: cargo test --locked
+      - name: Rust bridge tests
+        working-directory: inone-development-archive-0.6.0/engine/mobile-mls/mls-bridge
+        run: cargo test --locked
+
+  publish-tested-source-branch:
+    needs: validate
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Preserve patch and create source branch from main
+        run: |
+          base64 -d recovery/p0-wave3-core.patch.gz.b64 > "$RUNNER_TEMP/p0-wave3.patch.gz"
+          git fetch origin main
+          git checkout -b recovery/p0-wave3-applied origin/main
+          gzip -dc "$RUNNER_TEMP/p0-wave3.patch.gz" | git apply
+          git add inone-development-archive-0.6.0/engine
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "feat: restore verified InOne P0 backend and MLS core"
+          git push origin recovery/p0-wave3-applied
