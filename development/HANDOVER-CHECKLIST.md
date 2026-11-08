@@ -4,7 +4,7 @@
 ## P0 closeout — completed 2026-11-08
 
 - [x] Source provenance checked against owner bundle; bundle is retained in GitHub.
-- [x] Six P0 CI jobs passed on exact PR head (run #124).
+- [x] Six P0 CI jobs passed on exact PR head (run #124) and again on merged `main` (post-merge run #134).
 - [x] PR #25 merged to `main` as `97024ab03ce9583e298ee946f3679565007405ca`.
 - [x] P0 closure report and session handoff committed.
 - [x] Permanent bundle retention path and SHA-256 documented.
