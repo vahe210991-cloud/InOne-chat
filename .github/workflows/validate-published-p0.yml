@@ -41,6 +41,14 @@ jobs:
           ref: ${{ github.head_ref || github.ref_name }}
           fetch-depth: 0
           persist-credentials: true
+      - name: Create immutable source bundle
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          git bundle create dist/InOne-P0-snapshot-2026-11-08.bundle HEAD
+          git bundle verify dist/InOne-P0-snapshot-2026-11-08.bundle
+          sha256sum dist/InOne-P0-snapshot-2026-11-08.bundle | tee dist/SHA256SUMS.txt
+          git rev-parse HEAD | tee dist/SNAPSHOT_COMMIT.txt
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -92,3 +100,14 @@ jobs:
       - name: Rust bridge tests
         working-directory: inone-development-archive-0.6.0/engine/mobile-mls/mls-bridge
         run: cargo test --locked
+      - name: Upload immutable source bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: InOne-P0-snapshot-2026-11-08
+          path: |
+            dist/InOne-P0-snapshot-2026-11-08.bundle
+            dist/SHA256SUMS.txt
+            dist/SNAPSHOT_COMMIT.txt
+          if-no-files-found: error
+          retention-days: 90
