@@ -88,3 +88,12 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Corrected workflow to pin Ubuntu 24.04 and PostgreSQL client 16 in commit `0e13b9726c5fcbecfdb8a9a45b05d4bb6eb02863`.
 - Fresh run #42457594088 in progress at last check. No full acceptance; OpenMLS/Rust skipped in failed run.
 - Report: `development/recovered-source/CI-RESULT-42457297299.md`.
+
+
+## 2026-11-08 — P0 base-tree path parity restored
+
+- Compared bundle base tree (240 blobs) to archived GitHub engine tree (225 blobs); identified exactly 15 missing paths.
+- Restored all 15 paths to PR #18 branch, with exact blob provenance documented in `development/recovered-source/BASE-TREE-RESTORATION.md`.
+- Recovery branch now has 240 engine blobs, matching base path count. This is path parity, not yet full blob hash parity for all 240 files.
+- Publish workflow now applies the entire PR-head engine-path diff onto clean main before the P0 patch, preserving all restored files. Workflow commit `7898fde9a592a8c180e7c9e89a2c7b3cb2e5ad80`.
+- Fresh CI required; run #42457594088 predates the latest workflow change.
