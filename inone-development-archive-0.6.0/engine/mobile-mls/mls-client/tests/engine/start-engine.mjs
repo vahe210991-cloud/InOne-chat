@@ -15,11 +15,24 @@ const srv = createServer({ defaultOrgAutoJoin: true, rateLimits: { registrations
 await new Promise((resolve) => srv.server.listen(0, '127.0.0.1', resolve));
 console.log(`URL=http://127.0.0.1:${srv.server.address().port}`);
 const hidden = new Set();
+const badMetadataRooms = new Set();
+const originalMlsCommitsSince = store.mlsCommitsSince.bind(store);
+store.mlsCommitsSince = (roomId, since, limit) => {
+  const rows = originalMlsCommitsSince(roomId, since, limit);
+  return badMetadataRooms.has(roomId)
+    ? rows.map((row) => ({ ...row, changes: { adds: [], removes: [], removeDevices: [] }, welcomeRecipients: [] }))
+    : rows;
+};
 const origRows = store.roomEventRows.bind(store);
 store.roomEventRows = async (roomId, since) => (await origRows(roomId, since)).filter((e) => !hidden.has(e.seq));
 const rl = readline.createInterface({ input: process.stdin });
 rl.on('line', async (line) => {
   const parts = line.trim().split(' ');
+  if (parts[0] === 'BADMETADATA') {
+    badMetadataRooms.add(parts[1]);
+    console.log('OK');
+    return;
+  }
   if (parts[0] === 'ADD_MEMBER' || parts[0] === 'REMOVE_MEMBER') {
     try {
       if (parts[0] === 'ADD_MEMBER') await store.addRoomMember(parts[1], parts[2]);
