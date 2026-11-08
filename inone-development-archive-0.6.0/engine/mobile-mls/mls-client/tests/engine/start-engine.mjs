@@ -66,7 +66,7 @@ rl.on('line', async (line) => {
     const archived = welcomeArchive.get(`${userId}|${deviceId}|${roomId}`);
     if (!archived) { console.log('ERR нет ранее доставленного Welcome'); return; }
     replayWelcomeByDevice.set(`${userId}|${deviceId}`, roomId);
-    console.log('OK');
+    console.log(`OK ${replayWelcomeId}`);
     return;
   }
   if (parts[0] === 'WELCOME_ACK_ATTEMPTED') {
