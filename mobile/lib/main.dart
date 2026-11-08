@@ -6,6 +6,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 
 import 'approved_screens.dart';
 import 'core/session/inone_session.dart';
+import 'core/data/inone_repositories.dart';
 import 'core/test_api/screen_api_catalog.dart';
 import 'test_screens.dart';
 import 'test_gallery_loader.dart';
@@ -535,7 +536,7 @@ class _ApiTestPanelState extends State<ApiTestPanel> {
       _output = null;
     });
     try {
-      final result = await session.request('GET', path, authenticated: probe.authenticated);
+      final result = await InOneRepositories(session).get(path, authenticated: probe.authenticated);
       _showResult(result);
     } catch (error) {
       _showError(error);

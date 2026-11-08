@@ -6,6 +6,8 @@ class InOneRepositories {
 
   final InOneSession session;
 
+  Future<Map<String, dynamic>> health() => session.request('GET', '/healthz', authenticated: false);
+  Future<Map<String, dynamic>> readiness() => session.request('GET', '/readyz', authenticated: false);
   Future<Map<String, dynamic>> profile() => session.request('GET', '/profile');
   Future<Map<String, dynamic>> myRooms() => session.request('GET', '/rooms/mine');
   Future<Map<String, dynamic>> myOrganizations() => session.request('GET', '/orgs/mine');

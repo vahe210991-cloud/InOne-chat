@@ -14,6 +14,13 @@ The origin must be supplied by the project owner/operator. No production host is
 
 The route definitions below were checked against `inone-development-archive-0.6.0/engine/src/server.js` on the repository's `main` branch.
 
+### Health and readiness
+
+| Method | Route | Use |
+|---|---|---|
+| GET | `/healthz` | Process liveness |
+| GET | `/readyz` | Database readiness |
+
 ### Session and account
 
 | Method | Route | Use |
@@ -83,3 +90,8 @@ The current Flutter session temporarily rotates refresh tokens. After Android/iO
 - Full two-device end-to-end acceptance.
 
 The original 73-card full-screen gallery is packaged and loaded by Flutter; an asset test verifies every card ID. Visual inclusion does not imply that all future modules have backend implementations or live API contracts.
+
+
+## Deployment readiness boundary
+
+The repository's current engine deployment guide identifies this server build as a development/test build, not a production release. Before live company use, the backend owner must complete and verify a real SMTP transport and sender domain, phone/SMS flows where required, a tested deployment/proxy configuration, database backup/restore, monitoring and operational recovery. The checked-in compose file is explicitly marked untested. Until these are closed, connect the Flutter client only to a controlled development or staging environment.

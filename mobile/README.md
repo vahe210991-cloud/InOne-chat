@@ -27,7 +27,7 @@ The API panel provides:
 - In-memory access and refresh token handling.
 - One serialized refresh attempt after an authenticated 401, using `POST /token/refresh`.
 - Logout through `POST /logout`.
-- Read-only GET probes for routes that are present in the current main-branch backend.
+- Read-only GET probes for routes that are present in the current main-branch backend, including `/healthz` and `/readyz` connectivity checks.
 - JSON response/error output for QA.
 
 Only the stable device identifier is persisted, using platform secure storage. Access and refresh tokens remain in memory and are never passed into WebView JavaScript.
@@ -49,3 +49,8 @@ flutter analyze
 ```
 
 The tests assert the 22 approved variants, 73 test entries, the 51/1/21 stage split, 95 unique picker entries and the API transport contract.
+
+
+## Backend deployment note
+
+The current engine deployment guide describes the checked-in server build as development/test, not production-ready. SMTP/domain delivery, SMS where required, deployment/proxy validation, backup/restore and monitoring still need operational acceptance. Use a controlled staging API until those items are closed.
