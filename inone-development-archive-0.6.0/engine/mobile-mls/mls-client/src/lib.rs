@@ -2,7 +2,7 @@
 //! вход нового устройства по подтверждению и удаление отозванных устройств из групп.
 //! База устройства зашифрована (SQLCipher). Ключ передаёт платформа: Keychain на iOS, Keystore на Android.
 use std::collections::{BTreeSet, HashMap, HashSet};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
@@ -74,13 +74,13 @@ impl Codec for JsonCodec {
 /// Провайдер OpenMLS устройства: криптография в памяти процесса, состояние групп — в зашифрованной базе.
 pub struct DeviceProvider {
     crypto: RustCrypto,
-    storage: SqliteStorageProvider<JsonCodec, Connection>,
+    storage: SqliteStorageProvider<JsonCodec, Arc<Connection>>,
 }
 
 impl OpenMlsProvider for DeviceProvider {
     type CryptoProvider = RustCrypto;
     type RandProvider = RustCrypto;
-    type StorageProvider = SqliteStorageProvider<JsonCodec, Connection>;
+    type StorageProvider = SqliteStorageProvider<JsonCodec, Arc<Connection>>;
 
     fn storage(&self) -> &Self::StorageProvider {
         &self.storage
@@ -108,7 +108,7 @@ pub struct Client {
     agent: ureq::Agent,
     provider: DeviceProvider,
     /// Соединение с той же базой для собственных таблиц клиента (комнаты, обработанные события, метаданные).
-    meta: Connection,
+    meta: Arc<Connection>,
     signer: SignatureKeyPair,
     credential: CredentialWithKey,
     groups: HashMap<String, Group>,
@@ -379,14 +379,22 @@ fn build_client(
     db_path: &str,
     db_key: &[u8; 32],
 ) -> Result<Client, String> {
-    let mut storage =
+    // OpenMLS migrations require an owned mutable connection. Run them before
+    // sharing the long-lived connection used by OpenMLS and the client journal.
+    let mut migration_storage =
         SqliteStorageProvider::<JsonCodec, Connection>::new(open_db(db_path, db_key)?);
-    storage.run_migrations().map_err(text)?;
+    migration_storage.run_migrations().map_err(text)?;
+    drop(migration_storage);
+
+    // One shared connection makes MLS state transitions and their journal rows
+    // part of the same SQLite transaction.
+    let connection = Arc::new(open_db(db_path, db_key)?);
+    let storage = SqliteStorageProvider::<JsonCodec, Arc<Connection>>::new(Arc::clone(&connection));
     let provider = DeviceProvider {
         crypto: RustCrypto::default(),
         storage,
     };
-    let meta = open_db(db_path, db_key)?;
+    let meta = connection;
     meta.execute_batch(
         "CREATE TABLE IF NOT EXISTS client_meta (key TEXT PRIMARY KEY, value BLOB NOT NULL);
          CREATE TABLE IF NOT EXISTS client_rooms (room_id TEXT PRIMARY KEY, join_epoch INTEGER NOT NULL);
