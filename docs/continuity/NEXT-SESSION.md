@@ -140,3 +140,9 @@ Tasks, Calendar, Cindy не добавлять в Beta 1.0 без нового �
 
 - Workflow now copies the exact restored biometric client and vector fixture from the PR head into the clean main-based recovery branch before patch application. Commit `e0a8c08ddf68864963c3f8a65ba16a0612381e39`.
 - Check run [42457297299](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42457297299) through every step. The older run #42457116231 does not validate the publish correction.
+
+
+## Original P0 bundle status correction
+
+- The uploaded ZIP is present in the active runtime and its inner bundle was verified complete with `git bundle verify`: 5 commits, P0 HEAD `a7f60b6fdc969941e4354a117e17d32bfc951fb9`, base `ea3b49ae9cdf1670a1b7499d4b5e608ee22fe1e9`, 240 base blobs.
+- Preserve checksums from `development/recovered-source/README.md`. Binary still not in GitHub; base64 blob API exists but current tool bridge cannot transfer mounted bytes to it. Do not claim it was uploaded.
