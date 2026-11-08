@@ -1,0 +1,27 @@
+ПРОТОКОЛ ПРОВЕРКИ BUNDLE (6–7 ноября 2026)
+Файл: inone-engine-p0-wave3.bundle
+Размер, байт: 1052468
+SHA-256: a226e578a732e5da886e3ec4bfb007102154405a95809c80fb28a2833493522f
+
+=== git bundle verify ===
+/mnt/user-data/outputs/inone-engine-p0-wave3.bundle is okay
+The bundle contains this ref:
+a7f60b6fdc969941e4354a117e17d32bfc951fb9 refs/heads/engine/p0-wave3
+The bundle records a complete history.
+The bundle uses this hash algorithm: sha1
+код возврата: 0
+
+=== git bundle list-heads ===
+a7f60b6fdc969941e4354a117e17d32bfc951fb9 refs/heads/engine/p0-wave3
+
+=== полные идентификаторы ===
+базовый коммит (engine/0.6.0-alpha.38, ветка до волн): ea3b49ae9cdf1670a1b7499d4b5e608ee22fe1e9
+коммит волн 1–3:  4c24ff35bd6baa4da35a82444740842dc4d4078a
+последний коммит волны 4 (HEAD): a7f60b6fdc969941e4354a117e17d32bfc951fb9
+корневой коммит истории bundle: 694e140504e55808c20fb11b5a96fdb1f4bd863a
+коммитов в истории: 5
+
+=== вывод по полноте и безопасности ===
+bundle записывает полную историю (complete history): bundle не требует предварительных коммитов.
+Отправка в существующий репозиторий: безопасна как новая ветка; main и другие ветки не меняются.
+Общих коммитов с main (1a40026) в этой истории нет: слияние с main — решение CTO.
