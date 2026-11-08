@@ -1108,7 +1108,7 @@ impl Client {
         outcome: &str,
         reason: Option<&str>,
     ) -> Result<(), String> {
-        let tx = self.meta.transaction().map_err(text)?;
+        let tx = self.meta.unchecked_transaction().map_err(text)?;
         tx.execute(
             "INSERT OR IGNORE INTO client_welcome_receipts (welcome_id, room_id, welcome, outcome, reason, created_at, acked_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL)",
