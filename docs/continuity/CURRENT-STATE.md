@@ -211,3 +211,13 @@ This section supersedes the earlier section 8 statement that no bundle bytes wer
 - Fixed workflow at commit `0e13b9726c5fcbecfdb8a9a45b05d4bb6eb02863` to pin `ubuntu-24.04`, install `postgresql-client-16`, and put its binaries first on PATH.
 - Fresh run [42457594088](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42457594088) was in progress at last check. No full P0 acceptance yet.
 - Detailed report: [development/recovered-source/CI-RESULT-42457297299.md](../../development/recovered-source/CI-RESULT-42457297299.md).
+
+
+## 21. P0 base tree path parity restored — 2026-11-08
+
+- Compared bundle base tree paths (240 blobs) against GitHub archived engine tree (225 blobs); exactly 15 paths were absent.
+- Restored all 15 missing paths in PR #18 from exact existing GitHub archive files or directly from the verified bundle base. The recovery branch now has 240 engine blobs and full path parity with the bundle base.
+- Exact provenance and per-file blob IDs: [BASE-TREE-RESTORATION.md](../../development/recovered-source/BASE-TREE-RESTORATION.md).
+- Full 240-file blob-hash parity is not yet established. The eight previously compared P0-modified files and all 15 restored missing files have exact source blob matches; compare remaining common paths before final acceptance.
+- Updated publish job to apply all PR-head engine-path changes to clean main before P0 patch; commit `7898fde9a592a8c180e7c9e89a2c7b3cb2e5ad80`. It also broadens workflow path filters to all engine paths.
+- Run #42457594088 predates this last workflow fix; require a new run on head `7898fde9a592a8c180e7c9e89a2c7b3cb2e5ad80`.
