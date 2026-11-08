@@ -154,3 +154,13 @@ This section supersedes the earlier section 8 statement that no bundle bytes wer
 - PR [#19](https://github.com/vahe210991-cloud/InOne-chat/pull/19) is a temporary duplicate validation trigger from the same corrected head; PR #18 remains primary.
 - Actions runs [42454943853](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42454943853) and [42455077322](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42455077322) were still `in_progress` at the latest check. Patch decode/apply and npm dependency install passed; backend `npm test` was still running. PostgreSQL and Rust steps had not started.
 - No fresh validation pass is established. Keep both PRs unmerged until the actual run results and source-tree completeness are reviewed.
+
+
+## 15. Biometric vector fixture gap and corrective validation — 2026-11-08
+
+- Corrected P0 CI runs [42454943853](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42454943853) and [42455077322](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42455077322) failed at Node tests: 368/369 passed. The only failure was ENOENT for `client-reference/vectors/biometric-vectors.json`; PostgreSQL and Rust steps were skipped.
+- The original fixture was not recoverable from the currently accessible source. A replacement fixture was generated and explicitly labels its provenance as a replacement, not the original bundle asset. It contains two valid P-256/SHA-256 DER-base64url signatures and two altered-input negative cases. All four vectors were locally verified with Node crypto.
+- Added to PR #18 branch in commit `bdedff6df54876e82f46a34d27f2fadfac42b46d`; workflow path filter updated in `ee7a877aedb43ca90df8cd410dbf536c2f436668`.
+- New Actions run [42457009510](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42457009510) is in progress. No CI acceptance is claimed yet.
+- Duplicate PR #19 was closed as superseded; PR #18 is the sole primary P0 recovery PR.
+- Do not merge until latest run completes all Node, room-list, PostgreSQL, OpenMLS, and Rust bridge checks. The replacement fixture should later be compared with the exact original bundle fixture if original bundle bytes become accessible.
