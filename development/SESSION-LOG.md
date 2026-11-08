@@ -45,3 +45,12 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Workflow path filter updated in commit `ee7a877aedb43ca90df8cd410dbf536c2f436668`.
 - Latest run [42457009510](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42457009510) is in progress. Await Node -> room-list -> PostgreSQL -> OpenMLS -> Rust.
 - Closed duplicate PR #19 as superseded; PR #18 is primary. No merge.
+
+
+## 2026-11-08 — Exact biometric vector fixture recovered
+
+- Tree audit found original root source at `inone-development-archive-0.6.0/client-reference/vectors/biometric-vectors.json`; source blob SHA `5a00755946219df2527591f00058a19d167c7811`.
+- Copied exact file into `engine/client-reference/vectors/biometric-vectors.json`; restored blob SHA exactly matches source. Matching client reference file in root has blob SHA `b03e72fe33c79e6b261d980bc86459babf03b388`.
+- Original vector file verified locally: 1 positive, 2 negative cases behave as expected.
+- Temporary generated fixture was superseded; latest PR #18 head `c9eaf6e198d1b65549220d3742b5190d7bbc1a39` contains the exact original fixture.
+- Latest Actions run [42457116231](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42457116231) queued. Run #42457009510 was against the temporary fixture and is superseded.
