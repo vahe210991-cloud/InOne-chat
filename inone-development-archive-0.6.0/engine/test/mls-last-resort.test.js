@@ -23,7 +23,8 @@ async function start() {
   return { base, alice, bob, stop: async () => { await new Promise((r) => srv.server.close(r)); await db?.close(); } };
 }
 
-const claim = (c) => c.raw('GET', `/mls/key-packages/${enc(BOB)}`);
+let claimSequence = 0;
+const claim = (c) => c.raw('POST', `/mls/key-packages/${enc(BOB)}/claim`, { claimId: `last-resort-claim-${String(++claimSequence).padStart(8, '0')}` });
 
 test('обычные пакеты выдаются первыми и расходуются; резервный выдаётся после них и не расходуется', async () => {
   const s = await start();
