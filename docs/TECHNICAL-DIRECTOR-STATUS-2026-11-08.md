@@ -6,6 +6,8 @@ Scope: read-only baseline inspection plus product-decision documentation. No pro
 
 ## Executive status
 
+The documentation baseline and corrected icon specification were merged to `main` through PR #15 (documentation-only). Cross-platform Identity Service implementation is tracked in issue #16. The canonical P0 source import remains blocked by issue #11.
+
 **Provisional overall MVP readiness: 35%.** This is a CTO estimate, not a test-coverage percentage. The existing 0.6 engine foundation and its automated checks are substantial, but the product client, approved visual design-system source, cross-platform Identity Service, localization, and complete MVP delivery are not yet present as integrated, accepted product features.
 
 Do not compare this estimate directly with the earlier 0.7 plan's 45/30/25 weighted projection: that plan predates the newly approved InOne + Propo shared-identity, localization, chat-theme, and alternate-icon requirements. Rebaseline the weighted roadmap after source-of-truth inventory and owner acceptance.
