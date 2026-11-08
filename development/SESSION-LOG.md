@@ -64,3 +64,10 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Checked other active branches (CTO audit, CI validation, recovery, development, engine-poc, localization); none contains Flutter app source.
 - Added `development/REPO-AUDIT-2026-11-08.md` commit `a2f396a7169c5e0220821c44a5ef2e1e87066f89`.
 - This is a hard blocker for hands-on phone Beta 1.0 until original Flutter UI/API artifact and exact design system are imported into GitHub. Do not reconstruct approved UI from memory.
+
+
+## 2026-11-08 — Publish branch completeness fix
+
+- Code review found the publish job would start from clean main and apply the P0 patch but omit the two restored client-reference files that were present during validation.
+- Updated workflow in PR #18 commit `e0a8c08ddf68864963c3f8a65ba16a0612381e39`: fetch exact client-reference files from PR head into new main-based recovery branch before patch application.
+- Run [42457297299](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42457297299) queued on workflow fix. Older exact-fixture run [42457116231](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42457116231) does not validate this publish-job correction.
