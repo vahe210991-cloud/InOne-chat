@@ -3,10 +3,38 @@ import 'package:inone_mobile/core/test_api/screen_api_catalog.dart';
 import 'package:inone_mobile/test_screens.dart';
 
 void main() {
-  test('primary test screens have read-only API probes where supported', () {
-    expect(screenApiProbes['GR-01']?.single.path, '/rooms/mine');
-    expect(screenApiProbes['OR-01']?.single.path, '/orgs/mine');
-    expect(screenApiProbes['PR-05']?.single.path, '/devices/mine');
+  test('at least ten distinct screens are wired to safe backend GET probes', () {
+    const requiredBindings = <String, String>{
+      'GR-01': '/rooms/mine',
+      'GR-03': '/rooms/search?q=:query',
+      'PR-05': '/devices/mine',
+      'PR-07': '/approvals',
+      'OR-01': '/orgs/mine',
+      'OR-03': '/orgs/:id/settings',
+      'RQ-03': '/org-requests',
+      'ST-02': '/config',
+      'ST-03': '/config/public',
+      'SR-01': '/users/search?nickname=:query',
+      'workspace-light': '/rooms/mine',
+      'personal-profile-light': '/profile',
+      'messages-light': '/sync',
+      'notifications-light': '/sync',
+    };
+
+    for (final binding in requiredBindings.entries) {
+      expect(
+        screenApiProbes[binding.key]?.single.path,
+        binding.value,
+        reason: '${binding.key} must retain its backend route binding',
+      );
+    }
+
+    expect(requiredBindings.length, greaterThanOrEqualTo(10));
+    expect(screenApiProbes.keys.toSet().intersection(requiredBindings.keys.toSet()).length,
+        greaterThanOrEqualTo(10));
+  });
+
+  test('public probes do not require an authenticated session', () {
     expect(screenApiProbes['ST-03']?.single.authenticated, isFalse);
   });
 
