@@ -846,7 +846,12 @@ impl Client {
         Ok(())
     }
 
-    fn set_waiting_for_commit(&mut self, room_id: &str, expected_epoch: u64, event_ids: &[String]) -> Result<(), String> {
+    fn set_waiting_for_commit(
+        &mut self,
+        room_id: &str,
+        expected_epoch: u64,
+        event_ids: &[String],
+    ) -> Result<(), String> {
         let event_ids = serde_json::to_string(event_ids).map_err(text)?;
         let updated_at = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -869,19 +874,31 @@ impl Client {
     }
 
     fn clear_waiting_for_commit(&mut self, room_id: &str) -> Result<(), String> {
-        self.meta.execute("DELETE FROM client_waiting_for_commit WHERE room_id = ?1", [room_id]).map_err(text)?;
+        self.meta
+            .execute(
+                "DELETE FROM client_waiting_for_commit WHERE room_id = ?1",
+                [room_id],
+            )
+            .map_err(text)?;
         Ok(())
     }
 
     /// Причина приостановки отправки в комнату, если она рассинхронизирована.
     pub fn desync_reason(&self, room_id: &str) -> Result<Option<String>, String> {
         use rusqlite::OptionalExtension;
-        let desync: Option<String> = self.meta.query_row(
-            "SELECT reason FROM client_desync WHERE room_id = ?1",
-            [room_id],
-            |row| row.get(0),
-        ).optional().map_err(text)?;
-        if desync.as_deref().is_some_and(|reason| reason.starts_with("RecoveryRequired:")) {
+        let desync: Option<String> = self
+            .meta
+            .query_row(
+                "SELECT reason FROM client_desync WHERE room_id = ?1",
+                [room_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(text)?;
+        if desync
+            .as_deref()
+            .is_some_and(|reason| reason.starts_with("RecoveryRequired:"))
+        {
             return Ok(desync);
         }
         if let Some((expected_epoch, event_ids)) = self.waiting_for_commit(room_id)? {
@@ -2213,7 +2230,9 @@ impl Client {
         // Commit. Persist this room-scoped state and retry it on the next sync.
         let future_event_ids: Vec<String> = pending
             .iter()
-            .filter(|(epoch, event_id, _)| *epoch > final_epoch && !self.processed.contains(event_id))
+            .filter(|(epoch, event_id, _)| {
+                *epoch > final_epoch && !self.processed.contains(event_id)
+            })
             .map(|(_, event_id, _)| event_id.clone())
             .collect();
         if !future_event_ids.is_empty() {

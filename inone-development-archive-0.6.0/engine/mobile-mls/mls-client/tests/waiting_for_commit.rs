@@ -35,19 +35,29 @@ fn missing_commit_is_durable_room_scoped_and_recovers_when_commit_arrives() {
     dave.upload_key_packages(1).unwrap();
 
     alice.create_room(target_room).unwrap();
-    alice.invite(target_room, "@bob-waiting:inone.test").unwrap();
+    alice
+        .invite(target_room, "@bob-waiting:inone.test")
+        .unwrap();
     bob.sync().unwrap();
     assert_eq!(bob.local_epoch(target_room), Some(1));
 
     alice.create_room(healthy_room).unwrap();
-    alice.invite(healthy_room, "@bob-waiting:inone.test").unwrap();
+    alice
+        .invite(healthy_room, "@bob-waiting:inone.test")
+        .unwrap();
     bob.sync().unwrap();
     assert_eq!(bob.local_epoch(healthy_room), Some(1));
 
     // The target room advances, then receives an event in the new epoch.
-    alice.invite(target_room, "@dave-waiting:inone.test").unwrap();
-    alice.send_text(target_room, "held until its Commit arrives").unwrap();
-    alice.send_text(healthy_room, "unrelated room remains healthy").unwrap();
+    alice
+        .invite(target_room, "@dave-waiting:inone.test")
+        .unwrap();
+    alice
+        .send_text(target_room, "held until its Commit arrives")
+        .unwrap();
+    alice
+        .send_text(healthy_room, "unrelated room remains healthy")
+        .unwrap();
     assert_eq!(engine.command(&format!("HIDE_COMMIT {target_room}")), "OK");
 
     let first_sync = bob.sync().unwrap();
@@ -65,7 +75,8 @@ fn missing_commit_is_durable_room_scoped_and_recovers_when_commit_arrives() {
         .expect("WaitingForCommit is durable");
     assert!(waiting.starts_with("WaitingForCommit:"), "{waiting}");
     assert!(bob.send_text(target_room, "must remain blocked").is_err());
-    bob.send_text(healthy_room, "healthy room can still send").unwrap();
+    bob.send_text(healthy_room, "healthy room can still send")
+        .unwrap();
 
     // The marker survives reopening the encrypted client database.
     drop(bob);
@@ -76,11 +87,10 @@ fn missing_commit_is_durable_room_scoped_and_recovers_when_commit_arrives() {
         "B_WAITING",
         &bob_db,
     );
-    assert!(
-        bob.desync_reason(target_room)
-            .unwrap()
-            .is_some_and(|reason| reason.starts_with("WaitingForCommit:"))
-    );
+    assert!(bob
+        .desync_reason(target_room)
+        .unwrap()
+        .is_some_and(|reason| reason.starts_with("WaitingForCommit:")));
     assert_eq!(engine.command(&format!("SHOW_COMMIT {target_room}")), "OK");
 
     let recovered = bob.sync().unwrap();
