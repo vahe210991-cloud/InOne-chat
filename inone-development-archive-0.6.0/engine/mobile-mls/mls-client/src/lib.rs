@@ -1222,6 +1222,18 @@ impl Client {
                 continue;
             }
 
+            // A second Welcome for a room already joined by this client is a replay,
+            // even if OpenMLS now reports NoMatchingKeyPackage because the original
+            // KeyPackage was consumed. Detect it before attempting to decrypt/claim keys.
+            // Keep the server item pending and make the room require explicit recovery.
+            if self.groups.contains_key(room_id) {
+                self.record_desync(
+                    room_id,
+                    "Duplicate Welcome for an already joined room; retain Welcome without ACK for explicit recovery",
+                )?;
+                continue;
+            }
+
             let message = match MlsMessageIn::tls_deserialize_exact(&bytes) {
                 Ok(message) => message,
                 Err(error) => {
