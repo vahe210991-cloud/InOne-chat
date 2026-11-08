@@ -598,6 +598,8 @@ class _ApiTestPanelState extends State<ApiTestPanel> {
               const SizedBox(height: 12),
               Text('Адрес сервера', style: Theme.of(context).textTheme.titleSmall),
               SelectableText(session?.baseUrl ?? 'Не задан'),
+              const SizedBox(height: 6),
+              const Text('Локальный тестовый backend: Android-эмулятор использует 10.0.2.2:8080, iOS Simulator — 127.0.0.1:8080. Для физического устройства задайте локальный IP компьютера через INONE_API_BASE_URL.'),
               if (session == null) ...[
                 const SizedBox(height: 8),
                 const Text('Сервер ещё не настроен. Запустите приложение с параметром --dart-define=INONE_API_BASE_URL=https://адрес-вашего-api.'),
