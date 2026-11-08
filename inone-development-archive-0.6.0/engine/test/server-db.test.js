@@ -15,6 +15,7 @@ const PEPPER = randomBytes(24).toString('hex');
 const FIXTURE_1 = randomBytes(16).toString('hex');
 const FIXTURE_2 = randomBytes(16).toString('hex');
 const ALICE = '@alice:inone.test';
+const BOB = '@bob:inone.test';
 const PIN = '246810';
 
 async function start(store) {
