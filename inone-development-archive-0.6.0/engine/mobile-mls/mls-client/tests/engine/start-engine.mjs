@@ -17,6 +17,7 @@ console.log(`URL=http://127.0.0.1:${srv.server.address().port}`);
 const hidden = new Set();
 const badMetadataRooms = new Set();
 const hiddenCommits = new Set();
+const failNextCommitReads = new Set();
 const badEventIds = new Map();
 const welcomeArchive = new Map();
 const replayWelcomeByDevice = new Map();
@@ -48,6 +49,10 @@ store.mlsAckWelcome = (...args) => {
 };
 const originalMlsCommitsSince = store.mlsCommitsSince.bind(store);
 store.mlsCommitsSince = (roomId, since, limit) => {
+  if (failNextCommitReads.has(roomId)) {
+    failNextCommitReads.delete(roomId);
+    throw new Error('simulated transient commit read failure');
+  }
   const rows = originalMlsCommitsSince(roomId, since, limit);
   if (hiddenCommits.has(roomId)) return [];
   return badMetadataRooms.has(roomId)
@@ -92,6 +97,11 @@ rl.on('line', async (line) => {
   }
   if (parts[0] === 'WELCOME_ACK_ATTEMPTED') {
     console.log(replayWelcomeAckAttempts.has(Number(parts[1])) ? 'YES' : 'NO');
+    return;
+  }
+  if (parts[0] === 'FAIL_NEXT_COMMIT_READ') {
+    failNextCommitReads.add(parts[1]);
+    console.log('OK');
     return;
   }
   if (parts[0] === 'HIDE_COMMIT') {
