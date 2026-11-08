@@ -19,6 +19,10 @@ The GitHub repository `vahe210991-cloud/InOne-chat` is the only authoritative pr
 
 **A conversation's memory is not project storage.** Persist useful facts and deliverables in GitHub before ending the session.
 
+## Repository audit
+
+- [Repository / Flutter source audit](REPO-AUDIT-2026-11-08.md) — exact main and branch tree inspection; confirms no full Flutter app source is present in the audited GitHub branches.
+
 ## Recovered source references
 
 - [Recovered source index](recovered-source/README.md)
