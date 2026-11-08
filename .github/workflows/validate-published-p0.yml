@@ -1,0 +1,174 @@
+name: Validate recovered InOne P0 source
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "inone-development-archive-0.6.0/engine/**"
+      - ".github/workflows/validate-published-p0.yml"
+
+permissions:
+  contents: read
+
+# Keep runs for distinct SHAs alive: each job set is a complete, reproducible
+# acceptance run for exactly one PR head, and all independent gates run in parallel.
+concurrency:
+  group: p0-validate-${{ github.event.pull_request.number || github.ref }}-${{ github.sha }}
+  cancel-in-progress: false
+
+env:
+  ENGINE_DIR: inone-development-archive-0.6.0/engine
+  INONE_PIN_PEPPER: ci-only-pepper-not-used-outside-tests-2026
+
+jobs:
+  rust-format:
+    name: Rust format (1.91)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.91"
+          components: rustfmt
+      - name: Apply Rust formatting
+        working-directory: inone-development-archive-0.6.0/engine/mobile-mls
+        run: |
+          cargo fmt --manifest-path mls-client/Cargo.toml
+          cargo fmt --manifest-path mls-bridge/Cargo.toml
+      - name: Commit formatting if needed
+        run: |
+          if ! git diff --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add inone-development-archive-0.6.0/engine/mobile-mls
+            git commit -m "style(mls): apply rustfmt"
+            git push origin HEAD:${{ github.event.pull_request.head.ref }}
+          fi
+      - name: Verify Rust formatting
+        working-directory: inone-development-archive-0.6.0/engine/mobile-mls
+        run: |
+          cargo fmt --manifest-path mls-client/Cargo.toml -- --check
+          cargo fmt --manifest-path mls-bridge/Cargo.toml -- --check
+
+  backend-node:
+    name: Backend Node suite
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: inone-development-archive-0.6.0/engine/package-lock.json
+      - run: npm ci
+        working-directory: ${{ env.ENGINE_DIR }}
+      - run: npm test
+        working-directory: ${{ env.ENGINE_DIR }}
+
+  p0-room-list:
+    name: P0 room-list regression
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: inone-development-archive-0.6.0/engine/package-lock.json
+      - run: npm ci
+        working-directory: ${{ env.ENGINE_DIR }}
+      - run: node --test test/rooms-mine.test.js
+        working-directory: ${{ env.ENGINE_DIR }}
+
+  postgres-integration:
+    name: PostgreSQL integration suite
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: inone_test
+          POSTGRES_USER: inone
+          POSTGRES_PASSWORD: inone
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U inone -d inone_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://inone:inone@localhost:5432/inone_test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: inone-development-archive-0.6.0/engine/package-lock.json
+      - name: Install PostgreSQL 16 client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-16
+          /usr/lib/postgresql/16/bin/pg_dump --version
+      - run: npm ci
+        working-directory: ${{ env.ENGINE_DIR }}
+      - run: npm run test:db
+        working-directory: ${{ env.ENGINE_DIR }}
+
+  openmls-client:
+    name: OpenMLS client check and tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: inone-development-archive-0.6.0/engine/package-lock.json
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.91"
+      - run: npm ci
+        working-directory: ${{ env.ENGINE_DIR }}
+      - name: Check all OpenMLS client targets
+        working-directory: inone-development-archive-0.6.0/engine/mobile-mls/mls-client
+        run: cargo check --locked --all-targets
+      - name: Run all OpenMLS client tests
+        working-directory: inone-development-archive-0.6.0/engine/mobile-mls/mls-client
+        run: cargo test --locked --no-fail-fast
+
+  rust-bridge:
+    name: Rust bridge check and tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.91"
+      - name: Check all bridge targets
+        working-directory: inone-development-archive-0.6.0/engine/mobile-mls/mls-bridge
+        run: cargo check --locked --all-targets
+      - name: Run bridge tests
+        working-directory: inone-development-archive-0.6.0/engine/mobile-mls/mls-bridge
+        run: cargo test --locked --no-fail-fast

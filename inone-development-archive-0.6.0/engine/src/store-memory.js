@@ -66,7 +66,9 @@ export function createMemoryStore({ pinPepper }) {
   const sends = new Map();         // (отправитель, тип, номер) -> время отправки
   const rooms = new Map();
   const mlsPackages = [];
+  const mlsPackageClaims = new Map();
   const mlsGroups = new Map();
+  const mlsCommitOperations = new Map();
   const mlsCommits = [];
   const mlsWelcomes = [];
   const deviceRemovals = [];
@@ -591,6 +593,15 @@ export function createMemoryStore({ pinPepper }) {
       }
       return false;
     },
+    // Комнаты, где пользователь участник (G1, этап 0.7.3): без чужих комнат.
+    roomsOfUser(userId) {
+      const out = [];
+      for (const [roomId, r] of rooms.entries()) {
+        if (![...r.members].includes(userId)) continue;
+        out.push({ roomId, kind: r.kind, name: r.name ?? null, owner: r.owner, isAdmin: [...r.admins].includes(userId) });
+      }
+      return out.sort((a, b) => (a.roomId < b.roomId ? -1 : a.roomId > b.roomId ? 1 : 0));
+    },
     roomKind(roomId) {
       return rooms.get(roomId)?.kind ?? null;
     },
@@ -688,17 +699,50 @@ export function createMemoryStore({ pinPepper }) {
         mlsPackages.push({ id: mlsPackages.length + 1, userId, deviceId, package: Buffer.from(bytes), createdAt, consumedAt: null });
       }
     },
-    mlsClaimKeyPackages(userId, nowMs) {
-      const out = [];
-      const devices = [...new Set(mlsPackages.filter((p) => p.userId === userId && p.consumedAt === null).map((p) => p.deviceId))];
-      for (const deviceId of devices) {
-        const next = mlsPackages.find((p) => p.userId === userId && p.deviceId === deviceId && p.consumedAt === null && !p.lastResort && p.createdAt >= nowMs - MLS_REGULAR_MAX_AGE_MS);
-        if (next) { next.consumedAt = nowMs; out.push({ deviceId, package: Buffer.from(next.package) }); continue; }
-        const fallback = mlsPackages.find((p) => p.userId === userId && p.deviceId === deviceId && p.lastResort && p.createdAt >= nowMs - MLS_LAST_RESORT_MAX_AGE_MS);
-        if (fallback) out.push({ deviceId, package: Buffer.from(fallback.package) });
+    mlsClaimKeyPackages(targetUserId, requesterUserId, requesterDeviceId, claimId, roomId, nowMs) {
+      const claimKey = JSON.stringify([targetUserId, requesterUserId, requesterDeviceId, claimId]);
+      const previous = mlsPackageClaims.get(claimKey);
+      if (previous) {
+        if (previous.state === 'released') return { ok: false, reason: 'claim_released' };
+        if (previous.state === 'committed') return { ok: false, reason: 'claim_committed' };
+        if (roomId && previous.roomId && previous.roomId !== roomId) return { ok: false, reason: 'claim_room_mismatch' };
+        if (roomId && !previous.roomId) previous.roomId = roomId;
+        return { ok: true, packages: previous.packages.map((item) => ({
+          deviceId: item.deviceId, packageId: item.packageId, package: Buffer.from(item.package),
+        })) };
       }
-      return out;
+      const out = [];
+      const devices = [...new Set(mlsPackages.filter((p) => p.userId === targetUserId && p.consumedAt === null).map((p) => p.deviceId))].sort();
+      for (const deviceId of devices) {
+        const next = mlsPackages.find((p) => p.userId === targetUserId && p.deviceId === deviceId && p.consumedAt === null && !p.lastResort && p.createdAt >= nowMs - MLS_REGULAR_MAX_AGE_MS);
+        if (next) { next.consumedAt = nowMs; out.push({ deviceId, packageId: next.id, package: Buffer.from(next.package) }); continue; }
+        const fallback = [...mlsPackages].reverse().find((p) => p.userId === targetUserId && p.deviceId === deviceId && p.lastResort && p.createdAt >= nowMs - MLS_LAST_RESORT_MAX_AGE_MS);
+        if (fallback) out.push({ deviceId, packageId: fallback.id, package: Buffer.from(fallback.package) });
+      }
+      mlsPackageClaims.set(claimKey, { roomId: roomId ?? null, state: 'reserved', packages: out.map((item) => ({
+        deviceId: item.deviceId, packageId: item.packageId, package: Buffer.from(item.package),
+      })) });
+      return { ok: true, packages: out };
     },
+    mlsReleaseKeyPackageClaim(requesterUserId, requesterDeviceId, claimId) {
+      const matches = [...mlsPackageClaims.entries()].filter(([key]) => {
+        const [target, requester, device, id] = JSON.parse(key);
+        return requester === requesterUserId && device === requesterDeviceId && id === claimId;
+      });
+      if (matches.length === 0) return { ok: true, released: false };
+      if (matches.length > 1) return { ok: false, reason: 'claim_ambiguous' };
+      const [key, claim] = matches[0];
+      if (claim.state === 'committed') return { ok: false, reason: 'claim_committed' };
+      if (claim.state === 'released') return { ok: true, released: true };
+      for (const item of claim.packages) {
+        const pack = mlsPackages.find((p) => p.id === item.packageId);
+        if (pack && !pack.lastResort) pack.consumedAt = null;
+      }
+      claim.state = 'released';
+      mlsPackageClaims.set(key, claim);
+      return { ok: true, released: true };
+    },
+
     ping() {
       return true;
     },
@@ -835,10 +879,39 @@ export function createMemoryStore({ pinPepper }) {
     mlsGroupEpoch(roomId) {
       return mlsGroups.get(roomId) ?? 0;
     },
-    /** Применяет коммит, только если базовая эпоха совпадает с текущей. Проверка и запись — одним шагом. */
-    mlsApplyCommit(roomId, baseEpoch, { senderId, commit, welcomes, changes = { adds: [], removes: [] } }, nowMs) {
+    mlsCommitOperation(roomId, senderId, deviceId, clientOperationId, requestFingerprint) {
+      const key = JSON.stringify([roomId, senderId, deviceId, clientOperationId]);
+      const previous = mlsCommitOperations.get(key);
+      if (!previous) return null;
+      if (previous.requestFingerprint !== requestFingerprint) return { ok: false, reason: 'operation_id_reused' };
+      return { ok: true, epoch: previous.epoch, replayed: true };
+    },
+    /** Применяет коммит и idempotency receipt одним синхронным шагом. */
+    mlsApplyCommit(roomId, baseEpoch, { senderId, deviceId, clientOperationId, requestFingerprint, keyPackageClaimId, commit, welcomes, changes = { adds: [], removes: [] } }, nowMs) {
+      const operationKey = clientOperationId ? JSON.stringify([roomId, senderId, deviceId, clientOperationId]) : null;
+      if (operationKey) {
+        const previous = mlsCommitOperations.get(operationKey);
+        if (previous) {
+          if (previous.requestFingerprint !== requestFingerprint) return { ok: false, reason: 'operation_id_reused', epoch: previous.epoch };
+          return { ok: true, epoch: previous.epoch, replayed: true };
+        }
+      }
       const current = mlsGroups.get(roomId) ?? 0;
-      if (current !== baseEpoch) return { ok: false, epoch: current };
+      if (current !== baseEpoch) return { ok: false, reason: 'epoch_outdated', epoch: current };
+      let reservedClaim = null;
+      if (keyPackageClaimId) {
+        const targetUserId = changes.adds?.length === 1 ? changes.adds[0] : null;
+        if (!targetUserId) return { ok: false, reason: 'claim_mismatch', epoch: current };
+        const claimKey = JSON.stringify([targetUserId, senderId, deviceId, keyPackageClaimId]);
+        reservedClaim = mlsPackageClaims.get(claimKey);
+        if (!reservedClaim) return { ok: false, reason: 'claim_missing', epoch: current };
+        if (reservedClaim.roomId !== roomId) return { ok: false, reason: 'claim_room_mismatch', epoch: current };
+        if (reservedClaim.state === 'released') return { ok: false, reason: 'claim_released', epoch: current };
+        if (reservedClaim.state === 'committed') return { ok: false, reason: 'claim_committed', epoch: current };
+        const claimedDevices = reservedClaim.packages.map((item) => item.deviceId).sort();
+        const welcomeDevices = welcomes.filter((item) => item.userId === targetUserId).map((item) => item.deviceId).sort();
+        if (JSON.stringify(claimedDevices) !== JSON.stringify(welcomeDevices)) return { ok: false, reason: 'claim_mismatch', epoch: current };
+      }
       const room = rooms.get(roomId);
       for (const deviceId of changes.removeDevices ?? []) {
         for (const r of deviceRemovals) if (r.roomId === roomId && r.deviceId === deviceId && r.doneAt === null) r.doneAt = nowMs;
@@ -851,15 +924,17 @@ export function createMemoryStore({ pinPepper }) {
       }
       const next = current + 1;
       mlsGroups.set(roomId, next);
-      mlsCommits.push({ roomId, epoch: next, senderId, commit: Buffer.from(commit), createdAt: nowMs });
+      mlsCommits.push({ roomId, epoch: next, senderId, commit: Buffer.from(commit), changes: structuredClone({ adds: changes.adds ?? [], removes: changes.removes ?? [], removeDevices: changes.removeDevices ?? [] }), welcomeRecipients: welcomes.map((w) => ({ userId: w.userId, deviceId: w.deviceId })), createdAt: nowMs });
       for (const w of welcomes) {
         mlsWelcomes.push({ id: mlsWelcomes.length + 1, roomId, epoch: next, userId: w.userId, deviceId: w.deviceId, welcome: Buffer.from(w.welcome), createdAt: nowMs, ackedAt: null });
       }
-      return { ok: true, epoch: next };
+      if (operationKey) mlsCommitOperations.set(operationKey, { requestFingerprint, epoch: next });
+      if (reservedClaim) reservedClaim.state = 'committed';
+      return { ok: true, epoch: next, replayed: false };
     },
     mlsCommitsSince(roomId, since, limit) {
       return mlsCommits.filter((c) => c.roomId === roomId && c.epoch > since).sort((a, b) => a.epoch - b.epoch).slice(0, limit)
-        .map((c) => ({ epoch: c.epoch, senderId: c.senderId, commit: Buffer.from(c.commit) }));
+        .map((c) => ({ epoch: c.epoch, senderId: c.senderId, commit: Buffer.from(c.commit), changes: c.changes ? structuredClone(c.changes) : null, welcomeRecipients: c.welcomeRecipients ? structuredClone(c.welcomeRecipients) : null }));
     },
     mlsPendingWelcomes(userId, deviceId) {
       return mlsWelcomes.filter((w) => w.userId === userId && w.deviceId === deviceId && w.ackedAt === null)

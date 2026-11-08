@@ -318,6 +318,8 @@ CREATE TABLE mls_commits (
   epoch BIGINT NOT NULL,
   sender_id TEXT NOT NULL,
   commit BYTEA NOT NULL,
+  changes JSONB,
+  welcome_recipients JSONB,
   created_at BIGINT NOT NULL,
   PRIMARY KEY (room_id, epoch)
 );
@@ -520,3 +522,34 @@ CREATE TABLE admin_action_log (
   detail TEXT,
   at BIGINT NOT NULL
 );
+
+-- Durable MLS KeyPackage claim results (см. migrations/0026-mls-key-package-claim-replay.sql).
+CREATE TABLE mls_key_package_claims (
+  target_user_id TEXT NOT NULL REFERENCES accounts (user_id) ON DELETE CASCADE,
+  requester_user_id TEXT NOT NULL REFERENCES accounts (user_id) ON DELETE CASCADE,
+  requester_device_id TEXT NOT NULL,
+  claim_id TEXT NOT NULL,
+  room_id TEXT REFERENCES rooms (room_id) ON DELETE CASCADE,
+  state TEXT NOT NULL DEFAULT 'reserved' CHECK (state IN ('reserved', 'committed', 'released')),
+  result JSONB,
+  created_at BIGINT NOT NULL,
+  committed_at BIGINT,
+  released_at BIGINT,
+  PRIMARY KEY (target_user_id, requester_user_id, requester_device_id, claim_id)
+);
+CREATE INDEX mls_key_package_claims_created ON mls_key_package_claims (created_at);
+CREATE INDEX mls_key_package_claims_room_state ON mls_key_package_claims (room_id, state);
+
+-- A membership commit retry must resolve to the exact accepted epoch.
+CREATE TABLE IF NOT EXISTS mls_commit_operations (
+  room_id TEXT NOT NULL REFERENCES rooms (room_id) ON DELETE CASCADE,
+  sender_id TEXT NOT NULL REFERENCES accounts (user_id) ON DELETE CASCADE,
+  device_id TEXT NOT NULL,
+  client_operation_id TEXT NOT NULL CHECK (client_operation_id ~ '^[A-Za-z0-9_-]{16,128}$'),
+  request_fingerprint CHAR(64) NOT NULL CHECK (request_fingerprint ~ '^[0-9a-f]{64}$'),
+  resulting_epoch BIGINT NOT NULL CHECK (resulting_epoch >= 1),
+  created_at BIGINT NOT NULL,
+  PRIMARY KEY (room_id, sender_id, device_id, client_operation_id)
+);
+CREATE INDEX IF NOT EXISTS mls_commit_operations_created
+  ON mls_commit_operations (created_at);

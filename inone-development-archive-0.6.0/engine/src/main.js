@@ -26,6 +26,8 @@ export async function startServer({ config, logger = createLogger({ level: confi
       from: config.smtpFrom,
       logger,
     })
+    : config.testUi
+    ? { send: async (m) => { process.stdout.write(`[тестовое письмо] ${m.to} | ${m.subject} | ${m.text}\n`); } }
     : undefined;
   const app = createServer({
     pinPepper: config.pinPepper,

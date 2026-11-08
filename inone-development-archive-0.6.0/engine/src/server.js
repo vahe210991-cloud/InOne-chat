@@ -48,6 +48,24 @@ const SEND_DEDUP_MS = 7 * 24 * 60 * 60 * 1000;             // повтор от�
 const MAX_LOCK_MS = 24 * 60 * 60 * 1000;
 
 const sha = (v) => createHash('sha256').update(v).digest('hex');
+const mlsCommitFingerprint = (roomId, senderId, deviceId, request) => {
+  const welcomes = request.welcomes
+    .map((w) => ({ userId: w.userId, deviceId: w.deviceId, welcome: w.welcome.toString('base64') }))
+    .sort((a, b) => a.userId.localeCompare(b.userId) || a.deviceId.localeCompare(b.deviceId) || a.welcome.localeCompare(b.welcome));
+  return sha(JSON.stringify({
+    version: 1, roomId, senderId, deviceId,
+    clientOperationId: request.clientOperationId,
+    keyPackageClaimId: request.keyPackageClaimId,
+    epoch: request.epoch,
+    commit: request.commit.toString('base64'),
+    changes: {
+      adds: [...request.changes.adds].sort(),
+      removes: [...request.changes.removes].sort(),
+      removeDevices: [...request.changes.removeDevices].sort(),
+    },
+    welcomes,
+  }));
+};
 /** Ключевой хэш (HMAC с секретным перцем). Без перца значение из базы не проверить и не подобрать (C-08). */
 const keyedHash = (pepper, label, value) => createHmac('sha256', pepper).update(`${label}|${value}`).digest('hex');
 const sameHex = (a, b) => {
@@ -108,8 +126,14 @@ const htmlPage = (title, bodyHtml) =>
 
 // Тестовый экран (шаг 5.9): только при testUi, только файлы из списка; в продакшене выключен.
 const TEST_UI_FILES = {
-  'orgs.html': { name: 'orgs.html', type: 'text/html; charset=utf-8' },
-  'org-picker.mjs': { name: 'org-picker.mjs', type: 'text/javascript; charset=utf-8' },
+  'orgs.html': { dir: 'client-test-ui', name: 'orgs.html', type: 'text/html; charset=utf-8' },
+  'org-picker.mjs': { dir: 'client-test-ui', name: 'org-picker.mjs', type: 'text/javascript; charset=utf-8' },
+  'auth/index.html': { dir: 'client-screens', name: 'auth/index.html', type: 'text/html; charset=utf-8' },
+  'auth/screens.mjs': { dir: 'client-screens', name: 'auth/screens.mjs', type: 'text/javascript; charset=utf-8' },
+  'auth/flow.mjs': { dir: 'client-screens', name: 'auth/flow.mjs', type: 'text/javascript; charset=utf-8' },
+  'common/api.mjs': { dir: 'client-screens', name: 'common/api.mjs', type: 'text/javascript; charset=utf-8' },
+  'common/state.mjs': { dir: 'client-screens', name: 'common/state.mjs', type: 'text/javascript; charset=utf-8' },
+  'common/device.mjs': { dir: 'client-screens', name: 'common/device.mjs', type: 'text/javascript; charset=utf-8' },
 };
 export function createServer({ pinPepper, mailer: externalMailer, store, trustProxy = false, sms, requirePhone = false, registrationMode = 'verified', sessionTtl = {}, objectStore, objectSecret = randomBytes(32).toString('hex'), filesDir = null, quotaBytes = null, pushSender = null, docsSecret = null, defaultOrgAutoJoin = false, testUi = false, providers = {}, providerKeysSource = null, publicUrl = 'https://inone.test', rateLimits = {}, bodyLimit = 4 * 1024 * 1024, logger = null, wireLogLimit = 2000, smsEnabled = true, phoneBlockedCountries = [], phoneAllowedCountries = [], devEmailCode = '' } = {}) {
   // Аккаунты и PIN: в базе (store.js) или в памяти по умолчанию (store-memory.js).
@@ -947,7 +971,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         const file = TEST_UI_FILES[p.slice('/test-ui/'.length)];
         if (!file) return send(res, 404, { error: 'not found' });
         res.writeHead(200, { 'content-type': file.type, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer' });
-        return res.end(readFileSync(new URL(`../client-test-ui/${file.name}`, import.meta.url)));
+        return res.end(readFileSync(new URL(`../${file.dir}/${file.name}`, import.meta.url)));
       }
       if (req.method === 'GET' && p === '/users/search') {
         const d = await authed(req);
@@ -2010,6 +2034,20 @@ if (req.method === 'POST' && p === '/login') {
       }
 
       // Поиск публичных групп: только публичные, только по названию, без списка участников.
+      // Комнаты текущего пользователя (G1, этап 0.7.3): для списка чатов. Только свои членства.
+      if (req.method === 'GET' && p === '/rooms/mine') {
+        const d = await authed(req);
+        if (!d) return send(res, 401, { error: 'unauthorized' });
+        const rows = await storage.roomsOfUser(d.userId);
+        return send(res, 200, {
+          rooms: rows.map((r) => ({
+            roomId: r.roomId,
+            kind: r.kind ?? 'group',
+            name: r.name ?? null,
+            role: r.owner === d.userId ? 'owner' : r.isAdmin ? 'admin' : 'member',
+          })),
+        });
+      }
       if (req.method === 'GET' && p === '/rooms/search') {
         const d = await authed(req);
         if (!d) return send(res, 401, { error: 'unauthorized' });
@@ -2149,11 +2187,40 @@ if (req.method === 'POST' && p === '/login') {
               const d = await authed(req);
               if (!d) return send(res, 401, { error: 'unauthorized' });
               const roomId = decodeURIComponent(mlsCommitRoute[1]);
-              const r = await storage.getRoom(roomId);
-              if (!r) return send(res, 404, { error: 'group not found' });
-              if (!r.members.includes(d.userId)) return send(res, 403, { error: 'not a member' });
               const checked = parseCommitRequest(body);
               if (checked.error) return send(res, 400, { error: checked.error });
+              const { clientOperationId } = checked.value;
+              const requestFingerprint = clientOperationId
+                ? mlsCommitFingerprint(roomId, d.userId, d.deviceId, checked.value)
+                : null;
+
+              // Replay precedes membership checks: an accepted commit may have removed its sender.
+              if (clientOperationId) {
+                const replay = await storage.mlsCommitOperation(roomId, d.userId, d.deviceId, clientOperationId, requestFingerprint);
+                if (replay) {
+                  if (!replay.ok && replay.reason === 'operation_id_reused') {
+                    return send(res, 409, { error: 'clientOperationId was reused with a different request', code: 'operation_id_reused' });
+                  }
+                  return send(res, 200, { epoch: replay.epoch, replayed: true });
+                }
+              }
+
+              const r = await storage.getRoom(roomId);
+              if (!r) return send(res, 404, { error: 'group not found' });
+              // Close the race between the first replay lookup and the room snapshot.
+              if (clientOperationId) {
+                const replay = await storage.mlsCommitOperation(roomId, d.userId, d.deviceId, clientOperationId, requestFingerprint);
+                if (replay) {
+                  if (!replay.ok && replay.reason === 'operation_id_reused') {
+                    return send(res, 409, { error: 'clientOperationId was reused with a different request', code: 'operation_id_reused' });
+                  }
+                  return send(res, 200, { epoch: replay.epoch, replayed: true });
+                }
+              }
+              if (!r.members.includes(d.userId)) return send(res, 403, { error: 'not a member' });
+              // The epoch check is repeated under the PostgreSQL room lock in mlsApplyCommit.
+              // Do not reject here: a concurrent exact retry may have been accepted while this request waited.
+
               const { adds, removes } = checked.value.changes;
               const isOwner = d.userId === r.owner;
               for (const t of removes) {
@@ -2171,22 +2238,36 @@ if (req.method === 'POST' && p === '/login') {
                 if (!checked.value.welcomes.some((w) => w.userId === u)) return send(res, 400, { error: `added member needs a welcome: ${u}` });
               }
               const pendingDevices = await storage.mlsPendingRemovalDevices(roomId);
-        for (const device of checked.value.changes.removeDevices) {
-          if (!pendingDevices.includes(device)) return send(res, 400, { error: `device is not waiting for removal in this group: ${device}` });
-        }
-        const afterMembers = new Set([...r.members.filter((m) => !removes.includes(m)), ...adds]);
-        const maxMembers = await effectiveMaxMembers(roomId);
-        if (afterMembers.size > maxMembers) return send(res, 409, { error: 'group is full', limit: maxMembers });
+              for (const device of checked.value.changes.removeDevices) {
+                if (!pendingDevices.includes(device)) return send(res, 400, { error: `device is not waiting for removal in this group: ${device}` });
+              }
+              const afterMembers = new Set([...r.members.filter((m) => !removes.includes(m)), ...adds]);
+              const maxMembers = await effectiveMaxMembers(roomId);
+              if (afterMembers.size > maxMembers) return send(res, 409, { error: 'group is full', limit: maxMembers });
               for (const w of checked.value.welcomes) {
                 if (!afterMembers.has(w.userId)) return send(res, 400, { error: 'welcome recipient is not a member' });
                 if (!(await storage.hasAccount(w.userId))) return send(res, 400, { error: 'welcome recipient is not a known account' });
               }
-              const result = await storage.mlsApplyCommit(roomId, checked.value.epoch, { senderId: d.userId, commit: checked.value.commit, welcomes: checked.value.welcomes, changes: checked.value.changes }, now());
-              if (result.ok && (adds.length > 0 || removes.length > 0)) await markRoomChanged(roomId, [...new Set([...r.members, ...adds])]);
+              const result = await storage.mlsApplyCommit(roomId, checked.value.epoch, {
+                senderId: d.userId, deviceId: d.deviceId, clientOperationId, requestFingerprint, keyPackageClaimId: checked.value.keyPackageClaimId,
+                commit: checked.value.commit, welcomes: checked.value.welcomes, changes: checked.value.changes,
+              }, now());
+              if (!result.ok && result.reason === 'operation_id_reused') {
+                return send(res, 409, { error: 'clientOperationId was reused with a different request', code: 'operation_id_reused' });
+              }
+              if (!result.ok && result.reason === 'epoch_outdated') {
+                return send(res, 409, { error: 'epoch is outdated', code: 'epoch_outdated', currentEpoch: result.epoch });
+              }
+              if (!result.ok && result.reason?.startsWith('claim_')) {
+                return send(res, 409, { error: result.reason, code: result.reason });
+              }
+              if (result.ok && !result.replayed && (adds.length > 0 || removes.length > 0)) {
+                await markRoomChanged(roomId, [...new Set([...r.members, ...adds])]);
+              }
               if (!result.ok && result.reason === 'already-member') return send(res, 409, { error: 'already a member' });
               if (!result.ok && result.reason === 'recipient') return send(res, 400, { error: 'welcome recipient is not a known account' });
-              if (!result.ok) return send(res, 409, { error: 'epoch is outdated', currentEpoch: result.epoch });
-              return send(res, 200, { epoch: result.epoch });
+              if (!result.ok) return send(res, 409, { error: 'epoch is outdated', code: 'epoch_outdated', currentEpoch: result.epoch });
+              return send(res, 200, { epoch: result.epoch, replayed: !!result.replayed });
             }
             // Сообщение группы MLS: сервер проверяет группу и эпоху в открытом заголовке, шифротекст не читает.
             const mlsMessageRoute = p.match(/^\/mls\/groups\/([^/]+)\/messages$/);
@@ -2270,7 +2351,7 @@ if (req.method === 'POST' && p === '/login') {
               const since = Number(new URL(req.url, 'http://local').searchParams.get('since') ?? 0);
               if (!Number.isSafeInteger(since) || since < 0) return send(res, 400, { error: 'since must be a non-negative integer' });
               const rows = await storage.mlsCommitsSince(roomId, since, 100);
-              return send(res, 200, { commits: rows.map((c) => ({ epoch: c.epoch, sender: c.senderId, commit: c.commit.toString('base64') })) });
+              return send(res, 200, { commits: rows.map((c) => ({ epoch: c.epoch, sender: c.senderId, commit: c.commit.toString('base64'), changes: c.changes ?? null, welcomeRecipients: c.welcomeRecipients ?? null })) });
             }
             if (req.method === 'GET' && p === '/mls/welcomes') {
               const d = await authed(req);
@@ -2310,14 +2391,57 @@ if (req.method === 'POST' && p === '/login') {
         await storage.mlsStoreLastResort(d.userId, d.deviceId, checked.value[0], now());
         return send(res, 200, { stored: true });
       }
-      const mlsClaim = p.match(/^\/mls\/key-packages\/([^/]+)$/);
-      if (mlsClaim && req.method === 'GET') {
+      const mlsClaims = p.match(/^\/mls\/key-packages\/([^/]+)\/claims$/);
+      if (mlsClaims && req.method === 'POST') {
         const d = await authed(req);
         if (!d) return send(res, 401, { error: 'unauthorized' });
+        const targetUserId = decodeURIComponent(mlsClaims[1]);
+        const { claimId, roomId } = body ?? {};
+        if (typeof claimId !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(claimId)) {
+          return send(res, 400, { error: 'claimId must be 16-128 URL-safe characters' });
+        }
+        if (typeof roomId !== 'string' || roomId.length < 1 || roomId.length > 200) {
+          return send(res, 400, { error: 'roomId is required for a KeyPackage reservation' });
+        }
+        const room = await storage.getRoom(roomId);
+        if (!room || !room.members.includes(d.userId)) return send(res, 403, { error: 'not a room member' });
+        if (room.members.includes(targetUserId)) return send(res, 409, { error: 'already a member', code: 'already_member' });
+        if (d.userId !== room.owner && !hasCapability(room, d.userId, 'invite_members')) {
+          return send(res, 403, { error: 'missing capability: invite_members' });
+        }
+        if (!(await storage.hasAccount(targetUserId))) return send(res, 400, { error: 'unknown account' });
         const rate = await checkRate('mlsClaimPerAccount', d.userId);
         if (!rate.allowed) return send(res, 429, { error: 'too many key requests, try later' });
-        const claimed = await storage.mlsClaimKeyPackages(decodeURIComponent(mlsClaim[1]), now());
-        return send(res, 200, { packages: claimed.map((c) => ({ deviceId: c.deviceId, package: c.package.toString('base64') })) });
+        const claimed = await storage.mlsClaimKeyPackages(targetUserId, d.userId, d.deviceId, claimId, roomId, now());
+        if (!claimed.ok) return send(res, 409, { error: claimed.reason, code: claimed.reason });
+        return send(res, 200, {
+          claimId, roomId,
+          packages: claimed.packages.map((item) => ({ deviceId: item.deviceId, package: item.package.toString('base64') })),
+        });
+      }
+      const mlsReleaseClaim = p.match(/^\/mls\/key-packages\/claims\/([^/]+)$/);
+      if (mlsReleaseClaim && req.method === 'DELETE') {
+        const d = await authed(req);
+        if (!d) return send(res, 401, { error: 'unauthorized' });
+        const claimId = decodeURIComponent(mlsReleaseClaim[1]);
+        if (!/^[A-Za-z0-9_-]{16,128}$/.test(claimId)) return send(res, 400, { error: 'invalid claimId' });
+        const result = await storage.mlsReleaseKeyPackageClaim(d.userId, d.deviceId, claimId, now());
+        if (!result.ok) return send(res, 409, { error: result.reason, code: result.reason });
+        return send(res, 200, { released: result.released });
+      }
+      const mlsClaim = p.match(/^\/mls\/key-packages\/([^/]+)\/claim$/);
+      if (mlsClaim && req.method === 'POST') {
+        const d = await authed(req);
+        if (!d) return send(res, 401, { error: 'unauthorized' });
+        const claimId = body?.claimId;
+        if (typeof claimId !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(claimId)) {
+          return send(res, 400, { error: 'claimId must be 16-128 URL-safe characters' });
+        }
+        const rate = await checkRate('mlsClaimPerAccount', d.userId);
+        if (!rate.allowed) return send(res, 429, { error: 'too many key requests, try later' });
+        const claimed = await storage.mlsClaimKeyPackages(decodeURIComponent(mlsClaim[1]), d.userId, d.deviceId, claimId, null, now());
+        if (!claimed.ok) return send(res, 409, { error: claimed.reason, code: claimed.reason });
+        return send(res, 200, { claimId, packages: claimed.packages.map((item) => ({ deviceId: item.deviceId, package: item.package.toString('base64') })) });
       }
 
       // Оформление группы. Право — edit_group_appearance.

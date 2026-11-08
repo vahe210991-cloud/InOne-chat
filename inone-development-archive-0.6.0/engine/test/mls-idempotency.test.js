@@ -19,7 +19,7 @@ async function start() {
   await new Promise((resolve) => srv.server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${srv.server.address().port}`;
   const alice = await ChatClient.create(base, ALICE, 'A_PHONE', PW);
-  return { alice, stop: async () => { await new Promise((r) => srv.server.close(r)); await db?.close(); } };
+  return { base, alice, stop: async () => { await new Promise((r) => srv.server.close(r)); await db?.close(); } };
 }
 
 test('повтор с тем же clientMessageId возвращает первое сообщение и не создаёт второе', async () => {
@@ -58,6 +58,103 @@ test('параллельные повторы с одним clientMessageId со
     }
     const events = (await s.alice.raw('GET', `/rooms/${enc(ROOM2)}/events`)).events.filter((e) => e.type === 'm.room.encrypted');
     assert.equal(events.length, attempts, 'по одному сообщению на каждый идентификатор');
+  } finally {
+    await s.stop();
+  }
+});
+
+const COMMIT_ROOM = '!commit-idem:inone.test';
+const COMMIT_ROOM_RACE = '!commit-idem-race:inone.test';
+const COMMIT_ROOM_STALE = '!commit-idem-stale:inone.test';
+const BOB = '@bob:inone.test';
+const commitPath = (room) => `/mls/groups/${enc(room)}/commits`;
+
+test('membership commit retries replay the accepted epoch; operation ID reuse conflicts', async () => {
+  const s = await start();
+  try {
+    const bob = await ChatClient.create(s.base, BOB, 'B_PHONE', PW);
+    await s.alice.createRoom(COMMIT_ROOM, [ALICE]);
+    const add = {
+      epoch: 0,
+      commit: b64('ADD-BOB-EXACT'),
+      changes: { adds: [BOB], removes: [] },
+      welcomes: [{ userId: BOB, deviceId: 'B_PHONE', welcome: b64('WELCOME-BOB-EXACT') }],
+      clientOperationId: 'commit-add-000000000001',
+    };
+    const first = await s.alice.raw('POST', commitPath(COMMIT_ROOM), add);
+    const replay = await s.alice.raw('POST', commitPath(COMMIT_ROOM), add);
+    assert.equal(first.epoch, 1);
+    assert.equal(replay.epoch, 1);
+    assert.equal(replay.replayed, true);
+    const history = await s.alice.raw('GET', `/mls/groups/${enc(COMMIT_ROOM)}/commits?since=0`);
+    assert.equal(history.commits.length, 1, 'exact replay does not append another commit');
+
+    const remove = {
+      epoch: 1,
+      commit: b64('BOB-SELF-REMOVE'),
+      changes: { adds: [], removes: [BOB] },
+      clientOperationId: 'commit-remove-0000000001',
+    };
+    const removed = await bob.raw('POST', commitPath(COMMIT_ROOM), remove);
+    assert.equal(removed.epoch, 2);
+    const removedReplay = await bob.raw('POST', commitPath(COMMIT_ROOM), remove);
+    assert.equal(removedReplay.epoch, 2, 'removed sender can still receive original commit ACK');
+    assert.equal(removedReplay.replayed, true);
+    await assert.rejects(
+      bob.raw('POST', commitPath(COMMIT_ROOM), { ...remove, commit: b64('DIFFERENT-BYTES') }),
+      (error) => error.status === 409 && error.message.includes('"code":"operation_id_reused"'),
+    );
+    const finalHistory = await s.alice.raw('GET', `/mls/groups/${enc(COMMIT_ROOM)}/commits?since=0`);
+    assert.equal(finalHistory.commits.length, 2, 'conflicting replay does not append a commit');
+  } finally {
+    await s.stop();
+  }
+});
+
+test('concurrent membership commit retries with one operation ID advance one epoch', async () => {
+  const s = await start();
+  try {
+    await s.alice.createRoom(COMMIT_ROOM_RACE, [ALICE]);
+    const body = {
+      epoch: 0,
+      commit: b64('RACE-COMMIT'),
+      changes: { adds: [], removes: [] },
+      clientOperationId: 'commit-race-000000000001',
+    };
+    const results = await Promise.all([
+      s.alice.raw('POST', commitPath(COMMIT_ROOM_RACE), body),
+      s.alice.raw('POST', commitPath(COMMIT_ROOM_RACE), body),
+    ]);
+    assert.deepEqual(results.map((result) => result.epoch), [1, 1]);
+    assert.equal(results.filter((result) => result.replayed).length, 1);
+    const history = await s.alice.raw('GET', `/mls/groups/${enc(COMMIT_ROOM_RACE)}/commits?since=0`);
+    assert.equal(history.commits.length, 1);
+  } finally {
+    await s.stop();
+  }
+});
+
+test('epoch_outdated is structured and does not reserve the operation ID', async () => {
+  const s = await start();
+  try {
+    await s.alice.createRoom(COMMIT_ROOM_STALE, [ALICE]);
+    await s.alice.raw('POST', commitPath(COMMIT_ROOM_STALE), {
+      epoch: 0, commit: b64('ADVANCE'), changes: { adds: [], removes: [] },
+    });
+    const stale = {
+      epoch: 0,
+      commit: b64('STALE-ATTEMPT'),
+      changes: { adds: [], removes: [] },
+      clientOperationId: 'commit-stale-0000000001',
+    };
+    await assert.rejects(
+      s.alice.raw('POST', commitPath(COMMIT_ROOM_STALE), stale),
+      (error) => error.status === 409 && error.message.includes('"code":"epoch_outdated"'),
+    );
+    const accepted = await s.alice.raw('POST', commitPath(COMMIT_ROOM_STALE), {
+      ...stale, epoch: 1, commit: b64('REBASED-AFTER-EXPLICIT-REJECTION'),
+    });
+    assert.equal(accepted.epoch, 2);
   } finally {
     await s.stop();
   }

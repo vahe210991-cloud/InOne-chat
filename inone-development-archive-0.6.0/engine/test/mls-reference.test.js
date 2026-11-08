@@ -13,6 +13,7 @@ const ALICE = '@alice:inone.test';
 const BOB = '@bob:inone.test';
 const CAROL = '@carol:inone.test';
 const enc = encodeURIComponent;
+const claimKeyPackage = (client, userId) => client.raw('POST', `/mls/key-packages/${enc(userId)}/claim`, { claimId: randomBytes(16).toString('hex') });
 
 async function start() {
   const db = await storeForTest(PEPPER);
@@ -37,7 +38,7 @@ test('эталонный клиент: группа через серверны�
 
     // Алиса приглашает Боба: пакет берётся с сервера, коммит и приветствие уходят через сервер.
     let aliceState = await createGroupState(aliceId, ROOM);
-    const bobPackage = (await alice.raw('GET', `/mls/key-packages/${enc(BOB)}`)).packages[0];
+    const bobPackage = (await claimKeyPackage(alice, BOB)).packages[0];
     const addBob = await addMember(aliceState, parseKeyPackage(bobPackage.package));
     assert.equal((await alice.raw('POST', `/mls/groups/${enc(ROOM)}/commits`, {
       epoch: 0, commit: addBob.commitB64, changes: { adds: [BOB], removes: [] },
@@ -50,7 +51,7 @@ test('эталонный клиент: группа через серверны�
     assert.equal((await decryptText(bobState, hello.messageB64)).text, 'привет, Боб', 'Боб читает сообщение после приглашения');
 
     // Алиса приглашает Кэрол; Боб обрабатывает коммит, полученный с сервера.
-    const carolPackage = (await alice.raw('GET', `/mls/key-packages/${enc(CAROL)}`)).packages[0];
+    const carolPackage = (await claimKeyPackage(alice, CAROL)).packages[0];
     const addCarol = await addMember(aliceState, parseKeyPackage(carolPackage.package));
     assert.equal((await alice.raw('POST', `/mls/groups/${enc(ROOM)}/commits`, {
       epoch: 1, commit: addCarol.commitB64, changes: { adds: [CAROL], removes: [] },

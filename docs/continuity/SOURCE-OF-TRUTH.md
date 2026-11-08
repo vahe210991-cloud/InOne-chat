@@ -126,3 +126,14 @@ GitHub — постоянное хранилище кода, истории, р�
 - Current upload `Bundle(1).zip` outer SHA-256 `a7ccfc12ae810dc1788f1b737ef4d53e032cafaf35797412784073a2db57f5a0`; inner bundle SHA-256 `a226e578a732e5da886e3ec4bfb007102154405a95809c80fb28a2833493522f`.
 - Inner bundle verifies complete, 5 commits, P0 ref `engine/p0-wave3` at `a7f60b6fdc969941e4354a117e17d32bfc951fb9`, base `ea3b49ae9cdf1670a1b7499d4b5e608ee22fe1e9`.
 - Binary storage status and connector limitations: `development/recovered-source/README.md`. GitHub base64 blob API exists; current container-to-Code-Mode byte transfer is the blocker.
+
+
+## 10. Published P0 recovery source — checked 2026-11-08 12:00 UTC+3
+
+- Canonical published recovery branch for the current P0 review: `recovery/p0-wave3-applied`, checked HEAD `7ebdeac8b322d7a1fe0b26add039f48b5f9f776f`.
+- Draft PR [#22](https://github.com/vahe210991-cloud/InOne-chat/pull/22) remains open and unmerged.
+- P0 validation executes source from `inone-development-archive-0.6.0/engine/`; a separate `inone-engine-poc-0.6.0/` tree exists and must not be assumed identical.
+- Exact-head Actions runs: [42465804591](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42465804591) and [42465808297](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42465808297). Node 369/369, room regression 2/2, PostgreSQL 43/43, OpenMLS client tests and Rust bridge 3/3 passed. Overall workflow failed only at Rust formatting (`cargo fmt -- --check`, 12 files).
+- Source-integrity audit remains open: complete 240-file blob-hash comparison against the original bundle manifest; review six modified source files and five added P0 tests against exact bundle/patch provenance.
+- Full details and exact next actions: [P0-GITHUB-RECOVERY-STATUS-2026-11-08.md](../../development/recovered-source/P0-GITHUB-RECOVERY-STATUS-2026-11-08.md).
+- Original bundle binary SHA-256 remains `a226e578a732e5da886e3ec4bfb007102154405a95809c80fb28a2833493522f`; the original binary and its original five-commit ancestry are not yet stored in GitHub. The published patch-derived branch must not be represented as that original bundle history.

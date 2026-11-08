@@ -1,0 +1,16 @@
+{
+  "name": "@inone/biometric-client",
+  "version": "0.6.0-alpha.21",
+  "description": "Референсный клиент биометрического подтверждения InOne и Propo. Протокол совпадает с движком InOne 0.6.0-alpha.21.",
+  "type": "module",
+  "main": "./biometric-client.mjs",
+  "exports": {
+    ".": "./biometric-client.mjs"
+  },
+  "files": [
+    "biometric-client.mjs",
+    "README.md"
+  ],
+  "private": true,
+  "license": "UNLICENSED"
+}

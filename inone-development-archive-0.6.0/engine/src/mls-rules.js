@@ -39,6 +39,17 @@ function decodeBase64Field(text, maxBytes) {
 export function parseCommitRequest(input) {
   if (!input || typeof input !== 'object') return { error: 'body must be an object' };
   if (!Number.isSafeInteger(input.epoch) || input.epoch < 0) return { error: 'epoch must be a non-negative integer' };
+  const clientOperationId = input.clientOperationId ?? null;
+  if (clientOperationId !== null && (typeof clientOperationId !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(clientOperationId))) {
+    return { error: 'clientOperationId must be 16-128 URL-safe characters' };
+  }
+  const keyPackageClaimId = input.keyPackageClaimId ?? null;
+  if (keyPackageClaimId !== null && (typeof keyPackageClaimId !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(keyPackageClaimId))) {
+    return { error: 'keyPackageClaimId must be 16-128 URL-safe characters' };
+  }
+  if (keyPackageClaimId !== null && keyPackageClaimId !== clientOperationId) {
+    return { error: 'keyPackageClaimId must equal clientOperationId' };
+  }
   const commit = decodeBase64Field(input.commit, MLS_COMMIT_MAX_BYTES);
   if (commit.error) return { error: `commit ${commit.error}` };
   const list = input.welcomes ?? [];
@@ -66,7 +77,10 @@ export function parseCommitRequest(input) {
   if (removes.error) return { error: removes.error };
   const removeDevices = names(changes.removeDevices, 'changes.removeDevices');
   if (removeDevices.error) return { error: removeDevices.error };
-  return { value: { epoch: input.epoch, commit: commit.value, welcomes, changes: { adds: adds.value, removes: removes.value, removeDevices: removeDevices.value } } };
+  if (keyPackageClaimId !== null && adds.value.length !== 1) {
+    return { error: 'a KeyPackage claim must add exactly one target user' };
+  }
+  return { value: { epoch: input.epoch, commit: commit.value, welcomes, changes: { adds: adds.value, removes: removes.value, removeDevices: removeDevices.value }, clientOperationId, keyPackageClaimId } };
 }
 
 // Сообщения группы: шифротекст MLS в поле message, до 64 КБ.

@@ -154,3 +154,19 @@ Tasks, Calendar, Cindy не добавлять в Beta 1.0 без нового �
 - Workflow pinned to Ubuntu 24.04 + PostgreSQL client 16 at commit `0e13b9726c5fcbecfdb8a9a45b05d4bb6eb02863`.
 - Inspect fresh run [42457594088](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42457594088) and require PostgreSQL, OpenMLS, Rust, and publish job to pass.
 - No merge yet.
+
+
+## Latest continuation instruction — P0 only (2026-11-08)
+
+Do not follow the older instruction above to wait for a published applied-source branch: it now exists. Start from [P0-GITHUB-RECOVERY-STATUS-2026-11-08.md](../../development/recovered-source/P0-GITHUB-RECOVERY-STATUS-2026-11-08.md).
+
+1. Fetch current refs and verify `recovery/p0-wave3-applied` HEAD before editing. Last checked SHA: `7ebdeac8b322d7a1fe0b26add039f48b5f9f776f`.
+2. Continue only on P0. Do not start Flutter UI wiring, auth feature work or other Beta features.
+3. Complete the 240-file original bundle blob-hash audit; path-count parity is not blob-hash parity.
+4. Verify the six substantive changed engine files and five added P0 tests against the exact bundle/patch provenance.
+5. Preserve a pre-format source hash manifest, then apply rustfmt in a separate formatting-only commit. Re-run all CI checks on the exact resulting SHA.
+6. Require Node, room regression, PostgreSQL, OpenMLS, Rust bridge and formatting checks all green before P0 acceptance.
+7. Keep PR #22 draft/open and do not merge until the source-integrity and CI gates are accepted. Do not modify `main`.
+8. Keep the original bundle archive limitation visible: its checksum/provenance are known, but the binary itself is not yet retrievable from GitHub as a committed archive.
+
+Latest exact-head evidence: [push run 42465804591](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42465804591) and [PR run 42465808297](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42465808297). Overall status is FAIL due to rustfmt only; the functional suites listed in the status report passed.

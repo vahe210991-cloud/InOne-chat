@@ -2,6 +2,18 @@
 
 This log is a durable GitHub record. Add newest entries at the top. Keep each entry factual and link commits, PRs, workflow runs, and test evidence.
 
+## 2026-11-08 — GitHub P0 source recovery verified; acceptance still open
+
+- Rechecked repository refs and found published branch `recovery/p0-wave3-applied`, exact HEAD `7ebdeac8b322d7a1fe0b26add039f48b5f9f776f`; draft PR [#22](https://github.com/vahe210991-cloud/InOne-chat/pull/22) is open and unmerged.
+- Located the P0 workflow source under `inone-development-archive-0.6.0/engine/`; the repository also has a separate `inone-engine-poc-0.6.0/` tree, which must not be assumed identical.
+- Exact-head Actions push run [42465804591](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42465804591) and PR run [42465808297](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42465808297): Node 369/369 PASS; room regression 2/2 PASS; PostgreSQL 43/43 PASS; OpenMLS client tests PASS (all test binaries); Rust bridge 3/3 PASS.
+- Overall workflow remains FAIL because `cargo fmt -- --check` reports formatting-only diffs in 12 Rust files. Do not call this green; preserve source baseline and make formatting a separate commit after hash audit.
+- Source-integrity acceptance remains open: complete original bundle 240-file blob-hash audit and verification of six substantive changed files plus five added P0 test files are still required.
+- Added `development/recovered-source/P0-GITHUB-RECOVERY-STATUS-2026-11-08.md` with exact refs, test evidence, blockers and next actions.
+- Original bundle SHA-256 `a226e578a732e5da886e3ec4bfb007102154405a95809c80fb28a2833493522f` is preserved as provenance, but the original binary and original Git ancestry are not yet stored in GitHub main.
+- No merge; no changes to `main`; P0 remains the sole active priority.
+
+
 ## 2026-11-08 — Establish development folder and handover protocol
 
 - Added the mandatory `development/` entry point, working rules, baseline, and start/end checklist.

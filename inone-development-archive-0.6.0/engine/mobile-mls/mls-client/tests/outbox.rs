@@ -32,8 +32,14 @@ fn start_engine() -> Engine {
         .expect("запуск node");
     let stdin = child.stdin.take();
     let mut line = String::new();
-    BufReader::new(child.stdout.take().expect("stdout")).read_line(&mut line).expect("строка адреса");
-    let base = line.trim().strip_prefix("URL=").expect("адрес сервера").to_string();
+    BufReader::new(child.stdout.take().expect("stdout"))
+        .read_line(&mut line)
+        .expect("строка адреса");
+    let base = line
+        .trim()
+        .strip_prefix("URL=")
+        .expect("адрес сервера")
+        .to_string();
     Engine { child, stdin, base }
 }
 
@@ -80,7 +86,9 @@ fn start_proxy(upstream: &str) -> Proxy {
                 let _ = client.shutdown(Shutdown::Both);
                 continue;
             }
-            let Ok(server) = TcpStream::connect(&upstream) else { continue };
+            let Ok(server) = TcpStream::connect(&upstream) else {
+                continue;
+            };
             {
                 let mut open = registry.lock().unwrap();
                 open.push(client.try_clone().unwrap());
@@ -92,11 +100,18 @@ fn start_proxy(upstream: &str) -> Proxy {
             thread::spawn(move || pipe(s_read, c_write));
         }
     });
-    Proxy { base: format!("http://{addr}"), online, open }
+    Proxy {
+        base: format!("http://{addr}"),
+        online,
+        open,
+    }
 }
 
 fn db(name: &str) -> String {
-    let path = std::env::temp_dir().join(format!("inone-client-outbox-{}-{name}.db", std::process::id()));
+    let path = std::env::temp_dir().join(format!(
+        "inone-client-outbox-{}-{name}.db",
+        std::process::id()
+    ));
     let _ = std::fs::remove_file(&path);
     path.to_string_lossy().to_string()
 }
@@ -126,14 +141,30 @@ fn messages_written_offline_are_delivered_once_when_back_online() {
     proxy.set_online(false);
     alice.enqueue_text(ROOM, "в метро").unwrap();
     assert_eq!(alice.outbox_len().unwrap(), 1);
-    assert_eq!(alice.flush_outbox().unwrap(), 0, "без связи ничего не отправлено");
-    assert_eq!(alice.outbox_len().unwrap(), 1, "сообщение осталось в очереди");
+    assert_eq!(
+        alice.flush_outbox().unwrap(),
+        0,
+        "без связи ничего не отправлено"
+    );
+    assert_eq!(
+        alice.outbox_len().unwrap(),
+        1,
+        "сообщение осталось в очереди"
+    );
 
     proxy.set_online(true);
     assert_eq!(alice.flush_outbox().unwrap(), 1, "после связи отправлено");
     assert_eq!(alice.outbox_len().unwrap(), 0);
-    assert_eq!(alice.flush_outbox().unwrap(), 0, "повторный сброс ничего не шлёт");
-    assert_eq!(texts(&bob.sync().unwrap()), vec!["в метро"], "у Боба ровно одно сообщение");
+    assert_eq!(
+        alice.flush_outbox().unwrap(),
+        0,
+        "повторный сброс ничего не шлёт"
+    );
+    assert_eq!(
+        texts(&bob.sync().unwrap()),
+        vec!["в метро"],
+        "у Боба ровно одно сообщение"
+    );
 }
 
 #[test]
@@ -143,7 +174,9 @@ fn sync_waits_out_a_short_outage_with_retries() {
     let keys = MemoryKeyStore::default();
     let mut alice = connect(&proxy.base, ALICE, PW, "A_PHONE", &db("alice-retry"), &keys).unwrap();
     proxy.set_online(false);
-    let failed = alice.sync_retrying(2, Duration::from_millis(5)).unwrap_err();
+    let failed = alice
+        .sync_retrying(2, Duration::from_millis(5))
+        .unwrap_err();
     assert!(is_retryable(&failed), "сбой сети — временный: {failed}");
     let flag = proxy.online.clone();
     thread::spawn(move || {
@@ -151,7 +184,9 @@ fn sync_waits_out_a_short_outage_with_retries() {
         flag.store(true, Ordering::SeqCst);
     });
     let started = Instant::now();
-    alice.sync_retrying(10, Duration::from_millis(20)).expect("повторы дождались связи");
+    alice
+        .sync_retrying(10, Duration::from_millis(20))
+        .expect("повторы дождались связи");
     assert!(started.elapsed() < Duration::from_secs(10));
 }
 

@@ -29,3 +29,15 @@
 - [ ] Leave no necessary uncommitted or local-only work.
 
 A session is not handed back until the work is in GitHub or the exact blocker is documented in GitHub.
+
+
+## P0-specific acceptance gate
+
+- [ ] Verify latest `recovery/p0-wave3-applied` HEAD; last checked: `7ebdeac8b322d7a1fe0b26add039f48b5f9f776f`.
+- [ ] Read `development/recovered-source/P0-GITHUB-RECOVERY-STATUS-2026-11-08.md` before editing P0.
+- [ ] Complete full 240-file original-bundle blob-hash audit; do not substitute path parity or PR #18 candidate parity.
+- [ ] Verify six substantive modified engine files and five added P0 test files against exact bundle/patch provenance.
+- [ ] Preserve source hashes before a separate rustfmt-only commit.
+- [ ] Re-run the full GitHub Actions workflow on the exact resulting SHA; require formatting, Node, room regression, PostgreSQL, OpenMLS and Rust bridge jobs all green.
+- [ ] Keep PR #22 draft/open and do not merge or begin non-P0 Beta work until source-integrity and CI gates pass.
+- [ ] Record original bundle binary preservation as BLOCKED until a retrievable GitHub/archive object is uploaded and its SHA-256 verified.

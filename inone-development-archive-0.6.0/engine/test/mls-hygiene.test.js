@@ -13,6 +13,7 @@ const BOB = '@bob:inone.test';
 const enc = encodeURIComponent;
 const b64 = (text) => Buffer.from(text, 'utf8').toString('base64');
 const pkg = (name) => b64(`KEYPACKAGE-${name}-${'x'.repeat(40)}`);
+const claimKeyPackages = (client, userId) => client.raw('POST', `/mls/key-packages/${enc(userId)}/claim`, { claimId: randomBytes(16).toString('hex') });
 
 async function start() {
   const db = await storeForTest(PEPPER);
@@ -46,7 +47,7 @@ test('отзыв устройства убирает его неиспользо
     await bobOld.raw('POST', '/mls/key-packages', { packages: [pkg('old-1'), pkg('old-2')] });
     await bobPhone.raw('POST', '/mls/key-packages', { packages: [pkg('phone-1')] });
     await bobPhone.raw('DELETE', `/devices/${enc('B_OLD')}`);
-    const claimed = (await alice.raw('GET', `/mls/key-packages/${enc(BOB)}`)).packages.map((p) => p.deviceId);
+    const claimed = (await claimKeyPackages(alice, BOB)).packages.map((p) => p.deviceId);
     assert.ok(!claimed.includes('B_OLD'), 'пакеты отозванного устройства не выдаются');
     assert.ok(claimed.includes('B_PHONE'), 'пакеты действующего устройства выдаются');
     assert.equal((await bobPhone.raw('GET', '/mls/key-packages/count')).available, 0, 'пакеты действующего устройства уже выданы этим запросом');

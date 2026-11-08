@@ -33,19 +33,22 @@ test('устройство загружает ключевые пакеты, с�
   }
 });
 
-test('пакет выдаётся один раз: следующий запрос отдаёт другой пакет, после них — пусто', async () => {
+test('повтор стабильного KeyPackage claim ID возвращает тот же пакет, новый claim расходует следующий', async () => {
   const { base, stop } = await start();
   try {
     const alice = await ChatClient.create(base, ALICE, 'A_PHONE', PW);
     const bob = await ChatClient.create(base, BOB, 'B_PHONE', PW);
     await alice.raw('POST', '/mls/key-packages', { packages: [pkg('1'), pkg('2')] });
-    const first = await bob.raw('GET', `/mls/key-packages/${enc(ALICE)}`);
-    const second = await bob.raw('GET', `/mls/key-packages/${enc(ALICE)}`);
+    const claimPath = `/mls/key-packages/${enc(ALICE)}/claim`;
+    const first = await bob.raw('POST', claimPath, { claimId: 'claim-intent-00000001' });
+    const replay = await bob.raw('POST', claimPath, { claimId: 'claim-intent-00000001' });
+    const second = await bob.raw('POST', claimPath, { claimId: 'claim-intent-00000002' });
     assert.equal(first.packages.length, 1);
+    assert.deepEqual(replay, first, 'повтор после потерянного ответа возвращает тот же claim result');
     assert.equal(second.packages.length, 1);
     assert.equal(first.packages[0].deviceId, 'A_PHONE');
     assert.notEqual(first.packages[0].package, second.packages[0].package, 'пакет не выдаётся повторно');
-    assert.deepEqual((await bob.raw('GET', `/mls/key-packages/${enc(ALICE)}`)).packages, [], 'пакеты кончились — пустой список, а не ошибка');
+    assert.deepEqual((await bob.raw('POST', claimPath, { claimId: 'claim-intent-00000003' })).packages, [], 'пакеты кончились — пустой список, а не ошибка');
     assert.equal((await alice.raw('GET', '/mls/key-packages/count')).available, 0);
   } finally {
     await stop();
@@ -73,10 +76,39 @@ test('без входа пакеты не загружаются и не отд�
   try {
     const alice = await ChatClient.create(base, ALICE, 'A_PHONE', PW);
     await alice.raw('POST', '/mls/key-packages', { packages: [pkg('1')] });
-    const anon = await fetch(`${base}/mls/key-packages/${enc(ALICE)}`);
+    const anon = await fetch(`${base}/mls/key-packages/${enc(ALICE)}/claim`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ claimId: 'claim-intent-00000001' }) });
     assert.equal(anon.status, 401);
     const upload = await fetch(`${base}/mls/key-packages`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ packages: [pkg('x')] }) });
     assert.equal(upload.status, 401);
+  } finally {
+    await stop();
+  }
+});
+
+test('KeyPackage claim требует устойчивый корректный claimId', async () => {
+  const { base, stop } = await start();
+  try {
+    const bob = await ChatClient.create(base, BOB, 'B_PHONE', PW);
+    const path = `/mls/key-packages/${enc(ALICE)}/claim`;
+    await assert.rejects(bob.raw('POST', path, {}), (e) => e.status === 400);
+    await assert.rejects(bob.raw('POST', path, { claimId: 'short' }), (e) => e.status === 400);
+    await assert.rejects(bob.raw('POST', path, { claimId: 'contains spaces and invalid chars' }), (e) => e.status === 400);
+  } finally {
+    await stop();
+  }
+});
+
+test('параллельный повтор одного claimId не расходует несколько KeyPackage', async () => {
+  const { base, stop } = await start();
+  try {
+    const alice = await ChatClient.create(base, ALICE, 'A_PHONE', PW);
+    const bob = await ChatClient.create(base, BOB, 'B_PHONE', PW);
+    await alice.raw('POST', '/mls/key-packages', { packages: [pkg('one'), pkg('two')] });
+    const path = `/mls/key-packages/${enc(ALICE)}/claim`;
+    const results = await Promise.all(Array.from({ length: 12 }, () => bob.raw('POST', path, { claimId: 'claim-intent-concurrent-0001' })));
+    for (const result of results) assert.deepEqual(result, results[0]);
+    assert.equal(results[0].packages.length, 1);
+    assert.equal((await alice.raw('GET', '/mls/key-packages/count')).available, 1);
   } finally {
     await stop();
   }

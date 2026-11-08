@@ -15,6 +15,7 @@ const ALICE = '@alice:inone.test';
 const BOB = '@bob:inone.test';
 const CAROL = '@carol:inone.test';
 const enc = encodeURIComponent;
+const claimKeyPackage = (client, userId) => client.raw('POST', `/mls/key-packages/${enc(userId)}/claim`, { claimId: randomBytes(16).toString('hex') });
 
 async function start() {
   const db = await storeForTest(PEPPER);
@@ -37,7 +38,7 @@ async function setup() {
   await bob.raw('POST', '/mls/key-packages', { packages: [bobId.keyPackageB64] });
   await carol.raw('POST', '/mls/key-packages', { packages: [carolId.keyPackageB64] });
   let aliceState = await createGroupState(aliceId, ROOM);
-  const addBob = await addMember(aliceState, parseKeyPackage((await alice.raw('GET', `/mls/key-packages/${enc(BOB)}`)).packages[0].package));
+  const addBob = await addMember(aliceState, parseKeyPackage((await claimKeyPackage(alice, BOB)).packages[0].package));
   await alice.raw('POST', `/mls/groups/${enc(ROOM)}/commits`, {
     epoch: 0, commit: addBob.commitB64, changes: { adds: [BOB], removes: [] },
     welcomes: [{ userId: BOB, deviceId: 'B_PHONE', welcome: addBob.welcomeB64 }],
@@ -58,7 +59,7 @@ test('участник без связи догоняет группу: сооб
     await g.alice.raw('POST', `/mls/groups/${enc(ROOM)}/messages`, { message: m1.messageB64 });
     const m2 = await encryptText(aliceState, 'два'); aliceState = m2.newState;
     await g.alice.raw('POST', `/mls/groups/${enc(ROOM)}/messages`, { message: m2.messageB64 });
-    const carolPackage = (await g.alice.raw('GET', `/mls/key-packages/${enc(CAROL)}`)).packages[0];
+    const carolPackage = (await claimKeyPackage(g.alice, CAROL)).packages[0];
     const addCarol = await addMember(aliceState, parseKeyPackage(carolPackage.package));
     await g.alice.raw('POST', `/mls/groups/${enc(ROOM)}/commits`, {
       epoch: 1, commit: addCarol.commitB64, changes: { adds: [CAROL], removes: [] },
