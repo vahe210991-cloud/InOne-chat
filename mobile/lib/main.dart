@@ -87,7 +87,7 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
           ScreenChoice(
             keyValue: 'test:${screen.id}',
             title: '${screen.id} · ${screen.title}',
-            subtitle: '${screen.category} · ${_stageLabel(screen.stage)} · ${screen.status} · ${screenApiProbes.containsKey(screen.id) ? 'API: GET привязан' : 'API не готов'}',
+            subtitle: '${screen.category} · ${_stageLabel(screen.stage)} · ${screen.status} · ${screenApiProbes.containsKey(screen.id) ? 'API: GET маршрут задан' : 'API не готов'}',
           ),
       ];
 
