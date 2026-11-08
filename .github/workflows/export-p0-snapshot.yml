@@ -1,0 +1,41 @@
+name: Export InOne P0 snapshot bundle
+
+on:
+  push:
+    branches:
+      - snapshot/p0-and-groups-2026-11-08
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export-bundle:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout complete snapshot history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create and verify Git bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          git bundle create dist/InOne-P0-snapshot-2026-11-08.bundle HEAD
+          git bundle verify dist/InOne-P0-snapshot-2026-11-08.bundle
+          sha256sum dist/InOne-P0-snapshot-2026-11-08.bundle | tee dist/SHA256SUMS.txt
+          git rev-parse HEAD | tee dist/SNAPSHOT_COMMIT.txt
+          git status --short
+
+      - name: Upload self-contained bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: InOne-P0-snapshot-2026-11-08
+          path: |
+            dist/InOne-P0-snapshot-2026-11-08.bundle
+            dist/SHA256SUMS.txt
+            dist/SNAPSHOT_COMMIT.txt
+          if-no-files-found: error
+          retention-days: 90
