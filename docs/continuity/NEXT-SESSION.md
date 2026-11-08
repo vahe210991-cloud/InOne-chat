@@ -1,3 +1,26 @@
+## Immediate next step — open and verify the Codespaces workspace (2026-11-08)
+
+The owner selected GitHub Codespaces. A draft devcontainer is on branch `feat/beta1-full-screen-api-harness` (PR #28). Before further source edits:
+
+1. Open the repository in GitHub and create a Codespace on branch `feat/beta1-full-screen-api-harness`.
+2. In the terminal, run:
+   ```sh
+   git status --short --branch
+   git log -1 --oneline
+   git remote -v
+   git branch -a
+   git submodule status
+   git rev-parse HEAD
+   ```
+3. Confirm the checked-out HEAD equals the latest PR head and that the full repository, required refs, submodules and LFS objects are available. If any are missing, stop and document the exact gap.
+4. Validate `.devcontainer/devcontainer.json` and `.devcontainer/docker-compose.yml`; build the app/db services and inspect container logs. The configuration has not yet been run.
+5. Verify PostgreSQL readiness, backend migrations, `/healthz` and `/readyz`; record exact outputs and test commands.
+6. Inspect the latest Flutter Actions failure at `flutter analyze` and fix it only from the complete Codespaces clone. Latest run at handoff: [#42509620990](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42509620990), then in progress.
+7. Audit the 34 route declarations against actual backend handlers and response schemas. Do not count a route declaration as a connected screen. The requirement remains at least 10 live, authenticated, response-verified screens.
+8. Keep PR #28 draft/open; do not merge until full CI and the required integration evidence pass.
+
+Current branch at handoff: `88e68117957fc1a0846e790240db62cf14033b1b`. Codespaces guide: [CODESPACES_TEST_ENVIRONMENT.md](../../docs/CODESPACES_TEST_ENVIRONMENT.md). Session evidence/blocker: [SESSION-LOG.md](../../development/SESSION-LOG.md).
+
 # InOne — инструкция следующему чату / исполнителю
 
 
