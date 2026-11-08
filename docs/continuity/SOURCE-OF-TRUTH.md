@@ -143,3 +143,15 @@ GitHub — постоянное хранилище кода, истории, р�
 - Exact permanent path: `bundles/owner-upload-2026-11-08/InOne-P0-snapshot-2026-11-08.bundle`; retrieval pointer: `bundles/OWNER-SUPPLIED-ORIGINAL.txt`.
 - See [development/ARTIFACT-RETENTION.md](../../development/ARTIFACT-RETENTION.md) for the no-resend instruction, exact paths, checksum verification, and retrieval procedure.
 - Future sessions must fetch the archive branch first and must never ask the owner to upload this file again.
+
+
+## 11. Финальная загрузка P0 snapshot bundle владельцем — 2026-11-08
+
+- Владелец загрузил `InOne-P0-snapshot-2026-11-08.bundle` и прямо указал: "Я отправляю файл в последний раз. Больше этот файл не буду отправлять." Повторно запрашивать этот файл запрещено.
+- SHA-256: `e76fdd39e2e9698d7f32061e3fd4fb3dbc52ef981bb075c6c252a7cce11f391e`; размер 2,476,944 bytes; Git blob SHA-1: `8d77f064b27784a1cf7119a0a3ee0d4c5ae74dbb`; HEAD `16eab726106ae04b4979af2a1646c2052233b87c`.
+- `git bundle verify`: PASS, complete history. GitHub Actions run [#13 / 42496934304](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42496934304) downloaded the exact owner artifact, verified the expected SHA-256, verified the Git bundle, and committed the bytes to the permanent archive.
+- Permanent branch: `artifacts/p0-bundles`; archive commit `718f7845abe45cda404d5ae1563f695e0233ddb2`.
+- Exact file: [InOne-P0-snapshot-2026-11-08.bundle](https://github.com/vahe210991-cloud/InOne-chat/blob/artifacts/p0-bundles/bundles/owner-upload-2026-11-08/InOne-P0-snapshot-2026-11-08.bundle).
+- The GitHub file blob SHA exactly matches the local `git hash-object` SHA for the uploaded file, proving byte identity. The repository's `SHA256SUMS.txt` records the expected SHA-256.
+- Detailed retention instructions, exact path, and mandatory no-resend rule: [development/ARTIFACT-RETENTION.md](../../development/ARTIFACT-RETENTION.md).
+- Next sessions must retrieve the file from `artifacts/p0-bundles`; do not ask the owner to upload it again.
