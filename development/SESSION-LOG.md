@@ -27,3 +27,12 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Fresh Actions run for the new head was not visible at the last check. Do not report the correction as validated until a new run completes.
 - Important correction: matching the eight P0-modified file blobs did not prove the full base tree was identical. Continue auditing missing base files before acceptance.
 - Original binary bundle remains pending durable GitHub storage; architecture map and bundle verification report have been committed under `development/recovered-source/`.
+
+
+## 2026-11-08 — Corrected P0 validation rerun submitted
+
+- Restored `client-reference/biometric-client.mjs` from the exact bundle base commit into PR #18 branch. GitHub blob SHA matches `b03e72fe33c79e6b261d980bc86459babf03b388`.
+- Workflow filter updated; branch head is `762e3eca8ccb2e34965441114cc29b63083aa0f9`.
+- Opened validation rerun PR [#19](https://github.com/vahe210991-cloud/InOne-chat/pull/19) from the same corrected head because the first run had failed and the updated-head run was not initially visible. PR #18 remains the primary recovery PR; #19 is a duplicate validation trigger and should be closed as superseded after fresh CI is verified.
+- GitHub Actions runs [42454943853](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42454943853) and [42455077322](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42455077322) were both `in_progress` at last check. Patch decode/apply and npm install passed; Node `npm test` still running. PostgreSQL and Rust not yet reached.
+- Owner's `INONE_INTEGRATION_BRIEF.md` committed at `development/integrations/INONE-PROPO-AUTH-INTEGRATION-BRIEF.md`; status Planned, no production integration implementation assumed.
