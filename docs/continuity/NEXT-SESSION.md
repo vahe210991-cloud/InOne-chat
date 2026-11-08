@@ -134,3 +134,9 @@ Tasks, Calendar, Cindy не добавлять в Beta 1.0 без нового �
 - Checked other active branches: no Flutter app found.
 - Do not claim Beta 1.0 is buildable from current GitHub tree. Obtain/import original Flutter UI/API ZIP and design system; then validate on real Dart/Flutter toolchain.
 - See `development/REPO-AUDIT-2026-11-08.md`.
+
+
+## P0 publish branch correction
+
+- Workflow now copies the exact restored biometric client and vector fixture from the PR head into the clean main-based recovery branch before patch application. Commit `e0a8c08ddf68864963c3f8a65ba16a0612381e39`.
+- Check run [42457297299](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42457297299) through every step. The older run #42457116231 does not validate the publish correction.
