@@ -126,3 +126,11 @@ Tasks, Calendar, Cindy не добавлять в Beta 1.0 без нового �
 - The original biometric vector fixture was found in the root archived client-reference directory and copied to the engine-relative test path. Exact blob SHA: `5a00755946219df2527591f00058a19d167c7811`.
 - Latest PR #18 head is `c9eaf6e198d1b65549220d3742b5190d7bbc1a39`; run [42457116231](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42457116231) queued.
 - The generated replacement fixture was superseded before acceptance; use the exact restored source file only.
+
+
+## Mobile source boundary — confirmed by full tree audit
+
+- Main recursive tree SHA `89ba83a4cbd06b648cba8ea5a7c529bfd91285e7`, 602 entries, confirms no full Flutter app. Only a Dart organization API reference package exists and its README says unverified/no Flutter screen.
+- Checked other active branches: no Flutter app found.
+- Do not claim Beta 1.0 is buildable from current GitHub tree. Obtain/import original Flutter UI/API ZIP and design system; then validate on real Dart/Flutter toolchain.
+- See `development/REPO-AUDIT-2026-11-08.md`.
