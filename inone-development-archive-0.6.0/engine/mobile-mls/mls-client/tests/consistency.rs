@@ -211,3 +211,47 @@ fn forged_commit_membership_metadata_is_rejected_before_merge() {
         "sending is blocked until reconciliation"
     );
 }
+
+
+#[test]
+fn malformed_event_ids_do_not_poison_room_and_retry_after_response_repair() {
+    let mut engine = start_engine();
+    let keys = MemoryKeyStore::default();
+    let (alice_db, bob_db) = (db("f5-event-alice"), db("f5-event-bob"));
+    let mut alice = login(&engine, &keys, "@alice-f5:inone.test", "A_F5", &alice_db);
+    let mut bob = login(&engine, &keys, "@bob-f5:inone.test", "B_F5", &bob_db);
+    bob.upload_key_packages(3).unwrap();
+    let (broken, healthy) = ("!room-f5-broken:inone.test", "!room-f5-healthy:inone.test");
+    alice.create_room(broken).unwrap();
+    alice.invite(broken, "@bob-f5:inone.test").unwrap();
+    alice.create_room(healthy).unwrap();
+    alice.invite(healthy, "@bob-f5:inone.test").unwrap();
+    bob.sync().unwrap();
+
+    for mode in ["missing", "null", "number", "empty", "whitespace"] {
+        let bad_text = format!("bad event identity {mode}");
+        let healthy_text = format!("healthy room survives {mode}");
+        alice.send_text(broken, &bad_text).unwrap();
+        alice.send_text(healthy, &healthy_text).unwrap();
+
+        assert_eq!(engine.command(&format!("BAD_EVENT_ID {broken} {mode}")), "OK");
+        let got = bob.sync().expect("invalid event identity is a response-contract error, not MLS corruption");
+        assert!(
+            texts(&got).contains(&healthy_text),
+            "healthy room keeps syncing when {mode} event_id is malformed"
+        );
+        assert_eq!(
+            bob.desync_reason(broken).unwrap(),
+            None,
+            "malformed {mode} event_id must not mark the MLS room RecoveryRequired"
+        );
+
+        assert_eq!(engine.command(&format!("GOOD_EVENT_ID {broken}")), "OK");
+        let retried = bob.sync().expect("the unprocessed event is retried after the response is repaired");
+        assert!(
+            texts(&retried).contains(&bad_text),
+            "the original event is not marked processed and is delivered after repair ({mode})"
+        );
+        assert_eq!(bob.desync_reason(broken).unwrap(), None);
+    }
+}
