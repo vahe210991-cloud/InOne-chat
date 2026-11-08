@@ -2,12 +2,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const html = readFileSync(new URL('../assets/approved-ui/InOne-approved-cross-platform.html', import.meta.url), 'utf8');
-const match = html.match(/<script type="__bundler\\/template">([\\s\\S]*?)<\\/script>/);
+const match = html.match(/<script type="__bundler\/template">([\s\S]*?)<\/script>/);
 assert.ok(match, 'bundled design template exists');
 const template = JSON.parse(match[1]);
 const labels = [...template.matchAll(/data-screen-label="([^"]+)"/g)].map((item) => item[1]);
-const dark = labels.filter((label) => /^D\\d{2}\\b/.test(label));
-const light = labels.filter((label) => !/^D\\d{2}\\b/.test(label));
+const dark = labels.filter((label) => /^D\d{2}\b/.test(label));
+const light = labels.filter((label) => !/^D\d{2}\b/.test(label));
 const squareFrames = template.match(/width:390px;height:844px[^"]*border-radius:0px/g) ?? [];
 assert.equal(labels.length, 22, 'exactly 22 approved screen variants are packaged');
 assert.equal(light.length, 11, '11 light variants are packaged');
