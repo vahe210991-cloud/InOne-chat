@@ -962,6 +962,10 @@ impl Client {
             .ok_or("нет поля packages")?
             .clone();
         if packages.is_empty() {
+            self.meta.execute(
+                "DELETE FROM client_key_package_claims WHERE room_id = ?1 AND user_id = ?2 AND claim_id = ?3",
+                (room_id, user_id, &claim_id),
+            ).map_err(text)?;
             return Err(format!("у {user_id} нет ключевых пакетов"));
         }
         let mut key_packages = Vec::with_capacity(packages.len());
