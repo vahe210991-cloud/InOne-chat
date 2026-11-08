@@ -111,3 +111,11 @@ GitHub — постоянное хранилище кода, истории, р�
 - The owner-provided `INONE_INTEGRATION_BRIEF.md` is preserved in [development/integrations/INONE-PROPO-AUTH-INTEGRATION-BRIEF.md](../../development/integrations/INONE-PROPO-AUTH-INTEGRATION-BRIEF.md).
 - It is explicitly marked Planned; no InOne-side implementation is assumed. Propo owns its own account mapping, challenge validation, UI, and session/token issuance.
 - Do not implement production integration until the listed identity subject, private chat initiation/delivery, S2S authentication, callback/receipt, consent, recovery, and retention decisions are resolved and the contract is versioned.
+
+
+## 8. Repository tree audit and exact P0 test fixtures — 2026-11-08
+
+- [Repository / Flutter source audit](../../development/REPO-AUDIT-2026-11-08.md) records full main and active-branch tree checks; no complete Flutter app is present.
+- Original biometric client source is in `inone-development-archive-0.6.0/client-reference/biometric-client.mjs`, blob SHA `b03e72fe33c79e6b261d980bc86459babf03b388`; same exact blob restored under engine/client-reference for P0 tests.
+- Original vector fixture is in `inone-development-archive-0.6.0/client-reference/vectors/biometric-vectors.json`, blob SHA `5a00755946219df2527591f00058a19d167c7811`; same exact blob restored under engine/client-reference/vectors.
+- P0 recovery validation remains in PR #18. Current workflow correction commit `e0a8c08ddf68864963c3f8a65ba16a0612381e39` copies the restored reference files into the clean main-based published source branch before patch application.
