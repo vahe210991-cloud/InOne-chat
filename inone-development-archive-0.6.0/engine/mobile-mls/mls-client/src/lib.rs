@@ -401,6 +401,7 @@ fn build_client(
          CREATE TABLE IF NOT EXISTS client_processed (event_id TEXT PRIMARY KEY);
          CREATE TABLE IF NOT EXISTS client_undecryptable (event_id TEXT PRIMARY KEY, room_id TEXT NOT NULL, reason TEXT NOT NULL);
          CREATE TABLE IF NOT EXISTS client_desync (room_id TEXT PRIMARY KEY, reason TEXT NOT NULL);
+         CREATE TABLE IF NOT EXISTS client_waiting_for_commit (room_id TEXT PRIMARY KEY, expected_epoch INTEGER NOT NULL, event_ids TEXT NOT NULL, updated_at INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS client_welcome_receipts (
            welcome_id INTEGER PRIMARY KEY,
            room_id TEXT NOT NULL,
@@ -841,20 +842,52 @@ impl Client {
                 [room_id, durable_reason.as_str()],
             )
             .map_err(text)?;
+        self.clear_waiting_for_commit(room_id)?;
+        Ok(())
+    }
+
+    fn set_waiting_for_commit(&mut self, room_id: &str, expected_epoch: u64, event_ids: &[String]) -> Result<(), String> {
+        let event_ids = serde_json::to_string(event_ids).map_err(text)?;
+        let updated_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+        self.meta.execute(
+            "INSERT INTO client_waiting_for_commit (room_id, expected_epoch, event_ids, updated_at) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(room_id) DO UPDATE SET expected_epoch = excluded.expected_epoch, event_ids = excluded.event_ids, updated_at = excluded.updated_at",
+            rusqlite::params![room_id, expected_epoch as i64, event_ids, updated_at],
+        ).map_err(text)?;
+        Ok(())
+    }
+
+    fn waiting_for_commit(&self, room_id: &str) -> Result<Option<(u64, String)>, String> {
+        use rusqlite::OptionalExtension;
+        self.meta.query_row(
+            "SELECT expected_epoch, event_ids FROM client_waiting_for_commit WHERE room_id = ?1",
+            [room_id],
+            |row| Ok((row.get::<_, i64>(0)? as u64, row.get::<_, String>(1)?)),
+        ).optional().map_err(text)
+    }
+
+    fn clear_waiting_for_commit(&mut self, room_id: &str) -> Result<(), String> {
+        self.meta.execute("DELETE FROM client_waiting_for_commit WHERE room_id = ?1", [room_id]).map_err(text)?;
         Ok(())
     }
 
     /// Причина приостановки отправки в комнату, если она рассинхронизирована.
     pub fn desync_reason(&self, room_id: &str) -> Result<Option<String>, String> {
         use rusqlite::OptionalExtension;
-        self.meta
-            .query_row(
-                "SELECT reason FROM client_desync WHERE room_id = ?1",
-                [room_id],
-                |r| r.get::<_, String>(0),
-            )
-            .optional()
-            .map_err(text)
+        let desync: Option<String> = self.meta.query_row(
+            "SELECT reason FROM client_desync WHERE room_id = ?1",
+            [room_id],
+            |row| row.get(0),
+        ).optional().map_err(text)?;
+        if desync.as_deref().is_some_and(|reason| reason.starts_with("RecoveryRequired:")) {
+            return Ok(desync);
+        }
+        if let Some((expected_epoch, event_ids)) = self.waiting_for_commit(room_id)? {
+            return Ok(Some(format!("WaitingForCommit: ожидается Commit для эпохи {expected_epoch}; события {event_ids}")));
+        }
+        Ok(desync)
     }
 
     fn record_unreadable(
@@ -2173,6 +2206,22 @@ impl Client {
                 });
             } else {
                 self.process_event(room_id, &event_id, &bytes, out)?;
+            }
+        }
+
+        // Future-epoch events are not corrupt: they are waiting for the missing
+        // Commit. Persist this room-scoped state and retry it on the next sync.
+        let future_event_ids: Vec<String> = pending
+            .iter()
+            .filter(|(epoch, event_id, _)| *epoch > final_epoch && !self.processed.contains(event_id))
+            .map(|(_, event_id, _)| event_id.clone())
+            .collect();
+        if !future_event_ids.is_empty() {
+            self.set_waiting_for_commit(room_id, final_epoch.saturating_add(1), &future_event_ids)?;
+        } else if let Some((expected_epoch, _)) = self.waiting_for_commit(room_id)? {
+            let commit_available = commits.iter().any(|(epoch, _, _)| *epoch == expected_epoch);
+            if final_epoch >= expected_epoch || commit_available {
+                self.clear_waiting_for_commit(room_id)?;
             }
         }
         Ok(())
