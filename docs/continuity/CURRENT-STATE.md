@@ -129,3 +129,14 @@ This section supersedes the earlier section 8 statement that no bundle bytes wer
 - Product Flutter app source is not included in this P0 bundle. A runnable phone app is not yet established.
 - New mandatory development handover folder is `development/`; see [development README](../../development/README.md), [working rules](../../development/WORKING-RULES.md), [baseline](../../development/BASELINE-2026-11-08.md), and [session log](../../development/SESSION-LOG.md).
 - The original bundle bytes and architecture map are not yet confirmed as files committed to the GitHub repository. The PR patch is not a substitute for the full original bundle. Do not mark archive preservation complete until GitHub contains a verified retrievable copy or an approved artifact location and checksum.
+
+
+## 12. PR #18 initial CI failure and source-tree correction — 2026-11-08
+
+- Workflow run [42453233555](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42453233555) completed with **failure**.
+- Node backend suite: 365 tests; 364 passed, 1 failed. Failing file: `test/client-reference.test.js`; cause: missing `client-reference/biometric-client.mjs` in the archived GitHub tree.
+- This file exists in the verified bundle base commit `ea3b49ae9cdf1670a1b7499d4b5e608ee22fe1e9`, blob SHA `b03e72fe33c79e6b261d980bc86459babf03b388`. It was restored to PR #18 branch in commit `04a490e9a01cf7523fb45205a8077f5f357c2658`.
+- Workflow path filter was updated in commit `762e3eca8ccb2e34965441114cc29b63083aa0f9`. A fresh Actions run was not yet visible when checked; do not treat the old run as a pass or as validation of the new head.
+- The first CI run proves the eight-file blob comparison was not sufficient to prove full base-tree identity. Check the entire source tree for additional missing files before acceptance.
+- PostgreSQL and Rust steps were skipped because Node test step failed. No P0 acceptance is established.
+- Detailed record: [development/recovered-source/CI-RESULT-42453233555.md](../../development/recovered-source/CI-RESULT-42453233555.md).
