@@ -46,7 +46,6 @@ fn accepted_commit_with_lost_response_replays_after_client_restart() {
     );
 }
 
-
 fn open_device_db(
     path: &str,
     keys: &MemoryKeyStore,
@@ -70,25 +69,42 @@ fn journal_insert_storage_failure_rolls_back_staged_commit_and_can_retry() {
     let keys = MemoryKeyStore::default();
     let alice_db = db("alice-membership-insert-failure");
     let mut alice = login(&engine, &keys, ALICE, "A_PHONE", &alice_db);
-    let mut bob = login(&engine, &keys, BOB, "B_PHONE", &db("bob-membership-insert-failure"));
+    let mut bob = login(
+        &engine,
+        &keys,
+        BOB,
+        "B_PHONE",
+        &db("bob-membership-insert-failure"),
+    );
     bob.ensure_key_packages(1).unwrap();
     alice.create_room(ROOM).unwrap();
 
     let connection = open_device_db(&alice_db, &keys, ALICE, "A_PHONE");
-    connection.execute_batch(
-        "CREATE TRIGGER fail_membership_journal_insert
+    connection
+        .execute_batch(
+            "CREATE TRIGGER fail_membership_journal_insert
          BEFORE INSERT ON client_membership_commits
          BEGIN SELECT RAISE(FAIL, 'simulated membership journal insert failure'); END;",
-    ).unwrap();
+        )
+        .unwrap();
     drop(connection);
 
     let error = alice.invite(ROOM, BOB).unwrap_err();
-    assert!(error.contains("simulated membership journal insert failure"), "{error}");
-    assert_eq!(alice.local_epoch(ROOM), Some(0), "staged MLS mutation rolled back");
+    assert!(
+        error.contains("simulated membership journal insert failure"),
+        "{error}"
+    );
+    assert_eq!(
+        alice.local_epoch(ROOM),
+        Some(0),
+        "staged MLS mutation rolled back"
+    );
     assert_eq!(engine.command(&format!("COMMIT_COUNT {ROOM}")), "0");
 
     let connection = open_device_db(&alice_db, &keys, ALICE, "A_PHONE");
-    connection.execute_batch("DROP TRIGGER fail_membership_journal_insert;").unwrap();
+    connection
+        .execute_batch("DROP TRIGGER fail_membership_journal_insert;")
+        .unwrap();
     drop(connection);
 
     alice.invite(ROOM, BOB).unwrap();
@@ -102,7 +118,13 @@ fn settlement_storage_failure_keeps_exact_journal_until_restart_replay() {
     let keys = MemoryKeyStore::default();
     let alice_db = db("alice-membership-settlement-failure");
     let mut alice = login(&engine, &keys, ALICE, "A_PHONE", &alice_db);
-    let mut bob = login(&engine, &keys, BOB, "B_PHONE", &db("bob-membership-settlement-failure"));
+    let mut bob = login(
+        &engine,
+        &keys,
+        BOB,
+        "B_PHONE",
+        &db("bob-membership-settlement-failure"),
+    );
     bob.ensure_key_packages(1).unwrap();
     alice.create_room(ROOM).unwrap();
 
@@ -111,20 +133,31 @@ fn settlement_storage_failure_keeps_exact_journal_until_restart_replay() {
     assert_eq!(engine.command(&format!("COMMIT_COUNT {ROOM}")), "1");
 
     let connection = open_device_db(&alice_db, &keys, ALICE, "A_PHONE");
-    connection.execute_batch(
-        "CREATE TRIGGER fail_membership_journal_delete
+    connection
+        .execute_batch(
+            "CREATE TRIGGER fail_membership_journal_delete
          BEFORE DELETE ON client_membership_commits
          BEGIN SELECT RAISE(FAIL, 'simulated membership journal delete failure'); END;",
-    ).unwrap();
+        )
+        .unwrap();
     drop(connection);
 
     let error = alice.sync().unwrap_err();
-    assert!(error.contains("временная ошибка локального хранилища"), "{error}");
-    assert_eq!(alice.local_epoch(ROOM), Some(0), "settlement transaction rolled back");
+    assert!(
+        error.contains("временная ошибка локального хранилища"),
+        "{error}"
+    );
+    assert_eq!(
+        alice.local_epoch(ROOM),
+        Some(0),
+        "settlement transaction rolled back"
+    );
     assert_eq!(engine.command(&format!("COMMIT_COUNT {ROOM}")), "1");
 
     let connection = open_device_db(&alice_db, &keys, ALICE, "A_PHONE");
-    connection.execute_batch("DROP TRIGGER fail_membership_journal_delete;").unwrap();
+    connection
+        .execute_batch("DROP TRIGGER fail_membership_journal_delete;")
+        .unwrap();
     drop(connection);
     drop(alice);
 
@@ -144,7 +177,13 @@ fn pending_commit_fingerprint_mismatch_keeps_journal_and_requires_recovery() {
     let keys = MemoryKeyStore::default();
     let alice_db = db("alice-membership-fingerprint-mismatch");
     let mut alice = login(&engine, &keys, ALICE, "A_PHONE", &alice_db);
-    let mut bob = login(&engine, &keys, BOB, "B_PHONE", &db("bob-membership-fingerprint-mismatch"));
+    let mut bob = login(
+        &engine,
+        &keys,
+        BOB,
+        "B_PHONE",
+        &db("bob-membership-fingerprint-mismatch"),
+    );
     bob.ensure_key_packages(1).unwrap();
     alice.create_room(ROOM).unwrap();
 
@@ -153,27 +192,38 @@ fn pending_commit_fingerprint_mismatch_keeps_journal_and_requires_recovery() {
     assert_eq!(engine.command(&format!("COMMIT_COUNT {ROOM}")), "1");
 
     let connection = open_device_db(&alice_db, &keys, ALICE, "A_PHONE");
-    connection.execute(
-        "UPDATE client_membership_commits SET fingerprint = ?1 WHERE room_id = ?2",
-        rusqlite::params!["0".repeat(64), ROOM],
-    ).unwrap();
+    connection
+        .execute(
+            "UPDATE client_membership_commits SET fingerprint = ?1 WHERE room_id = ?2",
+            rusqlite::params!["0".repeat(64), ROOM],
+        )
+        .unwrap();
     drop(connection);
     drop(alice);
 
     let mut restarted = login(&engine, &keys, ALICE, "A_PHONE", &alice_db);
     let error = restarted.sync().unwrap_err();
     assert!(error.contains("fingerprint mismatch"), "{error}");
-    assert_eq!(restarted.local_epoch(ROOM), Some(0), "unverified pending Commit is not merged");
-    assert!(
-        restarted
-            .desync_reason(ROOM)
-            .unwrap()
-            .is_some_and(|reason| reason.starts_with("RecoveryRequired:"))
+    assert_eq!(
+        restarted.local_epoch(ROOM),
+        Some(0),
+        "unverified pending Commit is not merged"
     );
+    assert!(restarted
+        .desync_reason(ROOM)
+        .unwrap()
+        .is_some_and(|reason| reason.starts_with("RecoveryRequired:")));
     assert_eq!(engine.command(&format!("COMMIT_COUNT {ROOM}")), "1");
     let connection = open_device_db(&alice_db, &keys, ALICE, "A_PHONE");
     let journal_rows: i64 = connection
-        .query_row("SELECT COUNT(*) FROM client_membership_commits WHERE room_id = ?1", [ROOM], |row| row.get(0))
+        .query_row(
+            "SELECT COUNT(*) FROM client_membership_commits WHERE room_id = ?1",
+            [ROOM],
+            |row| row.get(0),
+        )
         .unwrap();
-    assert_eq!(journal_rows, 1, "mismatched journal is retained for explicit recovery");
+    assert_eq!(
+        journal_rows, 1,
+        "mismatched journal is retained for explicit recovery"
+    );
 }
