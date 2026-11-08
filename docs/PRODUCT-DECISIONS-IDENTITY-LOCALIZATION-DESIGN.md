@@ -83,12 +83,14 @@ Plan theme tokens for chat background, message bubbles (incoming/outgoing), text
 
 The app must offer several selectable icon variants, subject to platform-specific support and restrictions.
 
-Primary icon concept:
-- green background using the InOne design-system green;
-- wordmark “InOne” in black;
-- bold, visually connected/compact lettering;
-- white outline around the wordmark;
-- glass-inspired visual language.
+Primary icon concept (clarified and approved by the product owner on 2026-11-08):
+- green background using the approved InOne design-system green; the green background itself has no white perimeter frame;
+- the wordmark must read exactly “InOne” as one uninterrupted word, preserving this exact spelling and capitalization;
+- letters are black, bold, and visually connected/compact;
+- the white outline/stroke must follow the contours of the black letterforms directly; it must not outline the green background or the app-icon perimeter;
+- glass-inspired, layered visual language, with each layer reading as glass.
+
+Do not change the wordmark spelling, capitalization, spacing, or outline placement without explicit product-owner approval. Use the exact approved design-system green and typography assets when available; do not invent substitute token values.
 
 Plan the asset catalogue and icon-selection UX. On platforms where alternate icons must be declared in the app bundle, include each supported variant at build time and implement the platform-specific switch mechanism.
 
