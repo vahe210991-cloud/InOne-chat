@@ -219,6 +219,12 @@ pub fn is_retryable(err: &str) -> bool {
     false
 }
 
+fn is_access_failure(err: &str) -> bool {
+    let Some(pos) = err.find(" -> ") else { return false; };
+    let code: String = err[pos + 4..].chars().take_while(|c| c.is_ascii_digit()).collect();
+    matches!(code.parse::<u16>(), Ok(401 | 403 | 404))
+}
+
 const MAX_BACKOFF: Duration = Duration::from_secs(300);
 
 /// Повторяет операцию при временных ошибках: паузы удваиваются, но не больше пяти минут.
