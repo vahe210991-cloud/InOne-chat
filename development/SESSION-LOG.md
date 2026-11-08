@@ -1,5 +1,17 @@
 # InOne development session log
 
+
+## 2026-11-08 — P0 accepted and merged
+
+- Final PR [#25](https://github.com/vahe210991-cloud/InOne-chat/pull/25) merged into `main`; merge commit `97024ab03ce9583e298ee946f3679565007405ca`.
+- Verified `main` HEAD equals the merge commit; PR state CLOSED / MERGED.
+- All six required jobs passed on exact PR head `addd47da245b6452c9f700c7e10b8d0585aad295` in workflow run [#124](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42496739362): Node, room-list, PostgreSQL, OpenMLS, Rust bridge and Rust 1.91 formatting.
+- Source provenance checked against owner bundle HEAD `16eab726106ae04b4979af2a1646c2052233b87c`; common ancestor `6fba6601e53a03da9652d0f76982c0b5d1bf8d3a`. Four bundle-only commits are docs/CI-only; 19-file P0 delta is recorded in PR #25 and the closure report.
+- Owner bundle permanently stored on `artifacts/p0-bundles`, SHA-256 `e76fdd39e2e9698d7f32061e3fd4fb3dbc52ef981bb075c6c252a7cce11f391e`.
+- P0 backend/Rust/OpenMLS acceptance is closed. Native Flutter Beta 1.0 integration remains a separate scope. No separate post-merge push run was returned; run #124 is the successful PR merge-candidate validation.
+- Closure report: `development/recovered-source/P0-CLOSURE-2026-11-08.md`.
+
+
 This log is a durable GitHub record. Add newest entries at the top. Keep each entry factual and link commits, PRs, workflow runs, and test evidence.
 
 ## 2026-11-08 — GitHub P0 source recovery verified; acceptance still open
