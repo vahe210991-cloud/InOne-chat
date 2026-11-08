@@ -146,3 +146,11 @@ Tasks, Calendar, Cindy не добавлять в Beta 1.0 без нового �
 
 - The uploaded ZIP is present in the active runtime and its inner bundle was verified complete with `git bundle verify`: 5 commits, P0 HEAD `a7f60b6fdc969941e4354a117e17d32bfc951fb9`, base `ea3b49ae9cdf1670a1b7499d4b5e608ee22fe1e9`, 240 base blobs.
 - Preserve checksums from `development/recovered-source/README.md`. Binary still not in GitHub; base64 blob API exists but current tool bridge cannot transfer mounted bytes to it. Do not claim it was uploaded.
+
+
+## P0 validation current blocker
+
+- Latest completed validation run #42457297299: Node 369/369 and room regression 2/2 passed; PostgreSQL 42/43 passed. The only DB failure was pg_dump/pg_restore client version mismatch against PostgreSQL 16 service (`transaction_timeout`).
+- Workflow pinned to Ubuntu 24.04 + PostgreSQL client 16 at commit `0e13b9726c5fcbecfdb8a9a45b05d4bb6eb02863`.
+- Inspect fresh run [42457594088](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42457594088) and require PostgreSQL, OpenMLS, Rust, and publish job to pass.
+- No merge yet.
