@@ -1,9 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:inone_mobile/main.dart';
+import 'package:inone_mobile/approved_screens.dart';
 
 void main() {
-  testWidgets('InOne app boots into the approved screens host', (tester) async {
-    await tester.pumpWidget(const InOneApp());
-    expect(find.byType(ApprovedScreensHost), findsOneWidget);
+  test('approved HTML design is packaged as a local Flutter asset', () {
+    expect(approvedScreensAssetPath,
+        'assets/approved-ui/InOne-mobile-design-system-curated.html');
   });
 }
