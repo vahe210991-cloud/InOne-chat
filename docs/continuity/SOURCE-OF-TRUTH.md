@@ -119,3 +119,10 @@ GitHub — постоянное хранилище кода, истории, р�
 - Original biometric client source is in `inone-development-archive-0.6.0/client-reference/biometric-client.mjs`, blob SHA `b03e72fe33c79e6b261d980bc86459babf03b388`; same exact blob restored under engine/client-reference for P0 tests.
 - Original vector fixture is in `inone-development-archive-0.6.0/client-reference/vectors/biometric-vectors.json`, blob SHA `5a00755946219df2527591f00058a19d167c7811`; same exact blob restored under engine/client-reference/vectors.
 - P0 recovery validation remains in PR #18. Current workflow correction commit `e0a8c08ddf68864963c3f8a65ba16a0612381e39` copies the restored reference files into the clean main-based published source branch before patch application.
+
+
+## 9. Original bundle binary provenance — 2026-11-08
+
+- Current upload `Bundle(1).zip` outer SHA-256 `a7ccfc12ae810dc1788f1b737ef4d53e032cafaf35797412784073a2db57f5a0`; inner bundle SHA-256 `a226e578a732e5da886e3ec4bfb007102154405a95809c80fb28a2833493522f`.
+- Inner bundle verifies complete, 5 commits, P0 ref `engine/p0-wave3` at `a7f60b6fdc969941e4354a117e17d32bfc951fb9`, base `ea3b49ae9cdf1670a1b7499d4b5e608ee22fe1e9`.
+- Binary storage status and connector limitations: `development/recovered-source/README.md`. GitHub base64 blob API exists; current container-to-Code-Mode byte transfer is the blocker.
