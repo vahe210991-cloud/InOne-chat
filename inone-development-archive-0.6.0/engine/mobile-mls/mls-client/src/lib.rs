@@ -1122,7 +1122,9 @@ impl Client {
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         ).map_err(text)?;
         if existing.0 != room_id || existing.1 != bytes || existing.2 != outcome {
-            return Err(format!("Welcome receipt identity collision for id {welcome_id}"));
+            return Err(format!(
+                "Welcome receipt identity collision for id {welcome_id}"
+            ));
         }
         tx.commit().map_err(text)?;
         Ok(())
@@ -1174,7 +1176,9 @@ impl Client {
         self.retry_pending_welcome_acks()?;
         let pending = self.call("GET", "/mls/welcomes", None)?;
         for row in pending["welcomes"].as_array().cloned().unwrap_or_default() {
-            let Some(welcome_id) = row["id"].as_i64() else { continue };
+            let Some(welcome_id) = row["id"].as_i64() else {
+                continue;
+            };
             let Some(room_id) = row["roomId"].as_str().filter(|id| !id.trim().is_empty()) else {
                 continue;
             };
@@ -1183,10 +1187,16 @@ impl Client {
                 Ok(bytes) => bytes,
                 Err(error) => {
                     let raw = encoded.as_bytes();
-                    if self.persist_welcome_receipt(
-                        welcome_id, room_id, raw, "quarantined",
-                        Some(&format!("Welcome base64 is malformed: {error}")),
-                    ).is_ok() {
+                    if self
+                        .persist_welcome_receipt(
+                            welcome_id,
+                            room_id,
+                            raw,
+                            "quarantined",
+                            Some(&format!("Welcome base64 is malformed: {error}")),
+                        )
+                        .is_ok()
+                    {
                         let _ = self.ack_welcome(welcome_id);
                     }
                     continue;
@@ -1215,10 +1225,16 @@ impl Client {
             let message = match MlsMessageIn::tls_deserialize_exact(&bytes) {
                 Ok(message) => message,
                 Err(error) => {
-                    if self.persist_welcome_receipt(
-                        welcome_id, room_id, &bytes, "quarantined",
-                        Some(&format!("Malformed Welcome encoding: {error}")),
-                    ).is_ok() {
+                    if self
+                        .persist_welcome_receipt(
+                            welcome_id,
+                            room_id,
+                            &bytes,
+                            "quarantined",
+                            Some(&format!("Malformed Welcome encoding: {error}")),
+                        )
+                        .is_ok()
+                    {
                         let _ = self.ack_welcome(welcome_id);
                     }
                     continue;
@@ -1227,10 +1243,16 @@ impl Client {
             let welcome = match message.extract() {
                 MlsMessageBodyIn::Welcome(welcome) => welcome,
                 _ => {
-                    if self.persist_welcome_receipt(
-                        welcome_id, room_id, &bytes, "quarantined",
-                        Some("Server item is not an MLS Welcome"),
-                    ).is_ok() {
+                    if self
+                        .persist_welcome_receipt(
+                            welcome_id,
+                            room_id,
+                            &bytes,
+                            "quarantined",
+                            Some("Server item is not an MLS Welcome"),
+                        )
+                        .is_ok()
+                    {
                         let _ = self.ack_welcome(welcome_id);
                     }
                     continue;
@@ -1241,7 +1263,10 @@ impl Client {
                 .max_past_epochs(MAX_PAST_EPOCHS)
                 .build();
             let staged = match StagedWelcome::new_from_welcome(
-                &self.provider, &join_config, welcome, None,
+                &self.provider,
+                &join_config,
+                welcome,
+                None,
             ) {
                 Ok(staged) => staged,
                 Err(WelcomeError::GroupAlreadyExists) => {
@@ -1256,10 +1281,16 @@ impl Client {
                     continue;
                 }
                 Err(error) => {
-                    if self.persist_welcome_receipt(
-                        welcome_id, room_id, &bytes, "quarantined",
-                        Some(&format!("Permanent Welcome error: {error:?}")),
-                    ).is_ok() {
+                    if self
+                        .persist_welcome_receipt(
+                            welcome_id,
+                            room_id,
+                            &bytes,
+                            "quarantined",
+                            Some(&format!("Permanent Welcome error: {error:?}")),
+                        )
+                        .is_ok()
+                    {
                         let _ = self.ack_welcome(welcome_id);
                     }
                     continue;
@@ -1278,10 +1309,18 @@ impl Client {
                     continue;
                 }
                 Err(error) => {
-                    if self.persist_welcome_receipt(
-                        welcome_id, room_id, &bytes, "quarantined",
-                        Some(&format!("Permanent Welcome materialization error: {error:?}")),
-                    ).is_ok() {
+                    if self
+                        .persist_welcome_receipt(
+                            welcome_id,
+                            room_id,
+                            &bytes,
+                            "quarantined",
+                            Some(&format!(
+                                "Permanent Welcome materialization error: {error:?}"
+                            )),
+                        )
+                        .is_ok()
+                    {
                         let _ = self.ack_welcome(welcome_id);
                     }
                     continue;
@@ -1293,10 +1332,16 @@ impl Client {
                     room_id,
                     &format!("Welcome group ID mismatch: server={room_id}, MLS={actual_room}"),
                 )?;
-                if self.persist_welcome_receipt(
-                    welcome_id, room_id, &bytes, "quarantined",
-                    Some("Welcome group ID does not match server room ID"),
-                ).is_ok() {
+                if self
+                    .persist_welcome_receipt(
+                        welcome_id,
+                        room_id,
+                        &bytes,
+                        "quarantined",
+                        Some("Welcome group ID does not match server room ID"),
+                    )
+                    .is_ok()
+                {
                     let _ = self.ack_welcome(welcome_id);
                 }
                 continue;
@@ -1304,16 +1349,22 @@ impl Client {
             let join_epoch = mls.epoch().as_u64();
             // If this write fails, the Welcome remains unacknowledged. The next run will
             // observe GroupAlreadyExists and require explicit room recovery rather than lose it.
-            if self.meta.execute(
-                "INSERT OR REPLACE INTO client_rooms (room_id, join_epoch) VALUES (?1, ?2)",
-                (&room_id, join_epoch as i64),
-            ).is_err() {
+            if self
+                .meta
+                .execute(
+                    "INSERT OR REPLACE INTO client_rooms (room_id, join_epoch) VALUES (?1, ?2)",
+                    (&room_id, join_epoch as i64),
+                )
+                .is_err()
+            {
                 continue;
             }
-            self.groups.insert(room_id.to_string(), Group { mls, join_epoch });
-            if self.persist_welcome_receipt(
-                welcome_id, room_id, &bytes, "joined", None,
-            ).is_ok() {
+            self.groups
+                .insert(room_id.to_string(), Group { mls, join_epoch });
+            if self
+                .persist_welcome_receipt(welcome_id, room_id, &bytes, "joined", None)
+                .is_ok()
+            {
                 let _ = self.ack_welcome(welcome_id);
             }
         }

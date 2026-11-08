@@ -28,18 +28,34 @@ fn duplicate_welcome_is_retained_and_does_not_block_healthy_room() {
     assert!(replay.starts_with("OK "), "test replay enabled: {replay}");
     let replay_id = replay.split_whitespace().nth(1).unwrap();
 
-    bob.sync().expect("duplicate Welcome in one room must not stop other welcomes");
-    assert_eq!(bob.local_epoch(healthy_room), Some(1), "healthy Welcome joined");
-    let reason = bob.desync_reason(duplicate_room).unwrap().expect("duplicate Welcome requires room recovery");
-    assert!(reason.starts_with("RecoveryRequired:"), "durable recovery marker: {reason}");
+    bob.sync()
+        .expect("duplicate Welcome in one room must not stop other welcomes");
+    assert_eq!(
+        bob.local_epoch(healthy_room),
+        Some(1),
+        "healthy Welcome joined"
+    );
+    let reason = bob
+        .desync_reason(duplicate_room)
+        .unwrap()
+        .expect("duplicate Welcome requires room recovery");
+    assert!(
+        reason.starts_with("RecoveryRequired:"),
+        "durable recovery marker: {reason}"
+    );
     assert!(bob.send_text(duplicate_room, "blocked").is_err());
 
     // An ordinary membership check cannot clear RecoveryRequired.
     bob.sync().unwrap();
-    let reason_after_check = bob.desync_reason(duplicate_room).unwrap().expect("RecoveryRequired remains sticky");
+    let reason_after_check = bob
+        .desync_reason(duplicate_room)
+        .unwrap()
+        .expect("RecoveryRequired remains sticky");
     assert!(reason_after_check.starts_with("RecoveryRequired:"));
 
-    alice.send_text(healthy_room, "healthy room continues").unwrap();
+    alice
+        .send_text(healthy_room, "healthy room continues")
+        .unwrap();
     let incoming = bob.sync().unwrap();
     assert!(texts(&incoming).contains(&"healthy room continues".to_string()));
     assert_eq!(
