@@ -70,21 +70,21 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
     final approved = _selectedApprovedScreen;
     if (approved != null) return approved.label;
     final test = _selectedTestScreen!;
-    return test.id + ' · ' + test.title;
+    return '${test.id} · ${test.title}';
   }
 
   List<ScreenChoice> get _screenChoices => [
         for (final screen in approvedScreens)
           ScreenChoice(
-            keyValue: 'approved:' + screen.id,
+            keyValue: 'approved:${screen.id}',
             title: screen.label,
-            subtitle: 'Утверждённый экран · ' + screen.theme,
+            subtitle: 'Утверждённый экран · ${screen.theme}',
           ),
         for (final screen in testScreens)
           ScreenChoice(
-            keyValue: 'test:' + screen.id,
-            title: screen.id + ' · ' + screen.title,
-            subtitle: screen.category + ' · ' + _stageLabel(screen.stage) + ' · ' + screen.status,
+            keyValue: 'test:${screen.id}',
+            title: '${screen.id} · ${screen.title}',
+            subtitle: '${screen.category} · ${_stageLabel(screen.stage)} · ${screen.status}',
           ),
       ];
 
@@ -93,7 +93,7 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
     super.initState();
     _session = _apiBaseUrl.trim().isEmpty ? null : InOneSession(baseUrl: _apiBaseUrl.trim());
     if (_session != null) {
-      unawaited(_session!.initialize().catchError((Object _) {}));
+      unawaited(_session.initialize().catchError((Object _) {}));
     }
 
     _controller = WebViewController()
@@ -351,7 +351,7 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
                     borderRadius: BorderRadius.circular(12),
                     child: Padding(
                       padding: const EdgeInsets.all(12),
-                      child: Text('Не удалось загрузить экран: ' + _error!),
+                      child: Text('Не удалось загрузить экран: $_error'),
                     ),
                   ),
                 ),
@@ -660,7 +660,7 @@ class _ApiTestPanelState extends State<ApiTestPanel> {
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     title: Text(probe.label),
-                    subtitle: Text('GET ' + probe.path),
+                    subtitle: Text('GET ${probe.path}'),
                     trailing: IconButton(
                       tooltip: 'Выполнить запрос',
                       icon: const Icon(Icons.play_circle_outline),

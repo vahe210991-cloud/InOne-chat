@@ -14,7 +14,7 @@ void main() {
             RegExp.escape(screen.id) +
             r'[^"]*"',
       ).allMatches(html);
-      expect(matches, hasLength(1), reason: 'Missing or duplicate gallery card for ' + screen.id);
+      expect(matches, hasLength(1), reason: 'Missing or duplicate gallery card for ${screen.id}');
     }
   });
 }

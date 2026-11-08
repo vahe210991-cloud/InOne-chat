@@ -20,8 +20,8 @@ void main() {
 
   test('the unified test host exposes 95 distinct screen variants', () {
     final keys = <String>{
-      ...approvedScreens.map((screen) => 'approved:' + screen.id),
-      ...testScreens.map((screen) => 'test:' + screen.id),
+      ...approvedScreens.map((screen) => 'approved:${screen.id}'),
+      ...testScreens.map((screen) => 'test:${screen.id}'),
     };
     expect(keys, hasLength(95));
   });
