@@ -196,6 +196,11 @@ rl.on('line', async (line) => {
     console.log('OK');
     return;
   }
+  if (parts[0] === 'MAKE_ROOM_ADMIN') {
+    store.setRoomAdmin(parts[1], parts[2], true);
+    console.log('OK');
+    return;
+  }
   if (parts[0] === 'BADCOMMIT') {
     try {
       const commits = await store.mlsCommitsSince(parts[1], 0, 1000);
