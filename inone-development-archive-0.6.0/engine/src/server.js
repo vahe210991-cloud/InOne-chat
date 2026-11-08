@@ -2206,6 +2206,16 @@ if (req.method === 'POST' && p === '/login') {
 
               const r = await storage.getRoom(roomId);
               if (!r) return send(res, 404, { error: 'group not found' });
+              // Close the race between the first replay lookup and the room snapshot.
+              if (clientOperationId) {
+                const replay = await storage.mlsCommitOperation(roomId, d.userId, d.deviceId, clientOperationId, requestFingerprint);
+                if (replay) {
+                  if (!replay.ok && replay.reason === 'operation_id_reused') {
+                    return send(res, 409, { error: 'clientOperationId was reused with a different request', code: 'operation_id_reused' });
+                  }
+                  return send(res, 200, { epoch: replay.epoch, replayed: true });
+                }
+              }
               if (!r.members.includes(d.userId)) return send(res, 403, { error: 'not a member' });
               // The epoch check is repeated under the PostgreSQL room lock in mlsApplyCommit.
               // Do not reject here: a concurrent exact retry may have been accepted while this request waited.
