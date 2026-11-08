@@ -57,12 +57,13 @@ jobs:
           echo "/usr/lib/postgresql/16/bin" >> "$GITHUB_PATH"
           /usr/lib/postgresql/16/bin/pg_dump --version
       - name: Apply rustfmt without changing behavior
-        working-directory: inone-development-archive-0.6.0/engine/mobile-mls
         env:
           TARGET_BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
+          cd inone-development-archive-0.6.0/engine/mobile-mls
           cargo fmt --manifest-path mls-client/Cargo.toml
           cargo fmt --manifest-path mls-bridge/Cargo.toml
+          cd "$GITHUB_WORKSPACE"
           if ! git diff --quiet -- inone-development-archive-0.6.0/engine/mobile-mls; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -70,6 +71,7 @@ jobs:
             git commit -m "style(mls): apply Rust 1.91 formatting"
             git push origin "HEAD:refs/heads/$TARGET_BRANCH"
           fi
+          cd inone-development-archive-0.6.0/engine/mobile-mls
           cargo fmt --manifest-path mls-client/Cargo.toml -- --check
           cargo fmt --manifest-path mls-bridge/Cargo.toml -- --check
       - name: Install Node dependencies
