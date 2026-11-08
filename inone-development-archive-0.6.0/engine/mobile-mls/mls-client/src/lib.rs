@@ -1272,11 +1272,15 @@ impl Client {
         room_id: &str,
         user_id: &str,
     ) -> Result<(String, String), String> {
-        let existing: Option<(String, String)> = self.meta.query_row(
+        let existing: Option<(String, String)> = match self.meta.query_row(
             "SELECT operation_id, state FROM client_invite_intents WHERE room_id = ?1 AND target_user_id = ?2",
             rusqlite::params![room_id, user_id],
             |row| Ok((row.get(0)?, row.get(1)?)),
-        ).ok();
+        ) {
+            Ok(row) => Some(row),
+            Err(rusqlite::Error::QueryReturnedNoRows) => None,
+            Err(error) => return Err(text(error)),
+        };
         if let Some(intent) = existing {
             return Ok(intent);
         }
@@ -1498,31 +1502,37 @@ impl Client {
     }
 
     pub fn cancel_invite(&mut self, room_id: &str, user_id: &str) -> Result<(), String> {
-        let intent: Option<(String, String)> = self.meta.query_row(
+        let intent: Option<(String, String)> = match self.meta.query_row(
             "SELECT operation_id, state FROM client_invite_intents WHERE room_id = ?1 AND target_user_id = ?2",
             rusqlite::params![room_id, user_id],
             |row| Ok((row.get(0)?, row.get(1)?)),
-        ).ok();
+        ) {
+            Ok(row) => Some(row),
+            Err(rusqlite::Error::QueryReturnedNoRows) => None,
+            Err(error) => return Err(text(error)),
+        };
         let Some((operation_id, state)) = intent else {
             return Ok(());
         };
         if state == "commit_pending" {
             self.flush_pending_membership_commits()?;
-            let still_exists: bool = self
-                .meta
-                .query_row(
-                    "SELECT EXISTS(SELECT 1 FROM client_invite_intents WHERE operation_id = ?1)",
-                    [&operation_id],
-                    |row| row.get(0),
-                )
-                .map_err(text)?;
-            if !still_exists {
-                return Ok(());
+            let next_state: Option<String> = match self.meta.query_row(
+                "SELECT state FROM client_invite_intents WHERE operation_id = ?1",
+                [&operation_id],
+                |row| row.get(0),
+            ) {
+                Ok(value) => Some(value),
+                Err(rusqlite::Error::QueryReturnedNoRows) => None,
+                Err(error) => return Err(text(error)),
+            };
+            match next_state.as_deref() {
+                None => return Ok(()),
+                Some("commit_pending") => {
+                    return Err("membership commit остаётся staged; reservation нельзя release до ACK/replay".to_string());
+                }
+                Some("claim_pending") => {}
+                Some(other) => return Err(format!("unknown invite intent state: {other}")),
             }
-            return Err(
-                "membership commit уже staged; reservation нельзя release до ACK/replay"
-                    .to_string(),
-            );
         }
         let result = self.call(
             "DELETE",
@@ -1559,20 +1569,25 @@ impl Client {
         let (operation_id, state) = self.ensure_invite_intent(room_id, user_id)?;
         if state == "commit_pending" {
             self.flush_pending_membership_commits()?;
-            let still_exists: bool = self
-                .meta
-                .query_row(
-                    "SELECT EXISTS(SELECT 1 FROM client_invite_intents WHERE operation_id = ?1)",
-                    [&operation_id],
-                    |row| row.get(0),
-                )
-                .map_err(text)?;
-            if !still_exists {
-                return Ok(());
+            let next_state: Option<String> = match self.meta.query_row(
+                "SELECT state FROM client_invite_intents WHERE operation_id = ?1",
+                [&operation_id],
+                |row| row.get(0),
+            ) {
+                Ok(value) => Some(value),
+                Err(rusqlite::Error::QueryReturnedNoRows) => None,
+                Err(error) => return Err(text(error)),
+            };
+            match next_state.as_deref() {
+                None => return Ok(()),
+                Some("claim_pending") => {}
+                Some("commit_pending") => {
+                    let reason = format!("commit_pending invite {operation_id} has no resolvable ACK");
+                    self.record_desync(room_id, &reason)?;
+                    return Err(format!("RecoveryRequired: {reason}"));
+                }
+                Some(other) => return Err(format!("unknown invite intent state: {other}")),
             }
-            let reason = format!("commit_pending invite {operation_id} has no resolvable ACK");
-            self.record_desync(room_id, &reason)?;
-            return Err(format!("RecoveryRequired: {reason}"));
         }
         for attempt in 0..3 {
             if self.resume_claim_pending_invite(room_id, user_id, &operation_id)? {
