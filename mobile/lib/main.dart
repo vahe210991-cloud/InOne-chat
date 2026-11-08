@@ -34,16 +34,22 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
       ..setBackgroundColor(const Color(0xFFFAF9F5))
       ..setNavigationDelegate(NavigationDelegate(
         onPageStarted: (_) {
-          if (mounted) setState(() { _loading = true; _error = null; });
+          if (mounted) {
+            setState(() { _loading = true; _error = null; });
+          }
         },
         onPageFinished: (_) {
-          if (mounted) setState(() => _loading = false);
+          if (mounted) {
+            setState(() => _loading = false);
+          }
         },
         onWebResourceError: (error) {
-          if (mounted) setState(() {
-            _loading = false;
-            _error = error.description;
-          });
+          if (mounted) {
+            setState(() {
+              _loading = false;
+              _error = error.description;
+            });
+          }
         },
         onNavigationRequest: (request) {
           final uri = Uri.tryParse(request.url);
