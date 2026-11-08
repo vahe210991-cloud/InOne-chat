@@ -1,5 +1,18 @@
 # InOne session handover checklist
 
+
+## P0 closeout — completed 2026-11-08
+
+- [x] Source provenance checked against owner bundle; bundle is retained in GitHub.
+- [x] Six P0 CI jobs passed on exact PR head (run #124).
+- [x] PR #25 merged to `main` as `97024ab03ce9583e298ee946f3679565007405ca`.
+- [x] P0 closure report and session handoff committed.
+- [x] Permanent bundle retention path and SHA-256 documented.
+- [ ] Native Flutter Beta 1.0 integration, secure platform key storage, durable local message persistence and real-device E2E — separate next phase, not P0.
+
+Do not reopen P0 or ask the owner to re-upload the bundle unless a concrete regression or missing artifact is demonstrated. Retrieve it from `artifacts/p0-bundles`.
+
+
 ## Start
 
 - [ ] Read `development/README.md` and every linked mandatory instruction.
@@ -39,5 +52,5 @@ A session is not handed back until the work is in GitHub or the exact blocker is
 - [ ] Verify six substantive modified engine files and five added P0 test files against exact bundle/patch provenance.
 - [ ] Preserve source hashes before a separate rustfmt-only commit.
 - [ ] Re-run the full GitHub Actions workflow on the exact resulting SHA; require formatting, Node, room regression, PostgreSQL, OpenMLS and Rust bridge jobs all green.
-- [ ] Keep PR #22 draft/open and do not merge or begin non-P0 Beta work until source-integrity and CI gates pass.
-- [ ] Record original bundle binary preservation as BLOCKED until a retrievable GitHub/archive object is uploaded and its SHA-256 verified.
+- [x] PR #25 merged after source-provenance review and all six CI jobs passed.
+- [x] Original owner bundle permanently stored in GitHub; checksum recorded in ARTIFACT-RETENTION.md.
