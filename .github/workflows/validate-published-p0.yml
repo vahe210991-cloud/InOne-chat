@@ -76,8 +76,10 @@ jobs:
           cargo fmt --manifest-path mls-client/Cargo.toml -- --check
           cargo fmt --manifest-path mls-bridge/Cargo.toml -- --check
       - name: OpenMLS client tests
+        if: ${{ !cancelled() }}
         working-directory: inone-development-archive-0.6.0/engine/mobile-mls/mls-client
         run: cargo test --locked
       - name: Rust bridge tests
+        if: ${{ !cancelled() }}
         working-directory: inone-development-archive-0.6.0/engine/mobile-mls/mls-bridge
         run: cargo test --locked
