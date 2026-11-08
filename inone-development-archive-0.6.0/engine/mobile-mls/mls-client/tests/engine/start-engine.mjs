@@ -21,7 +21,9 @@ const failNextCommitReads = new Set();
 const badEventIds = new Map();
 const welcomeArchive = new Map();
 const replayWelcomeByDevice = new Map();
-const replayWelcomeAckAttempts = new Set();
+const replayWelcomeAckAttempts = new Map();
+const badWelcomeRooms = new Set();
+const failNextWelcomeAcks = new Set();
 let replayWelcomeId = 900000000;
 const originalMlsPendingWelcomes = store.mlsPendingWelcomes.bind(store);
 store.mlsPendingWelcomes = (userId, deviceId) => {
@@ -29,8 +31,12 @@ store.mlsPendingWelcomes = (userId, deviceId) => {
   for (const welcome of pending) welcomeArchive.set(`${userId}|${deviceId}|${welcome.roomId}`, { ...structuredClone(welcome), welcome: Buffer.from(welcome.welcome) });
   const replayRoom = replayWelcomeByDevice.get(`${userId}|${deviceId}`);
   const archived = replayRoom ? welcomeArchive.get(`${userId}|${deviceId}|${replayRoom}`) : null;
-  if (!replayRoom || !archived) return pending;
-  return [{ ...structuredClone(archived), welcome: Buffer.from(archived.welcome), id: replayWelcomeId++ }, ...pending];
+  const rows = !replayRoom || !archived
+    ? pending
+    : [{ ...structuredClone(archived), welcome: Buffer.from(archived.welcome), id: replayWelcomeId++ }, ...pending];
+  return rows.map((row) => badWelcomeRooms.has(row.roomId)
+    ? { ...row, welcome: Buffer.from('not-an-MLS-Welcome') }
+    : row);
 };
 let dropNextCommitResponse = false;
 const originalMlsApplyCommit = store.mlsApplyCommit.bind(store);
@@ -44,7 +50,12 @@ store.mlsApplyCommit = (...args) => {
 };
 const originalMlsAckWelcome = store.mlsAckWelcome.bind(store);
 store.mlsAckWelcome = (...args) => {
-  replayWelcomeAckAttempts.add(args[0]);
+  const id = Number(args[0]);
+  replayWelcomeAckAttempts.set(id, (replayWelcomeAckAttempts.get(id) || 0) + 1);
+  if (failNextWelcomeAcks.has(id)) {
+    failNextWelcomeAcks.delete(id);
+    throw new Error('simulated transient Welcome ACK failure');
+  }
   return originalMlsAckWelcome(...args);
 };
 const originalMlsCommitsSince = store.mlsCommitsSince.bind(store);
@@ -96,7 +107,30 @@ rl.on('line', async (line) => {
     return;
   }
   if (parts[0] === 'WELCOME_ACK_ATTEMPTED') {
-    console.log(replayWelcomeAckAttempts.has(Number(parts[1])) ? 'YES' : 'NO');
+    console.log((replayWelcomeAckAttempts.get(Number(parts[1])) || 0) > 0 ? 'YES' : 'NO');
+    return;
+  }
+  if (parts[0] === 'WELCOME_ACK_COUNT') {
+    console.log(String(replayWelcomeAckAttempts.get(Number(parts[1])) || 0));
+    return;
+  }
+  if (parts[0] === 'WELCOME_ID') {
+    const row = originalMlsPendingWelcomes(parts[1], parts[2]).find((item) => item.roomId === parts[3]);
+    console.log(row ? String(row.id) : 'NONE');
+    return;
+  }
+  if (parts[0] === 'WELCOME_PENDING') {
+    console.log(String(originalMlsPendingWelcomes(parts[1], parts[2]).length));
+    return;
+  }
+  if (parts[0] === 'BAD_WELCOME') {
+    badWelcomeRooms.add(parts[1]);
+    console.log('OK');
+    return;
+  }
+  if (parts[0] === 'FAIL_NEXT_WELCOME_ACK') {
+    failNextWelcomeAcks.add(Number(parts[1]));
+    console.log('OK');
     return;
   }
   if (parts[0] === 'FAIL_NEXT_COMMIT_READ') {
