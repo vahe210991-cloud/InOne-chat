@@ -79,10 +79,15 @@ jobs:
         with:
           fetch-depth: 0
       - name: Preserve patch and create source branch from main
+        env:
+          PULL_REQUEST_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           base64 -d recovery/p0-wave3-core.patch.gz.b64 > "$RUNNER_TEMP/p0-wave3.patch.gz"
           git fetch origin main
           git checkout -b recovery/p0-wave3-applied origin/main
+          mkdir -p inone-development-archive-0.6.0/engine/client-reference/vectors
+          git show "$PULL_REQUEST_HEAD_SHA:inone-development-archive-0.6.0/engine/client-reference/biometric-client.mjs" > inone-development-archive-0.6.0/engine/client-reference/biometric-client.mjs
+          git show "$PULL_REQUEST_HEAD_SHA:inone-development-archive-0.6.0/engine/client-reference/vectors/biometric-vectors.json" > inone-development-archive-0.6.0/engine/client-reference/vectors/biometric-vectors.json
           gzip -dc "$RUNNER_TEMP/p0-wave3.patch.gz" | git apply
           git add inone-development-archive-0.6.0/engine
           git config user.name "github-actions[bot]"
