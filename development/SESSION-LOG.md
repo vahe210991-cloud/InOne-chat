@@ -36,3 +36,12 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Opened validation rerun PR [#19](https://github.com/vahe210991-cloud/InOne-chat/pull/19) from the same corrected head because the first run had failed and the updated-head run was not initially visible. PR #18 remains the primary recovery PR; #19 is a duplicate validation trigger and should be closed as superseded after fresh CI is verified.
 - GitHub Actions runs [42454943853](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42454943853) and [42455077322](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42455077322) were both `in_progress` at last check. Patch decode/apply and npm install passed; Node `npm test` still running. PostgreSQL and Rust not yet reached.
 - Owner's `INONE_INTEGRATION_BRIEF.md` committed at `development/integrations/INONE-PROPO-AUTH-INTEGRATION-BRIEF.md`; status Planned, no production integration implementation assumed.
+
+
+## 2026-11-08 — Biometric vector fixture gap and replacement
+
+- Corrected runs #42454943853 and #42455077322: Node 368/369 passed; sole failure was missing `client-reference/vectors/biometric-vectors.json`. The restored client module's C1–C4 tests passed. PostgreSQL and Rust steps skipped.
+- Original fixture bytes were not accessible. Added a clearly labelled replacement fixture to PR #18 (commit `bdedff6df54876e82f46a34d27f2fadfac42b46d`), not claimed as original. It uses P-256/SHA-256 DER base64url; two positive and two negative cases verified locally using Node crypto.
+- Workflow path filter updated in commit `ee7a877aedb43ca90df8cd410dbf536c2f436668`.
+- Latest run [42457009510](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42457009510) is in progress. Await Node -> room-list -> PostgreSQL -> OpenMLS -> Rust.
+- Closed duplicate PR #19 as superseded; PR #18 is primary. No merge.
