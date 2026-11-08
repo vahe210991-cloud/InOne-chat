@@ -51,6 +51,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: "1.91"
+          components: rustfmt
       - name: Install PostgreSQL 16 client
         run: |
           sudo apt-get update
