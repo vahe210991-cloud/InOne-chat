@@ -31,6 +31,16 @@ store.mlsPendingWelcomes = (userId, deviceId) => {
   if (!archived) return pending;
   return [{ ...structuredClone(archived), id: replayWelcomeId++ }, ...pending];
 };
+let dropNextCommitResponse = false;
+const originalMlsApplyCommit = store.mlsApplyCommit.bind(store);
+store.mlsApplyCommit = (...args) => {
+  const result = originalMlsApplyCommit(...args);
+  if (dropNextCommitResponse && result?.ok && !result.replayed) {
+    dropNextCommitResponse = false;
+    throw new Error('simulated response loss after durable commit acceptance');
+  }
+  return result;
+};
 const originalMlsAckWelcome = store.mlsAckWelcome.bind(store);
 store.mlsAckWelcome = (...args) => {
   replayWelcomeAckAttempts.add(args[0]);
@@ -61,6 +71,16 @@ store.roomEventRows = async (roomId, since) => {
 const rl = readline.createInterface({ input: process.stdin });
 rl.on('line', async (line) => {
   const parts = line.trim().split(' ');
+  if (parts[0] === 'DROP_NEXT_COMMIT_RESPONSE') {
+    dropNextCommitResponse = true;
+    console.log('OK');
+    return;
+  }
+  if (parts[0] === 'COMMIT_COUNT') {
+    const rows = await store.mlsCommitsSince(parts[1], 0, 1000);
+    console.log(String(rows.length));
+    return;
+  }
   if (parts[0] === 'REPLAY_WELCOME') {
     const roomId = parts[1], userId = parts[2], deviceId = parts[3];
     const archived = welcomeArchive.get(`${userId}|${deviceId}|${roomId}`);
