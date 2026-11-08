@@ -55,6 +55,7 @@ const mlsCommitFingerprint = (roomId, senderId, deviceId, request) => {
   return sha(JSON.stringify({
     version: 1, roomId, senderId, deviceId,
     clientOperationId: request.clientOperationId,
+    keyPackageClaimId: request.keyPackageClaimId,
     epoch: request.epoch,
     commit: request.commit.toString('base64'),
     changes: {
@@ -2248,7 +2249,7 @@ if (req.method === 'POST' && p === '/login') {
                 if (!(await storage.hasAccount(w.userId))) return send(res, 400, { error: 'welcome recipient is not a known account' });
               }
               const result = await storage.mlsApplyCommit(roomId, checked.value.epoch, {
-                senderId: d.userId, deviceId: d.deviceId, clientOperationId, requestFingerprint,
+                senderId: d.userId, deviceId: d.deviceId, clientOperationId, requestFingerprint, keyPackageClaimId: checked.value.keyPackageClaimId,
                 commit: checked.value.commit, welcomes: checked.value.welcomes, changes: checked.value.changes,
               }, now());
               if (!result.ok && result.reason === 'operation_id_reused') {
@@ -2256,6 +2257,9 @@ if (req.method === 'POST' && p === '/login') {
               }
               if (!result.ok && result.reason === 'epoch_outdated') {
                 return send(res, 409, { error: 'epoch is outdated', code: 'epoch_outdated', currentEpoch: result.epoch });
+              }
+              if (!result.ok && result.reason?.startsWith('claim_')) {
+                return send(res, 409, { error: result.reason, code: result.reason });
               }
               if (result.ok && !result.replayed && (adds.length > 0 || removes.length > 0)) {
                 await markRoomChanged(roomId, [...new Set([...r.members, ...adds])]);
@@ -2387,6 +2391,44 @@ if (req.method === 'POST' && p === '/login') {
         await storage.mlsStoreLastResort(d.userId, d.deviceId, checked.value[0], now());
         return send(res, 200, { stored: true });
       }
+      const mlsClaims = p.match(/^\/mls\/key-packages\/([^/]+)\/claims$/);
+      if (mlsClaims && req.method === 'POST') {
+        const d = await authed(req);
+        if (!d) return send(res, 401, { error: 'unauthorized' });
+        const targetUserId = decodeURIComponent(mlsClaims[1]);
+        const { claimId, roomId } = body ?? {};
+        if (typeof claimId !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(claimId)) {
+          return send(res, 400, { error: 'claimId must be 16-128 URL-safe characters' });
+        }
+        if (typeof roomId !== 'string' || roomId.length < 1 || roomId.length > 200) {
+          return send(res, 400, { error: 'roomId is required for a KeyPackage reservation' });
+        }
+        const room = await storage.getRoom(roomId);
+        if (!room || !room.members.includes(d.userId)) return send(res, 403, { error: 'not a room member' });
+        if (room.members.includes(targetUserId)) return send(res, 409, { error: 'already a member', code: 'already_member' });
+        if (d.userId !== room.owner && !hasCapability(room, d.userId, 'invite_members')) {
+          return send(res, 403, { error: 'missing capability: invite_members' });
+        }
+        if (!(await storage.hasAccount(targetUserId))) return send(res, 400, { error: 'unknown account' });
+        const rate = await checkRate('mlsClaimPerAccount', d.userId);
+        if (!rate.allowed) return send(res, 429, { error: 'too many key requests, try later' });
+        const claimed = await storage.mlsClaimKeyPackages(targetUserId, d.userId, d.deviceId, claimId, roomId, now());
+        if (!claimed.ok) return send(res, 409, { error: claimed.reason, code: claimed.reason });
+        return send(res, 200, {
+          claimId, roomId,
+          packages: claimed.packages.map((item) => ({ deviceId: item.deviceId, package: item.package.toString('base64') })),
+        });
+      }
+      const mlsReleaseClaim = p.match(/^\/mls\/key-packages\/claims\/([^/]+)$/);
+      if (mlsReleaseClaim && req.method === 'DELETE') {
+        const d = await authed(req);
+        if (!d) return send(res, 401, { error: 'unauthorized' });
+        const claimId = decodeURIComponent(mlsReleaseClaim[1]);
+        if (!/^[A-Za-z0-9_-]{16,128}$/.test(claimId)) return send(res, 400, { error: 'invalid claimId' });
+        const result = await storage.mlsReleaseKeyPackageClaim(d.userId, d.deviceId, claimId, now());
+        if (!result.ok) return send(res, 409, { error: result.reason, code: result.reason });
+        return send(res, 200, { released: result.released });
+      }
       const mlsClaim = p.match(/^\/mls\/key-packages\/([^/]+)\/claim$/);
       if (mlsClaim && req.method === 'POST') {
         const d = await authed(req);
@@ -2397,8 +2439,9 @@ if (req.method === 'POST' && p === '/login') {
         }
         const rate = await checkRate('mlsClaimPerAccount', d.userId);
         if (!rate.allowed) return send(res, 429, { error: 'too many key requests, try later' });
-        const claimed = await storage.mlsClaimKeyPackages(decodeURIComponent(mlsClaim[1]), d.userId, d.deviceId, claimId, now());
-        return send(res, 200, { claimId, packages: claimed.map((c) => ({ deviceId: c.deviceId, package: c.package.toString('base64') })) });
+        const claimed = await storage.mlsClaimKeyPackages(decodeURIComponent(mlsClaim[1]), d.userId, d.deviceId, claimId, null, now());
+        if (!claimed.ok) return send(res, 409, { error: claimed.reason, code: claimed.reason });
+        return send(res, 200, { claimId, packages: claimed.packages.map((item) => ({ deviceId: item.deviceId, package: item.package.toString('base64') })) });
       }
 
       // Оформление группы. Право — edit_group_appearance.
