@@ -1226,11 +1226,13 @@ impl Client {
             // even if OpenMLS now reports NoMatchingKeyPackage because the original
             // KeyPackage was consumed. Detect it before attempting to decrypt/claim keys.
             // Keep the server item pending and make the room require explicit recovery.
+            eprintln!("[welcome-debug] room={room_id} id={welcome_id} group_present={} receipt_present=false", self.groups.contains_key(room_id));
             if self.groups.contains_key(room_id) {
                 self.record_desync(
                     room_id,
                     "Duplicate Welcome for an already joined room; retain Welcome without ACK for explicit recovery",
                 )?;
+                eprintln!("[welcome-debug] recovery marker persisted room={room_id} reason={:?}", self.desync_reason(room_id));
                 continue;
             }
 
