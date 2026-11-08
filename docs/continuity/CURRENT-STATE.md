@@ -221,3 +221,19 @@ This section supersedes the earlier section 8 statement that no bundle bytes wer
 - Full 240-file blob-hash parity is not yet established. The eight previously compared P0-modified files and all 15 restored missing files have exact source blob matches; compare remaining common paths before final acceptance.
 - Updated publish job to apply all PR-head engine-path changes to clean main before P0 patch; commit `7898fde9a592a8c180e7c9e89a2c7b3cb2e5ad80`. It also broadens workflow path filters to all engine paths.
 - Run #42457594088 predates this last workflow fix; require a new run on head `7898fde9a592a8c180e7c9e89a2c7b3cb2e5ad80`.
+
+
+## 16. Latest GitHub P0 recovery snapshot — 2026-11-08 12:00 UTC+3
+
+This section supersedes stale earlier statements in this file that no applied P0 branch exists or that the full Node/PostgreSQL/Rust validation has not yet run. Historical sections are retained as a chronology of earlier states.
+
+- Published source branch: `recovery/p0-wave3-applied`.
+- Exact checked HEAD: `7ebdeac8b322d7a1fe0b26add039f48b5f9f776f`.
+- Draft PR: [#22](https://github.com/vahe210991-cloud/InOne-chat/pull/22), still OPEN / NOT MERGED.
+- CI push run [42465804591](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42465804591) and PR run [42465808297](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42465808297) ran on this exact SHA.
+- PASS: Node 369/369; P0 room regression 2/2; PostgreSQL 43/43; OpenMLS client tests (all test binaries); Rust bridge 3/3.
+- FAIL: `cargo fmt -- --check` reports formatting diffs in 12 Rust files. Overall Actions result remains FAILURE; do not call CI green.
+- P0 source integrity is not accepted yet: complete 240-file original-bundle blob-hash audit and verification of six modified engine files + five added P0 tests remain open. See [P0-GITHUB-RECOVERY-STATUS](../../development/recovered-source/P0-GITHUB-RECOVERY-STATUS-2026-11-08.md).
+- The P0 workflow runs from `inone-development-archive-0.6.0/engine/`. A separate `inone-engine-poc-0.6.0/` tree also exists; do not assume parity without blob comparison.
+- Original bundle SHA/ref/HEAD remain separately recorded in the recovery status document. Its original binary and original five-commit ancestry are not imported into GitHub main.
+- Flutter app source, native mobile MLS handlers, secure key storage and durable local message persistence remain separate blockers. Do not treat P0 backend CI as a runnable Beta 1.0 app.
