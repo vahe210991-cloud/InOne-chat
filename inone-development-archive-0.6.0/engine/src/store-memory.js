@@ -68,6 +68,7 @@ export function createMemoryStore({ pinPepper }) {
   const mlsPackages = [];
   const mlsPackageClaims = new Map();
   const mlsGroups = new Map();
+  const mlsCommitOperations = new Map();
   const mlsCommits = [];
   const mlsWelcomes = [];
   const deviceRemovals = [];
@@ -850,10 +851,25 @@ export function createMemoryStore({ pinPepper }) {
     mlsGroupEpoch(roomId) {
       return mlsGroups.get(roomId) ?? 0;
     },
-    /** Применяет коммит, только если базовая эпоха совпадает с текущей. Проверка и запись — одним шагом. */
-    mlsApplyCommit(roomId, baseEpoch, { senderId, commit, welcomes, changes = { adds: [], removes: [] } }, nowMs) {
+    mlsCommitOperation(roomId, senderId, deviceId, clientOperationId, requestFingerprint) {
+      const key = JSON.stringify([roomId, senderId, deviceId, clientOperationId]);
+      const previous = mlsCommitOperations.get(key);
+      if (!previous) return null;
+      if (previous.requestFingerprint !== requestFingerprint) return { ok: false, reason: 'operation_id_reused' };
+      return { ok: true, epoch: previous.epoch, replayed: true };
+    },
+    /** Применяет коммит и idempotency receipt одним синхронным шагом. */
+    mlsApplyCommit(roomId, baseEpoch, { senderId, deviceId, clientOperationId, requestFingerprint, commit, welcomes, changes = { adds: [], removes: [] } }, nowMs) {
+      const operationKey = clientOperationId ? JSON.stringify([roomId, senderId, deviceId, clientOperationId]) : null;
+      if (operationKey) {
+        const previous = mlsCommitOperations.get(operationKey);
+        if (previous) {
+          if (previous.requestFingerprint !== requestFingerprint) return { ok: false, reason: 'operation_id_reused', epoch: previous.epoch };
+          return { ok: true, epoch: previous.epoch, replayed: true };
+        }
+      }
       const current = mlsGroups.get(roomId) ?? 0;
-      if (current !== baseEpoch) return { ok: false, epoch: current };
+      if (current !== baseEpoch) return { ok: false, reason: 'epoch_outdated', epoch: current };
       const room = rooms.get(roomId);
       for (const deviceId of changes.removeDevices ?? []) {
         for (const r of deviceRemovals) if (r.roomId === roomId && r.deviceId === deviceId && r.doneAt === null) r.doneAt = nowMs;
@@ -870,7 +886,8 @@ export function createMemoryStore({ pinPepper }) {
       for (const w of welcomes) {
         mlsWelcomes.push({ id: mlsWelcomes.length + 1, roomId, epoch: next, userId: w.userId, deviceId: w.deviceId, welcome: Buffer.from(w.welcome), createdAt: nowMs, ackedAt: null });
       }
-      return { ok: true, epoch: next };
+      if (operationKey) mlsCommitOperations.set(operationKey, { requestFingerprint, epoch: next });
+      return { ok: true, epoch: next, replayed: false };
     },
     mlsCommitsSince(roomId, since, limit) {
       return mlsCommits.filter((c) => c.roomId === roomId && c.epoch > since).sort((a, b) => a.epoch - b.epoch).slice(0, limit)
