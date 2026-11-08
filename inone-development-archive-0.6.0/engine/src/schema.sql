@@ -529,11 +529,16 @@ CREATE TABLE mls_key_package_claims (
   requester_user_id TEXT NOT NULL REFERENCES accounts (user_id) ON DELETE CASCADE,
   requester_device_id TEXT NOT NULL,
   claim_id TEXT NOT NULL,
+  room_id TEXT REFERENCES rooms (room_id) ON DELETE CASCADE,
+  state TEXT NOT NULL DEFAULT 'reserved' CHECK (state IN ('reserved', 'committed', 'released')),
   result JSONB,
   created_at BIGINT NOT NULL,
+  committed_at BIGINT,
+  released_at BIGINT,
   PRIMARY KEY (target_user_id, requester_user_id, requester_device_id, claim_id)
 );
 CREATE INDEX mls_key_package_claims_created ON mls_key_package_claims (created_at);
+CREATE INDEX mls_key_package_claims_room_state ON mls_key_package_claims (room_id, state);
 
 -- A membership commit retry must resolve to the exact accepted epoch.
 CREATE TABLE IF NOT EXISTS mls_commit_operations (
