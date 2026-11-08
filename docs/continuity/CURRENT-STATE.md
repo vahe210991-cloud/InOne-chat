@@ -174,3 +174,14 @@ This section supersedes the earlier section 8 statement that no bundle bytes wer
 - The temporary generated fixture from commit `bdedff6...` was replaced in commit `c9eaf6e198d1b65549220d3742b5190d7bbc1a39` before acceptance. It is not present in the current PR head.
 - Latest CI run [42457116231](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42457116231) is queued for the exact-source fixture. Previous run [42457009510](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42457009510) used the temporary replacement and is superseded.
 - Duplicate PR #19 is closed; PR #18 remains the only primary recovery PR and is not merged.
+
+
+## 17. Full repository tree audit — Flutter app absent — 2026-11-08
+
+- Audited main recursive Git tree SHA `89ba83a4cbd06b648cba8ea5a7c529bfd91285e7`: 602 entries, not truncated.
+- Only five Dart source/test files and one Dart pubspec exist, all in `client-reference/dart`; the package README says `НЕ ПРОВЕРЕНО`, calls itself an organization API reference, and explicitly says there is no Flutter organization-selection screen.
+- No Flutter `main.dart`, no widget tree, no app package, no Android/iOS platform project, and no localization ARB files.
+- `inone-development-0.7/stage-0.7.0/client-screens` contains a JS API/state spike and docs only.
+- Checked trees for `cto/inone-audit-2026-11-08`, `ci/inone-engine-validation-2026-11-07`, `recovery/p0-wave3-validation`, `development`, `engine-poc`, and `docs/inone-identity-design-localization`; no Flutter app found.
+- Consequence: a runnable phone Beta 1.0 cannot be built from current GitHub source alone. The original UI/API ZIP and exact design-system source need a supported import path. Do not recreate them from memory.
+- Detailed report: [development/REPO-AUDIT-2026-11-08.md](../../development/REPO-AUDIT-2026-11-08.md).
