@@ -46,17 +46,35 @@ pub fn start_engine() -> Engine {
     let mut stdout = BufReader::new(child.stdout.take().expect("stdout"));
     let mut line = String::new();
     stdout.read_line(&mut line).expect("строка адреса");
-    let base = line.trim().strip_prefix("URL=").expect("адрес сервера").to_string();
-    Engine { child, stdin, stdout, base }
+    let base = line
+        .trim()
+        .strip_prefix("URL=")
+        .expect("адрес сервера")
+        .to_string();
+    Engine {
+        child,
+        stdin,
+        stdout,
+        base,
+    }
 }
 
 pub fn db(name: &str) -> String {
-    let path = std::env::temp_dir().join(format!("inone-client-test-{}-{name}.db", std::process::id()));
+    let path = std::env::temp_dir().join(format!(
+        "inone-client-test-{}-{name}.db",
+        std::process::id()
+    ));
     let _ = std::fs::remove_file(&path);
     path.to_string_lossy().to_string()
 }
 
-pub fn login(engine: &Engine, keys: &MemoryKeyStore, user: &str, device: &str, db_path: &str) -> Client {
+pub fn login(
+    engine: &Engine,
+    keys: &MemoryKeyStore,
+    user: &str,
+    device: &str,
+    db_path: &str,
+) -> Client {
     connect(&engine.base, user, PW, device, db_path, keys).expect("вход")
 }
 
@@ -71,5 +89,8 @@ pub fn texts(items: &[Incoming]) -> Vec<String> {
 }
 
 pub fn unreadable(items: &[Incoming]) -> usize {
-    items.iter().filter(|i| matches!(i, Incoming::Unreadable { .. })).count()
+    items
+        .iter()
+        .filter(|i| matches!(i, Incoming::Unreadable { .. }))
+        .count()
 }

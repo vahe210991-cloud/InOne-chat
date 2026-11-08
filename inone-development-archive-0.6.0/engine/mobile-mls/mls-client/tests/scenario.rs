@@ -25,8 +25,14 @@ fn start_engine() -> Engine {
         .expect("запуск node");
     let stdin = child.stdin.take();
     let mut line = String::new();
-    BufReader::new(child.stdout.take().expect("stdout")).read_line(&mut line).expect("строка адреса");
-    let base = line.trim().strip_prefix("URL=").expect("адрес сервера").to_string();
+    BufReader::new(child.stdout.take().expect("stdout"))
+        .read_line(&mut line)
+        .expect("строка адреса");
+    let base = line
+        .trim()
+        .strip_prefix("URL=")
+        .expect("адрес сервера")
+        .to_string();
     Engine { child, stdin, base }
 }
 
@@ -38,7 +44,10 @@ impl Drop for Engine {
 }
 
 fn db(name: &str) -> String {
-    let path = std::env::temp_dir().join(format!("inone-client-test-{}-{name}.db", std::process::id()));
+    let path = std::env::temp_dir().join(format!(
+        "inone-client-test-{}-{name}.db",
+        std::process::id()
+    ));
     let _ = std::fs::remove_file(&path);
     path.to_string_lossy().to_string()
 }
@@ -54,7 +63,10 @@ fn texts(items: &[Incoming]) -> Vec<String> {
 }
 
 fn unreadable(items: &[Incoming]) -> usize {
-    items.iter().filter(|i| matches!(i, Incoming::Unreadable { .. })).count()
+    items
+        .iter()
+        .filter(|i| matches!(i, Incoming::Unreadable { .. }))
+        .count()
 }
 
 fn login(engine: &Engine, keys: &MemoryKeyStore, user: &str, device: &str, file: &str) -> Client {
@@ -74,7 +86,10 @@ fn offline_member_catches_up_after_restart_and_new_member_reads_from_join() {
 
     alice.create_room(ROOM).unwrap();
     alice.invite(ROOM, "@bob:inone.test").unwrap();
-    assert!(bob.sync().unwrap().is_empty(), "при входе сообщений ещё нет");
+    assert!(
+        bob.sync().unwrap().is_empty(),
+        "при входе сообщений ещё нет"
+    );
     alice.send_text(ROOM, "раз").unwrap();
     assert_eq!(texts(&bob.sync().unwrap()), vec!["раз"]);
 
@@ -82,7 +97,11 @@ fn offline_member_catches_up_after_restart_and_new_member_reads_from_join() {
     let epoch_before = bob.local_epoch(ROOM);
     drop(bob);
     let mut bob = login(&engine, &keys, "@bob:inone.test", "B_PHONE", &bob_db);
-    assert_eq!(bob.local_epoch(ROOM), epoch_before, "эпоха пережила перезапуск");
+    assert_eq!(
+        bob.local_epoch(ROOM),
+        epoch_before,
+        "эпоха пережила перезапуск"
+    );
 
     // Боб без связи: Алиса пишет и приглашает Кэрол.
     alice.send_text(ROOM, "два").unwrap();
@@ -99,7 +118,10 @@ fn offline_member_catches_up_after_restart_and_new_member_reads_from_join() {
     assert_eq!(texts(&bob_got), vec!["два", "три"]);
     assert_eq!(unreadable(&bob_got), 0, "уже прочитанное не перечитывается");
     assert_eq!(bob.local_epoch(ROOM), Some(2));
-    assert!(bob.sync().unwrap().is_empty(), "повторная синхронизация ничего не отдаёт");
+    assert!(
+        bob.sync().unwrap().is_empty(),
+        "повторная синхронизация ничего не отдаёт"
+    );
 
     // Боб отвечает, Алиса читает.
     bob.send_text(ROOM, "четыре").unwrap();
@@ -118,14 +140,21 @@ fn invitation_works_when_regular_packages_run_out() {
     assert_eq!(bob.available_key_packages().unwrap(), 1);
 
     alice.create_room("!first:inone.test").unwrap();
-    alice.invite("!first:inone.test", "@bob:inone.test").unwrap();
-    assert_eq!(bob.available_key_packages().unwrap(), 0, "обычный пакет израсходован");
+    alice
+        .invite("!first:inone.test", "@bob:inone.test")
+        .unwrap();
+    assert_eq!(
+        bob.available_key_packages().unwrap(),
+        0,
+        "обычный пакет израсходован"
+    );
 
     // Обычных больше нет: приглашение проходит по резервному пакету.
     alice.create_room("!second:inone.test").unwrap();
-    alice.invite("!second:inone.test", "@bob:inone.test").unwrap();
+    alice
+        .invite("!second:inone.test", "@bob:inone.test")
+        .unwrap();
     assert!(bob.sync().unwrap().is_empty());
     alice.send_text("!second:inone.test", "резерв").unwrap();
     assert_eq!(texts(&bob.sync().unwrap()), vec!["резерв"]);
 }
-

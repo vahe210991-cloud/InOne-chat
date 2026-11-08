@@ -18,21 +18,41 @@ fn лишний_участник_на_сервере_приостанавлив�
     alice.create_room(ROOM).unwrap();
     alice.invite(ROOM, "@bob-p02:inone.test").unwrap();
     bob.sync().unwrap();
-    assert_eq!(bob.desync_reason(ROOM).unwrap(), None, "при согласованном составе расхождения нет");
+    assert_eq!(
+        bob.desync_reason(ROOM).unwrap(),
+        None,
+        "при согласованном составе расхождения нет"
+    );
     bob.send_text(ROOM, "до").unwrap();
 
     // Сервер добавляет участника мимо протокола: в группе Кэрол не состоит.
     assert_eq!(engine.command(&format!("ADD_MEMBER {ROOM} {CAROL}")), "OK");
     bob.sync().unwrap();
-    let reason = bob.desync_reason(ROOM).unwrap().expect("расхождение обнаружено");
-    assert!(reason.contains("carol-p02"), "в причине назван участник: {reason}");
+    let reason = bob
+        .desync_reason(ROOM)
+        .unwrap()
+        .expect("расхождение обнаружено");
+    assert!(
+        reason.contains("carol-p02"),
+        "в причине назван участник: {reason}"
+    );
     let refused = bob.send_text(ROOM, "нельзя").unwrap_err();
-    assert!(refused.contains("рассинхронизирована"), "отправка приостановлена: {refused}");
+    assert!(
+        refused.contains("рассинхронизирована"),
+        "отправка приостановлена: {refused}"
+    );
 
     // Сервер выравнивается: Кэрол снова не участник. Отправка возобновляется.
-    assert_eq!(engine.command(&format!("REMOVE_MEMBER {ROOM} {CAROL}")), "OK");
+    assert_eq!(
+        engine.command(&format!("REMOVE_MEMBER {ROOM} {CAROL}")),
+        "OK"
+    );
     bob.sync().unwrap();
-    assert_eq!(bob.desync_reason(ROOM).unwrap(), None, "после выравнивания флаг снят");
+    assert_eq!(
+        bob.desync_reason(ROOM).unwrap(),
+        None,
+        "после выравнивания флаг снят"
+    );
     bob.send_text(ROOM, "можно").unwrap();
 }
 
@@ -41,7 +61,13 @@ fn серверное_удаление_не_останавливает_друг�
     let mut engine = start_engine();
     let keys = MemoryKeyStore::default();
     let (alice_db, bob_db) = (db("p02b-alice"), db("p02b-bob"));
-    let mut alice = login(&engine, &keys, "@alice-p02b:inone.test", "A_P02B", &alice_db);
+    let mut alice = login(
+        &engine,
+        &keys,
+        "@alice-p02b:inone.test",
+        "A_P02B",
+        &alice_db,
+    );
     let mut bob = login(&engine, &keys, "@bob-p02b:inone.test", "B_P02B", &bob_db);
     bob.upload_key_packages(3).unwrap();
     let (gone, kept) = ("!room-p02b-gone:inone.test", "!room-p02b-kept:inone.test");
@@ -52,14 +78,33 @@ fn серверное_удаление_не_останавливает_друг�
     bob.sync().unwrap();
 
     // Сервер удаляет Боба из первой комнаты мимо протокола: в группе он остаётся.
-    assert_eq!(engine.command(&format!("REMOVE_MEMBER {gone} @bob-p02b:inone.test")), "OK");
+    assert_eq!(
+        engine.command(&format!("REMOVE_MEMBER {gone} @bob-p02b:inone.test")),
+        "OK"
+    );
     alice.send_text(kept, "вторая комната").unwrap();
 
-    let got = bob.sync().expect("синхронизация не падает из-за одной комнаты");
-    assert_eq!(texts(&got), vec!["вторая комната"], "вторая комната читается");
-    assert!(bob.desync_reason(gone).unwrap().is_some(), "первая комната помечена расхождением");
-    assert!(bob.send_text(gone, "нельзя").is_err(), "в первую комнату отправка приостановлена");
-    assert_eq!(bob.desync_reason(kept).unwrap(), None, "вторая комната в порядке");
+    let got = bob
+        .sync()
+        .expect("синхронизация не падает из-за одной комнаты");
+    assert_eq!(
+        texts(&got),
+        vec!["вторая комната"],
+        "вторая комната читается"
+    );
+    assert!(
+        bob.desync_reason(gone).unwrap().is_some(),
+        "первая комната помечена расхождением"
+    );
+    assert!(
+        bob.send_text(gone, "нельзя").is_err(),
+        "в первую комнату отправка приостановлена"
+    );
+    assert_eq!(
+        bob.desync_reason(kept).unwrap(),
+        None,
+        "вторая комната в порядке"
+    );
 }
 
 #[test]
@@ -78,15 +123,35 @@ fn испорченный_коммит_одной_комнаты_не_остан
     bob.sync().unwrap();
 
     // Сервер принял недопустимый коммит в первую комнату.
-    assert!(engine.command(&format!("BADCOMMIT {broken} @alice-p04:inone.test")).starts_with("OK"));
+    assert!(engine
+        .command(&format!("BADCOMMIT {broken} @alice-p04:inone.test"))
+        .starts_with("OK"));
     alice.send_text(fine, "вторая комната работает").unwrap();
 
-    let got = bob.sync().expect("синхронизация не падает из-за одной комнаты");
-    assert_eq!(texts(&got), vec!["вторая комната работает"], "вторая комната читается");
-    let reason = bob.desync_reason(broken).unwrap().expect("первая комната требует восстановления");
-    assert!(reason.contains("восстановление"), "причина названа: {reason}");
+    let got = bob
+        .sync()
+        .expect("синхронизация не падает из-за одной комнаты");
+    assert_eq!(
+        texts(&got),
+        vec!["вторая комната работает"],
+        "вторая комната читается"
+    );
+    let reason = bob
+        .desync_reason(broken)
+        .unwrap()
+        .expect("первая комната требует восстановления");
+    assert!(
+        reason.contains("восстановление"),
+        "причина названа: {reason}"
+    );
     let refused = bob.send_text(broken, "нельзя").unwrap_err();
-    assert!(refused.contains("рассинхронизирована"), "отправка приостановлена: {refused}");
-    assert_eq!(bob.desync_reason(fine).unwrap(), None, "вторая комната в порядке");
+    assert!(
+        refused.contains("рассинхронизирована"),
+        "отправка приостановлена: {refused}"
+    );
+    assert_eq!(
+        bob.desync_reason(fine).unwrap(),
+        None,
+        "вторая комната в порядке"
+    );
 }
-
