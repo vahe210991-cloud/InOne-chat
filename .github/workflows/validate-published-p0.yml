@@ -1,21 +1,17 @@
-name: Validate published InOne P0 source
+name: Validate recovered InOne P0 source (rustfmt recovery)
 
 on:
-  push:
-    branches:
-      - recovery/p0-wave3-applied
   pull_request:
-    branches:
-      - main
+    branches: [main]
     paths:
       - "inone-development-archive-0.6.0/engine/**"
       - ".github/workflows/validate-published-p0.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: published-p0-${{ github.ref }}
+  group: p0-rustfmt-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -42,7 +38,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.head_ref || github.ref_name }}
           fetch-depth: 0
+          persist-credentials: true
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -58,6 +56,22 @@ jobs:
           sudo apt-get install -y postgresql-client-16
           echo "/usr/lib/postgresql/16/bin" >> "$GITHUB_PATH"
           /usr/lib/postgresql/16/bin/pg_dump --version
+      - name: Apply rustfmt without changing behavior
+        working-directory: inone-development-archive-0.6.0/engine/mobile-mls
+        env:
+          TARGET_BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          cargo fmt --manifest-path mls-client/Cargo.toml
+          cargo fmt --manifest-path mls-bridge/Cargo.toml
+          if ! git diff --quiet -- inone-development-archive-0.6.0/engine/mobile-mls; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add inone-development-archive-0.6.0/engine/mobile-mls
+            git commit -m "style(mls): apply Rust 1.91 formatting"
+            git push origin "HEAD:refs/heads/$TARGET_BRANCH"
+          fi
+          cargo fmt --manifest-path mls-client/Cargo.toml -- --check
+          cargo fmt --manifest-path mls-bridge/Cargo.toml -- --check
       - name: Install Node dependencies
         working-directory: inone-development-archive-0.6.0/engine
         run: npm ci
@@ -70,16 +84,9 @@ jobs:
       - name: PostgreSQL integration suite
         working-directory: inone-development-archive-0.6.0/engine
         run: npm run test:db
-      - name: Rust formatting
-        working-directory: inone-development-archive-0.6.0/engine/mobile-mls
-        run: |
-          cargo fmt --manifest-path mls-client/Cargo.toml -- --check
-          cargo fmt --manifest-path mls-bridge/Cargo.toml -- --check
       - name: OpenMLS client tests
-        if: ${{ !cancelled() }}
         working-directory: inone-development-archive-0.6.0/engine/mobile-mls/mls-client
         run: cargo test --locked
       - name: Rust bridge tests
-        if: ${{ !cancelled() }}
         working-directory: inone-development-archive-0.6.0/engine/mobile-mls/mls-bridge
         run: cargo test --locked
