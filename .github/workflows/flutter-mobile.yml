@@ -27,6 +27,16 @@ jobs:
           channel: stable
           cache: true
       - run: flutter --version
+      - name: Generate Android and iOS platform projects
+        run: flutter create --platforms=android,ios --project-name inone_mobile --org com.inone .
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test
+      - name: Build Android preview APK
+        run: flutter build apk --debug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: inone-beta1-android-preview
+          path: mobile/build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
