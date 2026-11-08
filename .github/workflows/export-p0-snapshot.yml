@@ -1,4 +1,4 @@
-name: Export InOne P0 snapshot bundle
+name: Export and permanently retain InOne P0 snapshot bundle
 
 on:
   push:
@@ -7,16 +7,18 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  export-bundle:
+  export-and-retain:
+    if: github.ref == 'refs/heads/snapshot/p0-and-groups-2026-11-08'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout complete snapshot history
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: true
 
       - name: Create and verify Git bundle
         shell: bash
@@ -27,9 +29,11 @@ jobs:
           git bundle verify dist/InOne-P0-snapshot-2026-11-08.bundle
           sha256sum dist/InOne-P0-snapshot-2026-11-08.bundle | tee dist/SHA256SUMS.txt
           git rev-parse HEAD | tee dist/SNAPSHOT_COMMIT.txt
-          git status --short
+          cp dist/InOne-P0-snapshot-2026-11-08.bundle "$RUNNER_TEMP/InOne-P0-snapshot-2026-11-08.bundle"
+          cp dist/SHA256SUMS.txt "$RUNNER_TEMP/SHA256SUMS.txt"
+          cp dist/SNAPSHOT_COMMIT.txt "$RUNNER_TEMP/SNAPSHOT_COMMIT.txt"
 
-      - name: Upload self-contained bundle
+      - name: Upload convenience artifact
         uses: actions/upload-artifact@v4
         with:
           name: InOne-P0-snapshot-2026-11-08
@@ -39,3 +43,35 @@ jobs:
             dist/SNAPSHOT_COMMIT.txt
           if-no-files-found: error
           retention-days: 90
+
+      - name: Commit bundle bytes to permanent repository archive branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          SNAPSHOT_COMMIT="$(cat "$RUNNER_TEMP/SNAPSHOT_COMMIT.txt")"
+          ARCHIVE_DIR="bundles/$SNAPSHOT_COMMIT"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git ls-remote --exit-code --heads origin artifacts/p0-bundles >/dev/null 2>&1; then
+            git fetch origin artifacts/p0-bundles
+            git checkout -B artifacts/p0-bundles refs/remotes/origin/artifacts/p0-bundles
+          else
+            git checkout --orphan artifacts/p0-bundles
+            git rm -rf . || true
+          fi
+
+          mkdir -p "$ARCHIVE_DIR"
+          cp "$RUNNER_TEMP/InOne-P0-snapshot-2026-11-08.bundle" "$ARCHIVE_DIR/InOne-P0-snapshot-2026-11-08.bundle"
+          cp "$RUNNER_TEMP/SHA256SUMS.txt" "$ARCHIVE_DIR/SHA256SUMS.txt"
+          cp "$RUNNER_TEMP/SNAPSHOT_COMMIT.txt" "$ARCHIVE_DIR/SNAPSHOT_COMMIT.txt"
+          printf '%s\n' "$ARCHIVE_DIR/InOne-P0-snapshot-2026-11-08.bundle" > bundles/LATEST.txt
+
+          git add bundles
+          if git diff --cached --quiet; then
+            echo "Archive already contains this exact snapshot commit."
+          else
+            git commit -m "archive: retain P0 bundle $SNAPSHOT_COMMIT"
+          fi
+          git push origin HEAD:refs/heads/artifacts/p0-bundles
