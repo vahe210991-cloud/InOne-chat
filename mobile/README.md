@@ -1,26 +1,51 @@
-# InOne Beta 1.0 — approved cross-platform screen preview
+# InOne Beta 1.0 — unified screen and API test host
 
-The Flutter shell packages the owner-approved 22-screen HTML export as a local asset and displays one approved screen at a time inside `webview_flutter`.
+The Flutter host now exposes the 22 owner-approved visual variants and the complete 73-entry test-screen catalogue in one searchable picker (95 selectable entries total).
 
-## Included
-- 11 light and 11 dark approved screen variants.
-- Native Flutter menu to select each of the 22 variants individually.
-- Stable screen IDs in `lib/approved_screens.dart`.
-- Only the 22 outer iPhone frame corners changed from 42px to 0px. Internal component radii remain unchanged.
-- Flutter waits for the bundled HTML to unpack and mount all 22 screen nodes before applying the selected route.
-- CI structural validation for screen count, theme split and frame geometry.
+## Screen catalogue
 
-## Run
+- 22 approved HTML screen variants: 11 light and 11 dark. These retain the existing approved HTML asset and WebView presentation.
+- 51 Beta 0.7.1 test screens.
+- 1 deferred screen (CH-07, moved to 0.8).
+- 21 future concepts: calendar, tasks, files, CRM, Sindy AI, stories, geolocation and Propo map integration.
+- The 73 test entries are native QA shells with screen IDs, categories, scope/status and API probe access. They are not a claim that all future backend modules or pixel-perfect HTML layouts are implemented.
+
+## Backend connection
+
+Set the backend origin at build/run time:
+
 ```sh
 cd mobile
 flutter pub get
-flutter run
+flutter run --dart-define=INONE_API_BASE_URL=https://your-staging-api.example
 ```
 
-## Scope and security
-- This is an owner-reviewable screen preview, not the completed production Beta 1.0 application.
-- HTML demo actions do not perform server operations.
-- No credentials, access tokens, refresh tokens, MLS keys or database keys are passed into JavaScript.
-- Flutter owns API calls, session handling, secure storage and MLS. The WebView is limited to presentation and local screen selection.
-- Top-level navigation is restricted; only the design export's required font/runtime hosts are allow-listed.
-- Next increment: native Flutter implementation of the highest-priority screens with screenshot parity tests against this approved reference.
+Do not commit production URLs, credentials or tokens to the repository.
+
+The API panel provides:
+- Email/password login against `POST /login`.
+- In-memory access and refresh token handling.
+- One serialized refresh attempt after an authenticated 401, using `POST /token/refresh`.
+- Logout through `POST /logout`.
+- Read-only GET probes for routes that are present in the current main-branch backend.
+- JSON response/error output for QA.
+
+Only the stable device identifier is persisted, using platform secure storage. Access and refresh tokens remain in memory and are never passed into WebView JavaScript.
+
+## Current integration boundary
+
+- The 22 approved screens remain visual previews; their HTML demo controls are not yet wired to production actions.
+- The 73 test entries are QA shells. The original full-screen HTML gallery is retained in the design source material but is not yet packaged as a Flutter asset in this increment.
+- Generic API probing is read-only. POST/PUT/DELETE actions require dedicated forms, validated payloads and explicit confirmation.
+- Native Android/iOS MLS FFI, secure message database, upload flow, offline queue and two-device E2E are not completed by this increment.
+- The Flutter session temporarily owns refresh-token rotation. When the native MLS bridge is integrated, ownership must move to the native MLS session layer rather than running two refresh owners.
+
+## Tests
+
+```sh
+cd mobile
+flutter test
+flutter analyze
+```
+
+The tests assert the 22 approved variants, 73 test entries, the 51/1/21 stage split, 95 unique picker entries and the API transport contract.
