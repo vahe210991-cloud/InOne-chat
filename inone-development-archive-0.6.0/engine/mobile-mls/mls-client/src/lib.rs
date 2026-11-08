@@ -935,7 +935,10 @@ impl Client {
                 let rows = stmt
                     .query_map((room_id, user_id), |row| row.get::<_, String>(0))
                     .map_err(text)?;
-                rows.collect::<Result<Vec<_>, _>>().map_err(text)?.into_iter().next()
+                rows.collect::<Result<Vec<_>, _>>()
+                    .map_err(text)?
+                    .into_iter()
+                    .next()
             };
             match existing {
                 Some(id) => id,
