@@ -164,3 +164,13 @@ This section supersedes the earlier section 8 statement that no bundle bytes wer
 - New Actions run [42457009510](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42457009510) is in progress. No CI acceptance is claimed yet.
 - Duplicate PR #19 was closed as superseded; PR #18 is the sole primary P0 recovery PR.
 - Do not merge until latest run completes all Node, room-list, PostgreSQL, OpenMLS, and Rust bridge checks. The replacement fixture should later be compared with the exact original bundle fixture if original bundle bytes become accessible.
+
+
+## 16. Exact biometric fixture recovered; latest validation queued — 2026-11-08
+
+- Further source-tree inspection found the original fixture in `inone-development-archive-0.6.0/client-reference/vectors/biometric-vectors.json` on main, along with the matching root `client-reference/biometric-client.mjs` (blob SHA `b03e72fe33c79e6b261d980bc86459babf03b388`).
+- Restored the exact original fixture to the engine-relative path required by `engine/test/client-reference.test.js`. Original root blob SHA and restored engine blob SHA both equal `5a00755946219df2527591f00058a19d167c7811`.
+- Re-verified the original fixture locally with Node crypto: 1 positive signature passes; 2 negative altered-input cases fail verification.
+- The temporary generated fixture from commit `bdedff6...` was replaced in commit `c9eaf6e198d1b65549220d3742b5190d7bbc1a39` before acceptance. It is not present in the current PR head.
+- Latest CI run [42457116231](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42457116231) is queued for the exact-source fixture. Previous run [42457009510](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42457009510) used the temporary replacement and is superseded.
+- Duplicate PR #19 is closed; PR #18 remains the only primary recovery PR and is not merged.
