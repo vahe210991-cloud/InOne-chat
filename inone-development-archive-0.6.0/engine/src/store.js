@@ -940,19 +940,48 @@ async mlsPendingRemovalsFor(userId) {
     },
 
     /** Берёт по одному неиспользованному пакету у каждого устройства. Пакет помечается использованным в той же операции. */
-    async mlsClaimKeyPackages(userId, nowMs) {
-      const { rows: devices } = await pool.query('SELECT DISTINCT device_id FROM mls_key_packages WHERE user_id = $1 AND consumed_at IS NULL', [userId]);
-      const out = [];
-      for (const { device_id: deviceId } of devices) {
-        const { rows } = await pool.query(
-          'UPDATE mls_key_packages SET consumed_at = $3 WHERE id = (SELECT id FROM mls_key_packages WHERE user_id = $1 AND device_id = $2 AND consumed_at IS NULL AND last_resort = FALSE AND created_at >= $4 ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED) RETURNING package',
-          [userId, deviceId, nowMs, nowMs - MLS_REGULAR_MAX_AGE_MS],
+    async mlsClaimKeyPackages(targetUserId, requesterUserId, requesterDeviceId, claimId, nowMs) {
+      return inTransaction(async (c) => {
+        await c.query(
+          'INSERT INTO mls_key_package_claims (target_user_id, requester_user_id, requester_device_id, claim_id, result, created_at) VALUES ($1, $2, $3, $4, NULL, $5) ON CONFLICT (target_user_id, requester_user_id, requester_device_id, claim_id) DO NOTHING',
+          [targetUserId, requesterUserId, requesterDeviceId, claimId, nowMs],
         );
-        if (rows[0]) { out.push({ deviceId, package: rows[0].package }); continue; }
-        const { rows: fallback } = await pool.query('SELECT package FROM mls_key_packages WHERE user_id = $1 AND device_id = $2 AND last_resort = TRUE AND created_at >= $3', [userId, deviceId, nowMs - MLS_LAST_RESORT_MAX_AGE_MS]);
-        if (fallback[0]) out.push({ deviceId, package: fallback[0].package });
-      }
-      return out;
+        const { rows: claimRows } = await c.query(
+          'SELECT result FROM mls_key_package_claims WHERE target_user_id = $1 AND requester_user_id = $2 AND requester_device_id = $3 AND claim_id = $4 FOR UPDATE',
+          [targetUserId, requesterUserId, requesterDeviceId, claimId],
+        );
+        if (!claimRows[0]) throw new Error('KeyPackage claim intent was not persisted');
+        if (claimRows[0].result !== null) {
+          return claimRows[0].result.map((item) => ({
+            deviceId: item.deviceId,
+            package: Buffer.from(item.package, 'base64'),
+          }));
+        }
+
+        const { rows: devices } = await c.query(
+          'SELECT DISTINCT device_id FROM mls_key_packages WHERE user_id = $1 AND consumed_at IS NULL ORDER BY device_id',
+          [targetUserId],
+        );
+        const out = [];
+        for (const { device_id: deviceId } of devices) {
+          const { rows } = await c.query(
+            'UPDATE mls_key_packages SET consumed_at = $3 WHERE id = (SELECT id FROM mls_key_packages WHERE user_id = $1 AND device_id = $2 AND consumed_at IS NULL AND last_resort = FALSE AND created_at >= $4 ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED) RETURNING package',
+            [targetUserId, deviceId, nowMs, nowMs - MLS_REGULAR_MAX_AGE_MS],
+          );
+          if (rows[0]) { out.push({ deviceId, package: rows[0].package }); continue; }
+          const { rows: fallback } = await c.query(
+            'SELECT package FROM mls_key_packages WHERE user_id = $1 AND device_id = $2 AND last_resort = TRUE AND created_at >= $3 ORDER BY id DESC LIMIT 1',
+            [targetUserId, deviceId, nowMs - MLS_LAST_RESORT_MAX_AGE_MS],
+          );
+          if (fallback[0]) out.push({ deviceId, package: fallback[0].package });
+        }
+        const stored = out.map((item) => ({ deviceId: item.deviceId, package: item.package.toString('base64') }));
+        await c.query(
+          'UPDATE mls_key_package_claims SET result = $5::jsonb WHERE target_user_id = $1 AND requester_user_id = $2 AND requester_device_id = $3 AND claim_id = $4',
+          [targetUserId, requesterUserId, requesterDeviceId, claimId, JSON.stringify(stored)],
+        );
+        return out;
+      });
     },
 
     async ping() {
