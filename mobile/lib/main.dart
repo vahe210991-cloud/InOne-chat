@@ -48,7 +48,7 @@ class ApprovedScreensHost extends StatefulWidget {
 
 class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
   late final WebViewController _controller;
-  late final InOneSession? _session;
+  late final InOneSession _session;
   String _selectedKey = 'approved:messages-light';
   bool _loading = true;
   bool _pageReady = false;

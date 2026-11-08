@@ -1,6 +1,9 @@
 services:
   app:
-    image: mcr.microsoft.com/devcontainers/javascript-node:1-22-bookworm
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: inone-codespaces:node22-flutter3.47.9
     init: true
     command: sleep infinity
     volumes:

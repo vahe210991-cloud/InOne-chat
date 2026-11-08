@@ -2,9 +2,10 @@
 
 ## Назначение
 
-Эта конфигурация поднимает изолированную среду разработки для backend InOne:
+Эта конфигурация поднимает изолированную среду разработки для InOne:
 
 - Node.js 22;
+- Flutter 3.47.9 stable и соответствующий Dart SDK;
 - PostgreSQL 16;
 - отдельная база `inone_dev`;
 - API на порту 8080;
@@ -22,6 +23,31 @@
 5. Конфигурация запустит API автоматически.
 
 Не создавайте Codespace на основной ветке для этой работы: настройки находятся в ветке разработки.
+
+### Flutter и Dart
+
+Flutter 3.47.9 stable устанавливается в образ Codespaces из официального Linux SDK-архива с проверкой SHA-256. `FLUTTER_HOME/bin` добавлен в системный `PATH`, поэтому доступны обе команды:
+
+```sh
+flutter --version
+dart --version
+cd mobile
+flutter pub get
+flutter analyze
+flutter test
+```
+
+Для существующего Codespace после изменения `.devcontainer/Dockerfile` выберите **Codespaces: Rebuild Container**. Установка выполняется при сборке образа, а не при каждом открытии терминала. CI использует тот же Flutter stable release.
+
+Для локальной сборки Android APK дополнительно нужны JDK 17 и Android SDK с установленной платформой/Build Tools; примите лицензии через `flutter doctor --android-licenses`. Они не устанавливаются в базовый образ автоматически. CI генерирует platform-проекты и выполняет debug APK build на runner с Android tooling.
+
+В репозитории Android platform-проект не хранится. После установки Android tooling создайте его тем же способом, что и CI, и соберите debug APK:
+
+```sh
+cd mobile
+flutter create --platforms=android --project-name inone_mobile --org com.inone .
+flutter build apk --debug
+```
 
 ## Проверка API
 
@@ -67,7 +93,7 @@ INONE_DEV_EMAIL_CODE=000000 node scripts/dev-create-account.mjs http://127.0.0.1
 
 ## PostgreSQL
 
-Контейнер базы данных использует отдельный именованный Docker volume. Данные переживают перезапуск Codespace, пока сам Codespace и его volume существуют.
+Backend подключается к PostgreSQL по внутреннему Compose-имени `db:5432` и базе `inone_dev`; порт базы не публикуется на хост и не форвардится в Codespaces. Отдельный именованный Docker volume хранит данные только для этой Compose-среды; данные переживают перезапуск Codespace, пока сам Codespace и его volume существуют. Автозапуск backend проверяет соединение с этой development-базой до запуска.
 
 Для полного сброса тестовой базы из корня репозитория:
 
