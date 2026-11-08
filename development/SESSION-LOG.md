@@ -1,3 +1,14 @@
+## 2026-11-08 — Codespaces configuration drafted; full-clone protocol blocks verification
+
+- Owner selected GitHub Codespaces for the InOne test environment.
+- Added unverified Codespaces scaffolding on `feat/beta1-full-screen-api-harness`: `.devcontainer/devcontainer.json`, `.devcontainer/docker-compose.yml`, `.devcontainer/start-backend.sh`, and `docs/CODESPACES_TEST_ENVIRONMENT.md`. Related earlier commits on this branch also add a local API URL resolver and document local Flutter API defaults.
+- Latest checked branch HEAD: `cb013d561f720f14e30b85cef963c513cc65f9b7`; draft PR [#28](https://github.com/vahe210991-cloud/InOne-chat/pull/28) remains OPEN and unmerged.
+- **BLOCKED — repository working protocol:** this session had only GitHub connector file/tree/API access and did not obtain a complete clone with full history, refs, submodules and LFS verification. Therefore the required `git status`, full-tree diff review, compose validation and local test commands could not be run. Stop source changes until a complete Codespace clone is opened and verified against this branch.
+- **NOT RUN:** Codespace creation, container build, PostgreSQL startup, backend startup, migrations, `/healthz` and `/readyz` requests, Flutter connection, and actual API probe validation.
+- Latest Actions run for HEAD: [#42509620990](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42509620990) was `in_progress` when checked. Earlier Flutter runs on preceding commits failed at `flutter analyze`; inspect annotations/logs and correct those failures after the full clone. Do not claim CI green.
+- The 34 configured screen probes are route declarations, not proof of 10 live-connected screens. The backend source audit showed `GET /rooms/mine` is absent; probes for `GR-01` and workspace room listing were removed. Live screen acceptance remains NOT RUN.
+- Next: owner creates a Codespace on `feat/beta1-full-screen-api-harness`; verify full clone, refs, clean worktree, and PR head; then validate/fix devcontainer compose and startup script, run backend/API tests, inspect Flutter analyze failure, and only then continue toward 10 verified screen integrations.
+
 # InOne development session log
 
 
