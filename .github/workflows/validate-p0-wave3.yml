@@ -6,6 +6,7 @@ on:
     paths:
       - "recovery/p0-wave3-core.patch.gz.b64"
       - "inone-development-archive-0.6.0/engine/client-reference/biometric-client.mjs"
+      - "inone-development-archive-0.6.0/engine/client-reference/vectors/biometric-vectors.json"
       - ".github/workflows/validate-p0-wave3.yml"
 
 permissions:
