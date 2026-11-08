@@ -417,7 +417,15 @@ fn build_client(
             operation_id TEXT PRIMARY KEY, room_id TEXT NOT NULL, base_epoch INTEGER NOT NULL,
             fingerprint TEXT NOT NULL, payload TEXT NOT NULL, claim_ids TEXT NOT NULL, created_at INTEGER NOT NULL
           );
-          CREATE UNIQUE INDEX IF NOT EXISTS client_membership_commits_one_per_room ON client_membership_commits (room_id)",
+          CREATE UNIQUE INDEX IF NOT EXISTS client_membership_commits_one_per_room ON client_membership_commits (room_id);
+          CREATE TABLE IF NOT EXISTS client_invite_intents (
+            operation_id TEXT PRIMARY KEY,
+            room_id TEXT NOT NULL,
+            target_user_id TEXT NOT NULL,
+            state TEXT NOT NULL CHECK (state IN ('claim_pending', 'commit_pending')),
+            created_at INTEGER NOT NULL,
+            UNIQUE (room_id, target_user_id)
+          )",
     )
     .map_err(text)?;
 
@@ -1059,6 +1067,7 @@ impl Client {
             let claim_ids: Vec<String> = serde_json::from_str(&claim_ids_json).map_err(text)?;
             if payload["clientOperationId"].as_str() != Some(operation_id.as_str())
                 || payload["epoch"].as_u64() != Some(base_epoch)
+                || payload["keyPackageClaimId"].as_str().is_some_and(|claim_id| claim_id != operation_id)
             {
                 let reason = "membership journal payload does not match its operation identity";
                 self.record_desync(&room_id, reason)?;
@@ -1141,6 +1150,11 @@ impl Client {
                             [&operation_id],
                         )
                         .map_err(text)?;
+                        tx.execute(
+                            "DELETE FROM client_invite_intents WHERE operation_id = ?1",
+                            [&operation_id],
+                        )
+                        .map_err(text)?;
                         for claim_id in &claim_ids {
                             tx.execute(
                                 "DELETE FROM client_key_package_claims WHERE room_id = ?1 AND claim_id = ?2",
@@ -1197,6 +1211,11 @@ impl Client {
                             [&operation_id],
                         )
                         .map_err(text)?;
+                        tx.execute(
+                            "UPDATE client_invite_intents SET state = 'claim_pending' WHERE operation_id = ?1",
+                            [&operation_id],
+                        )
+                        .map_err(text)?;
                         Ok(())
                     })();
                     if let Err(error) = clearing {
@@ -1223,6 +1242,16 @@ impl Client {
                     )?;
                     return Err(error);
                 }
+                Err(error)
+                    if matches!(
+                        response_error_code(&error).as_deref(),
+                        Some("claim_committed" | "claim_missing" | "claim_released" | "claim_room_mismatch" | "claim_mismatch")
+                    ) =>
+                {
+                    let reason = format!("server KeyPackage claim conflict for membership operation {operation_id}: {error}");
+                    self.record_desync(&room_id, &reason)?;
+                    return Err(format!("RecoveryRequired: {reason}"));
+                }
                 Err(error) => return Err(error),
             }
         }
@@ -1230,161 +1259,250 @@ impl Client {
     }
 
     /// Приглашает пользователя: KeyPackage claim intent сохраняется до подтверждения Commit сервером.
+    fn ensure_invite_intent(&mut self, room_id: &str, user_id: &str) -> Result<(String, String), String> {
+        let existing: Option<(String, String)> = self.meta.query_row(
+            "SELECT operation_id, state FROM client_invite_intents WHERE room_id = ?1 AND target_user_id = ?2",
+            rusqlite::params![room_id, user_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        ).ok();
+        if let Some(intent) = existing {
+            return Ok(intent);
+        }
+        let operation_id = hex_encode(&self.provider.rand().random_vec(16).map_err(text)?);
+        let created_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+        self.meta.execute(
+            "INSERT INTO client_invite_intents (operation_id, room_id, target_user_id, state, created_at)
+             VALUES (?1, ?2, ?3, 'claim_pending', ?4)",
+            rusqlite::params![operation_id, room_id, user_id, created_at],
+        ).map_err(text)?;
+        Ok((operation_id, "claim_pending".to_string()))
+    }
+
+    fn resume_claim_pending_invite(
+        &mut self,
+        room_id: &str,
+        user_id: &str,
+        operation_id: &str,
+    ) -> Result<bool, String> {
+        let state: String = self.meta.query_row(
+            "SELECT state FROM client_invite_intents WHERE operation_id = ?1",
+            [operation_id],
+            |row| row.get(0),
+        ).map_err(text)?;
+        if state != "claim_pending" {
+            return Ok(false);
+        }
+        let claimed = match self.call(
+            "POST",
+            &format!("/mls/key-packages/{}/claims", urlencoding::encode(user_id)),
+            Some(json!({ "claimId": operation_id, "roomId": room_id })),
+        ) {
+            Ok(value) => value,
+            Err(error) => {
+                if matches!(
+                    response_error_code(&error).as_deref(),
+                    Some("claim_committed" | "claim_released" | "claim_room_mismatch")
+                ) {
+                    let reason = format!("invite intent {operation_id} conflicts with server reservation: {error}");
+                    self.record_desync(room_id, &reason)?;
+                    return Err(format!("RecoveryRequired: {reason}"));
+                }
+                return Err(error);
+            }
+        };
+        if claimed["claimId"].as_str() != Some(operation_id)
+            || claimed["roomId"].as_str() != Some(room_id)
+        {
+            let reason = format!("server returned a different reservation identity for {operation_id}");
+            self.record_desync(room_id, &reason)?;
+            return Err(format!("RecoveryRequired: {reason}"));
+        }
+        let packages = claimed["packages"].as_array().ok_or("нет поля packages")?.clone();
+        if packages.is_empty() {
+            let released = self.call(
+                "DELETE",
+                &format!("/mls/key-packages/claims/{}", urlencoding::encode(operation_id)),
+                None,
+            )?;
+            if released["released"].as_bool().is_none() {
+                return Err("сервер не подтвердил release пустого KeyPackage claim".to_string());
+            }
+            self.meta.execute(
+                "DELETE FROM client_invite_intents WHERE operation_id = ?1",
+                [operation_id],
+            ).map_err(text)?;
+            return Err(format!("у {user_id} нет ключевых пакетов"));
+        }
+
+        let mut key_packages = Vec::with_capacity(packages.len());
+        let mut devices = Vec::with_capacity(packages.len());
+        for package in &packages {
+            let bytes = B64.decode(package["package"].as_str().ok_or("пакет не строка")?).map_err(text)?;
+            let key_package = KeyPackageIn::tls_deserialize_exact(&bytes)
+                .map_err(text)?
+                .validate(self.provider.crypto(), ProtocolVersion::Mls10)
+                .map_err(text)?;
+            key_packages.push(key_package);
+            devices.push(package["deviceId"].as_str().ok_or("нет deviceId")?.to_string());
+        }
+        devices.sort();
+        devices.dedup();
+
+        let tx = self.meta.unchecked_transaction().map_err(text)?;
+        let staged = (|| -> Result<(), String> {
+            let group = self.groups.get_mut(room_id).ok_or("комната не создана на этом устройстве")?;
+            let base_epoch = group.mls.epoch().as_u64();
+            let (commit, welcome, _) = group.mls.add_members(&self.provider, &self.signer, &key_packages).map_err(text)?;
+            let commit_bytes = commit.tls_serialize_detached().map_err(text)?;
+            let welcome_bytes = welcome.tls_serialize_detached().map_err(text)?;
+            let welcome_b64 = B64.encode(&welcome_bytes);
+            let welcomes: Vec<Value> = devices.iter()
+                .map(|device| json!({ "userId": user_id, "deviceId": device, "welcome": welcome_b64 }))
+                .collect();
+            let changes = json!({ "adds": [user_id], "removes": [], "removeDevices": [] });
+            let payload = json!({
+                "epoch": base_epoch,
+                "commit": B64.encode(&commit_bytes),
+                "changes": changes,
+                "welcomes": welcomes,
+                "clientOperationId": operation_id,
+                "keyPackageClaimId": operation_id,
+            });
+            let recipients: Vec<Value> = devices.iter()
+                .map(|device| json!({ "userId": user_id, "deviceId": device }))
+                .collect();
+            let metadata = json!({ "changes": changes, "welcomeRecipients": recipients });
+            let pending = group.mls.pending_commit().ok_or("OpenMLS did not retain the staged membership commit")?;
+            verify_staged_membership_metadata(&group.mls, pending, &metadata)?;
+            let fingerprint = membership_commit_fingerprint(
+                &self.provider, room_id, operation_id, base_epoch, &payload, pending,
+            )?;
+            let claim_ids = serde_json::to_string(&vec![operation_id.to_string()]).map_err(text)?;
+            let payload_json = serde_json::to_string(&payload).map_err(text)?;
+            let created_at = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as i64;
+            tx.execute(
+                "INSERT INTO client_membership_commits (operation_id, room_id, base_epoch, fingerprint, payload, claim_ids, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                rusqlite::params![operation_id, room_id, base_epoch as i64, fingerprint, payload_json, claim_ids, created_at],
+            ).map_err(text)?;
+            tx.execute(
+                "UPDATE client_invite_intents SET state = 'commit_pending' WHERE operation_id = ?1",
+                [operation_id],
+            ).map_err(text)?;
+            Ok(())
+        })();
+        if let Err(error) = staged {
+            let _ = tx.rollback();
+            self.reload_group(room_id)?;
+            return Err(error);
+        }
+        if let Err(error) = tx.commit() {
+            self.reload_group(room_id)?;
+            return Err(format!("не удалось зафиксировать staged membership journal: {}", text(error)));
+        }
+        if self.flush_pending_membership_commits()? > 0 {
+            self.sync_room(room_id)?;
+            return Ok(false);
+        }
+        Ok(true)
+    }
+
+    fn resume_claim_pending_invites(&mut self) -> Result<(), String> {
+        let intents: Vec<(String, String, String)> = {
+            let mut stmt = self.meta.prepare(
+                "SELECT operation_id, room_id, target_user_id FROM client_invite_intents
+                 WHERE state = 'claim_pending' ORDER BY created_at, operation_id",
+            ).map_err(text)?;
+            let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?))).map_err(text)?;
+            rows.collect::<Result<_, _>>().map_err(text)?
+        };
+        for (operation_id, room_id, user_id) in intents {
+            let mut completed = false;
+            for attempt in 0..3 {
+                if self.resume_claim_pending_invite(&room_id, &user_id, &operation_id)? {
+                    completed = true;
+                    break;
+                }
+                if attempt == 2 {
+                    return Err(format!("epoch_outdated: invite intent {operation_id} exhausted safe rebase attempts"));
+                }
+            }
+            if !completed {
+                return Err(format!("invite intent {operation_id} remains pending"));
+            }
+        }
+        Ok(())
+    }
+
+    pub fn cancel_invite(&mut self, room_id: &str, user_id: &str) -> Result<(), String> {
+        let intent: Option<(String, String)> = self.meta.query_row(
+            "SELECT operation_id, state FROM client_invite_intents WHERE room_id = ?1 AND target_user_id = ?2",
+            rusqlite::params![room_id, user_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        ).ok();
+        let Some((operation_id, state)) = intent else { return Ok(()); };
+        if state == "commit_pending" {
+            self.flush_pending_membership_commits()?;
+            let still_exists: bool = self.meta.query_row(
+                "SELECT EXISTS(SELECT 1 FROM client_invite_intents WHERE operation_id = ?1)",
+                [&operation_id],
+                |row| row.get(0),
+            ).map_err(text)?;
+            if !still_exists { return Ok(()); }
+            return Err("membership commit уже staged; reservation нельзя release до ACK/replay".to_string());
+        }
+        let result = self.call(
+            "DELETE",
+            &format!("/mls/key-packages/claims/{}", urlencoding::encode(&operation_id)),
+            None,
+        )?;
+        if result["released"].as_bool().is_none() {
+            return Err("сервер не подтвердил release KeyPackage claim".to_string());
+        }
+        let tx = self.meta.unchecked_transaction().map_err(text)?;
+        tx.execute("DELETE FROM client_invite_intents WHERE operation_id = ?1", [&operation_id]).map_err(text)?;
+        tx.execute(
+            "DELETE FROM client_key_package_claims WHERE room_id = ?1 AND user_id = ?2",
+            rusqlite::params![room_id, user_id],
+        ).map_err(text)?;
+        tx.commit().map_err(text)?;
+        Ok(())
+    }
+
     pub fn invite(&mut self, room_id: &str, user_id: &str) -> Result<(), String> {
         self.ensure_writable()?;
         if let Some(reason) = self.desync_reason(room_id)? {
             return Err(format!("комната требует восстановления: {reason}"));
         }
-        if self.flush_pending_membership_commits()? > 0 {
-            self.sync()?;
+        self.flush_pending_membership_commits()?;
+        let (operation_id, state) = self.ensure_invite_intent(room_id, user_id)?;
+        if state == "commit_pending" {
+            self.flush_pending_membership_commits()?;
+            let still_exists: bool = self.meta.query_row(
+                "SELECT EXISTS(SELECT 1 FROM client_invite_intents WHERE operation_id = ?1)",
+                [&operation_id],
+                |row| row.get(0),
+            ).map_err(text)?;
+            if !still_exists { return Ok(()); }
+            let reason = format!("commit_pending invite {operation_id} has no resolvable ACK");
+            self.record_desync(room_id, &reason)?;
+            return Err(format!("RecoveryRequired: {reason}"));
         }
-        let claim_id = {
-            let existing = {
-                let mut stmt = self.meta.prepare(
-                    "SELECT claim_id FROM client_key_package_claims WHERE room_id = ?1 AND user_id = ?2",
-                ).map_err(text)?;
-                let rows = stmt
-                    .query_map((room_id, user_id), |row| row.get::<_, String>(0))
-                    .map_err(text)?;
-                rows.collect::<Result<Vec<_>, _>>()
-                    .map_err(text)?
-                    .into_iter()
-                    .next()
-            };
-            match existing {
-                Some(id) => id,
-                None => {
-                    let id = hex_encode(&self.provider.rand().random_vec(16).map_err(text)?);
-                    self.meta.execute(
-                        "INSERT INTO client_key_package_claims (room_id, user_id, claim_id) VALUES (?1, ?2, ?3)",
-                        (room_id, user_id, &id),
-                    ).map_err(text)?;
-                    id
-                }
-            }
-        };
         for attempt in 0..3 {
-            let claimed = self.call(
-                "POST",
-                &format!("/mls/key-packages/{}/claim", urlencoding::encode(user_id)),
-                Some(json!({ "claimId": claim_id })),
-            )?;
-            if claimed["claimId"].as_str() != Some(claim_id.as_str()) {
-                return Err("сервер вернул другой KeyPackage claimId".to_string());
-            }
-            let packages = claimed["packages"]
-                .as_array()
-                .ok_or("нет поля packages")?
-                .clone();
-            if packages.is_empty() {
-                self.meta.execute(
-                    "DELETE FROM client_key_package_claims WHERE room_id = ?1 AND user_id = ?2 AND claim_id = ?3",
-                    (room_id, user_id, &claim_id),
-                ).map_err(text)?;
-                return Err(format!("у {user_id} нет ключевых пакетов"));
-            }
-            let mut key_packages = Vec::with_capacity(packages.len());
-            let mut devices = Vec::with_capacity(packages.len());
-            for package in &packages {
-                let bytes = B64
-                    .decode(package["package"].as_str().ok_or("пакет не строка")?)
-                    .map_err(text)?;
-                let key_package = KeyPackageIn::tls_deserialize_exact(&bytes)
-                    .map_err(text)?
-                    .validate(self.provider.crypto(), ProtocolVersion::Mls10)
-                    .map_err(text)?;
-                key_packages.push(key_package);
-                devices.push(
-                    package["deviceId"]
-                        .as_str()
-                        .ok_or("нет deviceId")?
-                        .to_string(),
-                );
-            }
-            devices.sort();
-            devices.dedup();
-            let operation_id = hex_encode(&self.provider.rand().random_vec(16).map_err(text)?);
-            let tx = self.meta.unchecked_transaction().map_err(text)?;
-            let staged = (|| -> Result<(), String> {
-                let group = self
-                    .groups
-                    .get_mut(room_id)
-                    .ok_or("комната не создана на этом устройстве")?;
-                let base_epoch = group.mls.epoch().as_u64();
-                let (commit, welcome, _) = group
-                    .mls
-                    .add_members(&self.provider, &self.signer, &key_packages)
-                    .map_err(text)?;
-                let commit_bytes = commit.tls_serialize_detached().map_err(text)?;
-                let welcome_bytes = welcome.tls_serialize_detached().map_err(text)?;
-                let welcome_b64 = B64.encode(&welcome_bytes);
-                let welcomes: Vec<Value> = devices.iter()
-                    .map(|device| json!({ "userId": user_id, "deviceId": device, "welcome": welcome_b64 }))
-                    .collect();
-                let changes = json!({ "adds": [user_id], "removes": [], "removeDevices": [] });
-                let payload = json!({
-                    "epoch": base_epoch, "commit": B64.encode(&commit_bytes),
-                    "changes": changes, "welcomes": welcomes, "clientOperationId": operation_id,
-                });
-                let recipients: Vec<Value> = devices
-                    .iter()
-                    .map(|device| json!({ "userId": user_id, "deviceId": device }))
-                    .collect();
-                let metadata = json!({ "changes": changes, "welcomeRecipients": recipients });
-                let pending = group
-                    .mls
-                    .pending_commit()
-                    .ok_or("OpenMLS did not retain the staged membership commit")?;
-                verify_staged_membership_metadata(&group.mls, pending, &metadata)?;
-                let fingerprint = membership_commit_fingerprint(
-                    &self.provider,
-                    room_id,
-                    &operation_id,
-                    base_epoch,
-                    &payload,
-                    pending,
-                )?;
-                let claim_ids = serde_json::to_string(&vec![claim_id.clone()]).map_err(text)?;
-                let payload_json = serde_json::to_string(&payload).map_err(text)?;
-                let created_at = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis() as i64;
-                tx.execute(
-                    "INSERT INTO client_membership_commits (operation_id, room_id, base_epoch, fingerprint, payload, claim_ids, created_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-                    rusqlite::params![operation_id, room_id, base_epoch as i64, fingerprint, payload_json, claim_ids, created_at],
-                ).map_err(text)?;
-                Ok(())
-            })();
-            if let Err(error) = staged {
-                let _ = tx.rollback();
-                self.reload_group(room_id)?;
-                return Err(error);
-            }
-            if let Err(error) = tx.commit() {
-                self.reload_group(room_id)?;
-                return Err(format!(
-                    "не удалось зафиксировать membership journal: {}",
-                    text(error)
-                ));
-            }
-            if self.flush_pending_membership_commits()? == 0 {
+            if self.resume_claim_pending_invite(room_id, user_id, &operation_id)? {
                 return Ok(());
             }
-            self.sync()?;
-            if let Some(reason) = self.desync_reason(room_id)? {
-                return Err(format!(
-                    "комната требует восстановления после stale commit: {reason}"
-                ));
-            }
             if attempt == 2 {
-                return Err(
-                    "epoch_outdated: исчерпаны попытки безопасного rebasing invite".to_string(),
-                );
+                return Err(format!("epoch_outdated: invite {operation_id} exhausted safe rebase attempts"));
             }
         }
-        Err("epoch_outdated: invite не удалось применить после rebasing".to_string())
+        Err("invite не удалось применить".to_string())
     }
 
     /// Отправляет текст в комнату. Устройство должно быть на эпохе сервера: иначе сначала синхронизация.
@@ -1965,6 +2083,7 @@ impl Client {
     /// Полная синхронизация: вход по приветствиям и чтение всех комнат устройства.
     pub fn sync(&mut self) -> Result<Vec<Incoming>, String> {
         self.flush_pending_membership_commits()?;
+        self.resume_claim_pending_invites()?;
         self.join_welcomes()?;
         let rooms: Vec<String> = self.groups.keys().cloned().collect();
         let mut out = Vec::new();
