@@ -160,10 +160,26 @@ fn испорченный_коммит_одной_комнаты_не_остан
 fn forged_commit_membership_metadata_is_rejected_before_merge() {
     let mut engine = start_engine();
     let keys = MemoryKeyStore::default();
-    let (alice_db, bob_db, carol_db) = (db("p02-meta-alice"), db("p02-meta-bob"), db("p02-meta-carol"));
-    let mut alice = login(&engine, &keys, "@alice-meta:inone.test", "A_META", &alice_db);
+    let (alice_db, bob_db, carol_db) = (
+        db("p02-meta-alice"),
+        db("p02-meta-bob"),
+        db("p02-meta-carol"),
+    );
+    let mut alice = login(
+        &engine,
+        &keys,
+        "@alice-meta:inone.test",
+        "A_META",
+        &alice_db,
+    );
     let mut bob = login(&engine, &keys, "@bob-meta:inone.test", "B_META", &bob_db);
-    let _carol = login(&engine, &keys, "@carol-meta:inone.test", "C_META", &carol_db);
+    let _carol = login(
+        &engine,
+        &keys,
+        "@carol-meta:inone.test",
+        "C_META",
+        &carol_db,
+    );
     bob.upload_key_packages(3).unwrap();
     let room = "!room-p02-meta:inone.test";
     alice.create_room(room).unwrap();
@@ -176,8 +192,21 @@ fn forged_commit_membership_metadata_is_rejected_before_merge() {
     assert_eq!(engine.command(&format!("BADMETADATA {room}")), "OK");
     bob.sync().unwrap();
 
-    assert_eq!(bob.local_epoch(room), Some(1), "mismatched metadata must not merge the staged Commit");
-    let reason = bob.desync_reason(room).unwrap().expect("room enters recovery state");
-    assert!(reason.contains("P0.2"), "diagnostic identifies the metadata mismatch: {reason}");
-    assert!(bob.send_text(room, "must not send").is_err(), "sending is blocked until reconciliation");
+    assert_eq!(
+        bob.local_epoch(room),
+        Some(1),
+        "mismatched metadata must not merge the staged Commit"
+    );
+    let reason = bob
+        .desync_reason(room)
+        .unwrap()
+        .expect("room enters recovery state");
+    assert!(
+        reason.contains("P0.2"),
+        "diagnostic identifies the metadata mismatch: {reason}"
+    );
+    assert!(
+        bob.send_text(room, "must not send").is_err(),
+        "sending is blocked until reconciliation"
+    );
 }
