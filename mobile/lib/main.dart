@@ -1,17 +1,19 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import 'approved_screens.dart';
 import 'core/session/inone_session.dart';
+import 'core/network/api_environment.dart';
 import 'core/data/inone_repositories.dart';
 import 'core/test_api/screen_api_catalog.dart';
 import 'test_screens.dart';
 import 'test_gallery_loader.dart';
 
-const _apiBaseUrl = String.fromEnvironment('INONE_API_BASE_URL');
+const _configuredApiBaseUrl = String.fromEnvironment('INONE_API_BASE_URL');
 
 void main() => runApp(const InOneApp());
 
@@ -92,10 +94,12 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
   @override
   void initState() {
     super.initState();
-    _session = _apiBaseUrl.trim().isEmpty ? null : InOneSession(baseUrl: _apiBaseUrl.trim());
-    if (_session != null) {
-      unawaited(_session.initialize().catchError((Object _) {}));
-    }
+    final apiBaseUrl = resolveInOneApiBaseUrl(
+      configured: _configuredApiBaseUrl,
+      isAndroid: Platform.isAndroid,
+    );
+    _session = InOneSession(baseUrl: apiBaseUrl);
+    unawaited(_session.initialize().catchError((Object _) {}));
 
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
