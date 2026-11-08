@@ -31,6 +31,8 @@ jobs:
         run: flutter create --platforms=android,ios --project-name inone_mobile --org com.inone .
       - name: Remove generated template test
         run: rm -f test/widget_test.dart
+      - name: Verify approved cross-platform screen geometry
+        run: node tool/verify_approved_html.mjs
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test
