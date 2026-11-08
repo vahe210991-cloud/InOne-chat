@@ -43,6 +43,8 @@ test('эпоха начинается с нуля; коммит от актуа�
     assert.equal(list.commits[0].epoch, 1);
     assert.equal(list.commits[0].sender, ALICE);
     assert.equal(Buffer.from(list.commits[0].commit, 'base64').toString('utf8'), 'COMMIT-1');
+    assert.deepEqual(list.commits[0].changes, { adds: [], removes: [], removeDevices: [] });
+    assert.deepEqual(list.commits[0].welcomeRecipients, []);
   } finally {
     await g.stop();
   }
