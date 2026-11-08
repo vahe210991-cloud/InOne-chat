@@ -1,65 +1,54 @@
-# InOne — technical director audit and delivery checklist
+# InOne — CTO status and delivery checklist
 
-Date: 2026-11-08
-Repository: vahe210991-cloud/InOne-chat
-Scope: read-only baseline inspection plus product-decision documentation. No production code or main-branch changes were made.
+**Status date:** 2026-11-08  
+**Repository:** `vahe210991-cloud/InOne-chat`  
+**Scope:** Beta 1.0 baseline (account, chats, organizations, profile, MLS). Tasks, Calendar and Cindy are outside this Beta 1.0 scope.
 
-## Executive status
+## Corrected progress baseline
 
-The documentation baseline and corrected icon specification were merged to `main` through PR #15 (documentation-only). Cross-platform Identity Service implementation is tracked in issue #16. The canonical P0 source import remains blocked by issue #11.
+The previous 35% estimate is withdrawn. It measured only what was visible on the then-accessible GitHub branches and omitted the prior local development work. Use this baseline until a new reproducible source audit changes it:
 
-**Provisional overall MVP readiness: 35%.** This is a CTO estimate, not a test-coverage percentage. The existing 0.6 engine foundation and its automated checks are substantial, but the product client, approved visual design-system source, cross-platform Identity Service, localization, and complete MVP delivery are not yet present as integrated, accepted product features.
+| Workstream | Implementation | Verified / acceptance |
+|---|---:|---:|
+| Backend P0 | **80%** | **40%** |
+| Frontend Beta 1.0 | **70%** | **0%** |
+| API ↔ MLS integration | **50%** | **0%** |
+| Testing workstream | **60%** | Execution incomplete; see test gates |
+| End-to-end Beta 1.0 | **0%** | **0%** |
 
-Do not compare this estimate directly with the earlier 0.7 plan's 45/30/25 weighted projection: that plan predates the newly approved InOne + Propo shared-identity, localization, chat-theme, and alternate-icon requirements. Rebaseline the weighted roadmap after source-of-truth inventory and owner acceptance.
+These are separate measures, not a single additive percentage. Implementation progress includes code and test preparation; verified progress counts only executed checks with retained evidence. Do not reduce progress merely because a local branch is not yet published, and do not increase verified progress for static checks or tests that could not run.
 
-## Verified repository facts
+## Recovered local development state
 
-- Default branch: `main`; repository is private.
-- Current main contains the 0.6.0 archived engine, an engine POC snapshot, and 0.7 planning / common client-screen spike files.
-- The 0.7 client work currently consists of a shared request/state layer and test/report documents; the listed product screens 0.7.1–0.7.11 are not implemented in the main tree.
-- A Dart reference client exists in the 0.6 archive, but its own archive documentation says it was not verified because Dart SDK was unavailable. No complete Flutter product application or its `pubspec.yaml` was found in the main tree.
-- No design-system source directory, design tokens, icon assets, localization catalogue, or chat-theme implementation was found in the main tree. Preserve the approved design-system artifact when located; do not recreate its exact tokens from memory.
-- The independent Identity Service and authoritative cross-platform reservation workflow for InOne + Propo are not evidenced in the current main tree. Existing identity/profile functionality in the 0.6 engine is not proof of the newly approved cross-platform identity contract.
-- The P0 Wave 3 bundle and patches 001–008 referenced in PR #10 are not available on the inspected remote branches according to the PR's source-scope statement. Obtain/import the canonical source before claiming those changes are integrated or tested.
+- Backend local work includes branch `cto/p0-exact-pending-commit`, commit `6fe6b67`, and the later P0 finalize-fixtures handoff identifies local branch `cto/p0-finalize-fixtures`, commit `cbecb37`.
+- Frontend local branch: `ui/beta1-api-integration`; recorded commits `e83858b` (shared API/MLS session refresh) and `97d08fd` (contract/documentation).
+- The 2026-11-08 roadmap records Beta 1.0 screens/navigation, real room/org/profile API wiring, email/password auth, email-confirmed registration, recovery flow, memory-only access/refresh tokens, stable device ID, refresh delegation and Dart source-contract tests.
+- P0 work includes operation-id protections, durable inbox/outbox and membership journals, commit metadata verification, quarantine/WaitingForCommit handling, exact device-removal identity, repeatable Key Package claims, and outbound ACK/restart reconciliation through Patch 020.
+- Saved handoff artifacts include `InOne-P0-2026-11-08.bundle`, `InOne-P0-local-2026-11-08.bundle`, `InOne-Backend-MLS-Session-2026-11-08.zip`, and `InOne-Beta1-UI-API-2026-11-08-r2.zip`. These artifacts are not yet represented by a published canonical source branch in the currently connected GitHub repository.
 
-## GitHub Actions — PR #10
+## Verified / blocked test gates
 
-Run: https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42395014895
+- Node syntax checks for JS/MJS source: passed in the saved 2026-11-08 roadmap run.
+- Focused Node common/auth/API/MLS source-contract tests: **12/12 passed** in that run.
+- Full Node suite: **blocked**, dependencies such as `qrcode` and `libphonenumber-js/max` were missing; 74 of 85 files/subtests failed during module loading, not proven product regressions.
+- Rust check/tests: **blocked**, Rust 1.91 toolchain unavailable in that environment.
+- PostgreSQL migration/concurrency acceptance: **blocked**, no PostgreSQL service or `DATABASE_URL`.
+- Flutter analyze/widget tests: **blocked**, Flutter/Dart SDK unavailable.
+- Native Android/iOS MLS handlers, FFI packaging, secure Keychain/Keystore provider and durable local message store remain unimplemented; native MLS stays fail-closed.
+- GitHub PR #10's older archived 0.6.0 workflow run is not acceptance evidence for the latest local P0 source.
 
-The PR-triggered workflow completed with **3 of 4 jobs successful**:
-- Node 22 backend suite: **369 passed, 0 failed**.
-- Node 22 + PostgreSQL 16 database/migration suite: **43 passed, 0 failed**.
-- Rust 1.91 MLS client and bridge checks/tests: **successful** (client and bridge tests passed).
-- Rust formatting: **failed** because rustfmt reports formatting differences in Rust source/test files. This is a formatting failure, not evidence of a Rust compile/test failure.
+## Next delivery checklist
 
-The workflow validates only the 0.6.0 archived engine paths named in its workflow file. It does not validate the missing P0 Wave 3 source, 0.7 product screens, Flutter app, Propo integration, or the newly approved product requirements. PR #10 remains a draft and must not be treated as green or merged until the formatting check is corrected and the correct canonical source scope is tested.
-
-## Technical director recommendations
-
-1. Keep `main` protected from unverified or incomplete merges. Work through reviewable feature branches and PRs.
-2. First identify and import the canonical current development source (including P0 Wave 3 and patches 001–008 if still authoritative). Reconcile duplicate 0.6 snapshots and define one canonical engine path.
-3. Establish a dedicated Identity Service and database as the source of truth. Keep InOne and Propo backends and domain data independent. Implement central unique identifier reservation, `ACTIVE/RESERVED` platform states, transactional outbox/inbox, idempotency, retry/reconciliation, and explicit partial-operation status.
-4. Build the client foundation around an in-app language preference: Armenian, Russian, English first; French, German, Spanish enabled by the localization architecture.
-5. Retrieve and pin the exact approved design-system source. Then implement glassmorphism components without changing approved tokens. Chat theme selection / user-created themes and alternate app icons can ship after the first beta, but their extension points should be planned now.
-6. Correct Rust formatting in source, rerun the full workflow, inspect all job results and artifacts, then request review. Do not bypass or downgrade the formatting gate to manufacture a green result.
-
-## Delivery checklist
-
-- [ ] Locate and verify the canonical current source and P0 Wave 3 + patches 001–008.
-- [ ] Reconcile archive / POC duplication and nominate one canonical engine path.
-- [ ] Fix Rust formatting properly; rerun Node, PostgreSQL, Rust format, Rust check and Rust tests.
-- [ ] Audit current identity schema, registration routes, uniqueness constraints, and profile lifecycle.
-- [ ] Design and implement independent Identity Service + shared identity database.
-- [ ] Add cross-platform reservation, idempotency, outbox/inbox, retries, and reconciliation tests.
-- [ ] Add fault-injection tests: Propo down, Identity down, timeout after commit, duplicate/concurrent registrations, recovery after outage.
-- [ ] Locate and version the approved InOne design-system source; protect it from silent changes.
-- [ ] Add in-app language selection and Armenian/Russian/English translations; prepare future language packs.
-- [ ] Implement product screens and validate client/server flows.
-- [ ] Add theme architecture now; deliver built-in and user-created chat themes in a later beta.
-- [ ] Add the primary icon exactly as approved: green background with no white perimeter; exact wordmark “InOne”; black bold connected letters; white outline directly around the letters; glass-layer aesthetic.
-- [ ] Plan alternate icon variants and platform-specific switching.
-- [ ] Run full CI on the canonical source, complete security review, create release candidate, and merge only after required checks pass.
+- [ ] Restore the latest canonical P0 bundle and UI/API r2 source into a working environment with raw-byte access; verify hashes, branches, clean trees and exact commits before changing anything.
+- [ ] Preserve original Git history; publish the canonical source with normal Git transport only after ancestry/merge-base checks. Never snapshot-rebase onto `main`, force-push or overwrite unrelated history.
+- [ ] Run Rust 1.91: `cargo fmt --check`, `cargo check --locked --all-targets`, `cargo test --locked --no-fail-fast`, including `membership_outbox` and `consistency`.
+- [ ] Restore Node dependencies; run `npm ci`, `npm test`, focused MLS tests and `npm run test:db` against PostgreSQL 16, including fresh-schema and upgrade migrations.
+- [ ] Install Flutter/Dart; run `flutter pub get`, `flutter analyze`, `flutter test`; fix all findings.
+- [ ] Implement Android/iOS native MLS handlers, Rust FFI packaging, Keychain/Keystore-backed SQLCipher key provider and durable local message store; keep plaintext fallback prohibited.
+- [ ] Run two-device E2E: registration/login/recovery, organizations, send/receive, offline/restart, duplicate delivery, refresh rotation, membership changes, key-package claim recovery and quarantine behavior.
+- [ ] Add and validate the independent InOne + Propo Identity Service, in-app Armenian/Russian/English localization (future French/German/Spanish), and planned chat-theme/icon extension points as separate scope beyond the recovered Beta 1.0 baseline.
+- [ ] Open reviewable PRs only after required CI is green; merge only after review and explicit release gate.
 
 ## Change control
 
-The approved product decisions in `PRODUCT-DECISIONS-IDENTITY-LOCALIZATION-DESIGN.md` are the requirements baseline. Any change to the wordmark, icon outline placement, approved design tokens, identity ownership model, or platform-independence principles requires explicit product-owner approval.
+The approved product decisions are recorded in `docs/PRODUCT-DECISIONS-IDENTITY-LOCALIZATION-DESIGN.md`. The corrected primary icon remains: exact wordmark `InOne`; black bold connected letters; white outline directly around the letters; green background without a white perimeter; layered glass aesthetic. The design-system source of truth must be preserved unchanged.
