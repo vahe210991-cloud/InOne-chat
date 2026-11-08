@@ -80,3 +80,11 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - `git bundle verify` succeeded: complete five-commit history, ref `engine/p0-wave3` at `a7f60b6fdc969941e4354a117e17d32bfc951fb9`, base `ea3b49ae9cdf1670a1b7499d4b5e608ee22fe1e9`, 240 tracked base blobs.
 - Corrected earlier statement: GitHub connector exposes `create_blob(encoding=base64)`; current limitation is getting mounted local bytes into the Code Mode action call. Container Git push attempted and failed at DNS resolution; no Git credentials configured.
 - Detailed status and hashes saved to `development/recovered-source/README.md` commit `4b3074c5a2c4f4310d58ab6fe10e8ef687846b9a`.
+
+
+## 2026-11-08 — P0 CI Node and room tests green; PostgreSQL client mismatch
+
+- Run #42457297299: backend Node tests 369/369 pass; P0 room-list regression 2/2 pass; PostgreSQL 42/43 pass. Only failure was backup/restore because newer runner pg_restore emitted `SET transaction_timeout=0` unsupported by PostgreSQL 16.
+- Corrected workflow to pin Ubuntu 24.04 and PostgreSQL client 16 in commit `0e13b9726c5fcbecfdb8a9a45b05d4bb6eb02863`.
+- Fresh run #42457594088 in progress at last check. No full acceptance; OpenMLS/Rust skipped in failed run.
+- Report: `development/recovered-source/CI-RESULT-42457297299.md`.
