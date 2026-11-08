@@ -393,6 +393,15 @@ fn build_client(
          CREATE TABLE IF NOT EXISTS client_processed (event_id TEXT PRIMARY KEY);
          CREATE TABLE IF NOT EXISTS client_undecryptable (event_id TEXT PRIMARY KEY, room_id TEXT NOT NULL, reason TEXT NOT NULL);
          CREATE TABLE IF NOT EXISTS client_desync (room_id TEXT PRIMARY KEY, reason TEXT NOT NULL);
+         CREATE TABLE IF NOT EXISTS client_welcome_receipts (
+           welcome_id INTEGER PRIMARY KEY,
+           room_id TEXT NOT NULL,
+           welcome BLOB NOT NULL,
+           outcome TEXT NOT NULL CHECK (outcome IN ('joined', 'quarantined')),
+           reason TEXT,
+           created_at INTEGER NOT NULL,
+           acked_at INTEGER
+         );
          CREATE TABLE IF NOT EXISTS client_outbox (local_id TEXT PRIMARY KEY, room_id TEXT NOT NULL, body TEXT NOT NULL, seq INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS client_remote_config (id INTEGER PRIMARY KEY CHECK (id = 1), etag TEXT NOT NULL, body TEXT NOT NULL, fetched_at INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS client_key_package_claims (room_id TEXT NOT NULL, user_id TEXT NOT NULL, claim_id TEXT NOT NULL, PRIMARY KEY (room_id, user_id));",
@@ -727,9 +736,16 @@ impl Client {
         let mls = self.mls_users(room_id)?;
         let server = self.server_users(room_id)?;
         if mls == server {
-            self.meta
-                .execute("DELETE FROM client_desync WHERE room_id = ?1", [room_id])
-                .map_err(text)?;
+            let recovery_required: bool = self.meta.query_row(
+                "SELECT EXISTS(SELECT 1 FROM client_desync WHERE room_id = ?1 AND reason LIKE 'RecoveryRequired:%')",
+                [room_id],
+                |row| row.get(0),
+            ).map_err(text)?;
+            if !recovery_required {
+                self.meta
+                    .execute("DELETE FROM client_desync WHERE room_id = ?1", [room_id])
+                    .map_err(text)?;
+            }
             return Ok(());
         }
         let only_server: Vec<&String> = server.difference(&mls).collect();
@@ -747,10 +763,15 @@ impl Client {
 
     /// Пометка комнаты как требующей восстановления состояния (RecoveryRequired): отправка приостанавливается.
     fn record_desync(&mut self, room_id: &str, reason: &str) -> Result<(), String> {
+        let durable_reason = if reason.starts_with("RecoveryRequired:") {
+            reason.to_string()
+        } else {
+            format!("RecoveryRequired: {reason}")
+        };
         self.meta
             .execute(
                 "INSERT INTO client_desync (room_id, reason) VALUES (?1, ?2) ON CONFLICT(room_id) DO UPDATE SET reason = excluded.reason",
-                [room_id, reason],
+                [room_id, durable_reason.as_str()],
             )
             .map_err(text)?;
         Ok(())
@@ -1071,39 +1092,230 @@ impl Client {
         Ok(event_id)
     }
 
-    /// Входит в группы по приветствиям, которые ждут на сервере, и подтверждает их.
+    fn persist_welcome_receipt(
+        &mut self,
+        welcome_id: i64,
+        room_id: &str,
+        bytes: &[u8],
+        outcome: &str,
+        reason: Option<&str>,
+    ) -> Result<(), String> {
+        let tx = self.meta.transaction().map_err(text)?;
+        tx.execute(
+            "INSERT OR IGNORE INTO client_welcome_receipts (welcome_id, room_id, welcome, outcome, reason, created_at, acked_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL)",
+            rusqlite::params![
+                welcome_id,
+                room_id,
+                bytes,
+                outcome,
+                reason,
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as i64
+            ],
+        ).map_err(text)?;
+        let existing: (String, Vec<u8>, String) = tx.query_row(
+            "SELECT room_id, welcome, outcome FROM client_welcome_receipts WHERE welcome_id = ?1",
+            [welcome_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        ).map_err(text)?;
+        if existing.0 != room_id || existing.1 != bytes || existing.2 != outcome {
+            return Err(format!("Welcome receipt identity collision for id {welcome_id}"));
+        }
+        tx.commit().map_err(text)?;
+        Ok(())
+    }
+
+    fn ack_welcome(&mut self, welcome_id: i64) -> Result<(), String> {
+        let response = self.call(
+            "POST",
+            &format!("/mls/welcomes/{welcome_id}/ack"),
+            Some(json!({})),
+        );
+        if let Err(error) = response {
+            // 404 means the server already accepted the ACK (or the row is no longer pending).
+            if !error.contains(" -> 404") {
+                return Err(error);
+            }
+        }
+        self.meta.execute(
+            "UPDATE client_welcome_receipts SET acked_at = ?2 WHERE welcome_id = ?1 AND acked_at IS NULL",
+            rusqlite::params![
+                welcome_id,
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as i64
+            ],
+        ).map_err(text)?;
+        Ok(())
+    }
+
+    fn retry_pending_welcome_acks(&mut self) -> Result<(), String> {
+        let ids: Vec<i64> = {
+            let mut statement = self.meta.prepare(
+                "SELECT welcome_id FROM client_welcome_receipts WHERE acked_at IS NULL ORDER BY created_at, welcome_id"
+            ).map_err(text)?;
+            let rows = statement.query_map([], |row| row.get(0)).map_err(text)?;
+            rows.collect::<Result<Vec<_>, _>>().map_err(text)?
+        };
+        for welcome_id in ids {
+            // Leave the durable receipt pending if the ACK cannot be confirmed.
+            let _ = self.ack_welcome(welcome_id);
+        }
+        Ok(())
+    }
+
+    /// Входит в группы по Welcome. Permanent failures first commit a durable receipt, then ACK.
+    /// GroupAlreadyExists and indeterminate Library/Storage failures are never ACKed or quarantined.
     fn join_welcomes(&mut self) -> Result<(), String> {
+        self.retry_pending_welcome_acks()?;
         let pending = self.call("GET", "/mls/welcomes", None)?;
-        for w in pending["welcomes"].as_array().cloned().unwrap_or_default() {
-            let id = w["id"].as_i64().ok_or("нет id приветствия")?;
-            let bytes = B64
-                .decode(w["welcome"].as_str().ok_or("приветствие не строка")?)
-                .map_err(text)?;
-            let welcome = match MlsMessageIn::tls_deserialize_exact(&bytes)
-                .map_err(text)?
-                .extract()
-            {
-                MlsMessageBodyIn::Welcome(x) => x,
-                _ => return Err("ожидалось приветствие".to_string()),
+        for row in pending["welcomes"].as_array().cloned().unwrap_or_default() {
+            let Some(welcome_id) = row["id"].as_i64() else { continue };
+            let Some(room_id) = row["roomId"].as_str().filter(|id| !id.trim().is_empty()) else {
+                continue;
+            };
+            let encoded = row["welcome"].as_str().unwrap_or_default();
+            let bytes = match B64.decode(encoded) {
+                Ok(bytes) => bytes,
+                Err(error) => {
+                    let raw = encoded.as_bytes();
+                    if self.persist_welcome_receipt(
+                        welcome_id, room_id, raw, "quarantined",
+                        Some(&format!("Welcome base64 is malformed: {error}")),
+                    ).is_ok() {
+                        let _ = self.ack_welcome(welcome_id);
+                    }
+                    continue;
+                }
+            };
+
+            let existing: Option<(String, Vec<u8>, String, Option<i64>)> = {
+                use rusqlite::OptionalExtension;
+                self.meta.query_row(
+                    "SELECT room_id, welcome, outcome, acked_at FROM client_welcome_receipts WHERE welcome_id = ?1",
+                    [welcome_id],
+                    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+                ).optional().map_err(text)?
+            };
+            if let Some((stored_room, stored_welcome, _outcome, acked_at)) = existing {
+                if stored_room != room_id || stored_welcome != bytes {
+                    self.record_desync(room_id, "Welcome receipt identity collision")?;
+                    continue;
+                }
+                if acked_at.is_none() {
+                    let _ = self.ack_welcome(welcome_id);
+                }
+                continue;
+            }
+
+            let message = match MlsMessageIn::tls_deserialize_exact(&bytes) {
+                Ok(message) => message,
+                Err(error) => {
+                    if self.persist_welcome_receipt(
+                        welcome_id, room_id, &bytes, "quarantined",
+                        Some(&format!("Malformed Welcome encoding: {error}")),
+                    ).is_ok() {
+                        let _ = self.ack_welcome(welcome_id);
+                    }
+                    continue;
+                }
+            };
+            let welcome = match message.extract() {
+                MlsMessageBodyIn::Welcome(welcome) => welcome,
+                _ => {
+                    if self.persist_welcome_receipt(
+                        welcome_id, room_id, &bytes, "quarantined",
+                        Some("Server item is not an MLS Welcome"),
+                    ).is_ok() {
+                        let _ = self.ack_welcome(welcome_id);
+                    }
+                    continue;
+                }
             };
             let join_config = MlsGroupJoinConfig::builder()
                 .use_ratchet_tree_extension(true)
                 .max_past_epochs(MAX_PAST_EPOCHS)
                 .build();
-            let staged =
-                StagedWelcome::new_from_welcome(&self.provider, &join_config, welcome, None)
-                    .map_err(text)?;
-            let mls = staged.into_group(&self.provider).map_err(text)?;
-            let room_id = String::from_utf8_lossy(mls.group_id().as_slice()).to_string();
+            let staged = match StagedWelcome::new_from_welcome(
+                &self.provider, &join_config, welcome, None,
+            ) {
+                Ok(staged) => staged,
+                Err(WelcomeError::GroupAlreadyExists) => {
+                    self.record_desync(
+                        room_id,
+                        "GroupAlreadyExists while replaying Welcome; retain Welcome without ACK for explicit recovery",
+                    )?;
+                    continue;
+                }
+                Err(WelcomeError::LibraryError(_)) | Err(WelcomeError::StorageError(_)) => {
+                    // Indeterminate: keep the server Welcome pending and do not quarantine.
+                    continue;
+                }
+                Err(error) => {
+                    if self.persist_welcome_receipt(
+                        welcome_id, room_id, &bytes, "quarantined",
+                        Some(&format!("Permanent Welcome error: {error:?}")),
+                    ).is_ok() {
+                        let _ = self.ack_welcome(welcome_id);
+                    }
+                    continue;
+                }
+            };
+            let mls = match staged.into_group(&self.provider) {
+                Ok(group) => group,
+                Err(WelcomeError::GroupAlreadyExists) => {
+                    self.record_desync(
+                        room_id,
+                        "GroupAlreadyExists while materializing Welcome; retain Welcome without ACK for explicit recovery",
+                    )?;
+                    continue;
+                }
+                Err(WelcomeError::LibraryError(_)) | Err(WelcomeError::StorageError(_)) => {
+                    continue;
+                }
+                Err(error) => {
+                    if self.persist_welcome_receipt(
+                        welcome_id, room_id, &bytes, "quarantined",
+                        Some(&format!("Permanent Welcome materialization error: {error:?}")),
+                    ).is_ok() {
+                        let _ = self.ack_welcome(welcome_id);
+                    }
+                    continue;
+                }
+            };
+            let actual_room = String::from_utf8_lossy(mls.group_id().as_slice()).to_string();
+            if actual_room != room_id {
+                self.record_desync(
+                    room_id,
+                    &format!("Welcome group ID mismatch: server={room_id}, MLS={actual_room}"),
+                )?;
+                if self.persist_welcome_receipt(
+                    welcome_id, room_id, &bytes, "quarantined",
+                    Some("Welcome group ID does not match server room ID"),
+                ).is_ok() {
+                    let _ = self.ack_welcome(welcome_id);
+                }
+                continue;
+            }
             let join_epoch = mls.epoch().as_u64();
-            self.meta
-                .execute(
-                    "INSERT OR REPLACE INTO client_rooms (room_id, join_epoch) VALUES (?1, ?2)",
-                    (&room_id, join_epoch as i64),
-                )
-                .map_err(text)?;
-            self.groups.insert(room_id, Group { mls, join_epoch });
-            self.call("POST", &format!("/mls/welcomes/{id}/ack"), Some(json!({})))?;
+            // If this write fails, the Welcome remains unacknowledged. The next run will
+            // observe GroupAlreadyExists and require explicit room recovery rather than lose it.
+            if self.meta.execute(
+                "INSERT OR REPLACE INTO client_rooms (room_id, join_epoch) VALUES (?1, ?2)",
+                (&room_id, join_epoch as i64),
+            ).is_err() {
+                continue;
+            }
+            self.groups.insert(room_id.to_string(), Group { mls, join_epoch });
+            if self.persist_welcome_receipt(
+                welcome_id, room_id, &bytes, "joined", None,
+            ).is_ok() {
+                let _ = self.ack_welcome(welcome_id);
+            }
         }
         Ok(())
     }
