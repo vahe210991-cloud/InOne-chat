@@ -11,49 +11,44 @@ This is a binding handover rule. The owner will not upload this bundle again. Fu
 | File | `InOne-P0-snapshot-2026-11-08.bundle` |
 | Size | 2,476,944 bytes |
 | SHA-256 | `e76fdd39e2e9698d7f32061e3fd4fb3dbc52ef981bb075c6c252a7cce11f391e` |
+| Git blob SHA-1 | `8d77f064b27784a1cf7119a0a3ee0d4c5ae74dbb` |
 | Bundle HEAD | `16eab726106ae04b4979af2a1646c2052233b87c` |
 | Git verification | PASS — complete history; bundle verifies successfully |
 | Supplied in chat | 2026-11-08; final owner upload |
 
-The exact same bytes were independently recovered from GitHub Actions artifact `InOne-P0-snapshot-2026-11-08`, run #2 (run ID `42480781656`, artifact ID `13617261673`). Its extracted bundle SHA-256 matched the owner's upload exactly. The bundle is the snapshot at commit `16eab726106ae04b4979af2a1646c2052233b87c`.
+The exact same bytes were independently recovered from GitHub Actions artifact `InOne-P0-snapshot-2026-11-08`, run #2 (run ID `42480781656`, artifact ID `13617261673`). Its extracted bundle SHA-256 matched the owner's upload exactly.
 
-Important: a newly generated bundle from a later commit may contain the same history plus newer documentation commits and may have a different SHA-256. That regenerated snapshot is a separate artifact; it does **not** replace or satisfy retention of the exact owner-supplied bytes.
+Important: a newly generated bundle from a later commit may contain the same history plus newer documentation commits and may have a different SHA-256. That regenerated snapshot is a separate artifact; it does **not** replace the exact owner-supplied bytes.
 
 ## Permanent repository location
 
+<badge label="PERMANENTLY ARCHIVED" color="success" />
+
 - Repository: `vahe210991-cloud/InOne-chat`
 - Permanent archive branch: `artifacts/p0-bundles`
-- Exact owner-supplied bundle: `bundles/owner-upload-2026-11-08/InOne-P0-snapshot-2026-11-08.bundle`
-- Exact owner-supplied checksum: `bundles/owner-upload-2026-11-08/SHA256SUMS.txt`
-- Source commit metadata: `bundles/owner-upload-2026-11-08/SNAPSHOT-COMMIT.txt`
-- Pointer to exact original: `bundles/OWNER-SUPPLIED-ORIGINAL.txt`
-- Latest regenerated snapshot pointer: `bundles/LATEST.txt`
-- Regenerated snapshots are retained by source commit under `bundles/<SNAPSHOT_COMMIT>/`.
+- Archive commit containing the owner file: `718f7845abe45cda404d5ae1563f695e0233ddb2`
+- Exact owner-supplied bundle: [bundles/owner-upload-2026-11-08/InOne-P0-snapshot-2026-11-08.bundle](https://github.com/vahe210991-cloud/InOne-chat/blob/artifacts/p0-bundles/bundles/owner-upload-2026-11-08/InOne-P0-snapshot-2026-11-08.bundle)
+- Exact owner-supplied checksum: [SHA256SUMS.txt](https://github.com/vahe210991-cloud/InOne-chat/blob/artifacts/p0-bundles/bundles/owner-upload-2026-11-08/SHA256SUMS.txt)
+- Source commit metadata: [SNAPSHOT-COMMIT.txt](https://github.com/vahe210991-cloud/InOne-chat/blob/artifacts/p0-bundles/bundles/owner-upload-2026-11-08/SNAPSHOT-COMMIT.txt)
+- Pointer to exact original: [OWNER-SUPPLIED-ORIGINAL.txt](https://github.com/vahe210991-cloud/InOne-chat/blob/artifacts/p0-bundles/bundles/OWNER-SUPPLIED-ORIGINAL.txt)
+- Latest regenerated snapshot pointer: [LATEST.txt](https://github.com/vahe210991-cloud/InOne-chat/blob/artifacts/p0-bundles/bundles/LATEST.txt)
+- Regenerated snapshots are retained separately by source commit under `bundles/<SNAPSHOT_COMMIT>/`.
 
 The workflow `.github/workflows/export-p0-snapshot.yml` downloads the original owner bundle from the first verified Actions export, checks its expected SHA-256 and Git bundle integrity, and commits those exact bytes to the permanent archive branch. It also archives each newly generated complete snapshot separately.
 
-## Status and verification gate
+## Permanent storage verification — PASS
 
-The temporary Actions artifact expires on 2027-02-06 and is only the workflow's transport source. It is not permanent storage.
+- Workflow run: [#13 — 42496934304](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42496934304), conclusion SUCCESS.
+- Branch: `artifacts/p0-bundles`.
+- Archive commit: `718f7845abe45cda404d5ae1563f695e0233ddb2`.
+- Exact path exists and is readable through GitHub Contents API.
+- GitHub file blob SHA: `8d77f064b27784a1cf7119a0a3ee0d4c5ae74dbb`.
+- Local uploaded file `git hash-object` SHA: `8d77f064b27784a1cf7119a0a3ee0d4c5ae74dbb`. The matching Git blob identity proves the stored GitHub file contains the exact same bytes as the supplied file.
+- GitHub-stored `SHA256SUMS.txt` records the expected SHA-256 `e76fdd39e2e9698d7f32061e3fd4fb3dbc52ef981bb075c6c252a7cce11f391e`.
+- The original uploaded bytes passed `git bundle verify`; the retention workflow independently downloaded those same bytes and passed both the SHA-256 assertion and `git bundle verify` before committing them.
+- Exact permanent file URL: https://github.com/vahe210991-cloud/InOne-chat/blob/artifacts/p0-bundles/bundles/owner-upload-2026-11-08/InOne-P0-snapshot-2026-11-08.bundle
 
-The permanent branch is considered complete only after all of the following are verified:
-
-1. `artifacts/p0-bundles` exists in GitHub.
-2. The exact owner-supplied bundle path above is present.
-3. Its GitHub blob SHA matches the local Git blob SHA for the supplied file, and its stored SHA-256 file records `e76fdd39e2e9698d7f32061e3fd4fb3dbc52ef981bb075c6c252a7cce11f391e`.
-4. A downloaded copy has the same SHA-256 and passes `git bundle verify`.
-5. The archive commit SHA and GitHub URL are recorded below.
-
-Do not claim permanent storage before these checks pass.
-
-### Permanent storage verification
-
-- Status: PENDING final exact-byte verification.
-- Branch: `artifacts/p0-bundles`
-- Exact owner bundle path: `bundles/owner-upload-2026-11-08/InOne-P0-snapshot-2026-11-08.bundle`
-- Expected SHA-256: `e76fdd39e2e9698d7f32061e3fd4fb3dbc52ef981bb075c6c252a7cce11f391e`
-- Archive commit: pending
-- GitHub URL: pending
+The temporary Actions artifact expires on 2027-02-06 and is no longer the only copy. The exact bundle is now retained in the Git repository's dedicated archive branch.
 
 ## Required procedure for every future session
 
@@ -67,4 +62,4 @@ Do not claim permanent storage before these checks pass.
 
 ## Why this is mandatory
 
-Repeatedly requesting an artifact already supplied by the owner wastes time and breaks project continuity. The repository, not a chat session, is the durable handover mechanism. An uploaded file is not considered retained until the exact bytes are stored and verified in GitHub.
+Repeatedly requesting an artifact already supplied by the owner wastes time and breaks project continuity. The repository, not a chat session, is the durable handover mechanism. This artifact is now permanently retained in GitHub; do not request it again.
