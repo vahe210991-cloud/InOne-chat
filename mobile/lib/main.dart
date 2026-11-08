@@ -412,7 +412,7 @@ class _ScreenPickerSheetState extends State<ScreenPickerSheet> {
                 children: [
                   Text('Каталог экранов', style: Theme.of(context).textTheme.titleLarge),
                   const SizedBox(height: 4),
-                  Text('22 утверждённых варианта · 73 тестовых экрана',
+                  Text('22 утверждённых варианта · 73 тестовых экрана · ${screenApiProbes.length} API-привязок',
                       style: Theme.of(context).textTheme.bodySmall),
                   const SizedBox(height: 12),
                   TextField(
