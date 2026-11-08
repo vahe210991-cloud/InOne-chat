@@ -32,7 +32,6 @@ jobs:
           git rev-parse HEAD | tee dist/SNAPSHOT_COMMIT.txt
           cp dist/InOne-P0-snapshot-2026-11-08.bundle "$RUNNER_TEMP/current-snapshot.bundle"
           cp dist/SHA256SUMS.txt "$RUNNER_TEMP/current-SHA256SUMS.txt"
-          cp dist/SNAPSHOT_COMMIT.txt "$RUNNER_TEMP/current-SNAPSHOT_COMMIT.txt"
 
       - name: Download the exact original owner-supplied bundle
         uses: actions/download-artifact@v4
@@ -72,7 +71,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          SNAPSHOT_COMMIT="$(cat "$RUNNER_TEMP/current-SNAPSHOT_COMMIT.txt")"
+          SNAPSHOT_COMMIT="$(git rev-parse HEAD)"
           SNAPSHOT_DIR="bundles/$SNAPSHOT_COMMIT"
           OWNER_DIR="bundles/owner-upload-2026-11-08"
 
@@ -90,11 +89,11 @@ jobs:
           mkdir -p "$SNAPSHOT_DIR" "$OWNER_DIR"
           cp "$RUNNER_TEMP/current-snapshot.bundle" "$SNAPSHOT_DIR/InOne-P0-snapshot-2026-11-08.bundle"
           cp "$RUNNER_TEMP/current-SHA256SUMS.txt" "$SNAPSHOT_DIR/SHA256SUMS.txt"
-          cp "$RUNNER_TEMP/current-SNAPSHOT-COMMIT.txt" "$SNAPSHOT_DIR/SNAPSHOT_COMMIT.txt"
+          printf '%s\n' "$SNAPSHOT_COMMIT" > "$SNAPSHOT_DIR/SNAPSHOT_COMMIT.txt"
 
           cp "$RUNNER_TEMP/owner-upload-exact.bundle" "$OWNER_DIR/InOne-P0-snapshot-2026-11-08.bundle"
           cp "$RUNNER_TEMP/owner-SHA256SUMS.txt" "$OWNER_DIR/SHA256SUMS.txt"
-          cp "$RUNNER_TEMP/owner-SNAPSHOT-COMMIT.txt" "$OWNER_DIR/SNAPSHOT_COMMIT.txt"
+          cp "$RUNNER_TEMP/owner-SNAPSHOT-COMMIT.txt" "$OWNER_DIR/SNAPSHOT-COMMIT.txt"
           printf '%s\n' "$OWNER_DIR/InOne-P0-snapshot-2026-11-08.bundle" > bundles/OWNER-SUPPLIED-ORIGINAL.txt
           printf '%s\n' "$SNAPSHOT_DIR/InOne-P0-snapshot-2026-11-08.bundle" > bundles/LATEST.txt
 
