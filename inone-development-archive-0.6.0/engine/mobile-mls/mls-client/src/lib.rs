@@ -394,7 +394,8 @@ fn build_client(
          CREATE TABLE IF NOT EXISTS client_undecryptable (event_id TEXT PRIMARY KEY, room_id TEXT NOT NULL, reason TEXT NOT NULL);
          CREATE TABLE IF NOT EXISTS client_desync (room_id TEXT PRIMARY KEY, reason TEXT NOT NULL);
          CREATE TABLE IF NOT EXISTS client_outbox (local_id TEXT PRIMARY KEY, room_id TEXT NOT NULL, body TEXT NOT NULL, seq INTEGER NOT NULL);
-         CREATE TABLE IF NOT EXISTS client_remote_config (id INTEGER PRIMARY KEY CHECK (id = 1), etag TEXT NOT NULL, body TEXT NOT NULL, fetched_at INTEGER NOT NULL);",
+         CREATE TABLE IF NOT EXISTS client_remote_config (id INTEGER PRIMARY KEY CHECK (id = 1), etag TEXT NOT NULL, body TEXT NOT NULL, fetched_at INTEGER NOT NULL);
+         CREATE TABLE IF NOT EXISTS client_key_package_claims (room_id TEXT NOT NULL, user_id TEXT NOT NULL, claim_id TEXT NOT NULL, PRIMARY KEY (room_id, user_id));",
     )
     .map_err(text)?;
 
@@ -923,14 +924,39 @@ impl Client {
             .ok_or_else(|| "сервер не вернул эпоху".to_string())
     }
 
-    /// Приглашает пользователя: забирает его ключевые пакеты (все устройства), делает коммит и приветствия.
+    /// Приглашает пользователя: KeyPackage claim intent сохраняется до подтверждения Commit сервером.
     pub fn invite(&mut self, room_id: &str, user_id: &str) -> Result<(), String> {
         self.ensure_writable()?;
+        let claim_id = {
+            let existing = {
+                let mut stmt = self.meta
+                    .prepare("SELECT claim_id FROM client_key_package_claims WHERE room_id = ?1 AND user_id = ?2")
+                    .map_err(text)?;
+                let rows = stmt
+                    .query_map((room_id, user_id), |row| row.get::<_, String>(0))
+                    .map_err(text)?;
+                rows.collect::<Result<Vec<_>, _>>().map_err(text)?.into_iter().next()
+            };
+            match existing {
+                Some(id) => id,
+                None => {
+                    let id = hex_encode(&self.provider.rand().random_vec(16).map_err(text)?);
+                    self.meta.execute(
+                        "INSERT INTO client_key_package_claims (room_id, user_id, claim_id) VALUES (?1, ?2, ?3)",
+                        (room_id, user_id, &id),
+                    ).map_err(text)?;
+                    id
+                }
+            }
+        };
         let claimed = self.call(
-            "GET",
-            &format!("/mls/key-packages/{}", urlencoding::encode(user_id)),
-            None,
+            "POST",
+            &format!("/mls/key-packages/{}/claim", urlencoding::encode(user_id)),
+            Some(json!({ "claimId": claim_id })),
         )?;
+        if claimed["claimId"].as_str() != Some(claim_id.as_str()) {
+            return Err("сервер вернул другой KeyPackage claimId".to_string());
+        }
         let packages = claimed["packages"]
             .as_array()
             .ok_or("нет поля packages")?
@@ -980,6 +1006,10 @@ impl Client {
             &format!("/mls/groups/{}/commits", urlencoding::encode(room_id)),
             Some(json!({ "epoch": epoch_before, "commit": commit_b64, "changes": { "adds": [user_id], "removes": [] }, "welcomes": welcomes })),
         )?;
+        self.meta.execute(
+            "DELETE FROM client_key_package_claims WHERE room_id = ?1 AND user_id = ?2 AND claim_id = ?3",
+            (room_id, user_id, &claim_id),
+        ).map_err(text)?;
         Ok(())
     }
 
