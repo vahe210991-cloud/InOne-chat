@@ -1245,11 +1245,20 @@ impl Client {
                     |row| row.get(0),
                 )
                 .map_err(text)?;
+            eprintln!(
+                "[f1-welcome] id={} room={} durable={} cached={} groups={:?}",
+                welcome_id,
+                room_id,
+                locally_joined,
+                self.groups.contains_key(room_id),
+                self.groups.keys().collect::<Vec<_>>()
+            );
             if locally_joined || self.groups.contains_key(room_id) {
                 self.record_desync(
                     room_id,
                     "Duplicate Welcome for an already joined room; retain Welcome without ACK for explicit recovery",
                 )?;
+                eprintln!("[f1-welcome] recovery persisted room={} reason={:?}", room_id, self.desync_reason(room_id));
                 continue;
             }
 
