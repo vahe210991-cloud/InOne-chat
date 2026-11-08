@@ -16,6 +16,7 @@ await new Promise((resolve) => srv.server.listen(0, '127.0.0.1', resolve));
 console.log(`URL=http://127.0.0.1:${srv.server.address().port}`);
 const hidden = new Set();
 const badMetadataRooms = new Set();
+const hiddenCommits = new Set();
 const badEventIds = new Map();
 const welcomeArchive = new Map();
 const replayWelcomeByDevice = new Map();
@@ -48,6 +49,7 @@ store.mlsAckWelcome = (...args) => {
 const originalMlsCommitsSince = store.mlsCommitsSince.bind(store);
 store.mlsCommitsSince = (roomId, since, limit) => {
   const rows = originalMlsCommitsSince(roomId, since, limit);
+  if (hiddenCommits.has(roomId)) return [];
   return badMetadataRooms.has(roomId)
     ? rows.map((row) => ({ ...row, changes: { adds: [], removes: [], removeDevices: [] }, welcomeRecipients: [] }))
     : rows;
@@ -90,6 +92,16 @@ rl.on('line', async (line) => {
   }
   if (parts[0] === 'WELCOME_ACK_ATTEMPTED') {
     console.log(replayWelcomeAckAttempts.has(Number(parts[1])) ? 'YES' : 'NO');
+    return;
+  }
+  if (parts[0] === 'HIDE_COMMIT') {
+    hiddenCommits.add(parts[1]);
+    console.log('OK');
+    return;
+  }
+  if (parts[0] === 'SHOW_COMMIT') {
+    hiddenCommits.delete(parts[1]);
+    console.log('OK');
     return;
   }
   if (parts[0] === 'BAD_EVENT_ID') {
