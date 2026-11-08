@@ -1,7 +1,7 @@
 # InOne — инструкция следующему чату / исполнителю
 
 
-> **НОВАЯ ТОЧКА ПРОДОЛЖЕНИЯ — 08.11.2026:** P0 уже закрыт и объединён в `main` через PR #25; merge commit `97024ab03ce9583e298ee946f3679565007405ca`. Не повторяй восстановление P0 и не проси владельца повторно присылать бандл. Все 6 CI jobs прошли на PR head в [run #124](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42496739362). Сначала прочитай [P0 closure report](../../development/recovered-source/P0-CLOSURE-2026-11-08.md) и [ARTIFACT-RETENTION](../../development/ARTIFACT-RETENTION.md). Следующий отдельный продуктовый этап — восстановление/проверка Flutter Beta 1.0 source, native Android/iOS MLS integration, secure key storage, durable on-device message storage и device E2E. Старые инструкции ниже — исторические и не должны переоткрывать P0.
+> **НОВАЯ ТОЧКА ПРОДОЛЖЕНИЯ — 08.11.2026:** P0 уже закрыт и объединён в `main` через PR #25; merge commit `97024ab03ce9583e298ee946f3679565007405ca`. Не повторяй восстановление P0 и не проси владельца повторно присылать бандл. Все 6 CI jobs прошли на PR head в [run #124](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42496739362) и повторно на merged `main` в [post-merge run #134](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42503694744). Сначала прочитай [P0 closure report](../../development/recovered-source/P0-CLOSURE-2026-11-08.md) и [ARTIFACT-RETENTION](../../development/ARTIFACT-RETENTION.md). Следующий отдельный продуктовый этап — восстановление/проверка Flutter Beta 1.0 source, native Android/iOS MLS integration, secure key storage, durable on-device message storage и device E2E. Старые инструкции ниже — исторические и не должны переоткрывать P0.
 
 
 
