@@ -93,3 +93,14 @@ GitHub — постоянное хранилище кода, истории, р�
 - `PATCH-COMPATIBILITY-REPORT.md`.
 
 Они являются reference artifacts, не заменяют оригинальные ZIP/Git bundles и не содержат полный Flutter source. Проверка показала, что patch stack 016–020 нельзя применить к архивному GitHub 0.6.0 дереву. Оригинальные бинарные файлы остаются в Library и должны быть экспортированы через разрешённый raw-byte механизм, прежде чем выполнять source import.
+
+## 6. Owner-provided P0 Wave 3 bundle — received and verified 2026-11-08
+
+- Container upload: `Bundle(1).zip`; contents: `inone-engine-p0-wave3.bundle`, `BUNDLE-VERIFICATION.txt`, `ARCHITECTURE-MAP.md`.
+- Git bundle SHA-256: `a226e578a732e5da886e3ec4bfb007102154405a95809c80fb28a2833493522f`.
+- Size: 1,052,468 bytes; `git bundle verify` passed; complete five-commit history.
+- Ref: `refs/heads/engine/p0-wave3`; HEAD: `a7f60b6fdc969941e4354a117e17d32bfc951fb9`; declared base: `ea3b49ae9cdf1670a1b7499d4b5e608ee22fe1e9`.
+- Bundle report states no common commit with GitHub main. Preserve it as a separate lineage; no force-push.
+- PR [#18](https://github.com/vahe210991-cloud/InOne-chat/pull/18) contains a compressed base64 patch derived from this bundle and a CI workflow. It is not the original bundle and does not preserve its original commit ancestry.
+- The original bundle bytes and companion architecture map still need to be placed in a durable, retrievable GitHub location with checksum verification. Until then, mark original archive preservation as pending.
+- JavaScript/MJS syntax check of extracted source: 135 files PASS (syntax only). Full Node/DB/Rust/Flutter/device acceptance remains separate and must be evidenced by CI or device runs.
