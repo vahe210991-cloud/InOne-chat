@@ -111,3 +111,11 @@ Tasks, Calendar, Cindy не добавлять в Beta 1.0 без нового �
 - PR #18 corrected head `762e3eca8ccb2e34965441114cc29b63083aa0f9`.
 - Duplicate validation trigger PR [#19](https://github.com/vahe210991-cloud/InOne-chat/pull/19) created from the same head. Keep #18 as the primary PR; close #19 after verification.
 - Runs [42454943853](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42454943853) and [42455077322](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42455077322) were in progress at last check. Node suite running; PostgreSQL/Rust not yet run.
+
+
+## Next CI checkpoint
+
+- The 368/369 failure in runs #42454943853/#42455077322 was due to missing original biometric vector fixture. A labelled replacement fixture is committed in PR #18; local crypto verification passed.
+- Current run [42457009510](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42457009510) must be inspected through every stage: Node, room-list, PostgreSQL, OpenMLS, Rust.
+- PR #19 closed as superseded. PR #18 remains unmerged.
+- If tests reveal more absent unchanged files, compare against exact bundle base and restore with provenance; do not silently manufacture artifacts or claim the full source tree matches.
