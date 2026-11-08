@@ -5,7 +5,7 @@
 
 - PR [#25](https://github.com/vahe210991-cloud/InOne-chat/pull/25) merged to `main` as `97024ab03ce9583e298ee946f3679565007405ca`.
 - Exact PR head: `addd47da245b6452c9f700c7e10b8d0585aad295`.
-- All six CI jobs passed in [run #124](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42496739362).
+- All six CI jobs passed in [PR run #124](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42496739362) and again after merge in [main push run #134](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42503694744).
 - Owner snapshot bundle retained permanently on `artifacts/p0-bundles`; SHA-256 `e76fdd39e2e9698d7f32061e3fd4fb3dbc52ef981bb075c6c252a7cce11f391e`.
 - This ledger is historical; current authoritative closure record: `development/recovered-source/P0-CLOSURE-2026-11-08.md`.
 - Native Flutter Beta 1.0 is explicitly outside this P0 closure.
