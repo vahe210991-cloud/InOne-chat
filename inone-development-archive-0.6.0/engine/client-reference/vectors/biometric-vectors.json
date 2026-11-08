@@ -1,47 +1,52 @@
 {
-  "format": "inone-biometric-signature-vectors-v1",
-  "curve": "P-256",
-  "hash": "SHA-256",
-  "signatureEncoding": "DER base64url",
-  "provenance": "Generated as a replacement validation fixture for the archived GitHub tree on 2026-11-08. This is not the original biometric-vectors.json from the recovered bundle; the original fixture bytes were unavailable. Positive vectors are valid signatures. Negative vectors reuse a valid signature against altered inputs.",
+  "note": "Тестовый ключ. Не использовать в продакшене.",
+  "algorithm": "ECDSA P-256, SHA-256, подпись DER, base64url",
   "publicKey": {
     "kty": "EC",
     "crv": "P-256",
-    "x": "t31D9dHS8JU9JLG_zpKMpgwZ1U-v7yy7WOkV79rxQCo",
-    "y": "asbP4PYLJ8ECU_2xhYmDjFsXNUhyJRsS5dB6XSqvlKI"
+    "x": "p_GaozHsJ6nqzK1ThtJLvTuuIE2fMF6cu4D269PSfBM",
+    "y": "v6V-Uv6M2o-NalYEDofHJyirncV85SKuERm8iQX6H4E"
+  },
+  "testOnlyPrivateKey": {
+    "kty": "EC",
+    "crv": "P-256",
+    "x": "p_GaozHsJ6nqzK1ThtJLvTuuIE2fMF6cu4D269PSfBM",
+    "y": "v6V-Uv6M2o-NalYEDofHJyirncV85SKuERm8iQX6H4E",
+    "d": "ZRt54ZTj0H2GjqDmP653zP_jBWauDweY9OV16KuXYYk"
   },
   "positive": [
     {
-      "name": "valid-set-backup-email",
-      "message": "inone-stepup-v1|user-vector-001|device-phone-001|set-backup-email|nonce-001",
-      "signature": "MEUCIFUHmJyxaHIHMlCeQYdXkibdrqt01oV2YmxVUo3cM1ZbAiEAjHUDTX-9vOQaTp6v8aCYvWldjq4csQ-hNuLwIBfGBeU"
-    },
-    {
-      "name": "valid-approve-device",
-      "message": "inone-stepup-v1|user-vector-002|device-tablet-002|approve-device|nonce-002",
-      "signature": "MEQCIHix0CjAvdGqgDJDAHbpdlu-pllRPSCLgbfw8ol9E6YnAiAse-iAG6hP0yVXSK9K0HKWZAe__GkmYIVaVOKx2GwrzA"
+      "name": "подпись сообщения действия",
+      "input": {
+        "userId": "u0123456789abcdef01234567",
+        "deviceId": "BORIS_PHONE",
+        "action": "set-backup-email",
+        "nonce": "Zm9vYmFyYmF6cXV4MTIzNDU2Nzg5MGFiY2RlZg"
+      },
+      "message": "inone-stepup-v1|u0123456789abcdef01234567|BORIS_PHONE|set-backup-email|Zm9vYmFyYmF6cXV4MTIzNDU2Nzg5MGFiY2RlZg",
+      "signature": "MEUCIFI0KdLcf5nVUF8wAFN2T84C4JPxGU8-EvixdIjJMr2uAiEA3RsULJVjXBkGMEWxmPr8bafxN3TifHjLVMCBvqJ3ozk"
     }
   ],
   "negative": [
     {
-      "name": "wrong-user-id",
+      "name": "другое действие: подпись не подходит",
       "input": {
-        "userId": "user-vector-X",
-        "deviceId": "device-phone-003",
-        "action": "set-backup-email",
-        "nonce": "nonce-003"
+        "userId": "u0123456789abcdef01234567",
+        "deviceId": "BORIS_PHONE",
+        "action": "remove-backup-email",
+        "nonce": "Zm9vYmFyYmF6cXV4MTIzNDU2Nzg5MGFiY2RlZg"
       },
-      "signature": "MEUCIA_mtztDoV1mbYNFDjzG3Bq78gEIOoUEjQhgWakrNbWVAiEA1YetuCvpwL4Upy-zK3SfKgpCesHZo5b28Rf7Q50zcHQ"
+      "signature": "MEUCIFI0KdLcf5nVUF8wAFN2T84C4JPxGU8-EvixdIjJMr2uAiEA3RsULJVjXBkGMEWxmPr8bafxN3TifHjLVMCBvqJ3ozk"
     },
     {
-      "name": "wrong-action",
+      "name": "другой nonce: подпись не подходит",
       "input": {
-        "userId": "user-vector-003",
-        "deviceId": "device-phone-003",
-        "action": "approve-device",
-        "nonce": "nonce-003"
+        "userId": "u0123456789abcdef01234567",
+        "deviceId": "BORIS_PHONE",
+        "action": "set-backup-email",
+        "nonce": "Другой-nonce"
       },
-      "signature": "MEUCIQC9ylDweQ6w3GlfBClai9BCIrp_T0osFNwxellQsBPFjwIgJRgXBtGQfJCIhtRiPVQJyf35Gdou4FwZ19CGSmtNl8E"
+      "signature": "MEUCIFI0KdLcf5nVUF8wAFN2T84C4JPxGU8-EvixdIjJMr2uAiEA3RsULJVjXBkGMEWxmPr8bafxN3TifHjLVMCBvqJ3ozk"
     }
   ]
 }
