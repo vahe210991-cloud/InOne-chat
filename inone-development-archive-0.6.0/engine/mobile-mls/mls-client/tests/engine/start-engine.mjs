@@ -26,6 +26,7 @@ store.mlsPendingWelcomes = (userId, deviceId) => {
   const pending = originalMlsPendingWelcomes(userId, deviceId);
   for (const welcome of pending) welcomeArchive.set(`${userId}|${deviceId}|${welcome.roomId}`, structuredClone(welcome));
   const replayRoom = replayWelcomeByDevice.get(`${userId}|${deviceId}`);
+  console.error(`[welcome-replay] user=${userId} device=${deviceId} replayRoom=${replayRoom ?? '<none>'} archived=${!!(replayRoom && welcomeArchive.has(`${userId}|${deviceId}|${replayRoom}`))} pending=${pending.length}`);
   if (!replayRoom) return pending;
   const archived = welcomeArchive.get(`${userId}|${deviceId}|${replayRoom}`);
   if (!archived) return pending;
