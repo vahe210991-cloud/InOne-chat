@@ -256,6 +256,7 @@ fn stale_commit_clear_storage_failure_retains_journal_then_rebases_safely() {
         &db("eve-membership-stale-clear"),
     );
     bob.ensure_key_packages(1).unwrap();
+    dave.ensure_key_packages(1).unwrap();
     eve.ensure_key_packages(1).unwrap();
 
     alice.create_room(ROOM).unwrap();
