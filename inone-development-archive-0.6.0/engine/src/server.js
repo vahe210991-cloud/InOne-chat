@@ -2330,7 +2330,7 @@ if (req.method === 'POST' && p === '/login') {
         await storage.mlsStoreLastResort(d.userId, d.deviceId, checked.value[0], now());
         return send(res, 200, { stored: true });
       }
-      const mlsClaim = p.match(/^\\/mls\\/key-packages\\/([^/]+)\\/claim$/);
+      const mlsClaim = p.match(/^\/mls\/key-packages\/([^/]+)\/claim$/);
       if (mlsClaim && req.method === 'POST') {
         const d = await authed(req);
         if (!d) return send(res, 401, { error: 'unauthorized' });
