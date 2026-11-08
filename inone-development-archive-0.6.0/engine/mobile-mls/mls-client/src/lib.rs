@@ -402,6 +402,7 @@ fn build_client(
          CREATE TABLE IF NOT EXISTS client_undecryptable (event_id TEXT PRIMARY KEY, room_id TEXT NOT NULL, reason TEXT NOT NULL);
          CREATE TABLE IF NOT EXISTS client_desync (room_id TEXT PRIMARY KEY, reason TEXT NOT NULL);
          CREATE TABLE IF NOT EXISTS client_waiting_for_commit (room_id TEXT PRIMARY KEY, expected_epoch INTEGER NOT NULL, event_ids TEXT NOT NULL, updated_at INTEGER NOT NULL);
+         CREATE TABLE IF NOT EXISTS client_commit_quarantine (room_id TEXT NOT NULL, epoch INTEGER NOT NULL, commit_hash TEXT NOT NULL, reason TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (room_id, epoch, commit_hash));
          CREATE TABLE IF NOT EXISTS client_welcome_receipts (
            welcome_id INTEGER PRIMARY KEY,
            room_id TEXT NOT NULL,
@@ -881,6 +882,49 @@ impl Client {
             )
             .map_err(text)?;
         Ok(())
+    }
+
+    fn quarantine_commit(&mut self, room_id: &str, epoch: u64, bytes: &[u8], reason: &str) -> Result<(), String> {
+        let digest = self.provider.crypto().hash(HashType::Sha2_256, bytes).map_err(text)?;
+        let commit_hash = hex_encode(&digest);
+        let durable_reason = format!("RecoveryRequired: Commit epoch {epoch} quarantined: {reason}");
+        let created_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+        let tx = self.meta.unchecked_transaction().map_err(|error| format!("временная ошибка локального хранилища при карантине Commit: {}", text(error)))?;
+        tx.execute(
+            "INSERT OR IGNORE INTO client_commit_quarantine (room_id, epoch, commit_hash, reason, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![room_id, epoch as i64, commit_hash, reason, created_at],
+        ).map_err(|error| format!("временная ошибка локального хранилища при карантине Commit: {}", text(error)))?;
+        tx.execute(
+            "INSERT INTO client_desync (room_id, reason) VALUES (?1, ?2) ON CONFLICT(room_id) DO UPDATE SET reason = excluded.reason",
+            [room_id, durable_reason.as_str()],
+        ).map_err(|error| format!("временная ошибка локального хранилища при карантине Commit: {}", text(error)))?;
+        tx.execute("DELETE FROM client_waiting_for_commit WHERE room_id = ?1", [room_id])
+            .map_err(|error| format!("временная ошибка локального хранилища при карантине Commit: {}", text(error)))?;
+        tx.commit().map_err(|error| format!("временная ошибка локального хранилища при фиксации карантина Commit: {}", text(error)))?;
+        Ok(())
+    }
+
+    fn commit_is_quarantined(&self, room_id: &str, epoch: u64, bytes: &[u8]) -> Result<Option<String>, String> {
+        use rusqlite::OptionalExtension;
+        let digest = self.provider.crypto().hash(HashType::Sha2_256, bytes).map_err(text)?;
+        let commit_hash = hex_encode(&digest);
+        self.meta.query_row(
+            "SELECT reason FROM client_commit_quarantine WHERE room_id = ?1 AND epoch = ?2 AND commit_hash = ?3",
+            rusqlite::params![room_id, epoch as i64, commit_hash],
+            |row| row.get(0),
+        ).optional().map_err(text)
+    }
+
+    pub fn quarantined_commit_reason(&self, room_id: &str, epoch: u64) -> Result<Option<String>, String> {
+        use rusqlite::OptionalExtension;
+        self.meta.query_row(
+            "SELECT reason FROM client_commit_quarantine WHERE room_id = ?1 AND epoch = ?2 ORDER BY created_at LIMIT 1",
+            rusqlite::params![room_id, epoch as i64],
+            |row| row.get(0),
+        ).optional().map_err(text)
     }
 
     /// Причина приостановки отправки в комнату, если она рассинхронизирована.
@@ -1513,7 +1557,9 @@ impl Client {
             ));
         }
         if self.flush_pending_membership_commits()? > 0 {
-            self.sync_room(room_id)?;
+            let mut incoming = Vec::new();
+            self.sync_room(room_id, &mut incoming)?;
+            self.inbox.extend(incoming);
             return Ok(false);
         }
         Ok(true)
@@ -2077,7 +2123,7 @@ impl Client {
             "GET",
             &format!("/rooms/{}/events", urlencoding::encode(room_id)),
             None,
-        )?;
+        ).map_err(|error| if is_retryable(&error) { format!("временная ошибка загрузки событий: {error}") } else { error })?;
         let mut pending: Vec<(u64, String, Vec<u8>)> = Vec::new();
         for ev in events["events"].as_array().cloned().unwrap_or_default() {
             let event_id = ev
@@ -2133,7 +2179,7 @@ impl Client {
                 urlencoding::encode(room_id)
             ),
             None,
-        )?;
+        ).map_err(|error| if is_retryable(&error) { format!("временная ошибка загрузки Commit: {error}") } else { error })?;
         let commits: Vec<(u64, Vec<u8>, Value)> = commits["commits"]
             .as_array()
             .cloned()
@@ -2171,33 +2217,61 @@ impl Client {
             for (event_id, bytes) in ready {
                 self.process_event(room_id, &event_id, &bytes, out)?;
             }
-            let Some((_, commit, metadata)) = commits.iter().find(|(e, _, _)| *e == epoch + 1)
+            let Some((commit_epoch, commit, metadata)) = commits.iter().find(|(e, _, _)| *e == epoch + 1)
             else {
                 break;
             };
-            let protocol = MlsMessageIn::tls_deserialize_exact(commit)
-                .map_err(text)?
-                .try_into_protocol_message()
-                .map_err(text)?;
-            let group = self
-                .groups
-                .get_mut(room_id)
-                .ok_or("комната не создана на этом устройстве")?;
-            let processed = group
-                .mls
-                .process_message(&self.provider, protocol)
-                .map_err(text)?;
-            match processed.into_content() {
-                ProcessedMessageContent::StagedCommitMessage(staged) => {
-                    if !metadata["changes"].is_null() {
-                        verify_staged_membership_metadata(&group.mls, staged.as_ref(), metadata)?;
-                    }
-                    group
-                        .mls
-                        .merge_staged_commit(&self.provider, *staged)
-                        .map_err(text)?;
+            if let Some(reason) = self.commit_is_quarantined(room_id, *commit_epoch, commit)? {
+                self.record_desync(room_id, &format!("Commit epoch {commit_epoch} already quarantined: {reason}"))?;
+                return Err(format!("RecoveryRequired: Commit epoch {commit_epoch} is quarantined"));
+            }
+            let protocol = match MlsMessageIn::tls_deserialize_exact(commit).and_then(|message| message.try_into_protocol_message()) {
+                Ok(protocol) => protocol,
+                Err(error) => {
+                    let reason = format!("Commit encoding is invalid: {error}");
+                    self.quarantine_commit(room_id, *commit_epoch, commit, &reason)?;
+                    return Err(format!("RecoveryRequired: {reason}"));
                 }
-                _ => return Err("ожидался коммит".to_string()),
+            };
+            let processed = {
+                let group = self.groups.get_mut(room_id).ok_or("комната не создана на этом устройстве")?;
+                group.mls.process_message(&self.provider, protocol)
+            };
+            let processed = match processed {
+                Ok(processed) => processed,
+                Err(error) => match classify_process_error(&error) {
+                    Failure::Transient => return Err(format!("временная ошибка обработки Commit, повтор позже: {error}")),
+                    Failure::Permanent(classification) => {
+                        let reason = format!("{classification}: {error}");
+                        self.quarantine_commit(room_id, *commit_epoch, commit, &reason)?;
+                        return Err(format!("RecoveryRequired: {reason}"));
+                    }
+                },
+            };
+            let staged = match processed.into_content() {
+                ProcessedMessageContent::StagedCommitMessage(staged) => staged,
+                _ => {
+                    let reason = "серверная запись не является MLS StagedCommit";
+                    self.quarantine_commit(room_id, *commit_epoch, commit, reason)?;
+                    return Err(format!("RecoveryRequired: {reason}"));
+                }
+            };
+            if !metadata["changes"].is_null() {
+                let verification = {
+                    let group = self.groups.get(room_id).ok_or("комната не создана на этом устройстве")?;
+                    verify_staged_membership_metadata(&group.mls, staged.as_ref(), metadata)
+                };
+                if let Err(reason) = verification {
+                    self.quarantine_commit(room_id, *commit_epoch, commit, &reason)?;
+                    return Err(format!("RecoveryRequired: {reason}"));
+                }
+            }
+            let merge = {
+                let group = self.groups.get_mut(room_id).ok_or("комната не создана на этом устройстве")?;
+                group.mls.merge_staged_commit(&self.provider, *staged)
+            };
+            if let Err(error) = merge {
+                return Err(format!("временная ошибка слияния Commit, повтор позже: {error}"));
             }
         }
 
@@ -2253,25 +2327,24 @@ impl Client {
         self.join_welcomes()?;
         let rooms: Vec<String> = self.groups.keys().cloned().collect();
         let mut out = Vec::new();
+        let mut retryable_error: Option<String> = None;
         for room in rooms {
             match self.sync_room(&room, &mut out) {
                 Ok(()) => self.check_consistency(&room)?,
                 // Сервер больше не пускает устройство в комнату: это расхождение состава, а не причина остановить все комнаты.
                 Err(e) if e.contains("not a member") => self.check_consistency(&room)?,
                 // Некорректный event identity — ошибка контракта ответа, а не повреждение MLS room.
-                // Не помечаем событие обработанным и продолжаем синхронизацию остальных комнат.
-                Err(e) if e.starts_with("ошибка контракта ответа:") => {
-                    continue
+                Err(e) if e.starts_with("ошибка контракта ответа:") => continue,
+                // Сетевые/HTTP и локальные временные ошибки не повреждают MLS-состояние;
+                // остальные комнаты синхронизируются, а ошибка возвращается после обхода.
+                Err(e) if e.contains("временная ошибка") || is_retryable(&e) || is_access_failure(&e) => {
+                    if retryable_error.is_none() { retryable_error = Some(e); }
                 }
-                // Временная ошибка: синхронизация прерывается, событие повторится позже (аудит, P0.1).
-                Err(e) if e.contains("временная ошибка") => return Err(e),
-                // Состояние группы не восстанавливается (например, недопустимый коммит): комната переходит в RecoveryRequired,
-                // остальные комнаты синхронизируются (аудит, P0.1 и P0.2).
-                Err(e) => {
-                    self.record_desync(&room, &format!("требуется восстановление состояния: {e}"))?
-                }
+                // Постоянная ошибка относится только к этой комнате; остальные комнаты продолжают синхронизацию.
+                Err(e) => self.record_desync(&room, &format!("требуется восстановление состояния: {e}"))?,
             }
         }
+        if let Some(error) = retryable_error { return Err(error); }
         Ok(out)
     }
 
