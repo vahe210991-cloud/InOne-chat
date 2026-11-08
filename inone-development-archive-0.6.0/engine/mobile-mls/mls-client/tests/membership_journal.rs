@@ -263,6 +263,7 @@ fn stale_commit_clear_storage_failure_retains_journal_then_rebases_safely() {
     alice.invite(ROOM, "@dave:inone.test").unwrap();
     dave.sync().unwrap();
     assert_eq!(dave.local_epoch(ROOM), Some(1));
+    assert_eq!(engine.command(&format!("MAKE_ROOM_ADMIN {ROOM} @dave:inone.test")), "OK");
 
     assert_eq!(engine.command("FAIL_NEXT_COMMIT_BEFORE_APPLY"), "OK");
     assert!(alice.invite(ROOM, BOB).unwrap_err().contains("-> 500"));
