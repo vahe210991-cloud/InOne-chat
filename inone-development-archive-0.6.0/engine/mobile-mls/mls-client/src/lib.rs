@@ -661,12 +661,18 @@ fn verify_staged_membership_metadata(
 }
 
 fn membership_commit_fingerprint(
-    provider: &DeviceProvider, room_id: &str, operation_id: &str, base_epoch: u64,
-    payload: &Value, staged: &StagedCommit,
+    provider: &DeviceProvider,
+    room_id: &str,
+    operation_id: &str,
+    base_epoch: u64,
+    payload: &Value,
+    staged: &StagedCommit,
 ) -> Result<String, String> {
     let staged_epoch = staged.epoch().as_u64();
     if staged_epoch != base_epoch.saturating_add(1) {
-        return Err(format!("membership fingerprint epoch mismatch: base={base_epoch}, staged={staged_epoch}"));
+        return Err(format!(
+            "membership fingerprint epoch mismatch: base={base_epoch}, staged={staged_epoch}"
+        ));
     }
     let staged_value = serde_json::to_value(staged).map_err(text)?;
     let staged_bytes = serde_json::to_vec(&staged_value).map_err(text)?;
@@ -675,15 +681,22 @@ fn membership_commit_fingerprint(
     let base_bytes = base_epoch.to_be_bytes();
     let staged_epoch_bytes = staged_epoch.to_be_bytes();
     let parts: [&[u8]; 6] = [
-        room_id.as_bytes(), operation_id.as_bytes(), &base_bytes,
-        &staged_epoch_bytes, &staged_bytes, &payload_bytes,
+        room_id.as_bytes(),
+        operation_id.as_bytes(),
+        &base_bytes,
+        &staged_epoch_bytes,
+        &staged_bytes,
+        &payload_bytes,
     ];
     let mut input = b"inone-membership-staged-commit-v1\0".to_vec();
     for part in parts {
         input.extend_from_slice(&(part.len() as u64).to_be_bytes());
         input.extend_from_slice(part);
     }
-    let digest = provider.crypto().hash(HashType::Sha2_256, &input).map_err(text)?;
+    let digest = provider
+        .crypto()
+        .hash(HashType::Sha2_256, &input)
+        .map_err(text)?;
     Ok(hex_encode(&digest))
 }
 
@@ -992,24 +1005,51 @@ impl Client {
     }
 
     fn reload_group(&mut self, room_id: &str) -> Result<(), String> {
-        let join_epoch: i64 = self.meta.query_row(
-            "SELECT join_epoch FROM client_rooms WHERE room_id = ?1", [room_id], |row| row.get(0),
-        ).map_err(text)?;
-        let mls = MlsGroup::load(self.provider.storage(), &GroupId::from_slice(room_id.as_bytes()))
-            .map_err(text)?.ok_or_else(|| format!("состояние группы {room_id} не найдено"))?;
-        self.groups.insert(room_id.to_string(), Group { mls, join_epoch: join_epoch as u64 });
+        let join_epoch: i64 = self
+            .meta
+            .query_row(
+                "SELECT join_epoch FROM client_rooms WHERE room_id = ?1",
+                [room_id],
+                |row| row.get(0),
+            )
+            .map_err(text)?;
+        let mls = MlsGroup::load(
+            self.provider.storage(),
+            &GroupId::from_slice(room_id.as_bytes()),
+        )
+        .map_err(text)?
+        .ok_or_else(|| format!("состояние группы {room_id} не найдено"))?;
+        self.groups.insert(
+            room_id.to_string(),
+            Group {
+                mls,
+                join_epoch: join_epoch as u64,
+            },
+        );
         Ok(())
     }
 
     fn flush_pending_membership_commits(&mut self) -> Result<usize, String> {
         let rows: Vec<(String, String, i64, String, String, String)> = {
-            let mut stmt = self.meta.prepare(
-                "SELECT operation_id, room_id, base_epoch, fingerprint, payload, claim_ids
+            let mut stmt = self
+                .meta
+                .prepare(
+                    "SELECT operation_id, room_id, base_epoch, fingerprint, payload, claim_ids
                  FROM client_membership_commits ORDER BY created_at, operation_id",
-            ).map_err(text)?;
-            let rows = stmt.query_map([], |row| Ok((
-                row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?,
-            ))).map_err(text)?;
+                )
+                .map_err(text)?;
+            let rows = stmt
+                .query_map([], |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                    ))
+                })
+                .map_err(text)?;
             rows.collect::<Result<_, _>>().map_err(text)?
         };
         let mut stale_cleared = 0usize;
@@ -1025,23 +1065,39 @@ impl Client {
                 return Err(format!("RecoveryRequired: {reason}"));
             }
             let actual = {
-                let group = self.groups.get(&room_id).ok_or_else(|| format!("RecoveryRequired: journal room {room_id} is not loaded"))?;
-                let staged = group.mls.pending_commit().ok_or_else(|| format!("RecoveryRequired: pending StagedCommit missing for {operation_id}"))?;
-                membership_commit_fingerprint(&self.provider, &room_id, &operation_id, base_epoch, &payload, staged)?
+                let group = self.groups.get(&room_id).ok_or_else(|| {
+                    format!("RecoveryRequired: journal room {room_id} is not loaded")
+                })?;
+                let staged = group.mls.pending_commit().ok_or_else(|| {
+                    format!("RecoveryRequired: pending StagedCommit missing for {operation_id}")
+                })?;
+                membership_commit_fingerprint(
+                    &self.provider,
+                    &room_id,
+                    &operation_id,
+                    base_epoch,
+                    &payload,
+                    staged,
+                )?
             };
             if actual != fingerprint {
-                let reason = format!("pending StagedCommit fingerprint mismatch for operation {operation_id}");
+                let reason = format!(
+                    "pending StagedCommit fingerprint mismatch for operation {operation_id}"
+                );
                 self.record_desync(&room_id, &reason)?;
                 return Err(format!("RecoveryRequired: {reason}"));
             }
 
             let response = self.call(
-                "POST", &format!("/mls/groups/{}/commits", urlencoding::encode(&room_id)),
+                "POST",
+                &format!("/mls/groups/{}/commits", urlencoding::encode(&room_id)),
                 Some(payload.clone()),
             );
             match response {
                 Ok(response) => {
-                    let accepted_epoch = response["epoch"].as_u64().ok_or("сервер не вернул epoch для membership commit")?;
+                    let accepted_epoch = response["epoch"]
+                        .as_u64()
+                        .ok_or("сервер не вернул epoch для membership commit")?;
                     if accepted_epoch != base_epoch.saturating_add(1) {
                         let reason = format!("server accepted operation {operation_id} at unexpected epoch {accepted_epoch}");
                         self.record_desync(&room_id, &reason)?;
@@ -1050,21 +1106,41 @@ impl Client {
                     let tx = self.meta.unchecked_transaction().map_err(text)?;
                     let mut integrity_error: Option<String> = None;
                     let settlement = (|| -> Result<(), String> {
-                        let group = self.groups.get_mut(&room_id).ok_or("membership journal room disappeared")?;
-                        let staged = group.mls.pending_commit().ok_or("pending StagedCommit disappeared before merge")?;
-                        let actual = membership_commit_fingerprint(&self.provider, &room_id, &operation_id, base_epoch, &payload, staged)?;
+                        let group = self
+                            .groups
+                            .get_mut(&room_id)
+                            .ok_or("membership journal room disappeared")?;
+                        let staged = group
+                            .mls
+                            .pending_commit()
+                            .ok_or("pending StagedCommit disappeared before merge")?;
+                        let actual = membership_commit_fingerprint(
+                            &self.provider,
+                            &room_id,
+                            &operation_id,
+                            base_epoch,
+                            &payload,
+                            staged,
+                        )?;
                         if actual != fingerprint {
                             let reason = format!("pending StagedCommit fingerprint changed before merge for {operation_id}");
                             integrity_error = Some(reason.clone());
                             return Err(reason);
                         }
-                        group.mls.merge_pending_commit(&self.provider).map_err(text)?;
+                        group
+                            .mls
+                            .merge_pending_commit(&self.provider)
+                            .map_err(text)?;
                         if group.mls.epoch().as_u64() != accepted_epoch {
                             let reason = format!("merged local epoch {} differs from accepted server epoch {accepted_epoch}", group.mls.epoch().as_u64());
                             integrity_error = Some(reason.clone());
                             return Err(reason);
                         }
-                        tx.execute("DELETE FROM client_membership_commits WHERE operation_id = ?1", [&operation_id]).map_err(text)?;
+                        tx.execute(
+                            "DELETE FROM client_membership_commits WHERE operation_id = ?1",
+                            [&operation_id],
+                        )
+                        .map_err(text)?;
                         for claim_id in &claim_ids {
                             tx.execute(
                                 "DELETE FROM client_key_package_claims WHERE room_id = ?1 AND claim_id = ?2",
@@ -1091,16 +1167,36 @@ impl Client {
                     let tx = self.meta.unchecked_transaction().map_err(text)?;
                     let mut integrity_error: Option<String> = None;
                     let clearing = (|| -> Result<(), String> {
-                        let group = self.groups.get_mut(&room_id).ok_or("membership journal room disappeared")?;
-                        let staged = group.mls.pending_commit().ok_or("pending StagedCommit disappeared before stale clear")?;
-                        let actual = membership_commit_fingerprint(&self.provider, &room_id, &operation_id, base_epoch, &payload, staged)?;
+                        let group = self
+                            .groups
+                            .get_mut(&room_id)
+                            .ok_or("membership journal room disappeared")?;
+                        let staged = group
+                            .mls
+                            .pending_commit()
+                            .ok_or("pending StagedCommit disappeared before stale clear")?;
+                        let actual = membership_commit_fingerprint(
+                            &self.provider,
+                            &room_id,
+                            &operation_id,
+                            base_epoch,
+                            &payload,
+                            staged,
+                        )?;
                         if actual != fingerprint {
                             let reason = format!("pending StagedCommit fingerprint changed before stale clear for {operation_id}");
                             integrity_error = Some(reason.clone());
                             return Err(reason);
                         }
-                        group.mls.clear_pending_commit(self.provider.storage()).map_err(text)?;
-                        tx.execute("DELETE FROM client_membership_commits WHERE operation_id = ?1", [&operation_id]).map_err(text)?;
+                        group
+                            .mls
+                            .clear_pending_commit(self.provider.storage())
+                            .map_err(text)?;
+                        tx.execute(
+                            "DELETE FROM client_membership_commits WHERE operation_id = ?1",
+                            [&operation_id],
+                        )
+                        .map_err(text)?;
                         Ok(())
                     })();
                     if let Err(error) = clearing {
@@ -1118,8 +1214,13 @@ impl Client {
                     }
                     stale_cleared += 1;
                 }
-                Err(error) if response_error_code(&error).as_deref() == Some("operation_id_reused") => {
-                    self.record_desync(&room_id, &format!("server rejected reused membership operation ID {operation_id}"))?;
+                Err(error)
+                    if response_error_code(&error).as_deref() == Some("operation_id_reused") =>
+                {
+                    self.record_desync(
+                        &room_id,
+                        &format!("server rejected reused membership operation ID {operation_id}"),
+                    )?;
                     return Err(error);
                 }
                 Err(error) => return Err(error),
@@ -1142,8 +1243,13 @@ impl Client {
                 let mut stmt = self.meta.prepare(
                     "SELECT claim_id FROM client_key_package_claims WHERE room_id = ?1 AND user_id = ?2",
                 ).map_err(text)?;
-                let rows = stmt.query_map((room_id, user_id), |row| row.get::<_, String>(0)).map_err(text)?;
-                rows.collect::<Result<Vec<_>, _>>().map_err(text)?.into_iter().next()
+                let rows = stmt
+                    .query_map((room_id, user_id), |row| row.get::<_, String>(0))
+                    .map_err(text)?;
+                rows.collect::<Result<Vec<_>, _>>()
+                    .map_err(text)?
+                    .into_iter()
+                    .next()
             };
             match existing {
                 Some(id) => id,
@@ -1159,13 +1265,17 @@ impl Client {
         };
         for attempt in 0..3 {
             let claimed = self.call(
-                "POST", &format!("/mls/key-packages/{}/claim", urlencoding::encode(user_id)),
+                "POST",
+                &format!("/mls/key-packages/{}/claim", urlencoding::encode(user_id)),
                 Some(json!({ "claimId": claim_id })),
             )?;
             if claimed["claimId"].as_str() != Some(claim_id.as_str()) {
                 return Err("сервер вернул другой KeyPackage claimId".to_string());
             }
-            let packages = claimed["packages"].as_array().ok_or("нет поля packages")?.clone();
+            let packages = claimed["packages"]
+                .as_array()
+                .ok_or("нет поля packages")?
+                .clone();
             if packages.is_empty() {
                 self.meta.execute(
                     "DELETE FROM client_key_package_claims WHERE room_id = ?1 AND user_id = ?2 AND claim_id = ?3",
@@ -1176,22 +1286,35 @@ impl Client {
             let mut key_packages = Vec::with_capacity(packages.len());
             let mut devices = Vec::with_capacity(packages.len());
             for package in &packages {
-                let bytes = B64.decode(package["package"].as_str().ok_or("пакет не строка")?).map_err(text)?;
+                let bytes = B64
+                    .decode(package["package"].as_str().ok_or("пакет не строка")?)
+                    .map_err(text)?;
                 let key_package = KeyPackageIn::tls_deserialize_exact(&bytes)
                     .map_err(text)?
                     .validate(self.provider.crypto(), ProtocolVersion::Mls10)
                     .map_err(text)?;
                 key_packages.push(key_package);
-                devices.push(package["deviceId"].as_str().ok_or("нет deviceId")?.to_string());
+                devices.push(
+                    package["deviceId"]
+                        .as_str()
+                        .ok_or("нет deviceId")?
+                        .to_string(),
+                );
             }
             devices.sort();
             devices.dedup();
             let operation_id = hex_encode(&self.provider.rand().random_vec(16).map_err(text)?);
             let tx = self.meta.unchecked_transaction().map_err(text)?;
             let staged = (|| -> Result<(), String> {
-                let group = self.groups.get_mut(room_id).ok_or("комната не создана на этом устройстве")?;
+                let group = self
+                    .groups
+                    .get_mut(room_id)
+                    .ok_or("комната не создана на этом устройстве")?;
                 let base_epoch = group.mls.epoch().as_u64();
-                let (commit, welcome, _) = group.mls.add_members(&self.provider, &self.signer, &key_packages).map_err(text)?;
+                let (commit, welcome, _) = group
+                    .mls
+                    .add_members(&self.provider, &self.signer, &key_packages)
+                    .map_err(text)?;
                 let commit_bytes = commit.tls_serialize_detached().map_err(text)?;
                 let welcome_bytes = welcome.tls_serialize_detached().map_err(text)?;
                 let welcome_b64 = B64.encode(&welcome_bytes);
@@ -1203,17 +1326,30 @@ impl Client {
                     "epoch": base_epoch, "commit": B64.encode(&commit_bytes),
                     "changes": changes, "welcomes": welcomes, "clientOperationId": operation_id,
                 });
-                let recipients: Vec<Value> = devices.iter()
+                let recipients: Vec<Value> = devices
+                    .iter()
                     .map(|device| json!({ "userId": user_id, "deviceId": device }))
                     .collect();
                 let metadata = json!({ "changes": changes, "welcomeRecipients": recipients });
-                let pending = group.mls.pending_commit().ok_or("OpenMLS did not retain the staged membership commit")?;
+                let pending = group
+                    .mls
+                    .pending_commit()
+                    .ok_or("OpenMLS did not retain the staged membership commit")?;
                 verify_staged_membership_metadata(&group.mls, pending, &metadata)?;
-                let fingerprint = membership_commit_fingerprint(&self.provider, room_id, &operation_id, base_epoch, &payload, pending)?;
+                let fingerprint = membership_commit_fingerprint(
+                    &self.provider,
+                    room_id,
+                    &operation_id,
+                    base_epoch,
+                    &payload,
+                    pending,
+                )?;
                 let claim_ids = serde_json::to_string(&vec![claim_id.clone()]).map_err(text)?;
                 let payload_json = serde_json::to_string(&payload).map_err(text)?;
-                let created_at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default().as_millis() as i64;
+                let created_at = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as i64;
                 tx.execute(
                     "INSERT INTO client_membership_commits (operation_id, room_id, base_epoch, fingerprint, payload, claim_ids, created_at)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
@@ -1228,17 +1364,24 @@ impl Client {
             }
             if let Err(error) = tx.commit() {
                 self.reload_group(room_id)?;
-                return Err(format!("не удалось зафиксировать membership journal: {}", text(error)));
+                return Err(format!(
+                    "не удалось зафиксировать membership journal: {}",
+                    text(error)
+                ));
             }
             if self.flush_pending_membership_commits()? == 0 {
                 return Ok(());
             }
             self.sync()?;
             if let Some(reason) = self.desync_reason(room_id)? {
-                return Err(format!("комната требует восстановления после stale commit: {reason}"));
+                return Err(format!(
+                    "комната требует восстановления после stale commit: {reason}"
+                ));
             }
             if attempt == 2 {
-                return Err("epoch_outdated: исчерпаны попытки безопасного rebasing invite".to_string());
+                return Err(
+                    "epoch_outdated: исчерпаны попытки безопасного rebasing invite".to_string(),
+                );
             }
         }
         Err("epoch_outdated: invite не удалось применить после rebasing".to_string())
@@ -1985,26 +2128,46 @@ impl Client {
             }
             let mut must_rebase = false;
             for (room_id, mut devices) in by_room {
-                if !self.groups.contains_key(&room_id) { continue; }
+                if !self.groups.contains_key(&room_id) {
+                    continue;
+                }
                 devices.sort();
                 devices.dedup();
                 let server = self.server_epoch(&room_id)?;
-                let local = self.groups.get(&room_id).map(|g| g.mls.epoch().as_u64()).ok_or("комната не найдена")?;
-                if local != server { must_rebase = true; break; }
-                let identities: Vec<Vec<u8>> = devices.iter()
+                let local = self
+                    .groups
+                    .get(&room_id)
+                    .map(|g| g.mls.epoch().as_u64())
+                    .ok_or("комната не найдена")?;
+                if local != server {
+                    must_rebase = true;
+                    break;
+                }
+                let identities: Vec<Vec<u8>> = devices
+                    .iter()
                     .map(|device| format!("{}/{}", self.user_id, device).into_bytes())
                     .collect();
                 let operation_id = hex_encode(&self.provider.rand().random_vec(16).map_err(text)?);
                 let tx = self.meta.unchecked_transaction().map_err(text)?;
                 let staged = (|| -> Result<(), String> {
                     let group = self.groups.get_mut(&room_id).ok_or("комната не найдена")?;
-                    let leaves: Vec<LeafNodeIndex> = group.mls.members()
-                        .filter(|member| identities.iter().any(|id| member.credential.serialized_content() == id.as_slice()))
-                        .map(|member| member.index).collect();
+                    let leaves: Vec<LeafNodeIndex> = group
+                        .mls
+                        .members()
+                        .filter(|member| {
+                            identities
+                                .iter()
+                                .any(|id| member.credential.serialized_content() == id.as_slice())
+                        })
+                        .map(|member| member.index)
+                        .collect();
                     if leaves.is_empty() {
                         return Err(format!("P0.2: нет MLS leaf для отзываемых устройств в комнате {room_id}; commit не отправлен"));
                     }
-                    let (commit, _, _) = group.mls.remove_members(&self.provider, &self.signer, &leaves).map_err(text)?;
+                    let (commit, _, _) = group
+                        .mls
+                        .remove_members(&self.provider, &self.signer, &leaves)
+                        .map_err(text)?;
                     let commit_bytes = commit.tls_serialize_detached().map_err(text)?;
                     let changes = json!({ "adds": [], "removes": [], "removeDevices": devices });
                     let payload = json!({
@@ -2012,12 +2175,24 @@ impl Client {
                         "welcomes": [], "clientOperationId": operation_id,
                     });
                     let metadata = json!({ "changes": changes, "welcomeRecipients": [] });
-                    let pending = group.mls.pending_commit().ok_or("OpenMLS did not retain staged device-removal commit")?;
+                    let pending = group
+                        .mls
+                        .pending_commit()
+                        .ok_or("OpenMLS did not retain staged device-removal commit")?;
                     verify_staged_membership_metadata(&group.mls, pending, &metadata)?;
-                    let fingerprint = membership_commit_fingerprint(&self.provider, &room_id, &operation_id, local, &payload, pending)?;
+                    let fingerprint = membership_commit_fingerprint(
+                        &self.provider,
+                        &room_id,
+                        &operation_id,
+                        local,
+                        &payload,
+                        pending,
+                    )?;
                     let payload_json = serde_json::to_string(&payload).map_err(text)?;
-                    let created_at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default().as_millis() as i64;
+                    let created_at = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis() as i64;
                     tx.execute(
                         "INSERT INTO client_membership_commits (operation_id, room_id, base_epoch, fingerprint, payload, claim_ids, created_at)
                          VALUES (?1, ?2, ?3, ?4, ?5, '[]', ?6)",
@@ -2032,15 +2207,26 @@ impl Client {
                 }
                 if let Err(error) = tx.commit() {
                     self.reload_group(&room_id)?;
-                    return Err(format!("не удалось зафиксировать device-removal journal: {}", text(error)));
+                    return Err(format!(
+                        "не удалось зафиксировать device-removal journal: {}",
+                        text(error)
+                    ));
                 }
-                if self.flush_pending_membership_commits()? > 0 { must_rebase = true; break; }
+                if self.flush_pending_membership_commits()? > 0 {
+                    must_rebase = true;
+                    break;
+                }
                 removed_total += devices.len();
             }
-            if !must_rebase { return Ok(removed_total); }
+            if !must_rebase {
+                return Ok(removed_total);
+            }
             self.sync()?;
             if attempt == 2 {
-                return Err("epoch_outdated: исчерпаны попытки безопасного rebasing device removal".to_string());
+                return Err(
+                    "epoch_outdated: исчерпаны попытки безопасного rebasing device removal"
+                        .to_string(),
+                );
             }
         }
         Err("device removal не удалось применить после rebasing".to_string())
