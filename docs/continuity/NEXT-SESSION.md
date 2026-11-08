@@ -78,3 +78,9 @@ Tasks, Calendar, Cindy не добавлять в Beta 1.0 без нового �
 - Re-check GitHub refs before further writes. The audit branch head observed this session was `a07815227ecf004628f5b3b94154a4f16de8d1bd`; it is not the current P0/UI source.
 - Beta 1.0 database decision is now explicit: independent InOne DB/backend; shared InOne+Propo DB deferred to the next beta. Follow [ADR-011](ADR-011-BETA1-INDEPENDENT-DATABASE.md).
 - Immediate user-visible objective remains a runnable Beta 1.0 build, not additional planning documents. Once source bytes are available, prioritize importing and running the Flutter app and backend locally, then produce an installable test build as soon as the native MLS/security gates permit.
+## Latest recovery progress — 2026-11-08
+
+- Draft PR [#17](https://github.com/vahe210991-cloud/InOne-chat/pull/17) preserves readable Library patches 016–020 and the P0/MLS/Beta 1.0 reference documents on branch `recovery/source-artifacts-2026-11-08`. It is not product code and is not merged.
+- Read-only compatibility audit proves patches 016–019 do not match the archived GitHub 0.6.0 source; Patch 020 targets a missing Rust test file. Do not apply this patch stack to that archive.
+- Library contains no standalone `.dart`, `pubspec.yaml`, or `.arb` files. The Flutter Beta 1.0 app source is only in the inaccessible UI/API ZIP r2.
+- Continue searching for an authorized way to export the existing Library bundle/ZIP bytes. If not possible, do not pretend the 0.6.0 archive is a substitute. Keep main unchanged until exact source import is possible.
