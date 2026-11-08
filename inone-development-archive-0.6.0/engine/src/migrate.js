@@ -10,7 +10,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 export const SCHEMA_FILE = path.join(here, 'schema.sql');
 export const MIGRATIONS_DIR = path.join(here, '..', 'migrations');
 /** Последняя миграция, уже включённая в schema.sql. Обновляется вместе с каждой новой миграцией. */
-export const SCHEMA_VERSION = '0024-admin-actions';
+export const SCHEMA_VERSION = '0025-mls-commit-change-metadata';
 const LOCK_KEY = 727001;
 
 /** Признак того, что миграция уже применена в базе, созданной до появления таблицы миграций. */
@@ -38,6 +38,7 @@ const MARKERS = {
   '0022-org-settings': "to_regclass('org_settings') IS NOT NULL",
   '0023-org-links': "to_regclass('org_links') IS NOT NULL",
   '0024-admin-actions': "to_regclass('admin_action_log') IS NOT NULL",
+  '0025-mls-commit-change-metadata': "EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'mls_commits' AND column_name = 'changes') AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'mls_commits' AND column_name = 'welcome_recipients')",
 };
 
 export function listMigrations() {
