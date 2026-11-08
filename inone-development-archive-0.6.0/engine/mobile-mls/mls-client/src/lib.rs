@@ -1258,7 +1258,11 @@ impl Client {
                     room_id,
                     "Duplicate Welcome for an already joined room; retain Welcome without ACK for explicit recovery",
                 )?;
-                eprintln!("[f1-welcome] recovery persisted room={} reason={:?}", room_id, self.desync_reason(room_id));
+                eprintln!(
+                    "[f1-welcome] recovery persisted room={} reason={:?}",
+                    room_id,
+                    self.desync_reason(room_id)
+                );
                 continue;
             }
 
