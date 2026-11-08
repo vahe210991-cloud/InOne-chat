@@ -24,7 +24,7 @@ async function start() {
   return { srv, alice, bob, stop: async () => { await new Promise((r) => srv.server.close(r)); await db?.close(); } };
 }
 
-const claim = (c) => c.raw('GET', `/mls/key-packages/${enc(BOB)}`);
+const claim = (c) => c.raw('POST', `/mls/key-packages/${enc(BOB)}/claim`, { claimId: randomBytes(16).toString('hex') });
 
 test('обычный пакет старше 30 дней не выдаётся и не учитывается', async () => {
   const s = await start();

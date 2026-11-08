@@ -23,8 +23,14 @@ fn start_engine() -> Engine {
         .expect("запуск node");
     let stdin = child.stdin.take();
     let mut line = String::new();
-    BufReader::new(child.stdout.take().expect("stdout")).read_line(&mut line).expect("строка адреса");
-    let base = line.trim().strip_prefix("URL=").expect("адрес сервера").to_string();
+    BufReader::new(child.stdout.take().expect("stdout"))
+        .read_line(&mut line)
+        .expect("строка адреса");
+    let base = line
+        .trim()
+        .strip_prefix("URL=")
+        .expect("адрес сервера")
+        .to_string();
     Engine { child, stdin, base }
 }
 
@@ -42,11 +48,45 @@ fn device_database_is_encrypted_and_needs_the_key() {
     let _ = std::fs::remove_file(&file);
     let file = file.to_string_lossy().to_string();
     let keys = MemoryKeyStore::default();
-    let _alice = connect(&engine.base, "@alice:inone.test", PW, "A_PHONE", &file, &keys).unwrap();
+    let _alice = connect(
+        &engine.base,
+        "@alice:inone.test",
+        PW,
+        "A_PHONE",
+        &file,
+        &keys,
+    )
+    .unwrap();
 
     let head = std::fs::read(&file).unwrap();
-    assert_ne!(&head[..16.min(head.len())], b"SQLite format 3\0", "файл не открывается без ключа");
+    assert_ne!(
+        &head[..16.min(head.len())],
+        b"SQLite format 3\0",
+        "файл не открывается без ключа"
+    );
     let other = MemoryKeyStore::default();
-    assert!(connect(&engine.base, "@alice:inone.test", PW, "A_PHONE", &file, &other).is_err(), "чужой ключ не открывает базу");
-    assert!(connect(&engine.base, "@alice:inone.test", PW, "A_PHONE", &file, &keys).is_ok(), "свой ключ открывает базу");
+    assert!(
+        connect(
+            &engine.base,
+            "@alice:inone.test",
+            PW,
+            "A_PHONE",
+            &file,
+            &other
+        )
+        .is_err(),
+        "чужой ключ не открывает базу"
+    );
+    assert!(
+        connect(
+            &engine.base,
+            "@alice:inone.test",
+            PW,
+            "A_PHONE",
+            &file,
+            &keys
+        )
+        .is_ok(),
+        "свой ключ открывает базу"
+    );
 }

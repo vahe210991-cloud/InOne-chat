@@ -60,14 +60,20 @@ impl RemoteConfig {
     /// Собирает значения из ответа сервера. Каждое значение проверяется отдельно: неверный тип или выход за предел
     /// даёт умолчание для этого ключа, остальные значения не сбрасываются.
     pub fn from_values(values: &Map<String, Value>, source: Source) -> Self {
-        let mut c = Self { source, ..Self::defaults() };
+        let mut c = Self {
+            source,
+            ..Self::defaults()
+        };
         if let Some(v) = values.get("files.enabled").and_then(Value::as_bool) {
             c.files_enabled = v;
         }
         if let Some(v) = values.get("push.enabled").and_then(Value::as_bool) {
             c.push_enabled = v;
         }
-        if let Some(v) = values.get("messages.editWindowMinutes").and_then(Value::as_u64) {
+        if let Some(v) = values
+            .get("messages.editWindowMinutes")
+            .and_then(Value::as_u64)
+        {
             if (1..=1440).contains(&v) {
                 c.edit_window_minutes = v as u32;
             }
@@ -105,7 +111,10 @@ impl RemoteConfig {
 
 fn is_version(s: &str) -> bool {
     let parts: Vec<&str> = s.split('.').collect();
-    parts.len() == 3 && parts.iter().all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()))
+    parts.len() == 3
+        && parts
+            .iter()
+            .all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()))
 }
 
 /// Публичная часть конфигурации, которую приложение читает до входа: статус обслуживания и минимальная версия.
@@ -118,12 +127,20 @@ pub struct PublicStatus {
 /// Читает публичную часть без входа в аккаунт. Ошибка значит: связи нет или сервер не ответил. Тогда статус
 /// не выдумывается: приложение продолжает обычный путь, а запись сервер сама отклонит, если идёт обслуживание.
 pub fn fetch_public_status(base: &str) -> Result<PublicStatus, String> {
-    let agent = ureq::AgentBuilder::new().timeout(std::time::Duration::from_secs(10)).build();
-    let resp = agent.get(&format!("{base}/config/public")).call().map_err(|e| format!("сеть: {e}"))?;
+    let agent = ureq::AgentBuilder::new()
+        .timeout(std::time::Duration::from_secs(10))
+        .build();
+    let resp = agent
+        .get(&format!("{base}/config/public"))
+        .call()
+        .map_err(|e| format!("сеть: {e}"))?;
     let body = resp.into_json::<Value>().map_err(text)?;
     let values = body["flags"].as_object().cloned().unwrap_or_default();
     let c = RemoteConfig::from_values(&values, Source::Fresh);
-    Ok(PublicStatus { maintenance: c.maintenance, min_version: c.min_version })
+    Ok(PublicStatus {
+        maintenance: c.maintenance,
+        min_version: c.min_version,
+    })
 }
 
 /// Версия приложения не ниже минимальной. Сравнение по числам: «1.10.0» новее «1.9.9». Непонятная версия не проходит.
@@ -223,7 +240,10 @@ impl Client {
             None => Ok(self.cached_remote_config()),
             Some((tag, body)) => {
                 let values = body["flags"].as_object().cloned().unwrap_or_default();
-                let fetched_at = SystemTime::now().duration_since(UNIX_EPOCH).map_err(text)?.as_millis() as i64;
+                let fetched_at = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .map_err(text)?
+                    .as_millis() as i64;
                 self.meta
                     .execute(
                         "INSERT OR REPLACE INTO client_remote_config (id, etag, body, fetched_at) VALUES (1, ?1, ?2, ?3)",
@@ -246,7 +266,11 @@ impl Client {
     fn load_remote_config_cache(&self) -> Option<(String, Map<String, Value>)> {
         let (tag, body): (String, String) = self
             .meta
-            .query_row("SELECT etag, body FROM client_remote_config WHERE id = 1", [], |r| Ok((r.get(0)?, r.get(1)?)))
+            .query_row(
+                "SELECT etag, body FROM client_remote_config WHERE id = 1",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
             .ok()?;
         let parsed: Value = serde_json::from_str(&body).ok()?;
         let values = parsed["flags"].as_object()?.clone();
@@ -263,9 +287,15 @@ impl Client {
         }
     }
 
-    fn fetch_remote_config_once(&self, etag: Option<&str>) -> Result<Option<(String, Value)>, String> {
+    fn fetch_remote_config_once(
+        &self,
+        etag: Option<&str>,
+    ) -> Result<Option<(String, Value)>, String> {
         let token = self.tokens.lock().map_err(text)?.0.clone();
-        let mut req = self.agent.get(&format!("{}/config", self.base)).set("authorization", &format!("Bearer {token}"));
+        let mut req = self
+            .agent
+            .get(&format!("{}/config", self.base))
+            .set("authorization", &format!("Bearer {token}"));
         if let Some(tag) = etag {
             req = req.set("if-none-match", tag);
         }
@@ -277,7 +307,10 @@ impl Client {
                 Ok(Some((tag, body)))
             }
             Err(ureq::Error::Status(304, _)) => Ok(None),
-            Err(ureq::Error::Status(code, r)) => Err(format!("GET /config -> {code} {}", r.into_string().unwrap_or_default())),
+            Err(ureq::Error::Status(code, r)) => Err(format!(
+                "GET /config -> {code} {}",
+                r.into_string().unwrap_or_default()
+            )),
             Err(e) => Err(format!("сеть: {e}")),
         }
     }
@@ -306,7 +339,9 @@ mod tests {
     #[test]
     fn values_from_the_server_are_read() {
         let c = RemoteConfig::from_values(
-            &values(json!({"groups.maxMembers": 42, "maintenance.enabled": true, "app.minVersion": "1.2.3", "messages.editWindowMinutes": 30})),
+            &values(
+                json!({"groups.maxMembers": 42, "maintenance.enabled": true, "app.minVersion": "1.2.3", "messages.editWindowMinutes": 30}),
+            ),
             Source::Fresh,
         );
         assert_eq!(c.group_max_members, 42);
@@ -319,7 +354,9 @@ mod tests {
     #[test]
     fn wrong_types_and_out_of_range_values_fall_back_per_key() {
         let c = RemoteConfig::from_values(
-            &values(json!({"groups.maxMembers": "много", "maintenance.enabled": "yes", "messages.editWindowMinutes": 0, "app.minVersion": "1.2", "files.enabled": false})),
+            &values(
+                json!({"groups.maxMembers": "много", "maintenance.enabled": "yes", "messages.editWindowMinutes": 0, "app.minVersion": "1.2", "files.enabled": false}),
+            ),
             Source::Fresh,
         );
         assert_eq!(c.group_max_members, 500, "строка вместо числа — умолчание");
@@ -332,7 +369,10 @@ mod tests {
     #[test]
     fn group_size_outside_the_server_limits_is_refused() {
         for bad in [1u64, 501, 10_000] {
-            let c = RemoteConfig::from_values(&values(json!({"groups.maxMembers": bad})), Source::Fresh);
+            let c = RemoteConfig::from_values(
+                &values(json!({"groups.maxMembers": bad})),
+                Source::Fresh,
+            );
             assert_eq!(c.group_max_members, 500, "{bad} вне 2..500");
         }
     }
@@ -376,6 +416,9 @@ mod version_tests {
         assert!(!version_at_least("1.2", "1.0.0"));
         assert!(!version_at_least("x.y.z", "1.0.0"));
         assert!(!version_at_least("1.2.3", "1.0"));
-        assert!(!version_at_least("99999999999.0.0", "1.0.0"), "переполнение не проходит");
+        assert!(
+            !version_at_least("99999999999.0.0", "1.0.0"),
+            "переполнение не проходит"
+        );
     }
 }

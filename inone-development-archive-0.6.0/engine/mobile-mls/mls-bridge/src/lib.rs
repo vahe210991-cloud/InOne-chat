@@ -44,7 +44,10 @@ struct World {
 static WORLD: OnceLock<Mutex<World>> = OnceLock::new();
 
 fn world() -> MutexGuard<'static, World> {
-    WORLD.get_or_init(|| Mutex::new(World::default())).lock().expect("mls world lock")
+    WORLD
+        .get_or_init(|| Mutex::new(World::default()))
+        .lock()
+        .expect("mls world lock")
 }
 
 fn text(e: impl std::fmt::Display) -> String {
@@ -63,15 +66,28 @@ pub fn create_identity(name: String) -> Result<Vec<u8>, String> {
     let bundle = KeyPackage::builder()
         .build(CIPHERSUITE, &provider, &signer, credential.clone())
         .map_err(text)?;
-    let key_package = bundle.key_package().tls_serialize_detached().map_err(text)?;
-    world().identities.insert(name, Identity { provider, signer, credential });
+    let key_package = bundle
+        .key_package()
+        .tls_serialize_detached()
+        .map_err(text)?;
+    world().identities.insert(
+        name,
+        Identity {
+            provider,
+            signer,
+            credential,
+        },
+    );
     Ok(key_package)
 }
 
 /// Создаёт группу с указанным идентификатором; возвращает номер эпохи (0).
 pub fn create_group(identity: String, group_id: String) -> Result<u64, String> {
     let mut w = world();
-    let me = w.identities.get(&identity).ok_or_else(|| format!("unknown identity {identity}"))?;
+    let me = w
+        .identities
+        .get(&identity)
+        .ok_or_else(|| format!("unknown identity {identity}"))?;
     let config = MlsGroupCreateConfig::builder()
         .ciphersuite(CIPHERSUITE)
         .use_ratchet_tree_extension(true)
@@ -91,10 +107,16 @@ pub fn create_group(identity: String, group_id: String) -> Result<u64, String> {
 }
 
 /// Приглашает участника по его ключевому пакету и применяет коммит у себя.
-pub fn add_member(identity: String, group_id: String, key_package: Vec<u8>) -> Result<Added, String> {
+pub fn add_member(
+    identity: String,
+    group_id: String,
+    key_package: Vec<u8>,
+) -> Result<Added, String> {
     let mut w = world();
     let World { identities, groups } = &mut *w;
-    let me = identities.get(&identity).ok_or_else(|| format!("unknown identity {identity}"))?;
+    let me = identities
+        .get(&identity)
+        .ok_or_else(|| format!("unknown identity {identity}"))?;
     let group = groups
         .get_mut(&(identity.clone(), group_id))
         .ok_or_else(|| "unknown group".to_string())?;
@@ -102,7 +124,9 @@ pub fn add_member(identity: String, group_id: String, key_package: Vec<u8>) -> R
         .map_err(text)?
         .validate(me.provider.crypto(), ProtocolVersion::Mls10)
         .map_err(text)?;
-    let (commit, welcome, _group_info) = group.add_members(&me.provider, &me.signer, &[package]).map_err(text)?;
+    let (commit, welcome, _group_info) = group
+        .add_members(&me.provider, &me.signer, &[package])
+        .map_err(text)?;
     group.merge_pending_commit(&me.provider).map_err(text)?;
     Ok(Added {
         commit: commit.tls_serialize_detached().map_err(text)?,
@@ -115,7 +139,9 @@ pub fn add_member(identity: String, group_id: String, key_package: Vec<u8>) -> R
 pub fn join_group(identity: String, welcome: Vec<u8>) -> Result<String, String> {
     let mut w = world();
     let World { identities, groups } = &mut *w;
-    let me = identities.get(&identity).ok_or_else(|| format!("unknown identity {identity}"))?;
+    let me = identities
+        .get(&identity)
+        .ok_or_else(|| format!("unknown identity {identity}"))?;
     let message = MlsMessageIn::tls_deserialize_exact(&welcome).map_err(text)?;
     let welcome = match message.extract() {
         MlsMessageBodyIn::Welcome(w) => w,
@@ -125,7 +151,8 @@ pub fn join_group(identity: String, welcome: Vec<u8>) -> Result<String, String> 
         .use_ratchet_tree_extension(true)
         .max_past_epochs(MAX_PAST_EPOCHS)
         .build();
-    let staged = StagedWelcome::new_from_welcome(&me.provider, &join_config, welcome, None).map_err(text)?;
+    let staged =
+        StagedWelcome::new_from_welcome(&me.provider, &join_config, welcome, None).map_err(text)?;
     let group = staged.into_group(&me.provider).map_err(text)?;
     let group_id = String::from_utf8_lossy(group.group_id().as_slice()).to_string();
     groups.insert((identity, group_id.clone()), group);
@@ -136,7 +163,9 @@ pub fn join_group(identity: String, welcome: Vec<u8>) -> Result<String, String> 
 pub fn encrypt(identity: String, group_id: String, plaintext: String) -> Result<Vec<u8>, String> {
     let mut w = world();
     let World { identities, groups } = &mut *w;
-    let me = identities.get(&identity).ok_or_else(|| format!("unknown identity {identity}"))?;
+    let me = identities
+        .get(&identity)
+        .ok_or_else(|| format!("unknown identity {identity}"))?;
     let group = groups
         .get_mut(&(identity, group_id))
         .ok_or_else(|| "unknown group".to_string())?;
@@ -151,20 +180,28 @@ pub fn encrypt(identity: String, group_id: String, plaintext: String) -> Result<
 pub fn decrypt(identity: String, group_id: String, message: Vec<u8>) -> Result<Received, String> {
     let mut w = world();
     let World { identities, groups } = &mut *w;
-    let me = identities.get(&identity).ok_or_else(|| format!("unknown identity {identity}"))?;
+    let me = identities
+        .get(&identity)
+        .ok_or_else(|| format!("unknown identity {identity}"))?;
     let group = groups
         .get_mut(&(identity, group_id))
         .ok_or_else(|| "unknown group".to_string())?;
     let parsed = MlsMessageIn::tls_deserialize_exact(&message).map_err(text)?;
     let protocol = parsed.try_into_protocol_message().map_err(text)?;
-    let processed = group.process_message(&me.provider, protocol).map_err(text)?;
+    let processed = group
+        .process_message(&me.provider, protocol)
+        .map_err(text)?;
     match processed.into_content() {
         ProcessedMessageContent::ApplicationMessage(app) => Ok(Received::Application {
             text: String::from_utf8(app.into_bytes()).map_err(text)?,
         }),
         ProcessedMessageContent::StagedCommitMessage(staged) => {
-            group.merge_staged_commit(&me.provider, *staged).map_err(text)?;
-            Ok(Received::Commit { epoch: group.epoch().as_u64() })
+            group
+                .merge_staged_commit(&me.provider, *staged)
+                .map_err(text)?;
+            Ok(Received::Commit {
+                epoch: group.epoch().as_u64(),
+            })
         }
         _ => Err("unexpected kind of message".to_string()),
     }
@@ -195,12 +232,16 @@ mod tests {
         let hello = encrypt("t1-alice".into(), group.clone(), "привет, Боб".into()).unwrap();
         assert_eq!(
             decrypt("t1-bob".into(), group.clone(), hello).unwrap(),
-            Received::Application { text: "привет, Боб".into() }
+            Received::Application {
+                text: "привет, Боб".into()
+            }
         );
         let reply = encrypt("t1-bob".into(), group.clone(), "привет, Алиса".into()).unwrap();
         assert_eq!(
             decrypt("t1-alice".into(), group.clone(), reply).unwrap(),
-            Received::Application { text: "привет, Алиса".into() }
+            Received::Application {
+                text: "привет, Алиса".into()
+            }
         );
     }
 
@@ -223,7 +264,9 @@ mod tests {
         );
         assert_eq!(
             decrypt("t3-bob".into(), group, old).unwrap(),
-            Received::Application { text: "из эпохи один".into() }
+            Received::Application {
+                text: "из эпохи один".into()
+            }
         );
     }
 

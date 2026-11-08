@@ -783,7 +783,18 @@ export function createStore({ pool, pinPepper }) {
       return rows.length > 0;
     },
 
-    async roomKind(roomId) {
+    // Комнаты, где пользователь участник (G1, этап 0.7.3): без чужих комнат.
+  async roomsOfUser(userId) {
+    const { rows } = await pool.query(
+      `SELECT r.room_id, r.kind, r.name, r.owner, m.is_admin
+         FROM room_members m JOIN rooms r ON r.room_id = m.room_id
+        WHERE m.user_id = $1 ORDER BY r.room_id`,
+      [userId],
+    );
+    return rows.map((r) => ({ roomId: r.room_id, kind: r.kind, name: r.name, owner: r.owner, isAdmin: r.is_admin }));
+  },
+
+  async roomKind(roomId) {
       const { rows } = await pool.query('SELECT kind FROM rooms WHERE room_id = $1', [roomId]);
       return rows[0]?.kind ?? null;
     },
@@ -929,19 +940,48 @@ async mlsPendingRemovalsFor(userId) {
     },
 
     /** Берёт по одному неиспользованному пакету у каждого устройства. Пакет помечается использованным в той же операции. */
-    async mlsClaimKeyPackages(userId, nowMs) {
-      const { rows: devices } = await pool.query('SELECT DISTINCT device_id FROM mls_key_packages WHERE user_id = $1 AND consumed_at IS NULL', [userId]);
-      const out = [];
-      for (const { device_id: deviceId } of devices) {
-        const { rows } = await pool.query(
-          'UPDATE mls_key_packages SET consumed_at = $3 WHERE id = (SELECT id FROM mls_key_packages WHERE user_id = $1 AND device_id = $2 AND consumed_at IS NULL AND last_resort = FALSE AND created_at >= $4 ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED) RETURNING package',
-          [userId, deviceId, nowMs, nowMs - MLS_REGULAR_MAX_AGE_MS],
+    async mlsClaimKeyPackages(targetUserId, requesterUserId, requesterDeviceId, claimId, nowMs) {
+      return inTransaction(async (c) => {
+        await c.query(
+          'INSERT INTO mls_key_package_claims (target_user_id, requester_user_id, requester_device_id, claim_id, result, created_at) VALUES ($1, $2, $3, $4, NULL, $5) ON CONFLICT (target_user_id, requester_user_id, requester_device_id, claim_id) DO NOTHING',
+          [targetUserId, requesterUserId, requesterDeviceId, claimId, nowMs],
         );
-        if (rows[0]) { out.push({ deviceId, package: rows[0].package }); continue; }
-        const { rows: fallback } = await pool.query('SELECT package FROM mls_key_packages WHERE user_id = $1 AND device_id = $2 AND last_resort = TRUE AND created_at >= $3', [userId, deviceId, nowMs - MLS_LAST_RESORT_MAX_AGE_MS]);
-        if (fallback[0]) out.push({ deviceId, package: fallback[0].package });
-      }
-      return out;
+        const { rows: claimRows } = await c.query(
+          'SELECT result FROM mls_key_package_claims WHERE target_user_id = $1 AND requester_user_id = $2 AND requester_device_id = $3 AND claim_id = $4 FOR UPDATE',
+          [targetUserId, requesterUserId, requesterDeviceId, claimId],
+        );
+        if (!claimRows[0]) throw new Error('KeyPackage claim intent was not persisted');
+        if (claimRows[0].result !== null) {
+          return claimRows[0].result.map((item) => ({
+            deviceId: item.deviceId,
+            package: Buffer.from(item.package, 'base64'),
+          }));
+        }
+
+        const { rows: devices } = await c.query(
+          'SELECT DISTINCT device_id FROM mls_key_packages WHERE user_id = $1 AND consumed_at IS NULL ORDER BY device_id',
+          [targetUserId],
+        );
+        const out = [];
+        for (const { device_id: deviceId } of devices) {
+          const { rows } = await c.query(
+            'UPDATE mls_key_packages SET consumed_at = $3 WHERE id = (SELECT id FROM mls_key_packages WHERE user_id = $1 AND device_id = $2 AND consumed_at IS NULL AND last_resort = FALSE AND created_at >= $4 ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED) RETURNING package',
+            [targetUserId, deviceId, nowMs, nowMs - MLS_REGULAR_MAX_AGE_MS],
+          );
+          if (rows[0]) { out.push({ deviceId, package: rows[0].package }); continue; }
+          const { rows: fallback } = await c.query(
+            'SELECT package FROM mls_key_packages WHERE user_id = $1 AND device_id = $2 AND last_resort = TRUE AND created_at >= $3 ORDER BY id DESC LIMIT 1',
+            [targetUserId, deviceId, nowMs - MLS_LAST_RESORT_MAX_AGE_MS],
+          );
+          if (fallback[0]) out.push({ deviceId, package: fallback[0].package });
+        }
+        const stored = out.map((item) => ({ deviceId: item.deviceId, package: item.package.toString('base64') }));
+        await c.query(
+          'UPDATE mls_key_package_claims SET result = $5::jsonb WHERE target_user_id = $1 AND requester_user_id = $2 AND requester_device_id = $3 AND claim_id = $4',
+          [targetUserId, requesterUserId, requesterDeviceId, claimId, JSON.stringify(stored)],
+        );
+        return out;
+      });
     },
 
     async ping() {
@@ -1160,7 +1200,7 @@ async mlsPendingRemovalsFor(userId) {
           }
         }
         const next = current + 1;
-        await client.query('INSERT INTO mls_commits (room_id, epoch, sender_id, commit, created_at) VALUES ($1, $2, $3, $4, $5)', [roomId, next, senderId, commit, nowMs]);
+        await client.query('INSERT INTO mls_commits (room_id, epoch, sender_id, commit, changes, welcome_recipients, created_at) VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7)', [roomId, next, senderId, commit, JSON.stringify({ adds: changes.adds ?? [], removes: changes.removes ?? [], removeDevices: changes.removeDevices ?? [] }), JSON.stringify(welcomes.map((w) => ({ userId: w.userId, deviceId: w.deviceId }))), nowMs]);
         await client.query('UPDATE mls_groups SET epoch = $2 WHERE room_id = $1', [roomId, next]);
         for (const w of welcomes) {
           await client.query('INSERT INTO mls_welcomes (room_id, epoch, user_id, device_id, welcome, created_at) VALUES ($1, $2, $3, $4, $5, $6)', [roomId, next, w.userId, w.deviceId, w.welcome, nowMs]);
@@ -1178,8 +1218,8 @@ async mlsPendingRemovalsFor(userId) {
     },
 
     async mlsCommitsSince(roomId, since, limit) {
-      const { rows } = await pool.query('SELECT epoch, sender_id, commit FROM mls_commits WHERE room_id = $1 AND epoch > $2 ORDER BY epoch LIMIT $3', [roomId, since, limit]);
-      return rows.map((r) => ({ epoch: Number(r.epoch), senderId: r.sender_id, commit: r.commit }));
+      const { rows } = await pool.query('SELECT epoch, sender_id, commit, changes, welcome_recipients FROM mls_commits WHERE room_id = $1 AND epoch > $2 ORDER BY epoch LIMIT $3', [roomId, since, limit]);
+      return rows.map((r) => ({ epoch: Number(r.epoch), senderId: r.sender_id, commit: r.commit, changes: r.changes, welcomeRecipients: r.welcome_recipients }));
     },
 
     async mlsPendingWelcomes(userId, deviceId) {

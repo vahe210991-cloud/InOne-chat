@@ -66,6 +66,7 @@ export function createMemoryStore({ pinPepper }) {
   const sends = new Map();         // (отправитель, тип, номер) -> время отправки
   const rooms = new Map();
   const mlsPackages = [];
+  const mlsPackageClaims = new Map();
   const mlsGroups = new Map();
   const mlsCommits = [];
   const mlsWelcomes = [];
@@ -591,6 +592,15 @@ export function createMemoryStore({ pinPepper }) {
       }
       return false;
     },
+    // Комнаты, где пользователь участник (G1, этап 0.7.3): без чужих комнат.
+    roomsOfUser(userId) {
+      const out = [];
+      for (const [roomId, r] of rooms.entries()) {
+        if (![...r.members].includes(userId)) continue;
+        out.push({ roomId, kind: r.kind, name: r.name ?? null, owner: r.owner, isAdmin: [...r.admins].includes(userId) });
+      }
+      return out.sort((a, b) => (a.roomId < b.roomId ? -1 : a.roomId > b.roomId ? 1 : 0));
+    },
     roomKind(roomId) {
       return rooms.get(roomId)?.kind ?? null;
     },
@@ -688,17 +698,22 @@ export function createMemoryStore({ pinPepper }) {
         mlsPackages.push({ id: mlsPackages.length + 1, userId, deviceId, package: Buffer.from(bytes), createdAt, consumedAt: null });
       }
     },
-    mlsClaimKeyPackages(userId, nowMs) {
+    mlsClaimKeyPackages(targetUserId, requesterUserId, requesterDeviceId, claimId, nowMs) {
+      const claimKey = JSON.stringify([targetUserId, requesterUserId, requesterDeviceId, claimId]);
+      const previous = mlsPackageClaims.get(claimKey);
+      if (previous) return previous.map((item) => ({ deviceId: item.deviceId, package: Buffer.from(item.package) }));
       const out = [];
-      const devices = [...new Set(mlsPackages.filter((p) => p.userId === userId && p.consumedAt === null).map((p) => p.deviceId))];
+      const devices = [...new Set(mlsPackages.filter((p) => p.userId === targetUserId && p.consumedAt === null).map((p) => p.deviceId))].sort();
       for (const deviceId of devices) {
-        const next = mlsPackages.find((p) => p.userId === userId && p.deviceId === deviceId && p.consumedAt === null && !p.lastResort && p.createdAt >= nowMs - MLS_REGULAR_MAX_AGE_MS);
+        const next = mlsPackages.find((p) => p.userId === targetUserId && p.deviceId === deviceId && p.consumedAt === null && !p.lastResort && p.createdAt >= nowMs - MLS_REGULAR_MAX_AGE_MS);
         if (next) { next.consumedAt = nowMs; out.push({ deviceId, package: Buffer.from(next.package) }); continue; }
-        const fallback = mlsPackages.find((p) => p.userId === userId && p.deviceId === deviceId && p.lastResort && p.createdAt >= nowMs - MLS_LAST_RESORT_MAX_AGE_MS);
+        const fallback = [...mlsPackages].reverse().find((p) => p.userId === targetUserId && p.deviceId === deviceId && p.lastResort && p.createdAt >= nowMs - MLS_LAST_RESORT_MAX_AGE_MS);
         if (fallback) out.push({ deviceId, package: Buffer.from(fallback.package) });
       }
+      mlsPackageClaims.set(claimKey, out.map((item) => ({ deviceId: item.deviceId, package: Buffer.from(item.package) })));
       return out;
     },
+
     ping() {
       return true;
     },
@@ -851,7 +866,7 @@ export function createMemoryStore({ pinPepper }) {
       }
       const next = current + 1;
       mlsGroups.set(roomId, next);
-      mlsCommits.push({ roomId, epoch: next, senderId, commit: Buffer.from(commit), createdAt: nowMs });
+      mlsCommits.push({ roomId, epoch: next, senderId, commit: Buffer.from(commit), changes: structuredClone({ adds: changes.adds ?? [], removes: changes.removes ?? [], removeDevices: changes.removeDevices ?? [] }), welcomeRecipients: welcomes.map((w) => ({ userId: w.userId, deviceId: w.deviceId })), createdAt: nowMs });
       for (const w of welcomes) {
         mlsWelcomes.push({ id: mlsWelcomes.length + 1, roomId, epoch: next, userId: w.userId, deviceId: w.deviceId, welcome: Buffer.from(w.welcome), createdAt: nowMs, ackedAt: null });
       }
@@ -859,7 +874,7 @@ export function createMemoryStore({ pinPepper }) {
     },
     mlsCommitsSince(roomId, since, limit) {
       return mlsCommits.filter((c) => c.roomId === roomId && c.epoch > since).sort((a, b) => a.epoch - b.epoch).slice(0, limit)
-        .map((c) => ({ epoch: c.epoch, senderId: c.senderId, commit: Buffer.from(c.commit) }));
+        .map((c) => ({ epoch: c.epoch, senderId: c.senderId, commit: Buffer.from(c.commit), changes: c.changes ? structuredClone(c.changes) : null, welcomeRecipients: c.welcomeRecipients ? structuredClone(c.welcomeRecipients) : null }));
     },
     mlsPendingWelcomes(userId, deviceId) {
       return mlsWelcomes.filter((w) => w.userId === userId && w.deviceId === deviceId && w.ackedAt === null)

@@ -1,0 +1,106 @@
+name: Export and permanently retain InOne P0 snapshot bundle
+
+on:
+  push:
+    branches:
+      - snapshot/p0-and-groups-2026-11-08
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  export-and-retain:
+    if: github.ref == 'refs/heads/snapshot/p0-and-groups-2026-11-08'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout complete snapshot history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Create and verify current snapshot bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          git bundle create dist/InOne-P0-snapshot-2026-11-08.bundle HEAD
+          git bundle verify dist/InOne-P0-snapshot-2026-11-08.bundle
+          sha256sum dist/InOne-P0-snapshot-2026-11-08.bundle | tee dist/SHA256SUMS.txt
+          git rev-parse HEAD | tee dist/SNAPSHOT_COMMIT.txt
+          cp dist/InOne-P0-snapshot-2026-11-08.bundle "$RUNNER_TEMP/current-snapshot.bundle"
+          cp dist/SHA256SUMS.txt "$RUNNER_TEMP/current-SHA256SUMS.txt"
+
+      - name: Download the exact original owner-supplied bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: InOne-P0-snapshot-2026-11-08
+          run-id: 42480781656
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          path: ${{ runner.temp }}/owner-upload
+
+      - name: Verify exact owner bundle bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          OWNER_BUNDLE="$RUNNER_TEMP/owner-upload/InOne-P0-snapshot-2026-11-08.bundle"
+          test -f "$OWNER_BUNDLE"
+          ACTUAL_SHA="$(sha256sum "$OWNER_BUNDLE" | awk '{print $1}')"
+          EXPECTED_SHA="e76fdd39e2e9698d7f32061e3fd4fb3dbc52ef981bb075c6c252a7cce11f391e"
+          test "$ACTUAL_SHA" = "$EXPECTED_SHA"
+          git bundle verify "$OWNER_BUNDLE"
+          cp "$OWNER_BUNDLE" "$RUNNER_TEMP/owner-upload-exact.bundle"
+          printf '%s  %s\n' "$ACTUAL_SHA" "InOne-P0-snapshot-2026-11-08.bundle" > "$RUNNER_TEMP/owner-SHA256SUMS.txt"
+          printf '%s\n' "16eab726106ae04b4979af2a1646c2052233b87c" > "$RUNNER_TEMP/owner-SNAPSHOT-COMMIT.txt"
+
+      - name: Upload convenience artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: InOne-P0-snapshot-2026-11-08-current
+          path: |
+            dist/InOne-P0-snapshot-2026-11-08.bundle
+            dist/SHA256SUMS.txt
+            dist/SNAPSHOT_COMMIT.txt
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Commit original and current bundles to permanent repository archive branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          SNAPSHOT_COMMIT="$(git rev-parse HEAD)"
+          SNAPSHOT_DIR="bundles/$SNAPSHOT_COMMIT"
+          OWNER_DIR="bundles/owner-upload-2026-11-08"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git ls-remote --exit-code --heads origin artifacts/p0-bundles >/dev/null 2>&1; then
+            git fetch origin artifacts/p0-bundles
+            git checkout -B artifacts/p0-bundles refs/remotes/origin/artifacts/p0-bundles
+          else
+            git checkout --orphan artifacts/p0-bundles
+            git rm -rf . || true
+          fi
+
+          mkdir -p "$SNAPSHOT_DIR" "$OWNER_DIR"
+          cp "$RUNNER_TEMP/current-snapshot.bundle" "$SNAPSHOT_DIR/InOne-P0-snapshot-2026-11-08.bundle"
+          cp "$RUNNER_TEMP/current-SHA256SUMS.txt" "$SNAPSHOT_DIR/SHA256SUMS.txt"
+          printf '%s\n' "$SNAPSHOT_COMMIT" > "$SNAPSHOT_DIR/SNAPSHOT_COMMIT.txt"
+
+          cp "$RUNNER_TEMP/owner-upload-exact.bundle" "$OWNER_DIR/InOne-P0-snapshot-2026-11-08.bundle"
+          cp "$RUNNER_TEMP/owner-SHA256SUMS.txt" "$OWNER_DIR/SHA256SUMS.txt"
+          cp "$RUNNER_TEMP/owner-SNAPSHOT-COMMIT.txt" "$OWNER_DIR/SNAPSHOT-COMMIT.txt"
+          printf '%s\n' "$OWNER_DIR/InOne-P0-snapshot-2026-11-08.bundle" > bundles/OWNER-SUPPLIED-ORIGINAL.txt
+          printf '%s\n' "$SNAPSHOT_DIR/InOne-P0-snapshot-2026-11-08.bundle" > bundles/LATEST.txt
+
+          git add bundles
+          if git diff --cached --quiet; then
+            echo "Archive already contains these exact artifacts."
+          else
+            git commit -m "archive: retain original owner P0 bundle and current snapshot"
+          fi
+          git push origin HEAD:refs/heads/artifacts/p0-bundles

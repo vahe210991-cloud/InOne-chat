@@ -318,6 +318,8 @@ CREATE TABLE mls_commits (
   epoch BIGINT NOT NULL,
   sender_id TEXT NOT NULL,
   commit BYTEA NOT NULL,
+  changes JSONB,
+  welcome_recipients JSONB,
   created_at BIGINT NOT NULL,
   PRIMARY KEY (room_id, epoch)
 );
@@ -520,3 +522,15 @@ CREATE TABLE admin_action_log (
   detail TEXT,
   at BIGINT NOT NULL
 );
+
+-- Durable MLS KeyPackage claim results (см. migrations/0026-mls-key-package-claim-replay.sql).
+CREATE TABLE mls_key_package_claims (
+  target_user_id TEXT NOT NULL REFERENCES accounts (user_id) ON DELETE CASCADE,
+  requester_user_id TEXT NOT NULL REFERENCES accounts (user_id) ON DELETE CASCADE,
+  requester_device_id TEXT NOT NULL,
+  claim_id TEXT NOT NULL,
+  result JSONB,
+  created_at BIGINT NOT NULL,
+  PRIMARY KEY (target_user_id, requester_user_id, requester_device_id, claim_id)
+);
+CREATE INDEX mls_key_package_claims_created ON mls_key_package_claims (created_at);

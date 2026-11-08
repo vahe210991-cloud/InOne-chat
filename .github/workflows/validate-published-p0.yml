@@ -1,0 +1,113 @@
+name: Validate recovered InOne P0 source (rustfmt recovery)
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "inone-development-archive-0.6.0/engine/**"
+      - ".github/workflows/validate-published-p0.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: p0-rustfmt-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: inone_test
+          POSTGRES_USER: inone
+          POSTGRES_PASSWORD: inone
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U inone -d inone_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://inone:inone@localhost:5432/inone_test
+      INONE_PIN_PEPPER: ci-only-pepper-not-used-outside-tests-2026
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Create immutable source bundle
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          git bundle create dist/InOne-P0-snapshot-2026-11-08.bundle HEAD
+          git bundle verify dist/InOne-P0-snapshot-2026-11-08.bundle
+          sha256sum dist/InOne-P0-snapshot-2026-11-08.bundle | tee dist/SHA256SUMS.txt
+          git rev-parse HEAD | tee dist/SNAPSHOT_COMMIT.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: inone-development-archive-0.6.0/engine/package-lock.json
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.91"
+          components: rustfmt
+      - name: Install PostgreSQL 16 client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-16
+          echo "/usr/lib/postgresql/16/bin" >> "$GITHUB_PATH"
+          /usr/lib/postgresql/16/bin/pg_dump --version
+      - name: Apply rustfmt without changing behavior
+        env:
+          TARGET_BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          cd inone-development-archive-0.6.0/engine/mobile-mls
+          cargo fmt --manifest-path mls-client/Cargo.toml
+          cargo fmt --manifest-path mls-bridge/Cargo.toml
+          cd "$GITHUB_WORKSPACE"
+          if ! git diff --quiet -- inone-development-archive-0.6.0/engine/mobile-mls; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add inone-development-archive-0.6.0/engine/mobile-mls
+            git commit -m "style(mls): apply Rust 1.91 formatting"
+            git push origin "HEAD:refs/heads/$TARGET_BRANCH"
+          fi
+          cd inone-development-archive-0.6.0/engine/mobile-mls
+          cargo fmt --manifest-path mls-client/Cargo.toml -- --check
+          cargo fmt --manifest-path mls-bridge/Cargo.toml -- --check
+      - name: Install Node dependencies
+        working-directory: inone-development-archive-0.6.0/engine
+        run: npm ci
+      - name: Backend Node suite
+        working-directory: inone-development-archive-0.6.0/engine
+        run: npm test
+      - name: P0 room-list regression
+        working-directory: inone-development-archive-0.6.0/engine
+        run: node --test test/rooms-mine.test.js
+      - name: PostgreSQL integration suite
+        working-directory: inone-development-archive-0.6.0/engine
+        run: npm run test:db
+      - name: OpenMLS client tests
+        working-directory: inone-development-archive-0.6.0/engine/mobile-mls/mls-client
+        run: cargo test --locked
+      - name: Rust bridge tests
+        working-directory: inone-development-archive-0.6.0/engine/mobile-mls/mls-bridge
+        run: cargo test --locked
+      - name: Upload immutable source bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: InOne-P0-snapshot-2026-11-08
+          path: |
+            dist/InOne-P0-snapshot-2026-11-08.bundle
+            dist/SHA256SUMS.txt
+            dist/SNAPSHOT_COMMIT.txt
+          if-no-files-found: error
+          retention-days: 90
