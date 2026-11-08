@@ -25,6 +25,8 @@ The GitHub repository `vahe210991-cloud/InOne-chat` is the only authoritative pr
 
 ## Recovered source references
 
+- [Latest P0 GitHub recovery status](recovered-source/P0-GITHUB-RECOVERY-STATUS-2026-11-08.md) — exact published branch/SHA, CI results, source-integrity blockers and next P0 actions.
+
 - [Recovered source index](recovered-source/README.md)
 - [Architecture map](recovered-source/ARCHITECTURE-MAP-2026-11-06.md)
 - [Bundle verification report](recovered-source/BUNDLE-VERIFICATION.txt)
@@ -40,7 +42,7 @@ The GitHub repository `vahe210991-cloud/InOne-chat` is the only authoritative pr
 ## Current status at a glance
 
 - P0 Wave 3 recovery bundle: verified locally from the owner-provided archive; details and checksum in [BASELINE-2026-11-08.md](BASELINE-2026-11-08.md).
-- P0 backend/MLS patch validation: PR [#18](https://github.com/vahe210991-cloud/InOne-chat/pull/18); validation rerun also opened as [#19](https://github.com/vahe210991-cloud/InOne-chat/pull/19) to obtain a fresh run on the corrected head. do not call it passed until its actual GitHub Actions checks are green.
+- P0 backend/MLS source is published on `recovery/p0-wave3-applied` at `7ebdeac8b322d7a1fe0b26add039f48b5f9f776f`; draft PR [#22](https://github.com/vahe210991-cloud/InOne-chat/pull/22). Functional Node/room/PostgreSQL/OpenMLS/Rust bridge checks pass on that exact SHA; overall CI remains red only at `cargo fmt -- --check` (12 Rust files). Source-integrity review remains open. See the [latest P0 recovery status](recovered-source/P0-GITHUB-RECOVERY-STATUS-2026-11-08.md).
 - Reference-only P0/Flutter/Beta documents: PR [#17](https://github.com/vahe210991-cloud/InOne-chat/pull/17); not product implementation.
 - Product Flutter Beta 1.0 source: not present in the recovered P0 bundle; do not claim there is a runnable mobile app until its actual source is located and built.
 - Beta 1.0 uses an independent InOne backend/database. Shared operational database with Propo is deferred to a later beta.
