@@ -5,7 +5,7 @@
 
 - PR [#25](https://github.com/vahe210991-cloud/InOne-chat/pull/25) merged to `main`: `97024ab03ce9583e298ee946f3679565007405ca`.
 - All six required jobs passed on exact PR head `addd47da245b6452c9f700c7e10b8d0585aad295` in [workflow run #124](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42496739362).
-- The P0 backend/Rust/OpenMLS acceptance scope in this map is complete. Native Flutter Beta 1.0 integration and device-level E2E are separate scope.
+- The PR-head P0 acceptance suite passed in run #124 and PR #25 is merged. Post-merge validation on `main` is running in [run #134](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42503694744): 5/6 jobs passed at the latest check; OpenMLS client tests are still in progress. Native Flutter Beta 1.0 integration and device-level E2E are separate scope.
 - See `development/recovered-source/P0-CLOSURE-2026-11-08.md` for provenance, merge and CI details.
 
 
