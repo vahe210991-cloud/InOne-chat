@@ -33,7 +33,7 @@ The GitHub repository `vahe210991-cloud/InOne-chat` is the only authoritative pr
 ## Current status at a glance
 
 - P0 Wave 3 recovery bundle: verified locally from the owner-provided archive; details and checksum in [BASELINE-2026-11-08.md](BASELINE-2026-11-08.md).
-- P0 backend/MLS patch validation: PR [#18](https://github.com/vahe210991-cloud/InOne-chat/pull/18); do not call it passed until its actual GitHub Actions checks are green.
+- P0 backend/MLS patch validation: PR [#18](https://github.com/vahe210991-cloud/InOne-chat/pull/18); validation rerun also opened as [#19](https://github.com/vahe210991-cloud/InOne-chat/pull/19) to obtain a fresh run on the corrected head. do not call it passed until its actual GitHub Actions checks are green.
 - Reference-only P0/Flutter/Beta documents: PR [#17](https://github.com/vahe210991-cloud/InOne-chat/pull/17); not product implementation.
 - Product Flutter Beta 1.0 source: not present in the recovered P0 bundle; do not claim there is a runnable mobile app until its actual source is located and built.
 - Beta 1.0 uses an independent InOne backend/database. Shared operational database with Propo is deferred to a later beta.
