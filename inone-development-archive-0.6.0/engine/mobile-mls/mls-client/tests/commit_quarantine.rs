@@ -27,16 +27,24 @@ fn permanent_commit_failure_is_quarantined_across_restart_without_poisoning_othe
     bob.upload_key_packages(5).unwrap();
 
     alice.create_room(target_room).unwrap();
-    alice.invite(target_room, "@bob-quarantine:inone.test").unwrap();
+    alice
+        .invite(target_room, "@bob-quarantine:inone.test")
+        .unwrap();
     bob.sync().unwrap();
 
     alice.create_room(healthy_room).unwrap();
-    alice.invite(healthy_room, "@bob-quarantine:inone.test").unwrap();
+    alice
+        .invite(healthy_room, "@bob-quarantine:inone.test")
+        .unwrap();
     bob.sync().unwrap();
-    alice.send_text(healthy_room, "healthy room continues").unwrap();
+    alice
+        .send_text(healthy_room, "healthy room continues")
+        .unwrap();
 
     assert!(engine
-        .command(&format!("BADCOMMIT {target_room} @alice-quarantine:inone.test"))
+        .command(&format!(
+            "BADCOMMIT {target_room} @alice-quarantine:inone.test"
+        ))
         .starts_with("OK "));
 
     let incoming = bob.sync().unwrap();
@@ -49,11 +57,10 @@ fn permanent_commit_failure_is_quarantined_across_restart_without_poisoning_othe
         .unwrap()
         .expect("permanent Commit failure is durably quarantined");
     assert!(reason.contains("Commit encoding is invalid"), "{reason}");
-    assert!(
-        bob.desync_reason(target_room)
-            .unwrap()
-            .is_some_and(|value| value.starts_with("RecoveryRequired:"))
-    );
+    assert!(bob
+        .desync_reason(target_room)
+        .unwrap()
+        .is_some_and(|value| value.starts_with("RecoveryRequired:")));
 
     // The same exact Commit is not reprocessed after another sync or a client restart.
     assert!(bob.sync().unwrap().is_empty());
@@ -66,11 +73,10 @@ fn permanent_commit_failure_is_quarantined_across_restart_without_poisoning_othe
         &bob_db,
     );
     assert!(bob.sync().unwrap().is_empty());
-    assert!(
-        bob.quarantined_commit_reason(target_room, 2)
-            .unwrap()
-            .is_some()
-    );
+    assert!(bob
+        .quarantined_commit_reason(target_room, 2)
+        .unwrap()
+        .is_some());
     assert!(bob.send_text(target_room, "blocked").is_err());
 
     alice
@@ -115,8 +121,13 @@ fn transient_commit_fetch_failure_is_retryable_and_does_not_quarantine_room() {
     bob.sync().unwrap();
 
     alice.invite(room, "@dave-transient:inone.test").unwrap();
-    alice.send_text(room, "retry after Commit fetch recovers").unwrap();
-    assert_eq!(engine.command(&format!("FAIL_NEXT_COMMIT_READ {room}")), "OK");
+    alice
+        .send_text(room, "retry after Commit fetch recovers")
+        .unwrap();
+    assert_eq!(
+        engine.command(&format!("FAIL_NEXT_COMMIT_READ {room}")),
+        "OK"
+    );
 
     let error = bob.sync().unwrap_err();
     assert!(
@@ -127,9 +138,7 @@ fn transient_commit_fetch_failure_is_retryable_and_does_not_quarantine_room() {
     assert_eq!(bob.quarantined_commit_reason(room, 2).unwrap(), None);
 
     let recovered = bob.sync().unwrap();
-    assert!(
-        texts(&recovered).contains(&"retry after Commit fetch recovers".to_string())
-    );
+    assert!(texts(&recovered).contains(&"retry after Commit fetch recovers".to_string()));
     assert_eq!(bob.local_epoch(room), alice.local_epoch(room));
     assert_eq!(bob.desync_reason(room).unwrap(), None);
 }

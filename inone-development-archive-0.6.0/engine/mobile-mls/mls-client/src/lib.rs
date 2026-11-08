@@ -2426,11 +2426,21 @@ impl Client {
                 // Сервер больше не пускает устройство в комнату: это расхождение состава, а не причина остановить все комнаты.
                 Err(e) if e.contains("not a member") => self.check_consistency(&room)?,
                 // Некорректный event identity — ошибка контракта ответа, а не повреждение MLS room.
-                Err(e) if e.starts_with("ошибка контракта ответа:") => continue,
+                Err(e) if e.starts_with("ошибка контракта ответа:") => {
+                    continue
+                }
                 // Сетевые/HTTP и локальные временные ошибки возвращаются вызывающему коду без MLS-карантина.
-                Err(e) if e.contains("временная ошибка") || is_retryable(&e) || is_access_failure(&e) => return Err(e),
+                Err(e)
+                    if e.contains("временная ошибка")
+                        || is_retryable(&e)
+                        || is_access_failure(&e) =>
+                {
+                    return Err(e)
+                }
                 // Постоянная ошибка относится только к этой комнате; остальные комнаты продолжают синхронизацию.
-                Err(e) => self.record_desync(&room, &format!("требуется восстановление состояния: {e}"))?,
+                Err(e) => {
+                    self.record_desync(&room, &format!("требуется восстановление состояния: {e}"))?
+                }
             }
         }
         Ok(out)
