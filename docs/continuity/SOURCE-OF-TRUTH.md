@@ -1,5 +1,9 @@
 # InOne — источники истины и карта артефактов
 
+
+> **ТЕКУЩИЙ ИСТОЧНИК ИСТИНЫ — 08.11.2026:** P0 закрыт в `main` на merge commit `97024ab03ce9583e298ee946f3679565007405ca`. PR #25 merged; шесть CI jobs прошли на PR head (run #124). Владелец прислал бандл `InOne-P0-snapshot-2026-11-08.bundle`; его постоянная копия хранится в GitHub branch `artifacts/p0-bundles`, путь `bundles/owner-upload-2026-11-08/InOne-P0-snapshot-2026-11-08.bundle`, SHA-256 `e76fdd39e2e9698d7f32061e3fd4fb3dbc52ef981bb075c6c252a7cce11f391e`. Не запрашивать повторную загрузку. Детали: [P0 closure report](../../development/recovered-source/P0-CLOSURE-2026-11-08.md) и [artifact retention](../../development/ARTIFACT-RETENTION.md). Нижеследующие старые записи сохранены как история.
+
+
 **Срез:** 2026-11-08 08:25 (UTC+3)
 
 ## 1. GitHub repository
