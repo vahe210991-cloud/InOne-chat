@@ -146,3 +146,11 @@ This section supersedes the earlier section 8 statement that no bundle bytes wer
 
 - Owner-provided `INONE_INTEGRATION_BRIEF.md` committed to `development/integrations/INONE-PROPO-AUTH-INTEGRATION-BRIEF.md`.
 - Status remains Planned; the document explicitly states no InOne-side implementation is assumed. Production integration is blocked on open contract/security decisions; it is not a Beta 1.0 release dependency.
+
+
+## 14. Corrected P0 validation reruns — live status snapshot
+
+- PR #18 corrected head: `762e3eca8ccb2e34965441114cc29b63083aa0f9`.
+- PR [#19](https://github.com/vahe210991-cloud/InOne-chat/pull/19) is a temporary duplicate validation trigger from the same corrected head; PR #18 remains primary.
+- Actions runs [42454943853](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42454943853) and [42455077322](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42455077322) were still `in_progress` at the latest check. Patch decode/apply and npm dependency install passed; backend `npm test` was still running. PostgreSQL and Rust steps had not started.
+- No fresh validation pass is established. Keep both PRs unmerged until the actual run results and source-tree completeness are reviewed.
