@@ -44,7 +44,9 @@ fn quarantined_welcome_is_acked_after_restart_when_first_ack_fails() {
     let bad_room = "!room-welcome-bad-retry:inone.test";
     let healthy_room = "!room-welcome-healthy-retry:inone.test";
     alice.create_room(bad_room).unwrap();
-    alice.invite(bad_room, "@bob-welcome-retry:inone.test").unwrap();
+    alice
+        .invite(bad_room, "@bob-welcome-retry:inone.test")
+        .unwrap();
     let welcome_id: i64 = engine
         .command(&format!(
             "WELCOME_ID @bob-welcome-retry:inone.test B_WELCOME_RETRY {bad_room}"
@@ -72,8 +74,14 @@ fn quarantined_welcome_is_acked_after_restart_when_first_ack_fails() {
     assert_eq!(outcome, "quarantined");
     assert!(reason.unwrap().contains("Malformed Welcome encoding"));
     assert!(!acked, "failed ACK must leave durable receipt pending");
-    assert_eq!(engine.command("WELCOME_PENDING @bob-welcome-retry:inone.test B_WELCOME_RETRY"), "1");
-    assert_eq!(engine.command(&format!("WELCOME_ACK_COUNT {welcome_id}")), "1");
+    assert_eq!(
+        engine.command("WELCOME_PENDING @bob-welcome-retry:inone.test B_WELCOME_RETRY"),
+        "1"
+    );
+    assert_eq!(
+        engine.command(&format!("WELCOME_ACK_COUNT {welcome_id}")),
+        "1"
+    );
 
     // Reopening the same encrypted database retries ACK for the same durable receipt.
     drop(bob);
@@ -92,8 +100,14 @@ fn quarantined_welcome_is_acked_after_restart_when_first_ack_fails() {
     assert_eq!(outcome, "quarantined");
     assert!(reason.unwrap().contains("Malformed Welcome encoding"));
     assert!(acked);
-    assert_eq!(engine.command("WELCOME_PENDING @bob-welcome-retry:inone.test B_WELCOME_RETRY"), "0");
-    assert_eq!(engine.command(&format!("WELCOME_ACK_COUNT {welcome_id}")), "2");
+    assert_eq!(
+        engine.command("WELCOME_PENDING @bob-welcome-retry:inone.test B_WELCOME_RETRY"),
+        "0"
+    );
+    assert_eq!(
+        engine.command(&format!("WELCOME_ACK_COUNT {welcome_id}")),
+        "2"
+    );
     assert_eq!(bob.local_epoch(healthy_room), Some(1));
 }
 
@@ -120,7 +134,9 @@ fn welcome_storage_failure_before_receipt_commit_leaves_welcome_unacked() {
 
     let room = "!room-welcome-storage-failure:inone.test";
     alice.create_room(room).unwrap();
-    alice.invite(room, "@bob-welcome-storage:inone.test").unwrap();
+    alice
+        .invite(room, "@bob-welcome-storage:inone.test")
+        .unwrap();
     let welcome_id: i64 = engine
         .command(&format!(
             "WELCOME_ID @bob-welcome-storage:inone.test B_WELCOME_STORAGE {room}"
@@ -146,8 +162,14 @@ fn welcome_storage_failure_before_receipt_commit_leaves_welcome_unacked() {
 
     bob.sync().unwrap();
     assert_eq!(bob.welcome_receipt_status(welcome_id).unwrap(), None);
-    assert_eq!(engine.command("WELCOME_PENDING @bob-welcome-storage:inone.test B_WELCOME_STORAGE"), "1");
-    assert_eq!(engine.command(&format!("WELCOME_ACK_COUNT {welcome_id}")), "0");
+    assert_eq!(
+        engine.command("WELCOME_PENDING @bob-welcome-storage:inone.test B_WELCOME_STORAGE"),
+        "1"
+    );
+    assert_eq!(
+        engine.command(&format!("WELCOME_ACK_COUNT {welcome_id}")),
+        "0"
+    );
 
     let connection = open_device_db(
         &bob_db,
@@ -168,6 +190,12 @@ fn welcome_storage_failure_before_receipt_commit_leaves_welcome_unacked() {
     assert_eq!(outcome, "quarantined");
     assert!(reason.unwrap().contains("Malformed Welcome encoding"));
     assert!(acked);
-    assert_eq!(engine.command("WELCOME_PENDING @bob-welcome-storage:inone.test B_WELCOME_STORAGE"), "0");
-    assert_eq!(engine.command(&format!("WELCOME_ACK_COUNT {welcome_id}")), "1");
+    assert_eq!(
+        engine.command("WELCOME_PENDING @bob-welcome-storage:inone.test B_WELCOME_STORAGE"),
+        "0"
+    );
+    assert_eq!(
+        engine.command(&format!("WELCOME_ACK_COUNT {welcome_id}")),
+        "1"
+    );
 }
