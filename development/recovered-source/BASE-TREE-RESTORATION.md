@@ -41,3 +41,23 @@ Workflow commit: `7898fde9a592a8c180e7c9e89a2c7b3cb2e5ad80`.
 - Publish job must complete and create `recovery/p0-wave3-applied`.
 - Inspect the published branch tree and compare the full 240 base blob hashes plus P0 delta before opening a final code PR.
 - Do not merge PR #18 yet.
+
+
+## P0 delta summary
+
+The verified bundle diff from base `ea3b49ae9cdf1670a1b7499d4b5e608ee22fe1e9` to P0 HEAD `a7f60b6fdc969941e4354a117e17d32bfc951fb9` is:
+
+- 32 changed paths
+- 2,145 insertions
+- 23 deletions
+- Includes 0.7 client-screens auth/common HTML+JS prototype, Node API/state, room-list endpoint/tests, MLS consistency/window/poison handling and P0 wave documentation.
+- Includes a nested complete `inone-engine-0.6.0.bundle` in the P0 HEAD; SHA-256 `4da09eb841313667b47b243111b2c0f50bdbb1e732e4ee1edfbc031c0d6b349e`, ref `engine/0.6.0-alpha.38` at `ea3b49ae9cdf1670a1b7499d4b5e608ee22fe1e9`.
+
+Commit sequence in the outer bundle:
+1. `694e140` — InOne engine 0.6.0-alpha.38.
+2. `1d93282` — client 5.9, organization API, unverified Dart reference.
+3. `ea3b49a` — close 0.6 line.
+4. `4c24ff3` — P0 waves 1–3.
+5. `a7f60b6` — P0 wave 4.
+
+The 0.7 client-screens files in this delta are a web/JavaScript prototype, not a Flutter app. This does not change the Flutter source audit conclusion.
