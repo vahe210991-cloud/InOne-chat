@@ -13,7 +13,7 @@
 
 | Направление | Оценка реализации из последнего CTO roadmap | Подтверждённая проверка | Статус |
 |---|---:|---:|---|
-| Backend P0 / MLS | 80% | 40% | Реализация расширена локально; полный Rust/DB acceptance не выполнен |
+| Backend P0 / MLS | 100% | 100% | PR #25 merged; all six acceptance CI jobs passed on the final PR head |
 | UI Beta 1.0 | 70% | 0% | Flutter-код и тесты подготовлены локально; Flutter SDK отсутствовал |
 | UI ↔ API ↔ MLS | 50% | 0% | Контракты и session handoff подготовлены; native handlers и local message store отсутствуют |
 | Сквозной Beta 1.0 | 0% | 0% | Не начинался |
