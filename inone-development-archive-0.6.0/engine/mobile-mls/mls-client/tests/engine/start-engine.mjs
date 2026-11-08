@@ -39,8 +39,13 @@ store.mlsPendingWelcomes = (userId, deviceId) => {
     : row);
 };
 let dropNextCommitResponse = false;
+let failNextCommitBeforeApply = false;
 const originalMlsApplyCommit = store.mlsApplyCommit.bind(store);
 store.mlsApplyCommit = (...args) => {
+  if (failNextCommitBeforeApply) {
+    failNextCommitBeforeApply = false;
+    throw new Error('simulated commit failure before server acceptance');
+  }
   const result = originalMlsApplyCommit(...args);
   if (dropNextCommitResponse && result?.ok && !result.replayed) {
     dropNextCommitResponse = false;
@@ -88,6 +93,11 @@ store.roomEventRows = async (roomId, since) => {
 const rl = readline.createInterface({ input: process.stdin });
 rl.on('line', async (line) => {
   const parts = line.trim().split(' ');
+  if (parts[0] === 'FAIL_NEXT_COMMIT_BEFORE_APPLY') {
+    failNextCommitBeforeApply = true;
+    console.log('OK');
+    return;
+  }
   if (parts[0] === 'DROP_NEXT_COMMIT_RESPONSE') {
     dropNextCommitResponse = true;
     console.log('OK');
