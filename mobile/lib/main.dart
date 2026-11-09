@@ -6,9 +6,12 @@ import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import 'approved_screens.dart';
-import 'core/session/inone_session.dart';
-import 'core/network/api_environment.dart';
 import 'core/data/inone_repositories.dart';
+import 'core/data/inone_profile.dart';
+import 'core/data/profile_load_status.dart';
+import 'core/data/profile_ui_bridge.dart';
+import 'core/network/api_environment.dart';
+import 'core/session/inone_session.dart';
 import 'core/test_api/screen_api_catalog.dart';
 import 'test_screens.dart';
 import 'test_gallery_loader.dart';
@@ -49,14 +52,20 @@ class ApprovedScreensHost extends StatefulWidget {
 class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
   late final WebViewController _controller;
   late final InOneSession _session;
+  late final InOneRepositories _repositories;
   String _selectedKey = 'approved:messages-light';
   bool _loading = true;
   bool _pageReady = false;
   String? _error;
   String _currentSource = 'approved';
   String? _testGalleryHtml;
+  ProfileLoadStatus? _profileLoadStatus;
+  int _profileRequestId = 0;
+  bool _lastProfileAuthentication = false;
 
   bool get _isApproved => _selectedKey.startsWith('approved:');
+  bool get _isPersonalProfile =>
+      _isApproved && _selectedId.startsWith('personal-profile-');
   String get _selectedId => _selectedKey.split(':').last;
 
   ApprovedScreen? get _selectedApprovedScreen {
@@ -99,6 +108,8 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
       isAndroid: Platform.isAndroid,
     );
     _session = InOneSession(baseUrl: apiBaseUrl);
+    _repositories = InOneRepositories(_session);
+    _session.addListener(_onSessionChanged);
     unawaited(_session.initialize().catchError((Object _) {}));
 
     _controller = WebViewController()
@@ -125,7 +136,18 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
         },
         onNavigationRequest: (request) {
           final uri = Uri.tryParse(request.url);
-          if (uri == null || uri.scheme == 'about' || uri.scheme == 'data') {
+          if (uri == null) return NavigationDecision.prevent;
+          if (request.isMainFrame) {
+            if (uri.scheme == 'file' &&
+                ProfileUiBridge.isApprovedAssetUrl(request.url)) {
+              return NavigationDecision.navigate;
+            }
+            if (uri.scheme == 'https' && uri.host == 'inone.local') {
+              return NavigationDecision.navigate;
+            }
+            return NavigationDecision.prevent;
+          }
+          if (uri.scheme == 'about' || uri.scheme == 'data') {
             return NavigationDecision.navigate;
           }
           if (uri.scheme == 'https' &&
@@ -154,6 +176,7 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
             _loading = false;
           });
           await _showSelectedScreen();
+          if (_isPersonalProfile) unawaited(_loadProfile());
           return;
         }
       } catch (_) {
@@ -274,14 +297,117 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
     ''');
   }
 
+  void _onSessionChanged() {
+    final authenticated = _session.isAuthenticated;
+    if (authenticated == _lastProfileAuthentication) return;
+    _lastProfileAuthentication = authenticated;
+    if (!mounted || !_isPersonalProfile) return;
+
+    if (authenticated) {
+      unawaited(_loadProfile());
+      return;
+    }
+
+    ++_profileRequestId;
+    setState(() {
+      _profileLoadStatus = ProfileLoadStatus.unauthenticated;
+    });
+    unawaited(_clearProfileUi(_selectedId));
+  }
+
+  Future<void> _loadProfile() async {
+    final requestId = ++_profileRequestId;
+    if (!mounted || !_isPersonalProfile || !_pageReady) return;
+
+    final authenticated = _session.isAuthenticated;
+    setState(() {
+      _profileLoadStatus = authenticated
+          ? ProfileLoadStatus.loading
+          : ProfileLoadStatus.unauthenticated;
+    });
+    try {
+      final cleared = await _applyProfileToUi(
+        screenId: _selectedId,
+        profile: null,
+      );
+      if (requestId != _profileRequestId || !mounted) return;
+      if (!cleared) {
+        setState(() => _profileLoadStatus = ProfileLoadStatus.error);
+        return;
+      }
+      if (!authenticated) return;
+
+      final profile = await _repositories.profile();
+      if (requestId != _profileRequestId || !mounted) return;
+      final applied = await _applyProfileToUi(
+        screenId: _selectedId,
+        profile: profile,
+      );
+      if (requestId != _profileRequestId || !mounted) return;
+      setState(() {
+        _profileLoadStatus = !applied
+            ? ProfileLoadStatus.error
+            : profile.isEmpty
+                ? ProfileLoadStatus.empty
+                : null;
+      });
+    } catch (_) {
+      if (requestId != _profileRequestId || !mounted) return;
+      setState(() {
+        _profileLoadStatus = ProfileLoadStatus.error;
+      });
+    }
+  }
+
+  Future<bool> _applyProfileToUi({
+    required String screenId,
+    required InOneProfile? profile,
+  }) async {
+    if (_currentSource != 'approved' || !_pageReady) return false;
+    final screen = approvedScreens.where((item) => item.id == screenId);
+    if (screen.isEmpty || !screenId.startsWith('personal-profile-')) {
+      return false;
+    }
+    final currentUrl = await _controller.currentUrl();
+    if (!ProfileUiBridge.isApprovedAssetUrl(currentUrl)) return false;
+    final result = await _controller.runJavaScriptReturningResult(
+      ProfileUiBridge.updateScript(
+        screenLabel: screen.first.label,
+        profile: profile,
+      ),
+    );
+    return result == true || result.toString() == 'true';
+  }
+
+  Future<void> _clearProfileUi(String screenId) async {
+    var cleared = false;
+    try {
+      cleared = await _applyProfileToUi(screenId: screenId, profile: null);
+    } catch (_) {
+      cleared = false;
+    }
+    if (!cleared && mounted && _isPersonalProfile && _selectedId == screenId) {
+      setState(() => _profileLoadStatus = ProfileLoadStatus.error);
+    }
+  }
+
   void _selectScreen(String key) {
-    setState(() => _selectedKey = key);
+    final previousProfileId = _isPersonalProfile ? _selectedId : null;
+    ++_profileRequestId;
+    setState(() {
+      _selectedKey = key;
+      _profileLoadStatus = null;
+    });
+    if (previousProfileId != null && previousProfileId != key.split(':').last) {
+      unawaited(_clearProfileUi(previousProfileId));
+    }
     if (key.startsWith('approved:')) {
       if (_currentSource != 'approved') {
         _currentSource = 'approved';
         unawaited(_controller.loadFlutterAsset(approvedScreensAssetPath));
       } else if (_pageReady) {
         unawaited(_showSelectedScreen());
+        if (_isPersonalProfile) unawaited(_loadProfile());
       }
     } else {
       if (_currentSource != 'test') {
@@ -316,7 +442,8 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
 
   @override
   void dispose() {
-    _session?.dispose();
+    _session.removeListener(_onSessionChanged);
+    _session.dispose();
     super.dispose();
   }
 
@@ -325,6 +452,14 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
         appBar: AppBar(
           title: Text(_selectedTitle, maxLines: 1, overflow: TextOverflow.ellipsis),
           actions: [
+            if (_isPersonalProfile)
+              IconButton(
+                tooltip: 'Refresh profile',
+                onPressed: _profileLoadStatus == ProfileLoadStatus.loading
+                    ? null
+                    : _loadProfile,
+                icon: const Icon(Icons.refresh_rounded),
+              ),
             IconButton(
               tooltip: 'Проверка API',
               onPressed: _openApiPanel,
@@ -358,6 +493,15 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
                       padding: const EdgeInsets.all(12),
                       child: Text('Не удалось загрузить экран: $_error'),
                     ),
+                  ),
+                ),
+              if (_isPersonalProfile && _profileLoadStatus != null)
+                Positioned(
+                  left: 16,
+                  right: 16,
+                  bottom: 16,
+                  child: ProfileLoadStatusBanner(
+                    status: _profileLoadStatus!,
                   ),
                 ),
             ],

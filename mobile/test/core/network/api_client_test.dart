@@ -9,9 +9,11 @@ void main() {
   test('sends bearer token and decodes JSON response', () async {
     final mock = MockClient((request) async {
       expect(request.method, 'GET');
-      expect(request.url.path, '/rooms/mine');
+      expect(request.url.path, '/profile');
       expect(request.headers['authorization'], 'Bearer access-token');
-      return http.Response('{"rooms":[]}', 200,
+      return http.Response(
+          '{"userId":"user-1","nickname":"Test User","email":"user@example.test","verificationLevel":1,"providers":[],"backupEmail":null,"securityHints":[]}',
+          200,
           headers: {'content-type': 'application/json'});
     });
     final client = ApiClient(
@@ -20,8 +22,8 @@ void main() {
       httpClient: mock,
     );
 
-    final response = await client.get('/rooms/mine');
-    expect(response['rooms'], isEmpty);
+    final response = await client.get('/profile');
+    expect(response['userId'], 'user-1');
     client.close();
   });
 
@@ -41,8 +43,10 @@ void main() {
     client.close();
   });
 
-  test('classifies unauthorized responses without retrying in the transport', () async {
-    final mock = MockClient((request) async => http.Response('{"error":"unauthorized"}', 401));
+  test('classifies unauthorized responses without retrying in the transport',
+      () async {
+    final mock = MockClient(
+        (request) async => http.Response('{"error":"unauthorized"}', 401));
     final client = ApiClient(
       baseUrl: 'https://api.inone.test',
       accessTokenProvider: () => 'expired-token',
@@ -51,7 +55,50 @@ void main() {
 
     await expectLater(
       client.get('/profile'),
-      throwsA(isA<ApiException>().having((error) => error.statusCode, 'statusCode', 401)),
+      throwsA(isA<ApiException>()
+          .having((error) => error.statusCode, 'statusCode', 401)),
+    );
+    client.close();
+  });
+
+  test('reports malformed JSON as an invalid response', () async {
+    final mock = MockClient((request) async => http.Response('not json', 200));
+    final client = ApiClient(
+      baseUrl: 'https://api.inone.test',
+      accessTokenProvider: () => 'access-token',
+      httpClient: mock,
+    );
+
+    await expectLater(
+      client.get('/profile'),
+      throwsA(
+        isA<ApiException>().having(
+          (error) => error.code,
+          'code',
+          'invalid_response',
+        ),
+      ),
+    );
+    client.close();
+  });
+
+  test('classifies profile server errors', () async {
+    final mock = MockClient(
+      (request) async => http.Response('{"error":"server_error"}', 500),
+    );
+    final client = ApiClient(
+      baseUrl: 'https://api.inone.test',
+      accessTokenProvider: () => 'access-token',
+      httpClient: mock,
+    );
+
+    await expectLater(
+      client.get('/profile'),
+      throwsA(
+        isA<ApiException>()
+            .having((error) => error.statusCode, 'statusCode', 500)
+            .having((error) => error.retryable, 'retryable', isTrue),
+      ),
     );
     client.close();
   });
