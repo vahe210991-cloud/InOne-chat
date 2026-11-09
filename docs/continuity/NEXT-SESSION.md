@@ -201,3 +201,8 @@ Do not follow the older instruction above to wait for a published applied-source
 8. Keep the original bundle archive limitation visible: its checksum/provenance are known, but the binary itself is not yet retrievable from GitHub as a committed archive.
 
 Latest exact-head evidence: [push run 42465804591](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42465804591) and [PR run 42465808297](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42465808297). Overall status is FAIL due to rustfmt only; the functional suites listed in the status report passed.
+
+
+## Mandatory approved WBS and current UI stage — 2026-11-09
+
+Before any work, read [AGENTS.md](../../AGENTS.md), the full [AI agent mandate](../../development/AI-AGENT-MANDATE.md), and the full [owner-approved progress baseline](../../development/PROGRESS-BASELINE.md). The WBS is approved and immutable without a new owner decision. Current UI stage is Beta 1.0 UI-01 through UI-06; continue from [UI integration report](../../development/reports/2026-11-09-1015-ui-integration-start.md) and branch `feat/beta1-ui-source-integration`. The owner-provided Ui.zip has been checksum-verified locally; its full binary/source package is not yet confirmed uploaded to GitHub. Do not claim import complete until remote files/checksums are verified.
