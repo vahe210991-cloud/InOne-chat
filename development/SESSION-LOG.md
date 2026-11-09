@@ -1,3 +1,11 @@
+## 2026-11-09 10:27 — Exact-head Flutter CI progress
+
+- PR #35 head `8d3282b2bca16deb09af7bac98642c8abf35aec7` triggered Actions run [#42578785134](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42578785134).
+- Flutter setup/platform generation, geometry check, 73-screen gallery validation, pub get and analyze PASS; Flutter tests still IN PROGRESS at last check; Android APK and artifact upload not started. Workflow is NOT GREEN yet.
+- Report updated: `development/reports/2026-11-09-1015-ui-integration-start.md`. Original UI binary package remains not uploaded; blocker unchanged.
+
+---
+
 ## 2026-11-09 10:22 — UI source compatibility/security audit addendum
 
 - Verified v2 UI bridge is no-network/no-storage and local WOFF2 refs; v1 screens use Google Fonts and localStorage for theme preference, with bridge events omitting screen ID. Importer now patches only runtime copies to local fonts; originals remain unchanged. Flutter parser accepts legacy v1 events.
