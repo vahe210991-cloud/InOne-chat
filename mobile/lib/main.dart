@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import 'approved_screens.dart';
+import 'claude_ui_bridge.dart';
 import 'core/data/inone_repositories.dart';
 import 'core/data/inone_profile.dart';
 import 'core/data/profile_load_status.dart';
