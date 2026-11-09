@@ -52,3 +52,13 @@ The GitHub repository `vahe210991-cloud/InOne-chat` is the only authoritative pr
 - Beta 1.0 uses an independent InOne backend/database. Shared operational database with Propo is deferred to a later beta.
 
 This is a handover area, not a substitute for source code. Work in Git branches and return every change to GitHub under the rules below.
+
+
+## Owner-approved progress baseline — mandatory for every agent
+
+Read [PROGRESS-BASELINE.md](PROGRESS-BASELINE.md) in full before every implementation task. The owner approved WBS v1.1 on 2026-11-09: Beta 1.0 = 42% implementation / 31% verification; Beta 2.0 = 2% / 0%. Weights, release boundaries and baseline are fixed unless the owner explicitly approves a versioned change. Every report and implementation task must map to this WBS. The root [AGENTS.md](../AGENTS.md) and Copilot instructions require it.
+
+## Current product work — Beta 1.0 UI integration
+
+- [Full Beta 1.0 / 2.0 audit](reports/2026-11-09-0935-full-beta-audit.md)
+- [UI source import and integration stage](reports/2026-11-09-1015-ui-integration-start.md)

@@ -1,3 +1,63 @@
+## 2026-11-09 10:46 — UI exact-head CI green; original source archive still blocked
+
+- Latest Actions run [#42579006574](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42579006574) completed **SUCCESS** on code SHA `df5c50c6e7f372d3a64f1c10e4bf4464d4a4d121`. Flutter setup/platform generation, geometry, 73-screen gallery, pub get, analyze, tests, Android preview APK and artifact upload all passed.
+- GitHub Actions artifact `inone-beta1-android-preview`: 78,561,747 bytes; SHA-256 `e9686dcf5f698f4bb6a33a58cb205a0bf2f3c0b4e7fe1472e695488476018968`; expires 2026-11-23 07:29 UTC. This is the APK artifact, not Ui.zip.
+- Reverified mounted `Ui.zip`: 5,970,074 bytes; SHA-256 `cdff61b36673d45332f4809c5a42f1978e715adb3e4dcf280c96d92f3aa758bb`; ZIP integrity PASS. The original source archive is still NOT in GitHub.
+- Transfer remains BLOCKED: current GitHub connector has no binary file-stream/release-asset action and container has no GitHub network. No false upload claim or substitute artifact was made. Need authorized binary-capable git push/Codespace/uploader, then verify remote hash.
+- PR #35 remains draft/open/unmerged. No server/deploy/DB exposure. WBS unchanged: Beta 1.0 42% implementation / 31% verification; Beta 2.0 2% / 0%; historical InOne 25%.
+- Detailed status: `development/reports/2026-11-09-1046-ui-source-upload-check.md`.
+
+---
+
+## 2026-11-09 10:30 — UI integration exact-head CI completed
+
+- Actions run [#42578785134](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42578785134) on PR #35 head `8d3282b2bca16deb09af7bac98642c8abf35aec7` completed **FAIL**.
+- PASS: Flutter setup/platform generation, geometry validation, 73-screen gallery integrity, pub get, analyze, and **53 Flutter tests**.
+- FAIL: Android debug APK due Gradle wrapper download HTTP 504 for `gradle-9.3.1-all.zip`; artifact upload skipped. No app compilation failure demonstrated; APK remains unverified and CI not green.
+- Detailed report updated: `development/reports/2026-11-09-1015-ui-integration-start.md`. UI binary source import remains blocked and must not be claimed complete.
+
+---
+
+## 2026-11-09 10:27 — Exact-head Flutter CI progress
+
+- PR #35 head `8d3282b2bca16deb09af7bac98642c8abf35aec7` triggered Actions run [#42578785134](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42578785134).
+- Flutter setup/platform generation, geometry check, 73-screen gallery validation, pub get and analyze PASS; Flutter tests still IN PROGRESS at last check; Android APK and artifact upload not started. Workflow is NOT GREEN yet.
+- Report updated: `development/reports/2026-11-09-1015-ui-integration-start.md`. Original UI binary package remains not uploaded; blocker unchanged.
+
+---
+
+## 2026-11-09 10:22 — UI source compatibility/security audit addendum
+
+- Verified v2 UI bridge is no-network/no-storage and local WOFF2 refs; v1 screens use Google Fonts and localStorage for theme preference, with bridge events omitting screen ID. Importer now patches only runtime copies to local fonts; originals remain unchanged. Flutter parser accepts legacy v1 events.
+- API audit: v1 `POST message` and multiple v2 auth/recovery/org-document/push/per-room-event routes are not in verified backend allowlist; keep blocked. No invented routes.
+- CI run #42578333371: setup/geometry/gallery/pub get/analyze/tests PASS; APK build IN PROGRESS at last check. Run is pre-latest commits; current head CI not verified.
+- Ui.zip is verified locally but not yet uploaded to GitHub; exact binary import remains BLOCKED by connector file-stream limitation. Report and continuity records preserve checksums and blocker.
+
+---
+
+## 2026-11-09 10:15 — Beta 1.0 UI integration stage 1 / WBS owner approval
+
+- Owner explicitly approved the Beta 1.0/Beta 2.0 WBS; `development/PROGRESS-BASELINE.md` v1.1 is marked owner-approved. Fixed baseline: Beta 1.0 42% implementation / 31% verification; Beta 2.0 2% / 0%; historical InOne overall 25% retained.
+- Root AGENTS.md and Copilot instructions now require reading the approved WBS; development README and continuity entrypoints link it as the common base for every agent/chat.
+- Ui.zip outer SHA-256 `cdff61b36673d45332f4809c5a42f1978e715adb3e4dcf280c96d92f3aa758bb`; nested archive SHA-256 `d098738ff64fab0388aa72d22a92b097940c41bbcb4acfddfc30ff745e16ad0d`. Both ZIP integrity checks PASS; nested package 231 entries / 7,432,843 bytes; 24 manifest screens, 31 HTML screens total, five fonts; all 10 approved.sha256 entries PASS.
+- UI integration foundation committed: stable ID → local asset path mapping, rootBundle loader, path tests, deterministic import tool. Full binary/source import is still BLOCKED: available GitHub connector cannot stream mounted binary files and container has no GitHub network. No false claim of upload; preserve source attachment and checksums.
+- API contract mismatch remains: CH-02 `GET /rooms/:id/events` is not in API inventory. Do not invent endpoint.
+- Flutter analyze/tests, Actions, Android/iOS runtime and golden visual checks NOT RUN for this stage. No server/deploy/DB exposure. Main unchanged.
+- Detailed report: `development/reports/2026-11-09-1015-ui-integration-start.md`.
+
+---
+
+## 2026-11-08 — Codespaces configuration drafted; full-clone protocol blocks verification
+
+- Owner selected GitHub Codespaces for the InOne test environment.
+- Added unverified Codespaces scaffolding on `feat/beta1-full-screen-api-harness`: `.devcontainer/devcontainer.json`, `.devcontainer/docker-compose.yml`, `.devcontainer/start-backend.sh`, and `docs/CODESPACES_TEST_ENVIRONMENT.md`. Related earlier commits on this branch also add a local API URL resolver and document local Flutter API defaults.
+- Latest checked branch HEAD: `cb013d561f720f14e30b85cef963c513cc65f9b7`; draft PR [#28](https://github.com/vahe210991-cloud/InOne-chat/pull/28) remains OPEN and unmerged.
+- **BLOCKED — repository working protocol:** this session had only GitHub connector file/tree/API access and did not obtain a complete clone with full history, refs, submodules and LFS verification. Therefore the required `git status`, full-tree diff review, compose validation and local test commands could not be run. Stop source changes until a complete Codespace clone is opened and verified against this branch.
+- **NOT RUN:** Codespace creation, container build, PostgreSQL startup, backend startup, migrations, `/healthz` and `/readyz` requests, Flutter connection, and actual API probe validation.
+- Latest Actions run for HEAD: [#42509620990](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42509620990) was `in_progress` when checked. Earlier Flutter runs on preceding commits failed at `flutter analyze`; inspect annotations/logs and correct those failures after the full clone. Do not claim CI green.
+- The 34 configured screen probes are route declarations, not proof of 10 live-connected screens. The backend source audit showed `GET /rooms/mine` is absent; probes for `GR-01` and workspace room listing were removed. Live screen acceptance remains NOT RUN.
+- Next: owner creates a Codespace on `feat/beta1-full-screen-api-harness`; verify full clone, refs, clean worktree, and PR head; then validate/fix devcontainer compose and startup script, run backend/API tests, inspect Flutter analyze failure, and only then continue toward 10 verified screen integrations.
+
 # InOne development session log
 
 
@@ -133,3 +193,16 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Recovery branch now has 240 engine blobs, matching base path count. This is path parity, not yet full blob hash parity for all 240 files.
 - Publish workflow now applies the entire PR-head engine-path diff onto clean main before the P0 patch, preserving all restored files. Workflow commit `7898fde9a592a8c180e7c9e89a2c7b3cb2e5ad80`.
 - Fresh CI required; run #42457594088 predates the latest workflow change.
+
+
+## 2026-11-09 12:11 — Owner UI archive imported; Flutter CI green
+
+- PR #36: https://github.com/vahe210991-cloud/InOne-chat/pull/36; task branch `task/ui-archive-import-2026-11-09`.
+- Fixed HTML inventory check (31 screen HTML + package index = 32 HTML) and GitHub Actions checkout target (real PR head instead of synthetic merge ref); added PR-scoped concurrency.
+- Workflow run [#42586579987](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42586579987) completed 15/15 steps SUCCESS on input SHA `478cad39bc39e8002e55293e3015e72b68e26c8c`.
+- CI fetched `Ui.zip` from main and verified SHA-256 `cdff61b36673d45332f4809c5a42f1978e715adb3e4dcf280c96d92f3aa758bb`; imported nested package to `mobile/assets/ui-approval/`.
+- Remote tree check: 230 paths under asset root; 31 screen HTML files, 32 HTML including index, 5 WOFF2 fonts; manifest v0.8-approval-batch-2, 24 manifest screens.
+- Flutter pub get, analyze, tests, Android preview APK build and artifact upload all PASS. Artifact ID 13659118446, 78,584,647 bytes, digest `sha256:6376ba35cdebe92f200bfbe27b197918722d5564ef5d93a0210f1714c433d53a`, expires 2026-11-23 08:40 UTC.
+- Import bot commit advanced branch to `cb09a4058719576df6d589f1f8b59be517b592b5`. The workflow tested the workspace after import but run's event SHA is prior commit `478cad39...`; request an independent CI run on the new head.
+- PR remains draft/open/unmerged; main unchanged by this task. Runtime WebView rendering, live API/bridge, visual parity and device E2E remain unverified.
+- WBS baseline v1.1 unchanged: Beta 1.0 42% implementation / 31% verification; Beta 2.0 2% / 0%; overall historical 25%.

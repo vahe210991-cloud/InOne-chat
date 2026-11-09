@@ -1,0 +1,796 @@
+{
+ "version": "0.8-approval-batch-2",
+ "batches": {
+  "1": "Регистрация и авторизация: SC-01…SC-12",
+  "2": "Главное меню, заявки на организацию, администрация, поиск людей, настройки: SC-00, RQ-01…04, PS-01…03, SR-01, ST-01…03"
+ },
+ "source": "SCREENS-0.7.1.md",
+ "themeModes": [
+  "light",
+  "dark",
+  "auto"
+ ],
+ "layout": "Прямоугольный экран на весь дисплей: без рамки телефона, без скруглений, без собственной строки статуса. Отступы safe-area через --inset-top/--inset-bottom.",
+ "previewSizes": {
+  "ios": "390x844",
+  "android": "360x800 и 412x915"
+ },
+ "bridge": {
+  "channel": "InOneBridge",
+  "events": [
+   "navigate",
+   "api",
+   "pick"
+  ],
+  "methods": [
+   "setThemeMode",
+   "setInsets",
+   "setState",
+   "setData"
+  ]
+ },
+ "globalStates": {
+  "offline": "Нет связи с сервером",
+  "maintenance": "Сервис на техническом обслуживании",
+  "unavailable": "Сервис временно недоступен",
+  "rate": "Слишком много запросов. Подождите и попробуйте снова",
+  "error": "текст по коду из ERROR_TEXT",
+  "session": "401: переход на SC-01 с текстом из ERROR_TEXT"
+ },
+ "screens": [
+  {
+   "id": "SC-01",
+   "name": "Вход",
+   "api": "POST /login",
+   "back": "",
+   "states": [
+    "default",
+    "loading",
+    "error",
+    "offline",
+    "maintenance",
+    "unavailable",
+    "rate"
+   ],
+   "req": [
+    "D5 вход по почте/userId",
+    "D6 deviceId",
+    "G12",
+    "G13"
+   ],
+   "assumptions": [],
+   "to": [
+    "SC-02",
+    "SC-05",
+    "SC-07",
+    "CH-01 (после G1)"
+   ],
+   "file": "screens/auth/SC-01.html",
+   "folder": "auth",
+   "err": "",
+   "reference": false,
+   "batch": 1
+  },
+  {
+   "id": "SC-02",
+   "name": "Регистрация: почта",
+   "api": "POST /register/email",
+   "back": "SC-01",
+   "states": [
+    "default",
+    "loading",
+    "error",
+    "offline",
+    "maintenance",
+    "unavailable",
+    "rate"
+   ],
+   "req": [],
+   "assumptions": [
+    "Стрелка «Назад» (системная навигация, в ТЗ не описана)"
+   ],
+   "to": [
+    "SC-03",
+    "SC-01"
+   ],
+   "file": "screens/auth/SC-02.html",
+   "folder": "auth",
+   "err": "",
+   "reference": false,
+   "batch": 1
+  },
+  {
+   "id": "SC-03",
+   "name": "Регистрация: код из письма",
+   "api": "POST /register/email/confirm",
+   "back": "SC-02",
+   "states": [
+    "default",
+    "loading",
+    "error",
+    "offline",
+    "maintenance",
+    "unavailable",
+    "rate"
+   ],
+   "req": [],
+   "assumptions": [
+    "Стрелка «Назад» (системная навигация, в ТЗ не описана)"
+   ],
+   "to": [
+    "SC-04"
+   ],
+   "file": "screens/auth/SC-03.html",
+   "folder": "auth",
+   "err": "",
+   "reference": false,
+   "batch": 1
+  },
+  {
+   "id": "SC-04",
+   "name": "Регистрация: ник, пароль, телефон",
+   "api": "POST /register",
+   "back": "SC-03",
+   "states": [
+    "default",
+    "loading",
+    "error",
+    "offline",
+    "maintenance",
+    "unavailable",
+    "rate"
+   ],
+   "req": [
+    "Решение владельца: телефон обязателен; SMS-подтверждения пока нет (агрегатор не подключён), номер только записывается за пользователем",
+    "D11 сразу вход после регистрации"
+   ],
+   "assumptions": [
+    "Стрелка «Назад» (системная навигация, в ТЗ не описана)"
+   ],
+   "to": [
+    "вход / CH-01"
+   ],
+   "file": "screens/auth/SC-04.html",
+   "folder": "auth",
+   "err": "",
+   "reference": false,
+   "batch": 1
+  },
+  {
+   "id": "SC-05",
+   "name": "Вход через Google или Apple",
+   "api": "POST /auth/nonce → POST /auth/provider/verify",
+   "back": "SC-01",
+   "states": [
+    "default",
+    "loading",
+    "error",
+    "offline",
+    "maintenance",
+    "unavailable",
+    "rate",
+    "waiting"
+   ],
+   "req": [
+    "D4",
+    "D7 окно провайдера",
+    "G13 ticket"
+   ],
+   "assumptions": [
+    "Стрелка «Назад» (системная навигация, в ТЗ не описана)"
+   ],
+   "to": [
+    "SC-06",
+    "вход / CH-01"
+   ],
+   "file": "screens/auth/SC-05.html",
+   "folder": "auth",
+   "err": "",
+   "reference": false,
+   "batch": 1
+  },
+  {
+   "id": "SC-06",
+   "name": "Регистрация через провайдера: ник",
+   "api": "POST /register/provider",
+   "back": "SC-05",
+   "states": [
+    "default",
+    "loading",
+    "error",
+    "offline",
+    "maintenance",
+    "unavailable",
+    "rate"
+   ],
+   "req": [
+    "G13 ticket"
+   ],
+   "assumptions": [
+    "Стрелка «Назад» (системная навигация, в ТЗ не описана)"
+   ],
+   "to": [
+    "вход / CH-01"
+   ],
+   "file": "screens/auth/SC-06.html",
+   "folder": "auth",
+   "err": "",
+   "reference": false,
+   "batch": 1
+  },
+  {
+   "id": "SC-07",
+   "name": "Восстановление: старт",
+   "api": "POST /recovery/start",
+   "back": "SC-01",
+   "states": [
+    "default",
+    "loading",
+    "error",
+    "offline",
+    "maintenance",
+    "unavailable",
+    "rate",
+    "sent"
+   ],
+   "req": [
+    "G13 ветка по телефону",
+    "429: текст с retryAt"
+   ],
+   "assumptions": [
+    "Стрелка «Назад» (системная навигация, в ТЗ не описана)",
+    "Кнопка «Ввести код из письма» → SC-09 (в ТЗ: «по коду — SC-09»)"
+   ],
+   "to": [
+    "SC-08 по ссылке",
+    "SC-09 по коду"
+   ],
+   "file": "screens/auth/SC-07.html",
+   "folder": "auth",
+   "err": "",
+   "reference": false,
+   "batch": 1
+  },
+  {
+   "id": "SC-08",
+   "name": "Восстановление: подтверждение по ссылке",
+   "api": "POST /recovery/confirm",
+   "back": "",
+   "states": [
+    "default",
+    "loading",
+    "error",
+    "offline",
+    "maintenance",
+    "unavailable",
+    "rate"
+   ],
+   "req": [
+    "G13 формат ответа"
+   ],
+   "assumptions": [],
+   "to": [
+    "SC-09"
+   ],
+   "file": "screens/auth/SC-08.html",
+   "folder": "auth",
+   "err": "",
+   "reference": false,
+   "batch": 1
+  },
+  {
+   "id": "SC-09",
+   "name": "Восстановление: новый пароль",
+   "api": "POST /recovery/complete",
+   "back": "",
+   "states": [
+    "default",
+    "loading",
+    "error",
+    "offline",
+    "maintenance",
+    "unavailable",
+    "rate"
+   ],
+   "req": [
+    "D8 текст предупреждения"
+   ],
+   "assumptions": [],
+   "to": [
+    "SC-01"
+   ],
+   "file": "screens/auth/SC-09.html",
+   "folder": "auth",
+   "err": "",
+   "reference": false,
+   "batch": 1
+  },
+  {
+   "id": "SC-10",
+   "name": "Отмена: «Это не вы?»",
+   "api": "POST /recovery/cancel-by-code | POST /admission/cancel",
+   "back": "SC-01",
+   "states": [
+    "default",
+    "loading",
+    "error",
+    "offline",
+    "maintenance",
+    "unavailable",
+    "rate"
+   ],
+   "req": [
+    "G13 нужен ли вход для /recovery/cancel"
+   ],
+   "assumptions": [
+    "Стрелка «Назад» (системная навигация, в ТЗ не описана)",
+    "Хост выбирает между recovery и admission по контексту"
+   ],
+   "to": [
+    "SC-01"
+   ],
+   "file": "screens/auth/SC-10.html",
+   "folder": "auth",
+   "err": "",
+   "reference": false,
+   "batch": 1
+  },
+  {
+   "id": "SC-11",
+   "name": "Ожидание входа с нового устройства",
+   "api": "POST /login · POST /approvals/:id/claim",
+   "back": "",
+   "states": [
+    "default",
+    "loading",
+    "error",
+    "offline",
+    "maintenance",
+    "unavailable",
+    "rate"
+   ],
+   "req": [
+    "G12",
+    "G13 activateAt, id, pollSecret"
+   ],
+   "assumptions": [],
+   "to": [
+    "SC-10"
+   ],
+   "file": "screens/auth/SC-11.html",
+   "folder": "auth",
+   "err": "",
+   "reference": false,
+   "batch": 1
+  },
+  {
+   "id": "SC-12",
+   "name": "Выход",
+   "api": "POST /logout",
+   "back": "",
+   "states": [
+    "default",
+    "loading",
+    "error",
+    "offline",
+    "maintenance",
+    "unavailable",
+    "rate"
+   ],
+   "req": [],
+   "assumptions": [
+    "Кнопка «Отмена» (в ТЗ: «с подтверждением»)"
+   ],
+   "to": [
+    "SC-01"
+   ],
+   "file": "screens/auth/SC-12.html",
+   "folder": "auth",
+   "err": "",
+   "reference": false,
+   "batch": 1
+  },
+  {
+   "id": "SC-00",
+   "name": "Главное меню",
+   "api": "нет: меню строится на клиенте",
+   "back": "",
+   "states": [
+    "default",
+    "admin"
+   ],
+   "req": [
+    "G2: «Администрация» только для admin и owner; пока G2 не закрыт, пункт скрыт для всех"
+   ],
+   "assumptions": [
+    "Заголовок «Меню» и кнопка «×» (в ТЗ: повторное нажатие кнопки меню закрывает меню)"
+   ],
+   "to": [
+    "CH-01",
+    "GR-01",
+    "PR-01",
+    "OR-01",
+    "RQ-03",
+    "SR-01",
+    "ST-01",
+    "PS-01",
+    "SC-12"
+   ],
+   "file": "screens/menu/SC-00.html",
+   "folder": "menu",
+   "err": "",
+   "reference": false,
+   "batch": 2
+  },
+  {
+   "id": "RQ-01",
+   "name": "Новая заявка",
+   "api": "POST /org-requests",
+   "back": "RQ-03",
+   "states": [
+    "default",
+    "loading",
+    "error",
+    "offline",
+    "maintenance",
+    "unavailable",
+    "rate"
+   ],
+   "req": [],
+   "assumptions": [
+    "Стрелка «Назад» к RQ-03 (в ТЗ не описана)"
+   ],
+   "to": [
+    "RQ-02"
+   ],
+   "file": "screens/organizations/RQ-01.html",
+   "folder": "organizations",
+   "err": "name must be 2..120 characters",
+   "reference": false,
+   "batch": 2
+  },
+  {
+   "id": "RQ-02",
+   "name": "Документы заявки",
+   "api": "POST /org-requests/:id/documents",
+   "back": "RQ-03",
+   "states": [
+    "default",
+    "loading",
+    "error",
+    "offline",
+    "maintenance",
+    "unavailable",
+    "rate"
+   ],
+   "req": [
+    "G9: состав тела запроса"
+   ],
+   "assumptions": [
+    "Подписи типов: Регистрация, Полномочия, Другое (в ТЗ только коды registration, authority, other)",
+    "Стрелка «Назад» к RQ-03; завершение шага в ТЗ не описано"
+   ],
+   "to": [
+    "RQ-03"
+   ],
+   "file": "screens/organizations/RQ-02.html",
+   "folder": "organizations",
+   "err": "",
+   "reference": false,
+   "batch": 2
+  },
+  {
+   "id": "RQ-03",
+   "name": "Мои заявки",
+   "api": "GET /org-requests",
+   "back": "",
+   "states": [
+    "default",
+    "loading",
+    "error",
+    "offline",
+    "maintenance",
+    "unavailable",
+    "rate",
+    "empty"
+   ],
+   "req": [],
+   "assumptions": [
+    "Кнопка «Новая заявка» (в ТЗ путь к RQ-01 не описан)",
+    "Подписи статусов: На рассмотрении, Одобрена, Отклонена (в ТЗ коды pending, approved, rejected)"
+   ],
+   "to": [
+    "RQ-04",
+    "RQ-01"
+   ],
+   "file": "screens/organizations/RQ-03.html",
+   "folder": "organizations",
+   "err": "",
+   "reference": false,
+   "batch": 2
+  },
+  {
+   "id": "RQ-04",
+   "name": "Карточка заявки",
+   "api": "GET /org-requests/:id · GET /org-requests/:id/documents/:docId",
+   "back": "RQ-03",
+   "states": [
+    "default",
+    "loading",
+    "error",
+    "offline",
+    "maintenance",
+    "unavailable",
+    "rate"
+   ],
+   "req": [],
+   "assumptions": [
+    "Стрелка «Назад» к RQ-03"
+   ],
+   "to": [
+    "RQ-03"
+   ],
+   "file": "screens/organizations/RQ-04.html",
+   "folder": "organizations",
+   "err": "not found",
+   "reference": false,
+   "batch": 2
+  },
+  {
+   "id": "PS-01",
+   "name": "Список заявок",
+   "api": "GET /org-requests",
+   "back": "",
+   "states": [
+    "default",
+    "loading",
+    "error",
+    "offline",
+    "maintenance",
+    "unavailable",
+    "rate"
+   ],
+   "req": [
+    "G2: пункт «Администрация» только сотрудникам"
+   ],
+   "assumptions": [
+    "Чип «Все» (в ТЗ только фильтр по трём статусам)"
+   ],
+   "to": [
+    "PS-02"
+   ],
+   "file": "screens/admin/PS-01.html",
+   "folder": "admin",
+   "err": "",
+   "reference": false,
+   "batch": 2
+  },
+  {
+   "id": "PS-02",
+   "name": "Карточка и документы: просмотр",
+   "api": "GET /org-requests/:id · GET /org-requests/:id/documents/:docId",
+   "back": "PS-01",
+   "states": [
+    "default",
+    "loading",
+    "error",
+    "offline",
+    "maintenance",
+    "unavailable",
+    "rate",
+    "owner"
+   ],
+   "req": [],
+   "assumptions": [
+    "Кнопка «Перейти к решению» только в состоянии «владелец» (в ТЗ путь PS-02 → PS-03 не описан; кнопок решения на PS-02 нет)"
+   ],
+   "to": [
+    "PS-01",
+    "PS-03"
+   ],
+   "file": "screens/admin/PS-02.html",
+   "folder": "admin",
+   "err": "",
+   "reference": false,
+   "batch": 2
+  },
+  {
+   "id": "PS-03",
+   "name": "Решение по заявке",
+   "api": "POST /org-requests/:id/decision",
+   "back": "PS-02",
+   "states": [
+    "default",
+    "loading",
+    "error",
+    "offline",
+    "maintenance",
+    "unavailable",
+    "rate"
+   ],
+   "req": [
+    "G2: кнопки только владельцу платформы; пока G2 не закрыт, скрыты для всех",
+    "G9: имена полей тела",
+    "403 not_platform_owner для администратора: текст из ERROR_TEXT"
+   ],
+   "assumptions": [
+    "Тексты подтверждений: «Одобрить заявку?», «Отклонить заявку?»"
+   ],
+   "to": [
+    "PS-02"
+   ],
+   "file": "screens/admin/PS-03.html",
+   "folder": "admin",
+   "err": "",
+   "reference": false,
+   "batch": 2
+  },
+  {
+   "id": "SR-01",
+   "name": "Поиск людей",
+   "api": "GET /users/search?nickname=…",
+   "back": "",
+   "states": [
+    "default",
+    "loading",
+    "error",
+    "offline",
+    "maintenance",
+    "unavailable",
+    "rate",
+    "found",
+    "notfound"
+   ],
+   "req": [
+    "G1, G9: маршрут и вид личного чата"
+   ],
+   "assumptions": [],
+   "to": [
+    "CH-02"
+   ],
+   "file": "screens/search/SR-01.html",
+   "folder": "search",
+   "err": "",
+   "reference": false,
+   "batch": 2
+  },
+  {
+   "id": "ST-01",
+   "name": "Настройки уведомлений",
+   "api": "PUT /devices/me/push · DELETE /devices/me/push",
+   "back": "",
+   "states": [
+    "default",
+    "loading",
+    "error",
+    "offline",
+    "maintenance",
+    "unavailable",
+    "rate",
+    "on",
+    "test"
+   ],
+   "req": [
+    "push.enabled выключен → 403 feature_disabled: элемент скрыть"
+   ],
+   "assumptions": [
+    "Селектор провайдера по ТЗ; в приложении провайдер определяется платформой, селектор можно скрыть"
+   ],
+   "to": [],
+   "file": "screens/settings/ST-01.html",
+   "folder": "settings",
+   "err": "",
+   "reference": false,
+   "batch": 2
+  },
+  {
+   "id": "ST-02",
+   "name": "Состояние системы",
+   "api": "GET /config/public · GET /config",
+   "back": "",
+   "states": [
+    "default",
+    "loading",
+    "error",
+    "offline",
+    "maintenance",
+    "unavailable",
+    "rate"
+   ],
+   "req": [],
+   "assumptions": [
+    "Данные демонстрационные; имя флага режима обслуживания уточнить по каталогу флагов"
+   ],
+   "to": [],
+   "file": "screens/settings/ST-02.html",
+   "folder": "settings",
+   "err": "",
+   "reference": false,
+   "batch": 2
+  },
+  {
+   "id": "ST-03",
+   "name": "Баннеры и общие состояния",
+   "api": "нет: общий слой для любого экрана",
+   "back": "",
+   "states": [
+    "default"
+   ],
+   "req": [],
+   "assumptions": [
+    "Экран-эталон: показывает все варианты баннера в одном месте"
+   ],
+   "to": [],
+   "file": "screens/settings/ST-03.html",
+   "folder": "settings",
+   "err": "",
+   "reference": true,
+   "batch": 2
+  }
+ ],
+ "approved": [
+  {
+   "id": "CH-01",
+   "title": "Список чатов",
+   "folder": "chat",
+   "api": "нужен GET /rooms/mine (G1)",
+   "file": "screens/chat/CH-01.html",
+   "status": "approved-v1",
+   "layout": "v1: рамка телефона 390x844, скругление 36px, переключатель темы на экране"
+  },
+  {
+   "id": "CH-02",
+   "title": "Переписка",
+   "folder": "chat",
+   "api": "GET события комнаты; POST /rooms/:id/events (уточнить)",
+   "file": "screens/chat/CH-02.html",
+   "status": "approved-v1",
+   "layout": "v1: рамка телефона 390x844, скругление 36px, переключатель темы на экране"
+  },
+  {
+   "id": "GR-01",
+   "title": "Группы и каналы",
+   "folder": "rooms",
+   "api": "нужен GET /rooms/mine (G1)",
+   "file": "screens/rooms/GR-01.html",
+   "status": "approved-v1",
+   "layout": "v1: рамка телефона 390x844, скругление 36px, переключатель темы на экране"
+  },
+  {
+   "id": "GR-02",
+   "title": "Создание группы",
+   "folder": "rooms",
+   "api": "POST /rooms",
+   "file": "screens/rooms/GR-02.html",
+   "status": "approved-v1",
+   "layout": "v1: рамка телефона 390x844, скругление 36px, переключатель темы на экране"
+  },
+  {
+   "id": "GR-04",
+   "title": "Настройки группы",
+   "folder": "rooms",
+   "api": "PUT /rooms/:id/name · G9/G15",
+   "file": "screens/rooms/GR-04.html",
+   "status": "approved-v1",
+   "layout": "v1: рамка телефона 390x844, скругление 36px, переключатель темы на экране"
+  },
+  {
+   "id": "OR-01",
+   "title": "Мои организации",
+   "folder": "organizations",
+   "api": "GET /orgs/mine",
+   "file": "screens/organizations/OR-01.html",
+   "status": "approved-v1",
+   "layout": "v1: рамка телефона 390x844, скругление 36px, переключатель темы на экране"
+  },
+  {
+   "id": "PR-01",
+   "title": "Профиль",
+   "folder": "profile",
+   "api": "GET /profile",
+   "file": "screens/profile/PR-01.html",
+   "status": "approved-v1",
+   "layout": "v1: рамка телефона 390x844, скругление 36px, переключатель темы на экране"
+  }
+ ]
+}

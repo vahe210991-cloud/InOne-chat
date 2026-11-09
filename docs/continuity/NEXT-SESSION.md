@@ -1,3 +1,38 @@
+# Immediate next steps — 2026-11-09 12:11 Europe/Tallinn
+
+1. Run Flutter CI independently on post-import PR #36 head `cb09a4058719576df6d589f1f8b59be517b592b5`; verify the exact candidate SHA.
+2. Review PR #36 and keep it draft/open until the owner explicitly authorizes merge. Do not merge automatically.
+3. Integrate the imported UI package with the native Flutter WebView/runtime loader and prove an approved screen renders on Android and iOS.
+4. Verify navigation and typed bridge events against actual Flutter handlers; map each screen action to a documented API contract and existing backend handler.
+5. Resolve missing/uncertain API contracts (including CH-02 room events), then perform visual parity, security and physical-device E2E acceptance.
+
+Latest evidence: [CI run #42586579987](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42586579987), input SHA `478cad39bc39e8002e55293e3015e72b68e26c8c`; post-import branch head `cb09a4058719576df6d589f1f8b59be517b592b5`. Full report: [2026-11-09-1211-ui-archive-import-ci.md](../../development/reports/2026-11-09-1211-ui-archive-import-ci.md).
+
+---
+
+## Immediate next step — open and verify the Codespaces workspace (2026-11-08)
+
+The owner selected GitHub Codespaces. A draft devcontainer is on branch `feat/beta1-full-screen-api-harness` (PR #28). Before further source edits:
+
+1. Open the repository in GitHub and create a Codespace on branch `feat/beta1-full-screen-api-harness`.
+2. In the terminal, run:
+   ```sh
+   git status --short --branch
+   git log -1 --oneline
+   git remote -v
+   git branch -a
+   git submodule status
+   git rev-parse HEAD
+   ```
+3. Confirm the checked-out HEAD equals the latest PR head and that the full repository, required refs, submodules and LFS objects are available. If any are missing, stop and document the exact gap.
+4. Validate `.devcontainer/devcontainer.json` and `.devcontainer/docker-compose.yml`; build the app/db services and inspect container logs. The configuration has not yet been run.
+5. Verify PostgreSQL readiness, backend migrations, `/healthz` and `/readyz`; record exact outputs and test commands.
+6. Inspect the latest Flutter Actions failure at `flutter analyze` and fix it only from the complete Codespaces clone. Latest run at handoff: [#42509620990](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42509620990), then in progress.
+7. Audit the 34 route declarations against actual backend handlers and response schemas. Do not count a route declaration as a connected screen. The requirement remains at least 10 live, authenticated, response-verified screens.
+8. Keep PR #28 draft/open; do not merge until full CI and the required integration evidence pass.
+
+Current branch at handoff: `bf6806cb669220addf3771ad458ebfa5a30357fa`. Codespaces guide: [CODESPACES_TEST_ENVIRONMENT.md](../../docs/CODESPACES_TEST_ENVIRONMENT.md). Session evidence/blocker: [SESSION-LOG.md](../../development/SESSION-LOG.md).
+
 # InOne — инструкция следующему чату / исполнителю
 
 
@@ -178,3 +213,8 @@ Do not follow the older instruction above to wait for a published applied-source
 8. Keep the original bundle archive limitation visible: its checksum/provenance are known, but the binary itself is not yet retrievable from GitHub as a committed archive.
 
 Latest exact-head evidence: [push run 42465804591](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42465804591) and [PR run 42465808297](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42465808297). Overall status is FAIL due to rustfmt only; the functional suites listed in the status report passed.
+
+
+## Mandatory approved WBS and current UI stage — 2026-11-09
+
+Before any work, read [AGENTS.md](../../AGENTS.md), the full [AI agent mandate](../../development/AI-AGENT-MANDATE.md), and the full [owner-approved progress baseline](../../development/PROGRESS-BASELINE.md). The WBS is approved and immutable without a new owner decision. Current UI stage is Beta 1.0 UI-01 through UI-06; continue from [UI integration report](../../development/reports/2026-11-09-1015-ui-integration-start.md) and branch `feat/beta1-ui-source-integration`. The owner-provided Ui.zip has been checksum-verified locally; its full binary/source package is not yet confirmed uploaded to GitHub. Do not claim import complete until remote files/checksums are verified.

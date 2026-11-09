@@ -1,3 +1,5 @@
+> **OWNER UI SOURCE ARCHIVE — verified 2026-11-09:** Original `Ui.zip` is stored on `main` (owner upload commit `2050aa7c9fa6ba418bb06fa81964274b6f854a3a`), SHA-256 `cdff61b36673d45332f4809c5a42f1978e715adb3e4dcf280c96d92f3aa758bb`. PR #36 imports its nested `ui-approval.zip` into `mobile/assets/ui-approval/`; package manifest v0.8-approval-batch-2, 24 manifest screen IDs, 31 approved HTML screens, 5 WOFF2 fonts. CI run [#42586579987](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42586579987) passed Flutter analyze/tests and Android preview build after import. Post-import task branch head: `cb09a4058719576df6d589f1f8b59be517b592b5`. This source archive is distinct from the Android APK artifact. Native WebView rendering and live API/bridge acceptance remain pending. Keep PR #36 draft/open pending exact-head CI and owner authorization.
+
 # InOne — источники истины и карта артефактов
 
 
@@ -145,3 +147,13 @@ GitHub — постоянное хранилище кода, истории, р�
 - Source-integrity audit remains open: complete 240-file blob-hash comparison against the original bundle manifest; review six modified source files and five added P0 tests against exact bundle/patch provenance.
 - Full details and exact next actions: [P0-GITHUB-RECOVERY-STATUS-2026-11-08.md](../../development/recovered-source/P0-GITHUB-RECOVERY-STATUS-2026-11-08.md).
 - Original bundle binary SHA-256 remains `a226e578a732e5da886e3ec4bfb007102154405a95809c80fb28a2833493522f`; the original binary and its original five-commit ancestry are not yet stored in GitHub. The published patch-derived branch must not be represented as that original bundle history.
+
+
+## Owner-provided Beta 1.0 UI source — Ui.zip (2026-11-09)
+
+- Attachment name: `Ui.zip`; outer SHA-256: `cdff61b36673d45332f4809c5a42f1978e715adb3e4dcf280c96d92f3aa758bb`.
+- Contains nested `ui-approval.zip`; SHA-256: `d098738ff64fab0388aa72d22a92b097940c41bbcb4acfddfc30ff745e16ad0d`.
+- Both ZIP integrity checks PASS. Nested package: 231 entries, 7,432,843 uncompressed bytes, 24 manifest screens, 31 HTML screens total, five WOFF2 fonts, iOS/Android light/dark screenshots and state screenshots. All 10 entries in `approved.sha256` PASS.
+- Manifest version `0.8-approval-batch-2`; source files include `screen-manifest.json`, v1/v2 design tokens and interactions, API integration docs, screens and screenshots.
+- Source audit and unresolved API/security notes: [UI integration report](../../development/reports/2026-11-09-1015-ui-integration-start.md).
+- Status: **verified locally, not yet durably imported to GitHub**. Do not remove the original owner attachment or treat temporary extracted files as authoritative. Upload is blocked until a supported Git transport/Codespace or binary upload path is available. Do not claim the source bundle is in GitHub until its remote hash is verified.

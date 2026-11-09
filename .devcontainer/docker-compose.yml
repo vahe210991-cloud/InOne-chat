@@ -1,0 +1,45 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: inone-codespaces:node22-flutter3.47.9
+    init: true
+    command: sleep infinity
+    volumes:
+      - ..:/workspace:cached
+    working_dir: /workspace
+    environment:
+      NODE_ENV: development
+      HOST: 0.0.0.0
+      PORT: 8080
+      DATABASE_URL: postgresql://inone_dev:inone_local_only@db:5432/inone_dev
+      INONE_PUBLIC_URL: http://localhost:8080
+      INONE_REGISTRATION_MODE: verified
+      INONE_DEV_EMAIL_CODE: "000000"
+      INONE_REQUIRE_PHONE: "false"
+      INONE_SMS_ENABLED: "false"
+      INONE_MAIL_TRANSPORT: memory
+      INONE_RUN_MIGRATIONS: "true"
+      LOG_LEVEL: info
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: inone_dev
+      POSTGRES_USER: inone_dev
+      POSTGRES_PASSWORD: inone_local_only
+    volumes:
+      - inone-codespaces-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U inone_dev -d inone_dev"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  inone-codespaces-db:
