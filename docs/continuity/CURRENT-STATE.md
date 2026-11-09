@@ -253,3 +253,15 @@ This section supersedes stale earlier statements in this file that no applied P0
 - Latest Actions run [#42509620990](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42509620990) was in progress when checked. Earlier Flutter runs failed at `flutter analyze`; investigate exact annotations before accepting the branch.
 - 34 screen API entries are configured, but they are not 34 verified live integrations. `GET /rooms/mine` is absent from the current engine source; `GR-01` and workspace list probes were removed. The target of 10 verified connected screens remains NOT MET / NOT VERIFIED.
 - Next required action: create a Codespace on `feat/beta1-full-screen-api-harness`, verify complete clone/history/refs and clean worktree, then validate this configuration before making more code changes. See [Codespaces test environment guide](../../docs/CODESPACES_TEST_ENVIRONMENT.md) and the latest [session log](../../development/SESSION-LOG.md).
+
+
+## Owner-approved baseline and Beta 1.0 UI integration — 2026-11-09
+
+- Owner approved the WBS v1.1 in [development/PROGRESS-BASELINE.md](../../development/PROGRESS-BASELINE.md). Fixed baseline: Beta 1.0 42% implementation / 31% verification; Beta 2.0 2% / 0%; InOne 25% historical qualitative. Do not change scope/weights without explicit owner approval.
+- Root `AGENTS.md` and Copilot instructions require every agent/chat to read the WBS.
+- UI integration PR [#35](https://github.com/vahe210991-cloud/InOne-chat/pull/35), branch `feat/beta1-ui-source-integration`. Source audit report: [2026-11-09-1015](../../development/reports/2026-11-09-1015-ui-integration-start.md).
+- Ui.zip outer SHA-256 `cdff61b36673d45332f4809c5a42f1978e715adb3e4dcf280c96d92f3aa758bb`; nested archive SHA-256 `d098738ff64fab0388aa72d22a92b097940c41bbcb4acfddfc30ff745e16ad0d`. Both ZIP integrity checks PASS; 231 entries, 24 manifest screens, 31 HTML screens total, 5 WOFF2 fonts, all 10 approved.sha256 entries PASS.
+- Exact source assets have NOT yet been uploaded to GitHub. Import is BLOCKED by missing binary streaming from current connector and no GitHub network in container. Do not claim Flutter UI runtime integrated.
+- Added asset-path mapping, rootBundle loader, v1 bridge compatibility, tests and deterministic importer. Runtime local-font patch affects only imported runtime copy; source remains immutable.
+- v1 chat POST message, and v2 missing/unverified API routes remain BLOCKED. CH-02 `GET /rooms/:id/events` remains unresolved.
+- CI run #42578333371: platform setup, geometry, 73-screen gallery check, pub get, analyze and tests PASS; Android APK still in progress at last observation. It predates later commits; latest head not verified.
