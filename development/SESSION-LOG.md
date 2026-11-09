@@ -193,3 +193,16 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Recovery branch now has 240 engine blobs, matching base path count. This is path parity, not yet full blob hash parity for all 240 files.
 - Publish workflow now applies the entire PR-head engine-path diff onto clean main before the P0 patch, preserving all restored files. Workflow commit `7898fde9a592a8c180e7c9e89a2c7b3cb2e5ad80`.
 - Fresh CI required; run #42457594088 predates the latest workflow change.
+
+
+## 2026-11-09 12:11 — Owner UI archive imported; Flutter CI green
+
+- PR #36: https://github.com/vahe210991-cloud/InOne-chat/pull/36; task branch `task/ui-archive-import-2026-11-09`.
+- Fixed HTML inventory check (31 screen HTML + package index = 32 HTML) and GitHub Actions checkout target (real PR head instead of synthetic merge ref); added PR-scoped concurrency.
+- Workflow run [#42586579987](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42586579987) completed 15/15 steps SUCCESS on input SHA `478cad39bc39e8002e55293e3015e72b68e26c8c`.
+- CI fetched `Ui.zip` from main and verified SHA-256 `cdff61b36673d45332f4809c5a42f1978e715adb3e4dcf280c96d92f3aa758bb`; imported nested package to `mobile/assets/ui-approval/`.
+- Remote tree check: 230 paths under asset root; 31 screen HTML files, 32 HTML including index, 5 WOFF2 fonts; manifest v0.8-approval-batch-2, 24 manifest screens.
+- Flutter pub get, analyze, tests, Android preview APK build and artifact upload all PASS. Artifact ID 13659118446, 78,584,647 bytes, digest `sha256:6376ba35cdebe92f200bfbe27b197918722d5564ef5d93a0210f1714c433d53a`, expires 2026-11-23 08:40 UTC.
+- Import bot commit advanced branch to `cb09a4058719576df6d589f1f8b59be517b592b5`. The workflow tested the workspace after import but run's event SHA is prior commit `478cad39...`; request an independent CI run on the new head.
+- PR remains draft/open/unmerged; main unchanged by this task. Runtime WebView rendering, live API/bridge, visual parity and device E2E remain unverified.
+- WBS baseline v1.1 unchanged: Beta 1.0 42% implementation / 31% verification; Beta 2.0 2% / 0%; overall historical 25%.
