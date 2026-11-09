@@ -1,3 +1,17 @@
+## 2026-11-09 09:35 — Полный аудит Beta 1.0 / Beta 2.0
+
+- Выполнен repository/PR/Actions audit на main `cf2e1515fee680c2e8c86720b570617ffbe471d4`, а также draft PR #28–#33.
+- Подтверждено: backend P0/Rust/OpenMLS закрыт PR #25; PR #28 Flutter harness CI run #42563179564 PASS; PR #31 analyze/tests PASS, APK step FAIL (Gradle distribution HTTP 504) в run #42570757834.
+- Beta 1.0 отделена от Beta 2.0. Beta 1.0: 42% implementation / 31% verification по предложенной WBS v1. Beta 2.0: 2% / 0% (только CRM placeholders).
+- Исторический qualitative baseline InOne 25% / Beta 1.0 35% сохранён, новая оценка не выдаётся за математически сопоставимую.
+- Созданы `development/PROGRESS-BASELINE.md` и `development/reports/2026-11-09-0935-full-beta-audit.md` на ветке `audit/beta1-beta2-full-audit-2026-11-09`.
+- Критические блокеры: Ui.zip source assets не подключены в Flutter runtime; endpoint `GET /rooms/:id/events` из screen catalogue отсутствует в API inventory; native Android/iOS MLS FFI, secure key storage, durable local store, two-device E2E и operational acceptance не завершены.
+- Требуется решение владельца по WBS weights, Beta 2.0 scope и chat history endpoint.
+- No product code changed; no server/deploy/DB exposure/merge; main unchanged. Audit PR will remain draft until owner review and green required checks.
+- Report: [full Beta audit](reports/2026-11-09-0935-full-beta-audit.md). WBS: [PROGRESS-BASELINE](PROGRESS-BASELINE.md).
+
+---
+
 # InOne development session log
 
 
