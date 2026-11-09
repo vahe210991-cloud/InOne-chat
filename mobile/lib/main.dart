@@ -162,7 +162,8 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
           if (uri == null) return NavigationDecision.prevent;
           if (request.isMainFrame) {
             if (uri.scheme == 'file' &&
-                ProfileUiBridge.isApprovedAssetUrl(request.url)) {
+                (ProfileUiBridge.isApprovedAssetUrl(request.url) ||
+                    ProfileUiBridge.isUiApprovalAssetUrl(request.url))) {
               return NavigationDecision.navigate;
             }
             if (uri.scheme == 'https' && uri.host == 'inone.local') {
