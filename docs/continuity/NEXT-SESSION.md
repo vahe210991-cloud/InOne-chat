@@ -1,3 +1,9 @@
+# MLS storage clarification — 2026-11-09 13:09 (UTC+2)
+
+The Rust MLS core already has SQLCipher-backed group state, a durable outbound outbox and several recovery/ACK journals. Do not rebuild those from scratch. Continue with the missing production Android/iOS KeyStore adapters and FFI handlers, then add a durable inbound-message table/transaction so normal decrypted text is not left only in `Client.inbox` memory. Preserve fail-closed behavior and ensure ACK/processed marking follows the durable write. Flutter currently persists only device ID and does not yet supply the Rust DB key.
+
+---
+
 # Immediate next steps — 2026-11-09 13:08 Europe/Tallinn (UTC+2)
 
 1. Monitor [PR #37](https://github.com/vahe210991-cloud/InOne-chat/pull/37) exact head `7d356aa0b46d9e00a7b8391f657a08d173bc1764` and run [#42606366859](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42606366859). Geometry/archive/gallery/pub get have passed; analyze is running; tests and Android build are pending. Previous run #42605486693 was cancelled at APK build after tests passed because this security commit superseded it. Keep draft and do not merge.
