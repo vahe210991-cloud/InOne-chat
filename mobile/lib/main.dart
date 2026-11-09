@@ -84,7 +84,7 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
   }
 
   TestScreen? get _selectedTestScreen {
-    if (_isApproved) return null;
+    if (_isApproved || _isHandoff) return null;
     return testScreens.firstWhere((screen) => screen.id == _selectedId);
   }
 
