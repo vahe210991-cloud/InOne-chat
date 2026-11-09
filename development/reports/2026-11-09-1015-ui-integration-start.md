@@ -99,3 +99,20 @@ UI asset-path code and importer are an integration foundation only. No percentag
 ## 10. Handoff
 
 Remote commit/PR SHA will be recorded after the stage files are committed and fetched from GitHub. This report is not complete until the report, session log and continuity changes are committed/pushed and remote-verified. PR remains draft; no merge.
+
+
+## Addendum — UI source security and compatibility audit (2026-11-09 10:22 Europe/Tallinn)
+
+Additional inspection of the extracted package found:
+- v2 `interactions.v2.js` explicitly documents no network/no storage and emits typed bridge messages with `screen` ID.
+- v2 design tokens load the supplied local WOFF2 files using relative `assets/fonts/*` paths.
+- Seven v1 screens load Google Fonts from `fonts.googleapis.com`; this conflicts with a fully local/offline WebView asset package. The importer now preserves original source and patches only the runtime copy to use local `legacy-fonts.css` backed by supplied WOFF2 files.
+- v1 `interactions.js` uses `localStorage` only for the `inone-theme` display preference (no credentials observed), and its bridge messages omit the screen ID. Flutter bridge parser now accepts v1 messages with a non-sensitive `legacy-v1` marker.
+- v1 chat UI emits `POST message`, which is not an approved backend route in the current allowlist; it must remain BLOCKED until a real server contract is confirmed. Do not add it to the allowlist.
+- v2 manifest declares multiple endpoints not currently in the verified API allowlist (provider auth, recovery variants, org-request document upload/decision, push settings and per-room event history). These are contract blockers, not routes to invent.
+
+No original HTML/design files were edited. Runtime font patch is performed only on the copy produced by the importer.
+
+## CI snapshot
+
+GitHub Actions run [#42578333371](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42578333371) was triggered on the PR #35 head at creation time. At last check: platform generation, asset geometry, 73-screen gallery verification, pub get, Flutter analyze and Flutter tests all PASS; Android preview APK build remained IN PROGRESS. This run predates subsequent v1 bridge/importer commits and therefore does not verify the latest branch head. Exact latest-head CI remains NOT RUN / NOT VERIFIED.
