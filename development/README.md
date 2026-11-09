@@ -43,7 +43,13 @@ The GitHub repository `vahe210991-cloud/InOne-chat` is the only authoritative pr
 
 - [InOne ↔ Propo authentication integration brief](integrations/INONE-PROPO-AUTH-INTEGRATION-BRIEF.md). This is a planned contract, not an implemented feature; open security/product decisions remain unresolved.
 
-## Current status at a glance
+## Current status at a glance — live update 2026-11-09 13:02
+
+- Main snapshot: `faa5b8b682b8e1328a58b97bcf5770d1286efa8a`. PR #35/#36 merged; PR #37 open/draft/mergeable at `8b27e14ac067ffa68618b5ab53a609c148eb06a8`. Latest run #42605486693 has passed geometry, archive integrity/import, gallery, pub get, analyze and Flutter tests; Android APK build is in progress and iOS/device acceptance is not run.
+- P0 PR #25 is accepted and merged; PR-head run #42496739362 and post-merge run #42503694744 both passed 6/6. PR #22 is merged but its legacy run failed rustfmt; PR #18 remains draft/open with a publish subtree mismatch. The separate 240-path Wave 3 source audit remains open.
+- Native Android/iOS MLS handlers, production FFI, Keychain/Keystore DB-key adapters, durable message persistence and device E2E remain incomplete. WBS v1.1 unchanged: Beta 1.0 42%/31%; Beta 2.0 2%/0%.
+
+## Historical status at a glance (superseded by the live update above)
 
 - P0 Wave 3 recovery bundle: verified locally from the owner-provided archive; details and checksum in [BASELINE-2026-11-08.md](BASELINE-2026-11-08.md).
 - P0 backend/MLS source is published on `recovery/p0-wave3-applied` at `7ebdeac8b322d7a1fe0b26add039f48b5f9f776f`; draft PR [#22](https://github.com/vahe210991-cloud/InOne-chat/pull/22). Functional Node/room/PostgreSQL/OpenMLS/Rust bridge checks pass on that exact SHA; overall CI remains red only at `cargo fmt -- --check` (12 Rust files). Source-integrity review remains open. See the [latest P0 recovery status](recovered-source/P0-GITHUB-RECOVERY-STATUS-2026-11-08.md).
