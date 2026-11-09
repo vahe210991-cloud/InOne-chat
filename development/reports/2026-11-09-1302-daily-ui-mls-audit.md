@@ -7,7 +7,7 @@
 **UI branch:** `feat/ui-approval-webview-runtime-2026-11-09`.  
 **UI base SHA:** `faa5b8b682b8e1328a58b97bcf5770d1286efa8a`.  
 **UI exact head SHA:** `8b27e14ac067ffa68618b5ab53a609c148eb06a8`.  
-**Documentation branch:** `automation/daily-audit-2026-11-09-1303`, created from `main`; this report is not merged to `main`.
+**Documentation branch:** `automation/daily-audit-2026-11-09-1303`; documentation PR [#38](https://github.com/vahe210991-cloud/InOne-chat/pull/38) is open/draft and not merged to `main`.
 
 ## Executive status
 
