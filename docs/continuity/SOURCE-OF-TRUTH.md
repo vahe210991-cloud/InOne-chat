@@ -1,3 +1,5 @@
+> **OWNER UI SOURCE ARCHIVE — verified 2026-11-09:** Original `Ui.zip` is stored on `main` (owner upload commit `2050aa7c9fa6ba418bb06fa81964274b6f854a3a`), SHA-256 `cdff61b36673d45332f4809c5a42f1978e715adb3e4dcf280c96d92f3aa758bb`. PR #36 imports its nested `ui-approval.zip` into `mobile/assets/ui-approval/`; package manifest v0.8-approval-batch-2, 24 manifest screen IDs, 31 approved HTML screens, 5 WOFF2 fonts. CI run [#42586579987](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42586579987) passed Flutter analyze/tests and Android preview build after import. Post-import task branch head: `cb09a4058719576df6d589f1f8b59be517b592b5`. This source archive is distinct from the Android APK artifact. Native WebView rendering and live API/bridge acceptance remain pending. Keep PR #36 draft/open pending exact-head CI and owner authorization.
+
 # InOne — источники истины и карта артефактов
 
 
