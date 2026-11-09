@@ -1,9 +1,14 @@
+import 'claude_screen_catalog.dart';
+
 /// Owner-approved InOne screen variants. Labels match HTML data-screen-label attributes.
+/// Beta 2.0 variants remain in the gallery and are explicitly marked as placeholders.
 class ApprovedScreen {
   const ApprovedScreen({required this.id, required this.label, required this.theme});
   final String id;
   final String label;
   final String theme;
+
+  bool get isBeta2 => beta2ScreenIds.contains(id);
 }
 
 const String approvedScreensAssetPath =
@@ -14,6 +19,7 @@ const List<ApprovedScreen> approvedScreens = [
   ApprovedScreen(id: 'workspace-light', label: '03 Workspace', theme: 'light'),
   ApprovedScreen(id: 'messages-light', label: '05 Messages', theme: 'light'),
   ApprovedScreen(id: 'notifications-light', label: '06 Notifications', theme: 'light'),
+  // Beta 2.0: keep these approved visual concepts available as non-functional placeholders.
   ApprovedScreen(id: 'leads-light', label: '40 Leads', theme: 'light'),
   ApprovedScreen(id: 'kanban-light', label: '41 Kanban', theme: 'light'),
   ApprovedScreen(id: 'deal-detail-light', label: '42 Deal detail', theme: 'light'),
