@@ -175,13 +175,10 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
               ProfileUiBridge.isUiApprovalAssetUrl(request.url)) {
             return NavigationDecision.navigate;
           }
-          if (uri.scheme == 'about' || uri.scheme == 'data') {
-            return NavigationDecision.navigate;
-          }
-          if (uri.scheme == 'https' &&
-              (uri.host == 'unpkg.com' ||
-                  uri.host == 'fonts.googleapis.com' ||
-                  uri.host == 'fonts.gstatic.com')) {
+          // Approved HTML, scripts, styles and fonts are bundled locally.
+          // Only about:blank is permitted for an inert subframe; external network
+          // resources are blocked so remote code cannot reach the JS bridge.
+          if (request.url == 'about:blank') {
             return NavigationDecision.navigate;
           }
           return NavigationDecision.prevent;
