@@ -10,19 +10,110 @@ class ProfileUiBridge {
     'D41 Dark — Personal profile',
   };
 
+  static const _androidFlutterAssetsPrefix = [
+    'android_asset',
+    'flutter_assets',
+    'assets',
+  ];
+  static const _iosFrameworkAssetsPrefix = [
+    'Frameworks',
+    'App.framework',
+    'flutter_assets',
+    'assets',
+  ];
+  static const _iosDirectAssetsPrefix = [
+    'flutter_assets',
+    'assets',
+  ];
+
+  /// Allows only a file inside the bundled owner-approved UI package.
+  /// Dot-segments, encoded separators, hosts, queries and fragments fail closed.
+  static bool isUiApprovalAssetUrl(String? value) {
+    return _isBundledAssetUrl(value, const ['ui-approval'], allowChildren: true);
+  }
+
+  /// Allows only the single bundled profile document, not sibling file URLs.
   static bool isApprovedAssetUrl(String? value) {
-    final uri = value == null ? null : Uri.tryParse(value);
-    if (uri == null || uri.scheme != 'file' || uri.host.isNotEmpty) {
-      return false;
+    return _isBundledAssetUrl(
+      value,
+      const ['approved-ui', 'InOne-approved-cross-platform.html'],
+    );
+  }
+
+  static bool _isBundledAssetUrl(
+    String? value,
+    List<String> assetPath, {
+    bool allowChildren = false,
+  }) {
+    final segments = _decodedLocalFileSegments(value);
+    if (segments == null) return false;
+
+    bool matchesFrom(int start, List<String> prefix) {
+      final requiredLength = start + prefix.length;
+      if (segments.length < requiredLength) return false;
+      if (allowChildren
+          ? segments.length == requiredLength
+          : segments.length != requiredLength) {
+        return false;
+      }
+      for (var index = 0; index < prefix.length; index++) {
+        if (segments[start + index] != prefix[index]) return false;
+      }
+      return true;
     }
+
+    if (matchesFrom(
+      0,
+      [..._androidFlutterAssetsPrefix, ...assetPath],
+    )) {
+      return true;
+    }
+
+    for (var index = 0; index < segments.length; index++) {
+      if (!segments[index].endsWith('.app')) continue;
+      if (matchesFrom(
+            index + 1,
+            [..._iosFrameworkAssetsPrefix, ...assetPath],
+          ) ||
+          matchesFrom(
+            index + 1,
+            [..._iosDirectAssetsPrefix, ...assetPath],
+          )) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  static List<String>? _decodedLocalFileSegments(String? value) {
+    final uri = value == null ? null : Uri.tryParse(value);
+    if (uri == null ||
+        uri.scheme != 'file' ||
+        uri.host.isNotEmpty ||
+        uri.userInfo.isNotEmpty ||
+        uri.hasQuery ||
+        uri.hasFragment) {
+      return null;
+    }
+
     try {
       final path = Uri.decodeComponent(uri.path);
-      return path.startsWith('/android_asset/flutter_assets$_assetPath') ||
-          path.contains(
-              '.app/Frameworks/App.framework/flutter_assets$_assetPath') ||
-          path.contains('.app/flutter_assets$_assetPath');
+      if (!path.startsWith('/') ||
+          path.contains('\\') ||
+          path.contains('\u0000') ||
+          path.contains('%')) {
+        return null;
+      }
+
+      final segments = path.substring(1).split('/');
+      if (segments.isEmpty ||
+          segments.any((segment) =>
+              segment.isEmpty || segment == '.' || segment == '..')) {
+        return null;
+      }
+      return segments;
     } on FormatException {
-      return false;
+      return null;
     }
   }
 
