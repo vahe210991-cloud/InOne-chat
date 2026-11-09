@@ -1,3 +1,12 @@
+## 2026-11-09 10:22 — UI source compatibility/security audit addendum
+
+- Verified v2 UI bridge is no-network/no-storage and local WOFF2 refs; v1 screens use Google Fonts and localStorage for theme preference, with bridge events omitting screen ID. Importer now patches only runtime copies to local fonts; originals remain unchanged. Flutter parser accepts legacy v1 events.
+- API audit: v1 `POST message` and multiple v2 auth/recovery/org-document/push/per-room-event routes are not in verified backend allowlist; keep blocked. No invented routes.
+- CI run #42578333371: setup/geometry/gallery/pub get/analyze/tests PASS; APK build IN PROGRESS at last check. Run is pre-latest commits; current head CI not verified.
+- Ui.zip is verified locally but not yet uploaded to GitHub; exact binary import remains BLOCKED by connector file-stream limitation. Report and continuity records preserve checksums and blocker.
+
+---
+
 ## 2026-11-09 10:15 — Beta 1.0 UI integration stage 1 / WBS owner approval
 
 - Owner explicitly approved the Beta 1.0/Beta 2.0 WBS; `development/PROGRESS-BASELINE.md` v1.1 is marked owner-approved. Fixed baseline: Beta 1.0 42% implementation / 31% verification; Beta 2.0 2% / 0%; historical InOne overall 25% retained.
