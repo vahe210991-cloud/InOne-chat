@@ -1,5 +1,17 @@
 # InOne development session log
 
+## 2026-11-09 09:24 Europe/Tallinn (UTC+03:00) — Mandatory AI agent protocol created
+
+- Owner requested a detailed mandatory instruction for every AI model/chat/developer entering the repository.
+- Added `development/AI-AGENT-MANDATE.md` (full 14-section protocol), root `AGENTS.md`, and `.github/copilot-instructions.md`.
+- Updated `README.md`, `development/README.md`, `development/WORKING-RULES.md`, `development/HANDOVER-CHECKLIST.md`, `docs/continuity/README.md`, and `docs/continuity/NEXT-SESSION.md`.
+- Report: [2026-11-09-0924-ai-agent-mandate.md](reports/2026-11-09-0924-ai-agent-mandate.md).
+- Branch: `docs/mandatory-ai-agent-protocol-2026-11-09`; base `main` SHA `cf2e1515fee680c2e8c86720b570617ffbe471d4`.
+- Documentation-only changes. No product source, tests, Actions, server, deploy, DB or merge operation performed.
+- The repository cannot force every external model to persist instructions in internal memory/skills; it provides durable repo-level instructions and mandatory reread entrypoints. This limitation is stated explicitly in the mandate.
+- Product readiness continuity: overall InOne 25%, Beta 1.0 35% — provisional qualitative estimates from 2026-11-09 audit, not a WBS calculation. Do not reset; create WBS and carry forward.
+- PR not yet created at the time of this log entry. No merge; `main` unchanged.
+
 
 ## 2026-11-08 — Post-merge P0 validation passed; stage closed
 
