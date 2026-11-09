@@ -20,3 +20,15 @@ flutter:
     - assets/approved-ui/InOne-approved-cross-platform.html
     - assets/test-ui/
     - assets/ui-approval/
+    - assets/ui-approval/screens/admin/
+    - assets/ui-approval/screens/auth/
+    - assets/ui-approval/screens/chat/
+    - assets/ui-approval/screens/menu/
+    - assets/ui-approval/screens/organizations/
+    - assets/ui-approval/screens/profile/
+    - assets/ui-approval/screens/rooms/
+    - assets/ui-approval/screens/search/
+    - assets/ui-approval/screens/settings/
+    - assets/ui-approval/assets/fonts/
+    - assets/ui-approval/assets/icons/
+    - assets/ui-approval/assets/images/
