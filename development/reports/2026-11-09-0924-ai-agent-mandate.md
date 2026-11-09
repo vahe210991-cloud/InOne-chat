@@ -76,3 +76,13 @@
 ## 9. Handoff
 
 Следующая сессия обязана начать с `AGENTS.md` и полного `development/AI-AGENT-MANDATE.md`, затем прочитать последние отчёты, журнал и continuity. Не считать эту инструкцию принятой в main, пока PR не будет проверен и слит владельцем после всех обязательных зелёных проверок. До этого использовать рабочую ветку как proposal и не утверждать, что default branch уже содержит новые правила.
+
+
+## 10. Итоговая публикация и remote verification — 09.11.2026 09:24 Europe/Tallinn
+
+- Draft PR создан: [#33](https://github.com/vahe210991-cloud/InOne-chat/pull/33), base `main` @ `cf2e1515fee680c2e8c86720b570617ffbe471d4`.
+- Branch: `docs/mandatory-ai-agent-protocol-2026-11-09`.
+- Remote HEAD проверен: `c41931ddcf866a2fa42bcf396322e1d0819846f6`.
+- 11 файлов повторно прочитаны из удалённой ветки после записи; mandate blob SHA `80a36b484b48019e1200d521bde520d0419a2054`, report blob SHA `10f61fd4aed81db222de2ca99e3bdfb6704e77d9`.
+- На момент проверки commit-associated Actions runs не возвращены (список пуст). Статус CI: NOT RUN / no run visible, не PASS.
+- PR открыт как draft, не слит. Требуется проверить доступные checks на PR head; merge запрещён до зелёных проверок и отдельного разрешения владельца.
