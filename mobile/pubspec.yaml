@@ -19,3 +19,4 @@ flutter:
   assets:
     - assets/approved-ui/InOne-approved-cross-platform.html
     - assets/test-ui/
+    - assets/ui-approval/
