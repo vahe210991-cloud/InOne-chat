@@ -1,3 +1,15 @@
+# Immediate next steps — 2026-11-09 13:02 Europe/Tallinn (UTC+2)
+
+1. Complete [PR #37](https://github.com/vahe210991-cloud/InOne-chat/pull/37) exact-head run [#42605486693](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42605486693) on `8b27e14ac067ffa68618b5ab53a609c148eb06a8`; Flutter tests pass, Android APK build is still in progress. Keep the PR draft and do not merge without every required check on the final SHA and explicit owner approval.
+2. Install the Android preview APK and verify the 22 canonical variants (11 light / 11 dark), rectangular geometry, safe areas, keyboard, back navigation and HTML handoff. Perform the corresponding iOS build and physical-device parity check on macOS.
+3. Reconcile every imported handoff screen API with actual backend handlers and typed Flutter repositories. `CH-02 GET /rooms/:id/events` remains unresolved; unknown routes must continue to fail closed.
+4. Implement native Android/iOS MLS handlers, Rust FFI packaging, Keychain/Keystore-backed SQLCipher DB-key providers and durable local message persistence. Incoming events must be ACKed only after the persistence transaction succeeds.
+5. Complete the separate Wave 3 240-base-path blob-hash/provenance audit, then run two-device MLS send/receive/offline/restart E2E. Do not conflate this legacy recovery lineage with the accepted PR #25 P0 snapshot.
+
+Latest evidence: PR #37 head `8b27e14ac067ffa68618b5ab53a609c148eb06a8`, run [#42605486693](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42605486693). Accepted P0: PR #25, run [#42496739362](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42496739362), post-merge [#42503694744](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42503694744). Full daily report: [2026-11-09-1302-daily-ui-mls-audit.md](../../development/reports/2026-11-09-1302-daily-ui-mls-audit.md).
+
+---
+
 # Immediate next steps — 2026-11-09 12:11 Europe/Tallinn
 
 1. Run Flutter CI independently on post-import PR #36 head `cb09a4058719576df6d589f1f8b59be517b592b5`; verify the exact candidate SHA.
