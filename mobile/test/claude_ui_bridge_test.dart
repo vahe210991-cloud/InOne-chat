@@ -37,6 +37,16 @@ void main() {
     expect(ClaudeBridgeMessage.tryParse('{"type":"navigate","screen":"SC-01","data":{}}'), isNull);
   });
 
+  test('accepts approved v1 bridge events that omit the screen field', () {
+    final message = ClaudeBridgeMessage.tryParse(
+      '{"type":"navigate","data":{"screen":"CH-01"}}',
+    );
+
+    expect(message?.type, ClaudeBridgeEventType.navigate);
+    expect(message?.screenId, 'legacy-v1');
+    expect(message?.targetScreen, 'CH-01');
+  });
+
   test('API allowlist contains only backend routes currently supported', () {
     expect(claudeSupportedApiCalls['GET /rooms/mine']?.path, '/rooms/mine');
     expect(claudeSupportedApiCalls['GET /org-requests']?.path, '/org-requests');
