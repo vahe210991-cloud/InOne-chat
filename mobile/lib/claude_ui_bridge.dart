@@ -24,7 +24,9 @@ class ClaudeBridgeMessage {
       final decoded = jsonDecode(raw);
       if (decoded is! Map<String, dynamic>) return null;
       final typeName = decoded['type'];
-      final screenId = decoded['screen'];
+      // The approved v1 chat/rooms/profile screens omit `screen`; v2 includes it.
+      // Keep a non-sensitive compatibility marker when the legacy event has no ID.
+      final screenId = decoded['screen'] ?? 'legacy-v1';
       final data = decoded['data'];
       if (typeName is! String || screenId is! String || data is! Map) {
         return null;
