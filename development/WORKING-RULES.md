@@ -80,3 +80,10 @@ Do not ask the owner to resend an artifact already in GitHub or the shared proje
 ## Permanent artifact rule — owner P0 bundle
 
 The owner-uploaded `InOne-P0-snapshot-2026-11-08.bundle` must never be requested again as a routine session prerequisite. Its permanent copy is in branch `artifacts/p0-bundles`, path `bundles/owner-upload-2026-11-08/InOne-P0-snapshot-2026-11-08.bundle`, SHA-256 `e76fdd39e2e9698d7f32061e3fd4fb3dbc52ef981bb075c6c252a7cce11f391e`. Read `development/ARTIFACT-RETENTION.md` and retrieve the bundle from GitHub when needed. Never say it is saved unless the branch/path is checked live.
+
+
+## 8. Owner's mandatory 14-point AI/session protocol
+
+The complete and controlling operational instruction is [`AI-AGENT-MANDATE.md`](AI-AGENT-MANDATE.md). Every AI/chat/developer must read it fully before work. It adds mandatory requirements for: per-stage timestamped reports; inspection and GitHub preservation of every owner-provided chat file; no local-only copies; latest working files committed/pushed; five previous and five next tasks in each report with completed tasks struck through; cumulative project and release readiness; chat never replacing GitHub documentation; continuity and bundle updates; no invented decisions; one-time-only deviations; all required checks green on the exact SHA and explicit owner approval before merge; no server/deploy/database exposure without owner permission; use of GitHub Actions/Codespaces where available and authorized; and commit/push/remote verification for every deliverable.
+
+If any older paragraph in this file is less strict or ambiguous, apply the stricter rule in `AI-AGENT-MANDATE.md`. Do not silently weaken an owner rule.

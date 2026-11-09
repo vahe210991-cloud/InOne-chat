@@ -8,6 +8,10 @@
 
 This folder defines the working protocol and the current verified development baseline. Read this file first, then read every linked instruction before touching source code.
 
+## Mandatory AI/model entry point — read first
+
+0. [AI-AGENT-MANDATE.md](AI-AGENT-MANDATE.md) — complete mandatory protocol for every model/chat/developer. Root [`AGENTS.md`](../AGENTS.md) and [Copilot instructions](../.github/copilot-instructions.md) point here. Read the mandate fully before any work. The protocol requires timestamped reports after every stage, five previous/next tasks, cumulative readiness, preservation of every owner-provided file in GitHub, commit/push verification, green exact-SHA CI before merge, and explicit owner permission for merge/server/deploy operations.
+
 ## Required reading order
 
 1. [WORKING-RULES.md](WORKING-RULES.md) — mandatory repository handling and hand-back rules.

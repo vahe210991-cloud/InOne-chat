@@ -13,6 +13,13 @@
 Do not reopen P0 or ask the owner to re-upload the bundle unless a concrete regression or missing artifact is demonstrated. Retrieve it from `artifacts/p0-bundles`.
 
 
+## Mandatory AI agent protocol (added 2026-11-09)
+
+- [ ] Read `AGENTS.md` and the full `development/AI-AGENT-MANDATE.md` before any work.
+- [ ] Read the latest report and carry forward its rolling five previous / five next tasks.
+- [ ] Check the cumulative progress baseline; do not reset percentages.
+- [ ] Inspect every owner-provided chat attachment and preserve it in the correct GitHub branch/path.
+
 ## Start
 
 - [ ] Read `development/README.md` and every linked mandatory instruction.
@@ -31,6 +38,15 @@ Do not reopen P0 or ask the owner to re-upload the bundle unless a concrete regr
 - [ ] Record exact test commands and outcomes.
 
 ## Finish / hand back
+
+- [ ] Create a separate timestamped report under `development/reports/` after every completed stage and substantial session.
+- [ ] Include five previous tasks and five next tasks; strike through only tasks completed with evidence.
+- [ ] Include cumulative overall and current-release readiness, baseline and method.
+- [ ] Verify every file received from chat is stored in GitHub or explicitly marked BLOCKED.
+- [ ] Verify latest working files are committed, pushed, and readable from remote GitHub.
+- [ ] Do not merge unless all required checks are green on exact head SHA and owner explicitly approves.
+- [ ] Do not start servers/deployments/expose databases without explicit owner permission.
+- [ ] Confirm no local/temp-only deliverables remain; chat is not a substitute for GitHub reports.
 
 - [ ] Inspect `git status --short --branch`, `git diff --stat`, `git diff --check`, `git diff --name-status`, and untracked files.
 - [ ] Ensure every intended added/changed/deleted/renamed file is included.
