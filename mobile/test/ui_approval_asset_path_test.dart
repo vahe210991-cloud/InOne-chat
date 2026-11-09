@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:inone_mobile/claude_screen_catalog.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   test('all handoff screens map to deterministic local asset paths', () {
     expect(claudeScreenSources, hasLength(31));
     for (final screen in claudeScreenSources) {
