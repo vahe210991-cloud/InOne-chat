@@ -42,5 +42,7 @@ void main() {
     expect(claudeSupportedApiCalls['GET /org-requests']?.path, '/org-requests');
     expect(claudeSupportedApiCalls.containsKey('POST /auth/provider/verify'), isFalse);
     expect(claudeSupportedApiCalls.containsKey('PUT /devices/me/push'), isFalse);
+    expect(claudeSupportedApiCalls.containsKey('GET /org-requests/:id'), isFalse);
+    expect(claudeSupportedApiCalls.containsKey('GET /rooms/:id/events'), isFalse);
   });
 }
