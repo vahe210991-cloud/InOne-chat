@@ -7,6 +7,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 
 import 'approved_screens.dart';
 import 'claude_ui_bridge.dart';
+import 'claude_screen_catalog.dart';
 import 'core/data/inone_repositories.dart';
 import 'core/data/inone_profile.dart';
 import 'core/data/profile_load_status.dart';
@@ -55,6 +56,7 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
   late final InOneSession _session;
   late final InOneRepositories _repositories;
   String _selectedKey = 'approved:messages-light';
+  final List<String> _handoffHistory = [];
   bool _loading = true;
   bool _pageReady = false;
   String? _error;
@@ -65,9 +67,16 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
   bool _lastProfileAuthentication = false;
 
   bool get _isApproved => _selectedKey.startsWith('approved:');
+  bool get _isHandoff => _selectedKey.startsWith('handoff:');
   bool get _isPersonalProfile =>
       _isApproved && _selectedId.startsWith('personal-profile-');
   String get _selectedId => _selectedKey.split(':').last;
+
+  ClaudeScreenSource? get _selectedHandoffScreen {
+    if (!_isHandoff) return null;
+    final matches = claudeScreenSources.where((screen) => screen.id == _selectedId);
+    return matches.isEmpty ? null : matches.first;
+  }
 
   ApprovedScreen? get _selectedApprovedScreen {
     if (!_isApproved) return null;
@@ -82,6 +91,8 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
   String get _selectedTitle {
     final approved = _selectedApprovedScreen;
     if (approved != null) return approved.label;
+    final handoff = _selectedHandoffScreen;
+    if (handoff != null) return '${handoff.id} · ${handoff.title}';
     final test = _selectedTestScreen!;
     return '${test.id} · ${test.title}';
   }
@@ -92,6 +103,12 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
             keyValue: 'approved:${screen.id}',
             title: screen.label,
             subtitle: screen.isBeta2 ? 'Beta 2.0 · заглушка · ${screen.theme}' : 'Beta 1.0 · ${screen.theme}',
+          ),
+        for (final screen in claudeScreenSources)
+          ScreenChoice(
+            keyValue: 'handoff:${screen.id}',
+            title: '${screen.id} · ${screen.title}',
+            subtitle: 'Утверждённый HTML · batch ${screen.batch}',
           ),
         for (final screen in testScreens)
           ScreenChoice(
@@ -219,8 +236,28 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
   Future<void> _waitForCurrentScreens() async {
     if (_currentSource == 'approved') {
       await _waitForApprovedScreens();
+    } else if (_currentSource == 'handoff') {
+      await _waitForHandoffScreen();
     } else {
       await _waitForTestScreens();
+    }
+  }
+
+  Future<void> _waitForHandoffScreen() async {
+    if (!mounted || !_isHandoff) return;
+    setState(() {
+      _pageReady = true;
+      _loading = false;
+      _error = null;
+    });
+    final padding = MediaQuery.paddingOf(context);
+    try {
+      await _controller.runJavaScript(
+        "if (window.InOne) { window.InOne.setThemeMode('auto'); "
+        "window.InOne.setInsets(${padding.top}, ${padding.bottom}); }",
+      );
+    } catch (_) {
+      if (mounted) setState(() => _error = 'Не удалось инициализировать утверждённый экран');
     }
   }
 
@@ -415,6 +452,12 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
         unawaited(_showSelectedScreen());
         if (_isPersonalProfile) unawaited(_loadProfile());
       }
+    } else if (key.startsWith('handoff:')) {
+      final screen = _selectedHandoffScreen;
+      if (screen == null) return;
+      _currentSource = 'handoff';
+      _pageReady = false;
+      unawaited(_controller.loadFlutterAsset(screen.assetPath));
     } else {
       if (_currentSource != 'test') {
         unawaited(_loadTestGallery());
@@ -452,8 +495,17 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
 
     if (message.type == ClaudeBridgeEventType.navigate) {
       final target = message.targetScreen;
-      if (target == 'back') return;
-      if (target != null && testScreens.any((screen) => screen.id == target)) {
+      if (target == 'back') {
+        if (_isHandoff && _handoffHistory.isNotEmpty) {
+          final previous = _handoffHistory.removeLast();
+          _selectScreen('handoff:$previous');
+        }
+        return;
+      }
+      if (target != null && claudeScreenSources.any((screen) => screen.id == target)) {
+        if (_isHandoff) _handoffHistory.add(_selectedId);
+        _selectScreen('handoff:$target');
+      } else if (target != null && testScreens.any((screen) => screen.id == target)) {
         _selectScreen('test:$target');
       }
       return;
@@ -507,6 +559,18 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
         );
       }
       await _setClaudeScreenState('default');
+      final nextScreen = switch (call) {
+        'POST /register/email' => 'SC-03',
+        'POST /register/email/confirm' => 'SC-04',
+        'POST /register' => 'SC-00',
+        'POST /login' => 'SC-00',
+        'POST /logout' => 'SC-01',
+        _ => null,
+      };
+      if (nextScreen != null && claudeScreenSources.any((screen) => screen.id == nextScreen)) {
+        _handoffHistory.clear();
+        _selectScreen('handoff:$nextScreen');
+      }
     } catch (_) {
       // Never forward raw exceptions or request bodies to WebView/UI logs.
       await _setClaudeScreenState('error', 'Не удалось выполнить запрос. Проверьте данные и соединение.');
@@ -518,9 +582,15 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
     final encodedState = jsonEncode(state);
     final encodedMessage = jsonEncode(message);
     try {
-      await _controller.runJavaScript(
-        'if (window.InOne) window.InOne.setState($encodedState, $encodedMessage);',
-      );
+      await _controller.runJavaScript('''
+        if (window.InOne) {
+          if (typeof window.InOne.setState === 'function') {
+            window.InOne.setState($encodedState, $encodedMessage);
+          } else if ($encodedState === 'error' && typeof window.InOne.showError === 'function') {
+            window.InOne.showError($encodedMessage || 'Не удалось выполнить запрос');
+          }
+        }
+      ''');
     } catch (_) {
       // The screen may have been replaced while the API call was in flight.
     }
