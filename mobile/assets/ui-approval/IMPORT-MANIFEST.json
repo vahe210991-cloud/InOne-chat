@@ -1,0 +1,47 @@
+{
+  "packageVersion": "0.8-approval-batch-2",
+  "manifestSha256": "115534d84b272c4783c02bb73624d1dd1af12fa26bff7865bd359c9c41a4e9bc",
+  "screenCount": 24,
+  "screenIds": [
+    "SC-01",
+    "SC-02",
+    "SC-03",
+    "SC-04",
+    "SC-05",
+    "SC-06",
+    "SC-07",
+    "SC-08",
+    "SC-09",
+    "SC-10",
+    "SC-11",
+    "SC-12",
+    "SC-00",
+    "RQ-01",
+    "RQ-02",
+    "RQ-03",
+    "RQ-04",
+    "PS-01",
+    "PS-02",
+    "PS-03",
+    "SR-01",
+    "ST-01",
+    "ST-02",
+    "ST-03"
+  ],
+  "totalApprovedHtmlScreens": 31,
+  "runtimeOnlyPatches": [
+    {
+      "files": [
+        "screens/chat/CH-01.html",
+        "screens/chat/CH-02.html",
+        "screens/rooms/GR-01.html",
+        "screens/rooms/GR-02.html",
+        "screens/rooms/GR-04.html",
+        "screens/organizations/OR-01.html",
+        "screens/profile/PR-01.html"
+      ],
+      "change": "Replace remote Google Fonts stylesheet with local legacy-fonts.css using supplied WOFF2 files",
+      "sourceFilesRemainUnmodified": true
+    }
+  ]
+}
