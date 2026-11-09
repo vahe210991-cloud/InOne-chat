@@ -1,5 +1,7 @@
 # Daily InOne UI / P0 / MLS audit — 2026-11-09 13:02 Europe/Tallinn (UTC+2)
 
+> **LIVE CI ADDENDUM — 2026-11-09 13:06 (UTC+2):** After the Flutter asset-bundle fix and passing `flutter analyze`/`flutter test` on head `8b27e14ac067ffa68618b5ab53a609c148eb06a8` (run #42605486693; Android APK build was still in progress), a final WebView policy review found that the host still allowed external `unpkg.com` / Google Fonts subresources and `data:` subframes. Commit `7d356aa0b46d9e00a7b8391f657a08d173bc1764` now blocks remote subresources and data frames; only inert `about:blank` is allowed for subframes. PR #37 head is now `7d356aa0b46d9e00a7b8391f657a08d173bc1764`; latest exact-head run [#42606366859](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42606366859) is queued, so the final SHA is **not yet CI-verified**. No merge.
+
 **Session type:** scheduled repository audit and safe CI correction.  
 **Repository:** `vahe210991-cloud/InOne-chat`.  
 **Main snapshot:** `faa5b8b682b8e1328a58b97bcf5770d1286efa8a`.  
