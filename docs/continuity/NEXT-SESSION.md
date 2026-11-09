@@ -1,3 +1,15 @@
+# Immediate next steps — 2026-11-09 12:11 Europe/Tallinn
+
+1. Run Flutter CI independently on post-import PR #36 head `cb09a4058719576df6d589f1f8b59be517b592b5`; verify the exact candidate SHA.
+2. Review PR #36 and keep it draft/open until the owner explicitly authorizes merge. Do not merge automatically.
+3. Integrate the imported UI package with the native Flutter WebView/runtime loader and prove an approved screen renders on Android and iOS.
+4. Verify navigation and typed bridge events against actual Flutter handlers; map each screen action to a documented API contract and existing backend handler.
+5. Resolve missing/uncertain API contracts (including CH-02 room events), then perform visual parity, security and physical-device E2E acceptance.
+
+Latest evidence: [CI run #42586579987](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42586579987), input SHA `478cad39bc39e8002e55293e3015e72b68e26c8c`; post-import branch head `cb09a4058719576df6d589f1f8b59be517b592b5`. Full report: [2026-11-09-1211-ui-archive-import-ci.md](../../development/reports/2026-11-09-1211-ui-archive-import-ci.md).
+
+---
+
 ## Immediate next step — open and verify the Codespaces workspace (2026-11-08)
 
 The owner selected GitHub Codespaces. A draft devcontainer is on branch `feat/beta1-full-screen-api-harness` (PR #28). Before further source edits:
