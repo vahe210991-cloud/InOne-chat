@@ -39,6 +39,24 @@ void main() {
       isFalse,
     );
     expect(
+      ProfileUiBridge.isApprovedAssetUrl(
+        'file:///android_asset/flutter_assets/assets/approved-ui/../private.txt',
+      ),
+      isFalse,
+    );
+    expect(
+      ProfileUiBridge.isApprovedAssetUrl(
+        'file:///private/Runner.app/flutter_assets/assets/approved-ui/%252e%252e/private.txt',
+      ),
+      isFalse,
+    );
+    expect(
+      ProfileUiBridge.isApprovedAssetUrl(
+        'file:///private/Runner.app/flutter_assets/assets/approved-ui/InOne-approved-cross-platform.html?download=1',
+      ),
+      isFalse,
+    );
+    expect(
         ProfileUiBridge.isApprovedAssetUrl('data:text/html,profile'), isFalse);
   });
 
@@ -68,6 +86,24 @@ void main() {
     expect(
       ProfileUiBridge.isUiApprovalAssetUrl(
         'file://untrusted.example/assets/ui-approval/screens/auth/SC-01.html',
+      ),
+      isFalse,
+    );
+    expect(
+      ProfileUiBridge.isUiApprovalAssetUrl(
+        'file:///android_asset/flutter_assets/assets/ui-approval/screens/auth/../../../../../../private/secret.txt',
+      ),
+      isFalse,
+    );
+    expect(
+      ProfileUiBridge.isUiApprovalAssetUrl(
+        'file:///private/Runner.app/Frameworks/App.framework/flutter_assets/assets/ui-approval/screens/auth/%252e%252e/secret.txt',
+      ),
+      isFalse,
+    );
+    expect(
+      ProfileUiBridge.isUiApprovalAssetUrl(
+        'file:///tmp/fake.app/other/flutter_assets/assets/ui-approval/screens/auth/SC-01.html',
       ),
       isFalse,
     );
