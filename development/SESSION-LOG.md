@@ -1,3 +1,14 @@
+## 2026-11-09 08:09:50 Europe/Tallinn — timestamped status report recorded
+
+- Owner reminded that every development report must be committed under `development/` with an explicit date and time.
+- Added [status report](reports/STATUS-2026-11-09-0809.md) on branch `docs/dev-report-2026-11-09-0809`.
+- Inspected `main` at `cf2e1515fee680c2e8c86720b570617ffbe471d4`; no changes to main.
+- Inspected PR [#31](https://github.com/vahe210991-cloud/InOne-chat/pull/31), still OPEN / DRAFT, head `f522908e16c0a97bd5a988913196d9c63fa52340`.
+- Latest inspected CI run [#42570757834](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42570757834): analyzer PASS; 49 Flutter tests PASS; Android APK build FAIL due to HTTP 504 downloading Gradle 9.3.1 distribution. No CI rerun in this documentation session.
+- Reaffirmed blocker: original `Ui.zip` HTML/CSS/JS/font assets are not yet in the Flutter asset bundle; actual approved-screen rendering is not complete.
+- No source code, main branch, production deployment, or backend/database exposure changed.
+- Report commit: to be recorded in PR after branch push/PR creation.
+
 # InOne development session log
 
 
