@@ -47,7 +47,7 @@ The GitHub repository `vahe210991-cloud/InOne-chat` is the only authoritative pr
 
 - Main snapshot: `faa5b8b682b8e1328a58b97bcf5770d1286efa8a`. PR #35/#36 merged; PR #37 open/draft/mergeable at latest head `7d356aa0b46d9e00a7b8391f657a08d173bc1764`. Prior run #42605486693 passed geometry, archive integrity/import, gallery, pub get, analyze and Flutter tests on head `8b27e14...`, then was cancelled during Android APK build after the security commit superseded it. New exact-head run #42606366859 on `7d356aa...` is in progress: geometry/archive/gallery/pub get PASS; analyze running; tests/build pending. iOS/device acceptance is not run.
 - P0 PR #25 is accepted and merged; PR-head run #42496739362 and post-merge run #42503694744 both passed 6/6. PR #22 is merged but its legacy run failed rustfmt; PR #18 remains draft/open with a publish subtree mismatch. The separate 240-path Wave 3 source audit remains open.
-- Native Android/iOS MLS handlers, production FFI, Keychain/Keystore DB-key adapters, durable message persistence and device E2E remain incomplete. WBS v1.1 unchanged: Beta 1.0 42%/31%; Beta 2.0 2%/0%.
+- Native Android/iOS MLS handlers, production FFI and Keychain/Keystore DB-key adapters remain incomplete. Rust SQLCipher state/outbox/Welcome journals exist, but normal decrypted inbound messages remain in-memory (`Client.inbox`) and lack a durable local message table. WBS v1.1 unchanged: Beta 1.0 42%/31%; Beta 2.0 2%/0%.
 
 ## Historical status at a glance (superseded by the live update above)
 
