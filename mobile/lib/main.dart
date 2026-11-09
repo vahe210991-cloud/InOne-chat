@@ -171,6 +171,10 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
             }
             return NavigationDecision.prevent;
           }
+          if (uri.scheme == 'file' &&
+              ProfileUiBridge.isUiApprovalAssetUrl(request.url)) {
+            return NavigationDecision.navigate;
+          }
           if (uri.scheme == 'about' || uri.scheme == 'data') {
             return NavigationDecision.navigate;
           }
