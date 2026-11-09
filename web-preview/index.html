@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#111827">
+<meta name="description" content="InOne — мобильный предпросмотр утверждённых экранов">
+<title>InOne — mobile preview</title>
+<style>
+:root{color-scheme:dark;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#0b1220;color:#f8fafc}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%}body{min-height:100dvh;display:flex;flex-direction:column}
+header{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:12px;padding:12px max(16px,env(safe-area-inset-left));background:rgba(11,18,32,.96);border-bottom:1px solid #263246}
+.mark{width:36px;height:36px;display:grid;place-items:center;border-radius:11px;background:#c9f53f;color:#111827;font-weight:900}
+.brand{min-width:0;flex:1}.brand strong{display:block;font-size:16px;letter-spacing:.02em}.brand small{display:block;margin-top:2px;color:#aab6c8;font-size:11px}
+.state{border:1px solid #3b4a60;color:#c9f53f;border-radius:999px;padding:6px 9px;font-size:10px;white-space:nowrap}
+main{flex:1;display:flex;flex-direction:column;min-height:0}.notice{padding:9px 14px;color:#cbd5e1;background:#172235;font-size:12px;line-height:1.45;border-bottom:1px solid #263246}
+.frame-wrap{flex:1;min-height:0;background:#f6f7f4}iframe{display:block;width:100%;height:100%;min-height:calc(100dvh - 112px);border:0;background:#f6f7f4}
+footer{padding:9px 14px max(9px,env(safe-area-inset-bottom));text-align:center;color:#8090a7;background:#0b1220;font-size:10px}
+@media(min-width:900px){.frame-wrap{width:min(100%,1180px);margin:0 auto}iframe{min-height:calc(100dvh - 112px)}}
+</style>
+</head>
+<body>
+<header><div class="mark" aria-hidden="true">I</div><div class="brand"><strong>InOne</strong><small>Предпросмотр интерфейса · Beta</small></div><span class="state">VISUAL PREVIEW</span></header>
+<main><div class="notice">Это визуальная версия для проверки экранов на телефоне. Авторизация, переписка, задачи и синхронизация с backend здесь пока не подключены.</div>
+<div class="frame-wrap"><iframe title="Утверждённые экраны InOne" src="./approved/InOne-approved-cross-platform.html" loading="eager" allow="fullscreen"></iframe></div></main>
+<footer>InOne Beta · тестовый предпросмотр · не вводите реальные пароли или персональные данные</footer>
+</body>
+</html>
