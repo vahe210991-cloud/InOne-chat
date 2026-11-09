@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import 'approved_screens.dart';
+import 'claude_screen_catalog.dart';
 import 'core/data/inone_repositories.dart';
 import 'core/data/inone_profile.dart';
 import 'core/data/profile_load_status.dart';
@@ -90,7 +91,7 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
           ScreenChoice(
             keyValue: 'approved:${screen.id}',
             title: screen.label,
-            subtitle: 'Утверждённый экран · ${screen.theme}',
+            subtitle: screen.isBeta2 ? 'Beta 2.0 · заглушка · ${screen.theme}' : 'Beta 1.0 · ${screen.theme}',
           ),
         for (final screen in testScreens)
           ScreenChoice(
@@ -511,9 +512,10 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
 }
 
 String _stageLabel(ScreenStage stage) => switch (stage) {
-      ScreenStage.core => 'Beta 0.7.1',
-      ScreenStage.deferred => 'Отложен до 0.8',
-      ScreenStage.future => 'Следующий этап',
+      ScreenStage.core => 'Beta 1.0 · тестовый экран',
+      ScreenStage.deferred => 'Отложен · заглушка',
+      // Future concepts are deliberately retained in the dev gallery, not removed.
+      ScreenStage.future => 'Beta 2.0+ · заглушка',
     };
 
 class ScreenPickerSheet extends StatefulWidget {
