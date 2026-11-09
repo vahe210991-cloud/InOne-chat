@@ -114,6 +114,11 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
 
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..addJavaScriptChannel(
+        'InOneBridge',
+        onMessageReceived: (message) =>
+            unawaited(_handleClaudeBridgeMessage(message.message)),
+      )
       ..setBackgroundColor(const Color(0xFFFAF9F5))
       ..setNavigationDelegate(NavigationDelegate(
         onPageStarted: (_) {
@@ -438,6 +443,86 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
         screenStatus: _selectedTestScreen?.status,
       ),
     );
+  }
+
+  Future<void> _handleClaudeBridgeMessage(String raw) async {
+    final message = ClaudeBridgeMessage.tryParse(raw);
+    if (message == null || !mounted) return;
+
+    if (message.type == ClaudeBridgeEventType.navigate) {
+      final target = message.targetScreen;
+      if (target == 'back') return;
+      if (target != null && testScreens.any((screen) => screen.id == target)) {
+        _selectScreen('test:$target');
+      }
+      return;
+    }
+
+    if (message.type == ClaudeBridgeEventType.pick) {
+      // File picking is wired separately when the native document picker is added.
+      await _setClaudeScreenState('unavailable', 'Выбор файла пока не подключён');
+      return;
+    }
+
+    final call = message.call;
+    final route = call == null ? null : claudeSupportedApiCalls[call];
+    if (route == null) {
+      await _setClaudeScreenState('unavailable', 'Этот API-маршрут пока не подключён');
+      return;
+    }
+
+    try {
+      await _setClaudeScreenState('loading');
+      if (call == 'POST /login') {
+        await _session.login(
+          email: (message.body['email'] ?? '').toString(),
+          password: (message.body['password'] ?? '').toString(),
+        );
+      } else if (call == 'POST /register/email') {
+        await _session.startEmailRegistration(
+          (message.body['email'] ?? '').toString(),
+        );
+      } else if (call == 'POST /register/email/confirm') {
+        await _session.confirmEmailRegistration(
+          email: (message.body['email'] ?? '').toString(),
+          code: (message.body['code'] ?? '').toString(),
+        );
+      } else if (call == 'POST /register') {
+        await _session.registerAccount(
+          email: (message.body['email'] ?? '').toString(),
+          registrationToken: (message.body['registrationToken'] ?? '').toString(),
+          password: (message.body['password'] ?? '').toString(),
+          nickname: (message.body['nickname'] ?? '').toString(),
+          phone: message.body['phone']?.toString(),
+        );
+      } else if (call == 'POST /logout') {
+        await _session.logout();
+      } else {
+        await _session.request(
+          route.method,
+          route.path,
+          authenticated: route.authenticated,
+          body: message.body.isEmpty ? null : message.body,
+        );
+      }
+      await _setClaudeScreenState('default');
+    } catch (_) {
+      // Never forward raw exceptions or request bodies to WebView/UI logs.
+      await _setClaudeScreenState('error', 'Не удалось выполнить запрос. Проверьте данные и соединение.');
+    }
+  }
+
+  Future<void> _setClaudeScreenState(String state, [String? message]) async {
+    if (!mounted || !_pageReady) return;
+    final encodedState = jsonEncode(state);
+    final encodedMessage = jsonEncode(message);
+    try {
+      await _controller.runJavaScript(
+        'if (window.InOne) window.InOne.setState($encodedState, $encodedMessage);',
+      );
+    } catch (_) {
+      // The screen may have been replaced while the API call was in flight.
+    }
   }
 
   @override
