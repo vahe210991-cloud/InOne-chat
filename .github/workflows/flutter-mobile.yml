@@ -62,8 +62,20 @@ jobs:
           manifest="$(find "${RUNNER_TEMP}/ui-inner" -type f -name 'screen-manifest.json' -print -quit)"
           test -n "$manifest" || { echo "::error::screen-manifest.json not found"; exit 1; }
           node mobile/tool/import_ui_approval.mjs "$(dirname "$manifest")"
-          test "$(find mobile/assets/ui-approval -type f -name '*.html' | wc -l)" -eq 31
-          test "$(find mobile/assets/ui-approval -type f -name '*.woff2' | wc -l)" -eq 5
+          html_count="$(find mobile/assets/ui-approval -type f -name '*.html' | wc -l | tr -d ' ')"
+          font_count="$(find mobile/assets/ui-approval -type f -name '*.woff2' | wc -l | tr -d ' ')"
+          echo "Imported HTML files: $html_count (expected 31)"
+          echo "Imported WOFF2 fonts: $font_count (expected 5)"
+          if [ "$html_count" -ne 31 ]; then
+            echo "::error::Expected exactly 31 HTML files, found $html_count"
+            find mobile/assets/ui-approval -type f -name '*.html' -print
+            exit 1
+          fi
+          if [ "$font_count" -ne 5 ]; then
+            echo "::error::Expected exactly 5 WOFF2 fonts, found $font_count"
+            find mobile/assets/ui-approval -type f -name '*.woff2' -print
+            exit 1
+          fi
           git add mobile/assets/ui-approval
           if ! git diff --cached --quiet; then
             git config user.name "github-actions[bot]"
