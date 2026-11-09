@@ -1,3 +1,15 @@
+## 2026-11-09 10:15 — Beta 1.0 UI integration stage 1 / WBS owner approval
+
+- Owner explicitly approved the Beta 1.0/Beta 2.0 WBS; `development/PROGRESS-BASELINE.md` v1.1 is marked owner-approved. Fixed baseline: Beta 1.0 42% implementation / 31% verification; Beta 2.0 2% / 0%; historical InOne overall 25% retained.
+- Root AGENTS.md and Copilot instructions now require reading the approved WBS; development README and continuity entrypoints link it as the common base for every agent/chat.
+- Ui.zip outer SHA-256 `cdff61b36673d45332f4809c5a42f1978e715adb3e4dcf280c96d92f3aa758bb`; nested archive SHA-256 `d098738ff64fab0388aa72d22a92b097940c41bbcb4acfddfc30ff745e16ad0d`. Both ZIP integrity checks PASS; nested package 231 entries / 7,432,843 bytes; 24 manifest screens, 31 HTML screens total, five fonts; all 10 approved.sha256 entries PASS.
+- UI integration foundation committed: stable ID → local asset path mapping, rootBundle loader, path tests, deterministic import tool. Full binary/source import is still BLOCKED: available GitHub connector cannot stream mounted binary files and container has no GitHub network. No false claim of upload; preserve source attachment and checksums.
+- API contract mismatch remains: CH-02 `GET /rooms/:id/events` is not in API inventory. Do not invent endpoint.
+- Flutter analyze/tests, Actions, Android/iOS runtime and golden visual checks NOT RUN for this stage. No server/deploy/DB exposure. Main unchanged.
+- Detailed report: `development/reports/2026-11-09-1015-ui-integration-start.md`.
+
+---
+
 ## 2026-11-08 — Codespaces configuration drafted; full-clone protocol blocks verification
 
 - Owner selected GitHub Codespaces for the InOne test environment.
