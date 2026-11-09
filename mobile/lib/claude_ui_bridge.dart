@@ -91,10 +91,7 @@ const claudeSupportedApiCalls = <String, ClaudeApiRoute>{
   'POST /logout': ClaudeApiRoute('POST', '/logout'),
   'GET /orgs/mine': ClaudeApiRoute('GET', '/orgs/mine'),
   'GET /org-requests': ClaudeApiRoute('GET', '/org-requests'),
-  'GET /org-requests/:id': ClaudeApiRoute('GET', '/org-requests/:id'),
-  'GET /users/search?nickname=…': ClaudeApiRoute('GET', '/users/search?nickname=:query'),
   'GET /config': ClaudeApiRoute('GET', '/config'),
   'GET /config/public': ClaudeApiRoute('GET', '/config/public', authenticated: false),
   'GET /rooms/mine': ClaudeApiRoute('GET', '/rooms/mine'),
-  'GET /rooms/:id/events': ClaudeApiRoute('GET', '/rooms/:id/events'),
 };
