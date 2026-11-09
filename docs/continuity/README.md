@@ -33,3 +33,8 @@
 |---|---|
 | 2026-11-08 08:25 | Создана постоянная папка continuity; зафиксированы состояние проекта, решения, источники и handoff-инструкции. |
 | 2026-11-08 12:00 | Добавлен P0 GitHub recovery status: branch `recovery/p0-wave3-applied`, SHA `7ebdeac`; функциональные suites PASS, rustfmt FAIL, source-integrity audit остаётся открытым. |
+
+
+## Owner-approved cumulative baseline — 2026-11-09
+
+The owner approved the WBS and release split. All future agents/chats MUST read [development/PROGRESS-BASELINE.md](../../development/PROGRESS-BASELINE.md) before work. Baseline: Beta 1.0 42% implementation / 31% verification; Beta 2.0 2% / 0%; historical InOne overall 25% retained. Scope, weights and percentages are not to be changed without explicit owner approval and a versioned baseline update. Every work item/report must map to the WBS. Current UI integration stage report: [2026-11-09 UI integration](../../development/reports/2026-11-09-1015-ui-integration-start.md).
