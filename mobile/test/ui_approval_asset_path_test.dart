@@ -13,17 +13,30 @@ void main() {
     }
   });
 
-  test('all 31 approved HTML files are bundled and match their stable IDs', () async {
+  test('all 31 approved HTML files and runtime dependencies are bundled', () async {
     for (final screen in claudeScreenSources) {
       final html = await rootBundle.loadString(screen.assetPath);
       expect(html, contains('data-screen="${screen.id}"'), reason: screen.assetPath);
       expect(html, contains('<html'), reason: screen.assetPath);
     }
-    await rootBundle.loadString('assets/ui-approval/interactions.v2.js');
-    await rootBundle.loadString('assets/ui-approval/interactions.js');
-    await rootBundle.loadString('assets/ui-approval/design-tokens.v2.css');
-    await rootBundle.loadString('assets/ui-approval/design-tokens.css');
-    await rootBundle.loadString('assets/ui-approval/legacy-fonts.css');
+    for (final asset in [
+      'interactions.v2.js',
+      'interactions.js',
+      'design-tokens.v2.css',
+      'design-tokens.css',
+      'legacy-fonts.css',
+    ]) {
+      await rootBundle.loadString('assets/ui-approval/$asset');
+    }
+    for (final font in [
+      'armenian.woff2',
+      'cyrillic-ext.woff2',
+      'cyrillic.woff2',
+      'latin-ext.woff2',
+      'latin.woff2',
+    ]) {
+      await rootBundle.load('assets/ui-approval/assets/fonts/$font');
+    }
   });
 
   test('screen IDs and local asset paths remain unique', () {
