@@ -6,7 +6,7 @@
 - P0 PR #25 remains the accepted scope: exact PR-head run #42496739362 and post-merge run #42503694744 both PASS 6/6. PR #22 is merged but its run #42471062557 failed Rust formatting; PR #18 remains open/draft and run #42460862472 failed the publish subtree-integrity gate. The separate Wave 3 240-base-path blob-hash audit remains open.
 - Native Android/iOS MLS handlers, production FFI, Keychain/Keystore database-key adapters, durable local message store and two-device E2E remain NOT IMPLEMENTED / NOT VERIFIED. Rust `mls-client` has SQLCipher + a KeyStore trait with only MemoryKeyStore; Flutter session persists only device ID and keeps access/refresh tokens in memory.
 - WBS v1.1 unchanged: Beta 1.0 42% implementation / 31% verification; UI 35%/15%; Backend/API 65%/55%; MLS/mobile security/storage 35%/25%; P0 accepted core 100%/100% for its defined scope. No merge or deployment.
-- Full report: [2026-11-09-1302-daily-ui-mls-audit.md](reports/2026-11-09-1302-daily-ui-mls-audit.md). Documentation branch: `automation/daily-audit-2026-11-09-1303`.
+- Full report: [2026-11-09-1302-daily-ui-mls-audit.md](reports/2026-11-09-1302-daily-ui-mls-audit.md). Documentation PR: [#38](https://github.com/vahe210991-cloud/InOne-chat/pull/38), branch `automation/daily-audit-2026-11-09-1303`; not merged.
 
 ## 2026-11-09 10:46 — UI exact-head CI green; original source archive still blocked
 
