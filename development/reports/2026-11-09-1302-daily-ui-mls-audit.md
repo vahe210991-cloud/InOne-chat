@@ -62,6 +62,8 @@ The 22 canonical approved variants (11 light + 11 dark) pass the source geometry
 
 The bridge currently exposes a limited allowlist of supported calls. The screen catalog also declares routes that are not in that allowlist; in particular `CH-02` declares `GET /rooms/:id/events`, which remains unresolved for this UI integration. Unknown calls fail closed and display an unavailable state. Do not add route handlers until the backend contract and implementation are verified.
 
+> **STORAGE IMPLEMENTATION PRECISION — 2026-11-09 13:09 (UTC+2):** Code inspection of `mls-client/src/lib.rs` confirms that the Rust core already has SQLCipher-backed OpenMLS state, a durable outbound `client_outbox`, a processed-event journal, quarantine/desync journals, and durable Welcome receipts/ACK state. The gap is narrower but still release-critical: the only `KeyStore` implementation found is test-only `MemoryKeyStore`; no production Android Keystore/iOS Keychain adapter or native FFI handler is present. Normal decrypted incoming messages are emitted through the in-memory `Client.inbox: Vec<Incoming>`; no SQLCipher table for durable inbound message bodies was found. The separate `mls-bridge` POC still holds its `World` in process memory. Flutter `InOneSession` persists only the stable device ID; access/refresh tokens remain in memory and the Flutter session is not wired to the Rust DB-key provider. Therefore do not describe all local storage as absent, but do not mark production-protected inbound message storage or persistence-before-ACK complete.
+
 ## 2. Backend P0 / MLS / source integrity
 
 ### Accepted P0 scope
@@ -81,11 +83,12 @@ The bridge currently exposes a limited allowlist of supported calls. The screen 
 ### Native mobile MLS and protected storage
 
 Repository inspection confirms:
-- Rust `mls-client` contains SQLCipher-backed storage and a `KeyStore` interface; the only `KeyStore` implementation found is `MemoryKeyStore` for tests.
-- The separate Rust `mls-bridge` currently keeps its `World` in process memory.
-- Flutter `InOneSession` stores the stable device ID through `flutter_secure_storage`, but access/refresh tokens remain in memory; this is not a native MLS database-key provider.
-- No Android/iOS `MethodChannel` MLS handlers or production Rust FFI packaging were found on `main`.
-- No production Keychain/Keystore DB-key adapter, durable on-device message store, persistence-before-ACK flow, or two-device restart/offline E2E was verified.
+- Rust `mls-client` already has SQLCipher-backed OpenMLS state, a durable outbound `client_outbox`, processed-event and quarantine journals, and durable Welcome receipt/ACK state.
+- The only `KeyStore` implementation found is test-only `MemoryKeyStore`; no production Android Keystore/iOS Keychain adapter or native Rust FFI handler was found.
+- Normal decrypted incoming messages are returned through in-memory `Client.inbox: Vec<Incoming>`; no SQLCipher table for durable inbound message bodies was found. Persistence-before-mark/ACK for normal incoming messages is therefore not accepted.
+- The separate Rust `mls-bridge` POC still keeps its `World` in process memory.
+- Flutter `InOneSession` persists only the stable device ID through `flutter_secure_storage`; access/refresh tokens remain in memory and the session is not wired to the Rust DB-key provider.
+- No Android/iOS `MethodChannel` MLS handlers, production platform key provider, inbound durable message store or two-device restart/offline E2E were verified.
 
 MLS send/decrypt must remain fail-closed. No plaintext fallback. Incoming messages must not be ACKed before durable local persistence.
 
