@@ -42,6 +42,37 @@ void main() {
         ProfileUiBridge.isApprovedAssetUrl('data:text/html,profile'), isFalse);
   });
 
+  test('allows only local bundled UI handoff assets', () {
+    expect(
+      ProfileUiBridge.isUiApprovalAssetUrl(
+        'file:///android_asset/flutter_assets/assets/ui-approval/screens/auth/SC-01.html',
+      ),
+      isTrue,
+    );
+    expect(
+      ProfileUiBridge.isUiApprovalAssetUrl(
+        'file:///private/Runner.app/Frameworks/App.framework/flutter_assets/assets/ui-approval/screens/chat/CH-01.html',
+      ),
+      isTrue,
+    );
+    expect(
+      ProfileUiBridge.isUiApprovalAssetUrl('https://example.test/SC-01.html'),
+      isFalse,
+    );
+    expect(
+      ProfileUiBridge.isUiApprovalAssetUrl(
+        'file:///tmp/attacker/assets/ui-approval/screens/auth/SC-01.html',
+      ),
+      isFalse,
+    );
+    expect(
+      ProfileUiBridge.isUiApprovalAssetUrl(
+        'file://untrusted.example/assets/ui-approval/screens/auth/SC-01.html',
+      ),
+      isFalse,
+    );
+  });
+
   test(
       'targets the original selected profile and writes text-only profile fields',
       () {
