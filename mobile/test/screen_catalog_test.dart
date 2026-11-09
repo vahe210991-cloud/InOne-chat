@@ -15,7 +15,7 @@ void main() {
       'ST-03': '/config/public',
       'SR-01': '/users/search?nickname=:query',
       'personal-profile-light': '/profile',
-      'messages-light': '/sync',
+      'messages-light': '/rooms/mine',
       'notifications-light': '/sync',
     };
 
@@ -28,12 +28,13 @@ void main() {
     }
 
     expect(requiredBindings.length, greaterThanOrEqualTo(10));
-    expect(screenApiProbes.containsKey('GR-01'), isFalse,
-        reason: 'the current backend does not implement GET /rooms/mine');
+    expect(screenApiProbes.containsKey('GR-01'), isFalse);
     expect(screenApiProbes.containsKey('workspace-light'), isFalse,
-        reason: 'workspace room listing is not yet implemented by the current backend');
-    expect(screenApiProbes.keys.toSet().intersection(requiredBindings.keys.toSet()).length,
-        greaterThanOrEqualTo(10));
+        reason: 'workspace room listing is not yet part of this screen catalog');
+    expect(
+      screenApiProbes.keys.toSet().intersection(requiredBindings.keys.toSet()).length,
+      greaterThanOrEqualTo(10),
+    );
   });
 
   test('public probes do not require an authenticated session', () {
