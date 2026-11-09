@@ -9,7 +9,7 @@
  * with the exact supplied local WOFF2 files.
  */
 import { createHash } from 'node:crypto';
-import { cp, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 
