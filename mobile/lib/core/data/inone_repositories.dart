@@ -1,5 +1,6 @@
 import '../session/inone_session.dart';
 import 'inone_profile.dart';
+import 'inone_room.dart';
 
 /// Typed read repositories shared by approved screens and the test-screen host.
 class InOneRepositories {
@@ -13,8 +14,8 @@ class InOneRepositories {
       session.request('GET', '/readyz', authenticated: false);
   Future<InOneProfile> profile() async =>
       InOneProfile.fromJson(await session.request('GET', '/profile'));
-  Future<Map<String, dynamic>> myRooms() =>
-      session.request('GET', '/rooms/mine');
+  Future<List<InOneRoom>> myRooms() async =>
+      InOneRoomList.fromJson(await session.request('GET', '/rooms/mine')).rooms;
   Future<Map<String, dynamic>> myOrganizations() =>
       session.request('GET', '/orgs/mine');
   Future<Map<String, dynamic>> myDevices() =>
