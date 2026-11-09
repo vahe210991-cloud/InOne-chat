@@ -19,6 +19,9 @@ class ClaudeScreenSource {
   final int batch;
   final UiDeliveryStage stage;
   final String? api;
+
+  /// Exact local Flutter asset path after the owner-approved source package is imported.
+  String get assetPath => 'assets/ui-approval/$path';
 }
 
 /// IDs and paths are copied from ui-approval/screen-manifest.json.
