@@ -10,6 +10,22 @@ class ProfileUiBridge {
     'D41 Dark — Personal profile',
   };
 
+  /// Allows only bundled owner-approved HTML assets, never arbitrary file URLs.
+  static bool isUiApprovalAssetUrl(String? value) {
+    final uri = value == null ? null : Uri.tryParse(value);
+    if (uri == null || uri.scheme != 'file' || uri.host.isNotEmpty) {
+      return false;
+    }
+    try {
+      final path = Uri.decodeComponent(uri.path);
+      return path.startsWith('/android_asset/flutter_assets/assets/ui-approval/') ||
+          path.contains('.app/Frameworks/App.framework/flutter_assets/assets/ui-approval/') ||
+          path.contains('.app/flutter_assets/assets/ui-approval/');
+    } on FormatException {
+      return false;
+    }
+  }
+
   static bool isApprovedAssetUrl(String? value) {
     final uri = value == null ? null : Uri.tryParse(value);
     if (uri == null || uri.scheme != 'file' || uri.host.isNotEmpty) {
