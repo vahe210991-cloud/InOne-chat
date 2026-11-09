@@ -241,3 +241,13 @@ This section supersedes stale earlier statements in this file that no applied P0
 - The P0 workflow runs from `inone-development-archive-0.6.0/engine/`. A separate `inone-engine-poc-0.6.0/` tree also exists; do not assume parity without blob comparison.
 - Original bundle SHA/ref/HEAD remain separately recorded in the recovery status document. Its original binary and original five-commit ancestry are not imported into GitHub main.
 - Flutter app source, native mobile MLS handlers, secure key storage and durable local message persistence remain separate blockers. Do not treat P0 backend CI as a runnable Beta 1.0 app.
+
+
+## Аудитный срез — 2026-11-09 09:35 Europe/Tallinn
+
+- Полный аудит релизов Beta 1.0 и Beta 2.0 записан в [отчёте](../../development/reports/2026-11-09-0935-full-beta-audit.md).
+- Накопительная модель и предложенные веса: [PROGRESS-BASELINE.md](../../development/PROGRESS-BASELINE.md).
+- Beta 1.0: 42% реализации / 31% проверки; Beta 2.0: 2% / 0%. Оценки предварительные до согласования владельцем.
+- Главные блокеры: исходные UI assets не подключены к Flutter; чатовый endpoint catalogue требует сверки с backend; native mobile MLS/storage и two-device E2E не закрыты.
+- PR #28 CI PASS; PR #31 analyze/tests PASS, Android APK job FAIL (HTTP 504). Подробности и точные SHA/run IDs — в отчёте.
+- Этот аудит не изменяет продуктовый код и не расширяет Beta 1.0 scope.
