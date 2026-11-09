@@ -1,0 +1,42 @@
+name: InOne phone web preview
+
+on:
+  pull_request:
+    paths:
+      - 'web-preview/**'
+      - 'mobile/assets/approved-ui/InOne-approved-cross-platform.html'
+      - '.github/workflows/inone-phone-web-preview.yml'
+  push:
+    branches:
+      - feat/inone-phone-web-preview
+    paths:
+      - 'web-preview/**'
+      - 'mobile/assets/approved-ui/InOne-approved-cross-platform.html'
+      - '.github/workflows/inone-phone-web-preview.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package-preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assemble static phone preview
+        run: |
+          test -s web-preview/index.html
+          test -s mobile/assets/approved-ui/InOne-approved-cross-platform.html
+          mkdir -p dist/approved
+          cp web-preview/index.html dist/index.html
+          cp web-preview/README.md dist/README.md
+          cp mobile/assets/approved-ui/InOne-approved-cross-platform.html dist/approved/InOne-approved-cross-platform.html
+      - name: Verify preview contains no backend configuration or secrets
+        run: |
+          ! grep -RniE 'DATABASE_URL|INONE_PIN_PEPPER|Bearer [A-Za-z0-9._-]{20,}|password[[:space:]]*=' dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: inone-phone-web-preview
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14

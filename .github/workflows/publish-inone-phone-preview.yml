@@ -1,0 +1,48 @@
+name: Publish InOne phone preview
+
+on:
+  push:
+    branches:
+      - feat/inone-phone-web-preview
+    paths:
+      - 'web-preview/**'
+      - 'mobile/assets/approved-ui/InOne-approved-cross-platform.html'
+      - '.github/workflows/publish-inone-phone-preview.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: inone-phone-preview-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assemble static public site
+        run: |
+          test -s web-preview/index.html
+          test -s mobile/assets/approved-ui/InOne-approved-cross-platform.html
+          mkdir -p dist/approved
+          cp web-preview/index.html dist/index.html
+          cp mobile/assets/approved-ui/InOne-approved-cross-platform.html dist/approved/InOne-approved-cross-platform.html
+      - name: Verify public bundle has no backend configuration or credentials
+        run: |
+          ! grep -RniE 'DATABASE_URL|INONE_PIN_PEPPER|Bearer [A-Za-z0-9._-]{20,}|password[[:space:]]*=' dist
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+      - name: Deploy static preview to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
