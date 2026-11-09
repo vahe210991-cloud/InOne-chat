@@ -116,3 +116,16 @@ No original HTML/design files were edited. Runtime font patch is performed only 
 ## CI snapshot
 
 GitHub Actions run [#42578333371](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42578333371) was triggered on the PR #35 head at creation time. At last check: platform generation, asset geometry, 73-screen gallery verification, pub get, Flutter analyze and Flutter tests all PASS; Android preview APK build remained IN PROGRESS. This run predates subsequent v1 bridge/importer commits and therefore does not verify the latest branch head. Exact latest-head CI remains NOT RUN / NOT VERIFIED.
+
+
+## Addendum — exact-head Actions rerun (2026-11-09 10:27 Europe/Tallinn)
+
+PR #35 head at trigger: `8d3282b2bca16deb09af7bac98642c8abf35aec7`. GitHub Actions run [#42578785134](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42578785134) is associated with this exact head. At last observation:
+- Flutter setup/platform generation: PASS.
+- Approved screen geometry check: PASS.
+- Original 73-screen gallery integrity check: PASS.
+- `flutter pub get`: PASS.
+- `flutter analyze`: PASS.
+- `flutter test`: IN PROGRESS.
+- Android preview APK build and artifact upload: NOT STARTED.
+Therefore no green workflow result is claimed. This run validates the branch head before this report/log-only follow-up commit; any later code changes require a fresh exact-head run.
