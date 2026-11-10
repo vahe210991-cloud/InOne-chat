@@ -1,0 +1,88 @@
+name: OpenMLS Flutter Rust Bridge generation
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/openmls-frb-codegen.yml"
+      - "mobile/rust/**"
+      - "mobile/lib/core/mls/**"
+      - "mobile/pubspec.yaml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: openmls-frb-codegen-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  generate-and-validate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.47.9"
+          channel: stable
+          cache: true
+
+      - name: Install Rust toolchain and Android targets
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.91.0"
+          targets: "aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android"
+
+      - name: Install Flutter Rust Bridge code generator
+        run: cargo install --locked --version 2.13.0 flutter_rust_bridge_codegen
+
+      - name: Integrate and generate typed Dart bindings
+        working-directory: mobile
+        run: |
+          flutter_rust_bridge_codegen integrate \
+            --rust-crate-dir rust \
+            --rust-crate-name inone_mls_frb \
+            --integration-backend native-assets \
+            --platforms android,ios
+          flutter_rust_bridge_codegen generate
+
+      - name: Resolve Dart dependencies and create Rust lockfile
+        working-directory: mobile
+        run: |
+          flutter pub get
+          cargo generate-lockfile --manifest-path rust/Cargo.toml
+
+      - name: Validate Rust bridge on Linux
+        run: cargo test --manifest-path mobile/rust/Cargo.toml
+
+      - name: Validate Flutter code and session contract
+        working-directory: mobile
+        run: |
+          flutter analyze
+          flutter test
+
+      - name: Build Android with native OpenMLS assets
+        working-directory: mobile
+        run: flutter build apk --debug
+
+      - name: Commit generated bridge files to PR branch
+        shell: bash
+        env:
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          git add -A mobile
+          git reset -- mobile/android mobile/ios
+          if ! git diff --cached --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "build(mls): generate Flutter Rust bridge bindings"
+            git push origin "HEAD:${PR_HEAD_REF}"
+          fi
