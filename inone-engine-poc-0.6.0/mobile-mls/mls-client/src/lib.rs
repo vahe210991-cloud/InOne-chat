@@ -197,6 +197,37 @@ pub fn connect(base: &str, user_id: &str, password: &str, device_id: &str, db_pa
     build_client(agent, base, tokens, user_id, device_id, db_path, &keys.database_key(&format!("{user_id}/{device_id}"))?)
 }
 
+/// Подключает постоянный MLS-клиент к уже созданной мобильной сессии.
+///
+/// Flutter передаёт пару токенов один раз после успешного входа. Refresh token
+/// остаётся внутри Rust-клиента и никогда не возвращается через API snapshot.
+pub fn connect_with_session(
+    base: &str,
+    user_id: &str,
+    device_id: &str,
+    access_token: &str,
+    refresh_token: &str,
+    db_path: &str,
+    keys: &dyn KeyStore,
+) -> Result<Client, String> {
+    if base.trim().is_empty() || user_id.trim().is_empty() || device_id.trim().is_empty() {
+        return Err("адрес сервера, user_id и device_id обязательны".to_string());
+    }
+    if access_token.is_empty() || refresh_token.is_empty() {
+        return Err("для подключения нужны access и refresh tokens".to_string());
+    }
+    let agent = ureq::AgentBuilder::new().build();
+    build_client(
+        agent,
+        base.trim_end_matches('/'),
+        (access_token.to_string(), refresh_token.to_string()),
+        user_id,
+        device_id,
+        db_path,
+        &keys.database_key(&format!("{user_id}/{device_id}"))?,
+    )
+}
+
 /// Вход нового устройства аккаунта: подтверждается существующим устройством `approver`.
 pub fn connect_with_approval(
     base: &str,
@@ -356,6 +387,19 @@ impl Client {
     pub fn device_id(&self) -> &str {
         &self.device_id
     }
+
+    /// Краткоживущий access token для обычного HTTP-клиента Flutter.
+    /// Refresh token остаётся в Rust и этим методом не раскрывается.
+    pub fn access_token_snapshot(&self) -> Result<String, String> {
+        self.tokens.lock().map(|tokens| tokens.0.clone()).map_err(text)
+    }
+
+    /// Принудительно обновляет сессию и возвращает новый access token snapshot.
+    pub fn refresh_session(&self) -> Result<String, String> {
+        self.renew()?;
+        self.access_token_snapshot()
+    }
+
 
     fn mark_processed(&mut self, event_id: &str) -> Result<(), String> {
         self.meta.execute("INSERT OR IGNORE INTO client_processed (event_id) VALUES (?1)", [event_id]).map_err(text)?;
