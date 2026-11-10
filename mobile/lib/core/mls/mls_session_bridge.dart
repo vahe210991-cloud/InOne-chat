@@ -10,6 +10,14 @@ abstract interface class MlsSessionBridge {
     required String refreshToken,
   });
 
+  /// Reopens a session from the Rust-owned SQLCipher database after app restart.
+  /// No access or refresh token is accepted on this path.
+  Future<void> resume({
+    required String baseUrl,
+    required String userId,
+    required String deviceId,
+  });
+
   /// Returns only the short-lived access token. The refresh token must never
   /// be returned to Dart after [open] succeeds.
   Future<String> accessTokenSnapshot();
