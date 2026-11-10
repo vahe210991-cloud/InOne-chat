@@ -1,3 +1,45 @@
+# MLS storage clarification — 2026-11-09 13:09 (UTC+2)
+
+The Rust MLS core already has SQLCipher-backed group state, a durable outbound outbox and several recovery/ACK journals. Do not rebuild those from scratch. Continue with the missing production Android/iOS KeyStore adapters and FFI handlers, then add a durable inbound-message table/transaction so normal decrypted text is not left only in `Client.inbox` memory. Preserve fail-closed behavior and ensure ACK/processed marking follows the durable write. Flutter currently persists only device ID and does not yet supply the Rust DB key.
+
+---
+
+# Immediate next steps — 2026-11-09 13:08 Europe/Tallinn (UTC+2)
+
+1. Monitor [PR #37](https://github.com/vahe210991-cloud/InOne-chat/pull/37) exact head `7d356aa0b46d9e00a7b8391f657a08d173bc1764` and run [#42606366859](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42606366859). Geometry/archive/gallery/pub get have passed; analyze is running; tests and Android build are pending. Previous run #42605486693 was cancelled at APK build after tests passed because this security commit superseded it. Keep draft and do not merge.
+2. Install the Android preview APK after a green build and verify the 22 canonical variants (11 light / 11 dark), rectangular geometry, safe areas, keyboard and back navigation. Perform iOS build/device parity on macOS.
+3. Reconcile imported handoff screen API declarations with actual backend handlers and typed repositories. `CH-02 GET /rooms/:id/events` remains unresolved; unknown routes must fail closed.
+4. Implement native Android/iOS MLS handlers, Rust FFI packaging, Keychain/Keystore-backed SQLCipher DB-key providers and durable local message persistence. ACK incoming events only after persistence commits.
+5. Complete the separate Wave 3 240-base-path blob-hash/provenance audit, then run two-device MLS send/receive/offline/restart E2E. Keep it distinct from accepted PR #25 P0.
+
+Latest UI head/run: `7d356aa0b46d9e00a7b8391f657a08d173bc1764`, [#42606366859](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42606366859) (in progress). Accepted P0: PR #25, [run #42496739362](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42496739362), post-merge [#42503694744](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42503694744). Full daily report: [2026-11-09-1302-daily-ui-mls-audit.md](../../development/reports/2026-11-09-1302-daily-ui-mls-audit.md).
+
+---
+
+# Immediate next steps — 2026-11-09 13:06 Europe/Tallinn (UTC+2)
+
+1. Monitor [PR #37](https://github.com/vahe210991-cloud/InOne-chat/pull/37) latest head `7d356aa0b46d9e00a7b8391f657a08d173bc1764` and exact-head run [#42606366859](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42606366859). The prior head `8b27e14...` passed through Flutter tests, but its APK build was still in progress; the new security commit is not yet CI-verified. Keep draft and do not merge.
+2. Install the Android preview APK after a green build and verify the 22 canonical variants (11 light / 11 dark), rectangular geometry, safe areas, keyboard and back navigation. Perform iOS build/device parity on macOS.
+3. Reconcile imported handoff screen API declarations with actual backend handlers and typed repositories. `CH-02 GET /rooms/:id/events` remains unresolved; unknown routes must fail closed.
+4. Implement native Android/iOS MLS handlers, Rust FFI packaging, Keychain/Keystore-backed SQLCipher DB-key providers and durable local message persistence. ACK incoming events only after persistence commits.
+5. Complete the separate Wave 3 240-base-path blob-hash/provenance audit, then run two-device MLS send/receive/offline/restart E2E. Keep it distinct from accepted PR #25 P0.
+
+Latest UI head/run: `7d356aa0b46d9e00a7b8391f657a08d173bc1764`, [#42606366859](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42606366859) (queued). Accepted P0: PR #25, [run #42496739362](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42496739362), post-merge [#42503694744](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42503694744). Full daily report: [2026-11-09-1302-daily-ui-mls-audit.md](../../development/reports/2026-11-09-1302-daily-ui-mls-audit.md).
+
+---
+
+# Immediate next steps — 2026-11-09 13:02 Europe/Tallinn (UTC+2)
+
+1. Complete [PR #37](https://github.com/vahe210991-cloud/InOne-chat/pull/37) exact-head run [#42605486693](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42605486693) on `8b27e14ac067ffa68618b5ab53a609c148eb06a8`; Flutter tests pass, Android APK build is still in progress. Keep the PR draft and do not merge without every required check on the final SHA and explicit owner approval.
+2. Install the Android preview APK and verify the 22 canonical variants (11 light / 11 dark), rectangular geometry, safe areas, keyboard, back navigation and HTML handoff. Perform the corresponding iOS build and physical-device parity check on macOS.
+3. Reconcile every imported handoff screen API with actual backend handlers and typed Flutter repositories. `CH-02 GET /rooms/:id/events` remains unresolved; unknown routes must continue to fail closed.
+4. Implement native Android/iOS MLS handlers, Rust FFI packaging, Keychain/Keystore-backed SQLCipher DB-key providers and durable local message persistence. Incoming events must be ACKed only after the persistence transaction succeeds.
+5. Complete the separate Wave 3 240-base-path blob-hash/provenance audit, then run two-device MLS send/receive/offline/restart E2E. Do not conflate this legacy recovery lineage with the accepted PR #25 P0 snapshot.
+
+Latest evidence: PR #37 head `8b27e14ac067ffa68618b5ab53a609c148eb06a8`, run [#42605486693](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42605486693). Accepted P0: PR #25, run [#42496739362](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42496739362), post-merge [#42503694744](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42503694744). Full daily report: [2026-11-09-1302-daily-ui-mls-audit.md](../../development/reports/2026-11-09-1302-daily-ui-mls-audit.md).
+
+---
+
 # Immediate next steps — 2026-11-09 12:11 Europe/Tallinn
 
 1. Run Flutter CI independently on post-import PR #36 head `cb09a4058719576df6d589f1f8b59be517b592b5`; verify the exact candidate SHA.

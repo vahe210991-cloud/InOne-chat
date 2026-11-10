@@ -1,6 +1,6 @@
 # InOne — постоянная точка продолжения
 
-**Обновлено:** 2026-11-08 12:00 (UTC+3)  
+**Обновлено:** 2026-11-09 13:02 (Europe/Tallinn, UTC+2)  
 **Репозиторий:** `vahe210991-cloud/InOne-chat`  
 **Основная ветка документации:** `main`
 
@@ -29,8 +29,9 @@
 
 ## Журнал обновлений
 
-| Время (UTC+3) | Изменение |
+| Время (Europe/Tallinn) | Изменение |
 |---|---|
+| 2026-11-09 13:02 | Daily audit: PR #37 asset-bundle fix and current CI; P0 #25 6/6 post-merge accepted; native MLS/storage blockers retained. |
 | 2026-11-08 08:25 | Создана постоянная папка continuity; зафиксированы состояние проекта, решения, источники и handoff-инструкции. |
 | 2026-11-08 12:00 | Добавлен P0 GitHub recovery status: branch `recovery/p0-wave3-applied`, SHA `7ebdeac`; функциональные suites PASS, rustfmt FAIL, source-integrity audit остаётся открытым. |
 
