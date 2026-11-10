@@ -17,7 +17,7 @@ void main() {
       writeDeviceId: (_) async {},
       readMlsUserId: () async => '@alice:inone.test',
       writeMlsUserId: (_) async {},
-      deleteMlsUserId: () async => deletedUserId = true,
+      deleteMlsUserId: () async { deletedUserId = true; },
     );
 
     await session.initialize();
