@@ -68,6 +68,9 @@ void main() {
       httpClient: httpClient,
       readDeviceId: () async => 'device-1',
       writeDeviceId: (_) async {},
+      readMlsUserId: () async => null,
+      writeMlsUserId: (_) async {},
+      deleteMlsUserId: () async {},
     );
     final bridge = _FakeMlsSessionBridge();
 
@@ -129,6 +132,9 @@ void main() {
       httpClient: httpClient,
       readDeviceId: () async => 'device-1',
       writeDeviceId: (_) async {},
+      readMlsUserId: () async => null,
+      writeMlsUserId: (_) async {},
+      deleteMlsUserId: () async {},
     );
     final bridge = _FakeMlsSessionBridge()..failOpen = true;
 
