@@ -131,7 +131,8 @@ impl MlsSession {
     }
 }
 
-/// Adopt a session created by Flutter. The refresh token is passed into Rust
+/// Adopt a session created by Flutter, or restore the encrypted session through `resume_session`.
+/// The refresh token is passed into Rust
 /// once and is not returned by any method on MlsSession.
 pub fn open_session(
     base_url: String,
