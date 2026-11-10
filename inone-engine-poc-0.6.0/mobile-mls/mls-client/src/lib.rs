@@ -4,6 +4,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 use std::time::Duration;
+use std::path::Path;
 
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use openmls::prelude::tls_codec::{Deserialize, Serialize};
@@ -228,6 +229,58 @@ pub fn connect_with_session(
     )
 }
 
+/// Восстанавливает MLS-сессию из SQLCipher без повторной передачи refresh token
+/// из Flutter. Пара токенов читается только внутри Rust.
+pub fn resume_with_session(
+    base: &str,
+    user_id: &str,
+    device_id: &str,
+    db_path: &str,
+    keys: &dyn KeyStore,
+) -> Result<Client, String> {
+    if base.trim().is_empty() || user_id.trim().is_empty() || device_id.trim().is_empty() {
+        return Err("адрес сервера, user_id и device_id обязательны".to_string());
+    }
+    if !Path::new(db_path).is_file() {
+        return Err("сохранённая MLS-сессия не найдена на этом устройстве".to_string());
+    }
+    let db_key = keys.database_key(&format!("{user_id}/{device_id}"))?;
+    let meta = open_db(db_path, &db_key)?;
+    let has_meta: bool = meta
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'client_meta')",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(text)?;
+    if !has_meta {
+        return Err("в базе нет сохранённой MLS-сессии".to_string());
+    }
+    let serialized: Vec<u8> = meta
+        .query_row(
+            "SELECT value FROM client_meta WHERE key = 'session_tokens'",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|_| "в базе нет сохранённой MLS-сессии; выполните вход заново".to_string())?;
+    drop(meta);
+    let tokens: (String, String) = serde_json::from_slice(&serialized)
+        .map_err(|_| "сохранённая сессия повреждена; выполните вход заново".to_string())?;
+    if tokens.0.is_empty() || tokens.1.is_empty() {
+        return Err("сохранённая сессия неполная; выполните вход заново".to_string());
+    }
+    let agent = ureq::AgentBuilder::new().build();
+    build_client(
+        agent,
+        base.trim_end_matches('/'),
+        tokens,
+        user_id,
+        device_id,
+        db_path,
+        &db_key,
+    )
+}
+
 /// Вход нового устройства аккаунта: подтверждается существующим устройством `approver`.
 pub fn connect_with_approval(
     base: &str,
@@ -292,6 +345,12 @@ fn build_client(agent: ureq::Agent, base: &str, tokens: (String, String), user_i
          CREATE TABLE IF NOT EXISTS client_processed (event_id TEXT PRIMARY KEY);
          CREATE TABLE IF NOT EXISTS client_outbox (local_id TEXT PRIMARY KEY, room_id TEXT NOT NULL, body TEXT NOT NULL, seq INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS client_remote_config (id INTEGER PRIMARY KEY CHECK (id = 1), etag TEXT NOT NULL, body TEXT NOT NULL, fetched_at INTEGER NOT NULL);",
+    )
+    .map_err(text)?;
+    let serialized_tokens = serde_json::to_vec(&tokens).map_err(text)?;
+    meta.execute(
+        "INSERT OR REPLACE INTO client_meta (key, value) VALUES ('session_tokens', ?1)",
+        [serialized_tokens],
     )
     .map_err(text)?;
 
@@ -369,17 +428,34 @@ impl Client {
 
     /// Новая пара по токену обновления. Старый токен обновления после этого не принимается.
     fn renew(&self) -> Result<(), String> {
-        let refresh = self.tokens.lock().map_err(text)?.1.clone();
+        // Держим блокировку до завершения ротации: два параллельных 401
+        // не должны потратить один refresh token дважды.
+        let mut tokens = self.tokens.lock().map_err(text)?;
+        let refresh = tokens.1.clone();
         let r = request(&self.agent, &self.base, "", "POST", "/token/refresh", Some(json!({ "refreshToken": refresh })))?;
-        let token = r["token"].as_str().ok_or("сервер не вернул токен")?.to_string();
-        let next = r["refreshToken"].as_str().ok_or("сервер не вернул токен обновления")?.to_string();
-        *self.tokens.lock().map_err(text)? = (token, next);
+        let next_pair = (
+            r["token"].as_str().ok_or("сервер не вернул токен")?.to_string(),
+            r["refreshToken"].as_str().ok_or("сервер не вернул токен обновления")?.to_string(),
+        );
+        // Одна SQL-операция заменяет пару целиком; память обновляем только
+        // после успешной записи, чтобы не потерять действующий refresh token.
+        let serialized = serde_json::to_vec(&next_pair).map_err(text)?;
+        self.meta
+            .execute(
+                "INSERT OR REPLACE INTO client_meta (key, value) VALUES ('session_tokens', ?1)",
+                [serialized],
+            )
+            .map_err(text)?;
+        *tokens = next_pair;
         Ok(())
     }
 
     /// Выход: сессия этого устройства завершается на сервере.
     pub fn logout(&self) -> Result<(), String> {
         self.call("POST", "/logout", Some(json!({})))?;
+        self.meta
+            .execute("DELETE FROM client_meta WHERE key = 'session_tokens'", [])
+            .map_err(text)?;
         Ok(())
     }
 
