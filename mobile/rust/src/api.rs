@@ -59,12 +59,12 @@ impl MlsSession {
 
     /// Current short-lived access token only. Refresh token stays in Rust.
     pub fn access_token_snapshot(&self) -> Result<String, String> {
-        self.with_client(Client::access_token_snapshot)
+        self.with_client(|client| client.access_token_snapshot())
     }
 
     /// Rotate the session in Rust and return only the new access token.
     pub fn refresh_session(&self) -> Result<String, String> {
-        self.with_client(Client::refresh_session)
+        self.with_client(|client| client.refresh_session())
     }
 
     pub fn ensure_key_packages(&self, target: u64) -> Result<(), String> {
