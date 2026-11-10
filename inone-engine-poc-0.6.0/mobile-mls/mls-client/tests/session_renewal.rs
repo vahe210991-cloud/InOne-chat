@@ -4,7 +4,7 @@ use std::process::{Child, ChildStdin, Command, Stdio};
 use std::thread;
 use std::time::Duration;
 
-use mls_client::{connect, connect_with_session, Incoming, MemoryKeyStore};
+use mls_client::{connect, connect_with_session, resume_with_session, Incoming, MemoryKeyStore};
 use serde_json::json;
 
 const PW: &str = "пароль-проверки-1";
@@ -105,22 +105,38 @@ fn client_adopts_flutter_session_and_keeps_refresh_token_in_rust() {
     let device = "ADOPT_PHONE";
     let (access, refresh) = session_tokens(&engine.base, user, device);
     let original_access = access.clone();
+    let database_path = db("adopt-resume");
     let client = connect_with_session(
         &engine.base,
         user,
         device,
         &access,
         &refresh,
-        &db("adopt"),
+        &database_path,
         &keys,
     )
     .expect("подключение с готовой сессией");
     assert_eq!(client.access_token_snapshot().unwrap(), original_access);
 
-    // Запрос после истечения access token должен обновить пару внутри Rust.
+    // Запрос после истечения access token должен обновить пару внутри Rust
+    // и атомарно сохранить новую пару в SQLCipher.
     thread::sleep(Duration::from_millis(2000));
     assert_eq!(client.available_key_packages().unwrap(), 0);
     let rotated_access = client.access_token_snapshot().unwrap();
     assert_ne!(rotated_access, original_access, "Flutter получает только обновлённый access token");
-    client.logout().unwrap();
+    drop(client); // имитируем закрытие процесса приложения
+
+    // Восстановление использует только идентификаторы и ключ системного хранилища:
+    // refresh token не передаётся из Flutter повторно.
+    let resumed = resume_with_session(
+        &engine.base,
+        user,
+        device,
+        &database_path,
+        &keys,
+    )
+    .expect("восстановление сессии после перезапуска");
+    assert_eq!(resumed.access_token_snapshot().unwrap(), rotated_access);
+    assert_eq!(resumed.available_key_packages().unwrap(), 0, "восстановленная сессия выполняет запрос к серверу");
+    resumed.logout().unwrap();
 }
