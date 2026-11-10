@@ -142,6 +142,13 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
   }
 
   @override
+  Future<void> resume({
+    required String baseUrl,
+    required String userId,
+    required String deviceId,
+  }) async {}
+
+  @override
   Future<String> accessTokenSnapshot() async => accessToken;
 
   @override
