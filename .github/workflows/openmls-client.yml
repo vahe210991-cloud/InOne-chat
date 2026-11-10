@@ -25,8 +25,10 @@ jobs:
   openmls-client:
     name: Rust client + real engine integration tests
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
       INONE_ENGINE_DIR: ${{ github.workspace }}/inone-engine-poc-0.6.0
+      RUST_TEST_THREADS: "1"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -53,4 +55,4 @@ jobs:
             inone-engine-poc-0.6.0/mobile-mls/mls-client -> target
 
       - name: Test persistent OpenMLS client
-        run: cargo test --locked --manifest-path inone-engine-poc-0.6.0/mobile-mls/mls-client/Cargo.toml
+        run: cargo test --locked --manifest-path inone-engine-poc-0.6.0/mobile-mls/mls-client/Cargo.toml -- --test-threads=1
