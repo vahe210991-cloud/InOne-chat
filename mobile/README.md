@@ -57,8 +57,9 @@ Loading, unauthenticated, empty-profile, and error states appear in a native ban
 - The personal-profile identity fields are connected to the authenticated profile API; other approved screens remain visual previews and their HTML demo controls are not wired to production actions.
 - The 73 test entries use the original full-screen HTML gallery. The gallery asset integrity test checks all 73 card IDs against the Flutter catalogue.
 - Generic API probing is read-only. POST/PUT/DELETE actions require dedicated forms, validated payloads and explicit confirmation.
-- Native Android/iOS MLS FFI, secure message database, upload flow, offline queue and two-device E2E are not completed by this increment.
-- The Flutter session temporarily owns refresh-token rotation. When the native MLS bridge is integrated, ownership must move to the native MLS session layer rather than running two refresh owners.
+- A typed `MlsSessionBridge` contract now defines one-time session adoption, access-token snapshots, native refresh, logout and handle cleanup. `InOneSession.adoptMlsSession()` obtains the canonical `userId` from `GET /profile`, transfers the session pair, and clears the Dart refresh token only after Rust accepts the session. Failed adoption leaves the Flutter session intact.
+- The bridge is currently an interface with mocked handoff tests; generated `flutter_rust_bridge` bindings and the production Android Keystore/iOS Keychain implementation are not yet connected. Until that native implementation is verified, the app continues using its existing Flutter session path.
+- Native Android/iOS MLS FFI, secure message database, upload flow, offline queue and two-device E2E are not completed by this increment. Do not enable MLS by default or fall back silently to Megolm.
 
 ## Tests
 
@@ -68,7 +69,7 @@ flutter test
 flutter analyze
 ```
 
-The tests assert the 22 approved variants, 73 test entries, the 51/1/21 stage split, 95 unique picker entries and the API transport contract.
+The tests assert the 22 approved variants, 73 test entries, the 51/1/21 stage split, 95 unique picker entries, the API transport contract and the Flutter-to-native session handoff contract.
 
 
 ## Backend deployment note
