@@ -137,6 +137,9 @@ fn client_adopts_flutter_session_and_keeps_refresh_token_in_rust() {
     )
     .expect("восстановление сессии после перезапуска");
     assert_eq!(resumed.access_token_snapshot().unwrap(), rotated_access);
+    thread::sleep(Duration::from_millis(2000)); // проверяем сохранённый refresh token после перезапуска
     assert_eq!(resumed.available_key_packages().unwrap(), 0, "восстановленная сессия выполняет запрос к серверу");
+    let resumed_access = resumed.access_token_snapshot().unwrap();
+    assert_ne!(resumed_access, rotated_access, "после перезапуска Rust повторно обновляет сохранённую пару");
     resumed.logout().unwrap();
 }
