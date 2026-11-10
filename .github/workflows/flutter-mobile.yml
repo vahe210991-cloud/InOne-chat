@@ -38,8 +38,6 @@ jobs:
       - run: flutter --version
       - name: Generate Android and iOS platform projects
         run: flutter create --platforms=android,ios --project-name inone_mobile --org com.inone .
-      - name: Prepare Android NDK context for OpenMLS secure storage
-        run: node tool/prepare_android_mls.mjs
       - name: Remove generated template test
         run: rm -f test/widget_test.dart
       - name: Verify approved cross-platform screen geometry
