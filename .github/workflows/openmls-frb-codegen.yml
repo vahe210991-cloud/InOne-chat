@@ -7,6 +7,7 @@ on:
       - "mobile/rust/**"
       - "mobile/lib/core/mls/**"
       - "mobile/pubspec.yaml"
+      - "mobile/tool/prepare_android_mls.mjs"
 
 permissions:
   contents: write
@@ -34,6 +35,10 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Generate Android and iOS platform projects
+        working-directory: mobile
+        run: flutter create --platforms=android,ios --project-name inone_mobile --org com.inone .
+
       - name: Install Rust toolchain and Android targets
         uses: dtolnay/rust-toolchain@master
         with:
@@ -52,6 +57,10 @@ jobs:
             --integration-backend native-assets \
             --platforms android,ios
           flutter_rust_bridge_codegen generate
+
+      - name: Prepare Android NDK context for native secure storage
+        working-directory: mobile
+        run: node tool/prepare_android_mls.mjs
 
       - name: Resolve Dart dependencies and create Rust lockfile
         working-directory: mobile
