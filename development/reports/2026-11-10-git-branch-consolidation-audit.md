@@ -6,7 +6,7 @@ Audited main SHA before this report: `8350a18865703c78d5991b66d3cc6899cdeeca1f`
 
 ## Findings
 
-- GitHub inventory: 28 remote branches, 13 open PRs at audit time.
+- GitHub inventory: 29 remote branches, 13 open PRs at audit time.
 - Current main SHA `8350a188...` passed Flutter workflow #42630606199: platform generation, approved UI geometry, archive verification/import, 73-screen gallery, `flutter pub get`, `flutter analyze`, `flutter test`, Android preview APK and artifact upload.
 - P0 workflow #42504163838 passed 6/6 jobs on `7a1db8e9...`: Rust format, Node suite, room-list regression, PostgreSQL integration, OpenMLS client and Rust bridge. Comparing that SHA with current main showed no changes under `inone-development-archive-0.6.0/engine/**`; this is engine-subtree continuity evidence, not a fresh P0 run on current main SHA.
 - API transport PR #23 has a historical green Flutter run #42469418081, but its branch is 248 commits behind main and GitHub reports the PR non-mergeable. It must be reconciled and retested before porting.
