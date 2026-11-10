@@ -19,19 +19,34 @@ class InOneSession extends ChangeNotifier {
     http.Client? httpClient,
     Future<String?> Function()? readDeviceId,
     Future<void> Function(String)? writeDeviceId,
+    MlsSessionBridge? nativeMlsBridge,
+    Future<String?> Function()? readMlsUserId,
+    Future<void> Function(String)? writeMlsUserId,
+    Future<void> Function()? deleteMlsUserId,
   })  : _httpClient = httpClient,
+        _nativeMlsBridge = nativeMlsBridge,
         _readDeviceId = readDeviceId ?? (() => _storage.read(key: _deviceIdKey)),
         _writeDeviceId = writeDeviceId ??
-            ((value) => _storage.write(key: _deviceIdKey, value: value));
+            ((value) => _storage.write(key: _deviceIdKey, value: value)),
+        _readMlsUserId = readMlsUserId ?? (() => _storage.read(key: _mlsUserIdKey)),
+        _writeMlsUserId = writeMlsUserId ??
+            ((value) => _storage.write(key: _mlsUserIdKey, value: value)),
+        _deleteMlsUserId = deleteMlsUserId ??
+            (() => _storage.delete(key: _mlsUserIdKey));
 
   static const _deviceIdKey = 'inone.device_id';
+  static const _mlsUserIdKey = 'inone.mls_user_id';
   static const _storage = FlutterSecureStorage();
   static final _secureRandom = Random.secure();
 
   final String baseUrl;
   final http.Client? _httpClient;
+  final MlsSessionBridge? _nativeMlsBridge;
   final Future<String?> Function() _readDeviceId;
   final Future<void> Function(String) _writeDeviceId;
+  final Future<String?> Function() _readMlsUserId;
+  final Future<void> Function(String) _writeMlsUserId;
+  final Future<void> Function() _deleteMlsUserId;
 
   String? _accessToken;
   String? _refreshToken;
@@ -63,6 +78,35 @@ class InOneSession extends ChangeNotifier {
       await _writeDeviceId(id);
     }
     _deviceId = id;
+
+    final savedUserId = await _readMlsUserId();
+    if (savedUserId != null && savedUserId.isNotEmpty) {
+      final bridge = _nativeMlsBridge;
+      if (bridge == null) {
+        throw const ApiException(
+          code: 'mls_session_bridge_unavailable',
+          statusCode: 503,
+          retryable: false,
+        );
+      }
+      await bridge.resume(
+        baseUrl: baseUrl,
+        userId: savedUserId,
+        deviceId: id,
+      );
+      final snapshot = await bridge.accessTokenSnapshot();
+      if (snapshot.isEmpty) {
+        await bridge.close();
+        throw const ApiException(
+          code: 'mls_session_missing_access_token',
+          statusCode: 502,
+          retryable: false,
+        );
+      }
+      _userId = savedUserId;
+      _accessToken = snapshot;
+      _mlsBridge = bridge;
+    }
     notifyListeners();
   }
 
@@ -167,6 +211,7 @@ class InOneSession extends ChangeNotifier {
           retryable: false,
         );
       }
+      await _writeMlsUserId(userId);
 
       _userId = userId;
       _accessToken = snapshot;
@@ -292,6 +337,7 @@ class InOneSession extends ChangeNotifier {
       try {
         if (bridge != null) await bridge.close();
       } finally {
+        await _deleteMlsUserId();
         _clearSession();
       }
     }
