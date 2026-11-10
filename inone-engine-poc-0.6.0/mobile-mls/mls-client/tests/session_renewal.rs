@@ -105,7 +105,7 @@ fn client_adopts_flutter_session_and_keeps_refresh_token_in_rust() {
     let device = "ADOPT_PHONE";
     let (access, refresh) = session_tokens(&engine.base, user, device);
     let original_access = access.clone();
-    let mut client = connect_with_session(
+    let client = connect_with_session(
         &engine.base,
         user,
         device,
