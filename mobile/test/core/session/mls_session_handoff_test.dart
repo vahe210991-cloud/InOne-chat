@@ -7,6 +7,35 @@ import 'package:inone_mobile/core/mls/mls_session_bridge.dart';
 import 'package:inone_mobile/core/session/inone_session.dart';
 
 void main() {
+  test('restores the native session after app restart without Flutter tokens', () async {
+    var deletedUserId = false;
+    final bridge = _FakeMlsSessionBridge()..accessToken = 'restored-access';
+    final session = InOneSession(
+      baseUrl: 'https://api.inone.test',
+      nativeMlsBridge: bridge,
+      readDeviceId: () async => 'device-1',
+      writeDeviceId: (_) async {},
+      readMlsUserId: () async => '@alice:inone.test',
+      writeMlsUserId: (_) async {},
+      deleteMlsUserId: () async => deletedUserId = true,
+    );
+
+    await session.initialize();
+
+    expect(bridge.resumeArguments, {
+      'baseUrl': 'https://api.inone.test',
+      'userId': '@alice:inone.test',
+      'deviceId': 'device-1',
+    });
+    expect(session.isAuthenticated, isTrue);
+    expect(session.userId, '@alice:inone.test');
+    expect(session.hasNativeMlsSession, isTrue);
+
+    await session.logout();
+    expect(deletedUserId, isTrue);
+    session.dispose();
+  });
+
   test('adopts the authenticated session and delegates refresh to Rust', () async {
     var protectedCalls = 0;
     final httpClient = MockClient((request) async {
@@ -116,6 +145,7 @@ void main() {
 
 class _FakeMlsSessionBridge implements MlsSessionBridge {
   Map<String, String>? openArguments;
+  Map<String, String>? resumeArguments;
   String accessToken = 'access-1';
   bool failOpen = false;
   int refreshCalls = 0;
@@ -146,7 +176,13 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
     required String baseUrl,
     required String userId,
     required String deviceId,
-  }) async {}
+  }) async {
+    resumeArguments = {
+      'baseUrl': baseUrl,
+      'userId': userId,
+      'deviceId': deviceId,
+    };
+  }
 
   @override
   Future<String> accessTokenSnapshot() async => accessToken;
