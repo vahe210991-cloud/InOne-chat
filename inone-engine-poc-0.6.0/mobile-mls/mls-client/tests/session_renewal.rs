@@ -4,7 +4,8 @@ use std::process::{Child, ChildStdin, Command, Stdio};
 use std::thread;
 use std::time::Duration;
 
-use mls_client::{connect, Incoming, MemoryKeyStore};
+use mls_client::{connect, connect_with_session, Incoming, MemoryKeyStore};
+use serde_json::json;
 
 const PW: &str = "пароль-проверки-1";
 const ROOM: &str = "!room-renew:inone.test";
@@ -55,6 +56,27 @@ fn texts(items: &[Incoming]) -> Vec<String> {
         .collect()
 }
 
+fn session_tokens(base: &str, user: &str, device: &str) -> (String, String) {
+    let agent = ureq::AgentBuilder::new().build();
+    match agent
+        .post(&format!("{base}/register"))
+        .send_json(json!({ "userId": user, "password": PW }))
+    {
+        Ok(_) | Err(ureq::Error::Status(409, _)) => {}
+        Err(error) => panic!("регистрация тестового пользователя: {error}"),
+    }
+    let login = agent
+        .post(&format!("{base}/login"))
+        .send_json(json!({ "userId": user, "password": PW, "deviceId": device }))
+        .expect("вход для получения сессии")
+        .into_json::<serde_json::Value>()
+        .expect("JSON ответа входа");
+    (
+        login["token"].as_str().expect("access token").to_string(),
+        login["refreshToken"].as_str().expect("refresh token").to_string(),
+    )
+}
+
 #[test]
 fn client_renews_an_expired_access_token_by_itself() {
     let engine = start_engine("1500");
@@ -73,4 +95,32 @@ fn client_renews_an_expired_access_token_by_itself() {
     assert_eq!(texts(&bob.sync().unwrap()), vec!["после истечения"]);
     bob.logout().unwrap();
     assert!(bob.sync().is_err(), "после выхода сессия не работает");
+}
+
+#[test]
+fn client_adopts_flutter_session_and_keeps_refresh_token_in_rust() {
+    let engine = start_engine("1500");
+    let keys = MemoryKeyStore::default();
+    let user = "@adopt:inone.test";
+    let device = "ADOPT_PHONE";
+    let (access, refresh) = session_tokens(&engine.base, user, device);
+    let original_access = access.clone();
+    let mut client = connect_with_session(
+        &engine.base,
+        user,
+        device,
+        &access,
+        &refresh,
+        &db("adopt"),
+        &keys,
+    )
+    .expect("подключение с готовой сессией");
+    assert_eq!(client.access_token_snapshot().unwrap(), original_access);
+
+    // Запрос после истечения access token должен обновить пару внутри Rust.
+    thread::sleep(Duration::from_millis(2000));
+    assert_eq!(client.available_key_packages().unwrap(), 0);
+    let rotated_access = client.access_token_snapshot().unwrap();
+    assert_ne!(rotated_access, original_access, "Flutter получает только обновлённый access token");
+    client.logout().unwrap();
 }
