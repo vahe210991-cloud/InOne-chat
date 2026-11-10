@@ -6,12 +6,14 @@ use mls_client::KeyStore;
 /// Production database-key storage. The key is read and written entirely
 /// inside Rust through Android Keystore-backed storage or Apple's protected
 /// Keychain store; it is never passed to Dart.
-pub struct PlatformKeyStore;
+pub struct PlatformKeyStore {
+    _private: (),
+}
 
 impl PlatformKeyStore {
     pub fn new() -> Result<Self, String> {
         initialize_native_store()?;
-        Ok(Self)
+        Ok(Self { _private: () })
     }
 }
 
