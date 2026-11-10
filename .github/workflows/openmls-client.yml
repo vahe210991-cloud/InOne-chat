@@ -21,6 +21,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: openmls-client-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   openmls-client:
     name: Rust client + real engine integration tests
