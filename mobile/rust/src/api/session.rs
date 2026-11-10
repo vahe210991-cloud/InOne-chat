@@ -4,7 +4,7 @@ use std::sync::Mutex;
 use sha2::{Digest, Sha256};
 
 use flutter_rust_bridge::frb;
-use mls_client::{connect_with_session, Client, Incoming, KeyStore};
+use mls_client::{connect_with_session, resume_with_session, Client, Incoming, KeyStore};
 
 use crate::secure_store::PlatformKeyStore;
 
@@ -160,6 +160,37 @@ pub fn open_session(
         &device_id,
         &access_token,
         &refresh_token,
+        &database_path,
+        &keys,
+    )?;
+    Ok(MlsSession {
+        client: Mutex::new(Some(client)),
+    })
+}
+
+/// Resume a previously adopted session from the encrypted SQLCipher database.
+/// Flutter supplies no access or refresh token on this path.
+pub fn resume_session(
+    base_url: String,
+    user_id: String,
+    device_id: String,
+    database_directory: String,
+) -> Result<MlsSession, String> {
+    let keys = PlatformKeyStore::new()?;
+    let identity = format!("{user_id}/{device_id}");
+    let digest = Sha256::digest(identity.as_bytes());
+    let filename = digest
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    let database_path = Path::new(&database_directory)
+        .join(format!("{filename}.sqlcipher"))
+        .to_string_lossy()
+        .into_owned();
+    let client = resume_with_session(
+        &base_url,
+        &user_id,
+        &device_id,
         &database_path,
         &keys,
     )?;
