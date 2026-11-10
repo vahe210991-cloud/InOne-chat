@@ -1,4 +1,7 @@
+use std::path::Path;
 use std::sync::Mutex;
+
+use sha2::{Digest, Sha256};
 
 use flutter_rust_bridge::frb;
 use mls_client::{connect_with_session, Client, Incoming, KeyStore};
@@ -136,9 +139,21 @@ pub fn open_session(
     device_id: String,
     access_token: String,
     refresh_token: String,
-    database_path: String,
+    database_directory: String,
 ) -> Result<MlsSession, String> {
     let keys = PlatformKeyStore::new()?;
+    std::fs::create_dir_all(&database_directory)
+        .map_err(|error| format!("создание каталога базы MLS: {error}"))?;
+    let identity = format!("{user_id}/{device_id}");
+    let digest = Sha256::digest(identity.as_bytes());
+    let filename = digest
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    let database_path = Path::new(&database_directory)
+        .join(format!("{filename}.sqlcipher"))
+        .to_string_lossy()
+        .into_owned();
     let client = connect_with_session(
         &base_url,
         &user_id,
