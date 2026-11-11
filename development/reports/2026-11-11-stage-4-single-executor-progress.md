@@ -273,3 +273,52 @@ Current PR #45 head: `c103cc2ae4eaa9e3ce721101f3581f3b6047e138`. Product source 
 - [Flutter mobile validation #42979954833](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42979954833): SKIPPED by Stage 4 branch condition.
 
 No tests executed on the current PR head. Stage 4 remains NOT ACCEPTED.
+
+
+## 18. Owner instruction — single executor and Beta 1.0 scope
+
+- Owner explicitly confirmed that ChatGPT is the sole developer and executor for the current work. No external agent is assigned or assumed. An agent may be used only after the owner explicitly notifies that one is available.
+- Current product stage is **Beta 1.0**. Stage 4 work and acceptance must remain within the approved Beta 1.0 scope and WBS v1.1. Do not treat Beta 2.0/future modules as current acceptance scope.
+- The full Stage 4 responsibility includes code review, implementation, Rust/OpenMLS, Flutter/FRB, Android/iOS, secure storage, session recovery, inbox/outbox, API/UI integration, tests, CI, security and repository archive.
+- No Beta 1.0 WBS weight or baseline percentage was changed.
+
+## 19. Source corrections and security hardening — 2026-11-11
+
+Current PR #45 head after these commits: `84248642e05e03c976a6f8d0eae0a9ab03a64765`.
+
+Changes committed to the existing Stage 4 branch:
+
+1. Fixed a confirmed Rust compile defect in `mobile/rust/src/api/session.rs`: cleanup referenced undeclared `existing_key`; it now uses the established `has_existing_key` state.
+2. Removed the duplicate `path_provider: ^2.1.5` dependency declaration from `mobile/pubspec.yaml`.
+3. Changed native key-store initialization so transient Android Keystore/iOS Keychain initialization errors are not permanently cached as a failed `OnceLock<Result<...>>`.
+4. Changed Android JNI application-context initialization so a failed attempt is not permanently cached; later initialization calls can retry.
+5. Added Rust API-origin validation: HTTPS is required for non-local endpoints; HTTP is permitted only for private/loopback hosts in debug builds. URL credentials, query strings and fragments are rejected.
+6. Applied the same HTTPS/local-debug policy in Flutter `ApiClient`; release builds without an explicit HTTPS endpoint resolve to an unconfigured API origin and fail closed.
+7. Disabled automatic HTTP redirects in Rust `ureq` and Flutter `http` clients to prevent bearer credentials from being forwarded to another origin.
+8. Added Rust and Flutter regression tests for API-origin policy and a Flutter assertion that bearer requests do not follow redirects.
+9. Updated mobile setup documentation and corrected API bridge comments about decrypted inbox history and acknowledgement retention.
+
+These changes are **implemented but not test-verified**. No test is marked passed based only on source inspection.
+
+## 20. CI and execution evidence on current PR head
+
+Exact PR #45 head: `84248642e05e03c976a6f8d0eae0a9ab03a64765`.
+
+- [OpenMLS client validation #42981617948](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42981617948): conclusion FAILED. Job `130393121153` has no step summaries; log download returned `BlobNotFound`.
+- [OpenMLS Flutter Rust Bridge generation #42981617913](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42981617913): conclusion FAILED. Job `130393121034` has no step summaries; log download returned `BlobNotFound`. Dependent iOS Keychain job was SKIPPED.
+- [Flutter mobile validation #42981617907](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42981617907): SKIPPED by the workflow's Stage 4 branch condition. Flutter analyze/tests and Android smoke coverage are expected in the FRB workflow, which failed before a step ran.
+
+The exact GitHub runner/job failure cause is UNKNOWN. No source-level or billing/policy explanation is inferred. The official GitHub status page showed all systems operational at the time checked; this does not identify the repository-specific job failure.
+
+Local execution capability check:
+- Available: Node.js 22, npm 10, Java 21.
+- Unavailable: `rustc`, `cargo`, `flutter`, `dart`, `xcodebuild`.
+- Therefore no local Rust, Flutter, Android or iOS tests/builds were run.
+
+## 21. Acceptance and next gate
+
+- Stage 4 remains **NOT ACCEPTED**.
+- No green test result is claimed for the commits listed in section 19.
+- No Beta 1.0 percentage is increased; the approved WBS v1.1 baseline remains unchanged.
+- Next gate: make the repository's GitHub Actions jobs executable and expose full logs, then run the complete matrix on one exact final SHA. Continue code review and add missing crash/restart tests for incoming persistence, Welcome ACK recovery and server-accepted commits before acceptance.
+- Do not merge PR #45, enable `INONE_MLS_NATIVE_ENABLED`, or claim production readiness until every required platform/security gate is green.
