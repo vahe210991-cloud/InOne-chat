@@ -443,9 +443,16 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
 
   @override
   Future<void> invite(String roomId, String userId) async {}
+  @override
   Future<void> cancelInvite(String roomId, String userId) async {}
+
+  @override
   Future<String?> roomRecoveryStatus(String roomId) async => null;
+
+  @override
   Future<List<MlsUndecryptableEvent>> undecryptable() async => const [];
+
+  @override
   Future<String?> quarantinedCommitReason(String roomId, int epoch) async => null;
 
   @override
