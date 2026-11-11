@@ -566,7 +566,7 @@ class InOneSession extends ChangeNotifier {
         final deviceId = _deviceId;
         if (native == null || deviceId == null) {
           throw StateError(
-            'Native MLS cleanup is unavailable; saved identity will not be resumed',
+            'Native MLS cleanup unavailable; saved identity will not be resumed',
           );
         }
         await native.purgeLocalSession(
