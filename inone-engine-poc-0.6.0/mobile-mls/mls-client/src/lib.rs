@@ -194,6 +194,10 @@ fn register(agent: &ureq::Agent, base: &str, user_id: &str, password: &str) -> R
 
 /// Ключ базы устройства. Платформа хранит его в Keychain (iOS) или Keystore (Android); ядро его не сохраняет.
 pub trait KeyStore: Send + Sync {
+    /// Loads an existing key without creating or replacing one.
+    fn existing_database_key(&self, scope: &str) -> Result<Option<[u8; 32]>, String>;
+
+    /// Loads an existing key or creates one for a new encrypted database.
     fn database_key(&self, scope: &str) -> Result<[u8; 32], String>;
 
     /// Removes the platform-protected key after the encrypted database is deleted.
@@ -207,6 +211,10 @@ pub struct MemoryKeyStore {
 }
 
 impl KeyStore for MemoryKeyStore {
+    fn existing_database_key(&self, scope: &str) -> Result<Option<[u8; 32]>, String> {
+        Ok(self.keys.lock().map_err(text)?.get(scope).copied())
+    }
+
     fn database_key(&self, scope: &str) -> Result<[u8; 32], String> {
         let mut keys = self.keys.lock().map_err(text)?;
         if let Some(key) = keys.get(scope) {
@@ -314,7 +322,12 @@ pub fn resume_with_session(
     if !Path::new(db_path).is_file() {
         return Err("сохранённая MLS-сессия не найдена на этом устройстве".to_string());
     }
-    let db_key = keys.database_key(&format!("{user_id}/{device_id}"))?;
+    let db_key = keys
+        .existing_database_key(&format!("{user_id}/{device_id}"))?
+        .ok_or_else(|| {
+            "ключ SQLCipher сохранённой MLS-сессии отсутствует; создание нового ключа запрещено"
+                .to_string()
+        })?;
     let meta = open_db(db_path, &db_key)?;
     let has_meta: bool = meta
         .query_row(
@@ -1419,6 +1432,34 @@ mod retry_tests {
         group
             .create_message(&provider, &signer, b"still-operational")
             .unwrap();
+    }
+
+    #[test]
+    fn resuming_without_an_existing_key_never_creates_a_replacement_key() {
+        let keys = MemoryKeyStore::default();
+        let scope = "alice/device-restore";
+        let filename = format!(
+            "inone-mls-missing-key-{}-{}.db",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let path = std::env::temp_dir().join(filename);
+        std::fs::write(&path, b"existing encrypted database placeholder").unwrap();
+
+        let result = resume_with_session(
+            "https://api.inone.test",
+            "alice",
+            "device-restore",
+            path.to_str().unwrap(),
+            &keys,
+        );
+
+        assert!(result.is_err());
+        assert_eq!(keys.existing_database_key(scope).unwrap(), None);
+        std::fs::remove_file(path).unwrap();
     }
 
     #[test]
