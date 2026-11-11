@@ -2012,10 +2012,17 @@ impl Client {
     fn join_welcomes(&mut self) -> Result<(), String> {
         self.retry_pending_welcome_acks()?;
         let pending = self.call("GET", "/mls/welcomes", None)?;
-        for row in pending["welcomes"].as_array().cloned().unwrap_or_default() {
-            let Some(welcome_id) = row["id"].as_i64() else { continue };
-            let Some(room_id) = row["roomId"].as_str().filter(|id| !id.trim().is_empty()) else { continue };
-            let encoded = row["welcome"].as_str().unwrap_or_default();
+        let welcome_rows = pending["welcomes"].as_array()
+            .ok_or_else(|| "ошибка контракта ответа: welcomes отсутствует или не массив".to_string())?
+            .clone();
+        for row in welcome_rows {
+            let welcome_id = row["id"].as_i64()
+                .ok_or_else(|| "ошибка контракта ответа: Welcome id отсутствует или не число".to_string())?;
+            let room_id = row["roomId"].as_str()
+                .filter(|id| !id.trim().is_empty())
+                .ok_or_else(|| "ошибка контракта ответа: Welcome roomId отсутствует или пустой".to_string())?;
+            let encoded = row["welcome"].as_str()
+                .ok_or_else(|| "ошибка контракта ответа: Welcome payload не строка".to_string())?;
             let bytes = match B64.decode(encoded) {
                 Ok(bytes) => bytes,
                 Err(error) => {
@@ -2485,9 +2492,8 @@ impl Client {
                 return Err(reason);
             }
         }
-        // After a restart, the local database may contain a pending commit whose
-        // delivery result was lost. The server is authoritative: discard the
-        // unmerged local commit, then apply any commit the server actually stored.
+        // Journaled membership commits are replayed before room sync. Clear only
+        // an unjournaled legacy pending commit, then apply server-authoritative commits.
         self.clear_local_pending_commit(room_id)?;
         let local_epoch = self
             .groups
@@ -2505,8 +2511,11 @@ impl Client {
             return Err(format!("RecoveryRequired: {reason}"));
         }
         let events = self.call("GET", &format!("/rooms/{}/events", urlencoding::encode(room_id)), None)?;
+        let event_rows = events["events"].as_array()
+            .ok_or_else(|| "ошибка контракта ответа: events отсутствует или не массив".to_string())?
+            .clone();
         let mut pending: Vec<(u64, String, Vec<u8>)> = Vec::new();
-        for ev in events["events"].as_array().cloned().unwrap_or_default() {
+        for ev in event_rows {
             let event_id = match event_id_from_event(&ev) {
                 Ok(event_id) => event_id,
                 // A malformed event_id is a server response-contract error, not
@@ -2514,7 +2523,10 @@ impl Client {
                 // response can be retried, and isolate this room for this sync pass.
                 Err(error) => return Err(error),
             };
-            let Some(mls_b64) = ev["content"]["mls"].as_str() else { continue };
+            let Some(content) = ev.get("content").and_then(Value::as_object) else { continue };
+            let Some(mls_value) = content.get("mls") else { continue };
+            let mls_b64 = mls_value.as_str()
+                .ok_or_else(|| "ошибка контракта ответа: event content.mls не строка".to_string())?;
             if self.processed.contains(&event_id) {
                 continue;
             }
@@ -2559,8 +2571,11 @@ impl Client {
                 error
             }
         })?;
+        let commit_rows = commits["commits"].as_array()
+            .ok_or_else(|| "ошибка контракта ответа: commits отсутствует или не массив".to_string())?
+            .clone();
         let mut parsed_commits: Vec<(u64, Vec<u8>, Value)> = Vec::new();
-        for commit in commits["commits"].as_array().cloned().unwrap_or_default() {
+        for commit in commit_rows {
             let epoch = commit["epoch"].as_u64()
                 .ok_or_else(|| "ошибка контракта ответа: у Commit отсутствует epoch".to_string())?;
             let encoded = commit["commit"].as_str()
@@ -2839,8 +2854,11 @@ impl Client {
         let mut removed_total = 0usize;
         for attempt in 0..3 {
             let removals = self.call("GET", "/mls/removals", None)?;
+            let removal_rows = removals["removals"].as_array()
+                .ok_or_else(|| "ошибка контракта ответа: removals отсутствует или не массив".to_string())?
+                .clone();
             let mut by_room: HashMap<String, Vec<String>> = HashMap::new();
-            for row in removals["removals"].as_array().cloned().unwrap_or_default() {
+            for row in removal_rows {
                 let room = row["roomId"].as_str().ok_or("нет roomId")?.to_string();
                 let device = row["deviceId"].as_str().ok_or("нет deviceId")?.to_string();
                 by_room.entry(room).or_default().push(device);
