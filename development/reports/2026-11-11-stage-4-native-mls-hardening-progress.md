@@ -54,7 +54,7 @@ The following implementation changes are present in the Stage 4 branch. They are
 - Android Keystore and iOS Keychain platform storage remain fail-closed; no plaintext database fallback was introduced.
 - Updated the mobile integration test to verify that native logout removes the SQLCipher database and platform key even when the server logout endpoint is unreachable.
 - iOS device and simulator compile checks remain no-code-sign.
-- The signed iOS protected-Keychain runtime smoke test is conditional on the required signing secrets. If those secrets are absent, the workflow emits a warning; that runtime test remains an acceptance requirement and is not counted as passed.
+- The signed iOS protected-Keychain runtime smoke test now requires the signing secrets: missing certificate/password/profile/team ID fails the iOS job. The workflow validates the signing profile and signed app entitlements, but the updated gate has not yet executed successfully and is not counted as passed.
 - Updated the OpenMLS client workflow to test the exact PR head, use the P0 archived engine fixture, and allow a 30-minute test window.
 
 ## 2. Test sources present in the branch
@@ -111,3 +111,17 @@ The approved Beta 1.0 WBS baseline remains unchanged: **42% implementation / 31%
 6. Run the complete required matrix on one final SHA, archive the run links and exact counts, then request owner acceptance. Do not merge before that.
 
 **Result:** implementation hardening and test sources have been added to PR #45. Acceptance remains blocked because required verification has not produced inspectable results.
+
+
+## 6. Later CI workflow hardening — 2026-11-11
+
+The FRB workflow now defaults to read-only repository permissions. Generated output is committed by a separate write-only job that does not execute PR code, then a read-only job checks and reruns the complete Rust/OpenMLS/Flutter/Android matrix on the exact generated final SHA. The iOS job is downstream of that exact-SHA gate and requires signing secrets; it verifies the profile, signed app identity and keychain access group.
+
+Latest PR head: `56102098427b8853b746b94d8c073c5aa97d0c2c`.
+
+Latest CI:
+- OpenMLS #42987007179: FAILED; job has no step summary/log URL; log download returned BlobNotFound.
+- FRB #42987007308: FAILED before exposing steps/logs; generated commit, final-SHA verification and iOS jobs SKIPPED.
+- Flutter mobile #42987007363: SKIPPED by branch condition.
+
+The workflow changes are source-reviewed but not executed. No test result is claimed. Stage 4 remains NOT ACCEPTED / BLOCKED.
