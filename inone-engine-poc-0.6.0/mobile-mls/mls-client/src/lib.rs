@@ -964,6 +964,10 @@ impl Client {
 
     /// Читает комнату: сообщения идут по эпохам, коммит N -> N+1 применяется после сообщений эпохи N.
     fn sync_room(&mut self, room_id: &str, out: &mut Vec<Incoming>) -> Result<(), String> {
+        // After a restart, the local database may contain a pending commit whose
+        // delivery result was lost. The server is authoritative: discard the
+        // unmerged local commit, then apply any commit the server actually stored.
+        self.clear_local_pending_commit(room_id)?;
         let events = self.call("GET", &format!("/rooms/{}/events", urlencoding::encode(room_id)), None)?;
         let mut pending: Vec<(u64, String, Vec<u8>)> = Vec::new();
         for ev in events["events"].as_array().cloned().unwrap_or_default() {
