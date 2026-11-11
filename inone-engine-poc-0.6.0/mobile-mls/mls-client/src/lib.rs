@@ -178,12 +178,13 @@ fn text(e: impl std::fmt::Display) -> String {
 }
 
 fn event_id_from_event(event: &Value) -> Result<String, String> {
-    let event_id = event["event_id"]
-        .as_str()
-        .ok_or_else(|| "MLS event has no string event_id".to_string())?;
-    if event_id.trim().is_empty() {
-        return Err("MLS event has an empty event_id".to_string());
-    }
+    let event_id = event
+        .get("event_id")
+        .and_then(Value::as_str)
+        .filter(|id| !id.trim().is_empty())
+        .ok_or_else(|| {
+            "ошибка контракта ответа: event_id отсутствует, не строка или пустой".to_string()
+        })?;
     Ok(event_id.to_string())
 }
 
