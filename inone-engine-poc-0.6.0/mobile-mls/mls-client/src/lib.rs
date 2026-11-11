@@ -1785,9 +1785,13 @@ impl Client {
                         }
                         return Err(format!("временная ошибка локального хранилища при завершении membership commit: {error}"));
                     }
-                    transaction.commit().map_err(|error| {
-                        format!("временная ошибка локального хранилища при фиксации membership commit: {}", text(error))
-                    })?;
+                    if let Err(error) = transaction.commit() {
+                        self.reload_group(&room_id)?;
+                        return Err(format!(
+                            "временная ошибка локального хранилища при фиксации membership commit: {}",
+                            text(error)
+                        ));
+                    }
                 }
                 Err(error) if response_error_code(&error).as_deref() == Some("epoch_outdated") => {
                     let transaction = self.meta.transaction().map_err(text)?;
@@ -1822,9 +1826,13 @@ impl Client {
                         }
                         return Err(format!("временная ошибка локального хранилища при очистке stale membership commit: {error}"));
                     }
-                    transaction.commit().map_err(|error| {
-                        format!("временная ошибка локального хранилища при фиксации stale membership commit: {}", text(error))
-                    })?;
+                    if let Err(error) = transaction.commit() {
+                        self.reload_group(&room_id)?;
+                        return Err(format!(
+                            "временная ошибка локального хранилища при фиксации stale membership commit: {}",
+                            text(error)
+                        ));
+                    }
                     stale_cleared += 1;
                 }
                 Err(error) if response_error_code(&error).as_deref() == Some("operation_id_reused") => {
