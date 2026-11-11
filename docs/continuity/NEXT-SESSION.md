@@ -433,3 +433,12 @@ Read `development/AI-AGENT-MANDATE.md` at the start of every session. ChatGPT re
 - Verify workflow syntax and confirm push-triggered jobs start on the new workflow commits. If they still fail before steps/logs, obtain the exact Actions startup failure from GitHub UI or an authorized working runner; do not infer a code/test failure.
 - Run the complete Beta 1.0 matrix on one exact final SHA once a runner executes steps. iOS protected-Keychain smoke test also requires the configured `ios-signing` environment/secrets.
 - Keep Stage 4 NOT ACCEPTED / BLOCKED, WBS v1.1 unchanged, `INONE_MLS_NATIVE_ENABLED=false`; no merge. Report section 37.
+
+
+## Stage 4 — current hand-back — 2026-11-11
+
+- Continue on `feature/stage-4-native-mls-runtime-2026-11-11`; last verified commit before this note: `16a522a358a5b3d0d1f9b82f70785a0f599478ea`.
+- Workflow trigger correction is committed: FRB push allowlist covers its workflow file + `mobile/**`; OpenMLS push allowlist covers its workflow file + MLS client/engine paths; both retain manual dispatch and no longer use aggregate PR path triggers.
+- Next, verify Actions on the latest workflow commits via the GitHub UI. If jobs still fail before steps/logs, obtain the exact startup failure detail or restore an authorized runner. Do not change source/tests based on missing logs.
+- Once a runner executes steps, run all Rust/OpenMLS, FRB codegen, Flutter, Android Keystore, iOS build and signed iOS Keychain checks on one exact final SHA. iOS environment secrets remain required for signed runtime acceptance.
+- Keep Stage 4 NOT ACCEPTED / BLOCKED, WBS v1.1 unchanged, `INONE_MLS_NATIVE_ENABLED=false`; no merge. Report section 38.
