@@ -365,3 +365,16 @@ This section supersedes stale earlier statements in this file that no applied P0
 - PR #45 head: `c103cc2ae4eaa9e3ce721101f3581f3b6047e138`; product source: `3d4e64d4f302f7ddbe417903ede4dd4443b10975`.
 - OpenMLS #42979954916 and FRB #42979955089 failed before step 1 with runner_id 0 and empty steps; iOS dependent job skipped; Flutter mobile #42979954833 skipped.
 - No tests executed. Stage 4 remains NOT ACCEPTED.
+
+
+### Current Beta 1.0 / Stage 4 status — 2026-11-11
+
+- Sole executor: ChatGPT. No external agent is assigned. Owner will explicitly notify if an agent becomes available.
+- Current stage: Beta 1.0. Keep work and acceptance within approved Beta 1.0 WBS v1.1; do not expand acceptance into Beta 2.0 modules.
+- PR #45 current head: `84248642e05e03c976a6f8d0eae0a9ab03a64765`.
+- Source corrections: Rust undeclared identifier fixed; duplicate Flutter dependency removed; native store and Android JNI initialization made retryable; HTTPS/local-debug API origin policy added to Rust and Flutter; HTTP redirects disabled; regression tests added; mobile README updated.
+- These changes are committed but not test-verified.
+- CI #42981617948 (OpenMLS) and #42981617913 (FRB) FAILED with null/empty step summaries; job logs return BlobNotFound. iOS dependent job skipped. Flutter mobile #42981617907 skipped by branch condition.
+- Exact CI failure cause is UNKNOWN. Local environment lacks Rust, Cargo, Flutter, Dart and Xcode; no local test/build execution is claimed.
+- Stage 4 NOT ACCEPTED. Keep `INONE_MLS_NATIVE_ENABLED=false`; do not merge. Do not change Beta 1.0 percentages without accepted test evidence.
+- Full evidence and next gate: `development/reports/2026-11-11-stage-4-single-executor-progress.md`.
