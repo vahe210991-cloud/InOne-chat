@@ -83,6 +83,8 @@ test('CH-02 message delivery uses MLS and rejects legacy room-event POST', () =>
   assert.ok(server.includes('const mlsMessageRoute = p.match(/^\\/mls\\/groups\\/([^/]+)\\/messages$/);'));
   assert.match(server, /mlsMessageRoute && req\.method === 'POST'/u);
   assert.match(server, /messages must be sent through \/mls\/groups\/:id\/messages/u);
+  assert.match(server, /roomRoute && req\\.method === 'GET'/u);
+  assert.match(server, /return send\(res, 409, \{ error: 'messages must be sent through \/mls\/groups\/:id\/messages' \}\)/u);
   assert.match(server, /const mlsCommitsRoute = p\.match/u);
   assert.match(server, /const mlsAckRoute = p\.match/u);
   assert.match(server, /req\.method === 'GET' && p === '\/sync'/u);
