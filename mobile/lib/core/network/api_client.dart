@@ -170,7 +170,11 @@ class ApiClient {
     } catch (_) {
       // Request implementations may finalize their body buffer after send.
     }
-    request.headers.remove('authorization');
+    try {
+      request.headers.remove('authorization');
+    } catch (_) {
+      // Keep cleanup best-effort for finalized request implementations.
+    }
     headers.remove('authorization');
   }
 
