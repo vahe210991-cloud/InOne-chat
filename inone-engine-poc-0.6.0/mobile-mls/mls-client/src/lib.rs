@@ -1798,4 +1798,25 @@ mod retry_tests {
         assert!(gave_up.is_err());
         assert_eq!(calls, 3, "не больше заданного числа попыток");
     }
+    #[test]
+    fn api_origin_requires_tls_outside_local_debug_hosts() {
+        assert_eq!(
+            normalize_base_url("https://api.inone.test/").unwrap(),
+            "https://api.inone.test"
+        );
+        assert!(normalize_base_url("http://api.inone.test").is_err());
+        assert!(normalize_base_url("ftp://api.inone.test").is_err());
+        assert!(normalize_base_url("https://user:secret@api.inone.test").is_err());
+        assert!(normalize_base_url("https://api.inone.test?token=secret").is_err());
+        #[cfg(debug_assertions)]
+        {
+            assert_eq!(
+                normalize_base_url("http://10.0.2.2:8080/").unwrap(),
+                "http://10.0.2.2:8080"
+            );
+            assert!(normalize_base_url("http://192.168.1.20:8080").is_ok());
+            assert!(normalize_base_url("http://localhost:8080").is_ok());
+        }
+    }
+
 }
