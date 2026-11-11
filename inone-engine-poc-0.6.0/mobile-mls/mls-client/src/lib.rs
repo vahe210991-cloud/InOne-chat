@@ -1203,43 +1203,77 @@ impl Client {
     fn process_and_merge_commit(
         &mut self,
         room_id: &str,
+        commit_epoch: u64,
         bytes: &[u8],
         metadata: &Value,
     ) -> Result<(), String> {
-        let protocol = MlsMessageIn::tls_deserialize_exact(bytes)
-            .map_err(text)?
-            .try_into_protocol_message()
-            .map_err(text)?;
+        enum CommitFailure {
+            Transient(String),
+            Permanent(String),
+        }
+
+        let protocol = match MlsMessageIn::tls_deserialize_exact(bytes)
+            .map_err(text)
+            .and_then(|message| message.try_into_protocol_message().map_err(text))
+        {
+            Ok(protocol) => protocol,
+            Err(error) => {
+                let reason = format!("Commit encoding is invalid: {error}");
+                self.quarantine_commit(room_id, commit_epoch, bytes, &reason)?;
+                self.record_desync(room_id, &reason)?;
+                return Err(format!("RecoveryRequired: {reason}"));
+            }
+        };
+
         let transaction = self.meta.transaction().map_err(text)?;
-        let result = (|| -> Result<(), String> {
+        let result: Result<(), CommitFailure> = {
             let provider = DeviceProvider::new(&self.crypto, TransactionConnection(&transaction));
             let group = self.groups.get_mut(room_id).ok_or("комната не создана на этом устройстве")?;
-            match group.mls.process_message(&provider, protocol).map_err(text)?.into_content() {
-                ProcessedMessageContent::StagedCommitMessage(staged) => {
-                    verify_staged_membership_metadata(&group.mls, &staged, metadata)?;
-                    group.mls.merge_staged_commit(&provider, *staged).map_err(text)
-                }
-                _ => Err("ожидался коммит".to_string()),
+            match group.mls.process_message(&provider, protocol) {
+                Ok(processed) => match processed.into_content() {
+                    ProcessedMessageContent::StagedCommitMessage(staged) => {
+                        if !metadata["changes"].is_null() {
+                            verify_staged_membership_metadata(&group.mls, &staged, metadata)
+                                .map_err(CommitFailure::Permanent)?;
+                        }
+                        group.mls.merge_staged_commit(&provider, *staged)
+                            .map_err(|error| CommitFailure::Transient(text(error)))
+                    }
+                    _ => Err(CommitFailure::Permanent(
+                        "серверная запись не является MLS StagedCommit".to_string(),
+                    )),
+                },
+                Err(error) => match classify_process_error(&error) {
+                    Failure::Transient => Err(CommitFailure::Transient(text(error))),
+                    Failure::Permanent(classification) => Err(CommitFailure::Permanent(
+                        format!("{classification}: {error}"),
+                    )),
+                },
             }
-        })();
+        };
+
         match result {
             Ok(()) => {
                 if let Err(error) = transaction.commit() {
                     self.reload_group(room_id)?;
-                    Err(text(error))
-                } else {
-                    Ok(())
+                    return Err(format!(
+                        "временная ошибка локального хранилища при фиксации Commit: {}",
+                        text(error)
+                    ));
                 }
+                Ok(())
             }
-            Err(error) => {
+            Err(CommitFailure::Transient(error)) => {
                 drop(transaction);
                 self.reload_group(room_id)?;
-                if error.starts_with("P0.2:") {
-                    let reason = format!("RecoveryRequired: {error}");
-                    self.record_desync(room_id, &reason)?;
-                    return Err(reason);
-                }
-                Err(error)
+                Err(format!("временная ошибка обработки Commit, повтор позже: {error}"))
+            }
+            Err(CommitFailure::Permanent(reason)) => {
+                drop(transaction);
+                self.reload_group(room_id)?;
+                self.quarantine_commit(room_id, commit_epoch, bytes, &reason)?;
+                self.record_desync(room_id, &reason)?;
+                Err(format!("RecoveryRequired: {reason}"))
             }
         }
     }
@@ -2475,20 +2509,35 @@ impl Client {
             pending.push((protocol.epoch().as_u64(), event_id, bytes));
         }
         let current = self.groups.get(room_id).ok_or("комната не создана на этом устройстве")?.mls.epoch().as_u64();
-        let commits = self.call("GET", &format!("/mls/groups/{}/commits?since={current}", urlencoding::encode(room_id)), None)?;
-        let commits: Vec<(u64, Vec<u8>, Value)> = commits["commits"]
-            .as_array()
-            .cloned()
-            .unwrap_or_default()
-            .iter()
-            .map(|commit| {
-                Ok((
-                    commit["epoch"].as_u64().ok_or("нет эпохи")?,
-                    B64.decode(commit["commit"].as_str().ok_or("коммит не строка")?).map_err(text)?,
-                    commit.clone(),
-                ))
-            })
-            .collect::<Result<_, String>>()?;
+        let commits = self.call(
+            "GET",
+            &format!("/mls/groups/{}/commits?since={current}", urlencoding::encode(room_id)),
+            None,
+        ).map_err(|error| {
+            if is_retryable(&error) {
+                format!("временная ошибка загрузки Commit: {error}")
+            } else {
+                error
+            }
+        })?;
+        let mut parsed_commits: Vec<(u64, Vec<u8>, Value)> = Vec::new();
+        for commit in commits["commits"].as_array().cloned().unwrap_or_default() {
+            let epoch = commit["epoch"].as_u64()
+                .ok_or_else(|| "ошибка контракта ответа: у Commit отсутствует epoch".to_string())?;
+            let encoded = commit["commit"].as_str()
+                .ok_or_else(|| "ошибка контракта ответа: Commit не является строкой".to_string())?;
+            let bytes = match B64.decode(encoded) {
+                Ok(bytes) => bytes,
+                Err(error) => {
+                    let reason = format!("Commit base64 is invalid: {error}");
+                    self.quarantine_commit(room_id, epoch, encoded.as_bytes(), &reason)?;
+                    self.record_desync(room_id, &reason)?;
+                    return Err(format!("RecoveryRequired: {reason}"));
+                }
+            };
+            parsed_commits.push((epoch, bytes, commit));
+        }
+        let commits = parsed_commits;
 
         let join_epoch = self.groups[room_id].join_epoch;
         let before_join: Vec<String> = pending.iter().filter(|(e, _, _)| *e < join_epoch).map(|(_, id, _)| id.clone()).collect();
@@ -2506,9 +2555,48 @@ impl Client {
                 let incoming = self.process_and_persist_incoming(room_id, &event_id, &bytes)?;
                 out.push(incoming);
             }
-            let Some((_, commit, metadata)) = commits.iter().find(|(e, _, _)| *e == epoch + 1) else { break };
-            self.process_and_merge_commit(room_id, commit, metadata)?;
+            let Some((commit_epoch, commit, metadata)) = commits.iter().find(|(e, _, _)| *e == epoch + 1) else { break };
+            if let Some(reason) = self.commit_is_quarantined(room_id, *commit_epoch, commit)? {
+                let recovery = format!("Commit epoch {commit_epoch} already quarantined: {reason}");
+                self.record_desync(room_id, &recovery)?;
+                return Err(format!("RecoveryRequired: {recovery}"));
+            }
+            self.process_and_merge_commit(room_id, *commit_epoch, commit, metadata)?;
         }
+        // Late events within the retained epoch window remain decryptable; older ones
+        // are durably recorded as unreadable instead of silently discarded.
+        let final_epoch = self.groups[room_id].mls.epoch().as_u64();
+        let late: Vec<(String, Vec<u8>, u64)> = pending.iter()
+            .filter(|(epoch, event_id, _)| *epoch < final_epoch && !self.processed.contains(event_id))
+            .map(|(epoch, event_id, bytes)| (event_id.clone(), bytes.clone(), *epoch))
+            .collect();
+        for (event_id, bytes, epoch) in late {
+            if final_epoch.saturating_sub(epoch) > MAX_PAST_EPOCHS as u64 {
+                let incoming = self.persist_unreadable(
+                    room_id,
+                    &event_id,
+                    "event epoch is outside the retained MLS epoch window; rejoin is required",
+                )?;
+                out.push(incoming);
+            } else {
+                let incoming = self.process_and_persist_incoming(room_id, &event_id, &bytes)?;
+                out.push(incoming);
+            }
+        }
+
+        let future_event_ids: Vec<String> = pending.iter()
+            .filter(|(epoch, event_id, _)| *epoch > final_epoch && !self.processed.contains(event_id))
+            .map(|(_, event_id, _)| event_id.clone())
+            .collect();
+        if !future_event_ids.is_empty() {
+            self.set_waiting_for_commit(room_id, final_epoch.saturating_add(1), &future_event_ids)?;
+        } else if let Some((expected_epoch, _)) = self.waiting_for_commit(room_id)? {
+            let commit_available = commits.iter().any(|(epoch, _, _)| *epoch == expected_epoch);
+            if final_epoch >= expected_epoch || commit_available {
+                self.clear_waiting_for_commit(room_id)?;
+            }
+        }
+
         self.check_consistency(room_id)?;
         Ok(())
     }
