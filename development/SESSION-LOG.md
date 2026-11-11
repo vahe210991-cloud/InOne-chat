@@ -252,3 +252,15 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Latest OpenMLS run #42976768215 and FRB run #42976768182 again failed before step 1 with `runner_id=0` and `steps=[]`; iOS dependent job skipped.
 - Flutter mobile run #42976768225 was skipped by the Stage 4 branch condition.
 - No source test executed; Stage 4 remains NOT ACCEPTED. Updated report section 8.
+
+
+### 2026-11-11 — MLS persistence transaction refactor
+
+- Refactored `mls-client` to use one SQLCipher connection for OpenMLS storage and client metadata.
+- Added a transaction-backed generic `DeviceProvider`; incoming MLS processing, ratchet-state writes, inbox row and processed marker now share one SQLite transaction. On failure, rollback and reload group state.
+- Wrapped server commit processing/merge, room creation and Welcome adoption in transactions.
+- Invite and revoked-device commits are staged and merged locally only after server acceptance; rejected commits are cleared without advancing the local epoch.
+- Added OpenMLS provider transaction rollback/commit regression and pending-commit discard regression. These tests are committed but have NOT executed.
+- Latest source SHA: `c8ba8f99c45cd532b0941fd774304b6763429511`.
+- CI #42977451436 (OpenMLS client) and #42977451456 (FRB) failed before step 1 with runner_id 0 and empty steps; iOS dependent job skipped. No source tests executed.
+- Updated detailed report section 4.1 and section 9. Stage 4 remains NOT ACCEPTED.
