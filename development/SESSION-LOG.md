@@ -272,3 +272,13 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Source SHA: `e4133120d59ea833dd010bdaa10a7f7a4f281375`.
 - CI #42977699906 and #42977699954 again failed before step 1 with runner_id 0 and empty steps. OpenMLS rerun #42977708226 repeated the same result; FRB rerun #42977708143 remained queued at inspection.
 - Updated report section 10. No test executed; Stage 4 remains NOT ACCEPTED.
+
+
+### 2026-11-11 — Logout/session race hardening
+
+- Serialized logout against in-flight login, session restoration, MLS handoff and refresh operations.
+- Blocked new login/adoption/API requests while logout is active; in-memory credentials are always cleared even if persistent identity deletion fails.
+- Added regression test for logout during a blocked native MLS handoff.
+- Source SHA: `404775ff54c5e8a5eee175eb8d908c6c6929e2c0`.
+- CI #42977937179 (OpenMLS) and #42977937116 (FRB) failed before step 1 with runner_id 0 and empty steps; iOS dependent job skipped. No tests executed.
+- Updated report section 11. Stage 4 remains NOT ACCEPTED.
