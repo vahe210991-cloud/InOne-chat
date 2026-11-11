@@ -238,6 +238,10 @@ jobs:
         if: env.IOS_SIGNING_CERTIFICATE_P12 == '' || env.IOS_SIGNING_CERTIFICATE_PASSWORD == '' || env.IOS_PROVISIONING_PROFILE == '' || env.IOS_TEAM_ID == ''
         run: echo "::notice::iOS protected Keychain runtime smoke test requires code-signing certificate and provisioning-profile repository secrets; device/simulator compile checks still ran."
 
+      - name: Explain skipped iOS Keychain runtime test
+        if: env.IOS_SIGNING_CERTIFICATE_P12 == '' || env.IOS_SIGNING_CERTIFICATE_PASSWORD == '' || env.IOS_PROVISIONING_PROFILE == '' || env.IOS_TEAM_ID == ''
+        run: echo "::notice::iOS protected Keychain runtime smoke test requires code-signing certificate and provisioning-profile repository secrets; device/simulator compile checks still ran."
+
       - name: Upload iOS simulator build
         uses: actions/upload-artifact@v4
         with:

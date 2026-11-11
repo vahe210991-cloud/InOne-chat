@@ -213,12 +213,18 @@ fn offline_outbox_survives_process_restart_and_flushes_once() {
     proxy.set_online(false);
     alice.enqueue_text(ROOM, "очередь переживает перезапуск").unwrap();
     assert_eq!(alice.outbox_len().unwrap(), 1);
-    let ciphertext = std::fs::read(&alice_db).unwrap();
     let queued_plaintext = "очередь переживает перезапуск".as_bytes();
-    assert!(
-        !ciphertext.windows(queued_plaintext.len()).any(|window| window == queued_plaintext),
-        "текст offline outbox не должен находиться в файле базы открытым текстом"
-    );
+    for suffix in ["", "-wal", "-shm", "-journal"] {
+        let path = format!("{alice_db}{suffix}");
+        if let Ok(ciphertext) = std::fs::read(path) {
+            if ciphertext.len() >= queued_plaintext.len() {
+                assert!(
+                    !ciphertext.windows(queued_plaintext.len()).any(|window| window == queued_plaintext),
+                    "текст offline outbox не должен находиться в файлах базы открытым текстом"
+                );
+            }
+        }
+    }
     drop(alice);
 
     let mut resumed = resume_with_session(&proxy.base, ALICE, "A_PHONE", &alice_db, &keys)
@@ -259,11 +265,17 @@ fn encrypted_inbox_survives_restart_until_explicit_acknowledgement() {
     alice.send_text(ROOM, plaintext).unwrap();
     assert_eq!(texts(&bob.sync().unwrap()), vec![plaintext.to_string()]);
 
-    let ciphertext = std::fs::read(&bob_db).unwrap();
-    assert!(
-        !ciphertext.windows(plaintext.len()).any(|window| window == plaintext.as_bytes()),
-        "входящий plaintext не должен храниться в файле базы открытым текстом"
-    );
+    for suffix in ["", "-wal", "-shm", "-journal"] {
+        let path = format!("{bob_db}{suffix}");
+        if let Ok(ciphertext) = std::fs::read(path) {
+            if ciphertext.len() >= plaintext.len() {
+                assert!(
+                    !ciphertext.windows(plaintext.len()).any(|window| window == plaintext.as_bytes()),
+                    "входящий plaintext не должен храниться в файлах базы открытым текстом"
+                );
+            }
+        }
+    }
     drop(bob);
 
     let mut resumed = resume_with_session(&proxy.base, BOB, "B_PHONE", &bob_db, &keys)
