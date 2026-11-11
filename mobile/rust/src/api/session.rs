@@ -266,6 +266,8 @@ pub fn open_session(
     refresh_token: String,
     database_directory: String,
 ) -> Result<MlsSession, String> {
+    let access_token = Zeroizing::new(access_token);
+    let refresh_token = Zeroizing::new(refresh_token);
     let keys: Arc<dyn KeyStore> = Arc::new(PlatformKeyStore::new()?);
     std::fs::create_dir_all(&database_directory)
         .map_err(|error| format!("создание каталога базы MLS: {error}"))?;
@@ -287,8 +289,6 @@ pub fn open_session(
                 .to_string(),
         );
     }
-    let access_token = Zeroizing::new(access_token);
-    let refresh_token = Zeroizing::new(refresh_token);
     let client = match connect_with_session(
         &base_url,
         &user_id,
