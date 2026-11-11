@@ -89,7 +89,7 @@ test('WebView bridge does not expose arbitrary paths or a legacy message-send fa
   assert.match(bridge, /claudeSupportedApiCalls = <String, ClaudeApiRoute>/u);
   assert.doesNotMatch(bridge, /POST \/rooms\/:id\/events/u);
   assert.doesNotMatch(bridge, /POST \/mls\/groups\/:id\/messages/u);
-  assert.match(bridge, /final route = call == null \? null : claudeSupportedApiCalls\[call\]/u);
+  assert.match(mobileHost, /final route = call == null \? null : claudeSupportedApiCalls\[call\]/u);
 });
 
 test('organization and room role gates remain backend-owned', () => {
