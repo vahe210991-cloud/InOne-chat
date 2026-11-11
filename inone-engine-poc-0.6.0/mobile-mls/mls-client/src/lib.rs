@@ -141,22 +141,27 @@ fn open_db(path: &str, key: &[u8; 32]) -> Result<Connection, String> {
     Ok(conn)
 }
 
-fn persist_incoming_record(meta: &mut Connection, incoming: &Incoming) -> Result<(), String> {
+fn insert_incoming_record(meta: &Connection, incoming: &Incoming) -> Result<(), String> {
     let (event_id, room_id, kind, body): (&str, &str, &str, Option<&str>) = match incoming {
         Incoming::Text { room_id, event_id, text } => (event_id, room_id, "text", Some(text)),
         Incoming::Unreadable { room_id, event_id } => (event_id, room_id, "unreadable", None),
     };
-    let tx = meta.transaction().map_err(text)?;
     // Event IDs are idempotency keys. Replays must never reset an already
     // acknowledged inbox row or replace its previously persisted plaintext.
-    tx.execute(
+    meta.execute(
         "INSERT OR IGNORE INTO client_inbox (event_id, room_id, kind, body, acknowledged) VALUES (?1, ?2, ?3, ?4, 0)",
         (event_id, room_id, kind, body),
     ).map_err(text)?;
-    tx.execute(
+    meta.execute(
         "INSERT OR IGNORE INTO client_processed (event_id) VALUES (?1)",
         [event_id],
     ).map_err(text)?;
+    Ok(())
+}
+
+fn persist_incoming_record(meta: &mut Connection, incoming: &Incoming) -> Result<(), String> {
+    let tx = meta.transaction().map_err(text)?;
+    insert_incoming_record(&tx, incoming)?;
     tx.commit().map_err(text)
 }
 
@@ -555,14 +560,79 @@ impl Client {
         Ok(())
     }
 
-    /// Persists decrypted inbox content and its processed marker in one SQLCipher transaction.
-    fn persist_incoming(&mut self, incoming: &Incoming) -> Result<(), String> {
-        persist_incoming_record(&mut self.meta, incoming)?;
-        let event_id = match incoming {
-            Incoming::Text { event_id, .. } | Incoming::Unreadable { event_id, .. } => event_id,
-        };
-        self.processed.insert(event_id.clone());
+    fn reload_group(&mut self, room_id: &str) -> Result<(), String> {
+        let provider = self.provider();
+        let mls = MlsGroup::load(provider.storage(), &GroupId::from_slice(room_id.as_bytes()))
+            .map_err(text)?
+            .ok_or_else(|| format!("состояние группы {room_id} не найдено после rollback"))?;
+        let group = self.groups.get_mut(room_id).ok_or("комната не создана на этом устройстве")?;
+        group.mls = mls;
         Ok(())
+    }
+
+    /// Processes an MLS application event and persists the OpenMLS ratchet state,
+    /// inbox row and processed marker in the same SQLCipher transaction.
+    fn process_and_persist_incoming(
+        &mut self,
+        room_id: &str,
+        event_id: &str,
+        bytes: &[u8],
+    ) -> Result<Incoming, String> {
+        let protocol = MlsMessageIn::tls_deserialize_exact(bytes)
+            .map_err(text)?
+            .try_into_protocol_message()
+            .map_err(text)?;
+        let transaction = self.meta.transaction().map_err(text)?;
+        let incoming_result = {
+            let provider = DeviceProvider::new(&self.crypto, TransactionConnection(&transaction));
+            let group = self.groups.get_mut(room_id).ok_or("комната не создана на этом устройстве")?;
+            match group.mls.process_message(&provider, protocol) {
+                Ok(processed) => Ok(match processed.into_content() {
+                    ProcessedMessageContent::ApplicationMessage(app) => {
+                        match String::from_utf8(app.into_bytes()) {
+                            Ok(text) => Incoming::Text {
+                                room_id: room_id.to_string(),
+                                event_id: event_id.to_string(),
+                                text,
+                            },
+                            Err(_) => Incoming::Unreadable {
+                                room_id: room_id.to_string(),
+                                event_id: event_id.to_string(),
+                            },
+                        }
+                    }
+                    _ => Incoming::Unreadable {
+                        room_id: room_id.to_string(),
+                        event_id: event_id.to_string(),
+                    },
+                }),
+                Err(error) => Err(format!(
+                    "не удалось проверить или расшифровать MLS-событие {event_id}: {}",
+                    text(error)
+                )),
+            }
+        };
+
+        match incoming_result {
+            Ok(incoming) => {
+                if let Err(error) = insert_incoming_record(&transaction, &incoming) {
+                    drop(transaction);
+                    self.reload_group(room_id)?;
+                    return Err(error);
+                }
+                if let Err(error) = transaction.commit() {
+                    self.reload_group(room_id)?;
+                    return Err(text(error));
+                }
+                self.processed.insert(event_id.to_string());
+                Ok(incoming)
+            }
+            Err(error) => {
+                drop(transaction);
+                self.reload_group(room_id)?;
+                Err(error)
+            }
+        }
     }
 
     /// Публикует ключевые пакеты этого устройства (не больше 50 за раз).
@@ -747,36 +817,17 @@ impl Client {
                 .map(|(_, id, b)| (id.clone(), b.clone()))
                 .collect();
             for (event_id, bytes) in ready {
-                let protocol = MlsMessageIn::tls_deserialize_exact(&bytes).map_err(text)?.try_into_protocol_message().map_err(text)?;
-                let incoming = {
-                    let group = self.groups.get_mut(room_id).ok_or("комната не создана на этом устройстве")?;
-                    match group.mls.process_message(&self.provider, protocol) {
-                        Ok(processed) => match processed.into_content() {
-                            ProcessedMessageContent::ApplicationMessage(app) => Incoming::Text {
-                                room_id: room_id.to_string(),
-                                event_id: event_id.clone(),
-                                text: String::from_utf8(app.into_bytes()).map_err(text)?,
-                            },
-                            _ => Incoming::Unreadable { room_id: room_id.to_string(), event_id: event_id.clone() },
-                        },
-                        Err(error) => {
-                            return Err(format!(
-                                "не удалось проверить или расшифровать MLS-событие {event_id}: {}",
-                                text(error)
-                            ));
-                        },
-                    }
-                };
-                self.persist_incoming(&incoming)?;
+                let incoming = self.process_and_persist_incoming(room_id, &event_id, &bytes)?;
                 out.push(incoming);
             }
             let Some((_, commit)) = commits.iter().find(|(e, _)| *e == epoch + 1) else { break };
             let protocol = MlsMessageIn::tls_deserialize_exact(commit).map_err(text)?.try_into_protocol_message().map_err(text)?;
+            let provider = self.provider();
             let group = self.groups.get_mut(room_id).ok_or("комната не создана на этом устройстве")?;
-            let processed = group.mls.process_message(&self.provider, protocol).map_err(text)?;
+            let processed = group.mls.process_message(&provider, protocol).map_err(text)?;
             match processed.into_content() {
                 ProcessedMessageContent::StagedCommitMessage(staged) => {
-                    group.mls.merge_staged_commit(&self.provider, *staged).map_err(text)?;
+                    group.mls.merge_staged_commit(&provider, *staged).map_err(text)?;
                 }
                 _ => return Err("ожидался коммит".to_string()),
             }
@@ -982,7 +1033,7 @@ impl Client {
                     let (commit, _, _) = group.mls.remove_members(&provider, &self.signer, &leaves).map_err(text)?;
                     commit
                 };
-                group.mls.merge_pending_commit(&self.provider).map_err(text)?;
+                group.mls.merge_pending_commit(&provider).map_err(text)?;
                 (local, B64.encode(commit.tls_serialize_detached().map_err(text)?))
             };
             self.call(
