@@ -1952,7 +1952,7 @@ impl Client {
     pub fn send_text_with_id(&mut self, room_id: &str, plaintext: &str, client_message_id: &str) -> Result<String, String> {
         self.ensure_writable()?;
         if let Some(reason) = self.desync_reason(room_id)? {
-            return Err(format!("комната требует восстановления: {reason}"));
+            return Err(format!("комната рассинхронизирована и требует восстановления: {reason}"));
         }
         let server = self.server_epoch(room_id)?;
         let provider = self.provider();
@@ -2631,7 +2631,7 @@ impl Client {
     /// Ставит текст в очередь отправки: он уйдёт, когда появится связь. Возвращает локальный номер.
     pub fn enqueue_text(&mut self, room_id: &str, plaintext: &str) -> Result<String, String> {
         if let Some(reason) = self.desync_reason(room_id)? {
-            return Err(format!("комната требует восстановления: {reason}"));
+            return Err(format!("комната рассинхронизирована и требует восстановления: {reason}"));
         }
         let local_id = hex_encode(&self.crypto.random_vec(16).map_err(text)?);
         self.meta
