@@ -5,7 +5,7 @@ import path from 'node:path';
 import readline from 'node:readline';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-const engineDir = path.resolve(process.env.INONE_ENGINE_DIR ?? fileURLToPath(new URL('../../../..', import.meta.url)));
+const engineDir = path.resolve(process.env.INONE_ENGINE_DIR ?? fileURLToPath(new URL('../../../../../inone-development-archive-0.6.0/engine', import.meta.url)));
 const { createServer } = await import(pathToFileURL(path.join(engineDir, 'src', 'server.js')).href);
 const { createMemoryStore } = await import(pathToFileURL(path.join(engineDir, 'src', 'store-memory.js')).href);
 const accessMs = process.env.INONE_ACCESS_TTL_MS ? Number(process.env.INONE_ACCESS_TTL_MS) : undefined;
