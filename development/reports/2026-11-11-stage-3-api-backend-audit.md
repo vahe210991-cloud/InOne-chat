@@ -1,8 +1,8 @@
-# Stage 3 — API / Backend audit (initial source audit)
+# Stage 3 — API / Backend audit and acceptance report
 
 **Дата:** 2026-11-11  
 **База аудита:** `main` = `ce2018bffd3faf8a1c30aed65ee6191675ee38ad`  
-**Ветка отчёта:** `audit/stage-3-api-backend-2026-11-11`  
+**Ветка отчёта:** `feature/stage-3-api-contracts-2026-11-11`  
 **Статус:** implementation completed; source review and CI validation completed on PR head `3d288777135d0c12145f18407e8768a02ae80a9f`. PR remains Draft and unmerged.
 
 ## 1. Scope and evidence
