@@ -322,3 +322,42 @@ Local execution capability check:
 - No Beta 1.0 percentage is increased; the approved WBS v1.1 baseline remains unchanged.
 - Next gate: make the repository's GitHub Actions jobs executable and expose full logs, then run the complete matrix on one exact final SHA. Continue code review and add missing crash/restart tests for incoming persistence, Welcome ACK recovery and server-accepted commits before acceptance.
 - Do not merge PR #45, enable `INONE_MLS_NATIVE_ENABLED`, or claim production readiness until every required platform/security gate is green.
+
+
+## 22. Acceptance checklist and objective completion status
+
+### Source changes committed
+
+- [x] Fix confirmed undeclared Rust identifier in native session open/cleanup.
+- [x] Remove duplicate `path_provider` dependency.
+- [x] Make platform key-store initialization retryable after errors.
+- [x] Make Android JNI context initialization retryable after errors.
+- [x] Enforce HTTPS outside local/private debug endpoints in Rust and Flutter.
+- [x] Reject API-origin credentials, query and fragment.
+- [x] Disable automatic redirects for credential-bearing API requests.
+- [x] Add regression tests for API-origin policy and redirect behavior.
+- [x] Document transport policy and update repository continuity/archive.
+
+### Acceptance work not yet verified
+
+- [ ] Run `cargo test --locked` for OpenMLS client and all integration tests.
+- [ ] Run Rust formatting/lint checks for the affected crates.
+- [ ] Generate and validate Flutter Rust Bridge bindings.
+- [ ] Run `flutter analyze` and complete Flutter unit/widget tests.
+- [ ] Build Android APK and execute Android Keystore runtime smoke tests.
+- [ ] Build/sign iOS app and execute Protected Keychain runtime smoke tests.
+- [ ] Execute crash-injection/restart test for MLS ratchet state + inbox transaction.
+- [ ] Execute duplicate-delivery and durable-ACK-after-restart tests.
+- [ ] Execute Welcome join/ACK retry after process restart.
+- [ ] Execute recovery after server accepted invite/revocation commit but process stopped before local merge.
+- [ ] Execute missing-key, wrong-key, database/sidecar cleanup and logout recovery tests.
+- [ ] Run the full required matrix green on one exact final SHA.
+
+### Objective status (no invented weighting)
+
+- Source-level fixes committed in this pass: 9 checklist items.
+- Required workflow runs on source SHA `84248642e05e03c976a6f8d0eae0a9ab03a64765`: 0 green, 2 failed before exposing any step result; Flutter mobile workflow skipped by branch condition; dependent iOS job skipped.
+- Rust/Flutter/Android/iOS test commands executed in this pass: 0.
+- Stage 4 acceptance: **0% verified / NOT ACCEPTED**.
+- Stage 4 implementation percentage: **not assigned** because the approved WBS v1.1 does not define a separately weighted Stage 4 denominator. Do not invent one.
+- Beta 1.0 overall baseline remains the approved WBS v1.1 value; no progress percentage is increased in this report.
