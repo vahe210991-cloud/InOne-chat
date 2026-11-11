@@ -17,7 +17,7 @@ use openmls::prelude::tls_codec::{Deserialize, Serialize};
 use openmls::prelude::*;
 use openmls_basic_credential::SignatureKeyPair;
 use openmls_rust_crypto::RustCrypto;
-use openmls_traits::random::OpenMlsRand;
+use openmls_traits::{crypto::OpenMlsCrypto, random::OpenMlsRand, types::HashType};
 use openmls_sqlite_storage::{Codec, Connection, SqliteStorageProvider};
 use serde_json::{json, Value};
 
