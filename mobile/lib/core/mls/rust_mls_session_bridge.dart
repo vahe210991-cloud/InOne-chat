@@ -21,8 +21,19 @@ class RustMlsSessionBridge implements MlsSessionBridge {
   rust.MlsSession? _session;
   Future<void>? _initializing;
 
-  Future<void> _ensureInitialized() =>
-      _initializing ??= RustLib.init();
+  Future<void> _ensureInitialized() {
+    final active = _initializing;
+    if (active != null) return active;
+
+    final operation = RustLib.init();
+    late final Future<void> guarded;
+    guarded = operation.catchError((Object error, StackTrace stackTrace) {
+      if (identical(_initializing, guarded)) _initializing = null;
+      Error.throwWithStackTrace(error, stackTrace);
+    });
+    _initializing = guarded;
+    return guarded;
+  }
 
   Future<String> _databaseDirectory() async {
     final support = await _supportDirectory();
