@@ -300,3 +300,17 @@ Reference files:
 - `inone-development-archive-0.6.0/engine/mobile-mls/mls-client/tests/membership_journal.rs`
 - `inone-development-archive-0.6.0/engine/mobile-mls/mls-client/tests/waiting_for_commit.rs`
 - `inone-development-archive-0.6.0/engine/mobile-mls/mls-client/tests/commit_quarantine.rs`
+
+
+## Next session — Beta 1.0 Stage 4 verification gate (2026-11-11)
+
+1. Start from PR #45 branch `feature/stage-4-native-mls-runtime-2026-11-11`, latest recorded HEAD `df53ff48a42d9b9ca1dc7b19f049f8f3b05585a6`. Re-fetch PR head before any work.
+2. Read `development/reports/2026-11-11-stage-4-native-mls-hardening-progress.md` and this continuity file set.
+3. Do not assume any test passed. Latest OpenMLS #42986269774 and FRB #42986269879 failed without step summaries/logs; Flutter job #42986269746 was skipped. Obtain usable logs or restore CI observability before diagnosing.
+4. Do not start an external agent; owner has specified that ChatGPT is the sole developer until further notice.
+5. Do not weaken tests or remove checks. Fix only causes confirmed by actual logs.
+6. Run full mls-client integration suite against P0 engine; run FRB codegen, Rust bridge tests, Flutter analyze/tests, Android build/emulator runtime, iOS build and signed protected-Keychain runtime when signing secrets are available.
+7. Record exact final SHA, test counts and run links. A skipped platform test is not PASS.
+8. Keep refresh-token rotation and SQLCipher key in Rust/native secure storage; preserve fail-closed behavior and no plaintext fallback.
+9. Keep Beta 1.0 WBS v1.1 baseline unchanged until evidence-based acceptance; do not work on Beta 2.0.
+10. Do not merge PR #45 or #46 without owner approval.
