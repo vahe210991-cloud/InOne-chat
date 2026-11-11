@@ -519,7 +519,7 @@ class InOneSession extends ChangeNotifier {
       try {
         await adoption;
       } catch (_) {
-        // The handoff may fail; the persisted identity is still purged below.
+        // The handoff may fail; the saved identity is still cleared below.
       }
     }
     final handoff = _handoffGate;
@@ -543,7 +543,6 @@ class InOneSession extends ChangeNotifier {
 
     final bridge = _mlsBridge;
     final savedUserId = _savedMlsUserId;
-    var localMlsPurged = savedUserId == null;
     try {
       if (bridge != null) {
         try {
@@ -554,7 +553,6 @@ class InOneSession extends ChangeNotifier {
               userId: savedUserId,
               deviceId: _deviceId!,
             );
-            localMlsPurged = true;
           }
         }
       } else if (savedUserId != null && _nativeMlsBridge != null && _deviceId != null) {
@@ -562,7 +560,6 @@ class InOneSession extends ChangeNotifier {
           userId: savedUserId,
           deviceId: _deviceId!,
         );
-        localMlsPurged = true;
       } else if (isAuthenticated) {
         await _client.post('/logout');
       }
@@ -572,9 +569,13 @@ class InOneSession extends ChangeNotifier {
         if (bridge != null) await bridge.close();
       } finally {
         try {
-          if (localMlsPurged) {
-            await _deleteMlsUserId();
+          if (savedUserId != null) {
+            // Never auto-resume a session after an explicit logout attempt,
+            // even if native storage cleanup reports an error. The encrypted
+            // database/key may remain for a later explicit recovery, but the
+            // persisted identity must not silently authenticate on next launch.
             _savedMlsUserId = null;
+            await _deleteMlsUserId();
           }
         } finally {
           _clearSession();
