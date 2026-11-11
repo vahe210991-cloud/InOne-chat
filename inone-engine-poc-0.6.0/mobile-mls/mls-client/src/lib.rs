@@ -1689,10 +1689,10 @@ impl Client {
         for ev in events["events"].as_array().cloned().unwrap_or_default() {
             let event_id = match event_id_from_event(&ev) {
                 Ok(event_id) => event_id,
-                Err(error) => {
-                    self.record_desync(room_id, &format!("event identity validation failed: {error}"))?;
-                    return Err(format!("RecoveryRequired: invalid MLS event identity: {error}"));
-                }
+                // A malformed event_id is a server response-contract error, not
+                // MLS state corruption. Leave the event unprocessed so a repaired
+                // response can be retried, and isolate this room for this sync pass.
+                Err(error) => return Err(error),
             };
             let Some(mls_b64) = ev["content"]["mls"].as_str() else { continue };
             if self.processed.contains(&event_id) {
@@ -1767,7 +1767,12 @@ impl Client {
         for room in rooms {
             match self.sync_room(&room, &mut out) {
                 Ok(()) => {}
-                Err(error) if error.starts_with("RecoveryRequired:") => continue,
+                Err(error)
+                    if error.starts_with("RecoveryRequired:")
+                        || error.starts_with("ошибка контракта ответа:") =>
+                {
+                    continue;
+                }
                 Err(error) => return Err(error),
             }
         }
