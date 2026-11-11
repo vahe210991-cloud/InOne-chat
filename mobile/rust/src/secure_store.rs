@@ -1,4 +1,4 @@
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 
 use keyring_core::{Entry, Error as KeyringError};
 use mls_client::KeyStore;
@@ -19,28 +19,44 @@ impl PlatformKeyStore {
 }
 
 impl KeyStore for PlatformKeyStore {
-    fn database_key(&self, scope: &str) -> Result<[u8; 32], String> {
+    fn existing_database_key(&self, scope: &str) -> Result<Option<[u8; 32]>, String> {
         let entry = Entry::new("com.inone.mls.sqlcipher-key", scope)
             .map_err(|error| format!("создание записи защищённого хранилища: {error}"))?;
-
         match entry.get_secret() {
             Ok(secret) => secret
                 .try_into()
+                .map(Some)
                 .map_err(|_| "ключ SQLCipher в системном хранилище имеет неверную длину".to_string()),
-            Err(KeyringError::NoEntry) => {
-                let mut key = [0u8; 32];
-                getrandom::fill(&mut key)
-                    .map_err(|error| format!("генерация ключа SQLCipher: {error}"))?;
-                entry
-                    .set_secret(&key)
-                    .map_err(|error| format!("сохранение ключа SQLCipher: {error}"))?;
-                Ok(key)
-            }
+            Err(KeyringError::NoEntry) => Ok(None),
             Err(error) => Err(format!("чтение ключа SQLCipher: {error}")),
         }
     }
 
+    fn database_key(&self, scope: &str) -> Result<[u8; 32], String> {
+        static KEY_CREATION_LOCK: Mutex<()> = Mutex::new(());
+        let _guard = KEY_CREATION_LOCK
+            .lock()
+            .map_err(|error| format!("блокировка ключа SQLCipher: {error}"))?;
+        if let Some(key) = self.existing_database_key(scope)? {
+            return Ok(key);
+        }
+
+        let entry = Entry::new("com.inone.mls.sqlcipher-key", scope)
+            .map_err(|error| format!("создание записи защищённого хранилища: {error}"))?;
+        let mut key = [0u8; 32];
+        getrandom::fill(&mut key)
+            .map_err(|error| format!("генерация ключа SQLCipher: {error}"))?;
+        entry
+            .set_secret(&key)
+            .map_err(|error| format!("сохранение ключа SQLCipher: {error}"))?;
+        Ok(key)
+    }
+
     fn delete_database_key(&self, scope: &str) -> Result<(), String> {
+        static KEY_CREATION_LOCK: Mutex<()> = Mutex::new(());
+        let _guard = KEY_CREATION_LOCK
+            .lock()
+            .map_err(|error| format!("блокировка ключа SQLCipher: {error}"))?;
         let entry = Entry::new("com.inone.mls.sqlcipher-key", scope)
             .map_err(|error| format!("создание записи защищённого хранилища: {error}"))?;
         match entry.delete_credential() {
