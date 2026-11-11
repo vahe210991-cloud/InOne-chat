@@ -103,6 +103,25 @@ fn open_db(path: &str, key: &[u8; 32]) -> Result<Connection, String> {
     Ok(conn)
 }
 
+fn persist_incoming_record(meta: &mut Connection, incoming: &Incoming) -> Result<(), String> {
+    let (event_id, room_id, kind, body): (&str, &str, &str, Option<&str>) = match incoming {
+        Incoming::Text { room_id, event_id, text } => (event_id, room_id, "text", Some(text)),
+        Incoming::Unreadable { room_id, event_id } => (event_id, room_id, "unreadable", None),
+    };
+    let tx = meta.transaction().map_err(text)?;
+    // Event IDs are idempotency keys. Replays must never reset an already
+    // acknowledged inbox row or replace its previously persisted plaintext.
+    tx.execute(
+        "INSERT OR IGNORE INTO client_inbox (event_id, room_id, kind, body, acknowledged) VALUES (?1, ?2, ?3, ?4, 0)",
+        (event_id, room_id, kind, body),
+    ).map_err(text)?;
+    tx.execute(
+        "INSERT OR IGNORE INTO client_processed (event_id) VALUES (?1)",
+        [event_id],
+    ).map_err(text)?;
+    tx.commit().map_err(text)
+}
+
 fn request(agent: &ureq::Agent, base: &str, token: &str, method: &str, path: &str, body: Option<Value>) -> Result<Value, String> {
     let url = format!("{base}{path}");
     let mut req = agent.request(method, &url);
@@ -491,21 +510,11 @@ impl Client {
 
     /// Persists decrypted inbox content and its processed marker in one SQLCipher transaction.
     fn persist_incoming(&mut self, incoming: &Incoming) -> Result<(), String> {
-        let (event_id, room_id, kind, body): (&str, &str, &str, Option<&str>) = match incoming {
-            Incoming::Text { room_id, event_id, text } => (event_id, room_id, "text", Some(text)),
-            Incoming::Unreadable { room_id, event_id } => (event_id, room_id, "unreadable", None),
+        persist_incoming_record(&mut self.meta, incoming)?;
+        let event_id = match incoming {
+            Incoming::Text { event_id, .. } | Incoming::Unreadable { event_id, .. } => event_id,
         };
-        let tx = self.meta.transaction().map_err(text)?;
-        tx.execute(
-            "INSERT OR REPLACE INTO client_inbox (event_id, room_id, kind, body, acknowledged) VALUES (?1, ?2, ?3, ?4, 0)",
-            (event_id, room_id, kind, body),
-        ).map_err(text)?;
-        tx.execute(
-            "INSERT OR IGNORE INTO client_processed (event_id) VALUES (?1)",
-            [event_id],
-        ).map_err(text)?;
-        tx.commit().map_err(text)?;
-        self.processed.insert(event_id.to_string());
+        self.processed.insert(event_id.clone());
         Ok(())
     }
 
@@ -940,6 +949,60 @@ mod retry_tests {
         assert!(!is_retryable("GET /x -> 401 unauthorized"));
         assert!(!is_retryable("POST /z -> 409 conflict"));
         assert!(!is_retryable("неизвестная ошибка"));
+    }
+
+    #[test]
+    fn replayed_inbox_event_does_not_reset_acknowledgement_or_replace_content() {
+        let mut db = Connection::open_in_memory().unwrap();
+        db.execute_batch(
+            "CREATE TABLE client_inbox (
+                seq INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_id TEXT NOT NULL UNIQUE,
+                room_id TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                body TEXT,
+                acknowledged INTEGER NOT NULL DEFAULT 0
+             );
+             CREATE TABLE client_processed (event_id TEXT PRIMARY KEY);",
+        )
+        .unwrap();
+
+        let original = Incoming::Text {
+            room_id: "!room:inone.test".to_string(),
+            event_id: "$event-1".to_string(),
+            text: "original".to_string(),
+        };
+        persist_incoming_record(&mut db, &original).unwrap();
+        db.execute(
+            "UPDATE client_inbox SET acknowledged = 1 WHERE event_id = ?1",
+            ["$event-1"],
+        )
+        .unwrap();
+
+        let replay = Incoming::Text {
+            room_id: "!room:inone.test".to_string(),
+            event_id: "$event-1".to_string(),
+            text: "replayed".to_string(),
+        };
+        persist_incoming_record(&mut db, &replay).unwrap();
+
+        let (acknowledged, body): (i64, String) = db
+            .query_row(
+                "SELECT acknowledged, body FROM client_inbox WHERE event_id = ?1",
+                ["$event-1"],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(acknowledged, 1);
+        assert_eq!(body, "original");
+        let processed: i64 = db
+            .query_row(
+                "SELECT COUNT(*) FROM client_processed WHERE event_id = ?1",
+                ["$event-1"],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(processed, 1);
     }
 
     #[test]
