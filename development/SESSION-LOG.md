@@ -230,3 +230,15 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Import bot commit advanced branch to `cb09a4058719576df6d589f1f8b59be517b592b5`. The workflow tested the workspace after import but run's event SHA is prior commit `478cad39...`; request an independent CI run on the new head.
 - PR remains draft/open/unmerged; main unchanged by this task. Runtime WebView rendering, live API/bridge, visual parity and device E2E remain unverified.
 - WBS baseline v1.1 unchanged: Beta 1.0 42% implementation / 31% verification; Beta 2.0 2% / 0%; overall historical 25%.
+
+
+## 2026-11-11 — Stage 3 post-merge verification and Stage 4 CI triage
+
+- Verified PR #44 merged into `main` as `94571cbc923ac4d29c3c684dbfdeb35f031d6a30`.
+- Verified Stage 3 CI on PR head `3d288777135d0c12145f18407e8768a02ae80a9f`: Backend Node 382/382; PostgreSQL 16 124/124; OpenMLS, Rust bridge, Rust format, P0 room regression, Flutter analyze/tests and Android preview APK all PASS.
+- Current Stage 4 PR #45 is OPEN/Draft on branch `feature/stage-4-native-mls-runtime-2026-11-11`, head `45ee623d5bd2982e2a7032942962c9d4b58a8ffb`.
+- Three associated Stage 4 workflows FAILED: #42972694597 (OpenMLS client), #42972694698 (FRB generation), #42972694655 (Flutter mobile). Exact root causes remain UNKNOWN: job-log downloads returned BlobNotFound and step summaries were empty.
+- Created documentation-only task branch `docs/stage-4-native-mls-triage-2026-11-11`; added report `development/reports/2026-11-11-stage-4-native-mls-ci-triage.md`; updated continuity notes. No product source, workflow, server, deployment or database was changed; no CI rerun or merge.
+- Root `AGENTS.md` references `development/AI-AGENT-MANDATE.md`, but fetching that exact path from main returned 404. Recorded as a documentation inconsistency; no content was reconstructed.
+- Acceptance: Stage 3 merged with green PR-head CI; Stage 4 NOT ACCEPTED pending exact failure diagnosis and a full green run on one final SHA.
+- Next: inspect the three Stage 4 workflow logs in an environment with access to the actual run logs, fix confirmed causes on an isolated task branch, then run the full Stage 4 matrix.
