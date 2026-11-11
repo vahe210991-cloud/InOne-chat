@@ -380,3 +380,40 @@ Latest CI on this exact head:
 - [Flutter mobile #42982066410](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42982066410): SKIPPED by the Stage 4 branch condition.
 
 No test command is evidenced as executed. Exact GitHub job failure cause remains UNKNOWN. Stage 4 remains 0% verified / NOT ACCEPTED.
+
+
+## 24. P0 recovery parity audit — critical Stage 4 gap
+
+The active mobile client was compared directly with the accepted P0 reference implementation and its acceptance map:
+
+- Active client: `inone-engine-poc-0.6.0/mobile-mls/mls-client/src/lib.rs`.
+- P0 reference: `inone-development-archive-0.6.0/engine/mobile-mls/mls-client/src/lib.rs`.
+- Acceptance map: `inone-development-archive-0.6.0/engine/mobile-mls/P0-ACCEPTANCE-MAP.md`.
+- P0 closure: `development/recovered-source/P0-CLOSURE-2026-11-08.md`.
+
+Confirmed differences:
+
+1. Active mobile client does not contain durable `client_welcome_receipts` or `retry_pending_welcome_acks`; it uses the simpler `client_welcomes` marker.
+2. Active mobile client does not contain `client_membership_commits`, exact staged-Commit fingerprint validation or `client_invite_intents`.
+3. Active mobile client does not contain durable `client_key_package_claims` replay state.
+4. Active mobile client does not contain `client_waiting_for_commit` or `client_commit_quarantine`.
+5. Active mobile client does not contain sticky room-scoped `RecoveryRequired` / desync state.
+6. Active `invite` uses `GET /mls/key-packages/{userId}`; the accepted P0 design uses durable claim IDs and reservation/replay semantics.
+7. Active client lacks the archived F1/F4/F5/P0.3 regression targets: Welcome receipt retry/quarantine, membership journal replay/fingerprint mismatch, event identity validation, WaitingForCommit and Commit quarantine.
+
+The P0 closure explicitly says native Flutter Beta 1.0 integration is separate. Therefore the archived code is a reference for porting accepted invariants, not proof that the active mobile client already contains them.
+
+**Impact:** Stage 4 is not functionally complete while these recovery/idempotency guarantees are absent from the active mobile runtime. Do not accept Stage 4 based only on SQLCipher, key-store and bridge work.
+
+### Required port and verification
+
+- [ ] Port F1 durable Welcome receipts, duplicate handling, quarantine and ACK retry after restart.
+- [ ] Port F4 membership journal, exact Commit fingerprint, idempotent replay and safe rebase.
+- [ ] Port F5 event identity/epoch validation before processing or marking events.
+- [ ] Port P0.3 room-scoped WaitingForCommit, Commit quarantine and sticky RecoveryRequired.
+- [ ] Port KeyPackage claim/replay using durable client claim intent and server reservation IDs.
+- [ ] Preserve the active transaction-backed OpenMLS provider and SQLCipher storage; do not regress the newer secure-key and token-zeroization work.
+- [ ] Adapt and execute archived regression scenarios in the active mobile client test harness.
+- [ ] Verify API compatibility against the current Beta 1.0 backend contract and PostgreSQL implementation.
+
+This is a source-review finding; no port or test pass is claimed yet. Current CI remains blocked before test steps as recorded above.
