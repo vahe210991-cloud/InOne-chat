@@ -80,3 +80,54 @@ Do not ask the owner to resend an artifact already in GitHub or the shared proje
 ## Permanent artifact rule — owner P0 bundle
 
 The owner-uploaded `InOne-P0-snapshot-2026-11-08.bundle` must never be requested again as a routine session prerequisite. Its permanent copy is in branch `artifacts/p0-bundles`, path `bundles/owner-upload-2026-11-08/InOne-P0-snapshot-2026-11-08.bundle`, SHA-256 `e76fdd39e2e9698d7f32061e3fd4fb3dbc52ef981bb075c6c252a7cce11f391e`. Read `development/ARTIFACT-RETENTION.md` and retrieve the bundle from GitHub when needed. Never say it is saved unless the branch/path is checked live.
+
+
+## 8. Owner-approved repository-native work and concurrent agents
+
+**Owner clarification — effective 2026-11-11.** The goal of the workflow is that the latest authoritative files are always available in this GitHub repository and that multiple agents can work without overwriting one another. A full local clone is the preferred method for broad/code changes, but it is not an absolute prerequisite for every task.
+
+### 8.1 Choose the working mode by task
+
+1. **Repository-native editing is allowed** when the available GitHub tools can safely read and update the exact files involved. This includes focused documentation changes, small text/config changes, and reviewed file additions/deletions.
+2. **Use a complete clone or Codespace** for broad refactors, multi-file code changes, builds, test execution, generated assets, binary files, Git history operations, submodules, LFS, or whenever the available repository API cannot inspect the full required context.
+3. If a full clone is unavailable, do not stop automatically. First determine whether the task can be completed safely with repository-native operations. If yes, proceed in an isolated task branch and state which checks cannot be run. If not, record the exact blocker and leave source untouched.
+4. A local working copy is a temporary editing environment, not the authoritative destination. Return every approved change to GitHub promptly. No required or latest version may remain only on an agent's machine, in an untracked folder, or in chat.
+
+### 8.2 Canonical files and hand-back
+
+1. GitHub `main` and approved branches are the shared durable repository. Before editing, fetch the latest target branch and exact file/blob SHA.
+2. Make edits against the latest file content, not an old downloaded copy. For API-based edits, use the current blob SHA as the update precondition; after each successful write, use the newly returned SHA for any subsequent update to that same file.
+3. After writing, fetch the file again from GitHub and verify its contents, commit SHA, and branch. Report the exact URL and SHA.
+4. Never tell the owner that a change is available until it is retrievable from GitHub.
+5. For changes prepared locally, commit and push the complete coherent change set to GitHub before hand-back. Do not leave the only current version locally.
+
+### 8.3 Multiple agents and collision prevention
+
+1. Every independent task or agent must use its own uniquely named task branch/worktree, created from the latest intended base. Do not have two agents edit the same branch or worktree concurrently.
+2. Before editing a file, check whether another open PR/branch is changing that path. If so, coordinate: either wait, split ownership by file, or rebase/reconcile in a separate task branch. Never overwrite another agent's newer work.
+3. Use file SHA / expected-head checks for repository-native writes. If GitHub reports a SHA conflict, re-fetch and review the new content; do not retry by forcing the old content.
+4. Keep commits small and logically scoped. One task should not bundle unrelated cleanup, feature work, and security fixes.
+5. Integrate through reviewable PRs by default. Direct commits to `main` are permitted only for narrowly scoped documentation/rule corrections when the owner explicitly authorizes direct-main documentation changes. This owner clarification grants that authorization for this rule update only; it is not blanket permission for future direct-main product-code changes.
+6. Never merge a PR, delete a shared branch, force-update a ref, or overwrite another agent's work without explicit owner approval for that operation.
+
+### 8.4 File cleanup and deletion
+
+1. Do not delete files based only on age, filename, apparent duplication, or absence of recent references.
+2. Before deleting, inspect the file's content, Git history/provenance where available, references from code/tests/workflows/docs, and whether it is an intentionally retained archive or source-of-truth artifact.
+3. Preserve owner uploads, source bundles, original design archives, migrations, lockfiles, test fixtures, audit/security evidence, and historical reports unless their replacement and retention policy are proven.
+4. Prefer a dedicated cleanup branch/PR with a manifest of every deletion and its reason. Verify all references and run applicable tests before requesting merge.
+5. If the repository interface cannot inspect the complete tree or history needed to prove a deletion safe, do not delete that file. Continue with independently verifiable candidates and list uncertain files as retained.
+
+### 8.5 Required hand-back format
+
+Every agent reports:
+- working mode (clone/Codespace or repository-native);
+- base branch and exact starting SHA;
+- task branch and resulting commit SHA(s);
+- exact paths changed/added/deleted;
+- files or paths concurrently modified by other agents and how conflicts were avoided;
+- verification performed, with PASS / FAIL / BLOCKED / NOT RUN;
+- exact GitHub links to the resulting files/commit/PR;
+- confirmation that no local-only required changes remain.
+
+These rules supersede the earlier blanket stop condition in section 2.4 only to the extent that safe repository-native work is possible. All other source-integrity, review, security, and no-merge safeguards remain in force.
