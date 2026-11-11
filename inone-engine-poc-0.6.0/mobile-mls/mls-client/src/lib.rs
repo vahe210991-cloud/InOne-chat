@@ -796,33 +796,103 @@ impl Client {
     /// Приглашает пользователя: забирает его ключевые пакеты (все устройства), делает коммит и приветствия.
     pub fn invite(&mut self, room_id: &str, user_id: &str) -> Result<(), String> {
         self.ensure_writable()?;
-        let claimed = self.call("GET", &format!("/mls/key-packages/{}", urlencoding::encode(user_id)), None)?;
+        let claimed = self.call(
+            "GET",
+            &format!("/mls/key-packages/{}", urlencoding::encode(user_id)),
+            None,
+        )?;
         let packages = claimed["packages"].as_array().ok_or("нет поля packages")?.clone();
         if packages.is_empty() {
             return Err(format!("у {user_id} нет ключевых пакетов"));
         }
-        let provider = self.provider();
-        let mut key_packages = Vec::with_capacity(packages.len());
-        let mut devices = Vec::with_capacity(packages.len());
-        for p in &packages {
-            let bytes = B64.decode(p["package"].as_str().ok_or("пакет не строка")?).map_err(text)?;
-            let kp = KeyPackageIn::tls_deserialize_exact(&bytes).map_err(text)?.validate(provider.crypto(), ProtocolVersion::Mls10).map_err(text)?;
-            key_packages.push(kp);
-            devices.push(p["deviceId"].as_str().ok_or("нет deviceId")?.to_string());
-        }
-        let (epoch_before, commit_b64, welcome_b64) = {
+
+        let (key_packages, devices) = {
+            let provider = self.provider();
+            let mut key_packages = Vec::with_capacity(packages.len());
+            let mut devices = Vec::with_capacity(packages.len());
+            for package in &packages {
+                let bytes = B64
+                    .decode(package["package"].as_str().ok_or("пакет не строка")?)
+                    .map_err(text)?;
+                let key_package = KeyPackageIn::tls_deserialize_exact(&bytes)
+                    .map_err(text)?
+                    .validate(provider.crypto(), ProtocolVersion::Mls10)
+                    .map_err(text)?;
+                key_packages.push(key_package);
+                devices.push(
+                    package["deviceId"]
+                        .as_str()
+                        .ok_or("нет deviceId")?
+                        .to_string(),
+                );
+            }
+            (key_packages, devices)
+        };
+
+        // Stage the commit transactionally, but do not advance the local epoch
+        // until the delivery service has accepted the commit.
+        let transaction = self.meta.transaction().map_err(text)?;
+        let staged_result = {
+            let provider = DeviceProvider::new(&self.crypto, TransactionConnection(&transaction));
             let group = self.groups.get_mut(room_id).ok_or("комната не создана на этом устройстве")?;
             let epoch_before = group.mls.epoch().as_u64();
-            let (commit, welcome, _) = group.mls.add_members(&provider, &self.signer, &key_packages).map_err(text)?;
-            group.mls.merge_pending_commit(&provider).map_err(text)?;
-            (epoch_before, B64.encode(commit.tls_serialize_detached().map_err(text)?), B64.encode(welcome.tls_serialize_detached().map_err(text)?))
+            group
+                .mls
+                .add_members(&provider, &self.signer, &key_packages)
+                .map_err(text)
+                .and_then(|(commit, welcome, _)| {
+                    let commit = commit.tls_serialize_detached().map_err(text)?;
+                    let welcome = welcome.tls_serialize_detached().map_err(text)?;
+                    Ok((epoch_before, B64.encode(commit), B64.encode(welcome)))
+                })
         };
-        let welcomes: Vec<Value> = devices.iter().map(|d| json!({ "userId": user_id, "deviceId": d, "welcome": welcome_b64 })).collect();
-        self.call(
+        let (epoch_before, commit_b64, welcome_b64) = match staged_result {
+            Ok(staged) => staged,
+            Err(error) => {
+                drop(transaction);
+                self.reload_group(room_id)?;
+                return Err(error);
+            }
+        };
+        if let Err(error) = transaction.commit() {
+            self.reload_group(room_id)?;
+            return Err(text(error));
+        }
+
+        let welcomes: Vec<Value> = devices
+            .iter()
+            .map(|device| json!({ "userId": user_id, "deviceId": device, "welcome": welcome_b64 }))
+            .collect();
+        let server_result = self.call(
             "POST",
             &format!("/mls/groups/{}/commits", urlencoding::encode(room_id)),
-            Some(json!({ "epoch": epoch_before, "commit": commit_b64, "changes": { "adds": [user_id], "removes": [] }, "welcomes": welcomes })),
-        )?;
+            Some(json!({
+                "epoch": epoch_before,
+                "commit": commit_b64,
+                "changes": { "adds": [user_id], "removes": [] },
+                "welcomes": welcomes
+            })),
+        );
+        if let Err(error) = server_result {
+            return match self.clear_local_pending_commit(room_id) {
+                Ok(()) => Err(error),
+                Err(cleanup_error) => Err(format!(
+                    "{error}; не удалось очистить локальный pending commit: {cleanup_error}"
+                )),
+            };
+        }
+
+        if let Err(error) = self.merge_local_pending_commit(room_id) {
+            let cleanup = self.clear_local_pending_commit(room_id);
+            return match cleanup {
+                Ok(()) => Err(format!(
+                    "сервер принял commit, локальное слияние не завершено; commit очищен, требуется синхронизация: {error}"
+                )),
+                Err(cleanup_error) => Err(format!(
+                    "сервер принял commit, локальное слияние не завершено: {error}; очистка pending commit также не удалась: {cleanup_error}"
+                )),
+            };
+        }
         Ok(())
     }
 
