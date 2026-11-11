@@ -288,3 +288,14 @@ This section supersedes stale earlier statements in this file that no applied P0
 - PR #45 documentation-updated head: `87089c610e03ba5302b316db07baa2d44d71260a`; source-code head remains `048db63a7817b28e38a3a8353f8665a713f56730`.
 - OpenMLS run #42976768215 and FRB run #42976768182 again failed before the first step with `runner_id=0` and empty step arrays. iOS dependent job skipped. Flutter mobile run #42976768225 skipped by branch condition.
 - No test command executed; acceptance remains blocked. Latest evidence is in report section 8.
+
+
+### MLS persistence refactor — 2026-11-11
+
+- OpenMLS provider and client metadata now share one SQLCipher connection. Transaction-backed provider writes ratchet state, inbox content and processed marker in one SQLite transaction; rollback reloads the group from durable storage.
+- Server commit processing/merge, room creation and Welcome adoption use transaction-backed storage.
+- Invite/revocation pending commits are merged locally only after server acceptance; rejected commits are cleared.
+- Regression tests for provider transaction rollback/commit and pending-commit clearing are committed but unexecuted.
+- Source head for these changes: `c8ba8f99c45cd532b0941fd774304b6763429511`.
+- Latest CI #42977451436 and #42977451456 again failed before step 1 with runner_id 0 and empty steps. iOS dependent job skipped. No source tests executed.
+- Atomicity is implemented in source but not accepted until unit, crash/restart and platform tests run green. Stage 4 remains NOT ACCEPTED.
