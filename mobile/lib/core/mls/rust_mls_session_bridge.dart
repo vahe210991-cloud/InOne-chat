@@ -111,6 +111,37 @@ class RustMlsSessionBridge implements MlsSessionBridge {
       _requireSession().invite(roomId: roomId, userId: userId);
 
   @override
+  Future<void> cancelInvite(String roomId, String userId) =>
+      _requireSession().cancelInvite(roomId: roomId, userId: userId);
+
+  @override
+  Future<String?> roomRecoveryStatus(String roomId) =>
+      _requireSession().roomRecoveryStatus(roomId: roomId);
+
+  @override
+  Future<List<MlsUndecryptableEvent>> undecryptable() async {
+    final decoded = jsonDecode(await _requireSession().undecryptableJson());
+    if (decoded is! List) {
+      throw const FormatException('Native MLS returned invalid undecryptable diagnostics');
+    }
+    return decoded.map((item) {
+      if (item is! List || item.length != 3 ||
+          item[0] is! String || item[1] is! String || item[2] is! String) {
+        throw const FormatException('Native MLS returned an invalid undecryptable event');
+      }
+      return MlsUndecryptableEvent(
+        eventId: item[0] as String,
+        roomId: item[1] as String,
+        reason: item[2] as String,
+      );
+    }).toList(growable: false);
+  }
+
+  @override
+  Future<String?> quarantinedCommitReason(String roomId, int epoch) =>
+      _requireSession().quarantinedCommitReason(roomId: roomId, epoch: epoch);
+
+  @override
   Future<String> sendText(String roomId, String plaintext) =>
       _requireSession().sendText(roomId: roomId, plaintext: plaintext);
 
