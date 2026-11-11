@@ -6,6 +6,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 
 use rusqlite::OptionalExtension;
+use zeroize::Zeroize;
 use std::time::Duration;
 use std::path::Path;
 
@@ -204,14 +205,14 @@ fn ensure_existing_key_matches_database(
     scope: &str,
     keys: &dyn KeyStore,
 ) -> Result<Option<[u8; 32]>, String> {
-    let existing_key = keys.existing_database_key(scope)?;
-    if existing_key.is_none() && database_artifacts_exist(db_path) {
+    let has_existing_key = keys.has_database_key(scope)?;
+    if !has_existing_key && database_artifacts_exist(db_path) {
         return Err(
             "SQLCipher database exists but its protected key is missing; refusing to create a replacement key"
                 .to_string(),
         );
     }
-    Ok(existing_key)
+    Ok(has_existing_key)
 }
 
 fn remove_database_artifacts(db_path: &str) -> Result<(), String> {
@@ -241,12 +242,24 @@ fn build_client_with_keys(
     keys: &dyn KeyStore,
 ) -> Result<Client, String> {
     let scope = format!("{user_id}/{device_id}");
-    let existing_key = ensure_existing_key_matches_database(db_path, &scope, keys)?;
+    let has_existing_key = ensure_existing_key_matches_database(db_path, &scope, keys)?;
     let database_existed = database_artifacts_exist(db_path);
-    let db_key = keys.database_key(&scope)?;
-    match build_client(agent, base, tokens, user_id, device_id, db_path, &db_key) {
+    let mut db_key = match keys.database_key(&scope) {
+        Ok(key) => key,
+        Err(error) => {
+            if !has_existing_key && !database_existed {
+                if let Err(cleanup_error) = keys.delete_database_key(&scope) {
+                    return Err(format!("{error}; cleanup of partially created key failed: {cleanup_error}"));
+                }
+            }
+            return Err(error);
+        }
+    };
+    let result = build_client(agent, base, tokens, user_id, device_id, db_path, &db_key);
+    db_key.zeroize();
+    match result {
         Ok(client) => Ok(client),
-        Err(error) if existing_key.is_none() && !database_existed => {
+        Err(error) if !has_existing_key && !database_existed => {
             let database_cleanup = remove_database_artifacts(db_path);
             let key_cleanup = keys.delete_database_key(&scope);
             let cleanup_errors: Vec<String> = [database_cleanup.err(), key_cleanup.err()]
@@ -267,6 +280,9 @@ fn build_client_with_keys(
 }
 
 pub trait KeyStore: Send + Sync {
+    /// Checks for an existing key without returning key material.
+    fn has_database_key(&self, scope: &str) -> Result<bool, String>;
+
     /// Loads an existing key without creating or replacing one.
     fn existing_database_key(&self, scope: &str) -> Result<Option<[u8; 32]>, String>;
 
@@ -284,6 +300,10 @@ pub struct MemoryKeyStore {
 }
 
 impl KeyStore for MemoryKeyStore {
+    fn has_database_key(&self, scope: &str) -> Result<bool, String> {
+        Ok(self.keys.lock().map_err(text)?.contains_key(scope))
+    }
+
     fn existing_database_key(&self, scope: &str) -> Result<Option<[u8; 32]>, String> {
         Ok(self.keys.lock().map_err(text)?.get(scope).copied())
     }
@@ -340,7 +360,7 @@ pub fn with_retry<T>(attempts: u32, base: Duration, mut op: impl FnMut() -> Resu
 /// Вход первого устройства аккаунта (или устройства, которое уже подтверждено).
 pub fn connect(base: &str, user_id: &str, password: &str, device_id: &str, db_path: &str, keys: &dyn KeyStore) -> Result<Client, String> {
     let scope = format!("{user_id}/{device_id}");
-    let _existing_key = ensure_existing_key_matches_database(db_path, &scope, keys)?;
+    let _has_existing_key = ensure_existing_key_matches_database(db_path, &scope, keys)?;
     let agent = ureq::AgentBuilder::new().build();
     register(&agent, base, user_id, password)?;
     let login = request(&agent, base, "", "POST", "/login", Some(json!({ "userId": user_id, "password": password, "deviceId": device_id })))?;
@@ -371,7 +391,7 @@ pub fn connect_with_session(
         return Err("для подключения нужны access и refresh tokens".to_string());
     }
     let scope = format!("{user_id}/{device_id}");
-    let _existing_key = ensure_existing_key_matches_database(db_path, &scope, keys)?;
+    let _has_existing_key = ensure_existing_key_matches_database(db_path, &scope, keys)?;
     let agent = ureq::AgentBuilder::new().build();
     build_client_with_keys(
         agent,
@@ -452,7 +472,7 @@ pub fn connect_with_approval(
     approver: &Client,
 ) -> Result<Client, String> {
     let scope = format!("{user_id}/{device_id}");
-    let _existing_key = ensure_existing_key_matches_database(db_path, &scope, keys)?;
+    let _has_existing_key = ensure_existing_key_matches_database(db_path, &scope, keys)?;
     let agent = ureq::AgentBuilder::new().build();
     register(&agent, base, user_id, password)?;
     let login = request(
