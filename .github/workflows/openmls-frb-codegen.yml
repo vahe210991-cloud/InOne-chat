@@ -10,7 +10,7 @@ on:
       - "mobile/**"
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: openmls-frb-codegen-${{ github.event.pull_request.number || github.ref }}
@@ -131,25 +131,179 @@ jobs:
           path: mobile/build/app/outputs/flutter-apk/app-debug.apk
           if-no-files-found: error
 
-      - name: Commit generated bridge files to PR branch
+  commit-generated:
+    name: Commit generated bridge outputs
+    needs: generate-and-validate
+    if: >
+      needs.generate-and-validate.result == 'success' &&
+      (
+        (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) ||
+        (github.event_name != 'pull_request' && github.ref == 'refs/heads/feature/stage-4-native-mls-runtime-2026-11-11')
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      final_sha: ${{ steps.commit.outputs.final_sha }}
+    steps:
+      - name: Checkout target branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+          fetch-depth: 0
+
+      - name: Download generated bridge artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: inone-mls-frb-generated
+          path: ${{ runner.temp }}/inone-mls-frb-generated
+
+      - name: Copy only generated bridge files
+        shell: bash
+        run: |
+          set -euo pipefail
+          GENERATED="$RUNNER_TEMP/inone-mls-frb-generated"
+          test -d "$GENERATED/hook"
+          test -d "$GENERATED/lib/src/rust"
+          test -f "$GENERATED/rust/Cargo.toml"
+          test -f "$GENERATED/rust/Cargo.lock"
+          test -f "$GENERATED/rust/build.rs"
+          test -f "$GENERATED/rust/src/frb_generated.rs"
+          test -f "$GENERATED/pubspec.yaml"
+          test -f "$GENERATED/pubspec.lock"
+          mkdir -p mobile/hook mobile/lib/src/rust mobile/rust/src
+          rsync -a "$GENERATED/hook/" mobile/hook/
+          rsync -a "$GENERATED/lib/src/rust/" mobile/lib/src/rust/
+          cp "$GENERATED/rust/Cargo.toml" mobile/rust/Cargo.toml
+          cp "$GENERATED/rust/Cargo.lock" mobile/rust/Cargo.lock
+          cp "$GENERATED/rust/build.rs" mobile/rust/build.rs
+          cp "$GENERATED/rust/src/frb_generated.rs" mobile/rust/src/frb_generated.rs
+          cp "$GENERATED/pubspec.yaml" mobile/pubspec.yaml
+          cp "$GENERATED/pubspec.lock" mobile/pubspec.lock
+
+      - name: Commit generated bridge outputs
+        id: commit
         shell: bash
         env:
           PR_HEAD_REF: ${{ github.event.pull_request.head.ref || github.ref_name }}
         run: |
           set -euo pipefail
-          git add -A mobile
-          git reset -- mobile/android mobile/ios
+          git add -- mobile/hook mobile/lib/src/rust mobile/rust/Cargo.toml mobile/rust/Cargo.lock mobile/rust/build.rs mobile/rust/src/frb_generated.rs mobile/pubspec.yaml mobile/pubspec.lock
           if ! git diff --cached --quiet; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "build(mls): generate Flutter Rust bridge bindings"
-            git push origin "HEAD:${PR_HEAD_REF}"
+            git push origin "HEAD:$PR_HEAD_REF"
           fi
+          echo "final_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  verify-final-sha:
+    name: Verify complete Beta 1.0 matrix on generated final SHA
+    needs: commit-generated
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    env:
+      INONE_ENGINE_DIR: ${{ github.workspace }}/inone-development-archive-0.6.0/engine
+      RUST_TEST_THREADS: "1"
+    outputs:
+      final_sha: ${{ steps.verify.outputs.final_sha }}
+    steps:
+      - name: Checkout exact generated final SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.commit-generated.outputs.final_sha }}
+          fetch-depth: 0
+
+      - name: Verify exact checkout and generated artifacts
+        id: verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTUAL_SHA="$(git rev-parse HEAD)"
+          EXPECTED_SHA="${{ needs.commit-generated.outputs.final_sha }}"
+          test "$ACTUAL_SHA" = "$EXPECTED_SHA"
+          test -f mobile/lib/src/rust/frb_generated.dart
+          test -f mobile/hook/build.dart
+          test -f mobile/rust/src/frb_generated.rs
+          test -f mobile/rust/Cargo.lock
+          echo "final_sha=$ACTUAL_SHA" >> "$GITHUB_OUTPUT"
+          echo "Validated exact final SHA: $ACTUAL_SHA" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: inone-development-archive-0.6.0/engine/package-lock.json
+
+      - name: Install P0 engine fixture dependencies
+        run: npm ci --prefix inone-development-archive-0.6.0/engine
+
+      - name: Install Rust and Android targets
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.91.0"
+          components: rustfmt
+          targets: "aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android"
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.47.9"
+          channel: stable
+          cache: true
+
+      - name: Generate Android project and prepare native context
+        working-directory: mobile
+        run: |
+          flutter create --platforms=android --project-name inone_mobile --org com.inone .
+          rm -f test/widget_test.dart
+          node tool/prepare_android_mls.mjs
+
+      - name: Resolve Dart dependencies without lockfile drift
+        working-directory: mobile
+        run: |
+          flutter pub get
+          git diff --exit-code -- pubspec.lock
+
+      - name: Verify Rust formatting
+        run: |
+          cargo fmt --manifest-path mobile/rust/Cargo.toml -- --check
+          cargo fmt --manifest-path inone-engine-poc-0.6.0/mobile-mls/mls-client/Cargo.toml -- --check
+
+      - name: Run native Rust bridge tests
+        run: cargo test --locked --manifest-path mobile/rust/Cargo.toml
+
+      - name: Run persistent OpenMLS client integration tests
+        run: cargo test --locked --manifest-path inone-engine-poc-0.6.0/mobile-mls/mls-client/Cargo.toml -- --test-threads=1
+
+      - name: Analyze and test Flutter
+        working-directory: mobile
+        run: |
+          flutter analyze
+          flutter test
+
+      - name: Build Android with native OpenMLS assets
+        working-directory: mobile
+        run: flutter build apk --debug
+
+      - name: Android Keystore runtime smoke test on final SHA
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          script: |
+            cd mobile
+            flutter drive --driver=test_driver/integration_test.dart --target=integration_test/mls_secure_store_test.dart
 
 
   build-ios:
     name: iOS native assets + Keychain runtime smoke test
-    needs: generate-and-validate
+    needs: [commit-generated, verify-final-sha]
     runs-on: macos-14
     timeout-minutes: 45
     env:
@@ -161,7 +315,10 @@ jobs:
       - name: Checkout PR head
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+          ref: ${{ needs.commit-generated.outputs.final_sha }}
+
+      - name: Verify exact final SHA
+        run: test "$(git rev-parse HEAD)" = "${{ needs.commit-generated.outputs.final_sha }}"
 
       - name: Install Flutter
         uses: subosito/flutter-action@v2
@@ -180,12 +337,6 @@ jobs:
           toolchain: "1.91.0"
           components: rustfmt
           targets: "aarch64-apple-ios,aarch64-apple-ios-sim"
-
-      - name: Download generated FRB outputs
-        uses: actions/download-artifact@v4
-        with:
-          name: inone-mls-frb-generated
-          path: mobile
 
       - name: Resolve Dart dependencies
         working-directory: mobile
