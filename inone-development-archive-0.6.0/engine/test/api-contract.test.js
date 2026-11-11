@@ -7,6 +7,7 @@ const server = read('../src/server.js');
 const manifest = JSON.parse(read('../../../mobile/assets/ui-approval/screen-manifest.json'));
 const handoffCatalog = read('../../../mobile/lib/claude_screen_catalog.dart');
 const bridge = read('../../../mobile/lib/claude_ui_bridge.dart');
+const mobileHost = read('../../../mobile/lib/main.dart');
 
 const routeEvidence = new Map([
   ['POST /login', /req\.method === 'POST' && p === '\/login'/],
