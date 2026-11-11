@@ -391,12 +391,11 @@ This section supersedes stale earlier statements in this file that no applied P0
 - Stage 4 remains 0% verified / NOT ACCEPTED.
 
 
-### Critical Beta 1.0 Stage 4 gap — P0 parity
+### Historical audit — P0 parity gap (superseded by the latest implementation update)
 
-- Active mobile MLS client lacks the accepted P0 recovery/idempotency mechanisms present in the archived reference: durable Welcome receipts/ACK retry, membership journal/fingerprint, KeyPackage claim replay, WaitingForCommit, Commit quarantine and sticky RecoveryRequired.
-- Active invite uses legacy GET KeyPackage endpoint rather than claim-ID reservation/replay.
-- These mechanisms must be ported into the active mobile runtime; the historical P0 merge does not automatically satisfy native Flutter Beta 1.0.
-- Stage 4 remains NOT ACCEPTED; see report section 24.
+- At the time of this earlier audit, the active mobile MLS client lacked durable Welcome receipts/ACK retry, membership journal/fingerprint, KeyPackage claim replay, WaitingForCommit, Commit quarantine and sticky RecoveryRequired.
+- These mechanisms have since been ported into the active branch as recorded in the latest Stage 4 hardening report. Source presence does not prove test execution.
+- Current acceptance remains blocked on inspectable full CI; see the latest live update and `development/reports/2026-11-11-stage-4-native-mls-hardening-progress.md`.
 
 
 ## 2026-11-11 live update — Stage 4 hardening
