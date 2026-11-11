@@ -527,3 +527,12 @@ Do not re-port these mechanisms. See Stage 4 report section 25 for the exact com
 - Updated FRB workflow to remove aggregate `pull_request.paths` and add explicit `push.paths` for `.github/workflows/openmls-frb-codegen.yml` and `mobile/**`. Updated OpenMLS workflow to remove aggregate `pull_request.paths`, retaining its existing push path allowlist. `workflow_dispatch` remains.
 - Workflow trigger edits are source-reviewed only; no tests or runner checks passed. Fork-origin PR automation is not covered by this branch-specific approach.
 - Stage 4 remains NOT ACCEPTED / BLOCKED; verification accepted 0%; keep native MLS disabled; no merge. Report section 37.
+
+
+## Current Stage 4 branch hand-back — 2026-11-11
+
+- Branch: `feature/stage-4-native-mls-runtime-2026-11-11`.
+- Latest verified commit before this continuity update: `16a522a358a5b3d0d1f9b82f70785a0f599478ea`.
+- FRB and OpenMLS workflow trigger corrections are committed and re-fetched. Trigger policy now relies on branch-scoped push path allowlists plus manual dispatch; aggregate PR path triggers removed.
+- Local execution capability is limited to Node.js; Rust/Cargo, Flutter/Dart and Xcode are unavailable. No local test/build is claimed. CI startup blocker unresolved.
+- Stage 4 remains NOT ACCEPTED / BLOCKED; verification accepted 0%; keep native MLS disabled; no merge. Report section 38.
