@@ -59,13 +59,15 @@ Rerunning failed jobs on earlier Stage 4 runs produced the same no-runner/empty-
 
 ## 4. Security and correctness review findings still open
 
-### 4.1 MLS state and inbox atomicity — HIGH PRIORITY, NOT ACCEPTED
+### 4.1 MLS state and inbox atomicity — IMPLEMENTED IN SOURCE, NOT YET VERIFIED
 
-The current client creates two SQLite connections to the same SQLCipher file in `build_client`: one is owned by `SqliteStorageProvider` for OpenMLS state, and a second is used as `Client.meta` for `client_inbox` and `client_processed`.
+The source has been refactored to use one SQLCipher `Connection` for OpenMLS provider state and client metadata. A transaction-backed `DeviceProvider` borrows the active `rusqlite::Transaction`. Incoming application processing, OpenMLS ratchet-state writes, inbox insertion and the processed marker now execute on that same connection and transaction. On processing or persistence failure, the transaction is rolled back and the in-memory group is reloaded from durable state.
 
-In `sync_room`, OpenMLS `process_message` runs before `persist_incoming_record`. These writes are not in one shared transaction. A crash between OpenMLS ratchet-state persistence and inbox persistence could leave the event unavailable for successful reprocessing after restart. This is a structural atomicity risk; a crash-injection regression has not yet been executed.
+Server commit processing/merge, room creation and Welcome adoption also use transaction-backed OpenMLS storage. Invite and device-removal commits are staged locally, sent to the server, and merged locally only after server acceptance; rejected commits are cleared locally rather than advancing the device epoch ahead of the server.
 
-Required resolution: implement and test an atomic or recoverable persistence boundary covering MLS state mutation and durable inbox acceptance. Do not claim the ACK/durability requirement is satisfied until the restart/crash regression passes.
+Regression tests were added to prove that OpenMLS storage writes roll back with an outer SQL transaction, duplicate inbox delivery does not reset acknowledgement state, and a rejected local pending commit can be cleared without advancing the epoch.
+
+**Verification remains outstanding:** none of these tests has executed because the GitHub Actions jobs still fail before runner assignment. A crash/restart integration test must additionally prove that a process termination between message processing and durable inbox commit cannot lose the message. Recovery after a server-accepted commit followed by process termination before local merge also needs a restart regression.
 
 ### 4.2 iOS Protected Keychain
 
@@ -134,3 +136,17 @@ Latest CI recheck on the updated PR head:
 - [Flutter mobile validation run #42976768225](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42976768225): SKIPPED by the Stage 4 branch condition.
 
 The runner-allocation failure persists on the documentation-updated PR head. No Rust, Flutter, Android or iOS test step executed. Stage 4 remains NOT ACCEPTED.
+
+
+## 9. Latest source/CI state — 2026-11-11
+
+The source head advanced to `c8ba8f99c45cd532b0941fd774304b6763429511` after the atomic persistence and pending-commit changes. This SHA contains product source changes; later report commits may advance the branch without changing the source.
+
+Latest runs on `c8ba8f99c45cd532b0941fd774304b6763429511`:
+
+- [OpenMLS client validation #42977451436](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42977451436): FAILED before step 1; `runner_id=0`; `steps=[]`.
+- [Flutter Rust Bridge generation #42977451456](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42977451456): FAILED before step 1; `runner_id=0`; `steps=[]`.
+- iOS dependent job in #42977451456: SKIPPED because the prerequisite failed.
+- [Flutter mobile validation #42977404079](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42977404079): SKIPPED by the Stage 4 branch condition.
+
+The no-runner condition persists. No Rust/Flutter/Android/iOS command executed. Stage 4 remains NOT ACCEPTED.
