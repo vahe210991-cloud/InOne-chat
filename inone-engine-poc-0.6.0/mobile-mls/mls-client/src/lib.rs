@@ -1715,7 +1715,9 @@ impl Client {
 
     fn sync_room(&mut self, room_id: &str, out: &mut Vec<Incoming>) -> Result<(), String> {
         if let Some(reason) = self.desync_reason(room_id)? {
-            return Err(reason);
+            if reason.starts_with("RecoveryRequired:") {
+                return Err(reason);
+            }
         }
         // After a restart, the local database may contain a pending commit whose
         // delivery result was lost. The server is authoritative: discard the
@@ -1820,6 +1822,9 @@ impl Client {
         for room in rooms {
             match self.sync_room(&room, &mut out) {
                 Ok(()) => {}
+                Err(error) if error.contains("not a member") => {
+                    self.check_consistency(&room)?;
+                }
                 Err(error)
                     if error.starts_with("RecoveryRequired:")
                         || error.starts_with("ошибка контракта ответа:") =>
