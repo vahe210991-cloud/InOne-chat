@@ -41,6 +41,8 @@ All changes below are committed to the Stage 4 branch. They are implementation c
 | Session concurrency | Serialized concurrent initialization and concurrent native MLS handoff | `b7a9491f2b5bcf3c2c5ac542e285297f836a34dc` |
 | Logout concurrency | Logout waits for login, session restoration, MLS handoff and refresh operations; blocks new login/adoption/API requests while cleaning up; always clears in-memory credentials | `19b80ccd8a367a332fcb337fb21d718e5cef4a5b`, `5bb366e92760712e74c54099185d42b14b4d7ff7`, `404775ff54c5e8a5eee175eb8d908c6c6929e2c0` |
 | Logout race regression | Added a test that logs out while native MLS handoff is blocked and verifies cleanup occurs only after handoff completes | `3fc8fee49eca979885c4aca9179eaa60f31bab30` |
+| Welcome ACK recovery | Persisted Welcome ID + room ID in the same transaction as the joined group; after restart, retry ACK without consuming the Welcome twice | Current source head `da844b08240c3e67762997be9b65d8e91cab120f` |
+| SQLCipher key recovery | Split existing-key lookup from create; resume never creates a replacement key; existing DB without key fails closed; partial new-session failures attempt DB/sidecar and key cleanup | Current source head `da844b08240c3e67762997be9b65d8e91cab120f` |
 | Flutter session tests | Added concurrent initialization and concurrent MLS handoff tests | `3c928ea4d50dec549cb13480d818010aaff1f187` |
 | iOS Protected Keychain gate | CI now requires signing certificate, password, provisioning profile and team ID; missing secrets fail the iOS runtime gate instead of silently skipping it | `0dd3cab829010df0a4c6230e116e80163729f3a5` |
 | Android JNI initialization | Removed panic-based JNI context initialization; errors are retained and propagated to the secure-store initializer; Android MLS fails closed if app context is unavailable | `dcb88d9e0933fda6270ee9017d35b0952da7e7f2`, `3b0f631e47f8219bec1147e7884c4e291d6abdbf` |
@@ -182,3 +184,20 @@ Latest CI:
 - Flutter mobile validation #42977937100: SKIPPED by Stage 4 branch condition.
 
 No Rust or Flutter test command executed. Stage 4 remains NOT ACCEPTED.
+
+
+## 12. Welcome ACK and SQLCipher key-recovery hardening — 2026-11-11
+
+Source head: `da844b08240c3e67762997be9b65d8e91cab120f`.
+
+- Welcome processing now stores a local pending-ACK marker in the same transaction as the OpenMLS group and room index. If ACK fails or the process stops after local commit, the next sync retries the ACK rather than processing the same Welcome again.
+- The KeyStore contract now distinguishes reading an existing SQLCipher key from creating one. Session resume uses only the existing-key path and fails closed when the key is missing; it never writes a replacement key over an existing encrypted database.
+- New session creation rejects a database/KeyStore mismatch before attempting key creation. Failed first-time session construction attempts to remove partial database artifacts and the newly created platform key.
+- Added tests for missing-key resume, existing database without key, and SQLCipher sidecar detection. Tests are committed but not executed.
+
+Latest CI on source SHA `da844b08240c3e67762997be9b65d8e91cab120f`:
+- [OpenMLS client run #42978533658](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42978533658): FAILED before step 1; `runner_id=0`; `steps=[]`.
+- [FRB generation run #42978533643](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42978533643): FAILED before step 1; `runner_id=0`; `steps=[]`; iOS dependent job SKIPPED.
+- Flutter mobile validation #42978533518: SKIPPED by Stage 4 branch condition.
+
+No source tests executed. Stage 4 remains NOT ACCEPTED.
