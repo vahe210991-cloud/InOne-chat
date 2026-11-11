@@ -99,41 +99,41 @@ void main() {
   test(
     'logout clears saved MLS identity when native runtime is unavailable',
     () async {
-    String? savedDeviceId = 'device-2';
-    String? savedUserId = 'user-2';
-    var deleteCalls = 0;
+      String? savedDeviceId = 'device-2';
+      String? savedUserId = 'user-2';
+      var deleteCalls = 0;
 
-    InOneSession createSession({MlsSessionBridge? bridge}) => InOneSession(
-          baseUrl: 'https://api.inone.test',
-          nativeMlsBridge: bridge,
-          readDeviceId: () async => savedDeviceId,
-          writeDeviceId: (value) async {
-            savedDeviceId = value;
-          },
-          readMlsUserId: () async => savedUserId,
-          writeMlsUserId: (value) async {
-            savedUserId = value;
-          },
-          deleteMlsUserId: () async {
-            deleteCalls++;
-            savedUserId = null;
-          },
-        );
+      InOneSession createSession({MlsSessionBridge? bridge}) => InOneSession(
+            baseUrl: 'https://api.inone.test',
+            nativeMlsBridge: bridge,
+            readDeviceId: () async => savedDeviceId,
+            writeDeviceId: (value) async {
+              savedDeviceId = value;
+            },
+            readMlsUserId: () async => savedUserId,
+            writeMlsUserId: (value) async {
+              savedUserId = value;
+            },
+            deleteMlsUserId: () async {
+              deleteCalls++;
+              savedUserId = null;
+            },
+          );
 
-    final session = createSession();
-    await session.initialize();
-    expect(session.isAuthenticated, isFalse);
+      final session = createSession();
+      await session.initialize();
+      expect(session.isAuthenticated, isFalse);
 
-    await expectLater(session.logout(), throwsA(isA<StateError>()));
+      await expectLater(session.logout(), throwsA(isA<StateError>()));
 
-    expect(deleteCalls, 1);
-    expect(savedUserId, isNull);
+      expect(deleteCalls, 1);
+      expect(savedUserId, isNull);
 
-    final bridge = _FakeMlsSessionBridge();
-    final nextLaunch = createSession(bridge: bridge);
-    await nextLaunch.initialize();
-    expect(bridge.resumeCalls, 0);
-    expect(nextLaunch.isAuthenticated, isFalse);
+      final bridge = _FakeMlsSessionBridge();
+      final nextLaunch = createSession(bridge: bridge);
+      await nextLaunch.initialize();
+      expect(bridge.resumeCalls, 0);
+      expect(nextLaunch.isAuthenticated, isFalse);
 
       session.dispose();
       nextLaunch.dispose();
