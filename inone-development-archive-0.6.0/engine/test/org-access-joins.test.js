@@ -170,30 +170,39 @@ test('F-02 PostgreSQL: revocation waits for an in-flight open join and removes i
     assert.equal((await post(s.base, s.anna.token, '/rooms', { roomId: room, orgId: ORG })).status, 200);
     assert.equal((await post(s.base, s.anna.token, `/rooms/${enc(room)}/settings`, { name: 'Гонка отзыва', visibility: 'public', joinPolicy: 'open' })).status, 200);
 
-    const joining = post(s.base, s.boris.token, `/rooms/${enc(room)}/join`, {});
-    // Wait until the open-join transaction has acquired FOR SHARE on the
-    // org_members row. A conflicting FOR UPDATE NOWAIT is a deterministic
-    // signal that the authorization lock is held by the in-flight join.
-    const deadline = Date.now() + 10000;
-    let joinHoldsAuthorizationLock = false;
-    while (Date.now() < deadline && !joinHoldsAuthorizationLock) {
-      const client = await s.pool.connect();
-      try {
-        await client.query('BEGIN');
-        await client.query('SELECT user_id FROM org_members WHERE org_id = $1 AND user_id = $2 FOR UPDATE NOWAIT', [ORG, BORIS]);
-        await client.query('ROLLBACK');
-      } catch (error) {
-        await client.query('ROLLBACK').catch(() => {});
-        if (error.code === '55P03') joinHoldsAuthorizationLock = true;
-        else throw error;
-      } finally {
-        client.release();
-      }
-      if (!joinHoldsAuthorizationLock) await new Promise((resolve) => setTimeout(resolve, 10));
-    }
-    assert.equal(joinHoldsAuthorizationLock, true, 'open join must hold the organization authorization row lock before insertion');
+    const originalConnect = s.pool.connect.bind(s.pool);
+    let signalShareLock;
+    let signalRevokeAttempt;
+    let releaseJoin;
+    const shareLockReady = new Promise((resolve) => { signalShareLock = resolve; });
+    const revokeAttempted = new Promise((resolve) => { signalRevokeAttempt = resolve; });
+    const joinGate = new Promise((resolve) => { releaseJoin = resolve; });
 
+    // Pause the real transaction immediately after PostgreSQL grants FOR SHARE.
+    // This keeps the authorization lock held until the revocation UPDATE is issued.
+    s.pool.connect = async (...args) => {
+      const client = await originalConnect(...args);
+      const originalQuery = client.query.bind(client);
+      client.query = async (query, ...params) => {
+        const sql = typeof query === 'string' ? query : query?.text ?? '';
+        if (sql.includes('FOR SHARE') && sql.includes('org_members')) {
+          const result = await originalQuery(query, ...params);
+          signalShareLock();
+          await joinGate;
+          return result;
+        }
+        if (sql.includes('FOR UPDATE') && sql.includes('org_members')) signalRevokeAttempt();
+        return originalQuery(query, ...params);
+      };
+      return client;
+    };
+
+    const joining = post(s.base, s.boris.token, `/rooms/${enc(room)}/join`, {});
+    await shareLockReady;
     const removing = s.store.removeOrgMember(ORG, BORIS);
+    await revokeAttempted;
+    releaseJoin();
+
     const joined = await joining;
     assert.equal(joined.status, 200, 'join already holding the authorization lock may finish first');
     await removing;
