@@ -1,6 +1,7 @@
 //! Ядро клиента InOne на Rust: вход, ключевые пакеты, группы MLS, сообщения, догон после отсутствия,
 //! вход нового устройства по подтверждению и удаление отозванных устройств из групп.
 //! База устройства зашифрована (SQLCipher). Ключ передаёт платформа: Keychain на iOS, Keystore на Android.
+use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 use std::time::Duration;
@@ -42,25 +43,52 @@ impl Codec for JsonCodec {
     }
 }
 
-/// Провайдер OpenMLS устройства: криптография в памяти процесса, состояние групп — в зашифрованной базе.
-pub struct DeviceProvider {
-    crypto: RustCrypto,
-    storage: SqliteStorageProvider<JsonCodec, Connection>,
+/// OpenMLS provider borrows the same SQLCipher connection used by client metadata.
+/// This allows a caller-owned SQLite transaction to cover both MLS state and inbox writes.
+pub struct DeviceProvider<'a, ConnectionRef>
+where
+    ConnectionRef: Borrow<Connection>,
+{
+    crypto: &'a RustCrypto,
+    storage: SqliteStorageProvider<JsonCodec, ConnectionRef>,
 }
 
-impl OpenMlsProvider for DeviceProvider {
+impl<'a, ConnectionRef> DeviceProvider<'a, ConnectionRef>
+where
+    ConnectionRef: Borrow<Connection>,
+{
+    fn new(crypto: &'a RustCrypto, connection: ConnectionRef) -> Self {
+        Self {
+            crypto,
+            storage: SqliteStorageProvider::new(connection),
+        }
+    }
+}
+
+impl<'a, ConnectionRef> OpenMlsProvider for DeviceProvider<'a, ConnectionRef>
+where
+    ConnectionRef: Borrow<Connection>,
+{
     type CryptoProvider = RustCrypto;
     type RandProvider = RustCrypto;
-    type StorageProvider = SqliteStorageProvider<JsonCodec, Connection>;
+    type StorageProvider = SqliteStorageProvider<JsonCodec, ConnectionRef>;
 
     fn storage(&self) -> &Self::StorageProvider {
         &self.storage
     }
     fn crypto(&self) -> &Self::CryptoProvider {
-        &self.crypto
+        self.crypto
     }
     fn rand(&self) -> &Self::RandProvider {
-        &self.crypto
+        self.crypto
+    }
+}
+
+struct TransactionConnection<'a, 'conn>(&'a rusqlite::Transaction<'conn>);
+
+impl Borrow<Connection> for TransactionConnection<'_, '_> {
+    fn borrow(&self) -> &Connection {
+        self.0
     }
 }
 
@@ -77,8 +105,8 @@ pub struct Client {
     user_id: String,
     device_id: String,
     agent: ureq::Agent,
-    provider: DeviceProvider,
-    /// Соединение с той же базой для собственных таблиц клиента (комнаты, обработанные события, метаданные).
+    crypto: RustCrypto,
+    /// Единственное SQLCipher-соединение для OpenMLS state и client metadata/inbox.
     meta: Connection,
     signer: SignatureKeyPair,
     credential: CredentialWithKey,
@@ -370,10 +398,11 @@ pub fn connect_with_approval(
 }
 
 fn build_client(agent: ureq::Agent, base: &str, tokens: (String, String), user_id: &str, device_id: &str, db_path: &str, db_key: &[u8; 32]) -> Result<Client, String> {
-    let mut storage = SqliteStorageProvider::<JsonCodec, Connection>::new(open_db(db_path, db_key)?);
-    storage.run_migrations().map_err(text)?;
-    let provider = DeviceProvider { crypto: RustCrypto::default(), storage };
-    let meta = open_db(db_path, db_key)?;
+    let mut meta = open_db(db_path, db_key)?;
+    {
+        let mut storage = SqliteStorageProvider::<JsonCodec, &mut Connection>::new(&mut meta);
+        storage.run_migrations().map_err(text)?;
+    }
     meta.execute_batch(
         "CREATE TABLE IF NOT EXISTS client_meta (key TEXT PRIMARY KEY, value BLOB NOT NULL);
          CREATE TABLE IF NOT EXISTS client_rooms (room_id TEXT PRIMARY KEY, join_epoch INTEGER NOT NULL);
@@ -390,6 +419,8 @@ fn build_client(agent: ureq::Agent, base: &str, tokens: (String, String), user_i
     )
     .map_err(text)?;
 
+    let crypto = RustCrypto::default();
+    let provider = DeviceProvider::new(&crypto, &meta);
     let stored_public: Option<Vec<u8>> = meta
         .query_row("SELECT value FROM client_meta WHERE key = 'signer_public'", [], |r| r.get(0))
         .ok();
@@ -422,6 +453,8 @@ fn build_client(agent: ureq::Agent, base: &str, tokens: (String, String), user_i
             .ok_or_else(|| format!("состояние группы {room_id} не найдено"))?;
         groups.insert(room_id, Group { mls, join_epoch: join_epoch as u64 });
     }
+    drop(provider);
+
     let mut processed = HashSet::new();
     let mut stmt = meta.prepare("SELECT event_id FROM client_processed").map_err(text)?;
     for id in stmt.query_map([], |r| r.get::<_, String>(0)).map_err(text)? {
@@ -435,7 +468,7 @@ fn build_client(agent: ureq::Agent, base: &str, tokens: (String, String), user_i
         user_id: user_id.to_string(),
         device_id: device_id.to_string(),
         agent,
-        provider,
+        crypto,
         meta,
         signer,
         credential,
