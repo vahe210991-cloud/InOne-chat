@@ -968,6 +968,19 @@ impl Client {
         // delivery result was lost. The server is authoritative: discard the
         // unmerged local commit, then apply any commit the server actually stored.
         self.clear_local_pending_commit(room_id)?;
+        let local_epoch = self
+            .groups
+            .get(room_id)
+            .ok_or("комната не создана на этом устройстве")?
+            .mls
+            .epoch()
+            .as_u64();
+        let remote_epoch = self.server_epoch(room_id)?;
+        if local_epoch > remote_epoch {
+            return Err(format!(
+                "локальная MLS эпоха {local_epoch} выше серверной {remote_epoch}; автоматическая синхронизация небезопасна"
+            ));
+        }
         let events = self.call("GET", &format!("/rooms/{}/events", urlencoding::encode(room_id)), None)?;
         let mut pending: Vec<(u64, String, Vec<u8>)> = Vec::new();
         for ev in events["events"].as_array().cloned().unwrap_or_default() {
