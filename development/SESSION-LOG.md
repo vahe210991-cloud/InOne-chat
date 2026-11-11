@@ -368,3 +368,16 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Confirmed active invite still uses legacy GET KeyPackage endpoint rather than P0 claim ID reservation/replay.
 - These are active mobile-runtime gaps; archived P0 acceptance does not prove the Beta 1.0 mobile runtime contains them.
 - Added F1/F4/F5/P0.3 and claim/replay porting tasks to the Stage 4 checklist. No tests were run.
+
+
+### 2026-11-11 — Single-executor re-audit and local purge hardening
+
+- Owner confirmed: Beta 1.0 is the active stage; ChatGPT is the sole developer/executor. No external agent is assigned.
+- Corrected the earlier P0 parity audit: active mobile MLS source now contains Welcome receipts/ACK retry, membership journal/fingerprint, KeyPackage claim/replay, WaitingForCommit, Commit quarantine, RecoveryRequired and event identity validation. Six active test files have the same Git blob SHA as their accepted P0 archive counterparts. The earlier claim that these mechanisms were absent is superseded; source parity does not prove test execution.
+- Added cleanup_local_session_with_key_store so SQLCipher DB/WAL/SHM/journal removal still runs if platform Keystore/Keychain initialization fails; key deletion remains explicitly unconfirmed in that case. Added purge_removes_database_even_when_platform_key_store_initialization_fails.
+- Product source commit: 4670646558723ae5b33eeffdaa105f3a6df209ed. New regression is not executed.
+- Reviewed FRB workflow and mobile source. Generated Dart/Rust bindings, build hook and Rust lockfile are absent; the mobile README now documents the pinned code-generation sequence.
+- Found iOS workflow mismatch: current workflow builds with --no-codesign and does not import/reference the signing secrets described in previous docs. Protected Keychain runtime acceptance is not proven; signed workflow must be implemented.
+- Reran latest available earlier-head CI: OpenMLS #42985487129 and FRB #42985487107 still failed with no retrievable steps/logs; iOS dependent job skipped; Flutter mobile #42985487102 skipped by branch condition. No tests executed on the new source commit; connector returned no run records for it.
+- Local environment has no Rust/Cargo/Flutter/Dart/Xcode and no external network access. No local tests/builds claimed.
+- Updated report section 25 and mobile/README.md. Beta 1.0 WBS unchanged; Stage 4 NOT ACCEPTED; native MLS flag remains false.
