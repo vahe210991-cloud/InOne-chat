@@ -440,3 +440,13 @@ Do not re-port these mechanisms. See Stage 4 report section 25 for the exact com
 - Exact GitHub Actions failure cause remains UNKNOWN. Owner-side unblock is a working CI runner/build environment and protected iOS environment configuration.
 - Stage 4 verification accepted: 0%. Keep `INONE_MLS_NATIVE_ENABLED=false`; do not merge PR #45.
 - Report sections 25–27 contain current source and CI evidence.
+
+
+## Exact-head CI recheck — 2026-11-11
+
+- PR #45 head checked: e8f50e566d1095ed7ad6ed9427abb5d666b5097b.
+- OpenMLS #42987463963: FAILED; job has no steps/log URL; log retrieval returned BlobNotFound.
+- FRB #42987464006: FAILED; generation job has no steps/log URL; downstream generated-commit/final-SHA/iOS jobs SKIPPED.
+- Flutter #42987463998: SKIPPED by branch condition.
+- Combined status API returned no status entries. No test command is evidenced as executed. Exact failure reason UNKNOWN.
+- Stage 4 remains NOT ACCEPTED / BLOCKED. Owner must provide the exact job-level message from GitHub Actions UI or an authorized working runner. Do not guess.
