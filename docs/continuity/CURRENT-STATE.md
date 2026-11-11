@@ -424,3 +424,19 @@ Do not re-port these mechanisms. See Stage 4 report section 25 for the exact com
 - Local environment has no Rust/Cargo/Flutter/Dart/Xcode and no outbound network. No local test/build results are claimed.
 - Stage 4 verification accepted: 0%. Stage 4 NOT ACCEPTED / BLOCKED. Keep `INONE_MLS_NATIVE_ENABLED=false`; do not merge PR #45.
 - Detailed evidence: `development/reports/2026-11-11-stage-4-single-executor-progress.md`, sections 25–26.
+
+
+## Latest owner-controlled state — 2026-11-11
+
+- Sole executor: ChatGPT. External agent is not assigned.
+- Active release stage: Beta 1.0. Approved WBS v1.1 unchanged.
+- Stage 4 PR #45 remains OPEN/Draft and unmerged.
+- Product hardening commit: `4670646558723ae5b33eeffdaa105f3a6df209ed` (database/sidecar purge still attempted if platform key-store initialization fails; regression added, not run).
+- CI workflow now has read-only default permissions, isolated generated-artifact write job, exact final-SHA verification matrix and protected `ios-signing` environment.
+- Required environment secrets are documented in mobile/README.md. Owner must configure `ios-signing` with required reviewers and base64 P12/profile plus password/team ID. Do not share secret values in chat.
+- Latest observed full CI on prior head `5e3a9dc7644bb9e2eb462a41de345b4ff9f7df3c`: OpenMLS #42987334965 FAILED with no steps/log URL; FRB #42987334938 FAILED with no steps/log URL and all downstream acceptance jobs SKIPPED; Flutter #42987335071 SKIPPED by branch condition.
+- Newer documentation head `a9b81e0c04ce1826d361845b8596eae0c4acaaf9` had no workflow records at the time of the check. Re-fetch PR head and CI before any acceptance claim.
+- Generated FRB bindings/build hook/Rust lockfile remain absent. No local Rust/Cargo/Flutter/Dart/Xcode or outbound network is available.
+- Exact GitHub Actions failure cause remains UNKNOWN. Owner-side unblock is a working CI runner/build environment and protected iOS environment configuration.
+- Stage 4 verification accepted: 0%. Keep `INONE_MLS_NATIVE_ENABLED=false`; do not merge PR #45.
+- Report sections 25–27 contain current source and CI evidence.
