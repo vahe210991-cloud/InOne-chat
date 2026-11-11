@@ -33,6 +33,18 @@ async function post(base, token, p, body) {
   return { status: res.status, json: await res.json().catch(() => ({})) };
 }
 
+async function waitForSignal(signal, description) {
+  let timeout;
+  try {
+    await Promise.race([
+      signal,
+      new Promise((_, reject) => { timeout = setTimeout(() => reject(new Error(description)), 10000); }),
+    ]);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 test('открытая группа: посторонний организации не входит; после добавления в организацию входит', async () => {
   const s = await start();
   try {
@@ -200,9 +212,9 @@ test('F-02 PostgreSQL: revocation waits for an in-flight open join and removes i
     };
 
     const joining = post(s.base, s.boris.token, `/rooms/${enc(room)}/join`, {});
-    await shareLockReady;
+    await waitForSignal(shareLockReady, 'open join did not acquire the organization membership share lock');
     const removing = s.store.removeOrgMember(ORG, BORIS);
-    await revokeAttempted;
+    await waitForSignal(revokeAttempted, 'organization revocation did not attempt its update lock');
     releaseJoin();
 
     const joined = await joining;
