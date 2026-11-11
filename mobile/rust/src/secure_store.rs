@@ -1,5 +1,7 @@
 use std::sync::{Mutex, OnceLock};
 
+use zeroize::Zeroize;
+
 use keyring_core::{Entry, Error as KeyringError};
 use mls_client::KeyStore;
 
@@ -21,14 +23,32 @@ impl PlatformKeyStore {
 }
 
 impl KeyStore for PlatformKeyStore {
+    fn has_database_key(&self, scope: &str) -> Result<bool, String> {
+        let entry = Entry::new("com.inone.mls.sqlcipher-key", scope)
+            .map_err(|error| format!("создание записи защищённого хранилища: {error}"))?;
+        match entry.get_secret() {
+            Ok(mut secret) => {
+                secret.zeroize();
+                Ok(true)
+            }
+            Err(KeyringError::NoEntry) => Ok(false),
+            Err(error) => Err(format!("чтение ключа SQLCipher: {error}")),
+        }
+    }
+
     fn existing_database_key(&self, scope: &str) -> Result<Option<[u8; 32]>, String> {
         let entry = Entry::new("com.inone.mls.sqlcipher-key", scope)
             .map_err(|error| format!("создание записи защищённого хранилища: {error}"))?;
         match entry.get_secret() {
-            Ok(secret) => secret
-                .try_into()
-                .map(Some)
-                .map_err(|_| "ключ SQLCipher в системном хранилище имеет неверную длину".to_string()),
+            Ok(mut secret) => {
+                let key = secret
+                    .as_slice()
+                    .try_into()
+                    .map(Some)
+                    .map_err(|_| "ключ SQLCipher в системном хранилище имеет неверную длину".to_string());
+                secret.zeroize();
+                key
+            }
             Err(KeyringError::NoEntry) => Ok(None),
             Err(error) => Err(format!("чтение ключа SQLCipher: {error}")),
         }
@@ -47,9 +67,10 @@ impl KeyStore for PlatformKeyStore {
         let mut key = [0u8; 32];
         getrandom::fill(&mut key)
             .map_err(|error| format!("генерация ключа SQLCipher: {error}"))?;
-        entry
-            .set_secret(&key)
-            .map_err(|error| format!("сохранение ключа SQLCipher: {error}"))?;
+        if let Err(error) = entry.set_secret(&key) {
+            key.zeroize();
+            return Err(format!("сохранение ключа SQLCipher: {error}"));
+        }
         Ok(key)
     }
 
