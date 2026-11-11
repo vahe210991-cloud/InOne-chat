@@ -349,3 +349,12 @@ This section supersedes stale earlier statements in this file that no applied P0
 - PR #45 head: `ca49b376a65766fb59e792cf2097ba7b4f2b50ce`; source head: `eab7b4d9a8889f4a5d69cdbb6de29dc2986272ab`.
 - OpenMLS #42979080737 and FRB #42979080732 failed before step 1 with runner_id 0 and empty steps; iOS dependent job skipped; Flutter mobile #42979080672 skipped by branch condition.
 - No tests or platform builds executed. Stage 4 remains NOT ACCEPTED.
+
+
+### Secret-memory zeroization — 2026-11-11
+
+- Rust session token pairs zeroize on drop; SQLCipher keys, keyring byte buffers, serialized token pairs, request/response token JSON and authorization header copies are zeroized.
+- FFI access/refresh token inputs are wrapped immediately.
+- KeyStore presence checks do not copy key bytes.
+- Source SHA: `3d4e64d4f302f7ddbe417903ede4dd4443b10975`.
+- CI #42979859714 and #42979859709 failed before step 1 with runner_id 0 and empty steps; iOS dependent job skipped. No tests executed. Stage 4 remains NOT ACCEPTED.
