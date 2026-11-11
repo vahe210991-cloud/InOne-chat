@@ -262,3 +262,14 @@ Latest CI on source SHA `3d4e64d4f302f7ddbe417903ede4dd4443b10975`:
 - Flutter mobile validation #42979859767: SKIPPED by Stage 4 branch condition.
 
 No tests executed. Stage 4 remains NOT ACCEPTED.
+
+
+## 17. CI recheck on current PR head — 2026-11-11
+
+Current PR #45 head: `c103cc2ae4eaa9e3ce721101f3581f3b6047e138`. Product source head: `3d4e64d4f302f7ddbe417903ede4dd4443b10975`.
+
+- [OpenMLS client run #42979954916](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42979954916): FAILED before step 1; `runner_id=0`; `steps=[]`.
+- [FRB generation run #42979955089](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42979955089): FAILED before step 1; `runner_id=0`; `steps=[]`; iOS dependent job SKIPPED.
+- [Flutter mobile validation #42979954833](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42979954833): SKIPPED by Stage 4 branch condition.
+
+No tests executed on the current PR head. Stage 4 remains NOT ACCEPTED.
