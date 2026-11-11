@@ -1228,7 +1228,9 @@ impl Client {
         let transaction = self.meta.transaction().map_err(text)?;
         let result: Result<(), CommitFailure> = {
             let provider = DeviceProvider::new(&self.crypto, TransactionConnection(&transaction));
-            let group = self.groups.get_mut(room_id).ok_or("комната не создана на этом устройстве")?;
+            let group = self.groups.get_mut(room_id).ok_or_else(|| {
+                CommitFailure::Transient("комната не создана на этом устройстве".to_string())
+            })?;
             match group.mls.process_message(&provider, protocol) {
                 Ok(processed) => match processed.into_content() {
                     ProcessedMessageContent::StagedCommitMessage(staged) => {
