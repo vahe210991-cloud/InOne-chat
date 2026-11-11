@@ -281,3 +281,10 @@ This section supersedes stale earlier statements in this file that no applied P0
 - Stage 4 is NOT ACCEPTED. No Stage 4 test command has executed in this environment; no green status is claimed.
 - Critical open design issue: OpenMLS provider and client metadata use separate SQLite connections. Atomicity between MLS ratchet-state writes and inbox persistence is not yet established. A crash/restart regression and a proven atomic/recoverable design are mandatory.
 - Full report: `development/reports/2026-11-11-stage-4-single-executor-progress.md`.
+
+
+### Latest CI recheck — 2026-11-11
+
+- PR #45 documentation-updated head: `87089c610e03ba5302b316db07baa2d44d71260a`; source-code head remains `048db63a7817b28e38a3a8353f8665a713f56730`.
+- OpenMLS run #42976768215 and FRB run #42976768182 again failed before the first step with `runner_id=0` and empty step arrays. iOS dependent job skipped. Flutter mobile run #42976768225 skipped by branch condition.
+- No test command executed; acceptance remains blocked. Latest evidence is in report section 8.
