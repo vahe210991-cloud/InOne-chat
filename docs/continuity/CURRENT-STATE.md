@@ -502,3 +502,11 @@ Do not re-port these mechanisms. See Stage 4 report section 25 for the exact com
 - FRB #42989322261 and OpenMLS #42989322167 FAILED with no steps/log URLs; log retrieval returned BlobNotFound. FRB downstream jobs skipped.
 - Flutter #42989322186 SKIPPED.
 - No test command evidenced as executed. Exact failure cause UNKNOWN. Stage 4 remains NOT ACCEPTED / BLOCKED.
+
+
+## Latest exact-head CI and trigger policy — 2026-11-11
+
+- Full native CI is now triggered by workflow-file and `mobile/**` changes, not documentation-only edits.
+- Latest PR #45 head: `bfb87598068239c1107233d930ee79f25ff62d77`.
+- FRB #42989491362 and OpenMLS #42989491373 FAILED before steps/logs; log retrieval returned BlobNotFound. Flutter #42989491354 SKIPPED.
+- No test command evidenced as executed. Exact failure cause UNKNOWN. Stage 4 remains NOT ACCEPTED / BLOCKED.
