@@ -1237,7 +1237,7 @@ impl Client {
         };
 
         let transaction = self.meta.transaction().map_err(text)?;
-        let result: Result<(), CommitFailure> = {
+        let result: Result<(), CommitFailure> = (|| {
             let provider = DeviceProvider::new(&self.crypto, TransactionConnection(&transaction));
             let group = self.groups.get_mut(room_id).ok_or_else(|| {
                 CommitFailure::Transient("комната не создана на этом устройстве".to_string())
@@ -1263,7 +1263,7 @@ impl Client {
                     )),
                 },
             }
-        };
+        })();
 
         match result {
             Ok(()) => {
