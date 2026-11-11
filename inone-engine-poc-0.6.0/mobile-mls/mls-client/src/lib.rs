@@ -1533,11 +1533,15 @@ impl Client {
             .unwrap_or_default()
             .as_millis() as i64;
         self.meta.execute(
-            "INSERT INTO client_invite_intents (operation_id, room_id, target_user_id, state, created_at)
+            "INSERT OR IGNORE INTO client_invite_intents (operation_id, room_id, target_user_id, state, created_at)
              VALUES (?1, ?2, ?3, 'claim_pending', ?4)",
             rusqlite::params![operation_id, room_id, user_id, created_at],
         ).map_err(text)?;
-        Ok((operation_id, "claim_pending".to_string()))
+        self.meta.query_row(
+            "SELECT operation_id, state FROM client_invite_intents WHERE room_id = ?1 AND target_user_id = ?2",
+            rusqlite::params![room_id, user_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        ).map_err(text)
     }
 
     fn resume_claim_pending_invite(
@@ -1552,6 +1556,9 @@ impl Client {
             |row| row.get(0),
         ).map_err(text)?;
         if state != "claim_pending" {
+            return Ok(false);
+        }
+        if self.desync_reason(room_id)?.is_some_and(|reason| reason.starts_with("RecoveryRequired:")) {
             return Ok(false);
         }
         let claimed = match self.call(
@@ -1698,6 +1705,9 @@ impl Client {
             rows.collect::<Result<Vec<_>, _>>().map_err(text)?
         };
         for (operation_id, room_id, user_id) in intents {
+            if self.desync_reason(&room_id)?.is_some_and(|reason| reason.starts_with("RecoveryRequired:")) {
+                continue;
+            }
             let mut completed = false;
             for attempt in 0..3 {
                 if self.resume_claim_pending_invite(&room_id, &user_id, &operation_id)? {
@@ -1776,6 +1786,9 @@ impl Client {
         };
         let mut stale_cleared = 0usize;
         for (operation_id, room_id, base_i64, fingerprint, payload_json, claim_ids_json) in rows {
+            if self.desync_reason(&room_id)?.is_some_and(|reason| reason.starts_with("RecoveryRequired:")) {
+                continue;
+            }
             let base_epoch = u64::try_from(base_i64).map_err(text)?;
             let payload: Value = serde_json::from_str(&payload_json).map_err(text)?;
             let claim_ids: Vec<String> = serde_json::from_str(&claim_ids_json).map_err(text)?;
