@@ -164,9 +164,20 @@ impl MlsSession {
             result
         };
 
-        remove_database_files(&self.database_path)?;
-        self.keys.delete_database_key(&self.identity_scope)?;
-        remote_result.map_err(|error| format!("серверный logout не подтверждён; локальные MLS-данные удалены: {error}"))
+        let cleanup_result =
+            cleanup_local_session(&self.database_path, &self.identity_scope, self.keys.as_ref());
+        let mut errors = Vec::new();
+        if let Err(error) = cleanup_result {
+            errors.push(error);
+        }
+        if let Err(error) = remote_result {
+            errors.push(format!("серверный logout не подтверждён: {error}"));
+        }
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors.join("; "))
+        }
     }
 
     /// Drops the Rust client and releases the encrypted database connection.
@@ -179,15 +190,43 @@ impl MlsSession {
 }
 
 fn remove_database_files(database_path: &str) -> Result<(), String> {
+    let mut errors = Vec::new();
     for suffix in ["", "-wal", "-shm", "-journal"] {
         let path = format!("{database_path}{suffix}");
         match std::fs::remove_file(&path) {
             Ok(()) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => return Err(format!("удаление локальной MLS-базы {path}: {error}")),
+            Err(error) => errors.push(format!("удаление локальной MLS-базы {path}: {error}")),
         }
     }
-    Ok(())
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join("; "))
+    }
+}
+
+fn cleanup_local_session(
+    database_path: &str,
+    identity_scope: &str,
+    keys: &dyn KeyStore,
+) -> Result<(), String> {
+    // Always attempt key deletion, even if a database file or sidecar cannot
+    // be removed. Without the key, any remaining SQLCipher file is unreadable.
+    let database_result = remove_database_files(database_path);
+    let key_result = keys.delete_database_key(identity_scope);
+    let mut errors = Vec::new();
+    if let Err(error) = database_result {
+        errors.push(error);
+    }
+    if let Err(error) = key_result {
+        errors.push(format!("удаление ключа SQLCipher: {error}"));
+    }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join("; "))
+    }
 }
 
 /// Adopt a session created by Flutter, or restore the encrypted session through `resume_session`.
@@ -286,9 +325,8 @@ pub fn purge_local_session(
         .join(format!("{filename}.sqlcipher"))
         .to_string_lossy()
         .into_owned();
-    remove_database_files(&database_path)?;
     let keys = PlatformKeyStore::new()?;
-    keys.delete_database_key(&identity)
+    cleanup_local_session(&database_path, &identity, &keys)
 }
 
 #[frb(init)]
@@ -347,6 +385,22 @@ mod tests {
         assert!(!std::path::PathBuf::from(format!("{}-shm", database.display())).exists());
         assert!(!std::path::PathBuf::from(format!("{}-journal", database.display())).exists());
         assert!(keys.deleted.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn logout_attempts_key_deletion_even_when_database_file_cannot_be_removed() {
+        let (database, keys, session) = fixture();
+        std::fs::remove_file(&database).unwrap();
+        std::fs::create_dir(&database).unwrap();
+
+        let result = session.logout();
+
+        assert!(result.is_err(), "the directory at the database path cannot be removed as a file");
+        assert!(
+            keys.deleted.load(Ordering::SeqCst),
+            "the platform key must still be deleted when database cleanup fails"
+        );
+        std::fs::remove_dir(&database).unwrap();
     }
 
     #[test]
