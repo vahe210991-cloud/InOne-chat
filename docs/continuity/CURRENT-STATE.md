@@ -326,3 +326,10 @@ This section supersedes stale earlier statements in this file that no applied P0
 - Tests added for missing-key resume, existing DB without key and sidecar detection; not executed.
 - Source SHA: `da844b08240c3e67762997be9b65d8e91cab120f`.
 - CI #42978533658 and #42978533643 failed before step 1 with runner_id 0 and empty steps. No tests executed. Stage 4 remains NOT ACCEPTED.
+
+
+### Latest CI recheck after key recovery — 2026-11-11
+
+- Source SHA: `da844b08240c3e67762997be9b65d8e91cab120f`; current PR head also contains archive updates.
+- OpenMLS #42978646222 and FRB #42978646245 failed before step 1 with runner_id 0 and empty steps. iOS dependent job skipped. Flutter mobile #42978646254 skipped by branch condition.
+- No test or platform build executed. Stage 4 remains NOT ACCEPTED.
