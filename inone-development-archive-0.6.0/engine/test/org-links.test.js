@@ -100,3 +100,46 @@ test('отзыв связи любой стороной убирает учас�
     await s.stop();
   }
 });
+
+
+test('F-01: stale accept after a concurrent revoke is rejected without an accept audit event', async () => {
+  const s = await start();
+  let releaseAccept;
+  try {
+    const proposed = await call(s.base, 'POST', `/orgs/${ORG_A}/links`, s.boris.token, { targetOrgId: ORG_B });
+    assert.equal(proposed.status, 200);
+    const linkId = proposed.json.linkId;
+
+    const originalGet = s.store.getOrgLink.bind(s.store);
+    let staleRead;
+    const staleReadReady = new Promise((resolve) => { staleRead = resolve; });
+    const acceptGate = new Promise((resolve) => { releaseAccept = resolve; });
+    let paused = false;
+    s.store.getOrgLink = async (id) => {
+      const link = await originalGet(id);
+      if (id === linkId && !paused) {
+        paused = true;
+        staleRead();
+        await acceptGate;
+      }
+      return link;
+    };
+
+    const staleAcceptPromise = call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/accept`, s.carol.token, {});
+    await staleReadReady;
+    const revoked = await call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/revoke`, s.carol.token, {});
+    assert.equal(revoked.status, 200, 'revocation wins while accept holds a stale proposed snapshot');
+
+    releaseAccept();
+    const staleAccept = await staleAcceptPromise;
+    assert.equal(staleAccept.status, 409, 'stale accept must fail its compare-and-set transition');
+    assert.equal((await originalGet(linkId)).status, 'revoked');
+
+    const acceptEventsA = (await s.store.listAdminActions(ORG_A)).filter((event) => event.action === 'link_accept' && event.detail === linkId);
+    const acceptEventsB = (await s.store.listAdminActions(ORG_B)).filter((event) => event.action === 'link_accept' && event.detail === linkId);
+    assert.equal(acceptEventsA.length + acceptEventsB.length, 0, 'a rejected stale accept must not emit accept audit events');
+  } finally {
+    releaseAccept?.();
+    await s.stop();
+  }
+});

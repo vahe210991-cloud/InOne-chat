@@ -90,3 +90,42 @@ test('приглашение: вступить по нему может толь
     await s.stop();
   }
 });
+
+
+test('F-02: simultaneous open joins serialize capacity and organization authorization', async () => {
+  const s = await start();
+  try {
+    const carol = await ChatClient.create(s.base, '@carol-join:inone.test', 'C_PHONE', PW);
+    const room = '!join-open-race:inone.test';
+    await s.store.addOrgMember(ORG, BORIS, 'member', 3);
+    await s.store.addOrgMember(ORG, '@carol-join:inone.test', 'member', 4);
+    await s.store.setOrgSetting({ orgId: ORG, field: 'maxGroupMembers', value: 2, actor: ANNA, at: 5 });
+
+    assert.equal((await post(s.base, s.anna.token, '/rooms', { roomId: room, orgId: ORG })).status, 200);
+    assert.equal((await post(s.base, s.anna.token, `/rooms/${enc(room)}/settings`, { name: 'Группа с лимитом', visibility: 'public', joinPolicy: 'open' })).status, 200);
+
+    // Force both requests to reach the atomic store operation before either is allowed to proceed.
+    const atomicJoin = s.store.joinPublicRoomOpen.bind(s.store);
+    let arrivals = 0;
+    let release;
+    const barrier = new Promise((resolve) => { release = resolve; });
+    s.store.joinPublicRoomOpen = async (args) => {
+      arrivals += 1;
+      if (arrivals === 2) release();
+      await barrier;
+      return atomicJoin(args);
+    };
+
+    const results = await Promise.all([
+      post(s.base, s.boris.token, `/rooms/${enc(room)}/join`, {}),
+      post(s.base, carol.token, `/rooms/${enc(room)}/join`, {}),
+    ]);
+    assert.deepEqual(results.map((result) => result.status).sort((a, b) => a - b), [200, 409]);
+    assert.equal(results.filter((result) => result.json.status === 'joined').length, 1);
+    assert.equal(results.filter((result) => result.json.error === 'group is full').length, 1);
+    const snapshot = await s.store.getRoom(room);
+    assert.equal(snapshot.members.length, 2, 'room must never exceed its configured capacity');
+  } finally {
+    await s.stop();
+  }
+});

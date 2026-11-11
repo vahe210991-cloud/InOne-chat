@@ -1466,14 +1466,20 @@ if (req.method === 'POST' && orgLinkActRoute) {
   if (action === 'accept') {
     if (link.status !== 'proposed') return send(res, 409, { error: 'link is not waiting for acceptance' });
     if (link.proposingOrg === orgId) return send(res, 403, { error: 'the proposing side cannot accept its own link', code: 'link_own_side' });
-    await storage.setOrgLinkStatus({ linkId, status: 'active', decidedBy: d.userId, decidedAt: now() });
+    const transitioned = await storage.transitionOrgLinkStatus({
+      linkId, fromStatus: 'proposed', status: 'active', decidedBy: d.userId, decidedAt: now(),
+    });
+    if (!transitioned) return send(res, 409, { error: 'link is not waiting for acceptance' });
     await storage.logAdminAction({ orgId, actor: d.userId, action: 'link_accept', target: link.proposingOrg, detail: linkId, at: now() });
     await storage.logAdminAction({ orgId: link.proposingOrg, actor: d.userId, action: 'link_accept', target: orgId, detail: linkId, at: now() });
     return send(res, 200, { status: 'active' });
   }
   if (link.status === 'revoked') return send(res, 409, { error: 'link is already revoked' });
   const other = link.orgA === orgId ? link.orgB : link.orgA;
-  await storage.setOrgLinkStatus({ linkId, status: 'revoked', decidedBy: d.userId, decidedAt: now() });
+  const transitioned = await storage.transitionOrgLinkStatus({
+    linkId, fromStatus: link.status, status: 'revoked', decidedBy: d.userId, decidedAt: now(),
+  });
+  if (!transitioned) return send(res, 409, { error: 'link state changed; reload and retry' });
   await storage.removeCrossOrgMemberships(orgId, other);
   await storage.logAdminAction({ orgId, actor: d.userId, action: 'link_revoke', target: other, detail: linkId, at: now() });
   await storage.logAdminAction({ orgId: other, actor: d.userId, action: 'link_revoke', target: orgId, detail: linkId, at: now() });
@@ -2067,12 +2073,21 @@ if (req.method === 'POST' && p === '/login') {
         if (!r || r.visibility !== 'public') return send(res, 404, { error: 'room not found' });
         if (r.members.includes(d.userId)) return send(res, 409, { error: 'already a member' });
         if (r.joinPolicy === 'open') {
-          if (await groupFull(roomId)) return send(res, 409, { error: 'group is full' });
-          const openOrgId = await storage.roomOrg(roomId);
-          const openGate = await orgGate(d.userId, openOrgId);
-          if (openGate) return send(res, openGate.status, { error: openGate.error, code: openGate.code });
-          await storage.addRoomMember(roomId, d.userId);
-          await markRoomChanged(roomId, (await storage.getRoom(roomId)).members);
+          const joined = await storage.joinPublicRoomOpen({
+            roomId,
+            userId: d.userId,
+            maxMembers: await effectiveMaxMembers(roomId),
+          });
+          if (joined.status === 'not_found' || joined.status === 'not_public') {
+            return send(res, 404, { error: 'room not found' });
+          }
+          if (joined.status === 'not_open') return send(res, 409, { error: 'room is no longer open for joining' });
+          if (joined.status === 'already_member') return send(res, 409, { error: 'already a member' });
+          if (joined.status === 'org_not_approved') return send(res, 403, { error: 'organization is not approved', code: 'org_not_approved' });
+          if (joined.status === 'org_not_member') return send(res, 403, { error: 'not an organization member', code: 'org_not_member' });
+          if (joined.status === 'full') return send(res, 409, { error: 'group is full' });
+          if (joined.status !== 'joined') throw new Error(`unexpected open-join result: ${joined.status}`);
+          await markRoomChanged(roomId, joined.members);
           return send(res, 200, { status: 'joined' });
         }
         await storage.createJoinRequest(roomId, d.userId, now());
