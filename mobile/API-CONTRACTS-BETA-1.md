@@ -140,3 +140,17 @@ A source-contract regression test is added alongside these suites to prevent scr
 - [ ] Flutter analyze and unit tests pass after any client contract changes.
 - [ ] CI passes on the final PR head SHA, not merely on an earlier local commit.
 - [ ] Any deployment-dependent check is reported separately from source/test acceptance.
+
+
+## 8. Security concurrency blockers discovered during Stage 3
+
+These are **not accepted** and must not be hidden by the route-presence checks above.
+
+| Finding | Current source evidence | Required closure | Status |
+|---|---|---|---|
+| F-01 — stale organization-link accept vs revoke | The accept handler reads the link, checks `status === 'proposed'`, then separately calls `setOrgLinkStatus(...active)`. This is not a compare-and-set transition at the handler boundary. Existing `org-links.test.js` covers sequential accept/revoke behavior, not the stale-read interleaving. | Transfer and review the previously prepared conditional state-transition patch and regression test; prove stale accept returns 409 and creates no active link or accept audit event. Run PostgreSQL concurrency test. | **Blocked — source patch not in main/PR #42** |
+| F-02 — open-join concurrency race | A previously prepared atomic PostgreSQL/locking fix and deterministic barrier regression are not present in current main. | Obtain the original agent's source/test handoff; review the exact diff; run memory regression and PostgreSQL concurrency test on CI. | **Blocked — source patch not in main/PR #42** |
+
+PR #42 currently contains only the PostgreSQL CI workflow; it does not contain the F-01/F-02 source changes or regression test. The CI workflow alone is infrastructure, not proof that either race is fixed.
+
+**Preservation rule:** do not recreate, overwrite or discard the original agent's untransferred working-tree changes. Obtain the exact patch and its file list first, compare against current main, then apply it on an isolated branch. Stage 3 security acceptance remains blocked until the source diff and PostgreSQL concurrency evidence are both present.
