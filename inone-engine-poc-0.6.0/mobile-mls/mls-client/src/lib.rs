@@ -581,11 +581,14 @@ impl Client {
         let result = {
             let provider = DeviceProvider::new(&self.crypto, TransactionConnection(&transaction));
             let group = self.groups.get_mut(room_id).ok_or("комната не создана на этом устройстве")?;
-            match group.mls.process_message(&provider, protocol).map_err(text)? .into_content() {
-                ProcessedMessageContent::StagedCommitMessage(staged) => {
-                    group.mls.merge_staged_commit(&provider, *staged).map_err(text)
-                }
-                _ => Err("ожидался коммит".to_string()),
+            match group.mls.process_message(&provider, protocol) {
+                Ok(processed) => match processed.into_content() {
+                    ProcessedMessageContent::StagedCommitMessage(staged) => {
+                        group.mls.merge_staged_commit(&provider, *staged).map_err(text)
+                    }
+                    _ => Err("ожидался коммит".to_string()),
+                },
+                Err(error) => Err(text(error)),
             }
         };
         match result {
@@ -710,7 +713,6 @@ impl Client {
     /// Создаёт комнату на сервере и группу MLS на этом устройстве (эпоха 0).
     pub fn create_room(&mut self, room_id: &str) -> Result<(), String> {
         self.ensure_writable()?;
-        let provider = self.provider();
         self.call("POST", "/rooms", Some(json!({ "roomId": room_id, "members": [self.user_id] })))?;
         let config = MlsGroupCreateConfig::builder()
             .ciphersuite(CIPHERSUITE)
@@ -812,7 +814,6 @@ impl Client {
     /// Входит в группы по приветствиям, которые ждут на сервере, и подтверждает их.
     fn join_welcomes(&mut self) -> Result<(), String> {
         let pending = self.call("GET", "/mls/welcomes", None)?;
-        let provider = self.provider();
         for w in pending["welcomes"].as_array().cloned().unwrap_or_default() {
             let id = w["id"].as_i64().ok_or("нет id приветствия")?;
             let bytes = B64.decode(w["welcome"].as_str().ok_or("приветствие не строка")?).map_err(text)?;
