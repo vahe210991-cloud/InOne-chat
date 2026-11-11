@@ -1,3 +1,16 @@
+## 2026-11-11 — Conservative repository file cleanup
+
+- Inspected the complete recursive Git tree on the current base (964 entries / 853 files; response not truncated) and grouped exact duplicate blobs by SHA.
+- No obvious generated/cache/temp files were present in the inspected tree.
+- Removed only `README-ARCHIVE.md` from task branch `cleanup/remove-duplicate-archive-readme-2026-11-11`: it was byte-identical to the retained, version-explicit `README-ARCHIVE-0.6.0.md`, and no internal path references to the generic name were found.
+- Preserved repeated engine/archive files, test reports, lockfiles, UI screenshots, owner archives, checksums, fixtures and security evidence because separate paths carry archive/runtime/provenance meaning.
+- Verification: full Git tree fetch PASS; removed path returns NOT_FOUND on task branch; retained versioned README fetch PASS; application tests NOT RUN (documentation-only deletion); local `git diff --check` NOT RUN (repository-native API workflow).
+- Audit report: `development/reports/2026-11-11-repository-file-cleanup.md`.
+- Task branch commit before this log entry: `fd22723a797175ae8eb811f450116de1f4627fd3`.
+- No merge, force update, branch deletion, product-code edit, or security-fix edit performed.
+
+---
+
 ## 2026-11-11 — Owner-approved repository-native and concurrent-agent workflow
 
 - Owner clarified that GitHub must remain the always-current shared source of truth, while agents may use either a temporary local clone/Codespace or safe repository-native editing depending on task scope and available tools.
