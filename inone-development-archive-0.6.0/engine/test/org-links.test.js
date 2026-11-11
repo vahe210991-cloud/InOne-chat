@@ -181,7 +181,8 @@ test('F-02 PostgreSQL: cross-organization link revocation waits for an in-flight
 
     // Hold the open-join transaction immediately after it acquires the active-link share lock.
     s.pool.connect = async (...args) => {
-      const client = await originalConnect(...args);
+      if (args.length > 0) return originalConnect(...args); // preserve node-postgres callback-style callers
+      const client = await originalConnect();
       const originalQuery = client.query.bind(client);
       client.query = async (query, ...params) => {
         const sql = typeof query === 'string' ? query : query?.text ?? '';
