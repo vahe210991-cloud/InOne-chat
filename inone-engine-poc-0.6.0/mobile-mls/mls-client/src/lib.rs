@@ -2279,7 +2279,7 @@ impl Client {
             .collect())
     }
 
-    fn server_users(&self, room_id: &str) -> Result<BTreeSet<String>, String> {
+    fn server_users(&mut self, room_id: &str) -> Result<BTreeSet<String>, String> {
         let body = match self.call(
             "GET",
             &format!("/rooms/{}/members", urlencoding::encode(room_id)),
