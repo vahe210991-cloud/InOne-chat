@@ -156,8 +156,13 @@ void main() {
       deleteMlsUserId: () async {},
     );
 
-    await session.login(email: 'alice@example.test', password: 'not-used-in-test');
+    final loginResult = await session.login(email: 'alice@example.test', password: 'not-used-in-test');
 
+    expect(loginResult.containsKey('token'), isFalse);
+    expect(loginResult.containsKey('refreshToken'), isFalse);
+    expect(loginResult.containsKey('code'), isFalse);
+    expect(loginResult.containsKey('pollSecret'), isFalse);
+    expect(loginResult.containsKey('approvalId'), isFalse);
     expect(session.isAuthenticated, isTrue);
     expect(session.hasNativeMlsSession, isTrue);
     expect(session.mlsError, isNull);
