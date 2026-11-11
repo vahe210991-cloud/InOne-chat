@@ -300,3 +300,13 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - PR #45 current head after report/continuity updates: `24e9a15e1fbc8446a18e68c84a779abe7a865729`; product source head: `da844b08240c3e67762997be9b65d8e91cab120f`.
 - OpenMLS run #42978646222 and FRB run #42978646245 failed before step 1 with runner_id 0 and empty steps; iOS dependent job skipped. Flutter mobile run #42978646254 skipped by branch condition.
 - No source tests/platform builds executed. Updated report section 13. Stage 4 remains NOT ACCEPTED.
+
+
+### 2026-11-11 — Logout/key-handling follow-up
+
+- Rust logout now catches remote logout panic and recovers poisoned session mutex so local SQLCipher/sidecar and platform-key cleanup still runs; added poisoned-lock regression.
+- Dart clears refresh token immediately after native open succeeds, before access-token snapshot.
+- Rust bridge initialization retry clears a failed cached initialization future.
+- Source SHA: `eab7b4d9a8889f4a5d69cdbb6de29dc2986272ab`.
+- CI #42979003433 (OpenMLS) and #42979003356 (FRB) failed before step 1 with runner_id 0 and empty steps; iOS dependent job skipped. No tests executed.
+- Updated report section 14. Stage 4 remains NOT ACCEPTED.
