@@ -372,7 +372,9 @@ impl KeyStore for MemoryKeyStore {
     }
 
     fn delete_database_key(&self, scope: &str) -> Result<(), String> {
-        self.keys.lock().map_err(text)?.remove(scope);
+        if let Some(mut key) = self.keys.lock().map_err(text)?.remove(scope) {
+            key.zeroize();
+        }
         Ok(())
     }
 }
@@ -693,11 +695,14 @@ impl Client {
             "/token/refresh",
             Some(json!({ "refreshToken": refresh.as_str() })),
         )?;
-        let next_pair = SessionTokens(
-            response["token"].as_str().ok_or("сервер не вернул токен")?.to_string(),
-            response["refreshToken"].as_str().ok_or("сервер не вернул токен обновления")?.to_string(),
-        );
+        let next_pair_result = (|| -> Result<SessionTokens, String> {
+            Ok(SessionTokens(
+                response["token"].as_str().ok_or("сервер не вернул токен")?.to_string(),
+                response["refreshToken"].as_str().ok_or("сервер не вернул токен обновления")?.to_string(),
+            ))
+        })();
         zeroize_json_value(&mut response);
+        let next_pair = next_pair_result?;
         // Одна SQL-операция заменяет пару целиком; память обновляем только
         // после успешной записи, чтобы не потерять действующий refresh token.
         let serialized = Zeroizing::new(
