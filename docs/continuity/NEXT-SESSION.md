@@ -270,3 +270,11 @@ Report: `development/reports/2026-11-11-stage-4-single-executor-progress.md`.
 - No merge of PR #45 without complete green required matrix on one exact final SHA and owner approval. Do not update Beta 1.0 progress percentages until WBS criteria have accepted evidence.
 
 Report: `development/reports/2026-11-11-stage-4-single-executor-progress.md`.
+
+
+## Additional next-session tasks — credential handling
+
+- Verify Rust login/approval response zeroization tests and ensure all response branches zeroize.
+- Verify Flutter login callers only receive sanitized maps and no screen/log exposes tokens, one-time codes or poll secrets.
+- Verify request body buffer cleanup and bearer-header removal do not break IOClient/MockClient or retries.
+- Run full Rust/OpenMLS and Flutter test suites on the exact current PR head `6e56671b632c993ebd15735caf5001ad2662012a`; current workflows have no step summaries or log URLs.
