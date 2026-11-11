@@ -616,3 +616,20 @@ The repeated failures expose no step summary or job log. Their root cause remain
 - The codegen outputs remain absent until the generation job runs.
 - Keep `INONE_MLS_NATIVE_ENABLED=false`; no merge.
 - Owner-side unblock: provide an executing GitHub Actions runner/build environment and configure the protected `ios-signing` environment. No test result can be manufactured from source review alone.
+
+
+## 28. Latest exact-head CI check — 2026-11-11
+
+Latest PR #45 head: `e8f50e566d1095ed7ad6ed9427abb5d666b5097b`.
+
+CI was triggered on this exact SHA:
+
+| Workflow | Run | Result | Evidence |
+|---|---:|---|---|
+| OpenMLS client validation | [42987463963](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42987463963) | FAILURE | Job `130411972408`: `steps=null`, `logs_url=null`; log download returned `BlobNotFound` |
+| FRB generation | [42987464006](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42987464006) | FAILURE | Job `130411972791`: `steps=null`, `logs_url=null`; log download returned `BlobNotFound`. Generated commit, final-SHA verification and iOS jobs SKIPPED |
+| Flutter mobile | [42987463998](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42987463998) | SKIPPED | Explicit Stage 4 branch condition |
+
+The combined status API returned no status entries for this SHA. No test command is evidenced as executed. The exact job-start failure message is not available through the current GitHub connector, so its cause remains UNKNOWN.
+
+**Current acceptance:** Stage 4 NOT ACCEPTED / BLOCKED; 0% verification accepted. Keep the native MLS feature gate disabled. Owner must provide the exact job-level failure message from the GitHub Actions UI or restore an authorized runner. Do not infer a root cause from the absence of logs.
