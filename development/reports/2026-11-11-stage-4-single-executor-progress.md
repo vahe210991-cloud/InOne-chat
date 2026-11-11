@@ -685,3 +685,12 @@ No test command is evidenced as executed. Exact failure reason remains UNKNOWN.
 - Beta 1.0 WBS v1.1 unchanged.
 - Keep `INONE_MLS_NATIVE_ENABLED=false`; no merge.
 - Required next input: exact job-level failure message from GitHub Actions UI for run #42988592622 or #42988592592, or owner-authorized working runner access. No root cause is inferred.
+
+
+## 30. Owner execution mandate archived in repository — 2026-11-11
+
+- The path referenced by root `AGENTS.md`, `development/AI-AGENT-MANDATE.md`, was missing (GitHub 404) at the start of this work.
+- Created `development/AI-AGENT-MANDATE.md` with the owner's current instructions: ChatGPT is the sole executor; no external agent until explicit owner authorization; Beta 1.0 only; no assumptions as facts; acceptance requires all criteria and green tests on one exact SHA; concise evidence-based reports; percentages follow WBS v1.1; reports/checklists are archived in GitHub; no product merge without owner approval.
+- Updated `development/WORKING-RULES.md` session-start checklist to read the mandate.
+- These are governance/documentation changes only; no product test result or acceptance status changes.
+- Current code/test head remains `54711b873349a8adb575f27d9c1fcccebbc49081`; later changes are documentation/governance only. Latest CI on the code/test head is recorded in section 29 and did not execute test steps.
