@@ -41,6 +41,9 @@ All changes below are committed to the Stage 4 branch. They are implementation c
 | Session concurrency | Serialized concurrent initialization and concurrent native MLS handoff | `b7a9491f2b5bcf3c2c5ac542e285297f836a34dc` |
 | Logout concurrency | Logout waits for login, session restoration, MLS handoff and refresh operations; blocks new login/adoption/API requests while cleaning up; always clears in-memory credentials | `19b80ccd8a367a332fcb337fb21d718e5cef4a5b`, `5bb366e92760712e74c54099185d42b14b4d7ff7`, `404775ff54c5e8a5eee175eb8d908c6c6929e2c0` |
 | Logout race regression | Added a test that logs out while native MLS handoff is blocked and verifies cleanup occurs only after handoff completes | `3fc8fee49eca979885c4aca9179eaa60f31bab30` |
+| Rust logout failure safety | Poisoned session lock and remote logout panic no longer bypass local database/sidecar and platform-key cleanup; added regression test | Current source head `eab7b4d9a8889f4a5d69cdbb6de29dc2986272ab` |
+| Refresh-token handoff | Dart clears its refresh-token copy immediately after native open succeeds; failed access-token snapshot no longer causes the active Rust session to be closed | Current source head `eab7b4d9a8889f4a5d69cdbb6de29dc2986272ab` |
+| Rust bridge initialization | Failed RustLib initialization clears the cached future so a later attempt can retry | Current source head `eab7b4d9a8889f4a5d69cdbb6de29dc2986272ab` |
 | Welcome ACK recovery | Persisted Welcome ID + room ID in the same transaction as the joined group; after restart, retry ACK without consuming the Welcome twice | Current source head `da844b08240c3e67762997be9b65d8e91cab120f` |
 | SQLCipher key recovery | Split existing-key lookup from create; resume never creates a replacement key; existing DB without key fails closed; partial new-session failures attempt DB/sidecar and key cleanup | Current source head `da844b08240c3e67762997be9b65d8e91cab120f` |
 | Flutter session tests | Added concurrent initialization and concurrent MLS handoff tests | `3c928ea4d50dec549cb13480d818010aaff1f187` |
@@ -212,3 +215,19 @@ The current PR head after report/continuity updates is `24e9a15e1fbc8446a18e68c8
 - [Flutter mobile validation #42978646254](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42978646254): SKIPPED by the Stage 4 branch condition.
 
 The no-runner failure persists. No source tests or platform builds executed. Stage 4 remains NOT ACCEPTED.
+
+
+## 14. Logout/key-handling follow-up and latest CI — 2026-11-11
+
+Current source head: `eab7b4d9a8889f4a5d69cdbb6de29dc2986272ab`.
+
+Additional hardening:
+- Rust logout now catches a panic during remote logout and recovers a poisoned client mutex so local database/sidecar and platform-key cleanup still runs. A poisoned-lock regression was added.
+- Dart transfers refresh-token ownership to Rust immediately after native open succeeds, before requesting the access-token snapshot.
+- Rust bridge initialization no longer permanently caches a failed `RustLib.init()` future.
+
+Latest CI:
+- [OpenMLS client run #42979003433](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42979003433): FAILED before step 1; `runner_id=0`; `steps=[]`.
+- [FRB generation run #42979003356](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42979003356): FAILED before step 1; `runner_id=0`; `steps=[]`; iOS dependent job SKIPPED.
+
+No tests executed. Stage 4 remains NOT ACCEPTED.
