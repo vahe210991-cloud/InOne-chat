@@ -445,3 +445,13 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Recorded owner instruction: ChatGPT sole executor; no external agent unless explicitly authorized; current product stage Beta 1.0; no assumptions as facts; accept only complete criteria with green tests on one exact SHA; concise reports with criteria, WBS percentage and checklist; archive reports in GitHub; no product merge without owner approval.
 - Updated WORKING-RULES startup checklist to include the mandate.
 - Governance-only change. No test result or acceptance status changed.
+
+
+### 2026-11-11 — Latest CI retry after logout regression
+
+- Exact code/test head: `5ca865573e7ed8949698ce7eda7d0adbf5f5915a`.
+- FRB #42988901680: FAILED; generation job `130416646502` had no steps/log URL; downstream commit/final-SHA/iOS jobs skipped.
+- OpenMLS #42988901678: FAILED; job `130416646666` had no steps/log URL.
+- Flutter #42988901824: SKIPPED by branch condition.
+- Log retrieval returned BlobNotFound. No test command evidenced as executed; exact failure cause UNKNOWN.
+- Report section 31. Stage 4 remains NOT ACCEPTED / BLOCKED.
