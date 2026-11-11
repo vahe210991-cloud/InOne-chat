@@ -340,7 +340,7 @@ pub fn with_retry<T>(attempts: u32, base: Duration, mut op: impl FnMut() -> Resu
 /// Вход первого устройства аккаунта (или устройства, которое уже подтверждено).
 pub fn connect(base: &str, user_id: &str, password: &str, device_id: &str, db_path: &str, keys: &dyn KeyStore) -> Result<Client, String> {
     let scope = format!("{user_id}/{device_id}");
-    ensure_existing_key_matches_database(db_path, &scope, keys)?;
+    let _existing_key = ensure_existing_key_matches_database(db_path, &scope, keys)?;
     let agent = ureq::AgentBuilder::new().build();
     register(&agent, base, user_id, password)?;
     let login = request(&agent, base, "", "POST", "/login", Some(json!({ "userId": user_id, "password": password, "deviceId": device_id })))?;
@@ -371,7 +371,7 @@ pub fn connect_with_session(
         return Err("для подключения нужны access и refresh tokens".to_string());
     }
     let scope = format!("{user_id}/{device_id}");
-    ensure_existing_key_matches_database(db_path, &scope, keys)?;
+    let _existing_key = ensure_existing_key_matches_database(db_path, &scope, keys)?;
     let agent = ureq::AgentBuilder::new().build();
     build_client_with_keys(
         agent,
@@ -452,7 +452,7 @@ pub fn connect_with_approval(
     approver: &Client,
 ) -> Result<Client, String> {
     let scope = format!("{user_id}/{device_id}");
-    ensure_existing_key_matches_database(db_path, &scope, keys)?;
+    let _existing_key = ensure_existing_key_matches_database(db_path, &scope, keys)?;
     let agent = ureq::AgentBuilder::new().build();
     register(&agent, base, user_id, password)?;
     let login = request(
