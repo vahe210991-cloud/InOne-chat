@@ -152,6 +152,11 @@ jobs:
     needs: generate-and-validate
     runs-on: macos-14
     timeout-minutes: 45
+    env:
+      IOS_SIGNING_CERTIFICATE_P12: ${{ secrets.IOS_SIGNING_CERTIFICATE_P12 }}
+      IOS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.IOS_SIGNING_CERTIFICATE_PASSWORD }}
+      IOS_PROVISIONING_PROFILE: ${{ secrets.IOS_PROVISIONING_PROFILE }}
+      IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
     steps:
       - name: Checkout PR head
         uses: actions/checkout@v4
@@ -194,7 +199,31 @@ jobs:
         working-directory: mobile
         run: flutter build ios --simulator --no-codesign
 
+      - name: Install iOS signing identity and provisioning profile
+        if: ${{ env.IOS_SIGNING_CERTIFICATE_P12 != '' && env.IOS_SIGNING_CERTIFICATE_PASSWORD != '' && env.IOS_PROVISIONING_PROFILE != '' && env.IOS_TEAM_ID != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 20)"
+          KEYCHAIN_PATH="$RUNNER_TEMP/inone-build.keychain"
+          printf '%s' "$IOS_SIGNING_CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/ios-signing.p12"
+          printf '%s' "$IOS_PROVISIONING_PROFILE" | base64 --decode > "$RUNNER_TEMP/inone.mobileprovision"
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$RUNNER_TEMP/ios-signing.p12" -k "$KEYCHAIN_PATH" -P "$IOS_SIGNING_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+          security cms -D -i "$RUNNER_TEMP/inone.mobileprovision" > "$RUNNER_TEMP/profile.plist"
+          PROFILE_UUID="$(/usr/libexec/PlistBuddy -c 'Print UUID' "$RUNNER_TEMP/profile.plist")"
+          cp "$RUNNER_TEMP/inone.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
+          echo "IOS_PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
+          cd mobile
+          perl -0pi -e "s/DEVELOPMENT_TEAM = [^;]*;/DEVELOPMENT_TEAM = $IOS_TEAM_ID;/g; s/PROVISIONING_PROFILE_SPECIFIER = [^;]*;/PROVISIONING_PROFILE_SPECIFIER = $PROFILE_UUID;/g" ios/Runner.xcodeproj/project.pbxproj
+
       - name: iOS Keychain runtime smoke test
+        if: ${{ env.IOS_SIGNING_CERTIFICATE_P12 != '' && env.IOS_SIGNING_CERTIFICATE_PASSWORD != '' && env.IOS_PROVISIONING_PROFILE != '' && env.IOS_TEAM_ID != '' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -204,6 +233,10 @@ jobs:
           xcrun simctl bootstatus "$DEVICE_ID" -b
           cd mobile
           flutter drive -d "$DEVICE_ID" --driver=test_driver/integration_test.dart --target=integration_test/mls_secure_store_test.dart
+
+      - name: Explain skipped iOS Keychain runtime test
+        if: env.IOS_SIGNING_CERTIFICATE_P12 == '' || env.IOS_SIGNING_CERTIFICATE_PASSWORD == '' || env.IOS_PROVISIONING_PROFILE == '' || env.IOS_TEAM_ID == ''
+        run: echo "::warning::iOS protected Keychain runtime smoke test was not executed because signing secrets are unavailable; Stage 4 remains unaccepted until this test passes."
 
       - name: Upload iOS simulator build
         uses: actions/upload-artifact@v4
