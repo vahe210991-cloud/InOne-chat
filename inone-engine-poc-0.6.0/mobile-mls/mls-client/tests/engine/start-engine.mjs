@@ -1,6 +1,6 @@
 // Запускает настоящий сервер движка на свободном порту для тестов клиента. Выход — по закрытию stdin.
 // Команды со стандартного входа: FLAG <ключ> <значение в JSON> меняет флаг так же, как оператор; ответ — OK.
-// Путь к движку: переменная INONE_ENGINE_DIR; по умолчанию — папка engine рядом с mobile-mls.
+// Путь к движку: INONE_ENGINE_DIR; по умолчанию — принятый P0 engine snapshot из inone-development-archive-0.6.0.
 import path from 'node:path';
 import readline from 'node:readline';
 import { fileURLToPath, pathToFileURL } from 'node:url';
