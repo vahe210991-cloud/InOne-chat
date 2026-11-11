@@ -331,3 +331,20 @@ Reference files:
 11. Keep `INONE_MLS_NATIVE_ENABLED=false`. Do not merge PR #45 or claim Stage 4 accepted until all required checks are green on the exact same final SHA and owner approval is given.
 
 Report: `development/reports/2026-11-11-stage-4-single-executor-progress.md`, sections 25–26.
+
+
+## Latest continuation instruction — Beta 1.0 Stage 4 — 2026-11-11
+
+- Re-fetch PR #45 and the current branch head before any edits. Latest source/workflow head checked: `5e3a9dc7644bb9e2eb462a41de345b4ff9f7df3c`; subsequent commits are documentation/continuity updates. PR remains OPEN/Draft.
+- Do not assign an external agent. ChatGPT is the sole executor until the owner says otherwise.
+- P0 parity implementation is present in active source; six checked regression files are blob-identical to the accepted archive. Do not re-port; run tests on the final SHA.
+- Local-purge fallback regression was added in `4670646558723ae5b33eeffdaa105f3a6df209ed`; execute it when a runner is available.
+- FRB workflow is read-only by default; generated output is committed by an isolated allowlisted write job; final-SHA job runs Rust/OpenMLS, Flutter and Android tests. iOS job is behind the protected GitHub Environment `ios-signing`.
+- Owner must configure `ios-signing` with required reviewers and environment secrets: `IOS_SIGNING_CERTIFICATE_P12` (base64 P12), `IOS_SIGNING_CERTIFICATE_PASSWORD`, `IOS_PROVISIONING_PROFILE` (base64 profile), `IOS_TEAM_ID`. Do not send secret values in chat.
+- Latest full CI on 5e3a9dc: OpenMLS #42987334965 FAILED with no steps/logs; FRB #42987334938 FAILED with no steps/logs and downstream jobs skipped; Flutter #42987335071 SKIPPED. Exact failure cause UNKNOWN.
+- Generated FRB bindings, build hook and Rust lockfile remain absent until codegen executes. No local Rust/Cargo/Flutter/Dart/Xcode or network is available.
+- Obtain an executing GitHub Actions runner or owner-authorized build environment. Do not diagnose from guesswork.
+- Run full matrix on one exact final SHA. A failed job with no steps/logs is not a test result; skipped platform jobs are not PASS.
+- Keep `INONE_MLS_NATIVE_ENABLED=false`; no merge; no WBS percentage changes until all Beta 1.0 criteria have green evidence and owner approval.
+
+Report: `development/reports/2026-11-11-stage-4-single-executor-progress.md`, sections 25–27.
