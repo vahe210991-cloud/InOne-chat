@@ -156,27 +156,43 @@ test('F-02 PostgreSQL: cross-organization link revocation waits for an in-flight
     const linkId = proposed.json.linkId;
     assert.equal((await call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/accept`, s.carol.token, {})).status, 200);
 
-    const joining = call(s.base, 'POST', `/rooms/${enc(ROOM)}/join`, s.carol.token, {});
-    const deadline = Date.now() + 10000;
-    let joinHoldsLinkLock = false;
-    while (Date.now() < deadline && !joinHoldsLinkLock) {
-      const client = await s.pool.connect();
-      try {
-        await client.query('BEGIN');
-        await client.query('SELECT link_id FROM org_links WHERE link_id = $1 FOR UPDATE NOWAIT', [linkId]);
-        await client.query('ROLLBACK');
-      } catch (error) {
-        await client.query('ROLLBACK').catch(() => {});
-        if (error.code === '55P03') joinHoldsLinkLock = true;
-        else throw error;
-      } finally {
-        client.release();
-      }
-      if (!joinHoldsLinkLock) await new Promise((resolve) => setTimeout(resolve, 10));
-    }
-    assert.equal(joinHoldsLinkLock, true, 'open join must hold a share lock on the active organization link');
+    const originalConnect = s.pool.connect.bind(s.pool);
+    const originalPoolQuery = s.pool.query.bind(s.pool);
+    let signalShareLock;
+    let signalRevokeAttempt;
+    let releaseJoin;
+    const shareLockReady = new Promise((resolve) => { signalShareLock = resolve; });
+    const revokeAttempted = new Promise((resolve) => { signalRevokeAttempt = resolve; });
+    const joinGate = new Promise((resolve) => { releaseJoin = resolve; });
 
+    // Hold the open-join transaction immediately after it acquires the active-link share lock.
+    s.pool.connect = async (...args) => {
+      const client = await originalConnect(...args);
+      const originalQuery = client.query.bind(client);
+      client.query = async (query, ...params) => {
+        const sql = typeof query === 'string' ? query : query?.text ?? '';
+        if (sql.includes('FOR SHARE OF member, member_org, link')) {
+          const result = await originalQuery(query, ...params);
+          signalShareLock();
+          await joinGate;
+          return result;
+        }
+        return originalQuery(query, ...params);
+      };
+      return client;
+    };
+    s.pool.query = async (query, ...params) => {
+      const sql = typeof query === 'string' ? query : query?.text ?? '';
+      if (sql.includes('UPDATE org_links SET status')) signalRevokeAttempt();
+      return originalPoolQuery(query, ...params);
+    };
+
+    const joining = call(s.base, 'POST', `/rooms/${enc(ROOM)}/join`, s.carol.token, {});
+    await shareLockReady;
     const revoking = call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/revoke`, s.carol.token, {});
+    await revokeAttempted;
+    releaseJoin();
+
     const joined = await joining;
     assert.equal(joined.status, 200, 'join that acquired the active-link lock may finish first');
     const revoked = await revoking;
