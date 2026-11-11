@@ -694,3 +694,20 @@ No test command is evidenced as executed. Exact failure reason remains UNKNOWN.
 - Updated `development/WORKING-RULES.md` session-start checklist to read the mandate.
 - These are governance/documentation changes only; no product test result or acceptance status changes.
 - Current code/test head remains `54711b873349a8adb575f27d9c1fcccebbc49081`; later changes are documentation/governance only. Latest CI on the code/test head is recorded in section 29 and did not execute test steps.
+
+
+## 31. Latest CI retry after logout regression update — 2026-11-11
+
+The offline logout regression now uses an HTTPS loopback endpoint so it exercises an unreachable server without relying on a non-HTTPS base URL.
+
+Exact code/test head: `5ca865573e7ed8949698ce7eda7d0adbf5f5915a`.
+
+| Workflow | Run | Result | Evidence |
+|---|---:|---|---|
+| FRB generation | [42988901680](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42988901680) | FAILURE | `generate-and-validate` job `130416646502`: `steps=null`, `logs_url=null`; downstream jobs SKIPPED |
+| OpenMLS client | [42988901678](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42988901678) | FAILURE | Job `130416646666`: `steps=null`, `logs_url=null` |
+| Flutter mobile | [42988901824](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42988901824) | SKIPPED | Explicit Stage 4 branch condition |
+
+Job-log retrieval returned `BlobNotFound` for the failed jobs. No test command is evidenced as executed. The failure cause remains UNKNOWN.
+
+**Acceptance unchanged:** Stage 4 NOT ACCEPTED / BLOCKED; 0% verification accepted; Beta 1.0 WBS v1.1 unchanged; keep `INONE_MLS_NATIVE_ENABLED=false`.
