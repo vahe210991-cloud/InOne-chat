@@ -370,3 +370,8 @@ Report: development/reports/2026-11-11-stage-4-single-executor-progress.md, sect
 - Obtain the exact job-level failure message from GitHub Actions UI or an authorized working runner. Then run the complete Beta 1.0 matrix on one final SHA.
 - Do not mark any new regression PASS until executed. Keep native MLS disabled and do not merge.
 - Report section 29.
+
+
+## Governance prerequisite — current owner instruction
+
+Read `development/AI-AGENT-MANDATE.md` at the start of every session. ChatGPT remains sole executor; do not delegate to an external agent unless the owner explicitly authorizes it. Active product stage is Beta 1.0. Acceptance remains based on all criteria and green tests on one exact SHA.
