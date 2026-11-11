@@ -1580,10 +1580,21 @@ impl Client {
     }
 
     fn ack_welcome(&mut self, welcome_id: i64) -> Result<(), String> {
-        self.call("POST", &format!("/mls/welcomes/{welcome_id}/ack"), Some(json!({})))?;
+        if let Err(error) = self.call(
+            "POST",
+            &format!("/mls/welcomes/{welcome_id}/ack"),
+            Some(json!({})),
+        ) {
+            // The server may have committed the ACK before the response was lost.
+            // Treat 404 as already acknowledged; the durable receipt is authoritative.
+            if !error.contains("-> 404") {
+                return Err(error);
+            }
+        }
         let acked_at = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default().as_millis() as i64;
+            .unwrap_or_default()
+            .as_millis() as i64;
         self.meta.execute(
             "UPDATE client_welcome_receipts SET acked_at = ?1 WHERE welcome_id = ?2 AND acked_at IS NULL",
             rusqlite::params![acked_at, welcome_id],
