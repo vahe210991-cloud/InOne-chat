@@ -54,6 +54,7 @@ void main() {
       expect(request.method, 'GET');
       expect(request.url.path, '/profile');
       expect(request.headers['authorization'], 'Bearer access-token');
+      expect(request.followRedirects, isFalse);
       return http.Response(
           '{"userId":"user-1","nickname":"Test User","email":"user@example.test","verificationLevel":1,"providers":[],"backupEmail":null,"securityHints":[]}',
           200,
