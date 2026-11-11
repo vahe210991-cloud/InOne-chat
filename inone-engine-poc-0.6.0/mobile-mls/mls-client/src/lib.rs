@@ -1904,4 +1904,22 @@ mod retry_tests {
         }
     }
 
+    #[test]
+    fn zeroize_json_value_clears_nested_secret_strings() {
+        let mut value = json!({
+            "token": "access-secret",
+            "refreshToken": "refresh-secret",
+            "nested": ["approval-code", {"pollSecret": "poll-secret"}],
+            "public": 7
+        });
+
+        zeroize_json_value(&mut value);
+
+        assert_eq!(value["token"], "");
+        assert_eq!(value["refreshToken"], "");
+        assert_eq!(value["nested"][0], "");
+        assert_eq!(value["nested"][1]["pollSecret"], "");
+        assert_eq!(value["public"], 7);
+    }
+
 }
