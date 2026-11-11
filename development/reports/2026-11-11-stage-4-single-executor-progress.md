@@ -495,7 +495,7 @@ The current `mobile/pubspec.lock` also contains neither `flutter_rust_bridge` no
 
 - Beta 1.0 WBS v1.1 remains unchanged.
 - No Beta 1.0 overall percentage is increased.
-- Stage 4 verification accepted: **0%**; no required current-head test has a green execution record.
+- Stage 4 verification: **0% verified**; no required current-head test has a green execution record.
 - Stage 4 status: **NOT ACCEPTED**.
 - `INONE_MLS_NATIVE_ENABLED` remains `false`.
 - No merge, deployment, database operation or external agent activity occurred.
