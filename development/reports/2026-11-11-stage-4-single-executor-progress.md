@@ -812,3 +812,12 @@ Corrected both workflows in the Stage 4 branch:
 For this same-repository Stage 4 branch, pushes to the PR head still produce commit checks visible to the PR, while documentation-only commits no longer satisfy the workflow push path filters. Fork-origin PR automation is not covered by this branch-specific setup. The YAML edits are source-reviewed but have not been executed by a functioning runner. Do not count them as CI validation.
 
 **Acceptance remains unchanged:** Stage 4 NOT ACCEPTED / BLOCKED; verification accepted 0%; WBS v1.1 unchanged; `INONE_MLS_NATIVE_ENABLED=false`; no merge. The separate Actions job-start failure remains unresolved.
+
+
+## 38. Current branch hand-back after workflow correction — 2026-11-11
+
+- Stage 4 branch: `feature/stage-4-native-mls-runtime-2026-11-11`.
+- Latest verified branch commit before this report update: `16a522a358a5b3d0d1f9b82f70785a0f599478ea` ([commit](https://github.com/vahe210991-cloud/InOne-chat/commit/16a522a358a5b3d0d1f9b82f70785a0f599478ea)). It includes the workflow-trigger corrections and continuity updates.
+- Re-fetched both workflow files from the branch and verified their trigger sections: FRB has `workflow_dispatch` plus a branch-scoped `push.paths` allowlist; OpenMLS has `workflow_dispatch` plus its existing branch-scoped `push.paths` allowlist. Aggregate `pull_request.paths` triggers are absent.
+- These workflow changes have not been validated by a functioning runner. The repository execution environment available to this session has Node.js only; Rust/Cargo, Flutter/Dart and Xcode are unavailable. No local compilation or test result is claimed.
+- No Stage 4 acceptance criterion is newly verified. Stage 4 remains NOT ACCEPTED / BLOCKED; verification accepted 0%; Beta 1.0 WBS v1.1 unchanged; `INONE_MLS_NATIVE_ENABLED=false`; no merge.
