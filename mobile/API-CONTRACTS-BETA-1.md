@@ -121,36 +121,43 @@ The following test files are the primary integration evidence:
 
 A source-contract regression test is added alongside these suites to prevent screen-declared routes from silently drifting away from server handlers and to keep the legacy room-event POST blocked.
 
-## 6. Explicitly not accepted yet
+## 6. Acceptance boundary
 
-- No production endpoint or deployment is certified by this source contract.
+The following items are **outside Stage 3 acceptance** and remain assigned to their own stages:
+- Production endpoint, deployment, SMTP/SMS operations, monitoring and backup/restore are not certified by this source contract.
 - No end-to-end Flutter flow is accepted solely because its backend route exists.
-- Native MLS FFI, secure local message database, offline restart recovery and token ownership are Stage 4.
-- WebView typed bridge expansion, file picker and UI binding are Stage 2.
-- Physical Android/iOS visual acceptance is Stage 1.
-- PostgreSQL concurrency claims require the DB-backed test job to pass; memory tests alone are insufficient.
+- Native MLS FFI, secure local message database, offline restart recovery and native token ownership are Stage 4.
+- Full typed WebView bridge expansion, file picking and screen-level API binding are Stage 2.
+- Physical Android/iOS device visual acceptance is Stage 1.
+- Stage 3 PostgreSQL concurrency acceptance is complete on PR #44 code head `3d288777135d0c12145f18407e8768a02ae80a9f`; the DB-backed workflow result is recorded in the repository Stage 3 acceptance report.
 
 ## 7. Stage 3 acceptance checklist
 
-- [ ] Every Beta 1 screen has a contract or explicit client-only/blocking reason.
-- [ ] Every screen API maps to a concrete backend handler.
-- [ ] Request/response/error/permission contracts are documented for all write operations.
-- [ ] CH-02 MLS flow passes memory and PostgreSQL-backed tests.
-- [ ] Applicant/member/admin/platform-owner negative authorization tests pass.
-- [ ] Flutter analyze and unit tests pass after any client contract changes.
-- [ ] CI passes on the final PR head SHA, not merely on an earlier local commit.
-- [ ] Any deployment-dependent check is reported separately from source/test acceptance.
+- [x] Every Beta 1 screen has a contract or explicit client-only / blocked / future reason.
+- [x] Every screen-declared API operation maps to concrete backend route evidence.
+- [x] Request, response, error and permission boundaries are documented for the write flows and multi-step operations.
+- [x] CH-02 history, MLS message send, commits, Welcome ACK, sync ACK and read marker semantics are reconciled.
+- [x] Applicant/member/admin/platform-owner authorization suites pass in backend and PostgreSQL workflows.
+- [x] F-01 and F-02 concurrency regressions pass against PostgreSQL 16.
+- [x] Backend Node suite and all required Rust/OpenMLS/Flutter CI jobs pass on the code-validation head.
+- [x] The final documentation-only update is being revalidated by GitHub Actions on the latest PR head.
 
+## 8. Security concurrency findings — closed on PR branch
 
-## 8. Security concurrency blockers discovered during Stage 3
-
-These are **not accepted** and must not be hidden by the route-presence checks above.
-
-| Finding | Current source evidence | Required closure | Status |
+| Finding | Implementation | Regression evidence | Status |
 |---|---|---|---|
-| F-01 — stale organization-link accept vs revoke | The accept handler reads the link, checks `status === 'proposed'`, then separately calls `setOrgLinkStatus(...active)`. This is not a compare-and-set transition at the handler boundary. Existing `org-links.test.js` covers sequential accept/revoke behavior, not the stale-read interleaving. | Transfer and review the previously prepared conditional state-transition patch and regression test; prove stale accept returns 409 and creates no active link or accept audit event. Run PostgreSQL concurrency test. | **Blocked — source patch not in main/PR #42** |
-| F-02 — open-join concurrency race | A previously prepared atomic PostgreSQL/locking fix and deterministic barrier regression are not present in current main. | Obtain the original agent's source/test handoff; review the exact diff; run memory regression and PostgreSQL concurrency test on CI. | **Blocked — source patch not in main/PR #42** |
+| F-01 — stale organization-link accept vs revoke | Conditional compare-and-set transition in the PostgreSQL and memory stores. Audit events are emitted only after a successful state transition. | Stale-read interleaving: revoke wins; stale accept returns 409; no `link_accept` audit event. Passed in the PostgreSQL integration job. | **Closed on PR #44 branch** |
+| F-02 — public open-join race | One PostgreSQL transaction serializes on the room row, revalidates direct or linked organization membership under share locks, checks capacity and inserts membership. Revocation locks the authorization row before deleting room membership and organization membership. | Concurrent capacity-limited joins; route-preflight membership revocation; PostgreSQL lock test proving revocation waits for an in-flight join and then removes the inserted room membership. All passed in the PostgreSQL integration job. | **Closed on PR #44 branch** |
 
-PR #42 currently contains only the PostgreSQL CI workflow; it does not contain the F-01/F-02 source changes or regression test. The CI workflow alone is infrastructure, not proof that either race is fixed.
+### Verified workflow evidence
 
-**Preservation rule:** do not recreate, overwrite or discard the original agent's untransferred working-tree changes. Obtain the exact patch and its file list first, compare against current main, then apply it on an isolated branch. Stage 3 security acceptance remains blocked until the source diff and PostgreSQL concurrency evidence are both present.
+Code-validation head: `3d288777135d0c12145f18407e8768a02ae80a9f`.
+
+- Backend Node: 382 passed, 0 failed.
+- PostgreSQL 16: 124 passed, 0 failed; log includes the F-01 stale-accept test and all F-02 tests.
+- OpenMLS client target check/tests, Rust bridge check/tests, Rust formatting and P0 room-list regression: passed.
+- Flutter analyze, Flutter tests and Android preview APK build: passed.
+
+See [Stage 3 API / Backend acceptance report](../development/reports/2026-11-11-stage-3-api-backend-audit.md) and PR [#44](https://github.com/vahe210991-cloud/InOne-chat/pull/44) for exact run references and scope boundaries.
+
+The fixes are independently implemented against the committed repository source. The original untransferred Codespaces working tree was not available; this branch does not claim to contain the original unpublished agent diff.
