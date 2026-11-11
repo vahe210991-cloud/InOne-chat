@@ -519,3 +519,68 @@ Evidence and exact CI state are recorded in `development/reports/2026-11-11-stag
 **Verification:** OpenMLS run #42986269774 and FRB run #42986269879 concluded failure, but job step summaries/logs were unavailable (`BlobNotFound`). Flutter mobile job #42986269746 was skipped by workflow branch condition. No local Cargo/Rust toolchain is available in this execution environment. Therefore tests are NOT VERIFIED; no PASS or 100% claim is made.
 
 **Acceptance:** Stage 4 NOT ACCEPTED / BLOCKED. Beta 1.0 WBS v1.1 baseline unchanged (42% implementation / 31% verification). Next gate is inspectable full CI on one exact final SHA.
+
+
+## 26. CI privilege isolation and exact-SHA acceptance workflow — 2026-11-11
+
+### 26.1 Workflow security and reproducibility changes
+
+The FRB workflow was refactored in source:
+
+- Workflow default token permission is now `contents: read`.
+- Code generation, compilation and test execution run in the read-only job.
+- Only the dedicated `commit-generated` job receives `contents: write`.
+- The write job does not execute PR scripts. It downloads the generated artifact, rejects symlinks, copies only the allowlisted generated bridge files/lockfiles, and pushes to the Stage 4 branch without force.
+- The generated commit's exact SHA is exported.
+- A separate read-only `verify-final-sha` job checks out that exact SHA and reruns Rust formatting, Rust bridge tests, persistent OpenMLS integration tests against the P0 engine fixture, Flutter analyze/tests, Android APK build and Android Keystore runtime smoke test.
+- The iOS job depends on the exact-SHA verification and checks out the same final SHA.
+
+This prevents the generated-file write token from being exposed to the code-execution job and prevents the final acceptance matrix from relying only on the pre-generation PR SHA.
+
+### 26.2 Signed iOS gate
+
+The iOS workflow now:
+- fails if any required signing secret is absent;
+- imports the Apple Development certificate and provisioning profile using macOS-compatible `base64 -D`;
+- validates certificate team, profile team, app identifier, keychain access group and profile expiry;
+- configures manual signing for the generated Runner project;
+- runs the Protected Keychain integration smoke test;
+- verifies the simulator app signature and signed entitlements;
+- removes temporary certificate/profile/keychain material after the job.
+
+This is a source-level workflow change only. It has not yet executed successfully; simulator behavior with the protected store remains unverified. A physical-device test is also not claimed.
+
+### 26.3 Exact CI status on latest PR head
+
+Latest PR #45 head at this report update: `56102098427b8853b746b94d8c073c5aa97d0c2c`.
+
+| Workflow | Run | Result | Job evidence |
+|---|---:|---|---|
+| OpenMLS client validation | [42987007179](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42987007179) | FAILURE | `steps=null`, `logs_url=null`; log retrieval returned BlobNotFound |
+| OpenMLS Flutter Rust Bridge generation | [42987007308](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42987007308) | FAILURE | `generate-and-validate` has `steps=null`, `logs_url=null`; downstream commit, final-SHA and iOS jobs SKIPPED |
+| Flutter mobile validation | [42987007363](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42987007363) | SKIPPED | Explicit Stage 4 branch condition |
+
+The failed jobs exposed no executable step summaries or usable logs. The exact cause remains UNKNOWN. No test command is evidenced as executed. The current PR head has no green test result.
+
+### 26.4 Remaining generated artifacts
+
+Generated FRB files and lockfiles remain absent because the generation job did not execute:
+- `mobile/lib/src/rust/frb_generated.dart`
+- `mobile/lib/src/rust/api/session.dart`
+- `mobile/hook/build.dart`
+- `mobile/rust/src/frb_generated.rs`
+- `mobile/rust/Cargo.lock`
+
+The new write/verify workflow is designed to generate and commit these files, then test the exact resulting SHA. It has not yet completed.
+
+### 26.5 Current acceptance
+
+- Stage: Beta 1.0 only.
+- WBS v1.1 baseline: unchanged.
+- Stage 4 verification accepted: **0%**.
+- Stage 4: **NOT ACCEPTED / BLOCKED**.
+- `INONE_MLS_NATIVE_ENABLED=false`.
+- PR #45 remains Draft and unmerged.
+- No source/test pass is claimed from a failed job with no steps/logs.
+
+**Required owner-side unblock:** provide a working GitHub Actions execution path or an authorized Rust/Flutter/macOS build runner. The exact reason GitHub creates failed jobs without steps/logs cannot be determined from the available API evidence. Do not guess billing, runner, permission or policy causes.
