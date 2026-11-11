@@ -2784,108 +2784,111 @@ impl Client {
 
     /// Удаляет из групп отозванные устройства: коммит удаляет их листья и объявляет удаление на сервере.
     pub fn remove_revoked_devices(&mut self) -> Result<usize, String> {
-        let removals = self.call("GET", "/mls/removals", None)?;
-        let mut by_room: HashMap<String, Vec<String>> = HashMap::new();
-        for removal in removals["removals"].as_array().cloned().unwrap_or_default() {
-            let room = removal["roomId"].as_str().ok_or("нет roomId")?.to_string();
-            let device = removal["deviceId"].as_str().ok_or("нет deviceId")?.to_string();
-            by_room.entry(room).or_default().push(device);
+        self.ensure_writable()?;
+        if self.flush_pending_membership_commits()? > 0 {
+            self.sync()?;
         }
-
-        let mut removed = 0;
-        for (room_id, devices) in by_room {
-            if self.desync_reason(&room_id)?.is_some() {
-                continue;
+        let mut removed_total = 0usize;
+        for attempt in 0..3 {
+            let removals = self.call("GET", "/mls/removals", None)?;
+            let mut by_room: HashMap<String, Vec<String>> = HashMap::new();
+            for row in removals["removals"].as_array().cloned().unwrap_or_default() {
+                let room = row["roomId"].as_str().ok_or("нет roomId")?.to_string();
+                let device = row["deviceId"].as_str().ok_or("нет deviceId")?.to_string();
+                by_room.entry(room).or_default().push(device);
             }
-            if !self.groups.contains_key(&room_id) {
-                continue;
-            }
-            let server = self.server_epoch(&room_id)?;
-            let identities: Vec<Vec<u8>> = devices
-                .iter()
-                .map(|device| format!("{}/{}", self.user_id, device).into_bytes())
-                .collect();
-
-            let transaction = self.meta.transaction().map_err(text)?;
-            let staged_result = (|| -> Result<(u64, String), String> {
-                let provider = DeviceProvider::new(&self.crypto, TransactionConnection(&transaction));
-                let group = self.groups.get_mut(&room_id).ok_or("комната не найдена")?;
-                let local = group.mls.epoch().as_u64();
-                if local != server {
-                    return Err(format!("устройство на эпохе {local}, сервер на {server}: сначала синхронизация"));
+            let mut must_rebase = false;
+            for (room_id, mut devices) in by_room {
+                if !self.groups.contains_key(&room_id) || self.desync_reason(&room_id)?.is_some() {
+                    continue;
                 }
-                let leaves: Vec<LeafNodeIndex> = group
-                    .mls
-                    .members()
-                    .filter(|member| {
-                        identities
-                            .iter()
-                            .any(|identity| member.credential.serialized_content() == identity.as_slice())
-                    })
-                    .map(|member| member.index)
+                devices.sort();
+                devices.dedup();
+                let server = self.server_epoch(&room_id)?;
+                let local = self.groups.get(&room_id)
+                    .map(|group| group.mls.epoch().as_u64())
+                    .ok_or("комната не найдена")?;
+                if local != server {
+                    must_rebase = true;
+                    break;
+                }
+                let identities: Vec<Vec<u8>> = devices.iter()
+                    .map(|device| format!("{}/{}", self.user_id, device).into_bytes())
                     .collect();
-                let commit = if leaves.is_empty() {
-                    group
-                        .mls
-                        .self_update(&provider, &self.signer, LeafNodeParameters::default())
-                        .map(|bundle| bundle.commit().clone())
-                        .map_err(text)?
-                } else {
-                    group
-                        .mls
+                let operation_id = hex_encode(&self.crypto.random_vec(16).map_err(text)?);
+                let transaction = self.meta.transaction().map_err(text)?;
+                let staged = (|| -> Result<(), String> {
+                    let provider = DeviceProvider::new(&self.crypto, TransactionConnection(&transaction));
+                    let group = self.groups.get_mut(&room_id).ok_or("комната не найдена")?;
+                    let leaves: Vec<LeafNodeIndex> = group.mls.members()
+                        .filter(|member| identities.iter().any(|identity|
+                            member.credential.serialized_content() == identity.as_slice()
+                        ))
+                        .map(|member| member.index)
+                        .collect();
+                    if leaves.is_empty() {
+                        return Err(format!(
+                            "P0.2: нет MLS leaf для отзываемых устройств в комнате {room_id}; commit не отправлен"
+                        ));
+                    }
+                    let (commit, _, _) = group.mls
                         .remove_members(&provider, &self.signer, &leaves)
-                        .map(|(commit, _, _)| commit)
-                        .map_err(text)?
-                };
-                let bytes = commit.tls_serialize_detached().map_err(text)?;
-                Ok((local, B64.encode(bytes)))
-            })();
-            let (epoch_before, commit_b64) = match staged_result {
-                Ok(staged) => staged,
-                Err(error) => {
+                        .map_err(text)?;
+                    let commit_bytes = commit.tls_serialize_detached().map_err(text)?;
+                    let changes = json!({ "adds": [], "removes": [], "removeDevices": devices });
+                    let payload = json!({
+                        "epoch": local,
+                        "commit": B64.encode(&commit_bytes),
+                        "changes": changes,
+                        "welcomes": [],
+                        "clientOperationId": operation_id,
+                    });
+                    let metadata = json!({ "changes": changes, "welcomeRecipients": [] });
+                    let pending = group.mls.pending_commit()
+                        .ok_or("OpenMLS did not retain staged device-removal commit")?;
+                    verify_staged_membership_metadata(&group.mls, pending, &metadata)?;
+                    let fingerprint = membership_commit_fingerprint(
+                        &self.crypto, &room_id, &operation_id, local, &payload, pending,
+                    )?;
+                    let payload_json = serde_json::to_string(&payload).map_err(text)?;
+                    let created_at = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis() as i64;
+                    transaction.execute(
+                        "INSERT INTO client_membership_commits
+                         (operation_id, room_id, base_epoch, fingerprint, payload, claim_ids, created_at)
+                         VALUES (?1, ?2, ?3, ?4, ?5, '[]', ?6)",
+                        rusqlite::params![operation_id, room_id, local as i64, fingerprint, payload_json, created_at],
+                    ).map_err(text)?;
+                    Ok(())
+                })();
+                if let Err(error) = staged {
                     drop(transaction);
                     self.reload_group(&room_id)?;
                     return Err(error);
                 }
-            };
-            if let Err(error) = transaction.commit() {
-                self.reload_group(&room_id)?;
-                return Err(text(error));
+                if let Err(error) = transaction.commit() {
+                    self.reload_group(&room_id)?;
+                    return Err(format!("не удалось зафиксировать device-removal journal: {}", text(error)));
+                }
+                if self.flush_pending_membership_commits()? > 0 {
+                    must_rebase = true;
+                    break;
+                }
+                removed_total += devices.len();
             }
-
-            let server_result = self.call(
-                "POST",
-                &format!("/mls/groups/{}/commits", urlencoding::encode(&room_id)),
-                Some(json!({
-                    "epoch": epoch_before,
-                    "commit": commit_b64,
-                    "changes": { "adds": [], "removes": [], "removeDevices": devices }
-                })),
-            );
-            if let Err(error) = server_result {
-                return match self.clear_local_pending_commit(&room_id) {
-                    Ok(()) => Err(error),
-                    Err(cleanup_error) => Err(format!(
-                        "{error}; не удалось очистить локальный pending commit: {cleanup_error}"
-                    )),
-                };
+            if !must_rebase {
+                return Ok(removed_total);
             }
-
-            if let Err(error) = self.merge_local_pending_commit(&room_id) {
-                let cleanup = self.clear_local_pending_commit(&room_id);
-                return match cleanup {
-                    Ok(()) => Err(format!(
-                        "сервер принял commit удаления, локальное слияние не завершено; commit очищен, требуется синхронизация: {error}"
-                    )),
-                    Err(cleanup_error) => Err(format!(
-                        "сервер принял commit удаления, локальное слияние не завершено: {error}; очистка pending commit также не удалась: {cleanup_error}"
-                    )),
-                };
+            self.sync()?;
+            if attempt == 2 {
+                return Err("epoch_outdated: исчерпаны попытки безопасного rebasing device removal".to_string());
             }
-            removed += devices.len();
         }
-        Ok(removed)
+        Err("device removal не удалось применить после rebasing".to_string())
     }
+
 }
 
 #[cfg(test)]
