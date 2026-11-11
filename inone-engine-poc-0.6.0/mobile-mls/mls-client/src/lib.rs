@@ -3136,7 +3136,7 @@ mod retry_tests {
     }
 
     #[test]
-    fn process_crash_rolls_back_ratchet_and_inbox_atomically() {
+    fn process_crash_rolls_back_openmls_storage_and_inbox_atomically() {
         const CHILD_DATABASE_ENV: &str = "INONE_MLS_CRASH_TEST_CHILD_DATABASE";
         const TEST_KEY: [u8; 32] = [0x42; 32];
 
@@ -3206,7 +3206,7 @@ mod retry_tests {
 
         let child_status = std::process::Command::new(std::env::current_exe().unwrap())
             .arg("--exact")
-            .arg("retry_tests::process_crash_rolls_back_ratchet_and_inbox_atomically")
+            .arg("retry_tests::process_crash_rolls_back_openmls_storage_and_inbox_atomically")
             .arg("--nocapture")
             .env(CHILD_DATABASE_ENV, &database_path)
             .stdout(std::process::Stdio::null())
@@ -3230,7 +3230,7 @@ mod retry_tests {
                 CIPHERSUITE.signature_algorithm()
             )
             .is_none(),
-            "uncommitted OpenMLS ratchet material must not survive process death"
+            "uncommitted OpenMLS storage material must not survive process death"
         );
         drop(provider);
 
