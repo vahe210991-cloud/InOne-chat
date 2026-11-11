@@ -23,6 +23,10 @@ const routeEvidence = new Map([
   ['POST /recovery/cancel-by-code', /req\.method === 'POST' && p === '\/recovery\/cancel-by-code'/],
   ['POST /admission/cancel', /req\.method === 'POST' && p === '\/admission\/cancel'/],
   ['POST /logout', /req\.method === 'POST' && p === '\/logout'/],
+  ['GET /rooms/mine', /req\.method === 'GET' && p === '\/rooms\/mine'/],
+  ['GET /rooms/:id/events', /const roomRoute = p\.match/u],
+  ['GET /orgs/mine', /req\.method === 'GET' && p === '\/orgs\/mine'/],
+  ['GET /profile', /req\.method === 'GET' && p === '\/profile'/],
   ['POST /approvals/:id/claim', /const ap = p\.match/u],
   ['POST /org-requests', /req\.method === 'POST' && p === '\/org-requests'/],
   ['POST /org-requests/:id/documents', /const orgReqDocs = p\.match/u],
@@ -59,20 +63,19 @@ test('every operation declared by the v0.8 approval manifest has a backend handl
   assert.match(server, /action === 'claim'/u);
 });
 
-test('legacy Flutter handoff routes have backend handlers', () => {
-  const declared = [...handoffCatalog.matchAll(/api: '((?:GET|POST|PUT|DELETE) \/[^']+)'/gu)]
-    .map((match) => match[1]);
-  assert.ok(declared.includes('GET /rooms/mine'));
-  assert.ok(declared.includes('GET /rooms/:id/events'));
-  assert.ok(declared.includes('GET /orgs/mine'));
-  assert.ok(declared.includes('GET /profile'));
+test('every API declared by the legacy Flutter handoff catalog has a backend handler', () => {
+  const declared = handoffCatalog.split('\\n')
+    .map((line) => line.match(/api: '([^']+)'/u)?.[1])
+    .filter((operation) => typeof operation === 'string');
+  const missing = declared.filter((operation) => !routeEvidence.get(operation)?.test(server));
+  assert.deepEqual(missing, [], `Missing legacy backend route evidence: ${missing.join(', ')}`);
 
-  assert.match(server, /req\.method === 'GET' && p === '\/rooms\/mine'/u);
-  assert.ok(server.includes('const roomRoute = p.match(/^\\/rooms\\/([^/]+)\\/events$/);'));
-  assert.match(server, /roomRoute && req\.method === 'GET'/u);
-  assert.match(server, /roomEventRows\(roomId, since\)/u);
-  assert.match(server, /req\.method === 'GET' && p === '\/orgs\/mine'/u);
-  assert.match(server, /req\.method === 'GET' && p === '\/profile'/u);
+  // GR-02 and GR-04 describe multi-action screens without a single api property.
+  assert.match(server, /req\\.method === 'POST' && p === '\\/rooms'/u);
+  assert.match(server, /const memberRoute = p\\.match/u);
+  assert.match(server, /memberRoute && req\\.method === 'GET'/u);
+  assert.match(server, /const settingsRoute = p\\.match/u);
+  assert.match(server, /settingsRoute && req\\.method === 'POST'/u);
 });
 
 test('CH-02 message delivery uses MLS and rejects legacy room-event POST', () => {
