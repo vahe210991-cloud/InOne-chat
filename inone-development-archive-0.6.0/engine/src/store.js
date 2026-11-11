@@ -282,8 +282,15 @@ export function createStore({ pool, pinPepper }) {
       return rows[0].n;
     },
     async removeOrgMember(orgId, userId) {
-      await pool.query('DELETE FROM room_members WHERE user_id = $2 AND room_id IN (SELECT room_id FROM rooms WHERE org_id = $1)', [orgId, userId]);
-      await pool.query('DELETE FROM org_members WHERE org_id = $1 AND user_id = $2', [orgId, userId]);
+      // Lock the authorization row before removing room memberships. Open joins
+      // take FOR SHARE on this row inside their own transaction; this ordering
+      // prevents a revoke from deleting membership first and then leaving a
+      // stale room_members row inserted by an in-flight join.
+      await inTransaction(async (c) => {
+        await c.query('SELECT user_id FROM org_members WHERE org_id = $1 AND user_id = $2 FOR UPDATE', [orgId, userId]);
+        await c.query('DELETE FROM room_members WHERE user_id = $2 AND room_id IN (SELECT room_id FROM rooms WHERE org_id = $1)', [orgId, userId]);
+        await c.query('DELETE FROM org_members WHERE org_id = $1 AND user_id = $2', [orgId, userId]);
+      });
     },
     async purgeRejectedOrgRequests(cutoffMs) {
       const { rows } = await pool.query("SELECT d.object_key FROM org_request_documents d JOIN org_requests r ON r.request_id = d.request_id WHERE r.status = 'rejected' AND r.decided_at <= $1", [cutoffMs]);

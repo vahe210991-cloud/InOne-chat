@@ -25,7 +25,7 @@ async function start() {
   const boris = await ChatClient.create(base, BORIS, 'B_PHONE', PW);
   await store.createOrganization({ orgId: ORG, name: 'Тест входов', status: 'approved', createdBy: ANNA, createdAt: 1 });
   await store.addOrgMember(ORG, ANNA, 'owner', 2);
-  return { srv, base, store, anna, boris, stop: async () => { await new Promise((r) => srv.server.close(r)); await db?.close(); } };
+  return { srv, base, store, pool: db?.pool, anna, boris, stop: async () => { await new Promise((r) => srv.server.close(r)); await db?.close(); } };
 }
 
 async function post(base, token, p, body) {
@@ -156,6 +156,51 @@ test('F-02: open join revalidates organization membership after the route prefli
     assert.equal(denied.json.code, 'org_not_member');
     const snapshot = await s.store.getRoom(room);
     assert.equal(snapshot.members.includes(BORIS), false, 'a user whose organization membership was revoked must not be added');
+  } finally {
+    await s.stop();
+  }
+});
+
+
+test('F-02 PostgreSQL: revocation waits for an in-flight open join and removes its room membership', { skip: !process.env.DATABASE_URL }, async () => {
+  const s = await start();
+  try {
+    const room = '!join-open-remove-race:inone.test';
+    await s.store.addOrgMember(ORG, BORIS, 'member', 3);
+    assert.equal((await post(s.base, s.anna.token, '/rooms', { roomId: room, orgId: ORG })).status, 200);
+    assert.equal((await post(s.base, s.anna.token, `/rooms/${enc(room)}/settings`, { name: 'Гонка отзыва', visibility: 'public', joinPolicy: 'open' })).status, 200);
+
+    const joining = post(s.base, s.boris.token, `/rooms/${enc(room)}/join`, {});
+    // Wait until the open-join transaction has acquired FOR SHARE on the
+    // org_members row. A conflicting FOR UPDATE NOWAIT is a deterministic
+    // signal that the authorization lock is held by the in-flight join.
+    const deadline = Date.now() + 10000;
+    let joinHoldsAuthorizationLock = false;
+    while (Date.now() < deadline && !joinHoldsAuthorizationLock) {
+      const client = await s.pool.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query('SELECT user_id FROM org_members WHERE org_id = $1 AND user_id = $2 FOR UPDATE NOWAIT', [ORG, BORIS]);
+        await client.query('ROLLBACK');
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => {});
+        if (error.code === '55P03') joinHoldsAuthorizationLock = true;
+        else throw error;
+      } finally {
+        client.release();
+      }
+      if (!joinHoldsAuthorizationLock) await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.equal(joinHoldsAuthorizationLock, true, 'open join must hold the organization authorization row lock before insertion');
+
+    const removing = s.store.removeOrgMember(ORG, BORIS);
+    const joined = await joining;
+    assert.equal(joined.status, 200, 'join already holding the authorization lock may finish first');
+    await removing;
+
+    assert.equal(await s.store.orgRoleOf(ORG, BORIS), null, 'organization membership is revoked');
+    const snapshot = await s.store.getRoom(room);
+    assert.equal(snapshot.members.includes(BORIS), false, 'revocation must remove the membership inserted by the in-flight join');
   } finally {
     await s.stop();
   }
