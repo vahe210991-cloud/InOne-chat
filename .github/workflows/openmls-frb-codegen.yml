@@ -181,6 +181,15 @@ jobs:
           components: rustfmt
           targets: "aarch64-apple-ios,aarch64-apple-ios-sim"
 
+      - name: Require signing credentials for protected Keychain runtime validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$IOS_SIGNING_CERTIFICATE_P12" || { echo "::error::Missing IOS_SIGNING_CERTIFICATE_P12 repository secret"; exit 1; }
+          test -n "$IOS_SIGNING_CERTIFICATE_PASSWORD" || { echo "::error::Missing IOS_SIGNING_CERTIFICATE_PASSWORD repository secret"; exit 1; }
+          test -n "$IOS_PROVISIONING_PROFILE" || { echo "::error::Missing IOS_PROVISIONING_PROFILE repository secret"; exit 1; }
+          test -n "$IOS_TEAM_ID" || { echo "::error::Missing IOS_TEAM_ID repository secret"; exit 1; }
+
       - name: Download generated FRB outputs
         uses: actions/download-artifact@v4
         with:
@@ -199,8 +208,7 @@ jobs:
         working-directory: mobile
         run: flutter build ios --simulator --no-codesign
 
-      - name: Install optional iOS signing identity and provisioning profile
-        if: env.IOS_SIGNING_CERTIFICATE_P12 != '' && env.IOS_SIGNING_CERTIFICATE_PASSWORD != '' && env.IOS_PROVISIONING_PROFILE != '' && env.IOS_TEAM_ID != ''
+      - name: Install iOS signing identity and provisioning profile
         shell: bash
         run: |
           set -euo pipefail
@@ -223,7 +231,6 @@ jobs:
           perl -0pi -e "s/DEVELOPMENT_TEAM = [^;]*;/DEVELOPMENT_TEAM = $IOS_TEAM_ID;/g; s/PROVISIONING_PROFILE_SPECIFIER = [^;]*;/PROVISIONING_PROFILE_SPECIFIER = $PROFILE_UUID;/g" ios/Runner.xcodeproj/project.pbxproj
 
       - name: iOS Keychain runtime smoke test
-        if: env.IOS_SIGNING_CERTIFICATE_P12 != '' && env.IOS_SIGNING_CERTIFICATE_PASSWORD != '' && env.IOS_PROVISIONING_PROFILE != '' && env.IOS_TEAM_ID != ''
         shell: bash
         run: |
           set -euo pipefail
@@ -233,10 +240,6 @@ jobs:
           xcrun simctl bootstatus "$DEVICE_ID" -b
           cd mobile
           flutter drive -d "$DEVICE_ID" --driver=test_driver/integration_test.dart --target=integration_test/mls_secure_store_test.dart
-
-      - name: Explain skipped iOS Keychain runtime test
-        if: env.IOS_SIGNING_CERTIFICATE_P12 == '' || env.IOS_SIGNING_CERTIFICATE_PASSWORD == '' || env.IOS_PROVISIONING_PROFILE == '' || env.IOS_TEAM_ID == ''
-        run: echo "::notice::iOS protected Keychain runtime smoke test requires code-signing certificate and provisioning-profile repository secrets; device/simulator compile checks still ran."
 
       - name: Explain skipped iOS Keychain runtime test
         if: env.IOS_SIGNING_CERTIFICATE_P12 == '' || env.IOS_SIGNING_CERTIFICATE_PASSWORD == '' || env.IOS_PROVISIONING_PROFILE == '' || env.IOS_TEAM_ID == ''
