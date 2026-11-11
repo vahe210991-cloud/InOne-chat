@@ -2043,7 +2043,7 @@ impl Client {
                 continue;
             }
 
-            if self.desync_reason(room_id)?.is_some() {
+            if self.desync_reason(room_id)?.is_some_and(|reason| reason.starts_with("RecoveryRequired:")) {
                 continue;
             }
 
