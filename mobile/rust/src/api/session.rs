@@ -206,6 +206,12 @@ fn remove_database_files(database_path: &str) -> Result<(), String> {
     }
 }
 
+fn database_artifacts_exist(database_path: &str) -> bool {
+    ["", "-wal", "-shm", "-journal"].iter().any(|suffix| {
+        Path::new(&format!("{database_path}{suffix}")).exists()
+    })
+}
+
 fn cleanup_local_session(
     database_path: &str,
     identity_scope: &str,
@@ -253,7 +259,15 @@ pub fn open_session(
         .join(format!("{filename}.sqlcipher"))
         .to_string_lossy()
         .into_owned();
-    let client = connect_with_session(
+    let existing_key = keys.existing_database_key(&identity)?;
+    let database_existed = database_artifacts_exist(&database_path);
+    if database_existed && existing_key.is_none() {
+        return Err(
+            "файл SQLCipher существует, но защищённый ключ отсутствует; автоматическая генерация нового ключа запрещена, требуется явное восстановление"
+                .to_string(),
+        );
+    }
+    let client = match connect_with_session(
         &base_url,
         &user_id,
         &device_id,
@@ -261,7 +275,21 @@ pub fn open_session(
         &refresh_token,
         &database_path,
         keys.as_ref(),
-    )?;
+    ) {
+        Ok(client) => client,
+        Err(error) => {
+            if existing_key.is_none() && !database_existed {
+                if let Err(cleanup_error) =
+                    cleanup_local_session(&database_path, &identity, keys.as_ref())
+                {
+                    return Err(format!(
+                        "{error}; очистка частично созданной MLS-сессии не завершена: {cleanup_error}"
+                    ));
+                }
+            }
+            return Err(error);
+        }
+    };
     Ok(MlsSession {
         client: Mutex::new(Some(client)),
         database_path,
@@ -344,6 +372,10 @@ mod tests {
     }
 
     impl KeyStore for TestKeyStore {
+        fn existing_database_key(&self, _scope: &str) -> Result<Option<[u8; 32]>, String> {
+            Ok(Some([7u8; 32]))
+        }
+
         fn database_key(&self, _scope: &str) -> Result<[u8; 32], String> {
             Ok([7u8; 32])
         }
@@ -374,6 +406,26 @@ mod tests {
             keys: keys.clone(),
         };
         (database, keys, session)
+    }
+
+    #[test]
+    fn database_artifacts_include_all_sqlite_sidecars() {
+        let root = std::env::temp_dir().join(format!(
+            "inone-mls-artifact-check-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let database = root.join("device.sqlcipher").to_string_lossy().into_owned();
+        assert!(!database_artifacts_exist(&database));
+        std::fs::write(format!("{database}-wal"), b"wal").unwrap();
+        assert!(database_artifacts_exist(&database));
+        remove_database_files(&database).unwrap();
+        assert!(!database_artifacts_exist(&database));
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
