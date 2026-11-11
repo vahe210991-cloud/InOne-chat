@@ -53,6 +53,8 @@ class InOneSession extends ChangeNotifier {
   String? _deviceId;
   String? _userId;
   String? _savedMlsUserId;
+  Future<void>? _initializing;
+  Future<void>? _adoptionInFlight;
   Future<void>? _refreshInFlight;
   Future<String>? _nativeRefreshInFlight;
   Completer<void>? _handoffGate;
@@ -72,7 +74,18 @@ class InOneSession extends ChangeNotifier {
   String? _mlsError;
   String? get mlsError => _mlsError;
 
-  Future<void> initialize() async {
+  Future<void> initialize() {
+    if (_deviceId != null) return Future<void>.value();
+    final active = _initializing;
+    if (active != null) return active;
+    final operation = _initializeOnce();
+    _initializing = operation;
+    return operation.whenComplete(() {
+      if (identical(_initializing, operation)) _initializing = null;
+    });
+  }
+
+  Future<void> _initializeOnce() async {
     if (_deviceId != null) return;
     var id = await _readDeviceId();
     if (id == null || id.isEmpty) {
@@ -189,7 +202,17 @@ class InOneSession extends ChangeNotifier {
   /// The authenticated profile supplies the canonical user ID. The refresh
   /// token is handed to Rust once and cleared from Dart only after Rust has
   /// accepted the session and returned a valid access-token snapshot.
-  Future<void> adoptMlsSession([MlsSessionBridge? bridge]) async {
+  Future<void> adoptMlsSession([MlsSessionBridge? bridge]) {
+    final active = _adoptionInFlight;
+    if (active != null) return active;
+    final operation = _adoptMlsSession(bridge);
+    _adoptionInFlight = operation;
+    return operation.whenComplete(() {
+      if (identical(_adoptionInFlight, operation)) _adoptionInFlight = null;
+    });
+  }
+
+  Future<void> _adoptMlsSession([MlsSessionBridge? bridge]) async {
     final target = bridge ?? _nativeMlsBridge;
     if (target == null) {
       throw const ApiException(
