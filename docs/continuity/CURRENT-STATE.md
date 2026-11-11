@@ -485,3 +485,12 @@ Do not re-port these mechanisms. See Stage 4 report section 25 for the exact com
 - No test command is evidenced as executed. Exact failure cause UNKNOWN.
 - Crash regression accurately covers OpenMLS storage + inbox/processed writes in an uncommitted SQLCipher WAL transaction; it does not claim to test live ratchet mutation.
 - Stage 4 remains NOT ACCEPTED / BLOCKED.
+
+
+## Current-head CI — 2026-11-11
+
+- Latest PR #45 head checked: `d81e05a794f10aa47e414dcc8d8920ffcd35755e`.
+- OpenMLS #42989207053 and FRB #42989207170 FAILED before steps/logs; log retrieval returned BlobNotFound. FRB downstream jobs skipped.
+- Flutter #42989207122 skipped by branch condition.
+- No test command evidenced as executed. Exact failure reason UNKNOWN.
+- Stage 4 remains NOT ACCEPTED / BLOCKED, 0% verification accepted.
