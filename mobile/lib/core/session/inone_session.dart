@@ -548,17 +548,26 @@ class InOneSession extends ChangeNotifier {
         try {
           await bridge.logout();
         } finally {
-          if (savedUserId != null && _deviceId != null) {
+          if (savedUserId != null) {
+            final deviceId = _deviceId;
+            if (deviceId == null) {
+              throw StateError('Native MLS cleanup requires the persisted device identity');
+            }
             await bridge.purgeLocalSession(
               userId: savedUserId,
-              deviceId: _deviceId!,
+              deviceId: deviceId,
             );
           }
         }
-      } else if (savedUserId != null && _nativeMlsBridge != null && _deviceId != null) {
-        await _nativeMlsBridge.purgeLocalSession(
+      } else if (savedUserId != null) {
+        final native = _nativeMlsBridge;
+        final deviceId = _deviceId;
+        if (native == null || deviceId == null) {
+          throw StateError('Native MLS cleanup is unavailable; saved identity will not be resumed');
+        }
+        await native.purgeLocalSession(
           userId: savedUserId,
-          deviceId: _deviceId!,
+          deviceId: deviceId,
         );
       } else if (isAuthenticated) {
         await _client.post('/logout');
