@@ -358,3 +358,10 @@ This section supersedes stale earlier statements in this file that no applied P0
 - KeyStore presence checks do not copy key bytes.
 - Source SHA: `3d4e64d4f302f7ddbe417903ede4dd4443b10975`.
 - CI #42979859714 and #42979859709 failed before step 1 with runner_id 0 and empty steps; iOS dependent job skipped. No tests executed. Stage 4 remains NOT ACCEPTED.
+
+
+### CI on current PR head after zeroization — 2026-11-11
+
+- PR #45 head: `c103cc2ae4eaa9e3ce721101f3581f3b6047e138`; product source: `3d4e64d4f302f7ddbe417903ede4dd4443b10975`.
+- OpenMLS #42979954916 and FRB #42979955089 failed before step 1 with runner_id 0 and empty steps; iOS dependent job skipped; Flutter mobile #42979954833 skipped.
+- No tests executed. Stage 4 remains NOT ACCEPTED.
