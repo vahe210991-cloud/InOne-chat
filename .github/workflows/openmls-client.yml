@@ -18,7 +18,9 @@ on:
       - "inone-engine-poc-0.6.0/mobile-mls/mls-client/**"
       - "inone-engine-poc-0.6.0/src/**"
       - "inone-engine-poc-0.6.0/package.json"
+      - "inone-development-archive-0.6.0/engine/package.json"
       - "inone-development-archive-0.6.0/engine/package-lock.json"
+      - "inone-development-archive-0.6.0/engine/src/**"
 
 permissions:
   contents: read
@@ -31,13 +33,15 @@ jobs:
   openmls-client:
     name: Rust client + real engine integration tests
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     env:
       INONE_ENGINE_DIR: ${{ github.workspace }}/inone-development-archive-0.6.0/engine
       RUST_TEST_THREADS: "1"
     steps:
-      - name: Checkout
+      - name: Checkout PR head
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
 
       - name: Install Node.js
         uses: actions/setup-node@v4
