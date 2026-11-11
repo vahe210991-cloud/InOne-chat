@@ -300,7 +300,7 @@ pub fn open_session(
     ) {
         Ok(client) => client,
         Err(error) => {
-            if existing_key.is_none() && !database_existed {
+            if !has_existing_key && !database_existed {
                 if let Err(cleanup_error) =
                     cleanup_local_session(&database_path, &identity, keys.as_ref())
                 {
