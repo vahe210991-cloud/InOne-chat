@@ -3272,7 +3272,7 @@ mod retry_tests {
 
         let client = build_client_with_keys(
             ureq::AgentBuilder::new().redirects(0).build(),
-            "http://127.0.0.1:1",
+            "https://127.0.0.1:1",
             ("access-token".to_string(), "refresh-token".to_string()),
             "alice",
             "logout-offline",
