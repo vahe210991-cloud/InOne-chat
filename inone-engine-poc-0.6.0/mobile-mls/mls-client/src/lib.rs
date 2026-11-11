@@ -446,17 +446,41 @@ pub fn with_retry<T>(attempts: u32, base: Duration, mut op: impl FnMut() -> Resu
 }
 
 /// Вход первого устройства аккаунта (или устройства, которое уже подтверждено).
-pub fn connect(base: &str, user_id: &str, password: &str, device_id: &str, db_path: &str, keys: &dyn KeyStore) -> Result<Client, String> {
+pub fn connect(
+    base: &str,
+    user_id: &str,
+    password: &str,
+    device_id: &str,
+    db_path: &str,
+    keys: &dyn KeyStore,
+) -> Result<Client, String> {
     let base = normalize_base_url(base)?;
     let scope = format!("{user_id}/{device_id}");
     let _has_existing_key = ensure_existing_key_matches_database(db_path, &scope, keys)?;
     let agent = ureq::AgentBuilder::new().redirects(0).build();
     register(&agent, &base, user_id, password)?;
-    let login = request(&agent, &base, "", "POST", "/login", Some(json!({ "userId": user_id, "password": password, "deviceId": device_id })))?;
-    let tokens = (
-        login["token"].as_str().ok_or("сервер не вернул токен: нужно подтверждение с другого устройства")?.to_string(),
-        login["refreshToken"].as_str().ok_or("сервер не вернул токен обновления")?.to_string(),
-    );
+    let mut login = request(
+        &agent,
+        &base,
+        "",
+        "POST",
+        "/login",
+        Some(json!({ "userId": user_id, "password": password, "deviceId": device_id })),
+    )?;
+    let tokens_result = (|| -> Result<(String, String), String> {
+        Ok((
+            login["token"]
+                .as_str()
+                .ok_or("сервер не вернул токен: нужно подтверждение с другого устройства")?
+                .to_string(),
+            login["refreshToken"]
+                .as_str()
+                .ok_or("сервер не вернул токен обновления")?
+                .to_string(),
+        ))
+    })();
+    zeroize_json_value(&mut login);
+    let tokens = tokens_result?;
     build_client_with_keys(agent, &base, tokens, user_id, device_id, db_path, keys)
 }
 
@@ -572,44 +596,97 @@ pub fn connect_with_approval(
     let _has_existing_key = ensure_existing_key_matches_database(db_path, &scope, keys)?;
     let agent = ureq::AgentBuilder::new().redirects(0).build();
     register(&agent, &base, user_id, password)?;
-    let login = request(
+    let mut login = request(
         &agent,
         &base,
         "",
         "POST",
         "/login",
-        Some(json!({ "userId": user_id, "password": password, "deviceId": device_id, "label": device_id, "platform": "mobile" })),
+        Some(json!({
+            "userId": user_id,
+            "password": password,
+            "deviceId": device_id,
+            "label": device_id,
+            "platform": "mobile"
+        })),
     )?;
-    let tokens = match login["token"].as_str() {
-        Some(t) => (t.to_string(), login["refreshToken"].as_str().ok_or("сервер не вернул токен обновления")?.to_string()),
-        None => {
-            let approval_id = login["approvalId"].as_str().ok_or("сервер не вернул запрос подтверждения")?.to_string();
-            let code = login["code"].as_str().ok_or("нет кода подтверждения")?.to_string();
-            let poll = login["pollSecret"].as_str().ok_or("нет секрета опроса")?.to_string();
-            approver.call("POST", &format!("/approvals/{}/approve", urlencoding::encode(&approval_id)), Some(json!({ "code": code })))?;
-            let mut pair = None;
-            for _ in 0..5 {
-                let claim = request(
-                    &agent,
-                    &base,
-                    "",
-                    "POST",
-                    &format!("/approvals/{}/claim", urlencoding::encode(&approval_id)),
-                    Some(json!({ "pollSecret": poll })),
-                )?;
-                match claim["status"].as_str() {
-                    Some("approved") => {
-                        pair = Some((claim["token"].as_str().map(String::from), claim["refreshToken"].as_str().map(String::from)));
-                        break;
-                    }
-                    Some("pending") => continue,
-                    other => return Err(format!("вход отклонён: {other:?}")),
+
+    let tokens_result = (|| -> Result<(String, String), String> {
+        if let Some(access) = login["token"].as_str() {
+            let refresh = login["refreshToken"]
+                .as_str()
+                .ok_or("сервер не вернул токен обновления")?;
+            return Ok((access.to_string(), refresh.to_string()));
+        }
+
+        let approval_id = Zeroizing::new(
+            login["approvalId"]
+                .as_str()
+                .ok_or("сервер не вернул запрос подтверждения")?
+                .to_string(),
+        );
+        let code = Zeroizing::new(
+            login["code"]
+                .as_str()
+                .ok_or("нет кода подтверждения")?
+                .to_string(),
+        );
+        let poll = Zeroizing::new(
+            login["pollSecret"]
+                .as_str()
+                .ok_or("нет секрета опроса")?
+                .to_string(),
+        );
+
+        approver.call(
+            "POST",
+            &format!(
+                "/approvals/{}/approve",
+                urlencoding::encode(approval_id.as_str())
+            ),
+            Some(json!({ "code": code.as_str() })),
+        )?;
+
+        for _ in 0..5 {
+            let mut claim = request(
+                &agent,
+                &base,
+                "",
+                "POST",
+                &format!(
+                    "/approvals/{}/claim",
+                    urlencoding::encode(approval_id.as_str())
+                ),
+                Some(json!({ "pollSecret": poll.as_str() })),
+            )?;
+
+            match claim["status"].as_str() {
+                Some("approved") => {
+                    let pair = (
+                        claim["token"].as_str().map(String::from),
+                        claim["refreshToken"].as_str().map(String::from),
+                    );
+                    zeroize_json_value(&mut claim);
+                    let (access, refresh) = pair;
+                    return Ok((
+                        access.ok_or("сервер не вернул токен")?,
+                        refresh.ok_or("сервер не вернул токен обновления")?,
+                    ));
+                }
+                Some("pending") => {
+                    zeroize_json_value(&mut claim);
+                }
+                other => {
+                    zeroize_json_value(&mut claim);
+                    return Err(format!("вход отклонён: {other:?}"));
                 }
             }
-            let (t, r) = pair.ok_or("подтверждение входа не пришло")?;
-            (t.ok_or("сервер не вернул токен")?, r.ok_or("сервер не вернул токен обновления")?)
         }
-    };
+        Err("подтверждение входа не пришло".to_string())
+    })();
+
+    zeroize_json_value(&mut login);
+    let tokens = tokens_result?;
     build_client_with_keys(agent, &base, tokens, user_id, device_id, db_path, keys)
 }
 
