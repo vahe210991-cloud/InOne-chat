@@ -198,7 +198,8 @@ fn request(agent: &ureq::Agent, base: &str, token: &str, method: &str, path: &st
     let url = format!("{base}{path}");
     let mut req = agent.request(method, &url);
     if !token.is_empty() {
-        req = req.set("authorization", &format!("Bearer {token}"));
+        let authorization = Zeroizing::new(format!("Bearer {token}"));
+        req = req.set("authorization", authorization.as_str());
     }
     let res = match body.as_mut() {
         Some(value) => {
