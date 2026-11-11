@@ -443,6 +443,10 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
 
   @override
   Future<void> invite(String roomId, String userId) async {}
+  Future<void> cancelInvite(String roomId, String userId) async {}
+  Future<String?> roomRecoveryStatus(String roomId) async => null;
+  Future<List<MlsUndecryptableEvent>> undecryptable() async => const [];
+  Future<String?> quarantinedCommitReason(String roomId, int epoch) async => null;
 
   @override
   Future<String> sendText(String roomId, String plaintext) async => 'event-1';
