@@ -409,3 +409,11 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Latest OpenMLS #42987007179 and FRB #42987007308 failed with no steps/log URLs; FRB downstream commit/final-SHA/iOS jobs skipped. Flutter #42987007363 skipped by branch condition. No test command is evidenced as executed.
 - Stage 4 remains NOT ACCEPTED / BLOCKED; Beta 1.0 WBS unchanged; native MLS flag remains false.
 - Report section 26 records exact CI evidence and remaining unblock.
+
+
+### 2026-11-11 — Protected iOS environment and latest CI
+
+- Added GitHub Environment `ios-signing` to the iOS job so signing credentials are released only after environment protection approval. Required environment secrets are documented in mobile/README.md: base64 P12, P12 password, base64 provisioning profile and Team ID. Whether the owner has configured these settings is UNKNOWN.
+- Latest observed full CI on prior head `5e3a9dc7644bb9e2eb462a41de345b4ff9f7df3c`: OpenMLS #42987334965 FAILED, FRB #42987334938 FAILED before steps/logs, Flutter #42987335071 SKIPPED; downstream generated commit/final-SHA/iOS jobs skipped.
+- Latest PR head after README/report updates: `a9b81e0c04ce1826d361845b8596eae0c4acaaf9`. No workflow-run records for the immediately preceding README head were returned at the time of the report; current SHA still requires CI evidence.
+- No tests are accepted or claimed. Stage 4 remains blocked pending a working runner, generated FRB outputs and complete green matrix on one exact SHA.
