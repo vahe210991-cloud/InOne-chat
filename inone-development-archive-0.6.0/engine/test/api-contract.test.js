@@ -24,7 +24,7 @@ const routeEvidence = new Map([
   ['POST /admission/cancel', /req\.method === 'POST' && p === '\/admission\/cancel'/],
   ['POST /logout', /req\.method === 'POST' && p === '\/logout'/],
   ['GET /rooms/mine', /req\.method === 'GET' && p === '\/rooms\/mine'/],
-  ['GET /rooms/:id/events', /const roomRoute = p\.match/u],
+  ['GET /rooms/:id/events', /roomRoute && req\.method === 'GET'/u],
   ['GET /orgs/mine', /req\.method === 'GET' && p === '\/orgs\/mine'/],
   ['GET /profile', /req\.method === 'GET' && p === '\/profile'/],
   ['POST /approvals/:id/claim', /const ap = p\.match/u],
@@ -83,7 +83,7 @@ test('CH-02 message delivery uses MLS and rejects legacy room-event POST', () =>
   assert.ok(server.includes('const mlsMessageRoute = p.match(/^\\/mls\\/groups\\/([^/]+)\\/messages$/);'));
   assert.match(server, /mlsMessageRoute && req\.method === 'POST'/u);
   assert.match(server, /messages must be sent through \/mls\/groups\/:id\/messages/u);
-  assert.match(server, /roomRoute && req\\.method === 'GET'/u);
+  assert.match(server, /roomRoute && req\.method === 'GET'/u);
   assert.match(server, /return send\(res, 409, \{ error: 'messages must be sent through \/mls\/groups\/:id\/messages' \}\)/u);
   assert.match(server, /const mlsCommitsRoute = p\.match/u);
   assert.match(server, /const mlsAckRoute = p\.match/u);
