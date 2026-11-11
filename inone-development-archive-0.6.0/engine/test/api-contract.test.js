@@ -21,6 +21,7 @@ const routeEvidence = new Map([
   ['POST /recovery/complete', /req\.method === 'POST' && p === '\/recovery\/complete'/],
   ['POST /recovery/cancel-by-code', /req\.method === 'POST' && p === '\/recovery\/cancel-by-code'/],
   ['POST /admission/cancel', /req\.method === 'POST' && p === '\/admission\/cancel'/],
+  ['POST /logout', /req\.method === 'POST' && p === '\/logout'/],
   ['POST /approvals/:id/claim', /const ap = p\.match/u],
   ['POST /org-requests', /req\.method === 'POST' && p === '\/org-requests'/],
   ['POST /org-requests/:id/documents', /const orgReqDocs = p\.match/u],
