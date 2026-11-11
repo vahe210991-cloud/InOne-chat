@@ -10,6 +10,14 @@ The Flutter host now exposes the 22 owner-approved visual variants and the compl
 - 21 future concepts: calendar, tasks, files, CRM, Sindy AI, stories, geolocation and Propo map integration.
 - The 73 additional screens now load from the original owner-provided full-screen design gallery v0.8. The HTML is packaged as deterministic gzip/base64 text parts and reconstructed in memory without rewriting the source. Each Flutter catalogue ID selects its matching original gallery card.
 
+## API transport security
+
+- Release builds require an HTTPS API origin. Configure it with `INONE_API_BASE_URL=https://your-api-host`.
+- Plain HTTP is accepted only in debug builds and only for loopback or private-network hosts used by local development (including Android emulator `10.0.2.2` and a private LAN address).
+- API origins containing embedded credentials, query strings or fragments are rejected.
+- API clients do not follow redirects, preventing bearer credentials from being forwarded to a different origin.
+- The Rust MLS client applies the same HTTPS/local-debug policy before sending or refreshing session credentials.
+
 ## Backend connection
 
 The Flutter test host uses the local development backend by default; no public URL is required.
