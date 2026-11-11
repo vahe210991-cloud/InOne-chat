@@ -2622,7 +2622,16 @@ impl Client {
                 {
                     continue;
                 }
-                Err(error) => return Err(error),
+                Err(error)
+                    if error.contains("временная ошибка")
+                        || is_retryable(&error)
+                        || is_access_failure(&error) =>
+                {
+                    return Err(error);
+                }
+                Err(error) => {
+                    self.record_desync(&room, &format!("требуется восстановление состояния: {error}"))?;
+                }
             }
         }
         Ok(out)
