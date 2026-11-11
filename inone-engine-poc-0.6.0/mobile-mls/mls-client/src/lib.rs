@@ -1124,14 +1124,36 @@ impl Client {
         Ok(())
     }
 
-    /// Выход: сессия этого устройства завершается на сервере.
+    /// Выход: локальные credentials очищаются даже при недоступности сервера.
     pub fn logout(&self) -> Result<(), String> {
-        self.call("POST", "/logout", Some(json!({})))?;
-        self.meta
+        let server_result = match self.call("POST", "/logout", Some(json!({}))) {
+            Ok(mut response) => {
+                zeroize_json_value(&mut response);
+                Ok(())
+            }
+            Err(error) => Err(error),
+        };
+
+        // Never keep a refresh token in the encrypted database merely because
+        // the server could not be reached during logout.
+        let local_result = self
+            .meta
             .execute("DELETE FROM client_meta WHERE key = 'session_tokens'", [])
-            .map_err(text)?;
-        *self.tokens.lock().map_err(text)? = SessionTokens(String::new(), String::new());
-        Ok(())
+            .map(|_| ())
+            .map_err(text);
+
+        let empty_tokens = SessionTokens(String::new(), String::new());
+        match self.tokens.lock() {
+            Ok(mut tokens) => *tokens = empty_tokens,
+            Err(poisoned) => *poisoned.into_inner() = empty_tokens,
+        }
+
+        match (server_result, local_result) {
+            (Ok(()), Ok(())) => Ok(()),
+            (Err(server), Ok(())) => Err(format!("server logout failed; local tokens were cleared: {server}")),
+            (Ok(()), Err(local)) => Err(format!("server logout succeeded; local token removal failed: {local}")),
+            (Err(server), Err(local)) => Err(format!("server logout failed: {server}; local token removal failed: {local}")),
+        }
     }
 
     /// Идентификатор этого устройства на сервере.
@@ -3226,6 +3248,59 @@ mod retry_tests {
         drop(connection);
         remove_database_artifacts(&database_path).unwrap();
         let _ = std::fs::remove_file(format!("{database_path}.public"));
+    }
+
+    #[test]
+    fn logout_clears_local_session_tokens_when_server_is_unavailable() {
+        let scope = "alice/logout-offline";
+        let keys = MemoryKeyStore::default();
+        let database_path = std::env::temp_dir().join(format!(
+            "inone-mls-logout-offline-{}-{}.sqlcipher",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let database_path = database_path.to_string_lossy().into_owned();
+
+        let client = build_client_with_keys(
+            ureq::AgentBuilder::new().redirects(0).build(),
+            "http://127.0.0.1:1",
+            ("access-token".to_string(), "refresh-token".to_string()),
+            "alice",
+            "logout-offline",
+            &database_path,
+            &keys,
+        )
+        .unwrap();
+
+        assert_eq!(client.access_token_snapshot().unwrap(), "access-token");
+        let error = client
+            .logout()
+            .expect_err("unreachable server must be reported");
+        assert!(
+            error.contains("server logout failed"),
+            "server failure must be explicit"
+        );
+        assert_eq!(
+            client.access_token_snapshot().unwrap(),
+            "",
+            "in-memory access and refresh tokens must be cleared"
+        );
+        let token_rows: i64 = client
+            .meta
+            .query_row(
+                "SELECT COUNT(*) FROM client_meta WHERE key = 'session_tokens'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(token_rows, 0, "refresh tokens must be removed from SQLCipher");
+
+        drop(client);
+        remove_database_artifacts(&database_path).unwrap();
+        keys.delete_database_key(scope).unwrap();
     }
 
     #[test]
