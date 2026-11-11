@@ -437,3 +437,11 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - These source/test changes are not executed.
 - Exact tested head: `54711b873349a8adb575f27d9c1fcccebbc49081`. FRB #42988592622 and OpenMLS #42988592592 failed with no steps/log URL; log retrieval returned BlobNotFound. Flutter #42988592656 skipped. No tests evidenced as run.
 - Report section 29 records details. Stage 4 remains NOT ACCEPTED / BLOCKED; Beta 1.0 WBS unchanged; native MLS flag false.
+
+
+### 2026-11-11 — Owner execution mandate
+
+- Created previously missing `development/AI-AGENT-MANDATE.md` referenced by root AGENTS.md.
+- Recorded owner instruction: ChatGPT sole executor; no external agent unless explicitly authorized; current product stage Beta 1.0; no assumptions as facts; accept only complete criteria with green tests on one exact SHA; concise reports with criteria, WBS percentage and checklist; archive reports in GitHub; no product merge without owner approval.
+- Updated WORKING-RULES startup checklist to include the mandate.
+- Governance-only change. No test result or acceptance status changed.
