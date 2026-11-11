@@ -375,3 +375,11 @@ Report: development/reports/2026-11-11-stage-4-single-executor-progress.md, sect
 ## Governance prerequisite — current owner instruction
 
 Read `development/AI-AGENT-MANDATE.md` at the start of every session. ChatGPT remains sole executor; do not delegate to an external agent unless the owner explicitly authorizes it. Active product stage is Beta 1.0. Acceptance remains based on all criteria and green tests on one exact SHA.
+
+
+## Latest CI retry evidence — 2026-11-11
+
+- Code/test head: `5ca865573e7ed8949698ce7eda7d0adbf5f5915a`.
+- FRB run #42988901680 and OpenMLS run #42988901678 failed with no steps/log URLs; logs returned BlobNotFound. Flutter run #42988901824 skipped.
+- Do not infer root cause. Obtain the exact job-level failure message from GitHub Actions UI or restore an authorized runner.
+- New Rust/Dart regressions remain NOT RUN. No PASS claims. See report section 31.
