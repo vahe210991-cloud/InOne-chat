@@ -743,3 +743,18 @@ Latest PR #45 head: `d81e05a794f10aa47e414dcc8d8920ffcd35755e`.
 No test command is evidenced as executed. The current API evidence does not expose the job-start failure message. Exact cause remains UNKNOWN.
 
 **Acceptance:** Stage 4 NOT ACCEPTED / BLOCKED; verification accepted 0%; Beta 1.0 WBS v1.1 unchanged; keep `INONE_MLS_NATIVE_ENABLED=false`.
+
+
+## 34. Latest CI retry on current PR head — 2026-11-11
+
+Latest PR #45 head: `e7e19ce9de18e6042b36e5bd5f2ae9700796afd1`.
+
+| Workflow | Run | Result | Evidence |
+|---|---:|---|---|
+| FRB generation | [42989322261](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42989322261) | FAILURE | Job `130418031253`: no steps/log URL; log retrieval returned BlobNotFound; downstream jobs SKIPPED |
+| OpenMLS client | [42989322167](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42989322167) | FAILURE | Job `130418031986`: no steps/log URL; log retrieval returned BlobNotFound |
+| Flutter mobile | [42989322186](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42989322186) | SKIPPED | Explicit Stage 4 branch condition |
+
+No test command is evidenced as executed. The connector cannot retrieve the job-start failure message; exact cause remains UNKNOWN.
+
+**Acceptance:** Stage 4 NOT ACCEPTED / BLOCKED; verification accepted 0%; Beta 1.0 WBS v1.1 unchanged; native MLS disabled.
