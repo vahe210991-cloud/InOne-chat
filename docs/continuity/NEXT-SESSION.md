@@ -236,3 +236,13 @@ Before any work, read [AGENTS.md](../../AGENTS.md), the full [AI agent mandate](
 8. Do not recalculate Beta 1.0 progress or alter WBS weights without verified evidence and owner-approved scope.
 
 Report: `development/reports/2026-11-11-stage-4-single-executor-progress.md`.
+
+
+## Additional Stage 4 verification tasks — 2026-11-11
+
+- Verify the one-connection transaction-backed OpenMLS provider compiles and passes its rollback/commit regression.
+- Add/run process-kill crash/restart coverage around `process_and_persist_incoming`; prove ratchet state and inbox remain consistent.
+- Add/run restart coverage for a server-accepted invite/revocation commit when the process terminates before local merge.
+- Verify `clear_pending_commit` behavior on OpenMLS 0.8 with the rejected-commit regression.
+- Verify that invite/revocation server errors clear pending commits without advancing local epoch.
+- Execute full Rust/OpenMLS, FRB, Flutter, Android Keystore and signed iOS Protected Keychain matrix on one exact final SHA. Current GitHub Actions jobs still fail before runner allocation; no tests have executed.
