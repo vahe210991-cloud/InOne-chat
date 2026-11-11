@@ -171,4 +171,4 @@
 
 В репозитории есть отдельные тесты сообщений, offline delivery, idempotency, group membership, key packages, welcome/ACK и sync ACK. В частности, `test/mls-messages.test.js` проверяет отправку и чтение ciphertext, устаревшую эпоху, сообщение для другой группы, запрет legacy POST, запрет доступа удалённому участнику и предел размера.
 
-Наличие этих тестов в репозитории не заменяет запуск CI на текущем PR head SHA и PostgreSQL-backed тестов. До прохождения этих проверок интеграция CH-02 не считается принятой.
+Проверки на PR #44 code head `3d288777135d0c12145f18407e8768a02ae80a9f` завершены успешно: backend Node — 382 passed / 0 failed; PostgreSQL 16 — 124 passed / 0 failed; OpenMLS, Rust bridge, Rust format, P0 room-list regression, Flutter analyze/tests и Android preview APK — passed. Последний документационный head PR повторно проверяется CI. Эти результаты подтверждают серверные контракты и тесты, но не заменяют Stage 2 typed bridge integration или Stage 4 native MLS runtime acceptance.
