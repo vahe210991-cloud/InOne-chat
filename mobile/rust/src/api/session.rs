@@ -119,13 +119,13 @@ impl MlsSession {
         serde_json::to_string(&items).map_err(|error| error.to_string())
     }
 
-    /// Returns encrypted local inbox history for a room.
+    /// Returns decrypted message history for a room from the SQLCipher inbox.
     pub fn messages_for_room_json(&self, room_id: String) -> Result<String, String> {
         let items = self.with_client(|client| client.messages_for_room(&room_id).map(map_incoming))?;
         serde_json::to_string(&items).map_err(|error| error.to_string())
     }
 
-    /// Removes inbox entries only after the app confirms durable acceptance.
+    /// Marks inbox entries acknowledged after the app confirms durable acceptance; history remains available.
     pub fn acknowledge_incoming(&self, event_ids: Vec<String>) -> Result<(), String> {
         self.with_client(|client| client.acknowledge_incoming(&event_ids))
     }
