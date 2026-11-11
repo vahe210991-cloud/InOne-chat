@@ -90,6 +90,16 @@ fn text(e: impl std::fmt::Display) -> String {
     e.to_string()
 }
 
+fn event_id_from_event(event: &Value) -> Result<String, String> {
+    let event_id = event["event_id"]
+        .as_str()
+        .ok_or_else(|| "MLS event has no string event_id".to_string())?;
+    if event_id.trim().is_empty() {
+        return Err("MLS event has an empty event_id".to_string());
+    }
+    Ok(event_id.to_string())
+}
+
 fn hex_encode(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
@@ -663,7 +673,7 @@ impl Client {
         let mut pending: Vec<(u64, String, Vec<u8>)> = Vec::new();
         for ev in events["events"].as_array().cloned().unwrap_or_default() {
             let Some(mls_b64) = ev["content"]["mls"].as_str() else { continue };
-            let event_id = ev["event_id"].as_str().unwrap_or_default().to_string();
+            let event_id = event_id_from_event(&ev)?;
             if self.processed.contains(&event_id) {
                 continue;
             }
@@ -706,7 +716,12 @@ impl Client {
                             },
                             _ => Incoming::Unreadable { room_id: room_id.to_string(), event_id: event_id.clone() },
                         },
-                        Err(_) => Incoming::Unreadable { room_id: room_id.to_string(), event_id: event_id.clone() },
+                        Err(error) => {
+                            return Err(format!(
+                                "не удалось проверить или расшифровать MLS-событие {event_id}: {}",
+                                text(error)
+                            ));
+                        },
                     }
                 };
                 self.persist_incoming(&incoming)?;
@@ -940,6 +955,17 @@ impl Client {
 #[cfg(test)]
 mod retry_tests {
     use super::*;
+
+    #[test]
+    fn event_ids_must_be_present_and_non_empty() {
+        assert_eq!(
+            event_id_from_event(&json!({"event_id": "$event-1"})).unwrap(),
+            "$event-1"
+        );
+        assert!(event_id_from_event(&json!({})).is_err());
+        assert!(event_id_from_event(&json!({"event_id": ""})).is_err());
+        assert!(event_id_from_event(&json!({"event_id": "  "})).is_err());
+    }
 
     #[test]
     fn network_and_server_errors_are_retried_client_errors_are_not() {
