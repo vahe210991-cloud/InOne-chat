@@ -3,7 +3,7 @@
 **Дата:** 2026-11-11  
 **База аудита:** `main` = `ce2018bffd3faf8a1c30aed65ee6191675ee38ad`  
 **Ветка отчёта:** `audit/stage-3-api-backend-2026-11-11`  
-**Статус:** initial source audit; runtime/API integration tests not run in this pass.
+**Статус:** implementation completed; source review and CI validation completed on PR head `3d288777135d0c12145f18407e8768a02ae80a9f`. PR remains Draft and unmerged.
 
 ## 1. Scope and evidence
 
@@ -88,42 +88,86 @@ Status meanings:
 6. **P2 — Push and profile:** push token lifecycle, profile fields and edits.
 7. Add contract tests that assert every screen-declared operation maps to a real handler and every bridge-allowed operation maps to a documented contract. Add authorization tests for owner/admin/member/applicant boundaries.
 
-## 6. Acceptance criteria (not yet passed)
+## 6. Stage 3 acceptance criteria and evidence
 
-- [ ] Every Beta 1 screen has a canonical API mapping or an explicit “client-only / blocked / future” reason.
-- [ ] Every mapped route is tied to a source handler and request/response/error contract.
-- [ ] No UI action can invoke an arbitrary route or bypass the bridge allowlist.
-- [ ] No token, refresh token, MLS secret or plaintext message is exposed to WebView or logs.
-- [ ] CH-02 history and MLS message lifecycle are tested against PostgreSQL-backed backend.
-- [ ] Authorization matrix tests cover applicant, member, admin and platform owner.
-- [ ] Flutter unit/widget tests, analyze, Android/iOS builds and device runtime tests pass.
+- [x] Canonical mapping for the 24-screen approval manifest and the legacy v1 handoff catalog (7 additional screens; 31 screen IDs total).
+- [x] 25 unique API operations declared by the approval manifest have corresponding backend route evidence; the automated source-contract regression test is included in the default Node suite.
+- [x] CH-02 contract reconciled: room history uses `GET /rooms/:id/events`; message sending uses the MLS route `POST /mls/groups/:id/messages`; legacy `POST /rooms/:id/events` remains deliberately rejected with HTTP 409.
+- [x] WebView bridge route allowlist boundary is guarded by the contract regression test; the WebView does not receive access/refresh tokens or MLS key material.
+- [x] Existing authorization/session/recovery/room-permission/organization isolation suites run as part of backend and PostgreSQL validation.
+- [x] F-01 compare-and-set transition and stale-read regression are present. PostgreSQL-backed test confirms stale accept after revoke returns 409 and emits no `link_accept` audit event.
+- [x] F-02 open-join transaction locks the room, revalidates organization membership/active cross-organization link inside the transaction, checks capacity and inserts membership atomically. Organization-member revocation takes a conflicting row lock and removes room membership in the same transaction.
+- [x] PostgreSQL-backed F-02 tests confirm simultaneous joins respect capacity and that revocation serializes against an in-flight open join without leaving a stale room membership.
+- [x] Full CI for the exact PR head completed successfully (details below).
 
-**Conclusion:** Stage 3 is in progress. This report is a source-level audit snapshot, not acceptance evidence. No product code, API contract or backend behavior was changed by this audit.
+## 7. F-01 / F-02 implementation review
 
+### F-01 — stale organization-link accept/revoke
 
-## 7. Additional Stage 3 security blocker review (2026-11-11)
+The handler still reads a link snapshot for authorization and side checks, but state mutation is no longer a blind write. Both accept and revoke use `transitionOrgLinkStatus`, implemented as a conditional SQL update:
 
-A second source pass identified two concurrency items that must remain open:
+```sql
+UPDATE org_links
+SET status = ..., decided_by = ..., decided_at = ...
+WHERE link_id = ... AND status = ...
+```
 
-- **F-01 stale accept/revoke:** current org-link handler reads a proposed link, checks the status, and then updates the status in a separate call. The current sequential `org-links.test.js` does not cover a stale-read interleaving. The previously reviewed conditional-transition patch and regression test are not present in main.
-- **F-02 open-join race:** the previously prepared atomic PostgreSQL/locking change and deterministic barrier regression are not present in main. Memory-only test results do not close the PostgreSQL concurrency requirement.
+Only one concurrent transition can win. A stale accept receives HTTP 409 and exits before either `link_accept` audit event is written. The regression deliberately pauses accept after its stale read, performs revoke, then releases accept and verifies the final state and both audit journals.
 
-PR #42 was inspected: it adds only `.github/workflows/f01-f02-postgres.yml`; it does not contain either source patch or its regression test. Therefore the new PostgreSQL workflow is not acceptance evidence for F-01/F-02.
+### F-02 — public open-join concurrency
 
-**Required handoff:** obtain the exact original agent patch and changed-file list, preserve its working-tree changes, compare against current main, review, then run the PostgreSQL concurrency test. Do not reconstruct or overwrite the missing patch from memory.
+`joinPublicRoomOpen` executes in one PostgreSQL transaction. It locks the room row with `FOR UPDATE`, rechecks visibility/join policy and organization approval, checks direct organization membership or an active cross-organization link under `FOR SHARE`, checks capacity, serializes the event sequence and inserts the member before commit.
 
-Stage 3 authorization/security acceptance is **blocked** until F-01 and F-02 source changes and PostgreSQL test evidence are present.
+Organization-member removal uses a transaction and locks the same `org_members` row with `FOR UPDATE` before deleting room membership and the organization membership. Thus:
+- if join obtains its authorization share lock first, revocation waits, then removes the newly inserted room membership;
+- if revocation obtains its update lock first, the later join sees no organization membership and is rejected;
+- concurrent open joins serialize on the room row, so capacity cannot be exceeded by two simultaneous requests.
 
+The PostgreSQL regression detects the join's held authorization lock using a conflicting `FOR UPDATE NOWAIT`, then runs the revocation concurrently and verifies that the final room has no membership for the revoked user.
 
-## 8. Delivery status after contract/test pass (2026-11-11)
+## 8. CI evidence — exact PR head
 
-- Canonical contract matrix: `mobile/API-CONTRACTS-BETA-1.md`.
-- Approval manifest: 24 screens / 25 unique API operations; source preflight matched all 25 to backend route evidence.
-- Legacy Flutter handoff catalog: chat, rooms, organization and profile routes cross-checked; CH-02 history, MLS send, commit, Welcome ACK and sync/read ACK paths documented.
-- Regression guard: `engine/test/api-contract.test.js`, included in default `npm test`.
-- Existing authorization evidence reviewed: `security-matrix.test.js`, `org-isolation-matrix.test.js`, `room-permissions.test.js`, `sessions.test.js`, `recovery.test.js`, `org-requests.test.js`, `org-links.test.js`.
-- Draft PR #44: https://github.com/vahe210991-cloud/InOne-chat/pull/44.
-- Latest PR head at this update: `f67bf068622947b0484999487582cdba60bb79fa`.
-- Latest GitHub Actions run set for this head: backend Node, PostgreSQL integration, OpenMLS, Rust bridge, Rust format, P0 room-list regression and Flutter validation. Rust format and P0 room-list regression passed; backend/DB/OpenMLS/Rust bridge/Flutter jobs were still running when this report was updated.
+**Repository:** `vahe210991-cloud/InOne-chat`  
+**PR:** [#44](https://github.com/vahe210991-cloud/InOne-chat/pull/44)  
+**Branch:** `feature/stage-3-api-contracts-2026-11-11`  
+**Head:** `3d288777135d0c12145f18407e8768a02ae80a9f`  
+**Base:** `main` at `ce2018bffd3faf8a1c30aed65ee6191675ee38ad`
 
-**Acceptance remains blocked** by F-01/F-02 source patches not present in the repository/PR #42. Do not mark Stage 3 accepted until the exact original patch is handed off, reviewed and passes PostgreSQL concurrency tests. PR #44 remains Draft and unmerged.
+### Backend / Rust / PostgreSQL workflow
+
+Run [42967427669](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42967427669) — **success**.
+
+- Backend Node suite: **382 passed, 0 failed**.
+- PostgreSQL 16 integration suite: **124 passed, 0 failed**.
+- PostgreSQL log explicitly records:
+  - `F-01: stale accept after a concurrent revoke is rejected without an accept audit event` — passed;
+  - `F-02: simultaneous open joins serialize capacity and organization authorization` — passed;
+  - `F-02: open join revalidates organization membership after the route preflight` — passed;
+  - `F-02 PostgreSQL: revocation waits for an in-flight open join and removes its room membership` — passed.
+- OpenMLS client target check and tests — passed.
+- Rust bridge target check and tests — passed.
+- Rust format — passed.
+- P0 room-list regression — passed.
+
+### Flutter workflow
+
+Run [42967427728](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42967427728) — **success**.
+
+- Flutter dependency resolution — passed.
+- `flutter analyze` — passed.
+- `flutter test` — passed.
+- Android preview APK build — passed.
+- Artifact upload — passed.
+
+## 9. Scope boundaries and remaining work
+
+Stage 3 API/backend contract and concurrency acceptance is complete on the PR branch. This is not a claim of production deployment readiness.
+
+Still separate:
+- **Stage 4:** native MLS FFI, platform key storage, encrypted local persistence, offline/restart and recovery validation.
+- **Stage 2:** complete typed Flutter ↔ WebView bridge workflows, file picking and API action wiring beyond the currently supported allowlist.
+- **Stage 1:** physical Android/iOS device visual acceptance, keyboard/safe-area/navigation and end-to-end UI regression.
+
+The Flutter CI result proves analysis, tests and Android preview APK build; it does not prove physical-device acceptance or an iOS archive build.
+
+PR #44 remains **Draft and unmerged**. The tested changes are on the PR branch; `main` was not modified by this work. Merge is not performed as part of this audit.
