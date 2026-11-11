@@ -300,6 +300,10 @@ class InOneSession extends ChangeNotifier {
         refreshToken: _refreshToken!,
       );
       nativeOpened = true;
+      // Rust now owns refresh-token rotation. Clear the Dart copy immediately
+      // after open succeeds, before requesting the access-token snapshot.
+      _mlsBridge = target;
+      _refreshToken = null;
       final snapshot = await target.accessTokenSnapshot();
       if (snapshot.isEmpty) {
         throw const ApiException(
@@ -311,12 +315,10 @@ class InOneSession extends ChangeNotifier {
       _userId = userId;
       _savedMlsUserId = userId;
       _accessToken = snapshot;
-      _refreshToken = null;
-      _mlsBridge = target;
       _mlsError = null;
       notifyListeners();
     } catch (_) {
-      if (nativeOpened) {
+      if (!nativeOpened) {
         try {
           await target.close();
         } catch (_) {
