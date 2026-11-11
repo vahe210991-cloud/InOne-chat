@@ -510,3 +510,12 @@ Do not re-port these mechanisms. See Stage 4 report section 25 for the exact com
 - Latest PR #45 head: `bfb87598068239c1107233d930ee79f25ff62d77`.
 - FRB #42989491362 and OpenMLS #42989491373 FAILED before steps/logs; log retrieval returned BlobNotFound. Flutter #42989491354 SKIPPED.
 - No test command evidenced as executed. Exact failure cause UNKNOWN. Stage 4 remains NOT ACCEPTED / BLOCKED.
+
+
+## PR #45 failed-job rerun — 2026-11-11
+
+- Latest recorded PR head: `f6384a0bd68460849cbc9b9ce0fa6d7e9fcb9a6a`; latest code-triggered workflow SHA: `bfb87598068239c1107233d930ee79f25ff62d77`.
+- Re-ran FRB #42989491362 and OpenMLS #42989491373. Latest attempts still failed before any observable step; job step summaries/log URLs are absent and log retrieval returns `BlobNotFound`.
+- Latest job IDs: FRB `130426024038`; OpenMLS `130426036241`. FRB downstream generated-commit/final-SHA/iOS jobs skipped; Flutter #42989491354 skipped by branch condition.
+- No test command evidenced as executed. Exact Actions startup cause UNKNOWN; do not infer source, runner, permission, billing or platform cause.
+- Stage 4 NOT ACCEPTED / BLOCKED; verification accepted 0%; keep `INONE_MLS_NATIVE_ENABLED=false`; no merge. Report section 36.
