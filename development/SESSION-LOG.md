@@ -427,3 +427,13 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Flutter #42987463998 skipped by the explicit Stage 4 branch condition.
 - Combined status API returned no status entries for the exact SHA. No test command is evidenced as executed; exact job-start failure reason UNKNOWN.
 - Report section 28 records evidence. Owner needs to provide the job-level failure message from GitHub Actions UI or restore an authorized runner. No diagnosis is guessed.
+
+
+### 2026-11-11 — Logout fail-closed and crash-consistency regressions
+
+- Rust `Client.logout` now attempts remote logout but always deletes local SQLCipher session-token row and clears in-memory access/refresh tokens; added offline-server regression.
+- Flutter `InOneSession.logout` clears saved MLS user identity on every explicit logout attempt, even if native purge fails; missing native runtime/device identity is now an explicit error. Added two tests to prevent automatic resume after failed purge/unavailable runtime.
+- Added Rust regressions for wrong protected-key mismatch without replacement, partial new-session initialization cleanup, and child-process termination with an open SQLCipher WAL transaction (ratchet/inbox/processed writes must all roll back).
+- These source/test changes are not executed.
+- Exact tested head: `54711b873349a8adb575f27d9c1fcccebbc49081`. FRB #42988592622 and OpenMLS #42988592592 failed with no steps/log URL; log retrieval returned BlobNotFound. Flutter #42988592656 skipped. No tests evidenced as run.
+- Report section 29 records details. Stage 4 remains NOT ACCEPTED / BLOCKED; Beta 1.0 WBS unchanged; native MLS flag false.
