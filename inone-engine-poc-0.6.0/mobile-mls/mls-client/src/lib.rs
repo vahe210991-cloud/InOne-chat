@@ -9,6 +9,8 @@ use rusqlite::OptionalExtension;
 use zeroize::{Zeroize, Zeroizing};
 use std::time::Duration;
 use std::path::Path;
+use std::net::IpAddr;
+use url::Url;
 
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use openmls::prelude::tls_codec::{Deserialize, Serialize};
@@ -124,6 +126,38 @@ pub struct Client {
     credential: CredentialWithKey,
     groups: HashMap<String, Group>,
     processed: HashSet<String>,
+}
+
+
+/// Normalize and validate the API origin before any credentials are sent.
+/// Plain HTTP is permitted only for loopback/private hosts in debug builds.
+fn normalize_base_url(base: &str) -> Result<String, String> {
+    let parsed = Url::parse(base.trim())
+        .map_err(|error| format!("некорректный адрес API: {error}"))?;
+    if parsed.host_str().is_none() || !parsed.username().is_empty() || parsed.password().is_some() {
+        return Err("адрес API должен содержать host и не должен содержать credentials".to_string());
+    }
+    if parsed.query().is_some() || parsed.fragment().is_some() {
+        return Err("адрес API не должен содержать query или fragment".to_string());
+    }
+    match parsed.scheme() {
+        "https" => {}
+        "http" if cfg!(debug_assertions) && is_local_development_host(parsed.host_str().unwrap_or("")) => {}
+        "http" => return Err("HTTPS обязателен; HTTP разрешён только для локальной разработки".to_string()),
+        _ => return Err("поддерживаются только HTTPS и локальный HTTP в debug-сборках".to_string()),
+    }
+    Ok(parsed.as_str().trim_end_matches('/').to_string())
+}
+
+fn is_local_development_host(host: &str) -> bool {
+    if host.eq_ignore_ascii_case("localhost") {
+        return true;
+    }
+    match host.parse::<IpAddr>() {
+        Ok(IpAddr::V4(address)) => address.is_loopback() || address.is_private() || address.is_link_local(),
+        Ok(IpAddr::V6(address)) => address.is_loopback() || address.is_unique_local() || address.is_unicast_link_local(),
+        Err(_) => false,
+    }
 }
 
 fn text(e: impl std::fmt::Display) -> String {
@@ -413,6 +447,7 @@ pub fn with_retry<T>(attempts: u32, base: Duration, mut op: impl FnMut() -> Resu
 
 /// Вход первого устройства аккаунта (или устройства, которое уже подтверждено).
 pub fn connect(base: &str, user_id: &str, password: &str, device_id: &str, db_path: &str, keys: &dyn KeyStore) -> Result<Client, String> {
+    let base = normalize_base_url(base)?;
     let scope = format!("{user_id}/{device_id}");
     let _has_existing_key = ensure_existing_key_matches_database(db_path, &scope, keys)?;
     let agent = ureq::AgentBuilder::new().build();
@@ -438,9 +473,10 @@ pub fn connect_with_session(
     db_path: &str,
     keys: &dyn KeyStore,
 ) -> Result<Client, String> {
-    if base.trim().is_empty() || user_id.trim().is_empty() || device_id.trim().is_empty() {
-        return Err("адрес сервера, user_id и device_id обязательны".to_string());
+    if user_id.trim().is_empty() || device_id.trim().is_empty() {
+        return Err("user_id и device_id обязательны".to_string());
     }
+    let base = normalize_base_url(base)?;
     if access_token.is_empty() || refresh_token.is_empty() {
         return Err("для подключения нужны access и refresh tokens".to_string());
     }
@@ -449,7 +485,7 @@ pub fn connect_with_session(
     let agent = ureq::AgentBuilder::new().build();
     build_client_with_keys(
         agent,
-        base.trim_end_matches('/'),
+        &base,
         (access_token.to_string(), refresh_token.to_string()),
         user_id,
         device_id,
@@ -467,9 +503,10 @@ pub fn resume_with_session(
     db_path: &str,
     keys: &dyn KeyStore,
 ) -> Result<Client, String> {
-    if base.trim().is_empty() || user_id.trim().is_empty() || device_id.trim().is_empty() {
-        return Err("адрес сервера, user_id и device_id обязательны".to_string());
+    if user_id.trim().is_empty() || device_id.trim().is_empty() {
+        return Err("user_id и device_id обязательны".to_string());
     }
+    let base = normalize_base_url(base)?;
     if !Path::new(db_path).is_file() {
         return Err("сохранённая MLS-сессия не найдена на этом устройстве".to_string());
     }
@@ -510,7 +547,7 @@ pub fn resume_with_session(
         let agent = ureq::AgentBuilder::new().build();
         build_client(
             agent,
-            base.trim_end_matches('/'),
+            &base,
             tokens,
             user_id,
             device_id,
@@ -530,13 +567,14 @@ pub fn connect_with_approval(
     keys: &dyn KeyStore,
     approver: &Client,
 ) -> Result<Client, String> {
+    let base = normalize_base_url(base)?;
     let scope = format!("{user_id}/{device_id}");
     let _has_existing_key = ensure_existing_key_matches_database(db_path, &scope, keys)?;
     let agent = ureq::AgentBuilder::new().build();
-    register(&agent, base, user_id, password)?;
+    register(&agent, &base, user_id, password)?;
     let login = request(
         &agent,
-        base,
+        &base,
         "",
         "POST",
         "/login",
@@ -572,7 +610,7 @@ pub fn connect_with_approval(
             (t.ok_or("сервер не вернул токен")?, r.ok_or("сервер не вернул токен обновления")?)
         }
     };
-    build_client_with_keys(agent, base, tokens, user_id, device_id, db_path, keys)
+    build_client_with_keys(agent, &base, tokens, user_id, device_id, db_path, keys)
 }
 
 fn build_client(agent: ureq::Agent, base: &str, tokens: SessionTokens, user_id: &str, device_id: &str, db_path: &str, db_key: &[u8; 32]) -> Result<Client, String> {
