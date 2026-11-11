@@ -39,6 +39,8 @@ All changes below are committed to the Stage 4 branch. They are implementation c
 | Pending commit ordering | Invite/revocation commits are staged, sent to the server, and merged locally only after server acceptance; failed sends clear local pending commits | `4578f2aa11935ba6d34bc0880e7ed1cb18c623e5`, `a431cf951975eda0c27c44ee9f40c42b2e344002`, `b92d3406a232df792b5563f12e8b6d122038289f` |
 | Restart reconciliation | Sync clears an unmerged local pending commit before applying server state and fails closed if the local epoch is ahead of the server | `7843716ad483a1bbb24c2662a9bb9b75ba8820ed`, `870b2e505a230653d0b5141cfc83d0b1ba8ef26c` |
 | Session concurrency | Serialized concurrent initialization and concurrent native MLS handoff | `b7a9491f2b5bcf3c2c5ac542e285297f836a34dc` |
+| Logout concurrency | Logout waits for login, session restoration, MLS handoff and refresh operations; blocks new login/adoption/API requests while cleaning up; always clears in-memory credentials | `19b80ccd8a367a332fcb337fb21d718e5cef4a5b`, `5bb366e92760712e74c54099185d42b14b4d7ff7`, `404775ff54c5e8a5eee175eb8d908c6c6929e2c0` |
+| Logout race regression | Added a test that logs out while native MLS handoff is blocked and verifies cleanup occurs only after handoff completes | `3fc8fee49eca979885c4aca9179eaa60f31bab30` |
 | Flutter session tests | Added concurrent initialization and concurrent MLS handoff tests | `3c928ea4d50dec549cb13480d818010aaff1f187` |
 | iOS Protected Keychain gate | CI now requires signing certificate, password, provisioning profile and team ID; missing secrets fail the iOS runtime gate instead of silently skipping it | `0dd3cab829010df0a4c6230e116e80163729f3a5` |
 | Android JNI initialization | Removed panic-based JNI context initialization; errors are retained and propagated to the secure-store initializer; Android MLS fails closed if app context is unavailable | `dcb88d9e0933fda6270ee9017d35b0952da7e7f2`, `3b0f631e47f8219bec1147e7884c4e291d6abdbf` |
@@ -166,3 +168,17 @@ Source head: `e4133120d59ea833dd010bdaa10a7f7a4f281375`.
 - FRB rerun [#42977708143](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42977708143) remained queued at the time of inspection.
 
 No source test command executed. Stage 4 remains NOT ACCEPTED.
+
+
+## 11. Logout concurrency hardening and latest CI — 2026-11-11
+
+Source head: `404775ff54c5e8a5eee175eb8d908c6c6929e2c0`.
+
+Logout now serializes against an in-flight login, session restoration, MLS handoff and token refresh. New login/adoption/API requests are rejected while logout is active. In-memory credentials are cleared even if secure-storage identity deletion fails. A regression test covers logout during a blocked native handoff.
+
+Latest CI:
+- [OpenMLS client run #42977937179](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42977937179): FAILED before step 1; `runner_id=0`; `steps=[]`.
+- [FRB generation run #42977937116](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42977937116): FAILED before step 1; `runner_id=0`; `steps=[]`; iOS dependent job SKIPPED.
+- Flutter mobile validation #42977937100: SKIPPED by Stage 4 branch condition.
+
+No Rust or Flutter test command executed. Stage 4 remains NOT ACCEPTED.
