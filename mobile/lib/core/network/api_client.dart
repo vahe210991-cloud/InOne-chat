@@ -105,6 +105,7 @@ class ApiClient {
     }
 
     final request = http.Request(method.toUpperCase(), uri)
+      ..followRedirects = false
       ..headers.addAll(headers);
 
     if (body != null) {
