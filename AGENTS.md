@@ -25,3 +25,15 @@ UI integration rules:
 - Do not claim UI import or rendering complete until exact assets are in GitHub, Flutter asset bundle is configured, and Android/iOS tests plus visual parity checks pass.
 
 If you cannot comply, stop and record the exact blocker. Do not claim completion without evidence.
+
+
+## Owner-approved repository-native workflow (2026-11-11)
+
+The repository is the shared source of truth so that every agent can retrieve the latest files and concurrent work does not overwrite another agent.
+
+- Read `development/WORKING-RULES.md` for the full workflow. Its repository-native mode is explicitly allowed when the available GitHub interface can safely inspect and update the exact files involved.
+- A complete clone/Codespace remains preferred for broad code changes, builds, tests, binaries, Git history, submodules, and LFS. It is not a blanket prerequisite for focused documentation or other safely reviewable repository-native edits.
+- Do not stop merely because a local clone is unavailable. Assess whether the task can be completed safely through GitHub in an isolated task branch. If not, state the exact missing capability and leave risky files untouched.
+- Each concurrent agent uses a unique task branch/worktree. Check the latest branch/file SHA before editing; never have agents write to the same branch concurrently. Resolve SHA conflicts by re-fetching and reviewing, never by overwriting.
+- Keep all required/current files in GitHub. Local copies are temporary; publish complete coherent changes and verify remote SHA before hand-back.
+- Direct commits to `main` remain limited to narrowly scoped documentation/rule corrections explicitly authorized by the owner. This owner authorization covers the 2026-11-11 workflow-rule clarification only; it does not authorize direct product-code changes, PR merges, force updates, or branch deletion.
