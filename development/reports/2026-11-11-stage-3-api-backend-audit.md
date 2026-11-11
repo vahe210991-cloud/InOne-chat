@@ -99,3 +99,17 @@ Status meanings:
 - [ ] Flutter unit/widget tests, analyze, Android/iOS builds and device runtime tests pass.
 
 **Conclusion:** Stage 3 is in progress. This report is a source-level audit snapshot, not acceptance evidence. No product code, API contract or backend behavior was changed by this audit.
+
+
+## 7. Additional Stage 3 security blocker review (2026-11-11)
+
+A second source pass identified two concurrency items that must remain open:
+
+- **F-01 stale accept/revoke:** current org-link handler reads a proposed link, checks the status, and then updates the status in a separate call. The current sequential `org-links.test.js` does not cover a stale-read interleaving. The previously reviewed conditional-transition patch and regression test are not present in main.
+- **F-02 open-join race:** the previously prepared atomic PostgreSQL/locking change and deterministic barrier regression are not present in main. Memory-only test results do not close the PostgreSQL concurrency requirement.
+
+PR #42 was inspected: it adds only `.github/workflows/f01-f02-postgres.yml`; it does not contain either source patch or its regression test. Therefore the new PostgreSQL workflow is not acceptance evidence for F-01/F-02.
+
+**Required handoff:** obtain the exact original agent patch and changed-file list, preserve its working-tree changes, compare against current main, review, then run the PostgreSQL concurrency test. Do not reconstruct or overwrite the missing patch from memory.
+
+Stage 3 authorization/security acceptance is **blocked** until F-01 and F-02 source changes and PostgreSQL test evidence are present.
