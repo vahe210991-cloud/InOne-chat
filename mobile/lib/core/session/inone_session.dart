@@ -52,6 +52,7 @@ class InOneSession extends ChangeNotifier {
   String? _refreshToken;
   String? _deviceId;
   String? _userId;
+  String? _savedMlsUserId;
   Future<void>? _refreshInFlight;
   Future<String>? _nativeRefreshInFlight;
   Completer<void>? _handoffGate;
@@ -68,6 +69,8 @@ class InOneSession extends ChangeNotifier {
   bool get isAuthenticated => _accessToken != null && _accessToken!.isNotEmpty;
   bool get isConfigured => baseUrl.trim().isNotEmpty;
   bool get hasNativeMlsSession => _mlsBridge != null;
+  String? _mlsError;
+  String? get mlsError => _mlsError;
 
   Future<void> initialize() async {
     if (_deviceId != null) return;
@@ -80,32 +83,39 @@ class InOneSession extends ChangeNotifier {
     _deviceId = id;
 
     final savedUserId = await _readMlsUserId();
+    _savedMlsUserId = savedUserId;
     if (savedUserId != null && savedUserId.isNotEmpty) {
       final bridge = _nativeMlsBridge;
       if (bridge == null) {
-        throw const ApiException(
-          code: 'mls_session_bridge_unavailable',
-          statusCode: 503,
-          retryable: false,
-        );
+        _mlsError = 'Native MLS runtime is unavailable on this platform';
+      } else {
+        try {
+          await bridge.resume(
+            baseUrl: baseUrl,
+            userId: savedUserId,
+            deviceId: id,
+          );
+          final snapshot = await bridge.accessTokenSnapshot();
+          if (snapshot.isEmpty) {
+            throw const ApiException(
+              code: 'mls_session_missing_access_token',
+              statusCode: 502,
+              retryable: false,
+            );
+          }
+          _userId = savedUserId;
+          _accessToken = snapshot;
+          _mlsBridge = bridge;
+          _mlsError = null;
+        } catch (error) {
+          _mlsError = 'Saved MLS session could not be restored: $error';
+          try {
+            await bridge.close();
+          } catch (_) {
+            // Keep the original restore error for diagnostics.
+          }
+        }
       }
-      await bridge.resume(
-        baseUrl: baseUrl,
-        userId: savedUserId,
-        deviceId: id,
-      );
-      final snapshot = await bridge.accessTokenSnapshot();
-      if (snapshot.isEmpty) {
-        await bridge.close();
-        throw const ApiException(
-          code: 'mls_session_missing_access_token',
-          statusCode: 502,
-          retryable: false,
-        );
-      }
-      _userId = savedUserId;
-      _accessToken = snapshot;
-      _mlsBridge = bridge;
     }
     notifyListeners();
   }
@@ -132,6 +142,17 @@ class InOneSession extends ChangeNotifier {
       },
     );
     _acceptSession(result);
+    final native = _nativeMlsBridge;
+    if (native != null) {
+      try {
+        await adoptMlsSession(native);
+      } catch (error) {
+        // Authentication remains valid, but MLS stays disabled. There is no
+        // Megolm or plaintext messaging fallback.
+        _mlsError = 'MLS runtime could not be opened: $error';
+        notifyListeners();
+      }
+    }
     return result;
   }
 
@@ -168,7 +189,15 @@ class InOneSession extends ChangeNotifier {
   /// The authenticated profile supplies the canonical user ID. The refresh
   /// token is handed to Rust once and cleared from Dart only after Rust has
   /// accepted the session and returned a valid access-token snapshot.
-  Future<void> adoptMlsSession(MlsSessionBridge bridge) async {
+  Future<void> adoptMlsSession([MlsSessionBridge? bridge]) async {
+    final target = bridge ?? _nativeMlsBridge;
+    if (target == null) {
+      throw const ApiException(
+        code: 'mls_session_bridge_unavailable',
+        statusCode: 503,
+        retryable: false,
+      );
+    }
     if (_mlsBridge != null) return;
     if (!isAuthenticated || _refreshToken == null || _deviceId == null) {
       throw const ApiException(
@@ -195,7 +224,9 @@ class InOneSession extends ChangeNotifier {
         );
       }
 
-      await bridge.open(
+      _savedMlsUserId = userId;
+      await _writeMlsUserId(userId);
+      await target.open(
         baseUrl: baseUrl,
         userId: userId,
         deviceId: _deviceId!,
@@ -203,7 +234,7 @@ class InOneSession extends ChangeNotifier {
         refreshToken: _refreshToken!,
       );
       nativeOpened = true;
-      final snapshot = await bridge.accessTokenSnapshot();
+      final snapshot = await target.accessTokenSnapshot();
       if (snapshot.isEmpty) {
         throw const ApiException(
           code: 'mls_session_missing_access_token',
@@ -211,17 +242,17 @@ class InOneSession extends ChangeNotifier {
           retryable: false,
         );
       }
-      await _writeMlsUserId(userId);
-
       _userId = userId;
+      _savedMlsUserId = userId;
       _accessToken = snapshot;
       _refreshToken = null;
-      _mlsBridge = bridge;
+      _mlsBridge = target;
+      _mlsError = null;
       notifyListeners();
     } catch (_) {
       if (nativeOpened) {
         try {
-          await bridge.close();
+          await target.close();
         } catch (_) {
           // Preserve the original handoff error.
         }
@@ -326,9 +357,27 @@ class InOneSession extends ChangeNotifier {
 
   Future<void> logout() async {
     final bridge = _mlsBridge;
+    final savedUserId = _savedMlsUserId;
+    var localMlsPurged = savedUserId == null;
     try {
       if (bridge != null) {
-        await bridge.logout();
+        try {
+          await bridge.logout();
+        } finally {
+          if (savedUserId != null && _deviceId != null) {
+            await bridge.purgeLocalSession(
+              userId: savedUserId,
+              deviceId: _deviceId!,
+            );
+            localMlsPurged = true;
+          }
+        }
+      } else if (savedUserId != null && _nativeMlsBridge != null && _deviceId != null) {
+        await _nativeMlsBridge.purgeLocalSession(
+          userId: savedUserId,
+          deviceId: _deviceId!,
+        );
+        localMlsPurged = true;
       } else if (isAuthenticated) {
         await request('POST', '/logout');
       }
@@ -337,13 +386,17 @@ class InOneSession extends ChangeNotifier {
       try {
         if (bridge != null) await bridge.close();
       } finally {
-        await _deleteMlsUserId();
+        if (localMlsPurged) {
+          await _deleteMlsUserId();
+          _savedMlsUserId = null;
+        }
         _clearSession();
       }
     }
   }
 
   void _clearSession() {
+    _mlsError = null;
     _accessToken = null;
     _refreshToken = null;
     _userId = null;

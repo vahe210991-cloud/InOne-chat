@@ -12,6 +12,7 @@ import 'core/data/inone_repositories.dart';
 import 'core/data/inone_profile.dart';
 import 'core/data/profile_load_status.dart';
 import 'core/data/profile_ui_bridge.dart';
+import 'core/mls/rust_mls_session_bridge.dart';
 import 'core/network/api_environment.dart';
 import 'core/session/inone_session.dart';
 import 'core/test_api/screen_api_catalog.dart';
@@ -125,7 +126,12 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
       configured: _configuredApiBaseUrl,
       isAndroid: Platform.isAndroid,
     );
-    _session = InOneSession(baseUrl: apiBaseUrl);
+    _session = InOneSession(
+      baseUrl: apiBaseUrl,
+      nativeMlsBridge: Platform.isAndroid || Platform.isIOS
+          ? RustMlsSessionBridge()
+          : null,
+    );
     _repositories = InOneRepositories(_session);
     _session.addListener(_onSessionChanged);
     unawaited(_session.initialize().catchError((Object _) {}));
@@ -903,6 +909,21 @@ class _ApiTestPanelState extends State<ApiTestPanel> {
               SelectableText(session?.baseUrl ?? 'Не задан'),
               const SizedBox(height: 6),
               const Text('Локальный тестовый backend: Android-эмулятор использует 10.0.2.2:8080, iOS Simulator — 127.0.0.1:8080. Для физического устройства задайте локальный IP компьютера через INONE_API_BASE_URL.'),
+              if (session != null)
+                AnimatedBuilder(
+                  animation: session,
+                  builder: (context, _) => Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: Text(
+                      session.hasNativeMlsSession
+                          ? 'MLS: защищённый native runtime активен'
+                          : 'MLS: отключён — ${session.mlsError ?? 'native runtime ещё не открыт'}. Отправка сообщений без MLS запрещена.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: session.hasNativeMlsSession ? Colors.green : Colors.deepOrange,
+                          ),
+                    ),
+                  ),
+                ),
               if (session == null) ...[
                 const SizedBox(height: 8),
                 const Text('Сервер ещё не настроен. Запустите приложение с параметром --dart-define=INONE_API_BASE_URL=https://адрес-вашего-api.'),

@@ -38,6 +38,15 @@ impl KeyStore for PlatformKeyStore {
             Err(error) => Err(format!("чтение ключа SQLCipher: {error}")),
         }
     }
+
+    fn delete_database_key(&self, scope: &str) -> Result<(), String> {
+        let entry = Entry::new("com.inone.mls.sqlcipher-key", scope)
+            .map_err(|error| format!("создание записи защищённого хранилища: {error}"))?;
+        match entry.delete_credential() {
+            Ok(()) | Err(KeyringError::NoEntry) => Ok(()),
+            Err(error) => Err(format!("удаление ключа SQLCipher из системного хранилища: {error}")),
+        }
+    }
 }
 
 fn initialize_native_store() -> Result<(), String> {

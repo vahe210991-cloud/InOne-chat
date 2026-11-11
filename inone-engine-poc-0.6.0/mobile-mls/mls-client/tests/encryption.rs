@@ -46,6 +46,10 @@ fn device_database_is_encrypted_and_needs_the_key() {
 
     let head = std::fs::read(&file).unwrap();
     assert_ne!(&head[..16.min(head.len())], b"SQLite format 3\0", "файл не открывается без ключа");
+    assert!(
+        !head.windows(PW.len()).any(|window| window == PW.as_bytes()),
+        "пароль не должен присутствовать в базе открытым текстом"
+    );
     let other = MemoryKeyStore::default();
     assert!(connect(&engine.base, "@alice:inone.test", PW, "A_PHONE", &file, &other).is_err(), "чужой ключ не открывает базу");
     assert!(connect(&engine.base, "@alice:inone.test", PW, "A_PHONE", &file, &keys).is_ok(), "свой ключ открывает базу");

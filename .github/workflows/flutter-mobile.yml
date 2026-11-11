@@ -6,7 +6,7 @@ on:
       - 'mobile/**'
       - '.github/workflows/flutter-mobile.yml'
   push:
-    branches: [main]
+    branches: [main, feature/stage-4-native-mls-runtime-2026-11-11]
     paths:
       - 'mobile/**'
       - '.github/workflows/flutter-mobile.yml'
@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   flutter:
-    if: github.actor != 'github-actions[bot]'
+    if: github.actor != 'github-actions[bot]' && github.event.pull_request.head.ref != 'feature/stage-4-native-mls-runtime-2026-11-11' && github.ref_name != 'feature/stage-4-native-mls-runtime-2026-11-11'
     runs-on: ubuntu-latest
     defaults:
       run:

@@ -7,6 +7,102 @@ import 'package:inone_mobile/core/mls/mls_session_bridge.dart';
 import 'package:inone_mobile/core/session/inone_session.dart';
 
 void main() {
+  test('login automatically adopts the native MLS session when configured', () async {
+    final httpClient = MockClient((request) async {
+      if (request.url.path == '/login') {
+        return http.Response(
+          jsonEncode({'token': 'access-1', 'refreshToken': 'refresh-1'}),
+          200,
+        );
+      }
+      if (request.url.path == '/profile') {
+        expect(request.headers['authorization'], 'Bearer access-1');
+        return http.Response(jsonEncode({'userId': '@alice:inone.test'}), 200);
+      }
+      return http.Response('{}', 404);
+    });
+    final bridge = _FakeMlsSessionBridge();
+    final session = InOneSession(
+      baseUrl: 'https://api.inone.test',
+      httpClient: httpClient,
+      nativeMlsBridge: bridge,
+      readDeviceId: () async => 'device-1',
+      writeDeviceId: (_) async {},
+      readMlsUserId: () async => null,
+      writeMlsUserId: (_) async {},
+      deleteMlsUserId: () async {},
+    );
+
+    await session.login(email: 'alice@example.test', password: 'not-used-in-test');
+
+    expect(session.isAuthenticated, isTrue);
+    expect(session.hasNativeMlsSession, isTrue);
+    expect(session.mlsError, isNull);
+    expect(bridge.openArguments?['refreshToken'], 'refresh-1');
+    session.dispose();
+  });
+
+  test('failed automatic MLS adoption is visible and does not enable fallback messaging', () async {
+    final httpClient = MockClient((request) async {
+      if (request.url.path == '/login') {
+        return http.Response(
+          jsonEncode({'token': 'access-1', 'refreshToken': 'refresh-1'}),
+          200,
+        );
+      }
+      if (request.url.path == '/profile') {
+        return http.Response(jsonEncode({'userId': '@alice:inone.test'}), 200);
+      }
+      return http.Response('{}', 404);
+    });
+    final bridge = _FakeMlsSessionBridge()..failOpen = true;
+    final session = InOneSession(
+      baseUrl: 'https://api.inone.test',
+      httpClient: httpClient,
+      nativeMlsBridge: bridge,
+      readDeviceId: () async => 'device-1',
+      writeDeviceId: (_) async {},
+      readMlsUserId: () async => null,
+      writeMlsUserId: (_) async {},
+      deleteMlsUserId: () async {},
+    );
+
+    await session.login(email: 'alice@example.test', password: 'not-used-in-test');
+
+    expect(session.isAuthenticated, isTrue);
+    expect(session.hasNativeMlsSession, isFalse);
+    expect(session.mlsError, contains('MLS runtime could not be opened'));
+    expect(session.userId, isNull);
+    session.dispose();
+  });
+
+  test('logout purges saved native data even when session resume fails', () async {
+    var deletedUserId = false;
+    final bridge = _FakeMlsSessionBridge()..failResume = true;
+    final session = InOneSession(
+      baseUrl: 'https://api.inone.test',
+      nativeMlsBridge: bridge,
+      readDeviceId: () async => 'device-1',
+      writeDeviceId: (_) async {},
+      readMlsUserId: () async => '@alice:inone.test',
+      writeMlsUserId: (_) async {},
+      deleteMlsUserId: () async { deletedUserId = true; },
+    );
+
+    await session.initialize();
+    expect(session.hasNativeMlsSession, isFalse);
+    expect(session.mlsError, contains('could not be restored'));
+
+    await session.logout();
+
+    expect(bridge.purgeArguments, {
+      'userId': '@alice:inone.test',
+      'deviceId': 'device-1',
+    });
+    expect(deletedUserId, isTrue);
+    session.dispose();
+  });
+
   test('restores the native session after app restart without Flutter tokens', () async {
     var deletedUserId = false;
     final bridge = _FakeMlsSessionBridge()..accessToken = 'restored-access';
@@ -154,6 +250,8 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
   Map<String, String>? resumeArguments;
   String accessToken = 'access-1';
   bool failOpen = false;
+  bool failResume = false;
+  Map<String, String>? purgeArguments;
   int refreshCalls = 0;
   int logoutCalls = 0;
   int closeCalls = 0;
@@ -188,7 +286,61 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
       'userId': userId,
       'deviceId': deviceId,
     };
+    if (failResume) throw StateError('native resume failed');
   }
+
+  @override
+  Future<void> purgeLocalSession({
+    required String userId,
+    required String deviceId,
+  }) async {
+    purgeArguments = {'userId': userId, 'deviceId': deviceId};
+  }
+
+  @override
+  Future<void> ensureKeyPackages(int target) async {}
+
+  @override
+  Future<void> createRoom(String roomId) async {}
+
+  @override
+  Future<void> invite(String roomId, String userId) async {}
+
+  @override
+  Future<String> sendText(String roomId, String plaintext) async => 'event-1';
+
+  @override
+  Future<String> enqueueText(String roomId, String plaintext) async => 'local-1';
+
+  @override
+  Future<List<MlsIncomingMessage>> sync() async => const [];
+
+  @override
+  Future<List<MlsIncomingMessage>> pendingIncoming() async => const [];
+
+  @override
+  Future<List<MlsIncomingMessage>> messagesForRoom(String roomId) async => const [];
+
+  @override
+  Future<void> acknowledgeIncoming(List<String> eventIds) async {}
+
+  @override
+  Future<int> flushOutbox() async => 0;
+
+  @override
+  Future<int> outboxLength() async => 0;
+
+  @override
+  Future<int?> localEpoch(String roomId) async => null;
+
+  @override
+  Future<List<String>> membersOf(String roomId) async => const [];
+
+  @override
+  Future<void> revokeDevice(String deviceId) async {}
+
+  @override
+  Future<int> removeRevokedDevices() async => 0;
 
   @override
   Future<String> accessTokenSnapshot() async => accessToken;

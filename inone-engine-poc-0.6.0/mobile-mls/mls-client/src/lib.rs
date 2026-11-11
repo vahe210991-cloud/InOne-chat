@@ -84,8 +84,6 @@ pub struct Client {
     credential: CredentialWithKey,
     groups: HashMap<String, Group>,
     processed: HashSet<String>,
-    /// Сообщения, полученные при отправке из очереди: их забирает приложение через take_incoming().
-    inbox: Vec<Incoming>,
 }
 
 fn text(e: impl std::fmt::Display) -> String {
@@ -131,8 +129,11 @@ fn register(agent: &ureq::Agent, base: &str, user_id: &str, password: &str) -> R
 }
 
 /// Ключ базы устройства. Платформа хранит его в Keychain (iOS) или Keystore (Android); ядро его не сохраняет.
-pub trait KeyStore {
+pub trait KeyStore: Send + Sync {
     fn database_key(&self, scope: &str) -> Result<[u8; 32], String>;
+
+    /// Removes the platform-protected key after the encrypted database is deleted.
+    fn delete_database_key(&self, scope: &str) -> Result<(), String>;
 }
 
 /// Хранилище ключей в памяти: для тестов. Для выпуска нужно хранилище платформы.
@@ -150,6 +151,11 @@ impl KeyStore for MemoryKeyStore {
         let key = RustCrypto::default().random_array::<32>().map_err(text)?;
         keys.insert(scope.to_string(), key);
         Ok(key)
+    }
+
+    fn delete_database_key(&self, scope: &str) -> Result<(), String> {
+        self.keys.lock().map_err(text)?.remove(scope);
+        Ok(())
     }
 }
 
@@ -343,6 +349,7 @@ fn build_client(agent: ureq::Agent, base: &str, tokens: (String, String), user_i
         "CREATE TABLE IF NOT EXISTS client_meta (key TEXT PRIMARY KEY, value BLOB NOT NULL);
          CREATE TABLE IF NOT EXISTS client_rooms (room_id TEXT PRIMARY KEY, join_epoch INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS client_processed (event_id TEXT PRIMARY KEY);
+         CREATE TABLE IF NOT EXISTS client_inbox (seq INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL UNIQUE, room_id TEXT NOT NULL, kind TEXT NOT NULL, body TEXT, acknowledged INTEGER NOT NULL DEFAULT 0);
          CREATE TABLE IF NOT EXISTS client_outbox (local_id TEXT PRIMARY KEY, room_id TEXT NOT NULL, body TEXT NOT NULL, seq INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS client_remote_config (id INTEGER PRIMARY KEY CHECK (id = 1), etag TEXT NOT NULL, body TEXT NOT NULL, fetched_at INTEGER NOT NULL);",
     )
@@ -405,7 +412,6 @@ fn build_client(agent: ureq::Agent, base: &str, tokens: (String, String), user_i
         credential,
         groups,
         processed,
-        inbox: Vec::new(),
     })
 }
 
@@ -479,6 +485,26 @@ impl Client {
 
     fn mark_processed(&mut self, event_id: &str) -> Result<(), String> {
         self.meta.execute("INSERT OR IGNORE INTO client_processed (event_id) VALUES (?1)", [event_id]).map_err(text)?;
+        self.processed.insert(event_id.to_string());
+        Ok(())
+    }
+
+    /// Persists decrypted inbox content and its processed marker in one SQLCipher transaction.
+    fn persist_incoming(&mut self, incoming: &Incoming) -> Result<(), String> {
+        let (event_id, room_id, kind, body): (&str, &str, &str, Option<&str>) = match incoming {
+            Incoming::Text { room_id, event_id, text } => (event_id, room_id, "text", Some(text)),
+            Incoming::Unreadable { room_id, event_id } => (event_id, room_id, "unreadable", None),
+        };
+        let tx = self.meta.transaction().map_err(text)?;
+        tx.execute(
+            "INSERT OR REPLACE INTO client_inbox (event_id, room_id, kind, body, acknowledged) VALUES (?1, ?2, ?3, ?4, 0)",
+            (event_id, room_id, kind, body),
+        ).map_err(text)?;
+        tx.execute(
+            "INSERT OR IGNORE INTO client_processed (event_id) VALUES (?1)",
+            [event_id],
+        ).map_err(text)?;
+        tx.commit().map_err(text)?;
         self.processed.insert(event_id.to_string());
         Ok(())
     }
@@ -660,19 +686,22 @@ impl Client {
                 .collect();
             for (event_id, bytes) in ready {
                 let protocol = MlsMessageIn::tls_deserialize_exact(&bytes).map_err(text)?.try_into_protocol_message().map_err(text)?;
-                let group = self.groups.get_mut(room_id).ok_or("комната не создана на этом устройстве")?;
-                match group.mls.process_message(&self.provider, protocol) {
-                    Ok(processed) => match processed.into_content() {
-                        ProcessedMessageContent::ApplicationMessage(app) => out.push(Incoming::Text {
-                            room_id: room_id.to_string(),
-                            event_id: event_id.clone(),
-                            text: String::from_utf8(app.into_bytes()).map_err(text)?,
-                        }),
-                        _ => out.push(Incoming::Unreadable { room_id: room_id.to_string(), event_id: event_id.clone() }),
-                    },
-                    Err(_) => out.push(Incoming::Unreadable { room_id: room_id.to_string(), event_id: event_id.clone() }),
-                }
-                self.mark_processed(&event_id)?;
+                let incoming = {
+                    let group = self.groups.get_mut(room_id).ok_or("комната не создана на этом устройстве")?;
+                    match group.mls.process_message(&self.provider, protocol) {
+                        Ok(processed) => match processed.into_content() {
+                            ProcessedMessageContent::ApplicationMessage(app) => Incoming::Text {
+                                room_id: room_id.to_string(),
+                                event_id: event_id.clone(),
+                                text: String::from_utf8(app.into_bytes()).map_err(text)?,
+                            },
+                            _ => Incoming::Unreadable { room_id: room_id.to_string(), event_id: event_id.clone() },
+                        },
+                        Err(_) => Incoming::Unreadable { room_id: room_id.to_string(), event_id: event_id.clone() },
+                    }
+                };
+                self.persist_incoming(&incoming)?;
+                out.push(incoming);
             }
             let Some((_, commit)) = commits.iter().find(|(e, _)| *e == epoch + 1) else { break };
             let protocol = MlsMessageIn::tls_deserialize_exact(commit).map_err(text)?.try_into_protocol_message().map_err(text)?;
@@ -731,7 +760,7 @@ impl Client {
             return Ok(0);
         }
         match self.sync() {
-            Ok(got) => self.inbox.extend(got),
+            Ok(_received) => {},
             Err(e) if is_retryable(&e) => return Ok(0),
             Err(e) => return Err(e),
         }
@@ -749,9 +778,77 @@ impl Client {
         Ok(sent)
     }
 
-    /// Забирает сообщения, которые пришли при синхронизации из очереди отправки.
-    pub fn take_incoming(&mut self) -> Vec<Incoming> {
-        std::mem::take(&mut self.inbox)
+    /// Returns encrypted-at-rest pending inbox items without consuming them.
+    /// The UI must acknowledge only after it has durably accepted the message.
+    pub fn pending_incoming(&self) -> Result<Vec<Incoming>, String> {
+        let mut stmt = self.meta.prepare(
+            "SELECT event_id, room_id, kind, body FROM client_inbox WHERE acknowledged = 0 ORDER BY seq"
+        ).map_err(text)?;
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, Option<String>>(3)?,
+            ))
+        }).map_err(text)?;
+        let mut incoming = Vec::new();
+        for row in rows {
+            let (event_id, room_id, kind, body) = row.map_err(text)?;
+            let item = match kind.as_str() {
+                "text" => Incoming::Text {
+                    room_id,
+                    event_id,
+                    text: body.ok_or("в сохранённом сообщении отсутствует текст")?,
+                },
+                "unreadable" => Incoming::Unreadable { room_id, event_id },
+                _ => return Err(format!("неизвестный тип локального сообщения: {kind}")),
+            };
+            incoming.push(item);
+        }
+        Ok(incoming)
+    }
+
+    /// Returns the local encrypted message history for one room.
+    pub fn messages_for_room(&self, room_id: &str) -> Result<Vec<Incoming>, String> {
+        let mut stmt = self.meta.prepare(
+            "SELECT event_id, room_id, kind, body FROM client_inbox WHERE room_id = ?1 ORDER BY seq"
+        ).map_err(text)?;
+        let rows = stmt.query_map([room_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, Option<String>>(3)?,
+            ))
+        }).map_err(text)?;
+        let mut incoming = Vec::new();
+        for row in rows {
+            let (event_id, room_id, kind, body) = row.map_err(text)?;
+            let item = match kind.as_str() {
+                "text" => Incoming::Text {
+                    room_id,
+                    event_id,
+                    text: body.ok_or("в сохранённом сообщении отсутствует текст")?,
+                },
+                "unreadable" => Incoming::Unreadable { room_id, event_id },
+                _ => return Err(format!("неизвестный тип локального сообщения: {kind}")),
+            };
+            incoming.push(item);
+        }
+        Ok(incoming)
+    }
+
+    /// Acknowledges messages only after the application has durably accepted them.
+    pub fn acknowledge_incoming(&mut self, event_ids: &[String]) -> Result<(), String> {
+        if event_ids.is_empty() {
+            return Ok(());
+        }
+        let tx = self.meta.transaction().map_err(text)?;
+        for event_id in event_ids {
+            tx.execute("UPDATE client_inbox SET acknowledged = 1 WHERE event_id = ?1", [event_id]).map_err(text)?;
+        }
+        tx.commit().map_err(text)
     }
 
     /// Синхронизация с повторами: при сбоях сети ждёт всё дольше, но не дольше `attempts` попыток.

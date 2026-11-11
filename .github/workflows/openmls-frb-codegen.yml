@@ -1,13 +1,13 @@
 name: OpenMLS Flutter Rust Bridge generation
 
 on:
+  workflow_dispatch:
+  push:
+    branches: [feature/stage-4-native-mls-runtime-2026-11-11]
   pull_request:
     paths:
       - ".github/workflows/openmls-frb-codegen.yml"
-      - "mobile/rust/**"
-      - "mobile/lib/core/mls/**"
-      - "mobile/pubspec.yaml"
-      - "mobile/tool/prepare_android_mls.mjs"
+      - "mobile/**"
 
 permissions:
   contents: write
@@ -25,7 +25,7 @@ jobs:
       - name: Checkout PR head
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.ref }}
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
           fetch-depth: 0
 
       - name: Install Flutter
@@ -38,6 +38,10 @@ jobs:
       - name: Generate Android and iOS platform projects
         working-directory: mobile
         run: flutter create --platforms=android,ios --project-name inone_mobile --org com.inone .
+
+      - name: Remove generated template test
+        working-directory: mobile
+        run: rm -f test/widget_test.dart
 
       - name: Install Rust toolchain and Android targets
         uses: dtolnay/rust-toolchain@master
@@ -78,8 +82,11 @@ jobs:
           flutter pub get
           cargo generate-lockfile --manifest-path rust/Cargo.toml
 
+      - name: Format Rust bridge sources
+        run: cargo fmt --manifest-path mobile/rust/Cargo.toml
+
       - name: Validate Rust bridge on Linux
-        run: cargo test --manifest-path mobile/rust/Cargo.toml
+        run: cargo test --locked --manifest-path mobile/rust/Cargo.toml
 
       - name: Validate Flutter code and session contract
         working-directory: mobile
@@ -91,10 +98,43 @@ jobs:
         working-directory: mobile
         run: flutter build apk --debug
 
+      - name: Android Keystore runtime smoke test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          script: |
+            cd mobile
+            flutter drive --driver=test_driver/integration_test.dart --target=integration_test/mls_secure_store_test.dart
+
+      - name: Upload generated FRB outputs for iOS validation
+        uses: actions/upload-artifact@v4
+        with:
+          name: inone-mls-frb-generated
+          path: |
+            mobile/hook/**
+            mobile/lib/src/rust/**
+            mobile/rust/Cargo.toml
+            mobile/rust/Cargo.lock
+            mobile/rust/build.rs
+            mobile/rust/src/frb_generated.rs
+            mobile/pubspec.yaml
+            mobile/pubspec.lock
+          if-no-files-found: error
+
+      - name: Upload Android preview APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: inone-mls-android-apk
+          path: mobile/build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
+
       - name: Commit generated bridge files to PR branch
         shell: bash
         env:
-          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref || github.ref_name }}
         run: |
           set -euo pipefail
           git add -A mobile
@@ -105,3 +145,102 @@ jobs:
             git commit -m "build(mls): generate Flutter Rust bridge bindings"
             git push origin "HEAD:${PR_HEAD_REF}"
           fi
+
+
+  build-ios:
+    name: iOS native assets + Keychain runtime smoke test
+    needs: generate-and-validate
+    runs-on: macos-14
+    timeout-minutes: 45
+    env:
+      IOS_SIGNING_CERTIFICATE_P12: ${{ secrets.IOS_SIGNING_CERTIFICATE_P12 }}
+      IOS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.IOS_SIGNING_CERTIFICATE_PASSWORD }}
+      IOS_PROVISIONING_PROFILE: ${{ secrets.IOS_PROVISIONING_PROFILE }}
+      IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.47.9"
+          channel: stable
+          cache: true
+
+      - name: Generate iOS platform project
+        working-directory: mobile
+        run: flutter create --platforms=ios --project-name inone_mobile --org com.inone .
+
+      - name: Install Rust iOS targets
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.91.0"
+          components: rustfmt
+          targets: "aarch64-apple-ios,aarch64-apple-ios-sim"
+
+      - name: Download generated FRB outputs
+        uses: actions/download-artifact@v4
+        with:
+          name: inone-mls-frb-generated
+          path: mobile
+
+      - name: Resolve Dart dependencies
+        working-directory: mobile
+        run: flutter pub get
+
+      - name: Build iOS device target without signing
+        working-directory: mobile
+        run: flutter build ios --no-codesign
+
+      - name: Build iOS simulator target without signing
+        working-directory: mobile
+        run: flutter build ios --simulator --no-codesign
+
+      - name: Install optional iOS signing identity and provisioning profile
+        if: env.IOS_SIGNING_CERTIFICATE_P12 != '' && env.IOS_SIGNING_CERTIFICATE_PASSWORD != '' && env.IOS_PROVISIONING_PROFILE != '' && env.IOS_TEAM_ID != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 20)"
+          KEYCHAIN_PATH="$RUNNER_TEMP/inone-build.keychain"
+          printf '%s' "$IOS_SIGNING_CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/ios-signing.p12"
+          printf '%s' "$IOS_PROVISIONING_PROFILE" | base64 --decode > "$RUNNER_TEMP/inone.mobileprovision"
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$RUNNER_TEMP/ios-signing.p12" -k "$KEYCHAIN_PATH" -P "$IOS_SIGNING_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+          security cms -D -i "$RUNNER_TEMP/inone.mobileprovision" > "$RUNNER_TEMP/profile.plist"
+          PROFILE_UUID="$(/usr/libexec/PlistBuddy -c 'Print UUID' "$RUNNER_TEMP/profile.plist")"
+          cp "$RUNNER_TEMP/inone.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
+          echo "IOS_PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
+          cd mobile
+          perl -0pi -e "s/DEVELOPMENT_TEAM = [^;]*;/DEVELOPMENT_TEAM = $IOS_TEAM_ID;/g; s/PROVISIONING_PROFILE_SPECIFIER = [^;]*;/PROVISIONING_PROFILE_SPECIFIER = $PROFILE_UUID;/g" ios/Runner.xcodeproj/project.pbxproj
+
+      - name: iOS Keychain runtime smoke test
+        if: env.IOS_SIGNING_CERTIFICATE_P12 != '' && env.IOS_SIGNING_CERTIFICATE_PASSWORD != '' && env.IOS_PROVISIONING_PROFILE != '' && env.IOS_TEAM_ID != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          DEVICE_ID="$(xcrun simctl list devices available | sed -nE 's/.*iPhone.*\(([0-9A-F-]{36})\).*/\1/p' | head -n 1)"
+          test -n "$DEVICE_ID"
+          xcrun simctl boot "$DEVICE_ID" || true
+          xcrun simctl bootstatus "$DEVICE_ID" -b
+          cd mobile
+          flutter drive -d "$DEVICE_ID" --driver=test_driver/integration_test.dart --target=integration_test/mls_secure_store_test.dart
+
+      - name: Explain skipped iOS Keychain runtime test
+        if: env.IOS_SIGNING_CERTIFICATE_P12 == '' || env.IOS_SIGNING_CERTIFICATE_PASSWORD == '' || env.IOS_PROVISIONING_PROFILE == '' || env.IOS_TEAM_ID == ''
+        run: echo "::notice::iOS protected Keychain runtime smoke test requires code-signing certificate and provisioning-profile repository secrets; device/simulator compile checks still ran."
+
+      - name: Upload iOS simulator build
+        uses: actions/upload-artifact@v4
+        with:
+          name: inone-mls-ios-simulator-build
+          path: mobile/build/ios/iphonesimulator/Runner.app
+          if-no-files-found: error
