@@ -267,3 +267,17 @@ This section supersedes stale earlier statements in this file that no applied P0
 - Added asset-path mapping, rootBundle loader, v1 bridge compatibility, tests and deterministic importer. Runtime local-font patch affects only imported runtime copy; source remains immutable.
 - v1 chat POST message, and v2 missing/unverified API routes remain BLOCKED. CH-02 `GET /rooms/:id/events` remains unresolved.
 - CI run #42578333371: platform setup, geometry, 73-screen gallery check, pub get, analyze and tests PASS; Android APK still in progress at last observation. It predates later commits; latest head not verified.
+
+
+## Current state — 2026-11-11 Beta 1.0 / Stage 4 single executor
+
+- Sole executor: ChatGPT. Do not create or assume an external-agent workstream unless the owner explicitly changes this instruction.
+- Product stage: Beta 1.0 only. Beta 2.0 scope is not active.
+- Approved WBS v1.1 is unchanged: Beta 1.0 baseline 42% implementation / 31% verification; domain weights remain Backend/API 25%, Flutter/UI 25%, API/UI 15%, MLS/security/storage 20%, QA/CI/E2E 10%, DevOps/release 5%.
+- Active PR #45 remains OPEN/Draft. Current implementation head at last code change: `048db63a7817b28e38a3a8353f8665a713f56730`; documentation report added at `a73f59a253224eefa7b794c708666a3a20153519`.
+- Source hardening: native MLS feature gate defaults false; cleanup attempts platform-key deletion even if DB file deletion fails; inbox replay is idempotent; session initialization/handoff are serialized; Android JNI context failures propagate; malformed event IDs and MLS processing errors are rejected rather than silently consumed.
+- iOS Protected Keychain CI now fails if signing secrets are absent; runtime validation may not be skipped for acceptance.
+- CI on SHA `048db63a7817b28e38a3a8353f8665a713f56730`: OpenMLS client run #42976612169 and FRB run #42976612175 both failed before step 1 with `runner_id=0`, empty steps, and no retrievable logs. iOS dependent job skipped. This is an execution blocker; exact GitHub-side cause is unknown.
+- Stage 4 is NOT ACCEPTED. No Stage 4 test command has executed in this environment; no green status is claimed.
+- Critical open design issue: OpenMLS provider and client metadata use separate SQLite connections. Atomicity between MLS ratchet-state writes and inbox persistence is not yet established. A crash/restart regression and a proven atomic/recoverable design are mandatory.
+- Full report: `development/reports/2026-11-11-stage-4-single-executor-progress.md`.
