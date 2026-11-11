@@ -307,3 +307,12 @@ This section supersedes stale earlier statements in this file that no applied P0
 - Source SHA: `e4133120d59ea833dd010bdaa10a7f7a4f281375`.
 - Latest OpenMLS/FRB jobs #42977699906 and #42977699954 failed before step 1 with runner_id 0 and empty steps; OpenMLS rerun #42977708226 repeated the same. No tests executed.
 - Crash/restart tests for server-accepted commit recovery remain mandatory. Stage 4 is NOT ACCEPTED.
+
+
+### Logout/session race hardening — 2026-11-11
+
+- Logout now waits for in-flight login, session restoration, MLS handoff and token refresh; new login/adoption/API requests are rejected while logout is active.
+- In-memory credentials are cleared even if persistent identity deletion fails.
+- Regression test added for logout during a blocked native handoff; test is committed but not executed.
+- Source SHA: `404775ff54c5e8a5eee175eb8d908c6c6929e2c0`.
+- Latest CI #42977937179 and #42977937116 again failed before step 1 with runner_id 0 and empty steps; iOS dependent job skipped. Stage 4 remains NOT ACCEPTED.
