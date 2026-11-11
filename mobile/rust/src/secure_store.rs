@@ -6,6 +6,8 @@ use mls_client::KeyStore;
 /// Production database-key storage. The key is read and written entirely
 /// inside Rust through Android Keystore-backed storage or Apple's protected
 /// Keychain store; it is never passed to Dart.
+static KEY_STORE_LOCK: Mutex<()> = Mutex::new(());
+
 pub struct PlatformKeyStore {
     _private: (),
 }
@@ -33,8 +35,7 @@ impl KeyStore for PlatformKeyStore {
     }
 
     fn database_key(&self, scope: &str) -> Result<[u8; 32], String> {
-        static KEY_CREATION_LOCK: Mutex<()> = Mutex::new(());
-        let _guard = KEY_CREATION_LOCK
+        let _guard = KEY_STORE_LOCK
             .lock()
             .map_err(|error| format!("блокировка ключа SQLCipher: {error}"))?;
         if let Some(key) = self.existing_database_key(scope)? {
