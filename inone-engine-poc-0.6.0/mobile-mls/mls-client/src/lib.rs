@@ -214,6 +214,58 @@ fn ensure_existing_key_matches_database(
     Ok(existing_key)
 }
 
+fn remove_database_artifacts(db_path: &str) -> Result<(), String> {
+    let mut errors = Vec::new();
+    for suffix in ["", "-wal", "-shm", "-journal"] {
+        let path = format!("{db_path}{suffix}");
+        match std::fs::remove_file(&path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => errors.push(format!("remove {path}: {error}")),
+        }
+    }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join("; "))
+    }
+}
+
+fn build_client_with_keys(
+    agent: ureq::Agent,
+    base: &str,
+    tokens: (String, String),
+    user_id: &str,
+    device_id: &str,
+    db_path: &str,
+    keys: &dyn KeyStore,
+) -> Result<Client, String> {
+    let scope = format!("{user_id}/{device_id}");
+    let existing_key = ensure_existing_key_matches_database(db_path, &scope, keys)?;
+    let database_existed = database_artifacts_exist(db_path);
+    let db_key = keys.database_key(&scope)?;
+    match build_client(agent, base, tokens, user_id, device_id, db_path, &db_key) {
+        Ok(client) => Ok(client),
+        Err(error) if existing_key.is_none() && !database_existed => {
+            let database_cleanup = remove_database_artifacts(db_path);
+            let key_cleanup = keys.delete_database_key(&scope);
+            let cleanup_errors: Vec<String> = [database_cleanup.err(), key_cleanup.err()]
+                .into_iter()
+                .flatten()
+                .collect();
+            if cleanup_errors.is_empty() {
+                Err(error)
+            } else {
+                Err(format!(
+                    "{error}; cleanup of partially created MLS session failed: {}",
+                    cleanup_errors.join("; ")
+                ))
+            }
+        }
+        Err(error) => Err(error),
+    }
+}
+
 pub trait KeyStore: Send + Sync {
     /// Loads an existing key without creating or replacing one.
     fn existing_database_key(&self, scope: &str) -> Result<Option<[u8; 32]>, String>;
@@ -296,7 +348,7 @@ pub fn connect(base: &str, user_id: &str, password: &str, device_id: &str, db_pa
         login["token"].as_str().ok_or("сервер не вернул токен: нужно подтверждение с другого устройства")?.to_string(),
         login["refreshToken"].as_str().ok_or("сервер не вернул токен обновления")?.to_string(),
     );
-    build_client(agent, base, tokens, user_id, device_id, db_path, &keys.database_key(&format!("{user_id}/{device_id}"))?)
+    build_client_with_keys(agent, base, tokens, user_id, device_id, db_path, keys)
 }
 
 /// Подключает постоянный MLS-клиент к уже созданной мобильной сессии.
@@ -321,14 +373,14 @@ pub fn connect_with_session(
     let scope = format!("{user_id}/{device_id}");
     ensure_existing_key_matches_database(db_path, &scope, keys)?;
     let agent = ureq::AgentBuilder::new().build();
-    build_client(
+    build_client_with_keys(
         agent,
         base.trim_end_matches('/'),
         (access_token.to_string(), refresh_token.to_string()),
         user_id,
         device_id,
         db_path,
-        &keys.database_key(&format!("{user_id}/{device_id}"))?,
+        keys,
     )
 }
 
@@ -441,7 +493,7 @@ pub fn connect_with_approval(
             (t.ok_or("сервер не вернул токен")?, r.ok_or("сервер не вернул токен обновления")?)
         }
     };
-    build_client(agent, base, tokens, user_id, device_id, db_path, &keys.database_key(&format!("{user_id}/{device_id}"))?)
+    build_client_with_keys(agent, base, tokens, user_id, device_id, db_path, keys)
 }
 
 fn build_client(agent: ureq::Agent, base: &str, tokens: (String, String), user_id: &str, device_id: &str, db_path: &str, db_key: &[u8; 32]) -> Result<Client, String> {
