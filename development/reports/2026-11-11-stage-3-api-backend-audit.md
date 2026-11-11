@@ -113,3 +113,17 @@ PR #42 was inspected: it adds only `.github/workflows/f01-f02-postgres.yml`; it 
 **Required handoff:** obtain the exact original agent patch and changed-file list, preserve its working-tree changes, compare against current main, review, then run the PostgreSQL concurrency test. Do not reconstruct or overwrite the missing patch from memory.
 
 Stage 3 authorization/security acceptance is **blocked** until F-01 and F-02 source changes and PostgreSQL test evidence are present.
+
+
+## 8. Delivery status after contract/test pass (2026-11-11)
+
+- Canonical contract matrix: `mobile/API-CONTRACTS-BETA-1.md`.
+- Approval manifest: 24 screens / 25 unique API operations; source preflight matched all 25 to backend route evidence.
+- Legacy Flutter handoff catalog: chat, rooms, organization and profile routes cross-checked; CH-02 history, MLS send, commit, Welcome ACK and sync/read ACK paths documented.
+- Regression guard: `engine/test/api-contract.test.js`, included in default `npm test`.
+- Existing authorization evidence reviewed: `security-matrix.test.js`, `org-isolation-matrix.test.js`, `room-permissions.test.js`, `sessions.test.js`, `recovery.test.js`, `org-requests.test.js`, `org-links.test.js`.
+- Draft PR #44: https://github.com/vahe210991-cloud/InOne-chat/pull/44.
+- Latest PR head at this update: `f67bf068622947b0484999487582cdba60bb79fa`.
+- Latest GitHub Actions run set for this head: backend Node, PostgreSQL integration, OpenMLS, Rust bridge, Rust format, P0 room-list regression and Flutter validation. Rust format and P0 room-list regression passed; backend/DB/OpenMLS/Rust bridge/Flutter jobs were still running when this report was updated.
+
+**Acceptance remains blocked** by F-01/F-02 source patches not present in the repository/PR #42. Do not mark Stage 3 accepted until the exact original patch is handed off, reviewed and passes PostgreSQL concurrency tests. PR #44 remains Draft and unmerged.
