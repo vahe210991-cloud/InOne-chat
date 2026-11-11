@@ -190,7 +190,18 @@ class InOneSession extends ChangeNotifier {
         'platform': platform,
       },
     );
+    final safeResult = Map<String, dynamic>.from(result)
+      ..remove('token')
+      ..remove('refreshToken')
+      ..remove('code')
+      ..remove('pollSecret');
     _acceptSession(result);
+    // Do not return or display access/refresh tokens or device-approval
+    // secrets to callers such as the API test panel.
+    result['token'] = null;
+    result['refreshToken'] = null;
+    result['code'] = null;
+    result['pollSecret'] = null;
     final native = _nativeMlsBridge;
     if (native != null) {
       try {
@@ -202,7 +213,7 @@ class InOneSession extends ChangeNotifier {
         notifyListeners();
       }
     }
-    return result;
+    return safeResult;
   }
 
   Future<Map<String, dynamic>> startEmailRegistration(String email) =>
@@ -417,7 +428,12 @@ class InOneSession extends ChangeNotifier {
         authenticated: false,
         body: {'refreshToken': current},
       );
-      _acceptSession(result);
+      try {
+        _acceptSession(result);
+      } finally {
+        result['token'] = null;
+        result['refreshToken'] = null;
+      }
     } on ApiException {
       _clearSession();
       rethrow;
