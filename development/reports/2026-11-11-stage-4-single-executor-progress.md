@@ -633,3 +633,55 @@ CI was triggered on this exact SHA:
 The combined status API returned no status entries for this SHA. No test command is evidenced as executed. The exact job-start failure message is not available through the current GitHub connector, so its cause remains UNKNOWN.
 
 **Current acceptance:** Stage 4 NOT ACCEPTED / BLOCKED; 0% verification accepted. Keep the native MLS feature gate disabled. Owner must provide the exact job-level failure message from the GitHub Actions UI or restore an authorized runner. Do not infer a root cause from the absence of logs.
+
+
+## 29. Logout fail-closed hardening and regression additions — 2026-11-11
+
+### 29.1 Rust logout behavior
+
+`Client.logout` now attempts the server logout, then always:
+- deletes the locally persisted `session_tokens` row from SQLCipher;
+- clears the in-memory access/refresh token pair, including when the token mutex is poisoned;
+- zeroizes the logout response value;
+- returns an explicit error distinguishing server logout failure from local token deletion failure.
+
+A new regression test `logout_clears_local_session_tokens_when_server_is_unavailable` builds a client against an unreachable loopback endpoint and checks that the in-memory access token and SQLCipher session-token row are cleared despite the server error.
+
+### 29.2 Flutter logout behavior
+
+`InOneSession.logout` now clears the persisted MLS user identity after every explicit logout attempt, even when native purge fails. If an MLS identity exists but native runtime/device identity is unavailable, logout returns an explicit error rather than silently succeeding. This prevents the app from automatically attempting to resume the previous MLS session after an explicit logout attempt.
+
+New Dart tests:
+- `logout clears saved MLS identity when native purge fails`
+- `logout clears saved MLS identity when native runtime is unavailable`
+
+The local SQLCipher DB/key may remain if native purge fails; the app no longer silently auto-resumes that identity. The failure is surfaced to the caller.
+
+### 29.3 Added native persistence regressions
+
+Three additional Rust tests were added:
+- `existing_database_with_wrong_protected_key_is_rejected_without_replacement`: verifies a mismatched key does not overwrite the protected key or destroy the existing encrypted database.
+- `failed_new_session_initialization_removes_partial_database_and_key`: forces DB open failure after creating a new key and verifies both partial artifacts and the newly-created key are removed.
+- `process_crash_rolls_back_ratchet_and_inbox_atomically`: child process exits with an open SQLCipher WAL transaction after storing OpenMLS ratchet material and an inbox/processed record; parent verifies none of the uncommitted writes survive recovery.
+
+These are test-source additions only. They have not executed.
+
+### 29.4 Latest exact-head CI
+
+PR #45 head: `54711b873349a8adb575f27d9c1fcccebbc49081`.
+
+| Workflow | Run | Result | Evidence |
+|---|---:|---|---|
+| FRB generation | [42988592622](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42988592622) | FAILURE | `generate-and-validate` job `130415621116`: `steps=null`, `logs_url=null`; log download returned BlobNotFound. Generated commit/final-SHA/iOS jobs SKIPPED |
+| OpenMLS client | [42988592592](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42988592592) | FAILURE | Job `130415620536`: `steps=null`, `logs_url=null`; log download returned BlobNotFound |
+| Flutter mobile | [42988592656](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42988592656) | SKIPPED | Explicit Stage 4 branch condition |
+
+No test command is evidenced as executed. Exact failure reason remains UNKNOWN.
+
+### 29.5 Acceptance
+
+- Source changes and regression tests are committed, but no new test is marked PASS.
+- Stage 4 verification accepted: 0%; NOT ACCEPTED / BLOCKED.
+- Beta 1.0 WBS v1.1 unchanged.
+- Keep `INONE_MLS_NATIVE_ENABLED=false`; no merge.
+- Required next input: exact job-level failure message from GitHub Actions UI for run #42988592622 or #42988592592, or owner-authorized working runner access. No root cause is inferred.
