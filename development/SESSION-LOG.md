@@ -359,3 +359,12 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Source/PR head: `6e56671b632c993ebd15735caf5001ad2662012a`.
 - CI #42982066347 (OpenMLS) and #42982066366 (FRB) FAILED with null steps/log URLs; iOS dependent job skipped; Flutter mobile #42982066410 skipped by branch condition.
 - No tests executed. Stage 4 remains NOT ACCEPTED.
+
+
+### 2026-11-11 — P0 parity audit of active mobile MLS client
+
+- Compared active Stage 4 client `inone-engine-poc-0.6.0/mobile-mls/mls-client/src/lib.rs` with accepted P0 reference `inone-development-archive-0.6.0/engine/mobile-mls/mls-client/src/lib.rs` and P0 acceptance map.
+- Confirmed active client lacks durable Welcome receipts/ACK retry, membership journal/fingerprint, KeyPackage claim replay, WaitingForCommit, Commit quarantine and sticky RecoveryRequired.
+- Confirmed active invite still uses legacy GET KeyPackage endpoint rather than P0 claim ID reservation/replay.
+- These are active mobile-runtime gaps; archived P0 acceptance does not prove the Beta 1.0 mobile runtime contains them.
+- Added F1/F4/F5/P0.3 and claim/replay porting tasks to the Stage 4 checklist. No tests were run.
