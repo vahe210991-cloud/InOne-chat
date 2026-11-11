@@ -396,3 +396,16 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Rerun attempts did not provide step summaries or logs. No local Cargo/Rust compiler available; no local test results are claimed. No Stage 4 test is marked PASS.
 - Detailed report: `development/reports/2026-11-11-stage-4-native-mls-hardening-progress.md`.
 - Acceptance: Stage 4 NOT ACCEPTED / BLOCKED. Beta 1.0 WBS v1.1 baseline unchanged at 42% implementation / 31% verification. Do not merge.
+
+
+### 2026-11-11 — CI privilege isolation and exact-SHA gate
+
+- Refactored the FRB workflow: default contents permission is read-only; only a separate generated-artifact commit job has contents:write; it rejects symlinks and copies only allowlisted generated outputs.
+- Added a read-only final-SHA verification job that reruns Rust formatting, native bridge tests, persistent OpenMLS/P0 engine integration tests, Flutter analyze/tests, Android APK build and Android Keystore runtime smoke test on the exact generated commit.
+- iOS job now depends on exact-SHA verification, checks out that SHA, requires signing secrets, validates certificate/profile/team/app/keychain-group/expiry, configures manual signing, runs Protected Keychain smoke test and verifies app signature/entitlements. Temporary signing material is cleaned up.
+- Corrected macOS base64 decoding to `base64 -D`; checked iOS profile and certificate team match.
+- Workflow source commit: `00efe8fd002a78f3bb0dbbc2033b9581eda8efec`; subsequent signing/verification fixes: `a754735ca14ffe274f720590a09ceb5b88b9bfcb`, `56102098427b8853b746b94d8c073c5aa97d0c2c`.
+- Latest PR head: `56102098427b8853b746b94d8c073c5aa97d0c2c`.
+- Latest OpenMLS #42987007179 and FRB #42987007308 failed with no steps/log URLs; FRB downstream commit/final-SHA/iOS jobs skipped. Flutter #42987007363 skipped by branch condition. No test command is evidenced as executed.
+- Stage 4 remains NOT ACCEPTED / BLOCKED; Beta 1.0 WBS unchanged; native MLS flag remains false.
+- Report section 26 records exact CI evidence and remaining unblock.
