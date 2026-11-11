@@ -230,3 +230,17 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Import bot commit advanced branch to `cb09a4058719576df6d589f1f8b59be517b592b5`. The workflow tested the workspace after import but run's event SHA is prior commit `478cad39...`; request an independent CI run on the new head.
 - PR remains draft/open/unmerged; main unchanged by this task. Runtime WebView rendering, live API/bridge, visual parity and device E2E remain unverified.
 - WBS baseline v1.1 unchanged: Beta 1.0 42% implementation / 31% verification; Beta 2.0 2% / 0%; overall historical 25%.
+
+
+## 2026-11-11 — Beta 1.0 Stage 4 single-executor continuation
+
+- Owner instruction: ChatGPT is the sole developer/executor; do not assign or assume an external agent. Current product stage is Beta 1.0 only; Beta 2.0 is out of scope.
+- Preserved approved WBS v1.1 weights and Beta 1.0 baseline (42% implementation / 31% verification). No percentage increase claimed.
+- Added native MLS build-time feature gate defaulting to disabled; hardening changes cover logout key deletion, inbox replay idempotency, concurrent session initialization/handoff, Android JNI initialization error propagation, malformed MLS event rejection and crypto-error propagation.
+- Made iOS Protected Keychain runtime validation require signing secrets rather than silently accepting a skipped test.
+- Added report `development/reports/2026-11-11-stage-4-single-executor-progress.md`.
+- Latest source head at report time: `048db63a7817b28e38a3a8353f8665a713f56730`; report commit: `a73f59a253224eefa7b794c708666a3a20153519`.
+- CI runs #42976612169 (OpenMLS client) and #42976612175 (FRB) failed before the first step: `runner_id=0`, empty step arrays, no retrievable job logs. iOS dependent job skipped. Flutter mobile workflow is intentionally skipped for the Stage 4 branch; FRB workflow is intended to run Flutter analyze/tests and Android build.
+- No test command ran. Stage 4 is NOT ACCEPTED; no merge or deployment performed.
+- Critical open review item: OpenMLS provider storage and client metadata use separate SQLite connections; crash atomicity between ratchet-state mutation and durable inbox persistence is not yet established. Requires crash/restart test and a proven atomic/recoverable design.
+- Next: resolve runner allocation; implement/test MLS state + inbox atomicity; run Rust/OpenMLS, FRB, Flutter, Android Keystore and signed iOS Protected Keychain gates on one exact SHA.
