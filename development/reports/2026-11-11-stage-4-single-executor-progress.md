@@ -37,6 +37,7 @@ All changes below are committed to the Stage 4 branch. They are implementation c
 | Persistence atomicity | OpenMLS provider and client metadata share one SQLCipher connection; incoming ratchet state, inbox row and processed marker are committed in one transaction; rollback reloads group state | `a020923dc0b534ba2884f47c0d68f1947f006df1`, `b92d3406a232df792b5563f12e8b6d122038289f` |
 | Room/commit transactions | Room creation, Welcome adoption and server commit processing/merge use transaction-backed OpenMLS storage | `b92d3406a232df792b5563f12e8b6d122038289f` |
 | Pending commit ordering | Invite/revocation commits are staged, sent to the server, and merged locally only after server acceptance; failed sends clear local pending commits | `4578f2aa11935ba6d34bc0880e7ed1cb18c623e5`, `a431cf951975eda0c27c44ee9f40c42b2e344002`, `b92d3406a232df792b5563f12e8b6d122038289f` |
+| Restart reconciliation | Sync clears an unmerged local pending commit before applying server state and fails closed if the local epoch is ahead of the server | `7843716ad483a1bbb24c2662a9bb9b75ba8820ed`, `870b2e505a230653d0b5141cfc83d0b1ba8ef26c` |
 | Session concurrency | Serialized concurrent initialization and concurrent native MLS handoff | `b7a9491f2b5bcf3c2c5ac542e285297f836a34dc` |
 | Flutter session tests | Added concurrent initialization and concurrent MLS handoff tests | `3c928ea4d50dec549cb13480d818010aaff1f187` |
 | iOS Protected Keychain gate | CI now requires signing certificate, password, provisioning profile and team ID; missing secrets fail the iOS runtime gate instead of silently skipping it | `0dd3cab829010df0a4c6230e116e80163729f3a5` |
@@ -143,7 +144,7 @@ The runner-allocation failure persists on the documentation-updated PR head. No 
 
 ## 9. Latest source/CI state — 2026-11-11
 
-The source head advanced to `c8ba8f99c45cd532b0941fd774304b6763429511` after the atomic persistence and pending-commit changes. This SHA contains product source changes; later report commits may advance the branch without changing the source.
+The source head advanced to `e4133120d59ea833dd010bdaa10a7f7a4f281375` after the atomic persistence, pending-commit and restart-reconciliation changes. This SHA contains product source changes; later report commits may advance the branch without changing the source.
 
 Latest runs on `c8ba8f99c45cd532b0941fd774304b6763429511`:
 
@@ -153,3 +154,15 @@ Latest runs on `c8ba8f99c45cd532b0941fd774304b6763429511`:
 - [Flutter mobile validation #42977404079](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42977404079): SKIPPED by the Stage 4 branch condition.
 
 The no-runner condition persists. No Rust/Flutter/Android/iOS command executed. Stage 4 remains NOT ACCEPTED.
+
+
+## 10. Latest restart-reconciliation CI recheck — 2026-11-11
+
+Source head: `e4133120d59ea833dd010bdaa10a7f7a4f281375`.
+
+- [OpenMLS client run #42977699906](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42977699906): FAILED before step 1; `runner_id=0`; `steps=[]`.
+- [FRB generation run #42977699954](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42977699954): FAILED before step 1; `runner_id=0`; `steps=[]`; iOS dependent job SKIPPED.
+- A rerun of the OpenMLS client job, [#42977708226](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42977708226), again failed before step 1 with `runner_id=0` and no steps.
+- FRB rerun [#42977708143](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42977708143) remained queued at the time of inspection.
+
+No source test command executed. Stage 4 remains NOT ACCEPTED.
