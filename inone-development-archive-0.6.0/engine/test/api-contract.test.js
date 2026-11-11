@@ -64,18 +64,18 @@ test('every operation declared by the v0.8 approval manifest has a backend handl
 });
 
 test('every API declared by the legacy Flutter handoff catalog has a backend handler', () => {
-  const declared = handoffCatalog.split('\\n')
+  const declared = handoffCatalog.split('\n')
     .map((line) => line.match(/api: '([^']+)'/u)?.[1])
     .filter((operation) => typeof operation === 'string');
   const missing = declared.filter((operation) => !routeEvidence.get(operation)?.test(server));
   assert.deepEqual(missing, [], `Missing legacy backend route evidence: ${missing.join(', ')}`);
 
   // GR-02 and GR-04 describe multi-action screens without a single api property.
-  assert.match(server, /req\\.method === 'POST' && p === '\\/rooms'/u);
-  assert.match(server, /const memberRoute = p\\.match/u);
-  assert.match(server, /memberRoute && req\\.method === 'GET'/u);
-  assert.match(server, /const settingsRoute = p\\.match/u);
-  assert.match(server, /settingsRoute && req\\.method === 'POST'/u);
+  assert.match(server, /req\.method === 'POST' && p === '\\/rooms'/u);
+  assert.match(server, /const memberRoute = p\.match/u);
+  assert.match(server, /memberRoute && req\.method === 'GET'/u);
+  assert.match(server, /const settingsRoute = p\.match/u);
+  assert.match(server, /settingsRoute && req\.method === 'POST'/u);
 });
 
 test('CH-02 message delivery uses MLS and rejects legacy room-event POST', () => {
