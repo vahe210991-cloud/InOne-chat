@@ -450,3 +450,13 @@ Do not re-port these mechanisms. See Stage 4 report section 25 for the exact com
 - Flutter #42987463998: SKIPPED by branch condition.
 - Combined status API returned no status entries. No test command is evidenced as executed. Exact failure reason UNKNOWN.
 - Stage 4 remains NOT ACCEPTED / BLOCKED. Owner must provide the exact job-level message from GitHub Actions UI or an authorized working runner. Do not guess.
+
+
+## Latest logout hardening and persistence regressions — 2026-11-11
+
+- Rust logout now clears the local SQLCipher session-token row and in-memory token pair even when the server is unreachable; offline logout regression added.
+- Flutter logout clears the persisted MLS identity after every explicit logout attempt, including native purge failure; missing native runtime/device identity returns an explicit error. Two Dart regressions verify no automatic resume after logout failure.
+- Added Rust tests for wrong SQLCipher key mismatch without replacement, cleanup after partial new-session initialization, and process termination with an uncommitted WAL transaction covering OpenMLS ratchet + inbox + processed marker.
+- Test source only; not executed.
+- Exact head with these tests: `54711b873349a8adb575f27d9c1fcccebbc49081`. FRB #42988592622 and OpenMLS #42988592592 failed before steps/logs (BlobNotFound); Flutter #42988592656 skipped. Exact failure reason UNKNOWN.
+- Stage 4 remains NOT ACCEPTED / BLOCKED, 0% verification accepted. Keep `INONE_MLS_NATIVE_ENABLED=false`.
