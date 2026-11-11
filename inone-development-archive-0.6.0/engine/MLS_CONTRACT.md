@@ -133,3 +133,42 @@
 - `POST /logout`: завершает сессию устройства; устройство остаётся зарегистрированным.
 - Восстановление аккаунта применяется раньше выдачи новой пары: отключённое устройство не получает токен.
 
+
+
+---
+
+## 23. Реализация и сверка с исходным кодом (2026-11-11)
+
+Этот раздел имеет приоритет над более ранними формулировками «план» в разделах 3–7 и уточняет старые упоминания отправки через `POST /rooms/:id/events`.
+
+В актуальном `src/server.js` реализованы следующие маршруты:
+
+| Операция | Маршрут | Назначение |
+|---|---|---|
+| Отправка MLS-сообщения | `POST /mls/groups/:id/messages` | Проверка участника, capability, заголовка MLS, группы, эпохи, размера и clientMessageId |
+| История комнаты | `GET /rooms/:id/events` | Выдача событий после joinedSeq пользователя |
+| Чтение коммитов | `GET /mls/groups/:id/commits?since=N` | Получение коммитов в порядке эпох |
+| Текущая эпоха | `GET /mls/groups/:id/epoch` | Состояние MLS-группы для участника |
+| Получение Welcome | `GET /mls/welcomes` | Ожидающие приветствия для устройств пользователя |
+| Подтверждение Welcome | `POST /mls/welcomes/:id/ack` | Подтверждение получения Welcome конкретным устройством |
+| Загрузка KeyPackage | `POST /mls/key-packages` | Публикация обычных пакетов |
+| Счётчик KeyPackage | `GET /mls/key-packages/count` | Число доступных обычных пакетов |
+| Last-resort KeyPackage | `POST /mls/key-packages/last-resort` | Замена резервного пакета устройства |
+| Claim KeyPackage | `POST /mls/key-packages/:userId/claim` и reservation-вариант `POST /mls/key-packages/:userId/claims` | Атомарное резервирование пакетов |
+| Освобождение claim | `DELETE /mls/key-packages/claims/:claimId` | Освобождение резерва текущего устройства |
+| Ожидающие удаления | `GET /mls/removals` | Состояние удаления устройств/участников |
+
+### Обязательные ограничения клиента
+
+- `POST /rooms/:id/events` не является маршрутом отправки. Для него возвращается HTTP 409 с указанием MLS endpoint.
+- Сообщение отправляется только как base64 MLS ciphertext; сервер не должен получать plaintext.
+- Повтор после потери ответа должен использовать тот же `clientMessageId`.
+- При HTTP 409 `epoch_outdated` клиент обязан получить актуальные коммиты/эпоху и повторить MLS-операцию корректно, а не переслать старый ciphertext.
+- История комнаты и коммиты должны синхронизироваться с учётом порядка эпох. Нельзя применять сообщения более новой эпохи до соответствующего коммита.
+- WebView не владеет MLS-состоянием, секретами, refresh token или ключевым материалом. Это ответственность native MLS runtime (Stage 4).
+
+### Тестовая база
+
+В репозитории есть отдельные тесты сообщений, offline delivery, idempotency, group membership, key packages, welcome/ACK и sync ACK. В частности, `test/mls-messages.test.js` проверяет отправку и чтение ciphertext, устаревшую эпоху, сообщение для другой группы, запрет legacy POST, запрет доступа удалённому участнику и предел размера.
+
+Проверки на PR #44 code head `3d288777135d0c12145f18407e8768a02ae80a9f` завершены успешно: backend Node — 382 passed / 0 failed; PostgreSQL 16 — 124 passed / 0 failed; OpenMLS, Rust bridge, Rust format, P0 room-list regression, Flutter analyze/tests и Android preview APK — passed. Последний документационный head PR повторно проверяется CI. Эти результаты подтверждают серверные контракты и тесты, но не заменяют Stage 2 typed bridge integration или Stage 4 native MLS runtime acceptance.

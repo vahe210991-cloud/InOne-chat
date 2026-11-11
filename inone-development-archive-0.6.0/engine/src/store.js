@@ -282,8 +282,15 @@ export function createStore({ pool, pinPepper }) {
       return rows[0].n;
     },
     async removeOrgMember(orgId, userId) {
-      await pool.query('DELETE FROM room_members WHERE user_id = $2 AND room_id IN (SELECT room_id FROM rooms WHERE org_id = $1)', [orgId, userId]);
-      await pool.query('DELETE FROM org_members WHERE org_id = $1 AND user_id = $2', [orgId, userId]);
+      // Lock the authorization row before removing room memberships. Open joins
+      // take FOR SHARE on this row inside their own transaction; this ordering
+      // prevents a revoke from deleting membership first and then leaving a
+      // stale room_members row inserted by an in-flight join.
+      await inTransaction(async (c) => {
+        await c.query('SELECT user_id FROM org_members WHERE org_id = $1 AND user_id = $2 FOR UPDATE', [orgId, userId]);
+        await c.query('DELETE FROM room_members WHERE user_id = $2 AND room_id IN (SELECT room_id FROM rooms WHERE org_id = $1)', [orgId, userId]);
+        await c.query('DELETE FROM org_members WHERE org_id = $1 AND user_id = $2', [orgId, userId]);
+      });
     },
     async purgeRejectedOrgRequests(cutoffMs) {
       const { rows } = await pool.query("SELECT d.object_key FROM org_request_documents d JOIN org_requests r ON r.request_id = d.request_id WHERE r.status = 'rejected' AND r.decided_at <= $1", [cutoffMs]);
@@ -328,6 +335,13 @@ export function createStore({ pool, pinPepper }) {
     },
     async setOrgLinkStatus({ linkId, status, decidedBy, decidedAt }) {
       await pool.query('UPDATE org_links SET status = $2, decided_by = $3, decided_at = $4 WHERE link_id = $1', [linkId, status, decidedBy, decidedAt]);
+    },
+    async transitionOrgLinkStatus({ linkId, fromStatus, status, decidedBy, decidedAt }) {
+      const { rowCount } = await pool.query(
+        'UPDATE org_links SET status = $3, decided_by = $4, decided_at = $5 WHERE link_id = $1 AND status = $2',
+        [linkId, fromStatus, status, decidedBy, decidedAt],
+      );
+      return rowCount === 1;
     },
     async activeLinkBetween(x, y) {
       const a = x < y ? x : y;
@@ -837,6 +851,74 @@ async mlsPendingRemovalsFor(userId) {
       const { rows } = await pool.query('SELECT device_id FROM mls_device_removals WHERE room_id = $1 AND done_at IS NULL', [roomId]);
       return rows.map((r) => r.device_id);
     },
+    async joinPublicRoomOpen({ roomId, userId, maxMembers }) {
+      return inTransaction(async (c) => {
+        // The room row is the serialization point for every open-join attempt and
+        // for concurrent visibility/join-policy updates.
+        const { rows: roomRows } = await c.query(
+          `SELECT r.kind, r.visibility, r.join_policy, r.org_id, o.status AS org_status
+             FROM rooms r JOIN organizations o ON o.org_id = r.org_id
+            WHERE r.room_id = $1 FOR UPDATE OF r`,
+          [roomId],
+        );
+        const room = roomRows[0];
+        if (!room) return { status: 'not_found' };
+        if (room.visibility !== 'public') return { status: 'not_public' };
+        if (room.join_policy !== 'open') return { status: 'not_open' };
+
+        const { rows: existing } = await c.query(
+          'SELECT 1 FROM room_members WHERE room_id = $1 AND user_id = $2',
+          [roomId, userId],
+        );
+        if (existing.length) return { status: 'already_member' };
+        if (room.org_status !== 'approved') return { status: 'org_not_approved' };
+
+        // Re-check organization access inside the same transaction. Share locks
+        // prevent membership removal or link revocation from overtaking this join.
+        const { rows: directMembership } = await c.query(
+          'SELECT 1 FROM org_members WHERE org_id = $1 AND user_id = $2 FOR SHARE',
+          [room.org_id, userId],
+        );
+        if (!directMembership.length) {
+          const { rows: linkedMembership } = await c.query(
+            `SELECT 1
+               FROM org_members member
+               JOIN organizations member_org ON member_org.org_id = member.org_id
+               JOIN org_links link
+                 ON link.status = 'active'
+                AND ((link.org_a = member.org_id AND link.org_b = $1)
+                  OR (link.org_b = member.org_id AND link.org_a = $1))
+              WHERE member.user_id = $2 AND member_org.status = 'approved'
+              LIMIT 1 FOR SHARE OF member, member_org, link`,
+            [room.org_id, userId],
+          );
+          if (!linkedMembership.length) return { status: 'org_not_member' };
+        }
+
+        const { rows: countRows } = await c.query(
+          'SELECT COUNT(*)::int AS n FROM room_members WHERE room_id = $1',
+          [roomId],
+        );
+        if (room.kind !== 'channel' && Number.isFinite(maxMembers) && Number(countRows[0].n) >= maxMembers) {
+          return { status: 'full' };
+        }
+
+        const { rows: seqRows } = await c.query(
+          "SELECT value FROM counters WHERE name = 'event_seq' FOR UPDATE",
+        );
+        const inserted = await c.query(
+          'INSERT INTO room_members (room_id, user_id, is_admin, joined_seq, capabilities) VALUES ($1, $2, FALSE, $3, $4::text[]) ON CONFLICT (room_id, user_id) DO NOTHING RETURNING user_id',
+          [roomId, userId, Number(seqRows[0].value), [...DEFAULT_MEMBER_CAPABILITIES]],
+        );
+        if (!inserted.rowCount) return { status: 'already_member' };
+        const { rows: members } = await c.query(
+          'SELECT user_id FROM room_members WHERE room_id = $1 ORDER BY id',
+          [roomId],
+        );
+        return { status: 'joined', members: members.map((row) => row.user_id) };
+      });
+    },
+
     async addRoomMember(roomId, userId) {
       return inTransaction(async (c) => {
         const { rows } = await c.query("SELECT value FROM counters WHERE name = 'event_seq' FOR UPDATE");

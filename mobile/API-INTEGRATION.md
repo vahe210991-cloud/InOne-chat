@@ -95,3 +95,10 @@ The original 73-card full-screen gallery is packaged and loaded by Flutter; an a
 ## Deployment readiness boundary
 
 The repository's current engine deployment guide identifies this server build as a development/test build, not a production release. Before live company use, the backend owner must complete and verify a real SMTP transport and sender domain, phone/SMS flows where required, a tested deployment/proxy configuration, database backup/restore, monitoring and operational recovery. The checked-in compose file is explicitly marked untested. Until these are closed, connect the Flutter client only to a controlled development or staging environment.
+
+
+## Stage 3 contract source of truth
+
+The complete screen-to-route matrix, authentication boundaries, request-flow notes and current CH-02 MLS sequence are maintained in [API-CONTRACTS-BETA-1.md](API-CONTRACTS-BETA-1.md). That contract matrix supersedes older screen-level route notes in this file when they differ.
+
+Important: `GET /rooms/:id/events` is implemented for reading ciphertext history. It is not a message-send endpoint. All new group messages must use `POST /mls/groups/:id/messages`; the legacy `POST /rooms/:id/events` returns 409. Native MLS ownership and secure local persistence remain Stage 4 work. The WebView bridge must not receive MLS secrets or call arbitrary routes.

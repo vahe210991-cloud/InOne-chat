@@ -35,13 +35,25 @@ async function start() {
   await store.addOrgMember(ORG_A, BORIS, 'admin', 4);
   await store.addOrgMember(ORG_B, CAROL, 'owner', 5);
   await store.addOrgMember(ORG_B, DAVE, 'member', 6);
-  return { srv, base, store, anna, boris, carol, dave, stop: async () => { await new Promise((r) => srv.server.close(r)); await db?.close(); } };
+  return { srv, base, store, pool: db?.pool, anna, boris, carol, dave, stop: async () => { await new Promise((r) => srv.server.close(r)); await db?.close(); } };
 }
 
 async function call(base, method, p, token, body) {
   const res = await fetch(base + p, { method, headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), ...(body !== undefined ? JSON_HEADERS : {}) }, body: body !== undefined ? JSON.stringify(body) : undefined });
   const json = await res.json().catch(() => ({}));
   return { status: res.status, json };
+}
+
+async function waitForSignal(signal, description) {
+  let timeout;
+  try {
+    await Promise.race([
+      signal,
+      new Promise((_, reject) => { timeout = setTimeout(() => reject(new Error(description)), 10000); }),
+    ]);
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 test('по умолчанию организации не общаются: участник другой организации в комнату не добавляется', async () => {
@@ -97,6 +109,116 @@ test('отзыв связи любой стороной убирает учас�
     const again = await call(s.base, 'POST', `/orgs/${ORG_A}/links/${enc(linkId)}/revoke`, s.boris.token, {});
     assert.equal(again.status, 409, 'отозванную связь повторно не отзывают');
   } finally {
+    await s.stop();
+  }
+});
+
+
+test('F-01: stale accept after a concurrent revoke is rejected without an accept audit event', async () => {
+  const s = await start();
+  let releaseAccept;
+  try {
+    const proposed = await call(s.base, 'POST', `/orgs/${ORG_A}/links`, s.boris.token, { targetOrgId: ORG_B });
+    assert.equal(proposed.status, 200);
+    const linkId = proposed.json.linkId;
+
+    const originalGet = s.store.getOrgLink.bind(s.store);
+    let staleRead;
+    const staleReadReady = new Promise((resolve) => { staleRead = resolve; });
+    const acceptGate = new Promise((resolve) => { releaseAccept = resolve; });
+    let paused = false;
+    s.store.getOrgLink = async (id) => {
+      const link = await originalGet(id);
+      if (id === linkId && !paused) {
+        paused = true;
+        staleRead();
+        await acceptGate;
+      }
+      return link;
+    };
+
+    const staleAcceptPromise = call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/accept`, s.carol.token, {});
+    await staleReadReady;
+    const revoked = await call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/revoke`, s.carol.token, {});
+    assert.equal(revoked.status, 200, 'revocation wins while accept holds a stale proposed snapshot');
+
+    releaseAccept();
+    const staleAccept = await staleAcceptPromise;
+    assert.equal(staleAccept.status, 409, 'stale accept must fail its compare-and-set transition');
+    assert.equal((await originalGet(linkId)).status, 'revoked');
+
+    const acceptEventsA = (await s.store.listAdminActions(ORG_A)).filter((event) => event.action === 'link_accept' && event.detail === linkId);
+    const acceptEventsB = (await s.store.listAdminActions(ORG_B)).filter((event) => event.action === 'link_accept' && event.detail === linkId);
+    assert.equal(acceptEventsA.length + acceptEventsB.length, 0, 'a rejected stale accept must not emit accept audit events');
+  } finally {
+    releaseAccept?.();
+    await s.stop();
+  }
+});
+
+
+test('F-02 PostgreSQL: cross-organization link revocation waits for an in-flight open join', { skip: !process.env.DATABASE_URL }, async () => {
+  const s = await start();
+  let releaseJoin;
+  let restorePoolHooks = () => {};
+  try {
+    assert.equal((await call(s.base, 'POST', '/rooms', s.anna.token, { roomId: ROOM, orgId: ORG_A, members: [BORIS] })).status, 200);
+    assert.equal((await call(s.base, 'POST', `/rooms/${enc(ROOM)}/settings`, s.anna.token, { name: 'Связь и открытый вход', visibility: 'public', joinPolicy: 'open' })).status, 200);
+
+    const proposed = await call(s.base, 'POST', `/orgs/${ORG_A}/links`, s.boris.token, { targetOrgId: ORG_B });
+    assert.equal(proposed.status, 200);
+    const linkId = proposed.json.linkId;
+    assert.equal((await call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/accept`, s.carol.token, {})).status, 200);
+
+    const originalConnect = s.pool.connect.bind(s.pool);
+    const originalPoolQuery = s.pool.query.bind(s.pool);
+    restorePoolHooks = () => { s.pool.connect = originalConnect; s.pool.query = originalPoolQuery; };
+    let signalShareLock;
+    let signalRevokeAttempt;
+    const shareLockReady = new Promise((resolve) => { signalShareLock = resolve; });
+    const revokeAttempted = new Promise((resolve) => { signalRevokeAttempt = resolve; });
+    const joinGate = new Promise((resolve) => { releaseJoin = resolve; });
+
+    // Hold the open-join transaction immediately after it acquires the active-link share lock.
+    s.pool.connect = async (...args) => {
+      if (args.length > 0) return originalConnect(...args); // preserve node-postgres callback-style callers
+      const client = await originalConnect();
+      const originalQuery = client.query.bind(client);
+      client.query = async (query, ...params) => {
+        const sql = typeof query === 'string' ? query : query?.text ?? '';
+        if (sql.includes('FOR SHARE OF member, member_org, link')) {
+          const result = await originalQuery(query, ...params);
+          signalShareLock();
+          await joinGate;
+          return result;
+        }
+        return originalQuery(query, ...params);
+      };
+      return client;
+    };
+    s.pool.query = async (query, ...params) => {
+      const sql = typeof query === 'string' ? query : query?.text ?? '';
+      if (sql.includes('UPDATE org_links SET status')) signalRevokeAttempt();
+      return originalPoolQuery(query, ...params);
+    };
+
+    const joining = call(s.base, 'POST', `/rooms/${enc(ROOM)}/join`, s.carol.token, {});
+    await waitForSignal(shareLockReady, 'open join did not acquire the active-link share lock');
+    const revoking = call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/revoke`, s.carol.token, {});
+    await waitForSignal(revokeAttempted, 'link revocation did not attempt its conditional update');
+    releaseJoin();
+
+    const joined = await joining;
+    assert.equal(joined.status, 200, 'join that acquired the active-link lock may finish first');
+    const revoked = await revoking;
+    assert.equal(revoked.status, 200, 'link revocation proceeds after the in-flight join commits');
+
+    const finalRoom = await s.store.getRoom(ROOM);
+    assert.equal(finalRoom.members.includes(CAROL), false, 'revocation must remove the cross-organization member added by the in-flight join');
+    assert.equal((await s.store.getOrgLink(linkId)).status, 'revoked');
+  } finally {
+    releaseJoin?.();
+    restorePoolHooks();
     await s.stop();
   }
 });
