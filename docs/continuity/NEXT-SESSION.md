@@ -254,3 +254,19 @@ Report: `development/reports/2026-11-11-stage-4-single-executor-progress.md`.
 - Test SQLCipher resume with an absent platform key; assert that no replacement key is generated.
 - Test new-session initialization failure after key creation; verify both database artifacts and the newly created key are cleaned.
 - Test DB/key mismatch through every session-creation entrypoint (`connect`, `connect_with_session`, `connect_with_approval`).
+
+
+## Current execution instructions — Beta 1.0 / Stage 4 — 2026-11-11
+
+- Work as the sole ChatGPT executor. Do not assume or assign an external agent; owner will notify if one becomes available.
+- Current product stage is Beta 1.0. Use approved WBS v1.1 only; do not include Beta 2.0/future scope in current acceptance.
+- Current PR #45 head: `84248642e05e03c976a6f8d0eae0a9ab03a64765`.
+- Review and verify the latest source changes: undeclared Rust identifier correction, duplicate pubspec dependency removal, retryable Android/iOS secure-store initialization, retryable Android JNI context, HTTPS/local-debug origin validation, disabled redirects, and associated regression tests.
+- Current CI #42981617948 (OpenMLS) and #42981617913 (FRB) failed before any retrievable step summary; logs returned BlobNotFound. iOS dependent job skipped. Flutter mobile #42981617907 skipped by branch condition. Do not infer the root cause.
+- Local environment currently has no Rust/Cargo/Flutter/Dart/Xcode. Do not claim local tests. Obtain an executable GitHub Actions runner or another owner-authorized build environment before declaring any test result.
+- Continue code review and implement tests for: transaction-backed OpenMLS storage rollback/commit; incoming ratchet+inbox atomicity under process crash; duplicate delivery after restart; Welcome ACK retry after local durable join; server-accepted invite/revocation commit recovery after crash before local merge; missing SQLCipher key fail-closed; key/database mismatch; logout cleanup.
+- Verify Android Keystore and iOS Protected Keychain runtime behavior, signed iOS build and Android runtime smoke tests.
+- Keep `INONE_MLS_NATIVE_ENABLED=false` until all required platform and security checks pass.
+- No merge of PR #45 without complete green required matrix on one exact final SHA and owner approval. Do not update Beta 1.0 progress percentages until WBS criteria have accepted evidence.
+
+Report: `development/reports/2026-11-11-stage-4-single-executor-progress.md`.
