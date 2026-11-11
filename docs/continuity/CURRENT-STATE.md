@@ -519,3 +519,11 @@ Do not re-port these mechanisms. See Stage 4 report section 25 for the exact com
 - Latest job IDs: FRB `130426024038`; OpenMLS `130426036241`. FRB downstream generated-commit/final-SHA/iOS jobs skipped; Flutter #42989491354 skipped by branch condition.
 - No test command evidenced as executed. Exact Actions startup cause UNKNOWN; do not infer source, runner, permission, billing or platform cause.
 - Stage 4 NOT ACCEPTED / BLOCKED; verification accepted 0%; keep `INONE_MLS_NATIVE_ENABLED=false`; no merge. Report section 36.
+
+
+## CI trigger-filter correction — 2026-11-11
+
+- Docs-only commit `5b520b5ba25d1091017a5f19d5fdbba73082fb3a` still triggered FRB #42991893141 and OpenMLS #42991893195 because PR path filters evaluate the aggregate PR diff; FRB push trigger also lacked a path allowlist. Both failed before steps/logs; Flutter #42991893163 skipped.
+- Updated FRB workflow to remove aggregate `pull_request.paths` and add explicit `push.paths` for `.github/workflows/openmls-frb-codegen.yml` and `mobile/**`. Updated OpenMLS workflow to remove aggregate `pull_request.paths`, retaining its existing push path allowlist. `workflow_dispatch` remains.
+- Workflow trigger edits are source-reviewed only; no tests or runner checks passed. Fork-origin PR automation is not covered by this branch-specific approach.
+- Stage 4 remains NOT ACCEPTED / BLOCKED; verification accepted 0%; keep native MLS disabled; no merge. Report section 37.
