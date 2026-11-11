@@ -164,6 +164,8 @@ test('F-02: open join revalidates organization membership after the route prefli
 
 test('F-02 PostgreSQL: revocation waits for an in-flight open join and removes its room membership', { skip: !process.env.DATABASE_URL }, async () => {
   const s = await start();
+  let releaseJoin;
+  let restorePoolHooks = () => {};
   try {
     const room = '!join-open-remove-race:inone.test';
     await s.store.addOrgMember(ORG, BORIS, 'member', 3);
@@ -171,9 +173,9 @@ test('F-02 PostgreSQL: revocation waits for an in-flight open join and removes i
     assert.equal((await post(s.base, s.anna.token, `/rooms/${enc(room)}/settings`, { name: 'Гонка отзыва', visibility: 'public', joinPolicy: 'open' })).status, 200);
 
     const originalConnect = s.pool.connect.bind(s.pool);
+    restorePoolHooks = () => { s.pool.connect = originalConnect; };
     let signalShareLock;
     let signalRevokeAttempt;
-    let releaseJoin;
     const shareLockReady = new Promise((resolve) => { signalShareLock = resolve; });
     const revokeAttempted = new Promise((resolve) => { signalRevokeAttempt = resolve; });
     const joinGate = new Promise((resolve) => { releaseJoin = resolve; });
@@ -211,6 +213,8 @@ test('F-02 PostgreSQL: revocation waits for an in-flight open join and removes i
     const snapshot = await s.store.getRoom(room);
     assert.equal(snapshot.members.includes(BORIS), false, 'revocation must remove the membership inserted by the in-flight join');
   } finally {
+    releaseJoin?.();
+    restorePoolHooks();
     await s.stop();
   }
 });
