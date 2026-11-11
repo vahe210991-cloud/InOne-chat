@@ -231,3 +231,14 @@ Latest CI:
 - [FRB generation run #42979003356](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42979003356): FAILED before step 1; `runner_id=0`; `steps=[]`; iOS dependent job SKIPPED.
 
 No tests executed. Stage 4 remains NOT ACCEPTED.
+
+
+## 15. CI recheck on current PR head — 2026-11-11
+
+Current PR #45 head: `ca49b376a65766fb59e792cf2097ba7b4f2b50ce`. Product source head remains `eab7b4d9a8889f4a5d69cdbb6de29dc2986272ab`.
+
+- [OpenMLS client run #42979080737](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42979080737): FAILED before step 1; `runner_id=0`; `steps=[]`.
+- [FRB generation run #42979080732](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42979080732): FAILED before step 1; `runner_id=0`; `steps=[]`; iOS dependent job SKIPPED.
+- [Flutter mobile validation #42979080672](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42979080672): SKIPPED by Stage 4 branch condition.
+
+The exact runner allocation failure remains unknown. No test command or platform build ran. Stage 4 remains NOT ACCEPTED.
