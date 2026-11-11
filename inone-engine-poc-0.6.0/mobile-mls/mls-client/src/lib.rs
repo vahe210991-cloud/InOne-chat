@@ -177,14 +177,44 @@ fn persist_incoming_record(meta: &mut Connection, incoming: &Incoming) -> Result
     tx.commit().map_err(text)
 }
 
-fn request(agent: &ureq::Agent, base: &str, token: &str, method: &str, path: &str, body: Option<Value>) -> Result<Value, String> {
+fn zeroize_json_value(value: &mut Value) {
+    match value {
+        Value::String(value) => value.zeroize(),
+        Value::Array(values) => {
+            for value in values {
+                zeroize_json_value(value);
+            }
+        }
+        Value::Object(values) => {
+            for value in values.values_mut() {
+                zeroize_json_value(value);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn request(agent: &ureq::Agent, base: &str, token: &str, method: &str, path: &str, mut body: Option<Value>) -> Result<Value, String> {
     let url = format!("{base}{path}");
     let mut req = agent.request(method, &url);
     if !token.is_empty() {
         req = req.set("authorization", &format!("Bearer {token}"));
     }
-    let res = match body {
-        Some(b) => req.send_json(b),
+    let res = match body.as_mut() {
+        Some(value) => {
+            let serialized = match serde_json::to_vec(value) {
+                Ok(bytes) => Zeroizing::new(bytes),
+                Err(error) => {
+                    zeroize_json_value(value);
+                    return Err(text(error));
+                }
+            };
+            let result = req
+                .set("content-type", "application/json")
+                .send_bytes(serialized.as_slice());
+            zeroize_json_value(value);
+            result
+        }
         None => req.call(),
     };
     match res {
@@ -213,7 +243,7 @@ fn ensure_existing_key_matches_database(
     db_path: &str,
     scope: &str,
     keys: &dyn KeyStore,
-) -> Result<Option<[u8; 32]>, String> {
+) -> Result<bool, String> {
     let has_existing_key = keys.has_database_key(scope)?;
     if !has_existing_key && database_artifacts_exist(db_path) {
         return Err(
@@ -654,11 +684,19 @@ impl Client {
         // не должны потратить один refresh token дважды.
         let mut tokens = self.tokens.lock().map_err(text)?;
         let refresh = Zeroizing::new(tokens.1.clone());
-        let r = request(&self.agent, &self.base, "", "POST", "/token/refresh", Some(json!({ "refreshToken": refresh.as_str() })))?;
+        let mut response = request(
+            &self.agent,
+            &self.base,
+            "",
+            "POST",
+            "/token/refresh",
+            Some(json!({ "refreshToken": refresh.as_str() })),
+        )?;
         let next_pair = SessionTokens(
-            r["token"].as_str().ok_or("сервер не вернул токен")?.to_string(),
-            r["refreshToken"].as_str().ok_or("сервер не вернул токен обновления")?.to_string(),
+            response["token"].as_str().ok_or("сервер не вернул токен")?.to_string(),
+            response["refreshToken"].as_str().ok_or("сервер не вернул токен обновления")?.to_string(),
         );
+        zeroize_json_value(&mut response);
         // Одна SQL-операция заменяет пару целиком; память обновляем только
         // после успешной записи, чтобы не потерять действующий refresh token.
         let serialized = Zeroizing::new(
