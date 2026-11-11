@@ -494,3 +494,11 @@ Do not re-port these mechanisms. See Stage 4 report section 25 for the exact com
 - Flutter #42989207122 skipped by branch condition.
 - No test command evidenced as executed. Exact failure reason UNKNOWN.
 - Stage 4 remains NOT ACCEPTED / BLOCKED, 0% verification accepted.
+
+
+## Latest current-head CI retry — 2026-11-11
+
+- PR #45 head checked: `e7e19ce9de18e6042b36e5bd5f2ae9700796afd1`.
+- FRB #42989322261 and OpenMLS #42989322167 FAILED with no steps/log URLs; log retrieval returned BlobNotFound. FRB downstream jobs skipped.
+- Flutter #42989322186 SKIPPED.
+- No test command evidenced as executed. Exact failure cause UNKNOWN. Stage 4 remains NOT ACCEPTED / BLOCKED.
