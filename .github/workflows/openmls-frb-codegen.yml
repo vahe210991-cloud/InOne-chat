@@ -212,8 +212,8 @@ jobs:
           set -euo pipefail
           KEYCHAIN_PASSWORD="$(openssl rand -hex 20)"
           KEYCHAIN_PATH="$RUNNER_TEMP/inone-build.keychain"
-          printf '%s' "$IOS_SIGNING_CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/ios-signing.p12"
-          printf '%s' "$IOS_PROVISIONING_PROFILE" | base64 --decode > "$RUNNER_TEMP/inone.mobileprovision"
+          printf '%s' "$IOS_SIGNING_CERTIFICATE_P12" | base64 -D > "$RUNNER_TEMP/ios-signing.p12"
+          printf '%s' "$IOS_PROVISIONING_PROFILE" | base64 -D > "$RUNNER_TEMP/inone.mobileprovision"
           mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
@@ -223,6 +223,7 @@ jobs:
           security list-keychains -d user -s "$KEYCHAIN_PATH"
           security find-identity -v -p codesigning "$KEYCHAIN_PATH" | tee "$RUNNER_TEMP/ios-identities.txt"
           grep -Eq 'Apple Development|iPhone Developer' "$RUNNER_TEMP/ios-identities.txt"
+          grep -Fq "($IOS_TEAM_ID)" "$RUNNER_TEMP/ios-identities.txt"
           security cms -D -i "$RUNNER_TEMP/inone.mobileprovision" > "$RUNNER_TEMP/profile.plist"
           PROFILE_UUID="$(/usr/libexec/PlistBuddy -c 'Print UUID' "$RUNNER_TEMP/profile.plist")"
           echo "IOS_PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
