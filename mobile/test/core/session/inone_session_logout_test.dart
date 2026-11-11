@@ -87,7 +87,8 @@ void main() {
     expect(
       bridge.resumeCalls,
       1,
-      reason: 'an explicit logout must not silently restore the previous MLS session',
+      reason:
+          'an explicit logout must not silently restore the previous MLS session',
     );
     expect(nextLaunch.isAuthenticated, isFalse);
 
@@ -95,7 +96,9 @@ void main() {
     nextLaunch.dispose();
   });
 
-  test('logout clears saved MLS identity when native runtime is unavailable', () async {
+  test(
+    'logout clears saved MLS identity when native runtime is unavailable',
+    () async {
     String? savedDeviceId = 'device-2';
     String? savedUserId = 'user-2';
     var deleteCalls = 0;
@@ -132,7 +135,8 @@ void main() {
     expect(bridge.resumeCalls, 0);
     expect(nextLaunch.isAuthenticated, isFalse);
 
-    session.dispose();
-    nextLaunch.dispose();
-  });
+      session.dispose();
+      nextLaunch.dispose();
+    },
+  );
 }
