@@ -455,3 +455,11 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Flutter #42988901824: SKIPPED by branch condition.
 - Log retrieval returned BlobNotFound. No test command evidenced as executed; exact failure cause UNKNOWN.
 - Report section 31. Stage 4 remains NOT ACCEPTED / BLOCKED.
+
+
+### 2026-11-11 — Exact-head CI after crash-test naming correction
+
+- The process-exit regression is now named `process_crash_rolls_back_openmls_storage_and_inbox_atomically`; it tests OpenMLS signature-key storage plus inbox/processed writes, not a live group ratchet.
+- Latest PR #45 head: `28aa6f488472688ae5d728e18da8ef24910d540d`.
+- OpenMLS #42989119932 failed with no steps/log URL; FRB #42989119937 failed with no steps/log URL and downstream jobs skipped; Flutter #42989120066 skipped.
+- No test command evidenced as executed. Exact failure cause UNKNOWN. Report section 32.
