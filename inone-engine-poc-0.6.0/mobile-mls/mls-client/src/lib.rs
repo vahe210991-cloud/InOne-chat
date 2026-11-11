@@ -627,7 +627,12 @@ impl KeyStore for MemoryKeyStore {
 }
 
 /// Ошибка временная (нет сети, 429, 5xx): её имеет смысл повторить позже.
-pub fn is_access_failure(err: &str) -> bool {
+pub fn is_not_member_error(err: &str) -> bool {
+    err.contains("not a member")
+        || response_error_code(err).as_deref() == Some("not_a_member")
+}
+
+fn is_access_failure(err: &str) -> bool {
     let Some(pos) = err.find(" -> ") else {
         return false;
     };
@@ -2286,7 +2291,7 @@ impl Client {
             None,
         ) {
             Ok(body) => body,
-            Err(error) if error.contains("not a member") => return Ok(BTreeSet::new()),
+            Err(error) if is_not_member_error(&error) => return Ok(BTreeSet::new()),
             Err(error) => return Err(error),
         };
         let members = body["members"].as_array().ok_or("ответ без списка участников")?;
@@ -2643,7 +2648,7 @@ impl Client {
         for room in rooms {
             match self.sync_room(&room, &mut out) {
                 Ok(()) => {}
-                Err(error) if error.contains("not a member") => {
+                Err(error) if is_not_member_error(&error) => {
                     self.check_consistency(&room)?;
                 }
                 Err(error)
