@@ -195,7 +195,8 @@ test('F-02 PostgreSQL: revocation waits for an in-flight open join and removes i
     // Pause the real transaction immediately after PostgreSQL grants FOR SHARE.
     // This keeps the authorization lock held until the revocation UPDATE is issued.
     s.pool.connect = async (...args) => {
-      const client = await originalConnect(...args);
+      if (args.length > 0) return originalConnect(...args); // preserve node-postgres callback-style callers
+      const client = await originalConnect();
       const originalQuery = client.query.bind(client);
       client.query = async (query, ...params) => {
         const sql = typeof query === 'string' ? query : query?.text ?? '';
