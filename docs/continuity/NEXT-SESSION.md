@@ -218,3 +218,17 @@ Latest exact-head evidence: [push run 42465804591](https://github.com/vahe210991
 ## Mandatory approved WBS and current UI stage — 2026-11-09
 
 Before any work, read [AGENTS.md](../../AGENTS.md), the full [AI agent mandate](../../development/AI-AGENT-MANDATE.md), and the full [owner-approved progress baseline](../../development/PROGRESS-BASELINE.md). The WBS is approved and immutable without a new owner decision. Current UI stage is Beta 1.0 UI-01 through UI-06; continue from [UI integration report](../../development/reports/2026-11-09-1015-ui-integration-start.md) and branch `feat/beta1-ui-source-integration`. The owner-provided Ui.zip has been checksum-verified locally; its full binary/source package is not yet confirmed uploaded to GitHub. Do not claim import complete until remote files/checksums are verified.
+
+
+## Current next-session instruction — Stage 4 PR #45 (2026-11-11)
+
+Start from current `main` `94571cbc923ac4d29c3c684dbfdeb35f031d6a30` and read `development/WORKING-RULES.md`, `development/PROGRESS-BASELINE.md`, `docs/continuity/CURRENT-STATE.md`, `docs/continuity/DECISIONS.md`, and report `development/reports/2026-11-11-stage-4-native-mls-ci-triage.md`.
+
+1. Stage 3 PR #44 is merged; do not reopen F-01/F-02 without a reproducible regression.
+2. Stage 4 PR #45 is OPEN/Draft at head `45ee623d5bd2982e2a7032942962c9d4b58a8ffb`.
+3. First obtain full logs for failed runs #42972694597, #42972694698 and #42972694655. The current connector returned BlobNotFound; exact causes are unknown.
+4. Do not edit the shared PR #45 branch while another agent may be working. Create a unique task branch from the latest verified PR #45 head, then fix only confirmed failures.
+5. Run the complete Stage 4 matrix on one exact final SHA. Include Rust/OpenMLS tests, FRB generation, Flutter analyze/tests, Android and iOS build/runtime, secure storage, SQLCipher, restart/resume, outbox and ACK-after-durable-persistence checks as applicable.
+6. Keep MLS fail-closed and disabled until native runtime and platform storage are accepted. No plaintext fallback and no token/key exposure to Dart.
+7. Do not merge. Owner approval is required after all required checks are green on the exact proposed SHA.
+8. Preserve the approved WBS v1.1 weights and do not raise percentages before the corresponding criteria are evidenced.
