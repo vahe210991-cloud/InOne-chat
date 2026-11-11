@@ -278,3 +278,25 @@ Report: `development/reports/2026-11-11-stage-4-single-executor-progress.md`.
 - Verify Flutter login callers only receive sanitized maps and no screen/log exposes tokens, one-time codes or poll secrets.
 - Verify request body buffer cleanup and bearer-header removal do not break IOClient/MockClient or retries.
 - Run full Rust/OpenMLS and Flutter test suites on the exact current PR head `6e56671b632c993ebd15735caf5001ad2662012a`; current workflows have no step summaries or log URLs.
+
+
+## Required next Stage 4 work — P0 parity in native mobile runtime
+
+Port the accepted P0 invariants into the active `inone-engine-poc-0.6.0/mobile-mls/mls-client` without replacing the current SQLCipher/platform-key architecture:
+
+1. F1: durable Welcome receipts, duplicate handling, quarantine and ACK retry after restart.
+2. F4: membership journal, exact staged-Commit fingerprint, idempotent replay and safe rebase.
+3. F5: event identity/epoch validation before processing/marking.
+4. P0.3: room-scoped WaitingForCommit, Commit quarantine and sticky RecoveryRequired.
+5. KeyPackage claim/replay: durable claim intent, claim IDs, server reservation replay.
+6. Adapt archived tests to active mobile client and current backend contract.
+7. Keep current secure storage, token zeroization, HTTPS and no-redirect hardening.
+8. Execute complete CI and Android/iOS runtime matrix on one final SHA. No acceptance until green.
+
+Reference files:
+- `inone-development-archive-0.6.0/engine/mobile-mls/P0-ACCEPTANCE-MAP.md`
+- `inone-development-archive-0.6.0/engine/mobile-mls/mls-client/src/lib.rs`
+- `inone-development-archive-0.6.0/engine/mobile-mls/mls-client/tests/welcome_receipt_recovery.rs`
+- `inone-development-archive-0.6.0/engine/mobile-mls/mls-client/tests/membership_journal.rs`
+- `inone-development-archive-0.6.0/engine/mobile-mls/mls-client/tests/waiting_for_commit.rs`
+- `inone-development-archive-0.6.0/engine/mobile-mls/mls-client/tests/commit_quarantine.rs`
