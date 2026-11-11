@@ -1637,7 +1637,7 @@ impl Client {
         Ok(())
     }
 
-    fn desync_reason(&self, room_id: &str) -> Result<Option<String>, String> {
+    pub fn desync_reason(&self, room_id: &str) -> Result<Option<String>, String> {
         self.meta.query_row(
             "SELECT reason FROM client_desync WHERE room_id = ?1",
             [room_id],
