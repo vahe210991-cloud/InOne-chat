@@ -570,6 +570,41 @@ impl Client {
         Ok(())
     }
 
+    /// Processes and merges a server commit within one SQLCipher transaction.
+    /// On any error, the in-memory group is reloaded after rollback.
+    fn process_and_merge_commit(&mut self, room_id: &str, bytes: &[u8]) -> Result<(), String> {
+        let protocol = MlsMessageIn::tls_deserialize_exact(bytes)
+            .map_err(text)?
+            .try_into_protocol_message()
+            .map_err(text)?;
+        let transaction = self.meta.transaction().map_err(text)?;
+        let result = {
+            let provider = DeviceProvider::new(&self.crypto, TransactionConnection(&transaction));
+            let group = self.groups.get_mut(room_id).ok_or("комната не создана на этом устройстве")?;
+            match group.mls.process_message(&provider, protocol).map_err(text)? .into_content() {
+                ProcessedMessageContent::StagedCommitMessage(staged) => {
+                    group.mls.merge_staged_commit(&provider, *staged).map_err(text)
+                }
+                _ => Err("ожидался коммит".to_string()),
+            }
+        };
+        match result {
+            Ok(()) => {
+                if let Err(error) = transaction.commit() {
+                    self.reload_group(room_id)?;
+                    Err(text(error))
+                } else {
+                    Ok(())
+                }
+            }
+            Err(error) => {
+                drop(transaction);
+                self.reload_group(room_id)?;
+                Err(error)
+            }
+        }
+    }
+
     /// Processes an MLS application event and persists the OpenMLS ratchet state,
     /// inbox row and processed marker in the same SQLCipher transaction.
     fn process_and_persist_incoming(
@@ -682,8 +717,25 @@ impl Client {
             .use_ratchet_tree_extension(true)
             .max_past_epochs(MAX_PAST_EPOCHS)
             .build();
-        let mls = MlsGroup::new_with_group_id(&provider, &self.signer, &config, GroupId::from_slice(room_id.as_bytes()), self.credential.clone()).map_err(text)?;
-        self.meta.execute("INSERT OR REPLACE INTO client_rooms (room_id, join_epoch) VALUES (?1, 0)", [room_id]).map_err(text)?;
+        let transaction = self.meta.transaction().map_err(text)?;
+        let mls = {
+            let provider = DeviceProvider::new(&self.crypto, TransactionConnection(&transaction));
+            MlsGroup::new_with_group_id(
+                &provider,
+                &self.signer,
+                &config,
+                GroupId::from_slice(room_id.as_bytes()),
+                self.credential.clone(),
+            )
+            .map_err(text)?
+        };
+        transaction
+            .execute(
+                "INSERT OR REPLACE INTO client_rooms (room_id, join_epoch) VALUES (?1, 0)",
+                [room_id],
+            )
+            .map_err(text)?;
+        transaction.commit().map_err(text)?;
         self.groups.insert(room_id.to_string(), Group { mls, join_epoch: 0 });
         Ok(())
     }
@@ -769,12 +821,25 @@ impl Client {
                 _ => return Err("ожидалось приветствие".to_string()),
             };
             let join_config = MlsGroupJoinConfig::builder().use_ratchet_tree_extension(true).max_past_epochs(MAX_PAST_EPOCHS).build();
-            let staged = StagedWelcome::new_from_welcome(&provider, &join_config, welcome, None).map_err(text)?;
-            let mls = staged.into_group(&provider).map_err(text)?;
-            let room_id = String::from_utf8_lossy(mls.group_id().as_slice()).to_string();
-            let join_epoch = mls.epoch().as_u64();
-            self.meta.execute("INSERT OR REPLACE INTO client_rooms (room_id, join_epoch) VALUES (?1, ?2)", (&room_id, join_epoch as i64)).map_err(text)?;
+            let transaction = self.meta.transaction().map_err(text)?;
+            let (mls, room_id, join_epoch) = {
+                let provider = DeviceProvider::new(&self.crypto, TransactionConnection(&transaction));
+                let staged = StagedWelcome::new_from_welcome(&provider, &join_config, welcome, None).map_err(text)?;
+                let mls = staged.into_group(&provider).map_err(text)?;
+                let room_id = String::from_utf8_lossy(mls.group_id().as_slice()).to_string();
+                let join_epoch = mls.epoch().as_u64();
+                (mls, room_id, join_epoch)
+            };
+            transaction
+                .execute(
+                    "INSERT OR REPLACE INTO client_rooms (room_id, join_epoch) VALUES (?1, ?2)",
+                    (&room_id, join_epoch as i64),
+                )
+                .map_err(text)?;
+            transaction.commit().map_err(text)?;
             self.groups.insert(room_id, Group { mls, join_epoch });
+            // The server welcome is acknowledged only after both MLS state and
+            // the local room index have been durably committed.
             self.call("POST", &format!("/mls/welcomes/{id}/ack"), Some(json!({})))?;
         }
         Ok(())
@@ -821,16 +886,7 @@ impl Client {
                 out.push(incoming);
             }
             let Some((_, commit)) = commits.iter().find(|(e, _)| *e == epoch + 1) else { break };
-            let protocol = MlsMessageIn::tls_deserialize_exact(commit).map_err(text)?.try_into_protocol_message().map_err(text)?;
-            let provider = self.provider();
-            let group = self.groups.get_mut(room_id).ok_or("комната не создана на этом устройстве")?;
-            let processed = group.mls.process_message(&provider, protocol).map_err(text)?;
-            match processed.into_content() {
-                ProcessedMessageContent::StagedCommitMessage(staged) => {
-                    group.mls.merge_staged_commit(&provider, *staged).map_err(text)?;
-                }
-                _ => return Err("ожидался коммит".to_string()),
-            }
+            self.process_and_merge_commit(room_id, commit)?;
         }
         Ok(())
     }
