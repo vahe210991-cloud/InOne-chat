@@ -1,3 +1,4 @@
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
@@ -154,14 +155,23 @@ impl MlsSession {
     /// Logs out remotely when possible, then always destroys local MLS state.
     /// A network error is returned after local database and key cleanup.
     pub fn logout(&self) -> Result<(), String> {
-        let remote_result = {
-            let mut guard = self.client.lock().map_err(|error| error.to_string())?;
-            let result = match guard.as_ref() {
-                Some(client) => client.logout(),
-                None => Ok(()),
-            };
-            *guard = None;
-            result
+        // A poisoned lock or a panic in remote logout must never bypass local
+        // SQLCipher/key destruction.
+        let remote_result = match self.client.lock() {
+            Ok(mut guard) => {
+                let result = match guard.as_ref() {
+                    Some(client) => catch_unwind(AssertUnwindSafe(|| client.logout()))
+                        .unwrap_or_else(|_| Err("panic during remote MLS logout".to_string())),
+                    None => Ok(()),
+                };
+                *guard = None;
+                result
+            }
+            Err(poisoned) => {
+                let mut guard = poisoned.into_inner();
+                *guard = None;
+                Err("MLS session lock was poisoned; server logout could not be confirmed".to_string())
+            }
         };
 
         let cleanup_result =
@@ -183,9 +193,17 @@ impl MlsSession {
     /// Drops the Rust client and releases the encrypted database connection.
     /// It does not revoke the server session; call logout first when required.
     pub fn close(&self) -> Result<(), String> {
-        let mut guard = self.client.lock().map_err(|error| error.to_string())?;
-        *guard = None;
-        Ok(())
+        match self.client.lock() {
+            Ok(mut guard) => {
+                *guard = None;
+                Ok(())
+            }
+            Err(poisoned) => {
+                let mut guard = poisoned.into_inner();
+                *guard = None;
+                Err("MLS session lock was poisoned; client was dropped".to_string())
+            }
+        }
     }
 }
 
@@ -426,6 +444,23 @@ mod tests {
         remove_database_files(&database).unwrap();
         assert!(!database_artifacts_exist(&database));
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn logout_still_cleans_local_state_when_client_lock_is_poisoned() {
+        let (database, keys, session) = fixture();
+        std::thread::scope(|scope| {
+            let handle = scope.spawn(|| {
+                let _guard = session.client.lock().unwrap();
+                panic!("poison the client lock for the regression test");
+            });
+            assert!(handle.join().is_err());
+        });
+
+        assert!(session.logout().is_err());
+        assert!(!database.exists());
+        assert!(!std::path::PathBuf::from(format!("{}-wal", database.display())).exists());
+        assert!(keys.deleted.load(Ordering::SeqCst));
     }
 
     #[test]
