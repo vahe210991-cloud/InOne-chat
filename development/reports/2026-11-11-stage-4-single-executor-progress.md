@@ -417,3 +417,92 @@ The P0 closure explicitly says native Flutter Beta 1.0 integration is separate. 
 - [ ] Verify API compatibility against the current Beta 1.0 backend contract and PostgreSQL implementation.
 
 This is a source-review finding; no port or test pass is claimed yet. Current CI remains blocked before test steps as recorded above.
+
+
+## 25. Single-executor re-audit and corrective update — 2026-11-11
+
+**Owner instruction:** Beta 1.0 is the active stage. ChatGPT is the sole developer/executor. No external agent is assigned or assumed.
+
+### 25.1 Correction to the P0 parity audit in section 24
+
+Section 24 is superseded. A fresh inspection of the current Stage 4 branch shows that the previously reported missing P0 mechanisms are present in the active mobile MLS client:
+
+- `client_welcome_receipts`, durable Welcome receipt persistence and pending ACK retry.
+- `client_membership_commits`, membership journal replay and staged-Commit fingerprint verification.
+- `client_invite_intents` and durable KeyPackage claim/reservation replay.
+- `client_waiting_for_commit`, room-scoped WaitingForCommit state.
+- `client_commit_quarantine`, Commit quarantine and RecoveryRequired handling.
+- Event identity validation and transaction-backed MLS/inbox persistence.
+
+The following six active test files were compared with the accepted P0 archive. Each pair has the same Git blob SHA, so these files are byte-identical at the checked revision:
+
+| Active test | Verified blob SHA |
+|---|---|
+| `welcome_receipt_recovery.rs` | `61b13f2433682ad8e1252629bc496155fadd0989` |
+| `welcome_recovery.rs` | `31bfa5b627a793ca0dc8cc911c989781ff3bb733` |
+| `membership_journal.rs` | `9485f218b2430f13deea358f09b58fa0c89aac6c` |
+| `commit_quarantine.rs` | `76adee3e3f64e427b2a8da9a8a844f6d28a66537` |
+| `waiting_for_commit.rs` | `b3affa76f4da34056f3c1d170bb9fcc865df908c` |
+| `consistency.rs` | `d474c214145b3ead7608f59359567ec30311fa19` |
+
+Therefore, do not port these mechanisms again. Section 24's claim that they are absent was based on an earlier source revision and is no longer valid. Presence and blob parity are source-level evidence only; they do not establish that the tests pass on the current branch.
+
+### 25.2 Additional local-purge safety correction
+
+At source commit `4670646558723ae5b33eeffdaa105f3a6df209ed`, `mobile/rust/src/api/session.rs` was changed so local SQLCipher database and sidecar deletion is still attempted when Android Keystore/iOS Keychain initialization fails.
+
+- Database, WAL, SHM and journal removal are attempted independently of secure-store initialization.
+- Failure to initialize the secure store remains an explicit error; key deletion is not claimed.
+- Added regression test `purge_removes_database_even_when_platform_key_store_initialization_fails`.
+
+The changed source file was fetched again from GitHub; the helper and regression test are present. The test has **not** executed.
+
+### 25.3 Current PR and CI evidence
+
+- PR #45 remains OPEN/Draft; product merge is not authorized.
+- Product source correction commit: `4670646558723ae5b33eeffdaa105f3a6df209ed`.
+- A documentation correction followed in commit `412dfb010968f18fe90f5c92aacfe9ce6e97341c`.
+- The latest available earlier-head reruns were:
+  - OpenMLS client run [#42985487129](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42985487129): rerun completed FAILED; job steps/log URL unavailable.
+  - FRB generation run [#42985487107](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42985487107): rerun completed FAILED; job steps/log URL unavailable; dependent iOS job SKIPPED.
+  - Flutter mobile run [#42985487102](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42985487102): SKIPPED by the explicit Stage 4 branch condition.
+- GitHub returned no workflow-run records for source commit `4670646558723ae5b33eeffdaa105f3a6df209ed` through the current connector. No CI result is claimed for that commit.
+- The local execution environment has no `rustc`, `cargo`, Flutter, Dart or Xcode. A Git clone attempt failed because the environment cannot resolve external network hosts. No local build/test command was executed.
+
+### 25.4 Newly verified iOS CI gap
+
+The current `.github/workflows/openmls-frb-codegen.yml`:
+- builds the iOS device and simulator targets with `--no-codesign`;
+- runs the protected-store integration test on an iOS simulator;
+- does not reference or import the signing certificate, password, provisioning profile or team ID described in earlier reports.
+
+The iOS job therefore does not currently establish the signed Protected Keychain acceptance requirement. The upstream `apple-native-keyring-store` documentation states that the `protected` store requires a code-signed application with a provisioning profile and that unsigned use can fail with entitlement error `-34018`: https://github.com/open-source-cooperative/apple-native-keyring-store
+
+This is a confirmed workflow/documentation mismatch. The iOS signing and runtime gate must be implemented and executed before iOS Protected Keychain can be accepted. The previous README claim that the workflow already fails closed on missing signing secrets was corrected in this branch.
+
+### 25.5 Generated bridge artifacts are not yet committed
+
+The following paths were checked on the current Stage 4 branch and returned 404:
+- `mobile/lib/src/rust/frb_generated.dart`
+- `mobile/lib/src/rust/api/session.dart`
+- `mobile/hook/build.dart`
+- `mobile/rust/src/frb_generated.rs`
+- `mobile/rust/Cargo.lock`
+
+The current `mobile/pubspec.lock` also contains neither `flutter_rust_bridge` nor `flutter_rust_bridge_hooks`. These outputs/dependencies are currently expected to be generated by the FRB workflow, but that workflow has not executed successfully. The mobile README now documents the exact pinned generation sequence and does not present a clean-checkout `flutter pub get` as sufficient before generation.
+
+### 25.6 Acceptance status and next work
+
+- Beta 1.0 WBS v1.1 remains unchanged.
+- No Beta 1.0 overall percentage is increased.
+- Stage 4 verification accepted: **0%**; no required current-head test has a green execution record.
+- Stage 4 status: **NOT ACCEPTED**.
+- `INONE_MLS_NATIVE_ENABLED` remains `false`.
+- No merge, deployment, database operation or external agent activity occurred.
+
+Next:
+1. Restore a working GitHub Actions runner or provide an authorized build environment; exact reason for the repeated no-step failures remains UNKNOWN.
+2. Generate and commit FRB Dart/Rust bindings, build hook and Rust lockfile; validate the generated code on the resulting exact SHA.
+3. Correct the iOS signing/provisioning workflow and execute the Protected Keychain runtime test in a supported signed environment.
+4. Execute Rust/OpenMLS, FRB, Flutter, Android Keystore, iOS and persistence/restart regressions on one exact final SHA.
+5. Update acceptance and Beta 1.0 WBS evidence only after the complete required matrix is green. Do not merge PR #45 or enable native MLS before owner approval.
