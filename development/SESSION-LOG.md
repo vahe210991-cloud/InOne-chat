@@ -481,3 +481,11 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - OpenMLS #42989322167 failed; job `130418031986` had no steps/log URL; log retrieval returned BlobNotFound.
 - Flutter #42989322186 skipped by branch condition.
 - No test command evidenced as executed; exact failure cause UNKNOWN. Report section 34.
+
+
+### 2026-11-11 — Latest exact-head CI and trigger policy
+
+- FRB workflow now runs its full matrix only for workflow-file and `mobile/**` changes; documentation-only edits no longer trigger native CI.
+- Latest PR #45 head: `bfb87598068239c1107233d930ee79f25ff62d77`.
+- FRB #42989491362 and OpenMLS #42989491373 failed with no steps/log URLs; log retrieval returned BlobNotFound. Flutter #42989491354 skipped.
+- No test command evidenced as executed. Exact failure cause UNKNOWN. Report section 35.
