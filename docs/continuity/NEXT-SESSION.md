@@ -314,3 +314,20 @@ Reference files:
 8. Keep refresh-token rotation and SQLCipher key in Rust/native secure storage; preserve fail-closed behavior and no plaintext fallback.
 9. Keep Beta 1.0 WBS v1.1 baseline unchanged until evidence-based acceptance; do not work on Beta 2.0.
 10. Do not merge PR #45 or #46 without owner approval.
+
+
+## Current next-session instructions — Beta 1.0 Stage 4 — 2026-11-11 (supersedes earlier heads)
+
+1. Work as ChatGPT sole executor. Do not create or assume an external-agent workstream.
+2. Active stage is Beta 1.0. Preserve approved WBS v1.1; do not include Beta 2.0 scope or change percentages.
+3. Re-fetch PR #45 before editing. Latest verified branch head at this entry: `56102098427b8853b746b94d8c073c5aa97d0c2c`. PR remains OPEN/Draft.
+4. P0 parity porting is complete at source level; do not re-port F1/F4/F5/P0.3 or claim their tests passed. Six active regression files are blob-identical to accepted archive files; execute them on the final SHA.
+5. Review the new local-purge fallback in `mobile/rust/src/api/session.rs` (commit `4670646558723ae5b33eeffdaa105f3a6df209ed`) and execute its regression when a runner is available.
+6. The FRB workflow now defaults to read-only; generated outputs are committed by a separate allowlisted write job; a final-SHA job reruns Rust/OpenMLS, Flutter and Android checks; iOS is downstream and requires signing assets.
+7. Latest OpenMLS #42987007179 and FRB #42987007308 failed with no step summaries/log URLs; FRB generated commit/final-SHA/iOS jobs skipped. Flutter #42987007363 skipped by branch condition. Exact cause is UNKNOWN; do not infer billing, permissions or runner policy.
+8. Generated FRB bindings, hook/build.dart and mobile/rust/Cargo.lock remain absent because codegen did not execute. Do not claim the mobile app is buildable from a clean checkout until these outputs are generated and committed.
+9. Obtain a working GitHub Actions execution path or an owner-authorized build environment. Current local environment has no Rust/Cargo/Flutter/Dart/Xcode and no outbound network.
+10. Run the full matrix on one exact final SHA: Rust format/tests, active mls-client integration against P0 engine, FRB codegen, Flutter analyze/tests, Android APK/emulator Keystore, iOS build and signed Protected Keychain runtime. A skipped test is not PASS.
+11. Keep `INONE_MLS_NATIVE_ENABLED=false`. Do not merge PR #45 or claim Stage 4 accepted until all required checks are green on the exact same final SHA and owner approval is given.
+
+Report: `development/reports/2026-11-11-stage-4-single-executor-progress.md`, sections 25–26.
