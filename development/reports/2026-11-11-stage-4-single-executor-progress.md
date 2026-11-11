@@ -794,3 +794,21 @@ The rerun API accepted both retry requests, but the latest attempts again ended 
 Static workflow review confirms both required jobs target `ubuntu-latest`, have finite timeouts, and contain normal checkout/toolchain/test steps. No source change can be justified from the available failure evidence. Do not change runner labels, permissions, or test gates speculatively.
 
 **Acceptance remains unchanged:** Stage 4 NOT ACCEPTED / BLOCKED; verification accepted 0%; Beta 1.0 WBS v1.1 unchanged; keep `INONE_MLS_NATIVE_ENABLED=false`; no merge. Next required evidence is the job-level startup failure message visible in GitHub Actions UI or a working owner-authorized runner. The iOS signing environment/secrets remain a separate downstream prerequisite.
+
+
+## 37. CI trigger-filter correction — 2026-11-11
+
+A documentation-only archive commit (`5b520b5ba25d1091017a5f19d5fdbba73082fb3a`) unexpectedly produced new FRB and OpenMLS workflow runs (#42991893141 and #42991893195), while Flutter remained skipped (#42991893163). Both native jobs again failed with no steps/log URLs; log retrieval returned `BlobNotFound`. Latest jobs: FRB `130426526707`, OpenMLS `130426563862`.
+
+Static review identified why the earlier statement that documentation-only edits would not trigger CI was too broad:
+
+- GitHub `pull_request.paths` evaluates the aggregate changed-file set between the PR base and head, not only files in the latest pushed commit. Since PR #45 contains `mobile/**` and MLS source changes, later documentation commits still match those PR path filters.
+- The FRB workflow's `push` trigger also had no `paths` filter, so every push to the Stage 4 branch matched it.
+
+Corrected both workflows in the Stage 4 branch:
+- `.github/workflows/openmls-frb-codegen.yml`: removed the aggregate PR path trigger and added explicit `push.paths` for the workflow file and `mobile/**`; `workflow_dispatch` remains.
+- `.github/workflows/openmls-client.yml`: removed the aggregate PR path trigger; its existing `push.paths` allowlist and `workflow_dispatch` remain.
+
+For this same-repository Stage 4 branch, pushes to the PR head still produce commit checks visible to the PR, while documentation-only commits no longer satisfy the workflow push path filters. Fork-origin PR automation is not covered by this branch-specific setup. The YAML edits are source-reviewed but have not been executed by a functioning runner. Do not count them as CI validation.
+
+**Acceptance remains unchanged:** Stage 4 NOT ACCEPTED / BLOCKED; verification accepted 0%; WBS v1.1 unchanged; `INONE_MLS_NATIVE_ENABLED=false`; no merge. The separate Actions job-start failure remains unresolved.
