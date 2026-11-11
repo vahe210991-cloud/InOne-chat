@@ -316,3 +316,13 @@ This section supersedes stale earlier statements in this file that no applied P0
 - Regression test added for logout during a blocked native handoff; test is committed but not executed.
 - Source SHA: `404775ff54c5e8a5eee175eb8d908c6c6929e2c0`.
 - Latest CI #42977937179 and #42977937116 again failed before step 1 with runner_id 0 and empty steps; iOS dependent job skipped. Stage 4 remains NOT ACCEPTED.
+
+
+### Welcome ACK and SQLCipher key recovery — 2026-11-11
+
+- Welcome ACK marker is committed atomically with the joined group/room index; after restart, a pending ACK is retried without reprocessing the Welcome.
+- KeyStore distinguishes existing-key lookup from creation. Resume never creates a replacement key; database without its protected key fails closed.
+- New session creation rejects DB/key mismatch and attempts cleanup after failed first-time initialization.
+- Tests added for missing-key resume, existing DB without key and sidecar detection; not executed.
+- Source SHA: `da844b08240c3e67762997be9b65d8e91cab120f`.
+- CI #42978533658 and #42978533643 failed before step 1 with runner_id 0 and empty steps. No tests executed. Stage 4 remains NOT ACCEPTED.
