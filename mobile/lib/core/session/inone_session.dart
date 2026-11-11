@@ -330,6 +330,13 @@ class InOneSession extends ChangeNotifier {
     Object? body,
     bool authenticated = true,
   }) async {
+    if (_loggingOut) {
+      throw const ApiException(
+        code: 'session_logging_out',
+        statusCode: 409,
+        retryable: false,
+      );
+    }
     final gate = _handoffGate;
     if (gate != null) await gate.future;
     try {
@@ -494,18 +501,21 @@ class InOneSession extends ChangeNotifier {
         );
         localMlsPurged = true;
       } else if (isAuthenticated) {
-        await request('POST', '/logout');
+        await _client.post('/logout');
       }
     } finally {
       _mlsBridge = null;
       try {
         if (bridge != null) await bridge.close();
       } finally {
-        if (localMlsPurged) {
-          await _deleteMlsUserId();
-          _savedMlsUserId = null;
+        try {
+          if (localMlsPurged) {
+            await _deleteMlsUserId();
+            _savedMlsUserId = null;
+          }
+        } finally {
+          _clearSession();
         }
-        _clearSession();
       }
     }
   }
