@@ -20,6 +20,10 @@ import 'test_screens.dart';
 import 'test_gallery_loader.dart';
 
 const _configuredApiBaseUrl = String.fromEnvironment('INONE_API_BASE_URL');
+const _nativeMlsEnabled = bool.fromEnvironment(
+  'INONE_MLS_NATIVE_ENABLED',
+  defaultValue: false,
+);
 
 void main() => runApp(const InOneApp());
 
@@ -128,7 +132,8 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
     );
     _session = InOneSession(
       baseUrl: apiBaseUrl,
-      nativeMlsBridge: Platform.isAndroid || Platform.isIOS
+      nativeMlsBridge: _nativeMlsEnabled &&
+              (Platform.isAndroid || Platform.isIOS)
           ? RustMlsSessionBridge()
           : null,
     );
