@@ -270,12 +270,13 @@ jobs:
           team, profile_uuid = sys.argv[1:]
           project = pathlib.Path("ios/Runner.xcodeproj/project.pbxproj")
           content = project.read_text()
-          content = re.sub(r"^\\s*PROVISIONING_PROFILE_SPECIFIER = .*?;\\n", "", content, flags=re.M)
+          content = re.sub(r"^\s*PROVISIONING_PROFILE_SPECIFIER = .*?;\n", "", content, flags=re.M)
+          content = re.sub(r"^\s*CODE_SIGN_IDENTITY(?:\[[^]]+\])? = .*?;\n", "", content, flags=re.M)
           content, count = re.subn(r"CODE_SIGN_STYLE = [^;]+;", "CODE_SIGN_STYLE = Manual;", content)
           if count == 0:
               raise SystemExit("Runner.xcodeproj has no CODE_SIGN_STYLE setting to configure")
           content = re.sub(r"DEVELOPMENT_TEAM = [^;]*;", f"DEVELOPMENT_TEAM = {team};", content)
-          signing = f'CODE_SIGN_STYLE = Manual;\\n\\t\\t\\t\\t\\tCODE_SIGN_IDENTITY = "Apple Development";\\n\\t\\t\\t\\t\\tPROVISIONING_PROFILE_SPECIFIER = "{profile_uuid}";'
+          signing = f'CODE_SIGN_STYLE = Manual;\n\t\t\t\t\tCODE_SIGN_IDENTITY = "Apple Development";\n\t\t\t\t\tPROVISIONING_PROFILE_SPECIFIER = "{profile_uuid}";'
           content = content.replace("CODE_SIGN_STYLE = Manual;", signing)
           project.write_text(content)
           PY
@@ -286,7 +287,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          DEVICE_ID="$(xcrun simctl list devices available | sed -nE 's/.*iPhone.*\\(([0-9A-F-]{36})\\).*/\\1/p' | head -n 1)"
+          DEVICE_ID="$(xcrun simctl list devices available | sed -nE 's/.*iPhone.*\(([0-9A-F-]{36})\).*/\1/p' | head -n 1)"
           test -n "$DEVICE_ID"
           xcrun simctl boot "$DEVICE_ID" || true
           xcrun simctl bootstatus "$DEVICE_ID" -b
