@@ -33,11 +33,13 @@ void main() {
       expect(await resumed.accessTokenSnapshot(), 'smoke-access-token');
       await resumed.close();
 
-      await resumed.purgeLocalSession(userId: userId, deviceId: deviceId);
+      // The server is intentionally unreachable. Native logout must still
+      // purge the SQLCipher database and platform key before returning its error.
+      await expectLater(resumed.logout(), throwsA(anything));
 
-      final afterPurge = RustMlsSessionBridge();
+      final afterLogout = RustMlsSessionBridge();
       await expectLater(
-        afterPurge.resume(
+        afterLogout.resume(
           baseUrl: baseUrl,
           userId: userId,
           deviceId: deviceId,
