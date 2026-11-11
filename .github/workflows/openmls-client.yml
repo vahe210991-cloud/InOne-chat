@@ -8,7 +8,7 @@ on:
       - "inone-engine-poc-0.6.0/mobile-mls/mls-client/**"
       - "inone-engine-poc-0.6.0/src/**"
       - "inone-engine-poc-0.6.0/package.json"
-      - "inone-engine-poc-0.6.0/package-lock.json"
+      - "inone-development-archive-0.6.0/engine/package-lock.json"
   push:
     branches: [main, feature/stage-4-native-mls-runtime-2026-11-11]
     paths:
@@ -16,7 +16,7 @@ on:
       - "inone-engine-poc-0.6.0/mobile-mls/mls-client/**"
       - "inone-engine-poc-0.6.0/src/**"
       - "inone-engine-poc-0.6.0/package.json"
-      - "inone-engine-poc-0.6.0/package-lock.json"
+      - "inone-development-archive-0.6.0/engine/package-lock.json"
 
 permissions:
   contents: read
@@ -31,7 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      INONE_ENGINE_DIR: ${{ github.workspace }}/inone-engine-poc-0.6.0
+      INONE_ENGINE_DIR: ${{ github.workspace }}/inone-development-archive-0.6.0/engine
       RUST_TEST_THREADS: "1"
     steps:
       - name: Checkout
@@ -42,10 +42,10 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: inone-engine-poc-0.6.0/package-lock.json
+          cache-dependency-path: inone-development-archive-0.6.0/engine/package-lock.json
 
       - name: Install engine dependencies
-        run: npm ci --prefix inone-engine-poc-0.6.0
+        run: npm ci --prefix inone-development-archive-0.6.0/engine
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@master
