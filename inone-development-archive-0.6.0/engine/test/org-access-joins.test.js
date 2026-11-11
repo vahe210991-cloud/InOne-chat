@@ -129,3 +129,34 @@ test('F-02: simultaneous open joins serialize capacity and organization authoriz
     await s.stop();
   }
 });
+
+
+test('F-02: open join revalidates organization membership after the route preflight', async () => {
+  const s = await start();
+  try {
+    const room = '!join-open-auth-race:inone.test';
+    await s.store.addOrgMember(ORG, BORIS, 'member', 3);
+    assert.equal((await post(s.base, s.anna.token, '/rooms', { roomId: room, orgId: ORG })).status, 200);
+    assert.equal((await post(s.base, s.anna.token, `/rooms/${enc(room)}/settings`, { name: 'Проверка доступа', visibility: 'public', joinPolicy: 'open' })).status, 200);
+
+    // Simulate revocation after the HTTP handler has loaded the public room,
+    // but immediately before the atomic store operation checks authorization.
+    const atomicJoin = s.store.joinPublicRoomOpen.bind(s.store);
+    let revoked = false;
+    s.store.joinPublicRoomOpen = async (args) => {
+      if (args.userId === BORIS && !revoked) {
+        revoked = true;
+        await s.store.removeOrgMember(ORG, BORIS);
+      }
+      return atomicJoin(args);
+    };
+
+    const denied = await post(s.base, s.boris.token, `/rooms/${enc(room)}/join`, {});
+    assert.equal(denied.status, 403);
+    assert.equal(denied.json.code, 'org_not_member');
+    const snapshot = await s.store.getRoom(room);
+    assert.equal(snapshot.members.includes(BORIS), false, 'a user whose organization membership was revoked must not be added');
+  } finally {
+    await s.stop();
+  }
+});
