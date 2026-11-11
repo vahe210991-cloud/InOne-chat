@@ -627,7 +627,18 @@ impl KeyStore for MemoryKeyStore {
 }
 
 /// Ошибка временная (нет сети, 429, 5xx): её имеет смысл повторить позже.
-pub fn is_retryable(err: &str) -> bool {
+pub fn is_access_failure(err: &str) -> bool {
+    let Some(pos) = err.find(" -> ") else {
+        return false;
+    };
+    let code: String = err[pos + 4..]
+        .chars()
+        .take_while(|c| c.is_ascii_digit())
+        .collect();
+    matches!(code.parse::<u16>(), Ok(401 | 403 | 404))
+}
+
+fn is_retryable(err: &str) -> bool {
     if err.starts_with("сеть:") {
         return true;
     }
