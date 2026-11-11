@@ -451,13 +451,13 @@ pub fn connect(base: &str, user_id: &str, password: &str, device_id: &str, db_pa
     let scope = format!("{user_id}/{device_id}");
     let _has_existing_key = ensure_existing_key_matches_database(db_path, &scope, keys)?;
     let agent = ureq::AgentBuilder::new().build();
-    register(&agent, base, user_id, password)?;
-    let login = request(&agent, base, "", "POST", "/login", Some(json!({ "userId": user_id, "password": password, "deviceId": device_id })))?;
+    register(&agent, &base, user_id, password)?;
+    let login = request(&agent, &base, "", "POST", "/login", Some(json!({ "userId": user_id, "password": password, "deviceId": device_id })))?;
     let tokens = (
         login["token"].as_str().ok_or("сервер не вернул токен: нужно подтверждение с другого устройства")?.to_string(),
         login["refreshToken"].as_str().ok_or("сервер не вернул токен обновления")?.to_string(),
     );
-    build_client_with_keys(agent, base, tokens, user_id, device_id, db_path, keys)
+    build_client_with_keys(agent, &base, tokens, user_id, device_id, db_path, keys)
 }
 
 /// Подключает постоянный MLS-клиент к уже созданной мобильной сессии.
@@ -591,7 +591,7 @@ pub fn connect_with_approval(
             for _ in 0..5 {
                 let claim = request(
                     &agent,
-                    base,
+                    &base,
                     "",
                     "POST",
                     &format!("/approvals/{}/claim", urlencoding::encode(&approval_id)),
