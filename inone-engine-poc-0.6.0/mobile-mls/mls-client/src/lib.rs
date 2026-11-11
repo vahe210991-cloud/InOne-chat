@@ -6,7 +6,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 
 use rusqlite::OptionalExtension;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 use std::time::Duration;
 use std::path::Path;
 
@@ -101,10 +101,19 @@ struct Group {
     join_epoch: u64,
 }
 
+struct SessionTokens(String, String);
+
+impl Drop for SessionTokens {
+    fn drop(&mut self) {
+        self.0.zeroize();
+        self.1.zeroize();
+    }
+}
+
 pub struct Client {
     base: String,
-    /// Пара: токен доступа и одноразовый токен обновления. Ядро обновляет их само, когда доступ истёк.
-    tokens: Mutex<(String, String)>,
+    /// Пара токенов живёт только в Rust и обнуляется при удалении клиента.
+    tokens: Mutex<SessionTokens>,
     user_id: String,
     device_id: String,
     agent: ureq::Agent,
@@ -242,6 +251,7 @@ fn build_client_with_keys(
     keys: &dyn KeyStore,
 ) -> Result<Client, String> {
     let scope = format!("{user_id}/{device_id}");
+    let tokens = SessionTokens(tokens.0, tokens.1);
     let has_existing_key = ensure_existing_key_matches_database(db_path, &scope, keys)?;
     let database_existed = database_artifacts_exist(db_path);
     let mut db_key = match keys.database_key(&scope) {
@@ -297,6 +307,18 @@ pub trait KeyStore: Send + Sync {
 #[derive(Default)]
 pub struct MemoryKeyStore {
     keys: std::sync::Mutex<HashMap<String, [u8; 32]>>,
+}
+
+impl Drop for MemoryKeyStore {
+    fn drop(&mut self) {
+        let keys = match self.keys.get_mut() {
+            Ok(keys) => keys,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        for key in keys.values_mut() {
+            key.zeroize();
+        }
+    }
 }
 
 impl KeyStore for MemoryKeyStore {
@@ -419,46 +441,52 @@ pub fn resume_with_session(
     if !Path::new(db_path).is_file() {
         return Err("сохранённая MLS-сессия не найдена на этом устройстве".to_string());
     }
-    let db_key = keys
+    let mut db_key = keys
         .existing_database_key(&format!("{user_id}/{device_id}"))?
         .ok_or_else(|| {
             "ключ SQLCipher сохранённой MLS-сессии отсутствует; создание нового ключа запрещено"
                 .to_string()
         })?;
-    let meta = open_db(db_path, &db_key)?;
-    let has_meta: bool = meta
-        .query_row(
-            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'client_meta')",
-            [],
-            |row| row.get(0),
+    let result = (|| -> Result<Client, String> {
+        let meta = open_db(db_path, &db_key)?;
+        let has_meta: bool = meta
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'client_meta')",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(text)?;
+        if !has_meta {
+            return Err("в базе нет сохранённой MLS-сессии".to_string());
+        }
+        let serialized = Zeroizing::new(
+            meta.query_row(
+                "SELECT value FROM client_meta WHERE key = 'session_tokens'",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|_| "в базе нет сохранённой MLS-сессии; выполните вход заново".to_string())?,
+        );
+        drop(meta);
+        let (access, refresh): (String, String) = serde_json::from_slice(serialized.as_slice())
+            .map_err(|_| "сохранённая сессия повреждена; выполните вход заново".to_string())?;
+        let tokens = SessionTokens(access, refresh);
+        if tokens.0.is_empty() || tokens.1.is_empty() {
+            return Err("сохранённая сессия неполная; выполните вход заново".to_string());
+        }
+        let agent = ureq::AgentBuilder::new().build();
+        build_client(
+            agent,
+            base.trim_end_matches('/'),
+            tokens,
+            user_id,
+            device_id,
+            db_path,
+            &db_key,
         )
-        .map_err(text)?;
-    if !has_meta {
-        return Err("в базе нет сохранённой MLS-сессии".to_string());
-    }
-    let serialized: Vec<u8> = meta
-        .query_row(
-            "SELECT value FROM client_meta WHERE key = 'session_tokens'",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(|_| "в базе нет сохранённой MLS-сессии; выполните вход заново".to_string())?;
-    drop(meta);
-    let tokens: (String, String) = serde_json::from_slice(&serialized)
-        .map_err(|_| "сохранённая сессия повреждена; выполните вход заново".to_string())?;
-    if tokens.0.is_empty() || tokens.1.is_empty() {
-        return Err("сохранённая сессия неполная; выполните вход заново".to_string());
-    }
-    let agent = ureq::AgentBuilder::new().build();
-    build_client(
-        agent,
-        base.trim_end_matches('/'),
-        tokens,
-        user_id,
-        device_id,
-        db_path,
-        &db_key,
-    )
+    })();
+    db_key.zeroize();
+    result
 }
 
 /// Вход нового устройства аккаунта: подтверждается существующим устройством `approver`.
@@ -516,7 +544,7 @@ pub fn connect_with_approval(
     build_client_with_keys(agent, base, tokens, user_id, device_id, db_path, keys)
 }
 
-fn build_client(agent: ureq::Agent, base: &str, tokens: (String, String), user_id: &str, device_id: &str, db_path: &str, db_key: &[u8; 32]) -> Result<Client, String> {
+fn build_client(agent: ureq::Agent, base: &str, tokens: SessionTokens, user_id: &str, device_id: &str, db_path: &str, db_key: &[u8; 32]) -> Result<Client, String> {
     let mut meta = open_db(db_path, db_key)?;
     {
         let mut storage = SqliteStorageProvider::<JsonCodec, &mut Connection>::new(&mut meta);
@@ -532,10 +560,12 @@ fn build_client(agent: ureq::Agent, base: &str, tokens: (String, String), user_i
          CREATE TABLE IF NOT EXISTS client_remote_config (id INTEGER PRIMARY KEY CHECK (id = 1), etag TEXT NOT NULL, body TEXT NOT NULL, fetched_at INTEGER NOT NULL);",
     )
     .map_err(text)?;
-    let serialized_tokens = serde_json::to_vec(&tokens).map_err(text)?;
+    let serialized_tokens = Zeroizing::new(
+        serde_json::to_vec(&(&tokens.0, &tokens.1)).map_err(text)?,
+    );
     meta.execute(
         "INSERT OR REPLACE INTO client_meta (key, value) VALUES ('session_tokens', ?1)",
-        [serialized_tokens],
+        [serialized_tokens.as_slice()],
     )
     .map_err(text)?;
 
@@ -614,7 +644,7 @@ impl Client {
     }
 
     fn call_once(&self, method: &str, path: &str, body: Option<Value>) -> Result<Value, String> {
-        let token = self.tokens.lock().map_err(text)?.0.clone();
+        let token = Zeroizing::new(self.tokens.lock().map_err(text)?.0.clone());
         request(&self.agent, &self.base, &token, method, path, body)
     }
 
@@ -623,19 +653,21 @@ impl Client {
         // Держим блокировку до завершения ротации: два параллельных 401
         // не должны потратить один refresh token дважды.
         let mut tokens = self.tokens.lock().map_err(text)?;
-        let refresh = tokens.1.clone();
-        let r = request(&self.agent, &self.base, "", "POST", "/token/refresh", Some(json!({ "refreshToken": refresh })))?;
-        let next_pair = (
+        let refresh = Zeroizing::new(tokens.1.clone());
+        let r = request(&self.agent, &self.base, "", "POST", "/token/refresh", Some(json!({ "refreshToken": refresh.as_str() })))?;
+        let next_pair = SessionTokens(
             r["token"].as_str().ok_or("сервер не вернул токен")?.to_string(),
             r["refreshToken"].as_str().ok_or("сервер не вернул токен обновления")?.to_string(),
         );
         // Одна SQL-операция заменяет пару целиком; память обновляем только
         // после успешной записи, чтобы не потерять действующий refresh token.
-        let serialized = serde_json::to_vec(&next_pair).map_err(text)?;
+        let serialized = Zeroizing::new(
+            serde_json::to_vec(&(&next_pair.0, &next_pair.1)).map_err(text)?,
+        );
         self.meta
             .execute(
                 "INSERT OR REPLACE INTO client_meta (key, value) VALUES ('session_tokens', ?1)",
-                [serialized],
+                [serialized.as_slice()],
             )
             .map_err(text)?;
         *tokens = next_pair;
@@ -648,6 +680,7 @@ impl Client {
         self.meta
             .execute("DELETE FROM client_meta WHERE key = 'session_tokens'", [])
             .map_err(text)?;
+        *self.tokens.lock().map_err(text)? = SessionTokens(String::new(), String::new());
         Ok(())
     }
 
