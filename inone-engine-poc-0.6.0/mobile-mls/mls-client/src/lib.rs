@@ -4,6 +4,8 @@
 use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
+
+use rusqlite::OptionalExtension;
 use std::time::Duration;
 use std::path::Path;
 
@@ -411,6 +413,7 @@ fn build_client(agent: ureq::Agent, base: &str, tokens: (String, String), user_i
     meta.execute_batch(
         "CREATE TABLE IF NOT EXISTS client_meta (key TEXT PRIMARY KEY, value BLOB NOT NULL);
          CREATE TABLE IF NOT EXISTS client_rooms (room_id TEXT PRIMARY KEY, join_epoch INTEGER NOT NULL);
+         CREATE TABLE IF NOT EXISTS client_welcomes (welcome_id INTEGER PRIMARY KEY, room_id TEXT NOT NULL);
          CREATE TABLE IF NOT EXISTS client_processed (event_id TEXT PRIMARY KEY);
          CREATE TABLE IF NOT EXISTS client_inbox (seq INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL UNIQUE, room_id TEXT NOT NULL, kind TEXT NOT NULL, body TEXT, acknowledged INTEGER NOT NULL DEFAULT 0);
          CREATE TABLE IF NOT EXISTS client_outbox (local_id TEXT PRIMARY KEY, room_id TEXT NOT NULL, body TEXT NOT NULL, seq INTEGER NOT NULL);
@@ -932,6 +935,32 @@ impl Client {
         let pending = self.call("GET", "/mls/welcomes", None)?;
         for w in pending["welcomes"].as_array().cloned().unwrap_or_default() {
             let id = w["id"].as_i64().ok_or("нет id приветствия")?;
+            let previously_joined: Option<String> = self
+                .meta
+                .query_row(
+                    "SELECT room_id FROM client_welcomes WHERE welcome_id = ?1",
+                    [id],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(text)?;
+            if let Some(room_id) = previously_joined {
+                if self.groups.contains_key(&room_id) {
+                    // The local group was committed before the previous ACK attempt.
+                    // Retry only the ACK; never consume the same Welcome twice.
+                    self.call("POST", &format!("/mls/welcomes/{id}/ack"), Some(json!({})))?;
+            self.meta
+                .execute("DELETE FROM client_welcomes WHERE welcome_id = ?1", [id])
+                .map_err(text)?;
+                    self.meta
+                        .execute("DELETE FROM client_welcomes WHERE welcome_id = ?1", [id])
+                        .map_err(text)?;
+                    continue;
+                }
+                self.meta
+                    .execute("DELETE FROM client_welcomes WHERE welcome_id = ?1", [id])
+                    .map_err(text)?;
+            }
             let bytes = B64.decode(w["welcome"].as_str().ok_or("приветствие не строка")?).map_err(text)?;
             let welcome = match MlsMessageIn::tls_deserialize_exact(&bytes).map_err(text)?.extract() {
                 MlsMessageBodyIn::Welcome(x) => x,
@@ -951,6 +980,12 @@ impl Client {
                 .execute(
                     "INSERT OR REPLACE INTO client_rooms (room_id, join_epoch) VALUES (?1, ?2)",
                     (&room_id, join_epoch as i64),
+                )
+                .map_err(text)?;
+            transaction
+                .execute(
+                    "INSERT OR REPLACE INTO client_welcomes (welcome_id, room_id) VALUES (?1, ?2)",
+                    (id, &room_id),
                 )
                 .map_err(text)?;
             transaction.commit().map_err(text)?;
