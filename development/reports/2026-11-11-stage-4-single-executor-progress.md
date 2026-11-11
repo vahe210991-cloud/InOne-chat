@@ -120,3 +120,17 @@ Reference: https://docs.rs/crate/android-native-keyring-store/latest/source/READ
 - GitHub Actions runs inspected, including job metadata and rerun attempts.
 - No source test command was successfully executed in this environment because the GitHub jobs never received a runner.
 - No PR was merged; no deployment, server, database or paid Codespace was started.
+
+
+## 8. Post-report CI recheck — 2026-11-11
+
+After the report and continuity files were committed, the current PR head advanced to `87089c610e03ba5302b316db07baa2d44d71260a`. The source-code changes remain at `048db63a7817b28e38a3a8353f8665a713f56730`; the later commits update reports/continuity only.
+
+Latest CI recheck on the updated PR head:
+
+- [OpenMLS client run #42976768215](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42976768215): FAILED before step 1; `runner_id=0`; `steps=[]`.
+- [FRB generation run #42976768182](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42976768182): FAILED before step 1; `runner_id=0`; `steps=[]`.
+- iOS dependent job in run #42976768182: SKIPPED because the FRB prerequisite failed.
+- [Flutter mobile validation run #42976768225](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42976768225): SKIPPED by the Stage 4 branch condition.
+
+The runner-allocation failure persists on the documentation-updated PR head. No Rust, Flutter, Android or iOS test step executed. Stage 4 remains NOT ACCEPTED.
