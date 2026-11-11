@@ -78,6 +78,58 @@ void main() {
     session.dispose();
   });
 
+  test('logout waits for an in-flight login and native MLS handoff', () async {
+    final httpClient = MockClient((request) async {
+      if (request.url.path == '/login') {
+        return http.Response(
+          jsonEncode({'token': 'access-1', 'refreshToken': 'refresh-1'}),
+          200,
+        );
+      }
+      if (request.url.path == '/profile') {
+        return http.Response(jsonEncode({'userId': '@alice:inone.test'}), 200);
+      }
+      return http.Response('{}', 404);
+    });
+    var deletedUserId = false;
+    final bridge = _FakeMlsSessionBridge()
+      ..openStarted = Completer<void>()
+      ..openGate = Completer<void>();
+    final session = InOneSession(
+      baseUrl: 'https://api.inone.test',
+      httpClient: httpClient,
+      nativeMlsBridge: bridge,
+      readDeviceId: () async => 'device-1',
+      writeDeviceId: (_) async {},
+      readMlsUserId: () async => null,
+      writeMlsUserId: (_) async {},
+      deleteMlsUserId: () async {
+        deletedUserId = true;
+      },
+    );
+
+    final login = session.login(
+      email: 'alice@example.test',
+      password: 'not-used-in-test',
+    );
+    await bridge.openStarted!.future;
+    final logout = session.logout();
+
+    expect(bridge.logoutCalls, 0);
+    expect(bridge.purgeCalls, 0);
+
+    bridge.openGate!.complete();
+    await login;
+    await logout;
+
+    expect(bridge.logoutCalls, 1);
+    expect(bridge.purgeCalls, 1);
+    expect(deletedUserId, isTrue);
+    expect(session.isAuthenticated, isFalse);
+    expect(session.hasNativeMlsSession, isFalse);
+    session.dispose();
+  });
+
   test('login automatically adopts the native MLS session when configured', () async {
     final httpClient = MockClient((request) async {
       if (request.url.path == '/login') {
@@ -325,6 +377,7 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
   Map<String, String>? purgeArguments;
   int refreshCalls = 0;
   int logoutCalls = 0;
+  int purgeCalls = 0;
   int closeCalls = 0;
   int openCalls = 0;
   Completer<void>? openStarted;
@@ -373,6 +426,7 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
     required String userId,
     required String deviceId,
   }) async {
+    purgeCalls++;
     purgeArguments = {'userId': userId, 'deviceId': deviceId};
   }
 
