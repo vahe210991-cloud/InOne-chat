@@ -277,9 +277,9 @@ pub fn open_session(
         .join(format!("{filename}.sqlcipher"))
         .to_string_lossy()
         .into_owned();
-    let existing_key = keys.existing_database_key(&identity)?;
+    let has_existing_key = keys.has_database_key(&identity)?;
     let database_existed = database_artifacts_exist(&database_path);
-    if database_existed && existing_key.is_none() {
+    if database_existed && !has_existing_key {
         return Err(
             "файл SQLCipher существует, но защищённый ключ отсутствует; автоматическая генерация нового ключа запрещена, требуется явное восстановление"
                 .to_string(),
@@ -390,6 +390,10 @@ mod tests {
     }
 
     impl KeyStore for TestKeyStore {
+        fn has_database_key(&self, _scope: &str) -> Result<bool, String> {
+            Ok(true)
+        }
+
         fn existing_database_key(&self, _scope: &str) -> Result<Option<[u8; 32]>, String> {
             Ok(Some([7u8; 32]))
         }
