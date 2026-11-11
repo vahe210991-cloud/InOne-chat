@@ -415,3 +415,12 @@ Read `development/AI-AGENT-MANDATE.md` at the start of every session. ChatGPT re
 - Latest PR #45 head: `bfb87598068239c1107233d930ee79f25ff62d77`.
 - FRB #42989491362 and OpenMLS #42989491373 failed before steps/logs; logs returned BlobNotFound. Flutter #42989491354 skipped.
 - No test command evidenced as executed. Obtain the exact job-level failure message from GitHub Actions UI or restore an authorized runner. Report section 35.
+
+
+## Stage 4 — next action after failed-job rerun — 2026-11-11
+
+- PR #45 latest recorded head: `f6384a0bd68460849cbc9b9ce0fa6d7e9fcb9a6a`; latest code-triggered run SHA: `bfb87598068239c1107233d930ee79f25ff62d77`.
+- Failed-job reruns #42989491362 and #42989491373 were accepted by the API but again failed with no step summaries/log URLs; logs return `BlobNotFound`. Latest job IDs: `130426024038` and `130426036241`.
+- No test/codegen/build command is evidenced as executed. Do not modify runner labels, permissions or acceptance checks speculatively.
+- Obtain the exact job-start failure detail visible in the Actions UI or use an owner-authorized working runner; then execute the full Beta 1.0 matrix on one exact final SHA.
+- Keep native MLS disabled, WBS v1.1 unchanged, Stage 4 NOT ACCEPTED / BLOCKED; no merge. Report section 36.
