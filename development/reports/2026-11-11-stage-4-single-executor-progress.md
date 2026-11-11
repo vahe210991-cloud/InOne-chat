@@ -711,3 +711,20 @@ Exact code/test head: `5ca865573e7ed8949698ce7eda7d0adbf5f5915a`.
 Job-log retrieval returned `BlobNotFound` for the failed jobs. No test command is evidenced as executed. The failure cause remains UNKNOWN.
 
 **Acceptance unchanged:** Stage 4 NOT ACCEPTED / BLOCKED; 0% verification accepted; Beta 1.0 WBS v1.1 unchanged; keep `INONE_MLS_NATIVE_ENABLED=false`.
+
+
+## 32. Latest exact-head verification after test-name correction — 2026-11-11
+
+The process-exit regression was renamed to `process_crash_rolls_back_openmls_storage_and_inbox_atomically` to describe its actual coverage: an OpenMLS signature-key storage write plus inbox/processed writes inside one uncommitted SQLCipher WAL transaction. It does not claim to mutate an MLS group ratchet.
+
+Latest PR #45 head: `28aa6f488472688ae5d728e18da8ef24910d540d`.
+
+| Workflow | Run | Result | Evidence |
+|---|---:|---|---|
+| OpenMLS client | [42989119932](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42989119932) | FAILURE | Job `130417370301`: `steps=null`, `logs_url=null` |
+| FRB generation | [42989119937](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42989119937) | FAILURE | Job `130417370534`: `steps=null`, `logs_url=null`; generated commit, final-SHA and iOS jobs SKIPPED |
+| Flutter mobile | [42989120066](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42989120066) | SKIPPED | Explicit Stage 4 branch condition |
+
+No test command is evidenced as executed; logs are unavailable. Exact job-start failure cause remains UNKNOWN.
+
+**Acceptance:** Stage 4 NOT ACCEPTED / BLOCKED; verification accepted 0%; Beta 1.0 WBS v1.1 unchanged; native MLS disabled.
