@@ -2737,6 +2737,7 @@ impl Client {
                     self.meta.execute("DELETE FROM client_outbox WHERE local_id = ?1", [&local_id]).map_err(text)?;
                     sent += 1;
                 }
+                Err(e) if e.contains("комната рассинхронизирована") => continue,
                 Err(e) if is_retryable(&e) => break,
                 Err(e) => return Err(e),
             }
