@@ -455,6 +455,36 @@ class InOneSession extends ChangeNotifier {
     }
   }
 
+  /// Returns the durable room recovery state reported by the native MLS client.
+  Future<String?> mlsRoomRecoveryStatus(String roomId) async {
+    final bridge = _mlsBridge;
+    if (bridge == null) return null;
+    return bridge.roomRecoveryStatus(roomId);
+  }
+
+  /// Returns persisted diagnostics for MLS events that could not be decrypted.
+  Future<List<MlsUndecryptableEvent>> mlsUndecryptableEvents() async {
+    final bridge = _mlsBridge;
+    if (bridge == null) return const [];
+    return bridge.undecryptable();
+  }
+
+  /// Returns the quarantined Commit reason for a room epoch, when present.
+  Future<String?> mlsQuarantinedCommitReason(String roomId, int epoch) async {
+    final bridge = _mlsBridge;
+    if (bridge == null) return null;
+    return bridge.quarantinedCommitReason(roomId, epoch);
+  }
+
+  /// Cancels an invite only when the native client can safely release its claim.
+  Future<void> cancelMlsInvite(String roomId, String userId) async {
+    final bridge = _mlsBridge;
+    if (bridge == null) {
+      throw StateError('Native MLS session is not open');
+    }
+    await bridge.cancelInvite(roomId, userId);
+  }
+
   Future<void> logout() {
     final active = _logoutInFlight;
     if (active != null) return active;
