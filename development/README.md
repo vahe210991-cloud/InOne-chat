@@ -17,6 +17,10 @@ This folder defines the working protocol and the current verified development ba
 
 Project-wide approved decisions and continuity documents remain in [docs/continuity/README.md](../docs/continuity/README.md). If any document conflicts, do not guess: follow the newest explicit owner decision, record the conflict in SESSION-LOG.md, and update the affected documents.
 
+## Repository-native and concurrent-agent workflow
+
+Owner clarification (2026-11-11): agents may work directly against GitHub files when the available interface can safely inspect and update the exact paths. A complete clone/Codespace is preferred for broad code changes, builds, tests, binaries, history, submodules and LFS, but lack of a clone is not by itself a reason to stop. Each concurrent agent must use its own task branch/worktree, verify the latest SHA before writing, and never overwrite another agent's changes. See section 8 of [WORKING-RULES.md](WORKING-RULES.md) for the full protocol. Direct commits to `main` are limited to narrowly scoped documentation/rule changes explicitly authorized by the owner; this authorization does not cover product-code changes or PR merges.
+
 ## One source of truth
 
 The GitHub repository `vahe210991-cloud/InOne-chat` is the only authoritative project workspace. No important source, patch, decision, test result, design asset, or handover instruction may exist only in a model's memory, a chat transcript, a private local folder, or an untracked working directory.
