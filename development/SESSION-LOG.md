@@ -1,3 +1,14 @@
+## 2026-11-11 — Owner-approved repository-native and concurrent-agent workflow
+
+- Owner clarified that GitHub must remain the always-current shared source of truth, while agents may use either a temporary local clone/Codespace or safe repository-native editing depending on task scope and available tools.
+- Updated `development/WORKING-RULES.md` with repository-native editing rules, SHA-guarded sequential writes, unique task branches/worktrees for concurrent agents, conflict handling, safe deletion criteria, and mandatory hand-back evidence. This supersedes the blanket stop condition when a task can safely be completed through GitHub.
+- Updated root `AGENTS.md` and `development/README.md` to point all agents to the clarified workflow.
+- Documentation-only commits were explicitly authorized by the owner and applied directly to `main`; no product code, security fixes, branch refs, or PRs were changed.
+- Commits: `823c968096df074c0034f0aeee726a0e4cba5843` (WORKING-RULES), `459a11966cb20c4edb9d0f0f0cdf1c9a0b7a15df` (AGENTS), `c4defca324952ae2d7766195ef1692238d254c75` (development README).
+- Next: apply the repository-native workflow to a complete file-tree audit; do not delete files without inspecting content, provenance, references and retention role.
+
+---
+
 ## 2026-11-09 10:46 — UI exact-head CI green; original source archive still blocked
 
 - Latest Actions run [#42579006574](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42579006574) completed **SUCCESS** on code SHA `df5c50c6e7f372d3a64f1c10e4bf4464d4a4d121`. Flutter setup/platform generation, geometry, 73-screen gallery, pub get, analyze, tests, Android preview APK and artifact upload all passed.
