@@ -3018,6 +3018,217 @@ mod retry_tests {
     }
 
     #[test]
+    fn existing_database_with_wrong_protected_key_is_rejected_without_replacement() {
+        let scope = "alice/device-key-mismatch";
+        let correct_key = [0x31u8; 32];
+        let wrong_key = [0x73u8; 32];
+        let database_path = std::env::temp_dir().join(format!(
+            "inone-mls-key-mismatch-{}-{}.sqlcipher",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let database_path = database_path.to_string_lossy().into_owned();
+
+        let keys = MemoryKeyStore::default();
+        keys.keys
+            .lock()
+            .unwrap()
+            .insert(scope.to_string(), wrong_key);
+
+        let mut database = open_db(&database_path, &correct_key).unwrap();
+        {
+            let mut storage =
+                SqliteStorageProvider::<JsonCodec, &mut Connection>::new(&mut database);
+            storage.run_migrations().unwrap();
+        }
+        drop(database);
+
+        // Fresh-login entrypoints converge on build_client_with_keys. A present
+        // but wrong key must fail closed without deleting or replacing the DB/key.
+        let result = build_client_with_keys(
+            ureq::AgentBuilder::new().redirects(0).build(),
+            "https://api.inone.test",
+            ("access".to_string(), "refresh".to_string()),
+            "alice",
+            "device-key-mismatch",
+            &database_path,
+            &keys,
+        );
+
+        assert!(result.is_err(), "a mismatched SQLCipher key must be rejected");
+        assert!(database_artifacts_exist(&database_path));
+        assert_eq!(
+            keys.existing_database_key(scope).unwrap(),
+            Some(wrong_key),
+            "the existing protected key must not be replaced"
+        );
+        let still_readable_with_original_key = open_db(&database_path, &correct_key).unwrap();
+        drop(still_readable_with_original_key);
+        remove_database_artifacts(&database_path).unwrap();
+    }
+
+    #[test]
+    fn failed_new_session_initialization_removes_partial_database_and_key() {
+        let scope = "alice/device-partial-init";
+        let keys = MemoryKeyStore::default();
+        let root = std::env::temp_dir().join(format!(
+            "inone-mls-partial-init-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let database_path = root.join("missing-parent").join("device.sqlcipher");
+        let database_path = database_path.to_string_lossy().into_owned();
+
+        // The parent directory is intentionally absent. The platform key is
+        // created first; opening the DB then fails and both partial artifacts
+        // and the newly-created key must be cleaned.
+        let result = build_client_with_keys(
+            ureq::AgentBuilder::new().redirects(0).build(),
+            "https://api.inone.test",
+            ("access".to_string(), "refresh".to_string()),
+            "alice",
+            "device-partial-init",
+            &database_path,
+            &keys,
+        );
+
+        assert!(result.is_err());
+        assert_eq!(keys.existing_database_key(scope).unwrap(), None);
+        assert!(
+            !database_artifacts_exist(&database_path),
+            "failed initialization must not leave a partial SQLCipher database"
+        );
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn process_crash_rolls_back_ratchet_and_inbox_atomically() {
+        const CHILD_DATABASE_ENV: &str = "INONE_MLS_CRASH_TEST_CHILD_DATABASE";
+        const TEST_KEY: [u8; 32] = [0x42; 32];
+
+        if let Ok(database_path) = std::env::var(CHILD_DATABASE_ENV) {
+            let mut connection = open_db(&database_path, &TEST_KEY).unwrap();
+            connection
+                .pragma_update(None, "journal_mode", "WAL")
+                .unwrap();
+            let transaction = connection.transaction().unwrap();
+            let crypto = RustCrypto::default();
+            let signer = SignatureKeyPair::new(CIPHERSUITE.signature_algorithm()).unwrap();
+            let public = signer.to_public_vec();
+
+            {
+                let provider =
+                    DeviceProvider::new(&crypto, TransactionConnection(&transaction));
+                signer.store(provider.storage()).unwrap();
+                insert_incoming_record(
+                    &transaction,
+                    &Incoming::Text {
+                        room_id: "room-crash".to_string(),
+                        event_id: "event-crash".to_string(),
+                        text: "must commit with ratchet state".to_string(),
+                    },
+                )
+                .unwrap();
+            }
+
+            std::fs::write(format!("{database_path}.public"), &public).unwrap();
+            // Deliberately bypass Rust destructors: SQLite must recover the
+            // uncommitted WAL transaction after the child process exits.
+            std::process::exit(86);
+        }
+
+        let database_path = std::env::temp_dir().join(format!(
+            "inone-mls-process-crash-{}-{}.sqlcipher",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let database_path = database_path.to_string_lossy().into_owned();
+        let mut connection = open_db(&database_path, &TEST_KEY).unwrap();
+        connection
+            .pragma_update(None, "journal_mode", "WAL")
+            .unwrap();
+        {
+            let mut storage =
+                SqliteStorageProvider::<JsonCodec, &mut Connection>::new(&mut connection);
+            storage.run_migrations().unwrap();
+        }
+        connection
+            .execute_batch(
+                "CREATE TABLE client_inbox (
+                    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+                    event_id TEXT NOT NULL UNIQUE,
+                    room_id TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    body TEXT,
+                    acknowledged INTEGER NOT NULL DEFAULT 0
+                 );
+                 CREATE TABLE client_processed (event_id TEXT PRIMARY KEY);",
+            )
+            .unwrap();
+        drop(connection);
+
+        let child_status = std::process::Command::new(std::env::current_exe().unwrap())
+            .arg("--exact")
+            .arg("retry_tests::process_crash_rolls_back_ratchet_and_inbox_atomically")
+            .arg("--nocapture")
+            .env(CHILD_DATABASE_ENV, &database_path)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .unwrap();
+        assert_eq!(
+            child_status.code(),
+            Some(86),
+            "child must terminate with an uncommitted transaction"
+        );
+
+        let public = std::fs::read(format!("{database_path}.public")).unwrap();
+        let connection = open_db(&database_path, &TEST_KEY).unwrap();
+        let crypto = RustCrypto::default();
+        let provider = DeviceProvider::new(&crypto, &connection);
+        assert!(
+            SignatureKeyPair::read(
+                provider.storage(),
+                &public,
+                CIPHERSUITE.signature_algorithm()
+            )
+            .is_none(),
+            "uncommitted OpenMLS ratchet material must not survive process death"
+        );
+        drop(provider);
+
+        let inbox_count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM client_inbox WHERE event_id = 'event-crash'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let processed_count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM client_processed WHERE event_id = 'event-crash'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(inbox_count, 0, "inbox plaintext must roll back with ratchet state");
+        assert_eq!(processed_count, 0, "processed marker must roll back with inbox and ratchet");
+
+        drop(connection);
+        remove_database_artifacts(&database_path).unwrap();
+        let _ = std::fs::remove_file(format!("{database_path}.public"));
+    }
+
+    #[test]
     fn rejected_local_commit_can_be_cleared_without_advancing_epoch() {
         let mut connection = Connection::open_in_memory().unwrap();
         {
