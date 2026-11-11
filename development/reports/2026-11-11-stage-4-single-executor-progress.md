@@ -584,3 +584,35 @@ The new write/verify workflow is designed to generate and commit these files, th
 - No source/test pass is claimed from a failed job with no steps/logs.
 
 **Required owner-side unblock:** provide a working GitHub Actions execution path or an authorized Rust/Flutter/macOS build runner. The exact reason GitHub creates failed jobs without steps/logs cannot be determined from the available API evidence. Do not guess billing, runner, permission or policy causes.
+
+
+## 27. Protected iOS signing environment and latest run status — 2026-11-11
+
+### 27.1 Signing-secret protection
+
+The iOS job now declares GitHub Environment `ios-signing`. The repository owner must configure this environment with required reviewers and these environment secrets (do not paste their values into chat):
+
+- `IOS_SIGNING_CERTIFICATE_P12` — base64-encoded P12.
+- `IOS_SIGNING_CERTIFICATE_PASSWORD`.
+- `IOS_PROVISIONING_PROFILE` — base64-encoded provisioning profile.
+- `IOS_TEAM_ID`.
+
+This keeps the signing job behind environment approval rather than exposing signing material to the read-only code-generation and test jobs. The README documents this configuration. Whether the environment and secrets are configured is UNKNOWN; only the repository owner can verify the settings.
+
+### 27.2 Latest observed CI
+
+- PR #45 head when the latest full run was triggered: `5e3a9dc7644bb9e2eb462a41de345b4ff9f7df3c`.
+- [OpenMLS client #42987334965](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42987334965): FAILURE; job `steps=null`, `logs_url=null`; log retrieval unavailable.
+- [FRB generation #42987334938](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42987334938): FAILURE; `generate-and-validate` has no steps/log URL; generated commit, final-SHA and iOS jobs SKIPPED.
+- [Flutter mobile #42987335071](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42987335071): SKIPPED by branch condition.
+- After this run, the mobile README was updated to list the exact protected environment secrets. Latest PR head is now `b0f05abc74ab67910d66f31e7cdd18c01528bb97`; the connector returned no workflow-run records for this SHA at the time of this report update.
+
+The repeated failures expose no step summary or job log. Their root cause remains UNKNOWN; no source-level diagnosis is asserted.
+
+### 27.3 Acceptance
+
+- Current product stage remains Beta 1.0.
+- Stage 4 verification accepted remains 0%; NOT ACCEPTED / BLOCKED.
+- The codegen outputs remain absent until the generation job runs.
+- Keep `INONE_MLS_NATIVE_ENABLED=false`; no merge.
+- Owner-side unblock: provide an executing GitHub Actions runner/build environment and configure the protected `ios-signing` environment. No test result can be manufactured from source review alone.
