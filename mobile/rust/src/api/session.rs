@@ -91,6 +91,37 @@ impl MlsSession {
         self.with_client(|client| client.invite(&room_id, &user_id))
     }
 
+    /// Cancels an invite only when its server-side KeyPackage claim can be safely released.
+    pub fn cancel_invite(&self, room_id: String, user_id: String) -> Result<(), String> {
+        self.with_client(|client| client.cancel_invite(&room_id, &user_id))
+    }
+
+    /// Returns a room-scoped RecoveryRequired, WaitingForCommit or membership mismatch reason.
+    pub fn room_recovery_status(&self, room_id: String) -> Result<Option<String>, String> {
+        self.with_client(|client| client.desync_reason(&room_id))
+    }
+
+    /// Returns durable diagnostics for unreadable MLS events without exposing plaintext keys.
+    pub fn undecryptable_json(&self) -> Result<String, String> {
+        let items = self.with_client(Client::undecryptable)?;
+        serde_json::to_string(&items).map_err(|error| error.to_string())
+    }
+
+    /// Returns the durable Welcome receipt outcome and ACK state for diagnostics.
+    pub fn welcome_receipt_status_json(&self, welcome_id: i64) -> Result<String, String> {
+        let status = self.with_client(|client| client.welcome_receipt_status(welcome_id))?;
+        serde_json::to_string(&status).map_err(|error| error.to_string())
+    }
+
+    /// Returns a quarantined Commit reason for the requested room epoch.
+    pub fn quarantined_commit_reason(
+        &self,
+        room_id: String,
+        epoch: u64,
+    ) -> Result<Option<String>, String> {
+        self.with_client(|client| client.quarantined_commit_reason(&room_id, epoch))
+    }
+
     pub fn send_text(&self, room_id: String, plaintext: String) -> Result<String, String> {
         self.with_client(|client| client.send_text(&room_id, &plaintext))
     }
