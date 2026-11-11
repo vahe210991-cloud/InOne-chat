@@ -37,14 +37,7 @@ fn classify_process_error<S>(error: &openmls::prelude::ProcessMessageError<S>) -
     use openmls::prelude::ProcessMessageError as E;
     match error {
         E::StorageError(_) | E::LibraryError(_) => Failure::Transient,
-        E::IncompatibleWireFormat => Failure::Permanent("несовместимый формат сообщения"),
-        E::ValidationError(_) => Failure::Permanent("проверка сообщения не пройдена"),
-        E::GroupStateError(_) => Failure::Permanent("состояние группы не подходит для сообщения"),
-        E::InvalidCommit(_) => Failure::Permanent("недопустимый коммит"),
-        E::UnauthorizedExternalApplicationMessage | E::UnauthorizedExternalCommitMessage => {
-            Failure::Permanent("отправитель вне группы")
-        }
-        _ => Failure::Permanent("сообщение не поддерживается"),
+        _ => Failure::Permanent("MLS message failed validation or is unsupported"),
     }
 }
 
