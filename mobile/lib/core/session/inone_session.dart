@@ -55,6 +55,9 @@ class InOneSession extends ChangeNotifier {
   String? _savedMlsUserId;
   Future<void>? _initializing;
   Future<void>? _adoptionInFlight;
+  Future<Map<String, dynamic>>? _loginInFlight;
+  Future<void>? _logoutInFlight;
+  bool _loggingOut = false;
   Future<void>? _refreshInFlight;
   Future<String>? _nativeRefreshInFlight;
   Completer<void>? _handoffGate;
@@ -75,6 +78,13 @@ class InOneSession extends ChangeNotifier {
   String? get mlsError => _mlsError;
 
   Future<void> initialize() {
+    if (_loggingOut) {
+      return Future<void>.error(const ApiException(
+        code: 'session_logging_out',
+        statusCode: 409,
+        retryable: false,
+      ));
+    }
     if (_deviceId != null) return Future<void>.value();
     final active = _initializing;
     if (active != null) return active;
@@ -134,6 +144,26 @@ class InOneSession extends ChangeNotifier {
   }
 
   Future<Map<String, dynamic>> login({
+    required String email,
+    required String password,
+  }) {
+    if (_loggingOut) {
+      return Future<Map<String, dynamic>>.error(const ApiException(
+        code: 'session_logging_out',
+        statusCode: 409,
+        retryable: false,
+      ));
+    }
+    final active = _loginInFlight;
+    if (active != null) return active;
+    final operation = _loginOnce(email: email, password: password);
+    _loginInFlight = operation;
+    return operation.whenComplete(() {
+      if (identical(_loginInFlight, operation)) _loginInFlight = null;
+    });
+  }
+
+  Future<Map<String, dynamic>> _loginOnce({
     required String email,
     required String password,
   }) async {
@@ -203,6 +233,13 @@ class InOneSession extends ChangeNotifier {
   /// token is handed to Rust once and cleared from Dart only after Rust has
   /// accepted the session and returned a valid access-token snapshot.
   Future<void> adoptMlsSession([MlsSessionBridge? bridge]) {
+    if (_loggingOut) {
+      return Future<void>.error(const ApiException(
+        code: 'session_logging_out',
+        statusCode: 409,
+        retryable: false,
+      ));
+    }
     final active = _adoptionInFlight;
     if (active != null) return active;
     final operation = _adoptMlsSession(bridge);
@@ -378,7 +415,62 @@ class InOneSession extends ChangeNotifier {
     }
   }
 
-  Future<void> logout() async {
+  Future<void> logout() {
+    final active = _logoutInFlight;
+    if (active != null) return active;
+    _loggingOut = true;
+    final operation = _logoutOnce();
+    _logoutInFlight = operation;
+    return operation.whenComplete(() {
+      if (identical(_logoutInFlight, operation)) _logoutInFlight = null;
+      _loggingOut = false;
+    });
+  }
+
+  Future<void> _logoutOnce() async {
+    final login = _loginInFlight;
+    if (login != null) {
+      try {
+        await login;
+      } catch (_) {
+        // Continue with local cleanup even if authentication failed.
+      }
+    }
+    final initialization = _initializing;
+    if (initialization != null) {
+      try {
+        await initialization;
+      } catch (_) {
+        // Continue with local cleanup even if session restoration failed.
+      }
+    }
+    final adoption = _adoptionInFlight;
+    if (adoption != null) {
+      try {
+        await adoption;
+      } catch (_) {
+        // The handoff may fail; the persisted identity is still purged below.
+      }
+    }
+    final handoff = _handoffGate;
+    if (handoff != null) await handoff.future;
+    final refresh = _refreshInFlight;
+    if (refresh != null) {
+      try {
+        await refresh;
+      } catch (_) {
+        // Logout must not be blocked by a failed token rotation.
+      }
+    }
+    final nativeRefresh = _nativeRefreshInFlight;
+    if (nativeRefresh != null) {
+      try {
+        await nativeRefresh;
+      } catch (_) {
+        // Local native cleanup remains mandatory.
+      }
+    }
+
     final bridge = _mlsBridge;
     final savedUserId = _savedMlsUserId;
     var localMlsPurged = savedUserId == null;
