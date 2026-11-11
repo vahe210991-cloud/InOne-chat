@@ -708,6 +708,16 @@ fn build_client(agent: ureq::Agent, base: &str, tokens: SessionTokens, user_id: 
         "CREATE TABLE IF NOT EXISTS client_meta (key TEXT PRIMARY KEY, value BLOB NOT NULL);
          CREATE TABLE IF NOT EXISTS client_rooms (room_id TEXT PRIMARY KEY, join_epoch INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS client_welcomes (welcome_id INTEGER PRIMARY KEY, room_id TEXT NOT NULL);
+         CREATE TABLE IF NOT EXISTS client_welcome_receipts (
+           welcome_id INTEGER PRIMARY KEY,
+           room_id TEXT NOT NULL,
+           welcome BLOB NOT NULL,
+           outcome TEXT NOT NULL CHECK (outcome IN ('joined', 'quarantined')),
+           reason TEXT,
+           created_at INTEGER NOT NULL,
+           acked_at INTEGER
+         );
+         CREATE TABLE IF NOT EXISTS client_desync (room_id TEXT PRIMARY KEY, reason TEXT NOT NULL);
          CREATE TABLE IF NOT EXISTS client_processed (event_id TEXT PRIMARY KEY);
          CREATE TABLE IF NOT EXISTS client_inbox (seq INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL UNIQUE, room_id TEXT NOT NULL, kind TEXT NOT NULL, body TEXT, acknowledged INTEGER NOT NULL DEFAULT 0);
          CREATE TABLE IF NOT EXISTS client_outbox (local_id TEXT PRIMARY KEY, room_id TEXT NOT NULL, body TEXT NOT NULL, seq INTEGER NOT NULL);
@@ -1109,6 +1119,9 @@ impl Client {
     /// Приглашает пользователя: забирает его ключевые пакеты (все устройства), делает коммит и приветствия.
     pub fn invite(&mut self, room_id: &str, user_id: &str) -> Result<(), String> {
         self.ensure_writable()?;
+        if let Some(reason) = self.desync_reason(room_id)? {
+            return Err(format!("комната требует восстановления: {reason}"));
+        }
         let claimed = self.call(
             "GET",
             &format!("/mls/key-packages/{}", urlencoding::encode(user_id)),
@@ -1219,6 +1232,9 @@ impl Client {
     /// Отправляет текст с идентификатором клиента: повтор с тем же идентификатором не создаёт дубля.
     pub fn send_text_with_id(&mut self, room_id: &str, plaintext: &str, client_message_id: &str) -> Result<String, String> {
         self.ensure_writable()?;
+        if let Some(reason) = self.desync_reason(room_id)? {
+            return Err(format!("комната требует восстановления: {reason}"));
+        }
         let server = self.server_epoch(room_id)?;
         let provider = self.provider();
         let body = {
@@ -1242,73 +1258,300 @@ impl Client {
 
     /// Входит в группы по приветствиям, которые ждут на сервере, и подтверждает их.
     fn join_welcomes(&mut self) -> Result<(), String> {
+        self.retry_pending_welcome_acks()?;
         let pending = self.call("GET", "/mls/welcomes", None)?;
-        for w in pending["welcomes"].as_array().cloned().unwrap_or_default() {
-            let id = w["id"].as_i64().ok_or("нет id приветствия")?;
-            let previously_joined: Option<String> = self
-                .meta
+        for row in pending["welcomes"].as_array().cloned().unwrap_or_default() {
+            let Some(welcome_id) = row["id"].as_i64() else { continue };
+            let Some(room_id) = row["roomId"].as_str().filter(|id| !id.trim().is_empty()) else { continue };
+            let encoded = row["welcome"].as_str().unwrap_or_default();
+            let bytes = match B64.decode(encoded) {
+                Ok(bytes) => bytes,
+                Err(error) => {
+                    if self.persist_welcome_receipt(
+                        welcome_id, room_id, encoded.as_bytes(), "quarantined",
+                        Some(&format!("Welcome base64 is malformed: {error}")),
+                    ).is_ok() {
+                        let _ = self.ack_welcome(welcome_id);
+                    }
+                    continue;
+                }
+            };
+
+            let existing: Option<(String, Vec<u8>, String, Option<i64>)> = self.meta
                 .query_row(
-                    "SELECT room_id FROM client_welcomes WHERE welcome_id = ?1",
-                    [id],
-                    |row| row.get(0),
+                    "SELECT room_id, welcome, outcome, acked_at FROM client_welcome_receipts WHERE welcome_id = ?1",
+                    [welcome_id],
+                    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
                 )
                 .optional()
                 .map_err(text)?;
-            if let Some(room_id) = previously_joined {
-                if self.groups.contains_key(&room_id) {
-                    // The local group was committed before the previous ACK attempt.
-                    // Retry only the ACK; never consume the same Welcome twice.
-                    self.call("POST", &format!("/mls/welcomes/{id}/ack"), Some(json!({})))?;
-                    self.meta
-                        .execute("DELETE FROM client_welcomes WHERE welcome_id = ?1", [id])
-                        .map_err(text)?;
+            if let Some((stored_room, stored_welcome, outcome, acked_at)) = existing {
+                if stored_room != room_id || stored_welcome != bytes {
+                    self.record_desync(room_id, "Welcome receipt identity collision")?;
                     continue;
                 }
-                self.meta
-                    .execute("DELETE FROM client_welcomes WHERE welcome_id = ?1", [id])
-                    .map_err(text)?;
+                if outcome == "joined" && !self.groups.contains_key(room_id) {
+                    self.record_desync(room_id, "joined Welcome receipt exists but the local MLS group is missing")?;
+                    continue;
+                }
+                if acked_at.is_none() {
+                    let _ = self.ack_welcome(welcome_id);
+                }
+                continue;
             }
-            let bytes = B64.decode(w["welcome"].as_str().ok_or("приветствие не строка")?).map_err(text)?;
-            let welcome = match MlsMessageIn::tls_deserialize_exact(&bytes).map_err(text)?.extract() {
-                MlsMessageBodyIn::Welcome(x) => x,
-                _ => return Err("ожидалось приветствие".to_string()),
+
+            // Upgrade a pending ACK marker written by the earlier mobile client.
+            let legacy_room: Option<String> = self.meta
+                .query_row(
+                    "SELECT room_id FROM client_welcomes WHERE welcome_id = ?1",
+                    [welcome_id],
+                    |r| r.get(0),
+                )
+                .optional()
+                .map_err(text)?;
+            if let Some(stored_room) = legacy_room {
+                if stored_room != room_id || !self.groups.contains_key(room_id) {
+                    self.record_desync(room_id, "legacy Welcome ACK marker does not match a durable local group")?;
+                    continue;
+                }
+                if self.persist_welcome_receipt(welcome_id, room_id, &bytes, "joined", None).is_ok() {
+                    let _ = self.meta.execute("DELETE FROM client_welcomes WHERE welcome_id = ?1", [welcome_id]);
+                    let _ = self.ack_welcome(welcome_id);
+                }
+                continue;
+            }
+
+            let locally_joined: bool = self.meta
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM client_rooms WHERE room_id = ?1)",
+                    [room_id],
+                    |r| r.get(0),
+                )
+                .map_err(text)?;
+            if locally_joined || self.groups.contains_key(room_id) {
+                self.record_desync(
+                    room_id,
+                    "Duplicate Welcome for an already joined room; retain Welcome without ACK for explicit recovery",
+                )?;
+                continue;
+            }
+
+            let message = match MlsMessageIn::tls_deserialize_exact(&bytes) {
+                Ok(message) => message,
+                Err(error) => {
+                    if self.persist_welcome_receipt(
+                        welcome_id, room_id, &bytes, "quarantined",
+                        Some(&format!("Malformed Welcome encoding: {error}")),
+                    ).is_ok() {
+                        let _ = self.ack_welcome(welcome_id);
+                    }
+                    continue;
+                }
             };
-            let join_config = MlsGroupJoinConfig::builder().use_ratchet_tree_extension(true).max_past_epochs(MAX_PAST_EPOCHS).build();
-            let transaction = self.meta.transaction().map_err(text)?;
-            let (mls, room_id, join_epoch) = {
-                let provider = DeviceProvider::new(&self.crypto, TransactionConnection(&transaction));
-                let staged = StagedWelcome::new_from_welcome(&provider, &join_config, welcome, None).map_err(text)?;
-                let mls = staged.into_group(&provider).map_err(text)?;
-                let room_id = String::from_utf8_lossy(mls.group_id().as_slice()).to_string();
-                let join_epoch = mls.epoch().as_u64();
-                (mls, room_id, join_epoch)
+            let welcome = match message.extract() {
+                MlsMessageBodyIn::Welcome(welcome) => welcome,
+                _ => {
+                    if self.persist_welcome_receipt(
+                        welcome_id, room_id, &bytes, "quarantined",
+                        Some("Server item is not an MLS Welcome"),
+                    ).is_ok() {
+                        let _ = self.ack_welcome(welcome_id);
+                    }
+                    continue;
+                }
             };
-            transaction
-                .execute(
+
+            enum JoinFailure { Duplicate, Indeterminate, Permanent(String), Mismatch(String) }
+            let join_config = MlsGroupJoinConfig::builder()
+                .use_ratchet_tree_extension(true)
+                .max_past_epochs(MAX_PAST_EPOCHS)
+                .build();
+
+            // MLS state, room index and durable Welcome receipt commit atomically.
+            let joined: Result<(MlsGroup, u64), JoinFailure> = (|| {
+                let transaction = self.meta.transaction()
+                    .map_err(|error| JoinFailure::Indeterminate(text(error)))?;
+                let (mls, actual_room, join_epoch) = {
+                    let provider = DeviceProvider::new(&self.crypto, TransactionConnection(&transaction));
+                    let staged = StagedWelcome::new_from_welcome(&provider, &join_config, welcome, None)
+                        .map_err(|error| match error {
+                            WelcomeError::GroupAlreadyExists => JoinFailure::Duplicate,
+                            WelcomeError::LibraryError(_) | WelcomeError::StorageError(_) => JoinFailure::Indeterminate,
+                            other => JoinFailure::Permanent(format!("Permanent Welcome error: {other:?}")),
+                        })?;
+                    let mls = staged.into_group(&provider).map_err(|error| match error {
+                        WelcomeError::GroupAlreadyExists => JoinFailure::Duplicate,
+                        WelcomeError::LibraryError(_) | WelcomeError::StorageError(_) => JoinFailure::Indeterminate,
+                        other => JoinFailure::Permanent(format!("Permanent Welcome materialization error: {other:?}")),
+                    })?;
+                    let actual_room = String::from_utf8_lossy(mls.group_id().as_slice()).to_string();
+                    let join_epoch = mls.epoch().as_u64();
+                    (mls, actual_room, join_epoch)
+                };
+                if actual_room != room_id {
+                    return Err(JoinFailure::Mismatch(format!(
+                        "Welcome group ID mismatch: server={room_id}, MLS={actual_room}"
+                    )));
+                }
+                transaction.execute(
                     "INSERT OR REPLACE INTO client_rooms (room_id, join_epoch) VALUES (?1, ?2)",
                     (&room_id, join_epoch as i64),
-                )
-                .map_err(text)?;
-            transaction
-                .execute(
-                    "INSERT OR REPLACE INTO client_welcomes (welcome_id, room_id) VALUES (?1, ?2)",
-                    (id, &room_id),
-                )
-                .map_err(text)?;
-            transaction.commit().map_err(text)?;
-            self.groups.insert(room_id, Group { mls, join_epoch });
-            // The server welcome is acknowledged only after both MLS state and
-            // the local room index have been durably committed.
-            self.call("POST", &format!("/mls/welcomes/{id}/ack"), Some(json!({})))?;
-            self.meta
-                .execute("DELETE FROM client_welcomes WHERE welcome_id = ?1", [id])
-                .map_err(text)?;
+                ).map_err(|error| JoinFailure::Indeterminate(text(error)))?;
+                let created_at = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default().as_millis() as i64;
+                transaction.execute(
+                    "INSERT OR IGNORE INTO client_welcome_receipts
+                     (welcome_id, room_id, welcome, outcome, reason, created_at, acked_at)
+                     VALUES (?1, ?2, ?3, 'joined', NULL, ?4, NULL)",
+                    rusqlite::params![welcome_id, room_id, bytes, created_at],
+                ).map_err(|error| JoinFailure::Indeterminate(text(error)))?;
+                let receipt: (String, Vec<u8>, String) = transaction.query_row(
+                    "SELECT room_id, welcome, outcome FROM client_welcome_receipts WHERE welcome_id = ?1",
+                    [welcome_id],
+                    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+                ).map_err(|error| JoinFailure::Indeterminate(text(error)))?;
+                if receipt.0 != room_id || receipt.1 != bytes || receipt.2 != "joined" {
+                    return Err(JoinFailure::Mismatch("Welcome receipt identity collision".to_string()));
+                }
+                transaction.execute(
+                    "DELETE FROM client_welcomes WHERE welcome_id = ?1",
+                    [welcome_id],
+                ).map_err(|error| JoinFailure::Indeterminate(text(error)))?;
+                transaction.commit().map_err(|error| JoinFailure::Indeterminate(text(error)))?;
+                Ok((mls, join_epoch))
+            })();
+
+            match joined {
+                Ok((mls, join_epoch)) => {
+                    self.groups.insert(room_id.to_string(), Group { mls, join_epoch });
+                    let _ = self.ack_welcome(welcome_id);
+                }
+                Err(JoinFailure::Duplicate) => {
+                    self.record_desync(room_id, "GroupAlreadyExists while replaying Welcome; retain Welcome without ACK for explicit recovery")?;
+                }
+                Err(JoinFailure::Indeterminate) => {}
+                Err(JoinFailure::Permanent(reason)) => {
+                    if self.persist_welcome_receipt(welcome_id, room_id, &bytes, "quarantined", Some(&reason)).is_ok() {
+                        let _ = self.ack_welcome(welcome_id);
+                    }
+                }
+                Err(JoinFailure::Mismatch(reason)) => {
+                    self.record_desync(room_id, &reason)?;
+                    if self.persist_welcome_receipt(welcome_id, room_id, &bytes, "quarantined", Some(&reason)).is_ok() {
+                        let _ = self.ack_welcome(welcome_id);
+                    }
+                }
+            }
         }
         Ok(())
     }
 
-    /// Читает комнату: сообщения идут по эпохам, коммит N -> N+1 применяется после сообщений эпохи N.
+    fn persist_welcome_receipt(
+        &mut self,
+        welcome_id: i64,
+        room_id: &str,
+        bytes: &[u8],
+        outcome: &str,
+        reason: Option<&str>,
+    ) -> Result<(), String> {
+        let transaction = self.meta.transaction().map_err(text)?;
+        let created_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default().as_millis() as i64;
+        transaction.execute(
+            "INSERT OR IGNORE INTO client_welcome_receipts
+             (welcome_id, room_id, welcome, outcome, reason, created_at, acked_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL)",
+            rusqlite::params![welcome_id, room_id, bytes, outcome, reason, created_at],
+        ).map_err(text)?;
+        let existing: (String, Vec<u8>, String) = transaction.query_row(
+            "SELECT room_id, welcome, outcome FROM client_welcome_receipts WHERE welcome_id = ?1",
+            [welcome_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        ).map_err(text)?;
+        if existing.0 != room_id || existing.1 != bytes || existing.2 != outcome {
+            return Err(format!("Welcome receipt identity collision for id {welcome_id}"));
+        }
+        transaction.commit().map_err(text)?;
+        Ok(())
+    }
+
+    fn ack_welcome(&mut self, welcome_id: i64) -> Result<(), String> {
+        self.call("POST", &format!("/mls/welcomes/{welcome_id}/ack"), Some(json!({})))?;
+        let acked_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default().as_millis() as i64;
+        self.meta.execute(
+            "UPDATE client_welcome_receipts SET acked_at = ?1 WHERE welcome_id = ?2 AND acked_at IS NULL",
+            rusqlite::params![acked_at, welcome_id],
+        ).map_err(text)?;
+        Ok(())
+    }
+
+    fn retry_pending_welcome_acks(&mut self) -> Result<(), String> {
+        let pending: Vec<(i64, String, String)> = {
+            let mut statement = self.meta.prepare(
+                "SELECT welcome_id, room_id, outcome FROM client_welcome_receipts
+                 WHERE acked_at IS NULL ORDER BY created_at, welcome_id",
+            ).map_err(text)?;
+            let rows = statement.query_map([], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            }).map_err(text)?;
+            rows.collect::<Result<Vec<_>, _>>().map_err(text)?
+        };
+        for (welcome_id, room_id, outcome) in pending {
+            if outcome == "joined" && !self.groups.contains_key(&room_id) {
+                self.record_desync(&room_id, "pending joined Welcome receipt exists but the local MLS group is missing")?;
+                continue;
+            }
+            let _ = self.ack_welcome(welcome_id);
+        }
+        Ok(())
+    }
+
+    fn record_desync(&mut self, room_id: &str, reason: &str) -> Result<(), String> {
+        let durable_reason = if reason.starts_with("RecoveryRequired:") {
+            reason.to_string()
+        } else {
+            format!("RecoveryRequired: {reason}")
+        };
+        self.meta.execute(
+            "INSERT INTO client_desync (room_id, reason) VALUES (?1, ?2)
+             ON CONFLICT(room_id) DO UPDATE SET reason = excluded.reason",
+            rusqlite::params![room_id, durable_reason],
+        ).map_err(text)?;
+        Ok(())
+    }
+
+    fn desync_reason(&self, room_id: &str) -> Result<Option<String>, String> {
+        self.meta.query_row(
+            "SELECT reason FROM client_desync WHERE room_id = ?1",
+            [room_id],
+            |row| row.get(0),
+        ).optional().map_err(text)
+    }
+
+    pub fn welcome_receipt_status(
+        &self,
+        welcome_id: i64,
+    ) -> Result<Option<(String, Option<String>, bool)>, String> {
+        self.meta.query_row(
+            "SELECT outcome, reason, acked_at FROM client_welcome_receipts WHERE welcome_id = ?1",
+            [welcome_id],
+            |row| {
+                let outcome: String = row.get(0)?;
+                let reason: Option<String> = row.get(1)?;
+                let acked_at: Option<i64> = row.get(2)?;
+                Ok((outcome, reason, acked_at.is_some()))
+            },
+        ).optional().map_err(text)
+    }
+
     fn sync_room(&mut self, room_id: &str, out: &mut Vec<Incoming>) -> Result<(), String> {
+        if let Some(reason) = self.desync_reason(room_id)? {
+            return Err(reason);
+        }
         // After a restart, the local database may contain a pending commit whose
         // delivery result was lost. The server is authoritative: discard the
         // unmerged local commit, then apply any commit the server actually stored.
@@ -1376,7 +1619,11 @@ impl Client {
         let rooms: Vec<String> = self.groups.keys().cloned().collect();
         let mut out = Vec::new();
         for room in rooms {
-            self.sync_room(&room, &mut out)?;
+            match self.sync_room(&room, &mut out) {
+                Ok(()) => {}
+                Err(error) if error.starts_with("RecoveryRequired:") => continue,
+                Err(error) => return Err(error),
+            }
         }
         Ok(out)
     }
