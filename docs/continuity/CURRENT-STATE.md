@@ -397,3 +397,15 @@ This section supersedes stale earlier statements in this file that no applied P0
 - Active invite uses legacy GET KeyPackage endpoint rather than claim-ID reservation/replay.
 - These mechanisms must be ported into the active mobile runtime; the historical P0 merge does not automatically satisfy native Flutter Beta 1.0.
 - Stage 4 remains NOT ACCEPTED; see report section 24.
+
+
+## 2026-11-11 live update — Stage 4 hardening
+
+- Beta 1.0 is the active product stage. Do not start Beta 2.0 work.
+- PR #45 remains OPEN/Draft, not merged. Source HEAD at this update: `df53ff48a42d9b9ca1dc7b19f049f8f3b05585a6`.
+- Stage 4 source now includes durable membership journal/KeyPackage claim replay, P0.2 staged Commit metadata verification, server-vs-MLS membership reconciliation, revoked-device journal, Welcome receipt/ACK recovery, WaitingForCommit, Commit quarantine, event contract validation, late/unreadable event handling, per-room outbox isolation, and Flutter/Rust recovery diagnostics.
+- Native secure storage remains Android Keystore/iOS Keychain; no plaintext fallback. Logout integration test covers local purge on remote logout failure.
+- Latest OpenMLS CI #42986269774 and FRB CI #42986269879 concluded FAILURE but expose no steps/logs; job log retrieval returned BlobNotFound. Flutter job #42986269746 was SKIPPED by configured branch condition. Exact causes and test outcomes UNKNOWN.
+- No local Cargo/Rust toolchain is available; no local test results. No Stage 4 test is claimed PASS.
+- Stage 4 NOT ACCEPTED / BLOCKED. WBS v1.1 Beta 1.0 baseline unchanged: 42% implementation / 31% verification.
+- Detailed evidence: `development/reports/2026-11-11-stage-4-native-mls-hardening-progress.md`.
