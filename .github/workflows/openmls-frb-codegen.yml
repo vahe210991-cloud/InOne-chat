@@ -312,6 +312,8 @@ jobs:
     name: iOS native assets + Keychain runtime smoke test
     needs: [commit-generated, verify-final-sha]
     runs-on: macos-14
+    environment:
+      name: ios-signing
     timeout-minutes: 45
     env:
       IOS_SIGNING_CERTIFICATE_P12: ${{ secrets.IOS_SIGNING_CERTIFICATE_P12 }}
