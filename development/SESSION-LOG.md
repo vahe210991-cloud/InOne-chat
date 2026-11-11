@@ -381,3 +381,18 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Reran latest available earlier-head CI: OpenMLS #42985487129 and FRB #42985487107 still failed with no retrievable steps/logs; iOS dependent job skipped; Flutter mobile #42985487102 skipped by branch condition. No tests executed on the new source commit; connector returned no run records for it.
 - Local environment has no Rust/Cargo/Flutter/Dart/Xcode and no external network access. No local tests/builds claimed.
 - Updated report section 25 and mobile/README.md. Beta 1.0 WBS unchanged; Stage 4 NOT ACCEPTED; native MLS flag remains false.
+
+
+### 2026-11-11 — Single-executor Stage 4 hardening and verification gate
+
+- Owner confirmed Beta 1.0 is the active product stage and ChatGPT is the sole developer/executor until the owner says otherwise. No external agent used.
+- Source branch: `feature/stage-4-native-mls-runtime-2026-11-11`; recorded HEAD `df53ff48a42d9b9ca1dc7b19f049f8f3b05585a6`; PR #45 remains OPEN/Draft.
+- Added membership reconciliation, P0.2 staged Commit metadata verification, durable membership Commit journal, idempotent KeyPackage claims/replay, stale epoch rebase and journaled device removal.
+- Added durable Welcome receipt/ACK recovery, WaitingForCommit state, Commit quarantine, late-event/unreadable handling, API response shape validation and per-room outbox isolation.
+- Added Rust/Flutter recovery diagnostics and safe invite cancellation; updated Flutter bridge fake.
+- Updated native logout integration test to verify local SQLCipher database and platform key cleanup when the server logout endpoint is unreachable.
+- Updated OpenMLS client CI to test exact PR head with P0 archived engine fixture. iOS signed protected-Keychain runtime smoke is conditional on signing secrets; a skipped step is not PASS.
+- Latest CI on recorded HEAD: OpenMLS #42986269774 FAILURE with no step summary/logs; FRB #42986269879 FAILURE with no step summary/logs; Flutter mobile #42986269746 SKIPPED by configured branch condition. Job log retrieval returned BlobNotFound. Exact cause UNKNOWN.
+- Rerun attempts did not provide step summaries or logs. No local Cargo/Rust compiler available; no local test results are claimed. No Stage 4 test is marked PASS.
+- Detailed report: `development/reports/2026-11-11-stage-4-native-mls-hardening-progress.md`.
+- Acceptance: Stage 4 NOT ACCEPTED / BLOCKED. Beta 1.0 WBS v1.1 baseline unchanged at 42% implementation / 31% verification. Do not merge.
