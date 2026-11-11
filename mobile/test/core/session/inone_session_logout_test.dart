@@ -58,9 +58,13 @@ void main() {
           baseUrl: 'https://api.inone.test',
           nativeMlsBridge: bridge,
           readDeviceId: () async => savedDeviceId,
-          writeDeviceId: (value) async => savedDeviceId = value,
+          writeDeviceId: (value) async {
+            savedDeviceId = value;
+          },
           readMlsUserId: () async => savedUserId,
-          writeMlsUserId: (value) async => savedUserId = value,
+          writeMlsUserId: (value) async {
+            savedUserId = value;
+          },
           deleteMlsUserId: () async {
             deleteCalls++;
             savedUserId = null;
@@ -100,9 +104,13 @@ void main() {
           baseUrl: 'https://api.inone.test',
           nativeMlsBridge: bridge,
           readDeviceId: () async => savedDeviceId,
-          writeDeviceId: (value) async => savedDeviceId = value,
+          writeDeviceId: (value) async {
+            savedDeviceId = value;
+          },
           readMlsUserId: () async => savedUserId,
-          writeMlsUserId: (value) async => savedUserId = value,
+          writeMlsUserId: (value) async {
+            savedUserId = value;
+          },
           deleteMlsUserId: () async {
             deleteCalls++;
             savedUserId = null;
