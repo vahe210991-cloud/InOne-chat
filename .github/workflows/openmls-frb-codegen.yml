@@ -199,8 +199,14 @@ jobs:
         working-directory: mobile
         run: flutter build ios --simulator --no-codesign
 
-      - name: Install iOS signing identity and provisioning profile
-        if: ${{ env.IOS_SIGNING_CERTIFICATE_P12 != '' && env.IOS_SIGNING_CERTIFICATE_PASSWORD != '' && env.IOS_PROVISIONING_PROFILE != '' && env.IOS_TEAM_ID != '' }}
+      - name: Require iOS signing assets for Stage 4 acceptance
+        if: ${{ env.IOS_SIGNING_CERTIFICATE_P12 == '' || env.IOS_SIGNING_CERTIFICATE_PASSWORD == '' || env.IOS_PROVISIONING_PROFILE == '' || env.IOS_TEAM_ID == '' }}
+        shell: bash
+        run: |
+          echo "::error::Stage 4 iOS Protected Keychain acceptance requires IOS_SIGNING_CERTIFICATE_P12, IOS_SIGNING_CERTIFICATE_PASSWORD, IOS_PROVISIONING_PROFILE and IOS_TEAM_ID."
+          exit 1
+
+      - name: Install and validate iOS signing identity and provisioning profile
         shell: bash
         run: |
           set -euo pipefail
@@ -215,28 +221,111 @@ jobs:
           security import "$RUNNER_TEMP/ios-signing.p12" -k "$KEYCHAIN_PATH" -P "$IOS_SIGNING_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security list-keychains -d user -s "$KEYCHAIN_PATH"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH" | tee "$RUNNER_TEMP/ios-identities.txt"
+          grep -Eq 'Apple Development|iPhone Developer' "$RUNNER_TEMP/ios-identities.txt"
           security cms -D -i "$RUNNER_TEMP/inone.mobileprovision" > "$RUNNER_TEMP/profile.plist"
           PROFILE_UUID="$(/usr/libexec/PlistBuddy -c 'Print UUID' "$RUNNER_TEMP/profile.plist")"
-          cp "$RUNNER_TEMP/inone.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
           echo "IOS_PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
+          python3 - "$RUNNER_TEMP/profile.plist" "$IOS_TEAM_ID" <<'PY'
+          import plistlib
+          import sys
+          from datetime import datetime, timezone
+
+          profile_path, expected_team = sys.argv[1:]
+          with open(profile_path, "rb") as source:
+              profile = plistlib.load(source)
+
+          if expected_team not in profile.get("TeamIdentifier", []):
+              raise SystemExit("Provisioning profile TeamIdentifier does not match IOS_TEAM_ID")
+
+          entitlements = profile.get("Entitlements", {})
+          bundle_id = "com.inone.inone_mobile"
+          expected_app_id = f"{expected_team}.{bundle_id}"
+
+          def allows(pattern, value):
+              return pattern == value or (pattern.endswith(".*") and value.startswith(pattern[:-1]))
+
+          if not allows(entitlements.get("application-identifier", ""), expected_app_id):
+              raise SystemExit("Provisioning profile does not authorize com.inone.inone_mobile")
+
+          groups = entitlements.get("keychain-access-groups", [])
+          if not any(allows(group, expected_app_id) for group in groups):
+              raise SystemExit("Provisioning profile has no matching keychain-access-groups entitlement")
+
+          expiry = profile.get("ExpirationDate")
+          if expiry is None:
+              raise SystemExit("Provisioning profile has no expiration date")
+          if expiry.tzinfo is None:
+              expiry = expiry.replace(tzinfo=timezone.utc)
+          if expiry <= datetime.now(timezone.utc):
+              raise SystemExit("Provisioning profile is expired")
+          PY
+          cp "$RUNNER_TEMP/inone.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
           cd mobile
-          perl -0pi -e "s/DEVELOPMENT_TEAM = [^;]*;/DEVELOPMENT_TEAM = $IOS_TEAM_ID;/g; s/PROVISIONING_PROFILE_SPECIFIER = [^;]*;/PROVISIONING_PROFILE_SPECIFIER = $PROFILE_UUID;/g" ios/Runner.xcodeproj/project.pbxproj
+          python3 - "$IOS_TEAM_ID" "$PROFILE_UUID" <<'PY'
+          import pathlib
+          import re
+          import sys
+
+          team, profile_uuid = sys.argv[1:]
+          project = pathlib.Path("ios/Runner.xcodeproj/project.pbxproj")
+          content = project.read_text()
+          content = re.sub(r"^\\s*PROVISIONING_PROFILE_SPECIFIER = .*?;\\n", "", content, flags=re.M)
+          content, count = re.subn(r"CODE_SIGN_STYLE = [^;]+;", "CODE_SIGN_STYLE = Manual;", content)
+          if count == 0:
+              raise SystemExit("Runner.xcodeproj has no CODE_SIGN_STYLE setting to configure")
+          content = re.sub(r"DEVELOPMENT_TEAM = [^;]*;", f"DEVELOPMENT_TEAM = {team};", content)
+          signing = f'CODE_SIGN_STYLE = Manual;\\n\\t\\t\\t\\t\\tCODE_SIGN_IDENTITY = "Apple Development";\\n\\t\\t\\t\\t\\tPROVISIONING_PROFILE_SPECIFIER = "{profile_uuid}";'
+          content = content.replace("CODE_SIGN_STYLE = Manual;", signing)
+          project.write_text(content)
+          PY
+          grep -q "PROVISIONING_PROFILE_SPECIFIER = \"$PROFILE_UUID\";" ios/Runner.xcodeproj/project.pbxproj
+          grep -q "DEVELOPMENT_TEAM = $IOS_TEAM_ID;" ios/Runner.xcodeproj/project.pbxproj
 
       - name: iOS Keychain runtime smoke test
-        if: ${{ env.IOS_SIGNING_CERTIFICATE_P12 != '' && env.IOS_SIGNING_CERTIFICATE_PASSWORD != '' && env.IOS_PROVISIONING_PROFILE != '' && env.IOS_TEAM_ID != '' }}
         shell: bash
         run: |
           set -euo pipefail
-          DEVICE_ID="$(xcrun simctl list devices available | sed -nE 's/.*iPhone.*\(([0-9A-F-]{36})\).*/\1/p' | head -n 1)"
+          DEVICE_ID="$(xcrun simctl list devices available | sed -nE 's/.*iPhone.*\\(([0-9A-F-]{36})\\).*/\\1/p' | head -n 1)"
           test -n "$DEVICE_ID"
           xcrun simctl boot "$DEVICE_ID" || true
           xcrun simctl bootstatus "$DEVICE_ID" -b
           cd mobile
           flutter drive -d "$DEVICE_ID" --driver=test_driver/integration_test.dart --target=integration_test/mls_secure_store_test.dart
+          APP_PATH="build/ios/iphonesimulator/Runner.app"
+          test -d "$APP_PATH"
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+          codesign -d --entitlements :- "$APP_PATH" > "$RUNNER_TEMP/runner-entitlements.plist" 2>/dev/null
+          python3 - "$RUNNER_TEMP/runner-entitlements.plist" "$IOS_TEAM_ID" <<'PY'
+          import plistlib
+          import sys
 
-      - name: Explain skipped iOS Keychain runtime test
-        if: env.IOS_SIGNING_CERTIFICATE_P12 == '' || env.IOS_SIGNING_CERTIFICATE_PASSWORD == '' || env.IOS_PROVISIONING_PROFILE == '' || env.IOS_TEAM_ID == ''
-        run: echo "::warning::iOS protected Keychain runtime smoke test was not executed because signing secrets are unavailable; Stage 4 remains unaccepted until this test passes."
+          entitlements_path, team = sys.argv[1:]
+          with open(entitlements_path, "rb") as source:
+              entitlements = plistlib.load(source)
+
+          expected = f"{team}.com.inone.inone_mobile"
+          app_id = entitlements.get("application-identifier", "")
+          groups = entitlements.get("keychain-access-groups", [])
+
+          def allows(pattern, value):
+              return pattern == value or (pattern.endswith(".*") and value.startswith(pattern[:-1]))
+
+          if not allows(app_id, expected):
+              raise SystemExit("Signed simulator app has no matching application-identifier entitlement")
+          if not any(allows(group, expected) for group in groups):
+              raise SystemExit("Signed simulator app has no matching keychain-access-groups entitlement")
+          PY
+
+      - name: Remove temporary iOS signing material
+        if: always()
+        shell: bash
+        run: |
+          security delete-keychain "$RUNNER_TEMP/inone-build.keychain" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/ios-signing.p12" "$RUNNER_TEMP/inone.mobileprovision" "$RUNNER_TEMP/profile.plist" "$RUNNER_TEMP/ios-identities.txt" "$RUNNER_TEMP/runner-entitlements.plist"
+          if [ -n "${IOS_PROFILE_UUID:-}" ]; then
+            rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/$IOS_PROFILE_UUID.mobileprovision"
+          fi
 
       - name: Upload iOS simulator build
         uses: actions/upload-artifact@v4
