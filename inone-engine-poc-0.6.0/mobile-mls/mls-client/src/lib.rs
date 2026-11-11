@@ -1462,6 +1462,32 @@ mod retry_tests {
     }
 
     #[test]
+    fn existing_database_without_a_protected_key_is_rejected() {
+        let keys = MemoryKeyStore::default();
+        let scope = "alice/device-existing-db";
+        let filename = format!(
+            "inone-mls-existing-db-no-key-{}-{}.db",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let path = std::env::temp_dir().join(filename);
+        std::fs::write(&path, b"existing encrypted database placeholder").unwrap();
+
+        let result = ensure_existing_key_matches_database(
+            path.to_str().unwrap(),
+            scope,
+            &keys,
+        );
+
+        assert!(result.is_err());
+        assert_eq!(keys.existing_database_key(scope).unwrap(), None);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
     fn resuming_without_an_existing_key_never_creates_a_replacement_key() {
         let keys = MemoryKeyStore::default();
         let scope = "alice/device-restore";
