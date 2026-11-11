@@ -218,3 +218,21 @@ Latest exact-head evidence: [push run 42465804591](https://github.com/vahe210991
 ## Mandatory approved WBS and current UI stage — 2026-11-09
 
 Before any work, read [AGENTS.md](../../AGENTS.md), the full [AI agent mandate](../../development/AI-AGENT-MANDATE.md), and the full [owner-approved progress baseline](../../development/PROGRESS-BASELINE.md). The WBS is approved and immutable without a new owner decision. Current UI stage is Beta 1.0 UI-01 through UI-06; continue from [UI integration report](../../development/reports/2026-11-09-1015-ui-integration-start.md) and branch `feat/beta1-ui-source-integration`. The owner-provided Ui.zip has been checksum-verified locally; its full binary/source package is not yet confirmed uploaded to GitHub. Do not claim import complete until remote files/checksums are verified.
+
+
+## Current next-session instructions — Beta 1.0 Stage 4 (2026-11-11)
+
+**Execution ownership:** ChatGPT is the sole developer/executor. Do not prepare or delegate tasks to an external agent unless the owner explicitly instructs otherwise.
+
+**Scope:** Beta 1.0 only. Keep the approved WBS v1.1 weights and baseline unchanged.
+
+1. Start from the latest PR #45 head; read `development/WORKING-RULES.md`, `development/PROGRESS-BASELINE.md`, `docs/continuity/CURRENT-STATE.md`, `docs/continuity/DECISIONS.md`, and `development/reports/2026-11-11-stage-4-single-executor-progress.md`.
+2. Resolve GitHub Actions runner allocation. The latest OpenMLS and FRB jobs failed before their first step with runner_id 0 and empty step arrays. Do not infer a billing, policy or source-code cause without evidence.
+3. Design and implement an atomic or recoverable persistence boundary between OpenMLS ratchet-state mutation and durable inbox persistence. Add crash injection, app restart and duplicate-delivery regressions.
+4. Execute Rust/OpenMLS tests, FRB generation, Flutter analyze/tests, Android APK + Keystore runtime test, iOS device/simulator builds and signed iOS Protected Keychain runtime test.
+5. Keep `INONE_MLS_NATIVE_ENABLED` false until all platform and security gates pass. No plaintext or Megolm fallback.
+6. Run the complete required matrix on one exact final SHA. Record commands, results, logs and artifacts. A skipped or unexecuted test is not a pass.
+7. Do not merge PR #45 or claim Stage 4 accepted until all required checks are green. Owner approval is required.
+8. Do not recalculate Beta 1.0 progress or alter WBS weights without verified evidence and owner-approved scope.
+
+Report: `development/reports/2026-11-11-stage-4-single-executor-progress.md`.
