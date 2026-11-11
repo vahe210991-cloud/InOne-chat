@@ -285,7 +285,7 @@ fn build_client_with_keys(
     let tokens = SessionTokens(tokens.0, tokens.1);
     let has_existing_key = ensure_existing_key_matches_database(db_path, &scope, keys)?;
     let database_existed = database_artifacts_exist(db_path);
-    let mut db_key = match keys.database_key(&scope) {
+    let db_key = Zeroizing::new(match keys.database_key(&scope) {
         Ok(key) => key,
         Err(error) => {
             if !has_existing_key && !database_existed {
@@ -295,9 +295,8 @@ fn build_client_with_keys(
             }
             return Err(error);
         }
-    };
+    });
     let result = build_client(agent, base, tokens, user_id, device_id, db_path, &db_key);
-    db_key.zeroize();
     match result {
         Ok(client) => Ok(client),
         Err(error) if !has_existing_key && !database_existed => {
@@ -474,13 +473,14 @@ pub fn resume_with_session(
     if !Path::new(db_path).is_file() {
         return Err("сохранённая MLS-сессия не найдена на этом устройстве".to_string());
     }
-    let mut db_key = keys
-        .existing_database_key(&format!("{user_id}/{device_id}"))?
-        .ok_or_else(|| {
-            "ключ SQLCipher сохранённой MLS-сессии отсутствует; создание нового ключа запрещено"
-                .to_string()
-        })?;
-    let result = (|| -> Result<Client, String> {
+    let db_key = Zeroizing::new(
+        keys.existing_database_key(&format!("{user_id}/{device_id}"))?
+            .ok_or_else(|| {
+                "ключ SQLCipher сохранённой MLS-сессии отсутствует; создание нового ключа запрещено"
+                    .to_string()
+            })?,
+    );
+    (|| -> Result<Client, String> {
         let meta = open_db(db_path, &db_key)?;
         let has_meta: bool = meta
             .query_row(
@@ -517,9 +517,7 @@ pub fn resume_with_session(
             db_path,
             &db_key,
         )
-    })();
-    db_key.zeroize();
-    result
+    })()
 }
 
 /// Вход нового устройства аккаунта: подтверждается существующим устройством `approver`.
