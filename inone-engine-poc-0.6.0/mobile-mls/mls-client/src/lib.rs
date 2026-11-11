@@ -570,6 +570,52 @@ impl Client {
         Ok(())
     }
 
+    fn merge_local_pending_commit(&mut self, room_id: &str) -> Result<(), String> {
+        let transaction = self.meta.transaction().map_err(text)?;
+        let result = {
+            let provider = DeviceProvider::new(&self.crypto, TransactionConnection(&transaction));
+            let group = self.groups.get_mut(room_id).ok_or("комната не создана на этом устройстве")?;
+            group.mls.merge_pending_commit(&provider).map_err(text)
+        };
+        match result {
+            Ok(()) => match transaction.commit() {
+                Ok(()) => Ok(()),
+                Err(error) => {
+                    self.reload_group(room_id)?;
+                    Err(text(error))
+                }
+            },
+            Err(error) => {
+                drop(transaction);
+                self.reload_group(room_id)?;
+                Err(error)
+            }
+        }
+    }
+
+    fn clear_local_pending_commit(&mut self, room_id: &str) -> Result<(), String> {
+        let transaction = self.meta.transaction().map_err(text)?;
+        let result = {
+            let provider = DeviceProvider::new(&self.crypto, TransactionConnection(&transaction));
+            let group = self.groups.get_mut(room_id).ok_or("комната не создана на этом устройстве")?;
+            group.mls.clear_pending_commit(provider.storage()).map_err(text)
+        };
+        match result {
+            Ok(()) => match transaction.commit() {
+                Ok(()) => Ok(()),
+                Err(error) => {
+                    self.reload_group(room_id)?;
+                    Err(text(error))
+                }
+            },
+            Err(error) => {
+                drop(transaction);
+                self.reload_group(room_id)?;
+                Err(error)
+            }
+        }
+    }
+
     /// Processes and merges a server commit within one SQLCipher transaction.
     /// On any error, the in-memory group is reloaded after rollback.
     fn process_and_merge_commit(&mut self, room_id: &str, bytes: &[u8]) -> Result<(), String> {
