@@ -467,3 +467,12 @@ Do not re-port these mechanisms. See Stage 4 report section 25 for the exact com
 - The missing file referenced by root `AGENTS.md` has been created: `development/AI-AGENT-MANDATE.md`.
 - It records ChatGPT as sole executor until explicit owner authorization for an external agent, Beta 1.0-only scope, evidence-only claims, exact-SHA green-test acceptance, WBS-controlled percentages, concise reports/checklists archived in GitHub, and no merge without owner approval.
 - `development/WORKING-RULES.md` now includes the mandate in the startup checklist.
+
+
+## Latest CI retry — 2026-11-11
+
+- Exact code/test head: `5ca865573e7ed8949698ce7eda7d0adbf5f5915a`.
+- FRB #42988901680 and OpenMLS #42988901678 FAILED before steps/logs; log retrieval returned BlobNotFound. FRB downstream jobs skipped.
+- Flutter #42988901824 SKIPPED by branch condition.
+- No test command is evidenced as executed. Exact failure cause UNKNOWN.
+- Stage 4 remains NOT ACCEPTED / BLOCKED; native MLS remains disabled.
