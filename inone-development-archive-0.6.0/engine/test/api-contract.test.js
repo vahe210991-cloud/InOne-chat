@@ -71,7 +71,7 @@ test('every API declared by the legacy Flutter handoff catalog has a backend han
   assert.deepEqual(missing, [], `Missing legacy backend route evidence: ${missing.join(', ')}`);
 
   // GR-02 and GR-04 describe multi-action screens without a single api property.
-  assert.match(server, /req\.method === 'POST' && p === '\\/rooms'/u);
+  assert.match(server, /req\.method === 'POST' && p === '\/rooms'/u);
   assert.match(server, /const memberRoute = p\.match/u);
   assert.match(server, /memberRoute && req\.method === 'GET'/u);
   assert.match(server, /const settingsRoute = p\.match/u);
