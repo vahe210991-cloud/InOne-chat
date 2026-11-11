@@ -949,9 +949,6 @@ impl Client {
                     // The local group was committed before the previous ACK attempt.
                     // Retry only the ACK; never consume the same Welcome twice.
                     self.call("POST", &format!("/mls/welcomes/{id}/ack"), Some(json!({})))?;
-            self.meta
-                .execute("DELETE FROM client_welcomes WHERE welcome_id = ?1", [id])
-                .map_err(text)?;
                     self.meta
                         .execute("DELETE FROM client_welcomes WHERE welcome_id = ?1", [id])
                         .map_err(text)?;
@@ -993,6 +990,9 @@ impl Client {
             // The server welcome is acknowledged only after both MLS state and
             // the local room index have been durably committed.
             self.call("POST", &format!("/mls/welcomes/{id}/ack"), Some(json!({})))?;
+            self.meta
+                .execute("DELETE FROM client_welcomes WHERE welcome_id = ?1", [id])
+                .map_err(text)?;
         }
         Ok(())
     }
