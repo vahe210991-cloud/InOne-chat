@@ -13,6 +13,19 @@ class MlsIncomingMessage {
   bool get isReadable => text != null;
 }
 
+/// Durable diagnostics for an MLS event that could not be decrypted or parsed.
+class MlsUndecryptableEvent {
+  const MlsUndecryptableEvent({
+    required this.eventId,
+    required this.roomId,
+    required this.reason,
+  });
+
+  final String eventId;
+  final String roomId;
+  final String reason;
+}
+
 /// Typed boundary between Flutter and the native OpenMLS runtime.
 ///
 /// Refresh tokens, MLS private keys and the SQLCipher key are never returned
@@ -40,6 +53,10 @@ abstract interface class MlsSessionBridge {
   Future<void> ensureKeyPackages(int target);
   Future<void> createRoom(String roomId);
   Future<void> invite(String roomId, String userId);
+  Future<void> cancelInvite(String roomId, String userId);
+  Future<String?> roomRecoveryStatus(String roomId);
+  Future<List<MlsUndecryptableEvent>> undecryptable();
+  Future<String?> quarantinedCommitReason(String roomId, int epoch);
   Future<String> sendText(String roomId, String plaintext);
   Future<String> enqueueText(String roomId, String plaintext);
   Future<List<MlsIncomingMessage>> sync();
