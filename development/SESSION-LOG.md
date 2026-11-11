@@ -282,3 +282,14 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Source SHA: `404775ff54c5e8a5eee175eb8d908c6c6929e2c0`.
 - CI #42977937179 (OpenMLS) and #42977937116 (FRB) failed before step 1 with runner_id 0 and empty steps; iOS dependent job skipped. No tests executed.
 - Updated report section 11. Stage 4 remains NOT ACCEPTED.
+
+
+### 2026-11-11 — Welcome ACK and SQLCipher key recovery
+
+- Added a durable Welcome ACK marker in the same transaction as the joined OpenMLS group and room index; retries ACK after restart without processing the same Welcome twice.
+- Split KeyStore existing-key lookup from key creation. Resume now refuses to create a replacement key; existing SQLCipher DB without protected key fails closed.
+- New-session creation checks DB/key consistency and attempts to remove partial DB/sidecars and a newly created key if initial construction fails.
+- Added tests for missing-key resume, existing DB without key and sidecar detection; not executed.
+- Source SHA: `da844b08240c3e67762997be9b65d8e91cab120f`.
+- CI #42978533658 (OpenMLS) and #42978533643 (FRB) failed before step 1 with runner_id 0 and empty steps; iOS dependent job skipped. No tests executed.
+- Updated report section 12. Stage 4 remains NOT ACCEPTED.
