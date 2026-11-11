@@ -1329,6 +1329,47 @@ mod retry_tests {
     }
 
     #[test]
+    fn rejected_local_commit_can_be_cleared_without_advancing_epoch() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        {
+            let mut storage =
+                SqliteStorageProvider::<JsonCodec, &mut Connection>::new(&mut connection);
+            storage.run_migrations().unwrap();
+        }
+        let crypto = RustCrypto::default();
+        let provider = DeviceProvider::new(&crypto, &connection);
+        let signer = SignatureKeyPair::new(CIPHERSUITE.signature_algorithm()).unwrap();
+        let credential = CredentialWithKey {
+            credential: BasicCredential::new(b"alice/device-1".to_vec()).into(),
+            signature_key: signer.to_public_vec().into(),
+        };
+        let config = MlsGroupCreateConfig::builder()
+            .ciphersuite(CIPHERSUITE)
+            .use_ratchet_tree_extension(true)
+            .max_past_epochs(MAX_PAST_EPOCHS)
+            .build();
+        let mut group = MlsGroup::new_with_group_id(
+            &provider,
+            &signer,
+            &config,
+            GroupId::from_slice(b"!pending-commit:inone.test"),
+            credential,
+        )
+        .unwrap();
+        let epoch_before = group.epoch().as_u64();
+
+        group
+            .self_update(&provider, &signer, LeafNodeParameters::default())
+            .unwrap();
+        group.clear_pending_commit(provider.storage()).unwrap();
+
+        assert_eq!(group.epoch().as_u64(), epoch_before);
+        group
+            .create_message(&provider, &signer, b"still-operational")
+            .unwrap();
+    }
+
+    #[test]
     fn event_ids_must_be_present_and_non_empty() {
         assert_eq!(
             event_id_from_event(&json!({"event_id": "$event-1"})).unwrap(),
