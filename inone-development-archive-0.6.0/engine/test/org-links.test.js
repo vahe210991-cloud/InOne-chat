@@ -35,7 +35,7 @@ async function start() {
   await store.addOrgMember(ORG_A, BORIS, 'admin', 4);
   await store.addOrgMember(ORG_B, CAROL, 'owner', 5);
   await store.addOrgMember(ORG_B, DAVE, 'member', 6);
-  return { srv, base, store, anna, boris, carol, dave, stop: async () => { await new Promise((r) => srv.server.close(r)); await db?.close(); } };
+  return { srv, base, store, pool: db?.pool, anna, boris, carol, dave, stop: async () => { await new Promise((r) => srv.server.close(r)); await db?.close(); } };
 }
 
 async function call(base, method, p, token, body) {
@@ -140,6 +140,52 @@ test('F-01: stale accept after a concurrent revoke is rejected without an accept
     assert.equal(acceptEventsA.length + acceptEventsB.length, 0, 'a rejected stale accept must not emit accept audit events');
   } finally {
     releaseAccept?.();
+    await s.stop();
+  }
+});
+
+
+test('F-02 PostgreSQL: cross-organization link revocation waits for an in-flight open join', { skip: !process.env.DATABASE_URL }, async () => {
+  const s = await start();
+  try {
+    assert.equal((await call(s.base, 'POST', '/rooms', s.anna.token, { roomId: ROOM, orgId: ORG_A, members: [BORIS] })).status, 200);
+    assert.equal((await call(s.base, 'POST', `/rooms/${enc(ROOM)}/settings`, s.anna.token, { name: 'Связь и открытый вход', visibility: 'public', joinPolicy: 'open' })).status, 200);
+
+    const proposed = await call(s.base, 'POST', `/orgs/${ORG_A}/links`, s.boris.token, { targetOrgId: ORG_B });
+    assert.equal(proposed.status, 200);
+    const linkId = proposed.json.linkId;
+    assert.equal((await call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/accept`, s.carol.token, {})).status, 200);
+
+    const joining = call(s.base, 'POST', `/rooms/${enc(ROOM)}/join`, s.carol.token, {});
+    const deadline = Date.now() + 10000;
+    let joinHoldsLinkLock = false;
+    while (Date.now() < deadline && !joinHoldsLinkLock) {
+      const client = await s.pool.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query('SELECT link_id FROM org_links WHERE link_id = $1 FOR UPDATE NOWAIT', [linkId]);
+        await client.query('ROLLBACK');
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => {});
+        if (error.code === '55P03') joinHoldsLinkLock = true;
+        else throw error;
+      } finally {
+        client.release();
+      }
+      if (!joinHoldsLinkLock) await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.equal(joinHoldsLinkLock, true, 'open join must hold a share lock on the active organization link');
+
+    const revoking = call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/revoke`, s.carol.token, {});
+    const joined = await joining;
+    assert.equal(joined.status, 200, 'join that acquired the active-link lock may finish first');
+    const revoked = await revoking;
+    assert.equal(revoked.status, 200, 'link revocation proceeds after the in-flight join commits');
+
+    const finalRoom = await s.store.getRoom(ROOM);
+    assert.equal(finalRoom.members.includes(CAROL), false, 'revocation must remove the cross-organization member added by the in-flight join');
+    assert.equal((await s.store.getOrgLink(linkId)).status, 'revoked');
+  } finally {
     await s.stop();
   }
 });
