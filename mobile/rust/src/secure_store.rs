@@ -90,29 +90,36 @@ impl KeyStore for PlatformKeyStore {
 }
 
 fn initialize_native_store() -> Result<(), String> {
-    static INITIALIZED: OnceLock<Result<(), String>> = OnceLock::new();
-    INITIALIZED
-        .get_or_init(|| {
-            #[cfg(target_os = "android")]
-            {
-                let store = android_native_keyring_store::by_store::Store::new()
-                    .map_err(|error| format!("Android Keystore недоступен: {error}"))?;
-                keyring_core::set_default_store(store);
-                Ok(())
-            }
+    // Do not cache initialization errors: a transient platform-store failure
+    // must not permanently poison every later MLS open/resume attempt.
+    static INITIALIZED: OnceLock<Mutex<bool>> = OnceLock::new();
+    let mut initialized = INITIALIZED
+        .get_or_init(|| Mutex::new(false))
+        .lock()
+        .map_err(|error| format!("блокировка инициализации защищённого хранилища: {error}"))?;
+    if *initialized {
+        return Ok(());
+    }
 
-            #[cfg(target_os = "ios")]
-            {
-                let store = apple_native_keyring_store::protected::Store::new()
-                    .map_err(|error| format!("iOS Keychain недоступен: {error}"))?;
-                keyring_core::set_default_store(store);
-                Ok(())
-            }
+    #[cfg(target_os = "android")]
+    {
+        let store = android_native_keyring_store::by_store::Store::new()
+            .map_err(|error| format!("Android Keystore недоступен: {error}"))?;
+        keyring_core::set_default_store(store);
+    }
 
-            #[cfg(not(any(target_os = "android", target_os = "ios")))]
-            {
-                Err("защищённое хранилище MLS доступно только на Android и iOS".to_string())
-            }
-        })
-        .clone()
+    #[cfg(target_os = "ios")]
+    {
+        let store = apple_native_keyring_store::protected::Store::new()
+            .map_err(|error| format!("iOS Keychain недоступен: {error}"))?;
+        keyring_core::set_default_store(store);
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        return Err("защищённое хранилище MLS доступно только на Android и iOS".to_string());
+    }
+
+    *initialized = true;
+    Ok(())
 }
