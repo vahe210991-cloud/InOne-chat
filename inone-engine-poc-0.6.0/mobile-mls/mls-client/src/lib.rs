@@ -2,7 +2,7 @@
 //! вход нового устройства по подтверждению и удаление отозванных устройств из групп.
 //! База устройства зашифрована (SQLCipher). Ключ передаёт платформа: Keychain на iOS, Keystore на Android.
 use std::borrow::Borrow;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Mutex;
 
 use rusqlite::OptionalExtension;
@@ -1179,7 +1179,7 @@ impl Client {
     pub fn create_room(&mut self, room_id: &str) -> Result<(), String> {
         self.ensure_writable()?;
         if let Some(reason) = self.desync_reason(room_id)? {
-            return Err(format!("комната требует восстановления: {reason}"));
+            return Err(format!("комната рассинхронизирована и требует восстановления: {reason}"));
         }
         self.call("POST", "/rooms", Some(json!({ "roomId": room_id, "members": [self.user_id] })))?;
         let config = MlsGroupCreateConfig::builder()
@@ -1624,6 +1624,57 @@ impl Client {
         Ok(())
     }
 
+    fn mls_users(&self, room_id: &str) -> Result<BTreeSet<String>, String> {
+        Ok(self.members_of(room_id)?
+            .into_iter()
+            .filter_map(|identity| identity.rsplit_once('/').map(|(user, _)| user.to_string()))
+            .collect())
+    }
+
+    fn server_users(&self, room_id: &str) -> Result<BTreeSet<String>, String> {
+        let body = match self.call(
+            "GET",
+            &format!("/rooms/{}/members", urlencoding::encode(room_id)),
+            None,
+        ) {
+            Ok(body) => body,
+            Err(error) if error.contains("not a member") => return Ok(BTreeSet::new()),
+            Err(error) => return Err(error),
+        };
+        let members = body["members"].as_array().ok_or("ответ без списка участников")?;
+        members.iter()
+            .map(|member| member.as_str().map(str::to_string)
+                .ok_or_else(|| "участник не строка".to_string()))
+            .collect()
+    }
+
+    fn check_consistency(&mut self, room_id: &str) -> Result<(), String> {
+        let mls = self.mls_users(room_id)?;
+        let server = self.server_users(room_id)?;
+        if mls == server {
+            let recovery_required: bool = self.meta.query_row(
+                "SELECT EXISTS(SELECT 1 FROM client_desync WHERE room_id = ?1 AND reason LIKE 'RecoveryRequired:%')",
+                [room_id],
+                |row| row.get(0),
+            ).map_err(text)?;
+            if !recovery_required {
+                self.meta.execute("DELETE FROM client_desync WHERE room_id = ?1", [room_id]).map_err(text)?;
+            }
+            return Ok(());
+        }
+        let only_server: Vec<&String> = server.difference(&mls).collect();
+        let only_mls: Vec<&String> = mls.difference(&server).collect();
+        let reason = format!(
+            "рассинхронизирована: на сервере без MLS-группы {only_server:?}; в MLS-группе без сервера {only_mls:?}"
+        );
+        self.meta.execute(
+            "INSERT INTO client_desync (room_id, reason) VALUES (?1, ?2)
+             ON CONFLICT(room_id) DO UPDATE SET reason = excluded.reason",
+            rusqlite::params![room_id, reason],
+        ).map_err(text)?;
+        Ok(())
+    }
+
     fn record_desync(&mut self, room_id: &str, reason: &str) -> Result<(), String> {
         let durable_reason = if reason.starts_with("RecoveryRequired:") {
             reason.to_string()
@@ -1757,6 +1808,7 @@ impl Client {
             let Some((_, commit)) = commits.iter().find(|(e, _)| *e == epoch + 1) else { break };
             self.process_and_merge_commit(room_id, commit)?;
         }
+        self.check_consistency(room_id)?;
         Ok(())
     }
 
