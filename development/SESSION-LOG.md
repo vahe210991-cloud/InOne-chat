@@ -348,3 +348,14 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Local environment has Node/npm/Java but no rustc, cargo, Flutter, Dart or Xcode. No local tests/builds were executed.
 - Exact GitHub job failure cause remains UNKNOWN. All source changes in this entry are unverified until CI or an authorized build environment executes the tests.
 - Beta 1.0 WBS v1.1 is unchanged. Stage 4 NOT ACCEPTED; do not merge or enable native MLS.
+
+
+### 2026-11-11 — Credential-retention hardening
+
+- Rust login and device-approval JSON responses are zeroized after token extraction; one-time code and poll secret use Zeroizing.
+- Flutter login result excludes access/refresh tokens, approval code, poll secret and approval ID; response maps are cleared after ownership transfer.
+- Flutter refresh response fields are cleared; request body bytes and bearer headers are cleared after send.
+- Added regression assertion that login results do not expose auth secrets.
+- Source/PR head: `6e56671b632c993ebd15735caf5001ad2662012a`.
+- CI #42982066347 (OpenMLS) and #42982066366 (FRB) FAILED with null steps/log URLs; iOS dependent job skipped; Flutter mobile #42982066410 skipped by branch condition.
+- No tests executed. Stage 4 remains NOT ACCEPTED.
