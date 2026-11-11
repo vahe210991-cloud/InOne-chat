@@ -1192,42 +1192,39 @@ impl Client {
                 .collect();
 
             let transaction = self.meta.transaction().map_err(text)?;
-            let staged_result = {
+            let staged_result = (|| -> Result<(u64, String), String> {
                 let provider = DeviceProvider::new(&self.crypto, TransactionConnection(&transaction));
                 let group = self.groups.get_mut(&room_id).ok_or("комната не найдена")?;
                 let local = group.mls.epoch().as_u64();
                 if local != server {
-                    Err(format!("устройство на эпохе {local}, сервер на {server}: сначала синхронизация"))
-                } else {
-                    let leaves: Vec<LeafNodeIndex> = group
-                        .mls
-                        .members()
-                        .filter(|member| {
-                            identities
-                                .iter()
-                                .any(|identity| member.credential.serialized_content() == identity.as_slice())
-                        })
-                        .map(|member| member.index)
-                        .collect();
-                    let commit = if leaves.is_empty() {
-                        group
-                            .mls
-                            .self_update(&provider, &self.signer, LeafNodeParameters::default())
-                            .map(|bundle| bundle.commit().clone())
-                            .map_err(text)?
-                    } else {
-                        group
-                            .mls
-                            .remove_members(&provider, &self.signer, &leaves)
-                            .map(|(commit, _, _)| commit)
-                            .map_err(text)?
-                    };
-                    commit
-                        .tls_serialize_detached()
-                        .map(|bytes| (local, B64.encode(bytes)))
-                        .map_err(text)
+                    return Err(format!("устройство на эпохе {local}, сервер на {server}: сначала синхронизация"));
                 }
-            };
+                let leaves: Vec<LeafNodeIndex> = group
+                    .mls
+                    .members()
+                    .filter(|member| {
+                        identities
+                            .iter()
+                            .any(|identity| member.credential.serialized_content() == identity.as_slice())
+                    })
+                    .map(|member| member.index)
+                    .collect();
+                let commit = if leaves.is_empty() {
+                    group
+                        .mls
+                        .self_update(&provider, &self.signer, LeafNodeParameters::default())
+                        .map(|bundle| bundle.commit().clone())
+                        .map_err(text)?
+                } else {
+                    group
+                        .mls
+                        .remove_members(&provider, &self.signer, &leaves)
+                        .map(|(commit, _, _)| commit)
+                        .map_err(text)?
+                };
+                let bytes = commit.tls_serialize_detached().map_err(text)?;
+                Ok((local, B64.encode(bytes)))
+            })();
             let (epoch_before, commit_b64) = match staged_result {
                 Ok(staged) => staged,
                 Err(error) => {
