@@ -163,6 +163,10 @@ jobs:
         run: |
           set -euo pipefail
           GENERATED="$RUNNER_TEMP/inone-mls-frb-generated"
+          if find "$GENERATED" -type l -print -quit | grep -q .; then
+            echo "::error::Generated artifact contains a symlink; refusing to write it to the PR branch."
+            exit 1
+          fi
           test -d "$GENERATED/hook"
           test -d "$GENERATED/lib/src/rust"
           test -f "$GENERATED/rust/Cargo.toml"
@@ -266,7 +270,7 @@ jobs:
         working-directory: mobile
         run: |
           flutter pub get
-          git diff --exit-code -- pubspec.lock
+          git diff --exit-code -- pubspec.yaml pubspec.lock
 
       - name: Verify Rust formatting
         run: |
@@ -315,10 +319,12 @@ jobs:
       - name: Checkout PR head
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.commit-generated.outputs.final_sha }}
+          ref: ${{ needs.verify-final-sha.outputs.final_sha }}
 
       - name: Verify exact final SHA
-        run: test "$(git rev-parse HEAD)" = "${{ needs.commit-generated.outputs.final_sha }}"
+        run: |
+          test "$(git rev-parse HEAD)" = "${{ needs.verify-final-sha.outputs.final_sha }}"
+          test "${{ needs.verify-final-sha.outputs.final_sha }}" = "${{ needs.commit-generated.outputs.final_sha }}"
 
       - name: Install Flutter
         uses: subosito/flutter-action@v2
@@ -340,7 +346,9 @@ jobs:
 
       - name: Resolve Dart dependencies
         working-directory: mobile
-        run: flutter pub get
+        run: |
+          flutter pub get
+          git diff --exit-code -- mobile/pubspec.yaml mobile/pubspec.lock
 
       - name: Build iOS device target without signing
         working-directory: mobile
