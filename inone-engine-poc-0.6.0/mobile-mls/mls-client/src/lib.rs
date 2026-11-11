@@ -450,7 +450,7 @@ pub fn connect(base: &str, user_id: &str, password: &str, device_id: &str, db_pa
     let base = normalize_base_url(base)?;
     let scope = format!("{user_id}/{device_id}");
     let _has_existing_key = ensure_existing_key_matches_database(db_path, &scope, keys)?;
-    let agent = ureq::AgentBuilder::new().build();
+    let agent = ureq::AgentBuilder::new().redirects(0).build();
     register(&agent, &base, user_id, password)?;
     let login = request(&agent, &base, "", "POST", "/login", Some(json!({ "userId": user_id, "password": password, "deviceId": device_id })))?;
     let tokens = (
@@ -482,7 +482,7 @@ pub fn connect_with_session(
     }
     let scope = format!("{user_id}/{device_id}");
     let _has_existing_key = ensure_existing_key_matches_database(db_path, &scope, keys)?;
-    let agent = ureq::AgentBuilder::new().build();
+    let agent = ureq::AgentBuilder::new().redirects(0).build();
     build_client_with_keys(
         agent,
         &base,
@@ -544,7 +544,7 @@ pub fn resume_with_session(
         if tokens.0.is_empty() || tokens.1.is_empty() {
             return Err("сохранённая сессия неполная; выполните вход заново".to_string());
         }
-        let agent = ureq::AgentBuilder::new().build();
+        let agent = ureq::AgentBuilder::new().redirects(0).build();
         build_client(
             agent,
             &base,
@@ -570,7 +570,7 @@ pub fn connect_with_approval(
     let base = normalize_base_url(base)?;
     let scope = format!("{user_id}/{device_id}");
     let _has_existing_key = ensure_existing_key_matches_database(db_path, &scope, keys)?;
-    let agent = ureq::AgentBuilder::new().build();
+    let agent = ureq::AgentBuilder::new().redirects(0).build();
     register(&agent, &base, user_id, password)?;
     let login = request(
         &agent,
