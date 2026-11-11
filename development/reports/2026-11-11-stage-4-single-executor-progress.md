@@ -361,3 +361,22 @@ Local execution capability check:
 - Stage 4 acceptance: **0% verified / NOT ACCEPTED**.
 - Stage 4 implementation percentage: **not assigned** because the approved WBS v1.1 does not define a separately weighted Stage 4 denominator. Do not invent one.
 - Beta 1.0 overall baseline remains the approved WBS v1.1 value; no progress percentage is increased in this report.
+
+
+## 23. Credential-retention hardening — 2026-11-11
+
+- Rust `connect` now zeroizes the login JSON response immediately after extracting the access/refresh pair.
+- Rust `connect_with_approval` now zeroizes both the initial login/approval response and each approval-claim response; one-time code and poll secret are held in `Zeroizing<String>`.
+- Flutter `InOneSession.login` no longer returns access tokens, refresh tokens, approval codes, poll secrets or approval IDs to callers/UI. The original response map's secret fields are cleared after the session copies them into its owner fields.
+- Flutter refresh response secret fields are cleared after the session accepts the new pair.
+- Flutter `ApiClient` clears request-body bytes and removes the bearer header from request/header maps after sending; redirect following remains disabled.
+- Added a Flutter regression assertion that login results do not expose token or device-approval secrets.
+
+Current PR/source head at this entry: `6e56671b632c993ebd15735caf5001ad2662012a`. These source changes are not test-verified.
+
+Latest CI on this exact head:
+- [OpenMLS client #42982066347](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42982066347): FAILED; job `130394540439` returned `steps=null` and `logs_url=null`.
+- [FRB generation #42982066366](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42982066366): FAILED; job `130394540623` returned `steps=null` and `logs_url=null`; dependent iOS job SKIPPED.
+- [Flutter mobile #42982066410](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42982066410): SKIPPED by the Stage 4 branch condition.
+
+No test command is evidenced as executed. Exact GitHub job failure cause remains UNKNOWN. Stage 4 remains 0% verified / NOT ACCEPTED.
