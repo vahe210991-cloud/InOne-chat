@@ -417,3 +417,13 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Latest observed full CI on prior head `5e3a9dc7644bb9e2eb462a41de345b4ff9f7df3c`: OpenMLS #42987334965 FAILED, FRB #42987334938 FAILED before steps/logs, Flutter #42987335071 SKIPPED; downstream generated commit/final-SHA/iOS jobs skipped.
 - Latest PR head after README/report updates: `a9b81e0c04ce1826d361845b8596eae0c4acaaf9`. No workflow-run records for the immediately preceding README head were returned at the time of the report; current SHA still requires CI evidence.
 - No tests are accepted or claimed. Stage 4 remains blocked pending a working runner, generated FRB outputs and complete green matrix on one exact SHA.
+
+
+### 2026-11-11 — Exact-head CI recheck
+
+- PR #45 exact head at check: e8f50e566d1095ed7ad6ed9427abb5d666b5097b.
+- OpenMLS #42987463963 failed; job 130411972408 had steps=null/logs_url=null; log download returned BlobNotFound.
+- FRB #42987464006 failed; job 130411972791 had steps=null/logs_url=null; log download returned BlobNotFound. Generated commit, final-SHA verification and iOS jobs skipped.
+- Flutter #42987463998 skipped by the explicit Stage 4 branch condition.
+- Combined status API returned no status entries for the exact SHA. No test command is evidenced as executed; exact job-start failure reason UNKNOWN.
+- Report section 28 records evidence. Owner needs to provide the job-level failure message from GitHub Actions UI or restore an authorized runner. No diagnosis is guessed.
