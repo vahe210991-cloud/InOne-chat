@@ -2244,6 +2244,10 @@ impl Client {
             "UPDATE client_welcome_receipts SET acked_at = ?1 WHERE welcome_id = ?2 AND acked_at IS NULL",
             rusqlite::params![acked_at, welcome_id],
         ).map_err(text)?;
+        self.meta.execute(
+            "DELETE FROM client_welcomes WHERE welcome_id = ?1",
+            [welcome_id],
+        ).map_err(text)?;
         Ok(())
     }
 
@@ -2616,6 +2620,8 @@ impl Client {
             .collect();
         if !future_event_ids.is_empty() {
             self.set_waiting_for_commit(room_id, final_epoch.saturating_add(1), &future_event_ids)?;
+        } else if remote_epoch > final_epoch {
+            self.set_waiting_for_commit(room_id, final_epoch.saturating_add(1), &[])?;
         } else if let Some((expected_epoch, _)) = self.waiting_for_commit(room_id)? {
             let commit_available = commits.iter().any(|(epoch, _, _)| *epoch == expected_epoch);
             if final_epoch >= expected_epoch || commit_available {
