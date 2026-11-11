@@ -44,6 +44,18 @@ async function call(base, method, p, token, body) {
   return { status: res.status, json };
 }
 
+async function waitForSignal(signal, description) {
+  let timeout;
+  try {
+    await Promise.race([
+      signal,
+      new Promise((_, reject) => { timeout = setTimeout(() => reject(new Error(description)), 10000); }),
+    ]);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 test('по умолчанию организации не общаются: участник другой организации в комнату не добавляется', async () => {
   const s = await start();
   try {
@@ -190,9 +202,9 @@ test('F-02 PostgreSQL: cross-organization link revocation waits for an in-flight
     };
 
     const joining = call(s.base, 'POST', `/rooms/${enc(ROOM)}/join`, s.carol.token, {});
-    await shareLockReady;
+    await waitForSignal(shareLockReady, 'open join did not acquire the active-link share lock');
     const revoking = call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/revoke`, s.carol.token, {});
-    await revokeAttempted;
+    await waitForSignal(revokeAttempted, 'link revocation did not attempt its conditional update');
     releaseJoin();
 
     const joined = await joining;
