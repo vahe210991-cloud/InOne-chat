@@ -551,7 +551,9 @@ class InOneSession extends ChangeNotifier {
           if (savedUserId != null) {
             final deviceId = _deviceId;
             if (deviceId == null) {
-              throw StateError('Native MLS cleanup requires the persisted device identity');
+              throw StateError(
+                'Native MLS cleanup requires the persisted device identity',
+              );
             }
             await bridge.purgeLocalSession(
               userId: savedUserId,
@@ -563,7 +565,9 @@ class InOneSession extends ChangeNotifier {
         final native = _nativeMlsBridge;
         final deviceId = _deviceId;
         if (native == null || deviceId == null) {
-          throw StateError('Native MLS cleanup is unavailable; saved identity will not be resumed');
+          throw StateError(
+            'Native MLS cleanup is unavailable; saved identity will not be resumed',
+          );
         }
         await native.purgeLocalSession(
           userId: savedUserId,
