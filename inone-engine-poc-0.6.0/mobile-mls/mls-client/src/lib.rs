@@ -1150,9 +1150,15 @@ impl Client {
 
         match (server_result, local_result) {
             (Ok(()), Ok(())) => Ok(()),
-            (Err(server), Ok(())) => Err(format!("ошибка выхода на сервере; локальные токены очищены: {server}")),
-            (Ok(()), Err(local)) => Err(format!("выход на сервере выполнен; не удалось удалить локальные токены: {local}")),
-            (Err(server), Err(local)) => Err(format!("ошибка выхода на сервере: {server}; не удалось удалить локальные токены: {local}")),
+            (Err(server), Ok(())) => Err(format!(
+                "ошибка выхода на сервере; локальные токены очищены: {server}"
+            )),
+            (Ok(()), Err(local)) => Err(format!(
+                "выход на сервере выполнен; не удалось удалить локальные токены: {local}"
+            )),
+            (Err(server), Err(local)) => Err(format!(
+                "ошибка выхода на сервере: {server}; не удалось удалить локальные токены: {local}"
+            )),
         }
     }
 
