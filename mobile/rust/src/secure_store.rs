@@ -54,8 +54,7 @@ impl KeyStore for PlatformKeyStore {
     }
 
     fn delete_database_key(&self, scope: &str) -> Result<(), String> {
-        static KEY_CREATION_LOCK: Mutex<()> = Mutex::new(());
-        let _guard = KEY_CREATION_LOCK
+        let _guard = KEY_STORE_LOCK
             .lock()
             .map_err(|error| format!("блокировка ключа SQLCipher: {error}"))?;
         let entry = Entry::new("com.inone.mls.sqlcipher-key", scope)
