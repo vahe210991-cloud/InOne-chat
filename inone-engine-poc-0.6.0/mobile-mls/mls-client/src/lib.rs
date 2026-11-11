@@ -932,6 +932,20 @@ fn build_client(agent: ureq::Agent, base: &str, tokens: SessionTokens, user_id: 
            acked_at INTEGER
          );
          CREATE TABLE IF NOT EXISTS client_desync (room_id TEXT PRIMARY KEY, reason TEXT NOT NULL);
+         CREATE TABLE IF NOT EXISTS client_waiting_for_commit (
+           room_id TEXT PRIMARY KEY,
+           expected_epoch INTEGER NOT NULL,
+           event_ids TEXT NOT NULL,
+           updated_at INTEGER NOT NULL
+         );
+         CREATE TABLE IF NOT EXISTS client_commit_quarantine (
+           room_id TEXT NOT NULL,
+           epoch INTEGER NOT NULL,
+           commit_hash TEXT NOT NULL,
+           reason TEXT NOT NULL,
+           created_at INTEGER NOT NULL,
+           PRIMARY KEY (room_id, epoch, commit_hash)
+         );
          CREATE TABLE IF NOT EXISTS client_undecryptable (
            event_id TEXT PRIMARY KEY,
            room_id TEXT NOT NULL,
@@ -2260,9 +2274,118 @@ impl Client {
     }
 
     pub fn desync_reason(&self, room_id: &str) -> Result<Option<String>, String> {
+        let recovery: Option<String> = self.meta.query_row(
+            "SELECT reason FROM client_desync WHERE room_id = ?1 AND reason LIKE 'RecoveryRequired:%'",
+            [room_id],
+            |row| row.get(0),
+        ).optional().map_err(text)?;
+        if recovery.is_some() {
+            return Ok(recovery);
+        }
+        if let Some((expected_epoch, event_ids)) = self.waiting_for_commit(room_id)? {
+            return Ok(Some(format!(
+                "WaitingForCommit: expected epoch {expected_epoch}, pending events {event_ids:?}"
+            )));
+        }
         self.meta.query_row(
             "SELECT reason FROM client_desync WHERE room_id = ?1",
             [room_id],
+            |row| row.get(0),
+        ).optional().map_err(text)
+    }
+
+    fn waiting_for_commit(&self, room_id: &str) -> Result<Option<(u64, Vec<String>)>, String> {
+        let row: Option<(i64, String)> = self.meta.query_row(
+            "SELECT expected_epoch, event_ids FROM client_waiting_for_commit WHERE room_id = ?1",
+            [room_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        ).optional().map_err(text)?;
+        row.map(|(epoch, ids)| {
+            let expected_epoch = u64::try_from(epoch).map_err(text)?;
+            let event_ids = serde_json::from_str(&ids).map_err(text)?;
+            Ok((expected_epoch, event_ids))
+        }).transpose()
+    }
+
+    fn set_waiting_for_commit(
+        &mut self,
+        room_id: &str,
+        expected_epoch: u64,
+        event_ids: &[String],
+    ) -> Result<(), String> {
+        let ids = serde_json::to_string(event_ids).map_err(text)?;
+        let updated_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+        self.meta.execute(
+            "INSERT INTO client_waiting_for_commit (room_id, expected_epoch, event_ids, updated_at)
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(room_id) DO UPDATE SET expected_epoch = excluded.expected_epoch,
+               event_ids = excluded.event_ids, updated_at = excluded.updated_at",
+            rusqlite::params![room_id, expected_epoch as i64, ids, updated_at],
+        ).map_err(text)?;
+        Ok(())
+    }
+
+    fn clear_waiting_for_commit(&mut self, room_id: &str) -> Result<(), String> {
+        self.meta.execute(
+            "DELETE FROM client_waiting_for_commit WHERE room_id = ?1",
+            [room_id],
+        ).map_err(text)?;
+        Ok(())
+    }
+
+    fn commit_hash(&self, bytes: &[u8]) -> Result<String, String> {
+        let digest = self.crypto.hash(HashType::Sha2_256, bytes).map_err(text)?;
+        Ok(hex_encode(&digest))
+    }
+
+    fn quarantine_commit(
+        &mut self,
+        room_id: &str,
+        epoch: u64,
+        bytes: &[u8],
+        reason: &str,
+    ) -> Result<(), String> {
+        let commit_hash = self.commit_hash(bytes)?;
+        let created_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+        self.meta.execute(
+            "INSERT OR IGNORE INTO client_commit_quarantine
+             (room_id, epoch, commit_hash, reason, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![room_id, epoch as i64, commit_hash, reason, created_at],
+        ).map_err(text)?;
+        Ok(())
+    }
+
+    fn commit_is_quarantined(
+        &self,
+        room_id: &str,
+        epoch: u64,
+        bytes: &[u8],
+    ) -> Result<Option<String>, String> {
+        let commit_hash = self.commit_hash(bytes)?;
+        self.meta.query_row(
+            "SELECT reason FROM client_commit_quarantine
+             WHERE room_id = ?1 AND epoch = ?2 AND commit_hash = ?3",
+            rusqlite::params![room_id, epoch as i64, commit_hash],
+            |row| row.get(0),
+        ).optional().map_err(text)
+    }
+
+    pub fn quarantined_commit_reason(
+        &self,
+        room_id: &str,
+        epoch: u64,
+    ) -> Result<Option<String>, String> {
+        self.meta.query_row(
+            "SELECT reason FROM client_commit_quarantine
+             WHERE room_id = ?1 AND epoch = ?2 ORDER BY created_at DESC LIMIT 1",
+            rusqlite::params![room_id, epoch as i64],
             |row| row.get(0),
         ).optional().map_err(text)
     }
