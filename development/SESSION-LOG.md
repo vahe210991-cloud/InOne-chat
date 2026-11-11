@@ -489,3 +489,13 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Latest PR #45 head: `bfb87598068239c1107233d930ee79f25ff62d77`.
 - FRB #42989491362 and OpenMLS #42989491373 failed with no steps/log URLs; log retrieval returned BlobNotFound. Flutter #42989491354 skipped.
 - No test command evidenced as executed. Exact failure cause UNKNOWN. Report section 35.
+
+
+### 2026-11-11 — PR #45 failed-job rerun
+
+- Re-read PR #45, mandate, WBS v1.1, working rules and Stage 4 reports/continuity.
+- Latest recorded PR head: `f6384a0bd68460849cbc9b9ce0fa6d7e9fcb9a6a`; latest code-triggered run SHA: `bfb87598068239c1107233d930ee79f25ff62d77`.
+- Re-ran failed jobs in FRB run #42989491362 and OpenMLS run #42989491373. Latest attempts still failed with `steps=null`, `logs_url=null`; log retrieval returned `BlobNotFound`. Latest job IDs: `130426024038` and `130426036241`.
+- FRB generated-commit/final-SHA/iOS jobs skipped; Flutter run #42989491354 skipped by branch condition. No test/build/codegen command is evidenced as executed.
+- No speculative workflow/source edit made because the failure occurs before observable steps. Exact Actions startup cause remains UNKNOWN.
+- Stage 4 remains NOT ACCEPTED / BLOCKED; verification accepted 0%; native MLS disabled; no merge. See report section 36.
