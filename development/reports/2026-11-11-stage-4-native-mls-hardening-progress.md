@@ -90,7 +90,7 @@ No local Rust compiler or Cargo executable is available in this execution enviro
 
 ## 4. Acceptance status
 
-<badge>NOT ACCEPTED — BLOCKED / NOT VERIFIED</badge>
+**Status: NOT ACCEPTED — BLOCKED / NOT VERIFIED**
 
 - No Stage 4 test is marked PASS in this report.
 - No Android/iOS runtime result is claimed.
