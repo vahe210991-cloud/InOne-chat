@@ -327,3 +327,10 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Source SHA: `3d4e64d4f302f7ddbe417903ede4dd4443b10975`.
 - CI #42979859714 (OpenMLS) and #42979859709 (FRB) failed before step 1 with runner_id 0 and empty steps; iOS dependent job skipped. No tests executed.
 - Updated report section 16. Stage 4 remains NOT ACCEPTED.
+
+
+### 2026-11-11 — CI recheck on current PR head after zeroization
+
+- PR #45 head: `c103cc2ae4eaa9e3ce721101f3581f3b6047e138`; product source head: `3d4e64d4f302f7ddbe417903ede4dd4443b10975`.
+- OpenMLS #42979954916 and FRB #42979955089 failed before step 1 with runner_id 0 and empty steps; iOS dependent job skipped; Flutter mobile #42979954833 skipped by branch condition.
+- No tests executed on current PR head. Updated report section 17. Stage 4 remains NOT ACCEPTED.
