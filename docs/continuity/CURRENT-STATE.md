@@ -476,3 +476,12 @@ Do not re-port these mechanisms. See Stage 4 report section 25 for the exact com
 - Flutter #42988901824 SKIPPED by branch condition.
 - No test command is evidenced as executed. Exact failure cause UNKNOWN.
 - Stage 4 remains NOT ACCEPTED / BLOCKED; native MLS remains disabled.
+
+
+## Latest exact-head CI — 2026-11-11
+
+- PR #45 head: `28aa6f488472688ae5d728e18da8ef24910d540d`.
+- OpenMLS #42989119932 and FRB #42989119937 FAILED with no steps/log URLs; generated commit/final-SHA/iOS jobs skipped. Flutter #42989120066 skipped.
+- No test command is evidenced as executed. Exact failure cause UNKNOWN.
+- Crash regression accurately covers OpenMLS storage + inbox/processed writes in an uncommitted SQLCipher WAL transaction; it does not claim to test live ratchet mutation.
+- Stage 4 remains NOT ACCEPTED / BLOCKED.
