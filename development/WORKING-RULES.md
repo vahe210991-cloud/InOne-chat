@@ -14,7 +14,7 @@ These rules apply to every human developer, AI agent, automation, and future Cha
 
 Before editing anything:
 
-1. Read `development/README.md`, `WORKING-RULES.md`, `BASELINE-2026-11-08.md`, `HANDOVER-CHECKLIST.md`, `SESSION-LOG.md`, then `docs/continuity/README.md` and the current-state/decisions/source-of-truth documents.
+1. Read `AGENTS.md`, `development/AI-AGENT-MANDATE.md`, `development/README.md`, `WORKING-RULES.md`, `BASELINE-2026-11-08.md`, `HANDOVER-CHECKLIST.md`, `SESSION-LOG.md`, then `docs/continuity/README.md` and the current-state/decisions/source-of-truth documents.
 2. Fetch the latest remote refs. Record the exact starting commit SHA and current branch.
 3. Make a **complete clone or complete working copy of the repository**, not a hand-picked subset. Preserve all branches/refs needed for the task, commit history, tags, submodules, and Git LFS objects where applicable.
 4. Verify the copy: `git status`, `git log`, `git remote -v`, `git submodule status`, and LFS status if used. If the environment cannot obtain a complete copy, stop and document precisely what is missing. Never silently work from an old or partial snapshot.
