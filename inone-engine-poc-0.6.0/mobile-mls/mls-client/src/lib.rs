@@ -1683,6 +1683,10 @@ impl Client {
         if let Err(error) = staged {
             drop(transaction);
             self.reload_group(room_id)?;
+            if error.starts_with("P0.2:") {
+                self.record_desync(room_id, &error)?;
+                return Err(format!("RecoveryRequired: {error}"));
+            }
             return Err(error);
         }
         if let Err(error) = transaction.commit() {
@@ -2910,6 +2914,10 @@ impl Client {
                 if let Err(error) = staged {
                     drop(transaction);
                     self.reload_group(&room_id)?;
+                    if error.starts_with("P0.2:") {
+                        self.record_desync(&room_id, &error)?;
+                        return Err(format!("RecoveryRequired: {error}"));
+                    }
                     return Err(error);
                 }
                 if let Err(error) = transaction.commit() {
