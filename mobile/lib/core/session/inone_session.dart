@@ -194,7 +194,8 @@ class InOneSession extends ChangeNotifier {
       ..remove('token')
       ..remove('refreshToken')
       ..remove('code')
-      ..remove('pollSecret');
+      ..remove('pollSecret')
+      ..remove('approvalId');
     _acceptSession(result);
     // Do not return or display access/refresh tokens or device-approval
     // secrets to callers such as the API test panel.
@@ -202,6 +203,7 @@ class InOneSession extends ChangeNotifier {
     result['refreshToken'] = null;
     result['code'] = null;
     result['pollSecret'] = null;
+    result['approvalId'] = null;
     final native = _nativeMlsBridge;
     if (native != null) {
       try {
