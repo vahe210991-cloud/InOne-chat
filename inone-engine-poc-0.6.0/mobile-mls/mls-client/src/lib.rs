@@ -1052,6 +1052,57 @@ mod retry_tests {
     use super::*;
 
     #[test]
+    fn openmls_storage_writes_participate_in_the_outer_sqlite_transaction() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        {
+            let mut storage =
+                SqliteStorageProvider::<JsonCodec, &mut Connection>::new(&mut connection);
+            storage.run_migrations().unwrap();
+        }
+
+        let crypto = RustCrypto::default();
+        let signer = SignatureKeyPair::new(CIPHERSUITE.signature_algorithm()).unwrap();
+        let public = signer.to_public_vec();
+
+        {
+            let transaction = connection.transaction().unwrap();
+            let provider =
+                DeviceProvider::new(&crypto, TransactionConnection(&transaction));
+            signer.store(provider.storage()).unwrap();
+            // Drop without commit: OpenMLS storage writes must roll back with the outer tx.
+        }
+
+        let provider = DeviceProvider::new(&crypto, &connection);
+        assert!(
+            SignatureKeyPair::read(
+                provider.storage(),
+                &public,
+                CIPHERSUITE.signature_algorithm()
+            )
+            .is_none(),
+            "rolled-back OpenMLS state must not remain visible"
+        );
+        drop(provider);
+
+        let transaction = connection.transaction().unwrap();
+        let provider = DeviceProvider::new(&crypto, TransactionConnection(&transaction));
+        signer.store(provider.storage()).unwrap();
+        drop(provider);
+        transaction.commit().unwrap();
+
+        let provider = DeviceProvider::new(&crypto, &connection);
+        assert!(
+            SignatureKeyPair::read(
+                provider.storage(),
+                &public,
+                CIPHERSUITE.signature_algorithm()
+            )
+            .is_some(),
+            "committed OpenMLS state must be visible"
+        );
+    }
+
+    #[test]
     fn event_ids_must_be_present_and_non_empty() {
         assert_eq!(
             event_id_from_event(&json!({"event_id": "$event-1"})).unwrap(),
