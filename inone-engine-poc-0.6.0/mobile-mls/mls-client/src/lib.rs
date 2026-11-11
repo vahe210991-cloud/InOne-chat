@@ -1174,46 +1174,102 @@ impl Client {
     pub fn remove_revoked_devices(&mut self) -> Result<usize, String> {
         let removals = self.call("GET", "/mls/removals", None)?;
         let mut by_room: HashMap<String, Vec<String>> = HashMap::new();
-        for r in removals["removals"].as_array().cloned().unwrap_or_default() {
-            let room = r["roomId"].as_str().ok_or("нет roomId")?.to_string();
-            let device = r["deviceId"].as_str().ok_or("нет deviceId")?.to_string();
+        for removal in removals["removals"].as_array().cloned().unwrap_or_default() {
+            let room = removal["roomId"].as_str().ok_or("нет roomId")?.to_string();
+            let device = removal["deviceId"].as_str().ok_or("нет deviceId")?.to_string();
             by_room.entry(room).or_default().push(device);
         }
+
         let mut removed = 0;
         for (room_id, devices) in by_room {
             if !self.groups.contains_key(&room_id) {
                 continue;
             }
             let server = self.server_epoch(&room_id)?;
-            let identities: Vec<Vec<u8>> = devices.iter().map(|d| format!("{}/{}", self.user_id, d).into_bytes()).collect();
-            let (epoch_before, commit_b64) = {
-                let provider = self.provider();
+            let identities: Vec<Vec<u8>> = devices
+                .iter()
+                .map(|device| format!("{}/{}", self.user_id, device).into_bytes())
+                .collect();
+
+            let transaction = self.meta.transaction().map_err(text)?;
+            let staged_result = {
+                let provider = DeviceProvider::new(&self.crypto, TransactionConnection(&transaction));
                 let group = self.groups.get_mut(&room_id).ok_or("комната не найдена")?;
                 let local = group.mls.epoch().as_u64();
                 if local != server {
-                    return Err(format!("устройство на эпохе {local}, сервер на {server}: сначала синхронизация"));
-                }
-                let leaves: Vec<LeafNodeIndex> = group
-                    .mls
-                    .members()
-                    .filter(|m| identities.iter().any(|id| m.credential.serialized_content() == id.as_slice()))
-                    .map(|m| m.index)
-                    .collect();
-                let commit = if leaves.is_empty() {
-                    let bundle = group.mls.self_update(&provider, &self.signer, LeafNodeParameters::default()).map_err(text)?;
-                    bundle.commit().clone()
+                    Err(format!("устройство на эпохе {local}, сервер на {server}: сначала синхронизация"))
                 } else {
-                    let (commit, _, _) = group.mls.remove_members(&provider, &self.signer, &leaves).map_err(text)?;
+                    let leaves: Vec<LeafNodeIndex> = group
+                        .mls
+                        .members()
+                        .filter(|member| {
+                            identities
+                                .iter()
+                                .any(|identity| member.credential.serialized_content() == identity.as_slice())
+                        })
+                        .map(|member| member.index)
+                        .collect();
+                    let commit = if leaves.is_empty() {
+                        group
+                            .mls
+                            .self_update(&provider, &self.signer, LeafNodeParameters::default())
+                            .map(|bundle| bundle.commit().clone())
+                            .map_err(text)?
+                    } else {
+                        group
+                            .mls
+                            .remove_members(&provider, &self.signer, &leaves)
+                            .map(|(commit, _, _)| commit)
+                            .map_err(text)?
+                    };
                     commit
-                };
-                group.mls.merge_pending_commit(&provider).map_err(text)?;
-                (local, B64.encode(commit.tls_serialize_detached().map_err(text)?))
+                        .tls_serialize_detached()
+                        .map(|bytes| (local, B64.encode(bytes)))
+                        .map_err(text)
+                }
             };
-            self.call(
+            let (epoch_before, commit_b64) = match staged_result {
+                Ok(staged) => staged,
+                Err(error) => {
+                    drop(transaction);
+                    self.reload_group(&room_id)?;
+                    return Err(error);
+                }
+            };
+            if let Err(error) = transaction.commit() {
+                self.reload_group(&room_id)?;
+                return Err(text(error));
+            }
+
+            let server_result = self.call(
                 "POST",
                 &format!("/mls/groups/{}/commits", urlencoding::encode(&room_id)),
-                Some(json!({ "epoch": epoch_before, "commit": commit_b64, "changes": { "adds": [], "removes": [], "removeDevices": devices } })),
-            )?;
+                Some(json!({
+                    "epoch": epoch_before,
+                    "commit": commit_b64,
+                    "changes": { "adds": [], "removes": [], "removeDevices": devices }
+                })),
+            );
+            if let Err(error) = server_result {
+                return match self.clear_local_pending_commit(&room_id) {
+                    Ok(()) => Err(error),
+                    Err(cleanup_error) => Err(format!(
+                        "{error}; не удалось очистить локальный pending commit: {cleanup_error}"
+                    )),
+                };
+            }
+
+            if let Err(error) = self.merge_local_pending_commit(&room_id) {
+                let cleanup = self.clear_local_pending_commit(&room_id);
+                return match cleanup {
+                    Ok(()) => Err(format!(
+                        "сервер принял commit удаления, локальное слияние не завершено; commit очищен, требуется синхронизация: {error}"
+                    )),
+                    Err(cleanup_error) => Err(format!(
+                        "сервер принял commit удаления, локальное слияние не завершено: {error}; очистка pending commit также не удалась: {cleanup_error}"
+                    )),
+                };
+            }
             removed += devices.len();
         }
         Ok(removed)
