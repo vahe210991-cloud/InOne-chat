@@ -65,8 +65,10 @@ impl KeyStore for PlatformKeyStore {
         let entry = Entry::new("com.inone.mls.sqlcipher-key", scope)
             .map_err(|error| format!("создание записи защищённого хранилища: {error}"))?;
         let mut key = [0u8; 32];
-        getrandom::fill(&mut key)
-            .map_err(|error| format!("генерация ключа SQLCipher: {error}"))?;
+        if let Err(error) = getrandom::fill(&mut key) {
+            key.zeroize();
+            return Err(format!("генерация ключа SQLCipher: {error}"));
+        }
         if let Err(error) = entry.set_secret(&key) {
             key.zeroize();
             return Err(format!("сохранение ключа SQLCipher: {error}"));
