@@ -662,7 +662,7 @@ The local SQLCipher DB/key may remain if native purge fails; the app no longer s
 Three additional Rust tests were added:
 - `existing_database_with_wrong_protected_key_is_rejected_without_replacement`: verifies a mismatched key does not overwrite the protected key or destroy the existing encrypted database.
 - `failed_new_session_initialization_removes_partial_database_and_key`: forces DB open failure after creating a new key and verifies both partial artifacts and the newly-created key are removed.
-- `process_crash_rolls_back_ratchet_and_inbox_atomically`: child process exits with an open SQLCipher WAL transaction after storing OpenMLS ratchet material and an inbox/processed record; parent verifies none of the uncommitted writes survive recovery.
+- `process_crash_rolls_back_openmls_storage_and_inbox_atomically`: child process exits with an open SQLCipher WAL transaction after storing an OpenMLS signature key and an inbox/processed record; parent verifies none of the uncommitted writes survive recovery.
 
 These are test-source additions only. They have not executed.
 
