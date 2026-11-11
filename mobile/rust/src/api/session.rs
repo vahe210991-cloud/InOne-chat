@@ -2,6 +2,8 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
+use zeroize::Zeroizing;
+
 use serde::Serialize;
 
 use sha2::{Digest, Sha256};
@@ -285,12 +287,14 @@ pub fn open_session(
                 .to_string(),
         );
     }
+    let access_token = Zeroizing::new(access_token);
+    let refresh_token = Zeroizing::new(refresh_token);
     let client = match connect_with_session(
         &base_url,
         &user_id,
         &device_id,
-        &access_token,
-        &refresh_token,
+        access_token.as_str(),
+        refresh_token.as_str(),
         &database_path,
         keys.as_ref(),
     ) {
