@@ -299,3 +299,11 @@ This section supersedes stale earlier statements in this file that no applied P0
 - Source head for these changes: `c8ba8f99c45cd532b0941fd774304b6763429511`.
 - Latest CI #42977451436 and #42977451456 again failed before step 1 with runner_id 0 and empty steps. iOS dependent job skipped. No source tests executed.
 - Atomicity is implemented in source but not accepted until unit, crash/restart and platform tests run green. Stage 4 remains NOT ACCEPTED.
+
+
+### Pending-commit restart reconciliation — 2026-11-11
+
+- `sync_room` now clears an unmerged local pending commit before applying authoritative server state and fails closed if local MLS epoch exceeds server epoch.
+- Source SHA: `e4133120d59ea833dd010bdaa10a7f7a4f281375`.
+- Latest OpenMLS/FRB jobs #42977699906 and #42977699954 failed before step 1 with runner_id 0 and empty steps; OpenMLS rerun #42977708226 repeated the same. No tests executed.
+- Crash/restart tests for server-accepted commit recovery remain mandatory. Stage 4 is NOT ACCEPTED.
