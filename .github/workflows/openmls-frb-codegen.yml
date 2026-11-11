@@ -348,7 +348,7 @@ jobs:
         working-directory: mobile
         run: |
           flutter pub get
-          git diff --exit-code -- mobile/pubspec.yaml mobile/pubspec.lock
+          git diff --exit-code -- pubspec.yaml pubspec.lock
 
       - name: Build iOS device target without signing
         working-directory: mobile
