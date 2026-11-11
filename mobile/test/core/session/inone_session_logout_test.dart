@@ -88,7 +88,7 @@ void main() {
       bridge.resumeCalls,
       1,
       reason:
-          'an explicit logout must not silently restore the previous MLS session',
+          'logout must not restore the previous MLS session',
     );
     expect(nextLaunch.isAuthenticated, isFalse);
 
