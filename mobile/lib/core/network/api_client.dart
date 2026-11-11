@@ -155,7 +155,23 @@ class ApiClient {
         code: 'invalid_response',
         retryable: false,
       );
+    } finally {
+      _clearRequestSecrets(request, headers);
     }
+  }
+
+  void _clearRequestSecrets(
+    http.Request request,
+    Map<String, String> headers,
+  ) {
+    try {
+      final bytes = request.bodyBytes;
+      bytes.fillRange(0, bytes.length, 0);
+    } catch (_) {
+      // Request implementations may finalize their body buffer after send.
+    }
+    request.headers.remove('authorization');
+    headers.remove('authorization');
   }
 
   Uri _resolve(String path) {
