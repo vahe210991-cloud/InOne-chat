@@ -334,3 +334,17 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - PR #45 head: `c103cc2ae4eaa9e3ce721101f3581f3b6047e138`; product source head: `3d4e64d4f302f7ddbe417903ede4dd4443b10975`.
 - OpenMLS #42979954916 and FRB #42979955089 failed before step 1 with runner_id 0 and empty steps; iOS dependent job skipped; Flutter mobile #42979954833 skipped by branch condition.
 - No tests executed on current PR head. Updated report section 17. Stage 4 remains NOT ACCEPTED.
+
+
+### 2026-11-11 — Sole-executor instruction, source hardening and CI state
+
+- Owner confirmed Beta 1.0 is the current development stage and ChatGPT is the sole executor; no external agent is involved unless owner explicitly enables one later.
+- Fixed confirmed Rust identifier defect in `mobile/rust/src/api/session.rs`; removed duplicate `path_provider` in mobile pubspec.
+- Made Android/iOS native key-store initialization and Android JNI context initialization retryable after failures.
+- Added HTTPS/local-debug API origin validation in Rust and Flutter, rejected origin credentials/query/fragment, disabled redirects to protect bearer tokens, added regression tests and documented the policy.
+- Corrected bridge documentation for decrypted SQLCipher inbox history and acknowledgement state.
+- Current PR #45 head: `84248642e05e03c976a6f8d0eae0a9ab03a64765`.
+- CI #42981617948 (OpenMLS) and #42981617913 (FRB) FAILED with no step summaries; job-log downloads returned BlobNotFound; iOS dependent job skipped. Flutter mobile #42981617907 skipped by Stage 4 branch condition.
+- Local environment has Node/npm/Java but no rustc, cargo, Flutter, Dart or Xcode. No local tests/builds were executed.
+- Exact GitHub job failure cause remains UNKNOWN. All source changes in this entry are unverified until CI or an authorized build environment executes the tests.
+- Beta 1.0 WBS v1.1 is unchanged. Stage 4 NOT ACCEPTED; do not merge or enable native MLS.
