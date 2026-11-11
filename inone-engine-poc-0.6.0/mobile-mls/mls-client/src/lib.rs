@@ -193,6 +193,27 @@ fn register(agent: &ureq::Agent, base: &str, user_id: &str, password: &str) -> R
 }
 
 /// Ключ базы устройства. Платформа хранит его в Keychain (iOS) или Keystore (Android); ядро его не сохраняет.
+fn database_artifacts_exist(db_path: &str) -> bool {
+    ["", "-wal", "-shm", "-journal"].iter().any(|suffix| {
+        Path::new(&format!("{db_path}{suffix}")).exists()
+    })
+}
+
+fn ensure_existing_key_matches_database(
+    db_path: &str,
+    scope: &str,
+    keys: &dyn KeyStore,
+) -> Result<Option<[u8; 32]>, String> {
+    let existing_key = keys.existing_database_key(scope)?;
+    if existing_key.is_none() && database_artifacts_exist(db_path) {
+        return Err(
+            "SQLCipher database exists but its protected key is missing; refusing to create a replacement key"
+                .to_string(),
+        );
+    }
+    Ok(existing_key)
+}
+
 pub trait KeyStore: Send + Sync {
     /// Loads an existing key without creating or replacing one.
     fn existing_database_key(&self, scope: &str) -> Result<Option<[u8; 32]>, String>;
@@ -266,6 +287,8 @@ pub fn with_retry<T>(attempts: u32, base: Duration, mut op: impl FnMut() -> Resu
 
 /// Вход первого устройства аккаунта (или устройства, которое уже подтверждено).
 pub fn connect(base: &str, user_id: &str, password: &str, device_id: &str, db_path: &str, keys: &dyn KeyStore) -> Result<Client, String> {
+    let scope = format!("{user_id}/{device_id}");
+    ensure_existing_key_matches_database(db_path, &scope, keys)?;
     let agent = ureq::AgentBuilder::new().build();
     register(&agent, base, user_id, password)?;
     let login = request(&agent, base, "", "POST", "/login", Some(json!({ "userId": user_id, "password": password, "deviceId": device_id })))?;
@@ -295,6 +318,8 @@ pub fn connect_with_session(
     if access_token.is_empty() || refresh_token.is_empty() {
         return Err("для подключения нужны access и refresh tokens".to_string());
     }
+    let scope = format!("{user_id}/{device_id}");
+    ensure_existing_key_matches_database(db_path, &scope, keys)?;
     let agent = ureq::AgentBuilder::new().build();
     build_client(
         agent,
@@ -374,6 +399,8 @@ pub fn connect_with_approval(
     keys: &dyn KeyStore,
     approver: &Client,
 ) -> Result<Client, String> {
+    let scope = format!("{user_id}/{device_id}");
+    ensure_existing_key_matches_database(db_path, &scope, keys)?;
     let agent = ureq::AgentBuilder::new().build();
     register(&agent, base, user_id, password)?;
     let login = request(
