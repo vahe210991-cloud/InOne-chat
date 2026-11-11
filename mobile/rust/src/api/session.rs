@@ -263,15 +263,20 @@ fn database_artifacts_exist(database_path: &str) -> bool {
     })
 }
 
-fn cleanup_local_session(
+fn cleanup_local_session_with_key_store(
     database_path: &str,
     identity_scope: &str,
-    keys: &dyn KeyStore,
+    keys: Result<&dyn KeyStore, String>,
 ) -> Result<(), String> {
-    // Always attempt key deletion, even if a database file or sidecar cannot
-    // be removed. Without the key, any remaining SQLCipher file is unreadable.
+    // Delete the encrypted database even if the platform store cannot be
+    // initialized. A remaining protected key is reported so cleanup can be
+    // retried, but a transient Keystore/Keychain failure must not preserve
+    // decrypted local history on disk.
     let database_result = remove_database_files(database_path);
-    let key_result = keys.delete_database_key(identity_scope);
+    let key_result = match keys {
+        Ok(keys) => keys.delete_database_key(identity_scope),
+        Err(error) => Err(format!("инициализация защищённого хранилища: {error}")),
+    };
     let mut errors = Vec::new();
     if let Err(error) = database_result {
         errors.push(error);
@@ -284,6 +289,14 @@ fn cleanup_local_session(
     } else {
         Err(errors.join("; "))
     }
+}
+
+fn cleanup_local_session(
+    database_path: &str,
+    identity_scope: &str,
+    keys: &dyn KeyStore,
+) -> Result<(), String> {
+    cleanup_local_session_with_key_store(database_path, identity_scope, Ok(keys))
 }
 
 /// Adopt a session created by Flutter, or restore the encrypted session through `resume_session`.
@@ -406,8 +419,12 @@ pub fn purge_local_session(
         .join(format!("{filename}.sqlcipher"))
         .to_string_lossy()
         .into_owned();
-    let keys = PlatformKeyStore::new()?;
-    cleanup_local_session(&database_path, &identity, &keys)
+    let platform_keys = PlatformKeyStore::new();
+    let keys: Result<&dyn KeyStore, String> = match &platform_keys {
+        Ok(keys) => Ok(keys),
+        Err(error) => Err(error.clone()),
+    };
+    cleanup_local_session_with_key_store(&database_path, &identity, keys)
 }
 
 #[frb(init)]
@@ -540,4 +557,31 @@ mod tests {
         let _ = std::fs::remove_file(format!("{}-shm", database.display()));
         let _ = std::fs::remove_file(format!("{}-journal", database.display()));
     }
+    #[test]
+    fn purge_removes_database_even_when_platform_key_store_initialization_fails() {
+        let (database, keys, _session) = fixture();
+        let database_path = database.to_string_lossy().into_owned();
+
+        let result = cleanup_local_session_with_key_store(
+            &database_path,
+            "user/device",
+            Err("protected store unavailable".to_string()),
+        );
+
+        let error = result.expect_err("key deletion must remain explicitly unconfirmed");
+        assert!(error.contains("protected store unavailable"));
+        assert!(!database.exists(), "encrypted database must still be removed");
+        for suffix in ["-wal", "-shm", "-journal"] {
+            assert!(
+                !std::path::PathBuf::from(format!("{}{}", database.display(), suffix)).exists(),
+                "SQLite sidecar {suffix} must also be removed"
+            );
+        }
+        assert!(
+            !keys.deleted.load(Ordering::SeqCst),
+            "a failed platform-store initialization cannot claim key deletion"
+        );
+    }
+
+
 }
