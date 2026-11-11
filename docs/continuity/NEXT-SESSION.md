@@ -365,7 +365,7 @@ Report: development/reports/2026-11-11-stage-4-single-executor-progress.md, sect
 
 - Review Rust `Client.logout` and execute `logout_clears_local_session_tokens_when_server_is_unavailable`.
 - Review Flutter `InOneSession.logout` and execute both new tests in `mobile/test/core/session/inone_session_logout_test.dart`.
-- Execute Rust tests `existing_database_with_wrong_protected_key_is_rejected_without_replacement`, `failed_new_session_initialization_removes_partial_database_and_key`, and `process_crash_rolls_back_ratchet_and_inbox_atomically`.
+- Execute Rust tests `existing_database_with_wrong_protected_key_is_rejected_without_replacement`, `failed_new_session_initialization_removes_partial_database_and_key`, and `process_crash_rolls_back_openmls_storage_and_inbox_atomically`.
 - Latest test-source head: `54711b873349a8adb575f27d9c1fcccebbc49081`. FRB #42988592622 and OpenMLS #42988592592 failed with no step/log data; Flutter #42988592656 skipped. Do not infer cause.
 - Obtain the exact job-level failure message from GitHub Actions UI or an authorized working runner. Then run the complete Beta 1.0 matrix on one final SHA.
 - Do not mark any new regression PASS until executed. Keep native MLS disabled and do not merge.
