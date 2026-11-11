@@ -479,6 +479,10 @@ fn build_client(agent: ureq::Agent, base: &str, tokens: (String, String), user_i
 
 impl Client {
     /// Вызов API. Если токен доступа истёк, токен обновляется и запрос повторяется один раз.
+    fn provider(&self) -> DeviceProvider<'_, &Connection> {
+        DeviceProvider::new(&self.crypto, &self.meta)
+    }
+
     fn call(&self, method: &str, path: &str, body: Option<Value>) -> Result<Value, String> {
         match self.call_once(method, path, body.clone()) {
             Err(e) if e.contains("token_expired") => {
@@ -563,9 +567,10 @@ impl Client {
 
     /// Публикует ключевые пакеты этого устройства (не больше 50 за раз).
     pub fn upload_key_packages(&mut self, count: usize) -> Result<(), String> {
+        let provider = self.provider();
         let mut packages = Vec::with_capacity(count);
         for _ in 0..count {
-            let bundle = KeyPackage::builder().build(CIPHERSUITE, &self.provider, &self.signer, self.credential.clone()).map_err(text)?;
+            let bundle = KeyPackage::builder().build(CIPHERSUITE, &provider, &self.signer, self.credential.clone()).map_err(text)?;
             packages.push(B64.encode(bundle.key_package().tls_serialize_detached().map_err(text)?));
         }
         self.call("POST", "/mls/key-packages", Some(json!({ "packages": packages })))?;
@@ -574,7 +579,8 @@ impl Client {
 
     /// Публикует резервный ключевой пакет: им приглашают, когда обычные закончились.
     pub fn upload_last_resort(&mut self) -> Result<(), String> {
-        let bundle = KeyPackage::builder().build(CIPHERSUITE, &self.provider, &self.signer, self.credential.clone()).map_err(text)?;
+        let provider = self.provider();
+        let bundle = KeyPackage::builder().build(CIPHERSUITE, &provider, &self.signer, self.credential.clone()).map_err(text)?;
         let package = B64.encode(bundle.key_package().tls_serialize_detached().map_err(text)?);
         self.call("POST", "/mls/key-packages/last-resort", Some(json!({ "package": package })))?;
         Ok(())
@@ -599,13 +605,14 @@ impl Client {
     /// Создаёт комнату на сервере и группу MLS на этом устройстве (эпоха 0).
     pub fn create_room(&mut self, room_id: &str) -> Result<(), String> {
         self.ensure_writable()?;
+        let provider = self.provider();
         self.call("POST", "/rooms", Some(json!({ "roomId": room_id, "members": [self.user_id] })))?;
         let config = MlsGroupCreateConfig::builder()
             .ciphersuite(CIPHERSUITE)
             .use_ratchet_tree_extension(true)
             .max_past_epochs(MAX_PAST_EPOCHS)
             .build();
-        let mls = MlsGroup::new_with_group_id(&self.provider, &self.signer, &config, GroupId::from_slice(room_id.as_bytes()), self.credential.clone()).map_err(text)?;
+        let mls = MlsGroup::new_with_group_id(&provider, &self.signer, &config, GroupId::from_slice(room_id.as_bytes()), self.credential.clone()).map_err(text)?;
         self.meta.execute("INSERT OR REPLACE INTO client_rooms (room_id, join_epoch) VALUES (?1, 0)", [room_id]).map_err(text)?;
         self.groups.insert(room_id.to_string(), Group { mls, join_epoch: 0 });
         Ok(())
@@ -624,19 +631,20 @@ impl Client {
         if packages.is_empty() {
             return Err(format!("у {user_id} нет ключевых пакетов"));
         }
+        let provider = self.provider();
         let mut key_packages = Vec::with_capacity(packages.len());
         let mut devices = Vec::with_capacity(packages.len());
         for p in &packages {
             let bytes = B64.decode(p["package"].as_str().ok_or("пакет не строка")?).map_err(text)?;
-            let kp = KeyPackageIn::tls_deserialize_exact(&bytes).map_err(text)?.validate(self.provider.crypto(), ProtocolVersion::Mls10).map_err(text)?;
+            let kp = KeyPackageIn::tls_deserialize_exact(&bytes).map_err(text)?.validate(provider.crypto(), ProtocolVersion::Mls10).map_err(text)?;
             key_packages.push(kp);
             devices.push(p["deviceId"].as_str().ok_or("нет deviceId")?.to_string());
         }
         let (epoch_before, commit_b64, welcome_b64) = {
             let group = self.groups.get_mut(room_id).ok_or("комната не создана на этом устройстве")?;
             let epoch_before = group.mls.epoch().as_u64();
-            let (commit, welcome, _) = group.mls.add_members(&self.provider, &self.signer, &key_packages).map_err(text)?;
-            group.mls.merge_pending_commit(&self.provider).map_err(text)?;
+            let (commit, welcome, _) = group.mls.add_members(&provider, &self.signer, &key_packages).map_err(text)?;
+            group.mls.merge_pending_commit(&provider).map_err(text)?;
             (epoch_before, B64.encode(commit.tls_serialize_detached().map_err(text)?), B64.encode(welcome.tls_serialize_detached().map_err(text)?))
         };
         let welcomes: Vec<Value> = devices.iter().map(|d| json!({ "userId": user_id, "deviceId": d, "welcome": welcome_b64 })).collect();
@@ -651,7 +659,7 @@ impl Client {
     /// Отправляет текст в комнату. Устройство должно быть на эпохе сервера: иначе сначала синхронизация.
     /// Отправляет текст в комнату. Устройство должно быть на эпохе сервера: иначе сначала синхронизация.
     pub fn send_text(&mut self, room_id: &str, plaintext: &str) -> Result<String, String> {
-        let id = hex_encode(&self.provider.rand().random_vec(16).map_err(text)?);
+        let id = hex_encode(&self.crypto.random_vec(16).map_err(text)?);
         self.send_text_with_id(room_id, plaintext, &id)
     }
 
@@ -659,13 +667,14 @@ impl Client {
     pub fn send_text_with_id(&mut self, room_id: &str, plaintext: &str, client_message_id: &str) -> Result<String, String> {
         self.ensure_writable()?;
         let server = self.server_epoch(room_id)?;
+        let provider = self.provider();
         let body = {
             let group = self.groups.get_mut(room_id).ok_or("комната не создана на этом устройстве")?;
             let local = group.mls.epoch().as_u64();
             if local != server {
                 return Err(format!("устройство на эпохе {local}, сервер на {server}: сначала синхронизация"));
             }
-            let message = group.mls.create_message(&self.provider, &self.signer, plaintext.as_bytes()).map_err(text)?;
+            let message = group.mls.create_message(&provider, &self.signer, plaintext.as_bytes()).map_err(text)?;
             B64.encode(message.tls_serialize_detached().map_err(text)?)
         };
         let res = self.call(
@@ -681,6 +690,7 @@ impl Client {
     /// Входит в группы по приветствиям, которые ждут на сервере, и подтверждает их.
     fn join_welcomes(&mut self) -> Result<(), String> {
         let pending = self.call("GET", "/mls/welcomes", None)?;
+        let provider = self.provider();
         for w in pending["welcomes"].as_array().cloned().unwrap_or_default() {
             let id = w["id"].as_i64().ok_or("нет id приветствия")?;
             let bytes = B64.decode(w["welcome"].as_str().ok_or("приветствие не строка")?).map_err(text)?;
@@ -689,8 +699,8 @@ impl Client {
                 _ => return Err("ожидалось приветствие".to_string()),
             };
             let join_config = MlsGroupJoinConfig::builder().use_ratchet_tree_extension(true).max_past_epochs(MAX_PAST_EPOCHS).build();
-            let staged = StagedWelcome::new_from_welcome(&self.provider, &join_config, welcome, None).map_err(text)?;
-            let mls = staged.into_group(&self.provider).map_err(text)?;
+            let staged = StagedWelcome::new_from_welcome(&provider, &join_config, welcome, None).map_err(text)?;
+            let mls = staged.into_group(&provider).map_err(text)?;
             let room_id = String::from_utf8_lossy(mls.group_id().as_slice()).to_string();
             let join_epoch = mls.epoch().as_u64();
             self.meta.execute("INSERT OR REPLACE INTO client_rooms (room_id, join_epoch) VALUES (?1, ?2)", (&room_id, join_epoch as i64)).map_err(text)?;
@@ -787,7 +797,7 @@ impl Client {
 
     /// Ставит текст в очередь отправки: он уйдёт, когда появится связь. Возвращает локальный номер.
     pub fn enqueue_text(&mut self, room_id: &str, plaintext: &str) -> Result<String, String> {
-        let local_id = hex_encode(&self.provider.rand().random_vec(16).map_err(text)?);
+        let local_id = hex_encode(&self.crypto.random_vec(16).map_err(text)?);
         self.meta
             .execute(
                 "INSERT INTO client_outbox (local_id, room_id, body, seq) VALUES (?1, ?2, ?3, (SELECT COALESCE(MAX(seq), 0) + 1 FROM client_outbox))",
@@ -953,6 +963,7 @@ impl Client {
             let server = self.server_epoch(&room_id)?;
             let identities: Vec<Vec<u8>> = devices.iter().map(|d| format!("{}/{}", self.user_id, d).into_bytes()).collect();
             let (epoch_before, commit_b64) = {
+                let provider = self.provider();
                 let group = self.groups.get_mut(&room_id).ok_or("комната не найдена")?;
                 let local = group.mls.epoch().as_u64();
                 if local != server {
@@ -965,10 +976,10 @@ impl Client {
                     .map(|m| m.index)
                     .collect();
                 let commit = if leaves.is_empty() {
-                    let bundle = group.mls.self_update(&self.provider, &self.signer, LeafNodeParameters::default()).map_err(text)?;
+                    let bundle = group.mls.self_update(&provider, &self.signer, LeafNodeParameters::default()).map_err(text)?;
                     bundle.commit().clone()
                 } else {
-                    let (commit, _, _) = group.mls.remove_members(&self.provider, &self.signer, &leaves).map_err(text)?;
+                    let (commit, _, _) = group.mls.remove_members(&provider, &self.signer, &leaves).map_err(text)?;
                     commit
                 };
                 group.mls.merge_pending_commit(&self.provider).map_err(text)?;
