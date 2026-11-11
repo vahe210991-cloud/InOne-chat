@@ -264,3 +264,11 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Latest source SHA: `c8ba8f99c45cd532b0941fd774304b6763429511`.
 - CI #42977451436 (OpenMLS client) and #42977451456 (FRB) failed before step 1 with runner_id 0 and empty steps; iOS dependent job skipped. No source tests executed.
 - Updated detailed report section 4.1 and section 9. Stage 4 remains NOT ACCEPTED.
+
+
+### 2026-11-11 — Pending-commit restart reconciliation
+
+- Added `sync_room` reconciliation: clear an unmerged local pending commit before applying authoritative server state; reject synchronization if local MLS epoch is ahead of server epoch.
+- Source SHA: `e4133120d59ea833dd010bdaa10a7f7a4f281375`.
+- CI #42977699906 and #42977699954 again failed before step 1 with runner_id 0 and empty steps. OpenMLS rerun #42977708226 repeated the same result; FRB rerun #42977708143 remained queued at inspection.
+- Updated report section 10. No test executed; Stage 4 remains NOT ACCEPTED.
