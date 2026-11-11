@@ -348,3 +348,14 @@ Report: `development/reports/2026-11-11-stage-4-single-executor-progress.md`, se
 - Keep `INONE_MLS_NATIVE_ENABLED=false`; no merge; no WBS percentage changes until all Beta 1.0 criteria have green evidence and owner approval.
 
 Report: `development/reports/2026-11-11-stage-4-single-executor-progress.md`, sections 25–27.
+
+
+## Exact next action — unblock CI on current Stage 4 head
+
+- Re-fetch PR #45 head before work. At the last check it was e8f50e566d1095ed7ad6ed9427abb5d666b5097b; report/continuity commits may have advanced it since.
+- Latest exact-head runs: OpenMLS #42987463963 and FRB #42987464006 FAILED with no steps/log URLs; Flutter #42987463998 SKIPPED. FRB downstream jobs skipped. The combined status API returned no entries.
+- Obtain the exact job-level failure message from the GitHub Actions UI for run #42987464006 or #42987463963. Do not infer runner/billing/permissions causes from BlobNotFound.
+- Once the reason is known, restore execution, then run the full matrix on one exact final SHA. Generated FRB artifacts remain absent; do not accept Stage 4 until codegen, Rust/OpenMLS, Flutter, Android and signed iOS checks all pass.
+- Keep Beta 1.0 WBS unchanged and INONE_MLS_NATIVE_ENABLED=false. No merge.
+
+Report: development/reports/2026-11-11-stage-4-single-executor-progress.md, section 28.
