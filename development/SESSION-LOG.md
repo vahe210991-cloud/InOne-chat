@@ -244,3 +244,11 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - No test command ran. Stage 4 is NOT ACCEPTED; no merge or deployment performed.
 - Critical open review item: OpenMLS provider storage and client metadata use separate SQLite connections; crash atomicity between ratchet-state mutation and durable inbox persistence is not yet established. Requires crash/restart test and a proven atomic/recoverable design.
 - Next: resolve runner allocation; implement/test MLS state + inbox atomicity; run Rust/OpenMLS, FRB, Flutter, Android Keystore and signed iOS Protected Keychain gates on one exact SHA.
+
+
+### 2026-11-11 — Post-report CI recheck
+
+- PR #45 documentation-updated head: `87089c610e03ba5302b316db07baa2d44d71260a`; source code head remains `048db63a7817b28e38a3a8353f8665a713f56730`.
+- Latest OpenMLS run #42976768215 and FRB run #42976768182 again failed before step 1 with `runner_id=0` and `steps=[]`; iOS dependent job skipped.
+- Flutter mobile run #42976768225 was skipped by the Stage 4 branch condition.
+- No source test executed; Stage 4 remains NOT ACCEPTED. Updated report section 8.
