@@ -50,7 +50,7 @@ Status:
 | ST-02 | `GET /config/public`; `GET /config` | Public config unauthenticated; private config authenticated | Backend + host |
 | ST-03 | Shared state and public config | No separate screen-specific mutation | Client/shared host state |
 | CH-01 | `GET /rooms/mine` | Authenticated user's rooms | Backend + host; screen data binding pending |
-| CH-02 | `GET /rooms/:id/events`; `GET /mls/groups/:id/commits?since=N`; `GET /mls/welcomes`; `POST /mls/welcomes/:id/ack`; `POST /mls/groups/:id/messages`; sync/ack lifecycle | Room event history is ciphertext only; MLS commits/messages are epoch-checked; membership checked | Backend + protocol integration pending; no WebView direct send |
+| CH-02 | `GET /rooms/:id/events`; `GET /mls/groups/:id/commits?since=N`; `GET /mls/welcomes`; `POST /mls/welcomes/:id/ack`; `POST /mls/groups/:id/messages`; `GET /sync?since=N&signal_since=M`; `POST /rooms/:id/read` | Room event history is ciphertext only; MLS commits/messages are epoch-checked; membership checked | Backend + protocol integration pending; no WebView direct send |
 | GR-01 | `GET /rooms/mine` | Authenticated user's rooms/groups | Backend + host; group-specific presentation pending |
 | GR-02 | `POST /rooms` | `roomId`, `kind`, optional `name`, members and org/feature gates | Backend only; typed create form and validation pending |
 | GR-04 | `GET /rooms/:id/members`; `POST /rooms/:id/settings`; `PUT /rooms/:id/name`; roles/capabilities/owner endpoints as allowed by action | Per-capability authorization; owner/admin restrictions | Backend only; map each control to one explicit action |
@@ -92,7 +92,7 @@ The current backend flow is:
 4. Send message: `POST /mls/groups/:id/messages` with `{message: <base64 MLS ciphertext>, kind, forwarded?, clientMessageId?}`.
 5. The backend checks membership, `send_messages` / sticker / forwarding capabilities, ciphertext framing, group ID, current epoch, size and idempotency.
 6. For offline clients, consume room events in epoch order and apply intervening commits before later-epoch messages.
-7. Use the sync acknowledgement contract for read/processed position; do not equate a UI-rendered message with a durable MLS acknowledgement.
+7. Acknowledge to-device and signal streams on the next `GET /sync?since=N&signal_since=M` request. The server caps each acknowledgement at the highest sequence actually delivered to that device. `POST /rooms/:id/read` separately advances the room read marker (`upTo` event ID); it is not a delivery-queue ACK and not an MLS cryptographic ACK.
 
 **Forbidden fallback:** `POST /rooms/:id/events` returns HTTP 409 and directs the caller to `/mls/groups/:id/messages`. The WebView must not send plaintext or invent a legacy encrypted-event payload.
 
