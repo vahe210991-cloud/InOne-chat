@@ -468,16 +468,19 @@ pub fn connect(
         Some(json!({ "userId": user_id, "password": password, "deviceId": device_id })),
     )?;
     let tokens_result = (|| -> Result<(String, String), String> {
-        Ok((
+        let access = Zeroizing::new(
             login["token"]
                 .as_str()
                 .ok_or("сервер не вернул токен: нужно подтверждение с другого устройства")?
                 .to_string(),
+        );
+        let refresh = Zeroizing::new(
             login["refreshToken"]
                 .as_str()
                 .ok_or("сервер не вернул токен обновления")?
                 .to_string(),
-        ))
+        );
+        Ok((access.to_string(), refresh.to_string()))
     })();
     zeroize_json_value(&mut login);
     let tokens = tokens_result?;
@@ -616,6 +619,8 @@ pub fn connect_with_approval(
             let refresh = login["refreshToken"]
                 .as_str()
                 .ok_or("сервер не вернул токен обновления")?;
+            let access = Zeroizing::new(access.to_string());
+            let refresh = Zeroizing::new(refresh.to_string());
             return Ok((access.to_string(), refresh.to_string()));
         }
 
@@ -663,15 +668,18 @@ pub fn connect_with_approval(
             match claim["status"].as_str() {
                 Some("approved") => {
                     let pair = (
-                        claim["token"].as_str().map(String::from),
-                        claim["refreshToken"].as_str().map(String::from),
+                        claim["token"]
+                            .as_str()
+                            .map(|value| Zeroizing::new(value.to_string())),
+                        claim["refreshToken"]
+                            .as_str()
+                            .map(|value| Zeroizing::new(value.to_string())),
                     );
                     zeroize_json_value(&mut claim);
                     let (access, refresh) = pair;
-                    return Ok((
-                        access.ok_or("сервер не вернул токен")?,
-                        refresh.ok_or("сервер не вернул токен обновления")?,
-                    ));
+                    let access = access.ok_or("сервер не вернул токен")?;
+                    let refresh = refresh.ok_or("сервер не вернул токен обновления")?;
+                    return Ok((access.to_string(), refresh.to_string()));
                 }
                 Some("pending") => {
                     zeroize_json_value(&mut claim);
