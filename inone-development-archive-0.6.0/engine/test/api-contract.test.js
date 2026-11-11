@@ -30,8 +30,8 @@ const routeEvidence = new Map([
   ['GET /org-requests/:id/documents/:docId', /const orgReqDoc = p\.match/u],
   ['POST /org-requests/:id/decision', /const orgReqDecision = p\.match/u],
   ['GET /users/search?nickname=…', /req\.method === 'GET' && p === '\/users\/search'/],
-  ['PUT /devices/me/push', /req\.method === 'PUT' && p === '\/devices\/me\/push'/],
-  ['DELETE /devices/me/push', /req\.method === 'DELETE' && p === '\/devices\/me\/push'/],
+  ['PUT /devices/me/push', /req\.method === 'PUT' \|\| req\.method === 'DELETE'/],
+  ['DELETE /devices/me/push', /req\.method === 'PUT' \|\| req\.method === 'DELETE'/],
   ['GET /config/public', /req\.method === 'GET' && p === '\/config\/public'/],
   ['GET /config', /req\.method === 'GET' && p === '\/config'/],
 ]);
