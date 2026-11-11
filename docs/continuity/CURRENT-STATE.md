@@ -391,12 +391,13 @@ This section supersedes stale earlier statements in this file that no applied P0
 - Stage 4 remains 0% verified / NOT ACCEPTED.
 
 
-### Historical audit — P0 parity gap (superseded by the latest implementation update)
+### Historical P0 parity audit — superseded 2026-11-11
 
-- At the time of this earlier audit, the active mobile MLS client lacked durable Welcome receipts/ACK retry, membership journal/fingerprint, KeyPackage claim replay, WaitingForCommit, Commit quarantine and sticky RecoveryRequired.
-- These mechanisms have since been ported into the active branch as recorded in the latest Stage 4 hardening report. Source presence does not prove test execution.
-- Current acceptance remains blocked on inspectable full CI; see the latest live update and `development/reports/2026-11-11-stage-4-native-mls-hardening-progress.md`.
+The earlier finding that the active mobile MLS client lacked F1/F4/F5/P0.3 recovery mechanisms was based on an older source revision and is superseded.
 
+A fresh source review found durable Welcome receipts/ACK retry, membership journal/fingerprint, KeyPackage claim replay, WaitingForCommit, Commit quarantine, RecoveryRequired and event identity validation in the active client. Six active regression test files have Git blob SHAs identical to their accepted P0 archive counterparts. This is source parity evidence only; the tests still require execution on the current final SHA.
+
+Do not re-port these mechanisms. See Stage 4 report section 25 for the exact comparison.
 
 ## 2026-11-11 live update — Stage 4 hardening
 
@@ -408,3 +409,18 @@ This section supersedes stale earlier statements in this file that no applied P0
 - No local Cargo/Rust toolchain is available; no local test results. No Stage 4 test is claimed PASS.
 - Stage 4 NOT ACCEPTED / BLOCKED. WBS v1.1 Beta 1.0 baseline unchanged: 42% implementation / 31% verification.
 - Detailed evidence: `development/reports/2026-11-11-stage-4-native-mls-hardening-progress.md`.
+
+
+## Current Stage 4 status after CI hardening — 2026-11-11
+
+- Owner instruction: ChatGPT is the sole developer/executor; no external agent is assigned.
+- Product stage: Beta 1.0 only. Approved WBS v1.1 remains unchanged.
+- PR #45 is OPEN/Draft. Latest checked head: `56102098427b8853b746b94d8c073c5aa97d0c2c`; not merged.
+- Local-purge safety fix: SQLCipher database and sidecars are removed even if protected-store initialization fails; inability to delete the platform key remains an explicit error. Regression added in commit `4670646558723ae5b33eeffdaa105f3a6df209ed`; not executed.
+- FRB workflow is read-only by default. A separate write job commits only allowlisted generated artifacts, followed by full Rust/OpenMLS/Flutter/Android verification on the exact generated SHA.
+- iOS job is downstream of that final-SHA gate, requires signing secrets, validates profile/team/app/keychain entitlements, configures manual signing, runs the protected-store simulator smoke test and verifies the app signature. Source reviewed, not executed.
+- Latest OpenMLS #42987007179 and FRB #42987007308 failed with `steps=null` and `logs_url=null`; log retrieval returned BlobNotFound. FRB generated commit/final-SHA/iOS jobs were skipped. Flutter #42987007363 was skipped by its branch condition. No test command is evidenced as executed.
+- Generated FRB Dart/Rust bindings, build hook and Rust lockfile are still absent because the generation job did not execute.
+- Local environment has no Rust/Cargo/Flutter/Dart/Xcode and no outbound network. No local test/build results are claimed.
+- Stage 4 verification accepted: 0%. Stage 4 NOT ACCEPTED / BLOCKED. Keep `INONE_MLS_NATIVE_ENABLED=false`; do not merge PR #45.
+- Detailed evidence: `development/reports/2026-11-11-stage-4-single-executor-progress.md`, sections 25–26.
