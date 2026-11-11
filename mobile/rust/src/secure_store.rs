@@ -12,6 +12,7 @@ pub struct PlatformKeyStore {
 
 impl PlatformKeyStore {
     pub fn new() -> Result<Self, String> {
+        crate::ensure_android_context_initialized()?;
         initialize_native_store()?;
         Ok(Self { _private: () })
     }
