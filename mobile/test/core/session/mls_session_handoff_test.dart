@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -7,6 +8,76 @@ import 'package:inone_mobile/core/mls/mls_session_bridge.dart';
 import 'package:inone_mobile/core/session/inone_session.dart';
 
 void main() {
+  test('concurrent initialize calls share one device identity creation', () async {
+    final readGate = Completer<String?>();
+    var readCalls = 0;
+    var writeCalls = 0;
+    final session = InOneSession(
+      baseUrl: 'https://api.inone.test',
+      readDeviceId: () async {
+        readCalls++;
+        return readGate.future;
+      },
+      writeDeviceId: (_) async {
+        writeCalls++;
+      },
+      readMlsUserId: () async => null,
+      writeMlsUserId: (_) async {},
+      deleteMlsUserId: () async {},
+    );
+
+    final first = session.initialize();
+    final second = session.initialize();
+    expect(readCalls, 1);
+
+    readGate.complete(null);
+    await Future.wait([first, second]);
+
+    expect(writeCalls, 1);
+    expect(session.deviceId, isNotEmpty);
+    session.dispose();
+  });
+
+  test('concurrent MLS handoff calls open the native session only once', () async {
+    final httpClient = MockClient((request) async {
+      if (request.url.path == '/login') {
+        return http.Response(
+          jsonEncode({'token': 'access-1', 'refreshToken': 'refresh-1'}),
+          200,
+        );
+      }
+      if (request.url.path == '/profile') {
+        return http.Response(jsonEncode({'userId': '@alice:inone.test'}), 200);
+      }
+      return http.Response('{}', 404);
+    });
+    final session = InOneSession(
+      baseUrl: 'https://api.inone.test',
+      httpClient: httpClient,
+      readDeviceId: () async => 'device-1',
+      writeDeviceId: (_) async {},
+      readMlsUserId: () async => null,
+      writeMlsUserId: (_) async {},
+      deleteMlsUserId: () async {},
+    );
+    final bridge = _FakeMlsSessionBridge()
+      ..openStarted = Completer<void>()
+      ..openGate = Completer<void>();
+
+    await session.login(email: 'alice@example.test', password: 'not-used-in-test');
+    final first = session.adoptMlsSession(bridge);
+    final second = session.adoptMlsSession(bridge);
+    await bridge.openStarted!.future;
+
+    expect(bridge.openCalls, 1);
+    bridge.openGate!.complete();
+    await Future.wait([first, second]);
+
+    expect(session.hasNativeMlsSession, isTrue);
+    expect(bridge.openCalls, 1);
+    session.dispose();
+  });
+
   test('login automatically adopts the native MLS session when configured', () async {
     final httpClient = MockClient((request) async {
       if (request.url.path == '/login') {
@@ -255,6 +326,9 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
   int refreshCalls = 0;
   int logoutCalls = 0;
   int closeCalls = 0;
+  int openCalls = 0;
+  Completer<void>? openStarted;
+  Completer<void>? openGate;
 
   @override
   Future<void> open({
@@ -264,6 +338,7 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
     required String accessToken,
     required String refreshToken,
   }) async {
+    openCalls++;
     openArguments = {
       'baseUrl': baseUrl,
       'userId': userId,
@@ -271,6 +346,10 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
       'accessToken': accessToken,
       'refreshToken': refreshToken,
     };
+    final started = openStarted;
+    if (started != null && !started.isCompleted) started.complete();
+    final gate = openGate;
+    if (gate != null) await gate.future;
     if (failOpen) throw StateError('native open failed');
     this.accessToken = accessToken;
   }
