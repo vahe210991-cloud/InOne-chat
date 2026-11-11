@@ -147,6 +147,8 @@ test('F-01: stale accept after a concurrent revoke is rejected without an accept
 
 test('F-02 PostgreSQL: cross-organization link revocation waits for an in-flight open join', { skip: !process.env.DATABASE_URL }, async () => {
   const s = await start();
+  let releaseJoin;
+  let restorePoolHooks = () => {};
   try {
     assert.equal((await call(s.base, 'POST', '/rooms', s.anna.token, { roomId: ROOM, orgId: ORG_A, members: [BORIS] })).status, 200);
     assert.equal((await call(s.base, 'POST', `/rooms/${enc(ROOM)}/settings`, s.anna.token, { name: 'Связь и открытый вход', visibility: 'public', joinPolicy: 'open' })).status, 200);
@@ -158,9 +160,9 @@ test('F-02 PostgreSQL: cross-organization link revocation waits for an in-flight
 
     const originalConnect = s.pool.connect.bind(s.pool);
     const originalPoolQuery = s.pool.query.bind(s.pool);
+    restorePoolHooks = () => { s.pool.connect = originalConnect; s.pool.query = originalPoolQuery; };
     let signalShareLock;
     let signalRevokeAttempt;
-    let releaseJoin;
     const shareLockReady = new Promise((resolve) => { signalShareLock = resolve; });
     const revokeAttempted = new Promise((resolve) => { signalRevokeAttempt = resolve; });
     const joinGate = new Promise((resolve) => { releaseJoin = resolve; });
@@ -202,6 +204,8 @@ test('F-02 PostgreSQL: cross-organization link revocation waits for an in-flight
     assert.equal(finalRoom.members.includes(CAROL), false, 'revocation must remove the cross-organization member added by the in-flight join');
     assert.equal((await s.store.getOrgLink(linkId)).status, 'revoked');
   } finally {
+    releaseJoin?.();
+    restorePoolHooks();
     await s.stop();
   }
 });
