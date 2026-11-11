@@ -758,3 +758,20 @@ Latest PR #45 head: `e7e19ce9de18e6042b36e5bd5f2ae9700796afd1`.
 No test command is evidenced as executed. The connector cannot retrieve the job-start failure message; exact cause remains UNKNOWN.
 
 **Acceptance:** Stage 4 NOT ACCEPTED / BLOCKED; verification accepted 0%; Beta 1.0 WBS v1.1 unchanged; native MLS disabled.
+
+
+## 35. Documentation-only CI trigger reduction and latest exact-head check — 2026-11-11
+
+The FRB workflow's PR path filter now runs the full native matrix only for `.github/workflows/openmls-frb-codegen.yml` and `mobile/**` changes. Documentation-only report/continuity edits no longer launch the native build matrix.
+
+Latest PR #45 head: `bfb87598068239c1107233d930ee79f25ff62d77`.
+
+| Workflow | Run | Result | Evidence |
+|---|---:|---|---|
+| FRB generation | [42989491362](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42989491362) | FAILURE | Job `130418588274`: no steps/log URL; log retrieval returned BlobNotFound; downstream jobs SKIPPED |
+| OpenMLS client | [42989491373](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42989491373) | FAILURE | Job `130418588173`: no steps/log URL; log retrieval returned BlobNotFound |
+| Flutter mobile | [42989491354](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42989491354) | SKIPPED | Explicit Stage 4 branch condition |
+
+No test command is evidenced as executed. The exact job-start failure message remains unavailable through the connector.
+
+**Acceptance:** Stage 4 NOT ACCEPTED / BLOCKED; verification accepted 0%; Beta 1.0 WBS v1.1 unchanged; native MLS disabled.
