@@ -1150,9 +1150,9 @@ impl Client {
 
         match (server_result, local_result) {
             (Ok(()), Ok(())) => Ok(()),
-            (Err(server), Ok(())) => Err(format!("server logout failed; local tokens were cleared: {server}")),
-            (Ok(()), Err(local)) => Err(format!("server logout succeeded; local token removal failed: {local}")),
-            (Err(server), Err(local)) => Err(format!("server logout failed: {server}; local token removal failed: {local}")),
+            (Err(server), Ok(())) => Err(format!("ошибка выхода на сервере; локальные токены очищены: {server}")),
+            (Ok(()), Err(local)) => Err(format!("выход на сервере выполнен; не удалось удалить локальные токены: {local}")),
+            (Err(server), Err(local)) => Err(format!("ошибка выхода на сервере: {server}; не удалось удалить локальные токены: {local}")),
         }
     }
 
@@ -3280,7 +3280,7 @@ mod retry_tests {
             .logout()
             .expect_err("unreachable server must be reported");
         assert!(
-            error.contains("server logout failed"),
+            error.contains("локальные токены очищены"),
             "server failure must be explicit"
         );
         assert_eq!(
