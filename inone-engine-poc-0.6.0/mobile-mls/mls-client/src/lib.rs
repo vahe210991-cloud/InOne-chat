@@ -1184,6 +1184,9 @@ impl Client {
     /// Создаёт комнату на сервере и группу MLS на этом устройстве (эпоха 0).
     pub fn create_room(&mut self, room_id: &str) -> Result<(), String> {
         self.ensure_writable()?;
+        if let Some(reason) = self.desync_reason(room_id)? {
+            return Err(format!("комната требует восстановления: {reason}"));
+        }
         self.call("POST", "/rooms", Some(json!({ "roomId": room_id, "members": [self.user_id] })))?;
         let config = MlsGroupCreateConfig::builder()
             .ciphersuite(CIPHERSUITE)
@@ -1399,6 +1402,10 @@ impl Client {
                 if acked_at.is_none() {
                     let _ = self.ack_welcome(welcome_id);
                 }
+                continue;
+            }
+
+            if self.desync_reason(room_id)?.is_some() {
                 continue;
             }
 
@@ -1776,6 +1783,9 @@ impl Client {
 
     /// Ставит текст в очередь отправки: он уйдёт, когда появится связь. Возвращает локальный номер.
     pub fn enqueue_text(&mut self, room_id: &str, plaintext: &str) -> Result<String, String> {
+        if let Some(reason) = self.desync_reason(room_id)? {
+            return Err(format!("комната требует восстановления: {reason}"));
+        }
         let local_id = hex_encode(&self.crypto.random_vec(16).map_err(text)?);
         self.meta
             .execute(
@@ -1937,6 +1947,9 @@ impl Client {
 
         let mut removed = 0;
         for (room_id, devices) in by_room {
+            if self.desync_reason(&room_id)?.is_some() {
+                continue;
+            }
             if !self.groups.contains_key(&room_id) {
                 continue;
             }
