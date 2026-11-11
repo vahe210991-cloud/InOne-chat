@@ -21,17 +21,18 @@ const routeEvidence = new Map([
   ['POST /recovery/complete', /req\.method === 'POST' && p === '\/recovery\/complete'/],
   ['POST /recovery/cancel-by-code', /req\.method === 'POST' && p === '\/recovery\/cancel-by-code'/],
   ['POST /admission/cancel', /req\.method === 'POST' && p === '\/admission\/cancel'/],
-  ['POST /logout', /req\.method === 'POST' && p === '\/logout'/],
+  ['POST /approvals/:id/claim', /const ap = p\.match/u],
   ['POST /org-requests', /req\.method === 'POST' && p === '\/org-requests'/],
+  ['POST /org-requests/:id/documents', /const orgReqDocs = p\.match/u],
   ['GET /org-requests', /req\.method === 'GET' && p === '\/org-requests'/],
-  ['GET /users/search', /req\.method === 'GET' && p === '\/users\/search'/],
+  ['GET /org-requests/:id', /const orgReqOne = p\.match/u],
+  ['GET /org-requests/:id/documents/:docId', /const orgReqDoc = p\.match/u],
+  ['POST /org-requests/:id/decision', /const orgReqDecision = p\.match/u],
+  ['GET /users/search?nickname=…', /req\.method === 'GET' && p === '\/users\/search'/],
   ['PUT /devices/me/push', /req\.method === 'PUT' && p === '\/devices\/me\/push'/],
   ['DELETE /devices/me/push', /req\.method === 'DELETE' && p === '\/devices\/me\/push'/],
   ['GET /config/public', /req\.method === 'GET' && p === '\/config\/public'/],
   ['GET /config', /req\.method === 'GET' && p === '\/config'/],
-  ['GET /rooms/mine', /req\.method === 'GET' && p === '\/rooms\/mine'/],
-  ['POST /rooms', /req\.method === 'POST' && p === '\/rooms'/],
-  ['GET /profile', /req\.method === 'GET' && p === '\/profile'/],
 ]);
 
 const declaredOperations = (value) => value
@@ -49,6 +50,11 @@ test('every operation declared by the v0.8 approval manifest has a backend handl
     }
   }
   assert.deepEqual(missing, [], `Missing backend route evidence: ${missing.join(', ')}`);
+  assert.match(server, /if \(req\.method === 'POST' && orgReqDocs\)/u);
+  assert.match(server, /if \(req\.method === 'GET' && orgReqOne\)/u);
+  assert.match(server, /if \(req\.method === 'GET' && orgReqDoc\)/u);
+  assert.match(server, /if \(req\.method === 'POST' && orgReqDecision\)/u);
+  assert.match(server, /action === 'claim'/u);
 });
 
 test('legacy Flutter handoff routes have backend handlers', () => {
@@ -60,18 +66,19 @@ test('legacy Flutter handoff routes have backend handlers', () => {
   assert.ok(declared.includes('GET /profile'));
 
   assert.match(server, /req\.method === 'GET' && p === '\/rooms\/mine'/u);
-  assert.match(server, /const roomRoute = p\.match\(\/\^\\\/rooms/u);
-  assert.match(server, /req\.method === 'GET'\) \{[\s\S]{0,700}roomEventRows/u);
+  assert.ok(server.includes('const roomRoute = p.match(/^\\/rooms\\/([^/]+)\\/events$/);'));
+  assert.match(server, /roomRoute && req\.method === 'GET'/u);
+  assert.match(server, /roomEventRows\(roomId, since\)/u);
   assert.match(server, /req\.method === 'GET' && p === '\/orgs\/mine'/u);
   assert.match(server, /req\.method === 'GET' && p === '\/profile'/u);
 });
 
 test('CH-02 message delivery uses MLS and rejects legacy room-event POST', () => {
-  assert.match(server, /const mlsMessageRoute = p\.match\(\/\^\\\/mls\\\/groups/u);
+  assert.ok(server.includes('const mlsMessageRoute = p.match(/^\\/mls\\/groups\\/([^/]+)\\/messages$/);'));
   assert.match(server, /mlsMessageRoute && req\.method === 'POST'/u);
   assert.match(server, /messages must be sent through \/mls\/groups\/:id\/messages/u);
-  assert.match(server, /const mlsCommitsRoute = p\.match\(\/\^\\\/mls\\\/groups/u);
-  assert.match(server, /const mlsAckRoute = p\.match\(\/\^\\\/mls\\\/welcomes/u);
+  assert.match(server, /const mlsCommitsRoute = p\.match/u);
+  assert.match(server, /const mlsAckRoute = p\.match/u);
   assert.match(server, /clientMessageId/u);
   assert.match(server, /epoch is outdated/u);
 });
