@@ -246,3 +246,11 @@ Report: `development/reports/2026-11-11-stage-4-single-executor-progress.md`.
 - Verify `clear_pending_commit` behavior on OpenMLS 0.8 with the rejected-commit regression.
 - Verify that invite/revocation server errors clear pending commits without advancing local epoch.
 - Execute full Rust/OpenMLS, FRB, Flutter, Android Keystore and signed iOS Protected Keychain matrix on one exact final SHA. Current GitHub Actions jobs still fail before runner allocation; no tests have executed.
+
+
+## Additional recovery checks — 2026-11-11
+
+- Test Welcome ACK retry after local group commit and process restart; verify the same Welcome is not processed twice.
+- Test SQLCipher resume with an absent platform key; assert that no replacement key is generated.
+- Test new-session initialization failure after key creation; verify both database artifacts and the newly created key are cleaned.
+- Test DB/key mismatch through every session-creation entrypoint (`connect`, `connect_with_session`, `connect_with_approval`).
