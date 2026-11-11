@@ -389,3 +389,11 @@ This section supersedes stale earlier statements in this file that no applied P0
 - Current PR #45 head: `6e56671b632c993ebd15735caf5001ad2662012a`.
 - CI #42982066347 and #42982066366 failed with null step summaries/log URLs; iOS dependent job skipped; Flutter mobile #42982066410 skipped. No tests executed.
 - Stage 4 remains 0% verified / NOT ACCEPTED.
+
+
+### Critical Beta 1.0 Stage 4 gap — P0 parity
+
+- Active mobile MLS client lacks the accepted P0 recovery/idempotency mechanisms present in the archived reference: durable Welcome receipts/ACK retry, membership journal/fingerprint, KeyPackage claim replay, WaitingForCommit, Commit quarantine and sticky RecoveryRequired.
+- Active invite uses legacy GET KeyPackage endpoint rather than claim-ID reservation/replay.
+- These mechanisms must be ported into the active mobile runtime; the historical P0 merge does not automatically satisfy native Flutter Beta 1.0.
+- Stage 4 remains NOT ACCEPTED; see report section 24.
