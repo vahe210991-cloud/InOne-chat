@@ -775,3 +775,22 @@ Latest PR #45 head: `bfb87598068239c1107233d930ee79f25ff62d77`.
 No test command is evidenced as executed. The exact job-start failure message remains unavailable through the connector.
 
 **Acceptance:** Stage 4 NOT ACCEPTED / BLOCKED; verification accepted 0%; Beta 1.0 WBS v1.1 unchanged; native MLS disabled.
+
+
+## 36. Failed-job rerun and CI execution blocker — 2026-11-11
+
+The owner supplied PR #45. The latest recorded PR head at this check is `f6384a0bd68460849cbc9b9ce0fa6d7e9fcb9a6a`; the latest code-triggered workflow runs are associated with code/test commit `bfb87598068239c1107233d930ee79f25ff62d77`.
+
+The failed jobs were re-run through GitHub Actions:
+
+| Workflow | Run | Latest-attempt job | Result | Evidence |
+|---|---:|---:|---|---|
+| FRB generation | [42989491362](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42989491362) | `130426024038` (`generate-and-validate`) | FAILURE | `steps=null`, `logs_url=null`; log download returned `BlobNotFound`; generated commit, final-SHA verification and iOS jobs SKIPPED |
+| OpenMLS client | [42989491373](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42989491373) | `130426036241` (`Rust client + real engine integration tests`) | FAILURE | `steps=null`, `logs_url=null`; log download returned `BlobNotFound` |
+| Flutter mobile | [42989491354](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42989491354) | `flutter` | SKIPPED | Workflow branch condition; not a test result |
+
+The rerun API accepted both retry requests, but the latest attempts again ended without step summaries or retrievable logs. No compiler, test, codegen, build or device command is evidenced as executed. This confirms a persistent GitHub Actions job-start/observability blocker; it does **not** establish a source-code failure or the underlying platform cause.
+
+Static workflow review confirms both required jobs target `ubuntu-latest`, have finite timeouts, and contain normal checkout/toolchain/test steps. No source change can be justified from the available failure evidence. Do not change runner labels, permissions, or test gates speculatively.
+
+**Acceptance remains unchanged:** Stage 4 NOT ACCEPTED / BLOCKED; verification accepted 0%; Beta 1.0 WBS v1.1 unchanged; keep `INONE_MLS_NATIVE_ENABLED=false`; no merge. Next required evidence is the job-level startup failure message visible in GitHub Actions UI or a working owner-authorized runner. The iOS signing environment/secrets remain a separate downstream prerequisite.
