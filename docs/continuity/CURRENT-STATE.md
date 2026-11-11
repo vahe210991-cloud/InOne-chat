@@ -267,3 +267,14 @@ This section supersedes stale earlier statements in this file that no applied P0
 - Added asset-path mapping, rootBundle loader, v1 bridge compatibility, tests and deterministic importer. Runtime local-font patch affects only imported runtime copy; source remains immutable.
 - v1 chat POST message, and v2 missing/unverified API routes remain BLOCKED. CH-02 `GET /rooms/:id/events` remains unresolved.
 - CI run #42578333371: platform setup, geometry, 73-screen gallery check, pub get, analyze and tests PASS; Android APK still in progress at last observation. It predates later commits; latest head not verified.
+
+
+## Current live state — 2026-11-11 Stage 3 / Stage 4
+
+- `main` is at merge commit `94571cbc923ac4d29c3c684dbfdeb35f031d6a30`; PR #44 Stage 3 is merged.
+- Stage 3 CI passed on exact PR head `3d288777135d0c12145f18407e8768a02ae80a9f`: Node 382/382, PostgreSQL 124/124, OpenMLS, Rust bridge/format, P0 room regression, Flutter analyze/tests and Android preview APK.
+- Stage 4 PR #45 is OPEN/Draft; branch `feature/stage-4-native-mls-runtime-2026-11-11`; head `45ee623d5bd2982e2a7032942962c9d4b58a8ffb`.
+- Stage 4 runs #42972694597, #42972694698 and #42972694655 are all FAILED. Exact failure reasons have not been established because job logs were not retrievable through the current connector. Do not infer causes or accept Stage 4.
+- WBS v1.1 is unchanged: Beta 1.0 baseline 42% implementation / 31% verification; Beta 2.0 2% / 0%. No percentage increase is claimed in this triage.
+- Report: [2026-11-11 Stage 4 CI triage](../development/reports/2026-11-11-stage-4-native-mls-ci-triage.md).
+- Documentation issue: root AGENTS.md references `development/AI-AGENT-MANDATE.md`, but that exact path returned 404 on main.
