@@ -499,3 +499,11 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - FRB generated-commit/final-SHA/iOS jobs skipped; Flutter run #42989491354 skipped by branch condition. No test/build/codegen command is evidenced as executed.
 - No speculative workflow/source edit made because the failure occurs before observable steps. Exact Actions startup cause remains UNKNOWN.
 - Stage 4 remains NOT ACCEPTED / BLOCKED; verification accepted 0%; native MLS disabled; no merge. See report section 36.
+
+
+### 2026-11-11 — CI trigger-filter correction
+
+- A docs-only archive commit generated FRB #42991893141 and OpenMLS #42991893195 because `pull_request.paths` sees the aggregate PR diff; FRB `push` also lacked a `paths` filter. Both jobs again failed before observable steps/logs; Flutter #42991893163 skipped. Log retrieval returned BlobNotFound.
+- Corrected `.github/workflows/openmls-frb-codegen.yml` to use explicit `push.paths` for the workflow file and `mobile/**`, removing the aggregate `pull_request` trigger. Corrected `.github/workflows/openmls-client.yml` by removing the aggregate `pull_request` trigger; its existing push path allowlist remains. Manual dispatch remains in both.
+- These are source-reviewed workflow trigger changes only; no passing workflow/test result is claimed. Same-repository PR head pushes remain covered; fork PR automation is not covered by this branch-specific setup.
+- Stage 4 remains NOT ACCEPTED / BLOCKED, verification accepted 0%, native MLS disabled, no merge. See report section 37.
