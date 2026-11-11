@@ -18,6 +18,38 @@ The Flutter host now exposes the 22 owner-approved visual variants and the compl
 - API clients do not follow redirects, preventing bearer credentials from being forwarded to a different origin.
 - The Rust MLS client applies the same HTTPS/local-debug policy before sending or refreshing session credentials.
 
+## Native Rust / Flutter bridge generation
+
+The Stage 4 branch uses `flutter_rust_bridge` with the Native Assets backend. At the current source revision, generated bridge files are not yet committed: `lib/src/rust/`, `hook/build.dart`, `rust/src/frb_generated.rs` and `rust/Cargo.lock` are produced by the generation workflow. Therefore a clean checkout cannot use only `flutter pub get` / `flutter run` until generation has completed.
+
+To reproduce the generation locally, use the same pinned sequence as `.github/workflows/openmls-frb-codegen.yml`:
+
+```sh
+cd mobile
+flutter create --platforms=android,ios --project-name inone_mobile --org com.inone .
+rm -f test/widget_test.dart
+cargo install --locked --version 2.13.0 flutter_rust_bridge_codegen
+cp lib/main.dart /tmp/inone-main.dart
+cp rust/src/api/mod.rs /tmp/inone-api-mod.rs
+flutter_rust_bridge_codegen integrate \
+  --rust-crate-dir rust \
+  --rust-crate-name inone_mls_frb \
+  --integration-backend native-assets \
+  --platforms android,ios
+cp /tmp/inone-main.dart lib/main.dart
+cp /tmp/inone-api-mod.rs rust/src/api/mod.rs
+rm -f rust/src/api/simple.rs lib/src/rust/api/simple.dart
+flutter_rust_bridge_codegen generate
+node tool/prepare_android_mls.mjs
+flutter pub get
+cargo generate-lockfile --manifest-path rust/Cargo.toml
+flutter analyze
+flutter test
+flutter build apk --debug
+```
+
+This command sequence has not been executed in the current development environment. Its successful completion must be recorded against an exact source SHA before the bridge is accepted. The CI generation job is intended to commit generated bindings, build-hook files and lockfiles back to the Stage 4 branch.
+
 ## Backend connection
 
 The Flutter test host uses the local development backend by default; no public URL is required.
@@ -69,7 +101,7 @@ Loading, unauthenticated, empty-profile, and error states appear in a native ban
 - The Rust runtime stores MLS group state and the device session in SQLCipher. The 32-byte database key is held in Android Keystore-backed storage or Apple's protected Keychain store; the key is never exposed to Dart or WebView. The database lives in the app-private support directory.
 - The native bridge exposes key-package maintenance, room creation/invites, encrypted send, inbox sync, offline outbox, epoch/member inspection, device revocation, refresh, close and local purge. Decrypted incoming messages are persisted in a SQLCipher inbox and remain pending across restart until Flutter explicitly acknowledges durable acceptance; acknowledgement changes delivery state but retains encrypted room history for later reads.
 - Logout destroys the local SQLCipher database, its journal/WAL sidecars and the platform key even when server logout cannot be confirmed. A failed resume can still invoke local purge. No plaintext or Megolm fallback is permitted when native MLS is unavailable.
-- Stage 4 is not accepted until Rust/Flutter regression suites, Android Keystore runtime smoke tests, iOS native device/simulator builds and signed iOS Protected Keychain runtime validation pass on the same PR head. The iOS workflow fails closed when any required signing certificate, password, provisioning profile or team ID secret is missing; a skipped runtime test is not accepted.
+- Stage 4 is not accepted until Rust/Flutter regression suites, Android Keystore runtime smoke tests, iOS native device/simulator builds and signed iOS Protected Keychain runtime validation pass on the same PR head. Current workflow review found that the iOS job builds with `--no-codesign` and does not import or reference the documented signing secrets. The simulator smoke test therefore does not establish the required signed Protected Keychain behavior. This workflow gap must be corrected and the signed runtime test executed; a skipped or unsigned test is not accepted.
 
 ## Tests
 
