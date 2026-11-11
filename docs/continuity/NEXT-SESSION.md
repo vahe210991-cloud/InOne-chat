@@ -399,3 +399,11 @@ Read `development/AI-AGENT-MANDATE.md` at the start of every session. ChatGPT re
 - OpenMLS #42989207053 and FRB #42989207170 failed before steps/logs; logs returned BlobNotFound. Flutter #42989207122 skipped.
 - No tests are evidenced as executed. Obtain the exact job-level failure message from GitHub Actions UI for run #42989207170 or #42989207053. Do not infer cause.
 - Once execution is restored, run all Beta 1.0 acceptance checks on one exact final SHA. Keep native MLS disabled; no merge. Report section 33.
+
+
+## Latest current-head CI retry — 2026-11-11
+
+- PR #45 head checked: `e7e19ce9de18e6042b36e5bd5f2ae9700796afd1`.
+- FRB #42989322261 and OpenMLS #42989322167 failed before steps/logs; logs returned BlobNotFound. Flutter #42989322186 skipped.
+- No test command evidenced as executed. Obtain the exact job-level failure message from GitHub Actions UI or restore an authorized runner. Do not infer cause.
+- Report section 34. Keep Beta 1.0 scope, native MLS disabled and no merge.
