@@ -460,3 +460,10 @@ Do not re-port these mechanisms. See Stage 4 report section 25 for the exact com
 - Test source only; not executed.
 - Exact head with these tests: `54711b873349a8adb575f27d9c1fcccebbc49081`. FRB #42988592622 and OpenMLS #42988592592 failed before steps/logs (BlobNotFound); Flutter #42988592656 skipped. Exact failure reason UNKNOWN.
 - Stage 4 remains NOT ACCEPTED / BLOCKED, 0% verification accepted. Keep `INONE_MLS_NATIVE_ENABLED=false`.
+
+
+## Owner execution mandate — 2026-11-11
+
+- The missing file referenced by root `AGENTS.md` has been created: `development/AI-AGENT-MANDATE.md`.
+- It records ChatGPT as sole executor until explicit owner authorization for an external agent, Beta 1.0-only scope, evidence-only claims, exact-SHA green-test acceptance, WBS-controlled percentages, concise reports/checklists archived in GitHub, and no merge without owner approval.
+- `development/WORKING-RULES.md` now includes the mandate in the startup checklist.
