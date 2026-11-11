@@ -317,3 +317,13 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - PR #45 head: `ca49b376a65766fb59e792cf2097ba7b4f2b50ce`; source head: `eab7b4d9a8889f4a5d69cdbb6de29dc2986272ab`.
 - OpenMLS #42979080737 and FRB #42979080732 failed before step 1 with runner_id 0 and empty steps; iOS dependent job skipped; Flutter mobile #42979080672 skipped by branch condition.
 - No tests or platform builds executed. Updated report section 15. Stage 4 remains NOT ACCEPTED.
+
+
+### 2026-11-11 — Secret-memory zeroization
+
+- Added RAII zeroization for Rust session tokens, SQLCipher key buffers, keyring byte buffers, request/response token JSON, authorization header copies and serialized token pairs.
+- Wrapped access/refresh token arguments at the Rust FFI open-session boundary.
+- Added `has_database_key` to check key presence without returning key bytes; all KeyStore implementations updated.
+- Source SHA: `3d4e64d4f302f7ddbe417903ede4dd4443b10975`.
+- CI #42979859714 (OpenMLS) and #42979859709 (FRB) failed before step 1 with runner_id 0 and empty steps; iOS dependent job skipped. No tests executed.
+- Updated report section 16. Stage 4 remains NOT ACCEPTED.
