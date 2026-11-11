@@ -472,3 +472,12 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - FRB #42989207170 failed; job `130417656993` had no steps/log URL and log retrieval returned BlobNotFound. Generated commit/final-SHA/iOS jobs skipped.
 - Flutter #42989207122 skipped by branch condition.
 - No test command evidenced as executed; exact job-start failure cause UNKNOWN. Report section 33.
+
+
+### 2026-11-11 — Latest current-head CI retry
+
+- PR #45 head checked: `e7e19ce9de18e6042b36e5bd5f2ae9700796afd1`.
+- FRB #42989322261 failed; job `130418031253` had no steps/log URL; log retrieval returned BlobNotFound; downstream jobs skipped.
+- OpenMLS #42989322167 failed; job `130418031986` had no steps/log URL; log retrieval returned BlobNotFound.
+- Flutter #42989322186 skipped by branch condition.
+- No test command evidenced as executed; exact failure cause UNKNOWN. Report section 34.
