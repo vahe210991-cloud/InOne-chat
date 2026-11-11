@@ -333,3 +333,12 @@ This section supersedes stale earlier statements in this file that no applied P0
 - Source SHA: `da844b08240c3e67762997be9b65d8e91cab120f`; current PR head also contains archive updates.
 - OpenMLS #42978646222 and FRB #42978646245 failed before step 1 with runner_id 0 and empty steps. iOS dependent job skipped. Flutter mobile #42978646254 skipped by branch condition.
 - No test or platform build executed. Stage 4 remains NOT ACCEPTED.
+
+
+### Logout/key-handling follow-up — 2026-11-11
+
+- Rust logout now catches remote logout panic and handles poisoned session mutexes while still attempting local SQLCipher/sidecar and platform-key cleanup.
+- Dart clears refresh-token memory immediately after native open succeeds; Rust bridge initialization can retry after failure.
+- Regression for poisoned-lock cleanup added; tests not executed.
+- Source SHA: `eab7b4d9a8889f4a5d69cdbb6de29dc2986272ab`.
+- CI #42979003433 and #42979003356 failed before step 1 with runner_id 0 and empty steps; iOS dependent job skipped. Stage 4 remains NOT ACCEPTED.
