@@ -378,3 +378,14 @@ This section supersedes stale earlier statements in this file that no applied P0
 - Exact CI failure cause is UNKNOWN. Local environment lacks Rust, Cargo, Flutter, Dart and Xcode; no local test/build execution is claimed.
 - Stage 4 NOT ACCEPTED. Keep `INONE_MLS_NATIVE_ENABLED=false`; do not merge. Do not change Beta 1.0 percentages without accepted test evidence.
 - Full evidence and next gate: `development/reports/2026-11-11-stage-4-single-executor-progress.md`.
+
+
+### Latest Stage 4 security changes — 2026-11-11
+
+- Rust login and device-approval token responses are zeroized after extracting required values.
+- Flutter login returns a sanitized result without tokens or device-approval secrets; internal response maps are cleared.
+- Flutter refresh responses and outbound request buffers/bearer headers are cleared after use.
+- Added login-secret exposure regression test.
+- Current PR #45 head: `6e56671b632c993ebd15735caf5001ad2662012a`.
+- CI #42982066347 and #42982066366 failed with null step summaries/log URLs; iOS dependent job skipped; Flutter mobile #42982066410 skipped. No tests executed.
+- Stage 4 remains 0% verified / NOT ACCEPTED.
