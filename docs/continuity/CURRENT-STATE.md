@@ -342,3 +342,10 @@ This section supersedes stale earlier statements in this file that no applied P0
 - Regression for poisoned-lock cleanup added; tests not executed.
 - Source SHA: `eab7b4d9a8889f4a5d69cdbb6de29dc2986272ab`.
 - CI #42979003433 and #42979003356 failed before step 1 with runner_id 0 and empty steps; iOS dependent job skipped. Stage 4 remains NOT ACCEPTED.
+
+
+### CI on current PR head — 2026-11-11
+
+- PR #45 head: `ca49b376a65766fb59e792cf2097ba7b4f2b50ce`; source head: `eab7b4d9a8889f4a5d69cdbb6de29dc2986272ab`.
+- OpenMLS #42979080737 and FRB #42979080732 failed before step 1 with runner_id 0 and empty steps; iOS dependent job skipped; Flutter mobile #42979080672 skipped by branch condition.
+- No tests or platform builds executed. Stage 4 remains NOT ACCEPTED.
