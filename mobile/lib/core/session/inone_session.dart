@@ -155,7 +155,13 @@ class InOneSession extends ChangeNotifier {
       ));
     }
     final active = _loginInFlight;
-    if (active != null) return active;
+    if (active != null) {
+      return Future<Map<String, dynamic>>.error(const ApiException(
+        code: 'login_in_progress',
+        statusCode: 409,
+        retryable: false,
+      ));
+    }
     final operation = _loginOnce(email: email, password: password);
     _loginInFlight = operation;
     return operation.whenComplete(() {
@@ -347,6 +353,13 @@ class InOneSession extends ChangeNotifier {
         authenticated: authenticated,
       );
     } on ApiException catch (error) {
+      if (_loggingOut) {
+        throw const ApiException(
+          code: 'session_logging_out',
+          statusCode: 409,
+          retryable: false,
+        );
+      }
       if (!authenticated || error.statusCode != 401) rethrow;
 
       final native = _mlsBridge;
