@@ -28,6 +28,26 @@ const CIPHERSUITE: Ciphersuite = Ciphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA2
 const MAX_PAST_EPOCHS: usize = 16;
 
 /// Что получено из комнаты при синхронизации.
+enum Failure {
+    Transient,
+    Permanent(&'static str),
+}
+
+fn classify_process_error<S>(error: &openmls::prelude::ProcessMessageError<S>) -> Failure {
+    use openmls::prelude::ProcessMessageError as E;
+    match error {
+        E::StorageError(_) | E::LibraryError(_) => Failure::Transient,
+        E::IncompatibleWireFormat => Failure::Permanent("несовместимый формат сообщения"),
+        E::ValidationError(_) => Failure::Permanent("проверка сообщения не пройдена"),
+        E::GroupStateError(_) => Failure::Permanent("состояние группы не подходит для сообщения"),
+        E::InvalidCommit(_) => Failure::Permanent("недопустимый коммит"),
+        E::UnauthorizedExternalApplicationMessage | E::UnauthorizedExternalCommitMessage => {
+            Failure::Permanent("отправитель вне группы")
+        }
+        _ => Failure::Permanent("сообщение не поддерживается"),
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Incoming {
     Text { room_id: String, event_id: String, text: String },
@@ -718,6 +738,12 @@ fn build_client(agent: ureq::Agent, base: &str, tokens: SessionTokens, user_id: 
            acked_at INTEGER
          );
          CREATE TABLE IF NOT EXISTS client_desync (room_id TEXT PRIMARY KEY, reason TEXT NOT NULL);
+         CREATE TABLE IF NOT EXISTS client_undecryptable (
+           event_id TEXT PRIMARY KEY,
+           room_id TEXT NOT NULL,
+           reason TEXT NOT NULL,
+           created_at INTEGER NOT NULL
+         );
          CREATE TABLE IF NOT EXISTS client_processed (event_id TEXT PRIMARY KEY);
          CREATE TABLE IF NOT EXISTS client_inbox (seq INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL UNIQUE, room_id TEXT NOT NULL, kind TEXT NOT NULL, body TEXT, acknowledged INTEGER NOT NULL DEFAULT 0);
          CREATE TABLE IF NOT EXISTS client_outbox (local_id TEXT PRIMARY KEY, room_id TEXT NOT NULL, body TEXT NOT NULL, seq INTEGER NOT NULL);
@@ -979,53 +1005,123 @@ impl Client {
 
     /// Processes an MLS application event and persists the OpenMLS ratchet state,
     /// inbox row and processed marker in the same SQLCipher transaction.
+    fn persist_unreadable(
+        &mut self,
+        room_id: &str,
+        event_id: &str,
+        reason: &str,
+    ) -> Result<Incoming, String> {
+        let incoming = Incoming::Unreadable {
+            room_id: room_id.to_string(),
+            event_id: event_id.to_string(),
+        };
+        let transaction = self.meta.transaction().map_err(text)?;
+        insert_incoming_record(&transaction, &incoming)?;
+        let created_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+        transaction.execute(
+            "INSERT OR IGNORE INTO client_undecryptable (event_id, room_id, reason, created_at)
+             VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![event_id, room_id, reason, created_at],
+        ).map_err(text)?;
+        transaction.commit().map_err(text)?;
+        self.processed.insert(event_id.to_string());
+        Ok(incoming)
+    }
+
+    pub fn undecryptable(&self) -> Result<Vec<(String, String, String)>, String> {
+        let mut statement = self.meta.prepare(
+            "SELECT event_id, room_id, reason FROM client_undecryptable ORDER BY created_at, event_id",
+        ).map_err(text)?;
+        let rows = statement.query_map([], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        }).map_err(text)?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(text)
+    }
+
     fn process_and_persist_incoming(
         &mut self,
         room_id: &str,
         event_id: &str,
         bytes: &[u8],
     ) -> Result<Incoming, String> {
-        let protocol = MlsMessageIn::tls_deserialize_exact(bytes)
-            .map_err(text)?
-            .try_into_protocol_message()
-            .map_err(text)?;
+        let protocol = match MlsMessageIn::tls_deserialize_exact(bytes)
+            .map_err(text)
+            .and_then(|message| message.try_into_protocol_message().map_err(text))
+        {
+            Ok(protocol) => protocol,
+            Err(error) => {
+                return self.persist_unreadable(
+                    room_id,
+                    event_id,
+                    &format!("MLS protocol message is malformed: {error}"),
+                );
+            }
+        };
+
         let transaction = self.meta.transaction().map_err(text)?;
         let incoming_result = {
             let provider = DeviceProvider::new(&self.crypto, TransactionConnection(&transaction));
             let group = self.groups.get_mut(room_id).ok_or("комната не создана на этом устройстве")?;
             match group.mls.process_message(&provider, protocol) {
-                Ok(processed) => Ok(match processed.into_content() {
-                    ProcessedMessageContent::ApplicationMessage(app) => {
-                        match String::from_utf8(app.into_bytes()) {
-                            Ok(text) => Incoming::Text {
-                                room_id: room_id.to_string(),
-                                event_id: event_id.to_string(),
-                                text,
-                            },
-                            Err(_) => Incoming::Unreadable {
-                                room_id: room_id.to_string(),
-                                event_id: event_id.to_string(),
-                            },
+                Ok(processed) => {
+                    let (incoming, unreadable_reason) = match processed.into_content() {
+                        ProcessedMessageContent::ApplicationMessage(app) => {
+                            match String::from_utf8(app.into_bytes()) {
+                                Ok(text) => (
+                                    Incoming::Text {
+                                        room_id: room_id.to_string(),
+                                        event_id: event_id.to_string(),
+                                        text,
+                                    },
+                                    None,
+                                ),
+                                Err(_) => (
+                                    Incoming::Unreadable {
+                                        room_id: room_id.to_string(),
+                                        event_id: event_id.to_string(),
+                                    },
+                                    Some("application payload is not valid UTF-8"),
+                                ),
+                            }
                         }
-                    }
-                    _ => Incoming::Unreadable {
-                        room_id: room_id.to_string(),
-                        event_id: event_id.to_string(),
-                    },
-                }),
-                Err(error) => Err(format!(
-                    "не удалось проверить или расшифровать MLS-событие {event_id}: {}",
-                    text(error)
-                )),
+                        _ => (
+                            Incoming::Unreadable {
+                                room_id: room_id.to_string(),
+                                event_id: event_id.to_string(),
+                            },
+                            Some("MLS message is not an application message"),
+                        ),
+                    };
+                    Ok((incoming, unreadable_reason))
+                }
+                Err(error) => Err(classify_process_error(&error)),
             }
         };
 
         match incoming_result {
-            Ok(incoming) => {
+            Ok((incoming, unreadable_reason)) => {
                 if let Err(error) = insert_incoming_record(&transaction, &incoming) {
                     drop(transaction);
                     self.reload_group(room_id)?;
                     return Err(error);
+                }
+                if let Some(reason) = unreadable_reason {
+                    let created_at = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis() as i64;
+                    if let Err(error) = transaction.execute(
+                        "INSERT OR IGNORE INTO client_undecryptable (event_id, room_id, reason, created_at)
+                         VALUES (?1, ?2, ?3, ?4)",
+                        rusqlite::params![event_id, room_id, reason, created_at],
+                    ) {
+                        drop(transaction);
+                        self.reload_group(room_id)?;
+                        return Err(text(error));
+                    }
                 }
                 if let Err(error) = transaction.commit() {
                     self.reload_group(room_id)?;
@@ -1034,13 +1130,19 @@ impl Client {
                 self.processed.insert(event_id.to_string());
                 Ok(incoming)
             }
-            Err(error) => {
+            Err(Failure::Transient) => {
                 drop(transaction);
                 self.reload_group(room_id)?;
-                Err(error)
+                Err(format!("временная ошибка обработки MLS-события {event_id}; повтор позже"))
+            }
+            Err(Failure::Permanent(reason)) => {
+                drop(transaction);
+                self.reload_group(room_id)?;
+                self.persist_unreadable(room_id, event_id, reason)
             }
         }
     }
+
 
     /// Публикует ключевые пакеты этого устройства (не больше 50 за раз).
     pub fn upload_key_packages(&mut self, count: usize) -> Result<(), String> {
@@ -1565,20 +1667,53 @@ impl Client {
             .as_u64();
         let remote_epoch = self.server_epoch(room_id)?;
         if local_epoch > remote_epoch {
-            return Err(format!(
+            let reason = format!(
                 "локальная MLS эпоха {local_epoch} выше серверной {remote_epoch}; автоматическая синхронизация небезопасна"
-            ));
+            );
+            self.record_desync(room_id, &reason)?;
+            return Err(format!("RecoveryRequired: {reason}"));
         }
         let events = self.call("GET", &format!("/rooms/{}/events", urlencoding::encode(room_id)), None)?;
         let mut pending: Vec<(u64, String, Vec<u8>)> = Vec::new();
         for ev in events["events"].as_array().cloned().unwrap_or_default() {
+            let event_id = match event_id_from_event(&ev) {
+                Ok(event_id) => event_id,
+                Err(error) => {
+                    self.record_desync(room_id, &format!("event identity validation failed: {error}"))?;
+                    return Err(format!("RecoveryRequired: invalid MLS event identity: {error}"));
+                }
+            };
             let Some(mls_b64) = ev["content"]["mls"].as_str() else { continue };
-            let event_id = event_id_from_event(&ev)?;
             if self.processed.contains(&event_id) {
                 continue;
             }
-            let bytes = B64.decode(mls_b64).map_err(text)?;
-            let protocol = MlsMessageIn::tls_deserialize_exact(&bytes).map_err(text)?.try_into_protocol_message().map_err(text)?;
+            let bytes = match B64.decode(mls_b64) {
+                Ok(bytes) => bytes,
+                Err(error) => {
+                    let incoming = self.persist_unreadable(
+                        room_id,
+                        &event_id,
+                        &format!("MLS event payload is not valid base64: {error}"),
+                    )?;
+                    out.push(incoming);
+                    continue;
+                }
+            };
+            let protocol = match MlsMessageIn::tls_deserialize_exact(&bytes)
+                .map_err(text)
+                .and_then(|message| message.try_into_protocol_message().map_err(text))
+            {
+                Ok(protocol) => protocol,
+                Err(error) => {
+                    let incoming = self.persist_unreadable(
+                        room_id,
+                        &event_id,
+                        &format!("MLS event payload is malformed: {error}"),
+                    )?;
+                    out.push(incoming);
+                    continue;
+                }
+            };
             pending.push((protocol.epoch().as_u64(), event_id, bytes));
         }
         let current = self.groups.get(room_id).ok_or("комната не создана на этом устройстве")?.mls.epoch().as_u64();
