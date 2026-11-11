@@ -81,6 +81,10 @@ test('CH-02 message delivery uses MLS and rejects legacy room-event POST', () =>
   assert.match(server, /messages must be sent through \/mls\/groups\/:id\/messages/u);
   assert.match(server, /const mlsCommitsRoute = p\.match/u);
   assert.match(server, /const mlsAckRoute = p\.match/u);
+  assert.match(server, /req\.method === 'GET' && p === '\/sync'/u);
+  assert.match(server, /number\('since'\)/u);
+  assert.match(server, /number\('signal_since'\)/u);
+  assert.match(server, /const readRoute = p\.match/u);
   assert.match(server, /clientMessageId/u);
   assert.match(server, /epoch is outdated/u);
 });
