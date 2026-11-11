@@ -242,3 +242,23 @@ Current PR #45 head: `ca49b376a65766fb59e792cf2097ba7b4f2b50ce`. Product source 
 - [Flutter mobile validation #42979080672](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42979080672): SKIPPED by Stage 4 branch condition.
 
 The exact runner allocation failure remains unknown. No test command or platform build ran. Stage 4 remains NOT ACCEPTED.
+
+
+## 16. Secret-memory zeroization — 2026-11-11
+
+Source head: `3d4e64d4f302f7ddbe417903ede4dd4443b10975`.
+
+- Rust session tokens now live in a `SessionTokens` type that zeroizes both strings on drop.
+- SQLCipher key buffers use RAII zeroization during new-session creation and resume.
+- Keyring secret byte buffers are zeroized after checking or copying; failed key generation/storage also zeroizes temporary key material.
+- MemoryKeyStore removes and zeroizes keys.
+- Serialized token pairs, request bodies, authorization header copies and token refresh response values are zeroized after use.
+- Access/refresh token strings received at the Rust FFI open-session boundary are wrapped in `Zeroizing` immediately.
+- Key presence checks return a boolean without copying key material.
+
+Latest CI on source SHA `3d4e64d4f302f7ddbe417903ede4dd4443b10975`:
+- [OpenMLS client run #42979859714](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42979859714): FAILED before step 1; `runner_id=0`; `steps=[]`.
+- [FRB generation run #42979859709](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42979859709): FAILED before step 1; `runner_id=0`; `steps=[]`; iOS dependent job SKIPPED.
+- Flutter mobile validation #42979859767: SKIPPED by Stage 4 branch condition.
+
+No tests executed. Stage 4 remains NOT ACCEPTED.
