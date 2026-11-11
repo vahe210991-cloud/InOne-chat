@@ -8,9 +8,6 @@ on:
     paths:
       - ".github/workflows/openmls-frb-codegen.yml"
       - "mobile/**"
-      - "development/reports/**"
-      - "development/SESSION-LOG.md"
-      - "docs/continuity/**"
 
 permissions:
   contents: read
