@@ -506,3 +506,16 @@ Next:
 3. Correct the iOS signing/provisioning workflow and execute the Protected Keychain runtime test in a supported signed environment.
 4. Execute Rust/OpenMLS, FRB, Flutter, Android Keystore, iOS and persistence/restart regressions on one exact final SHA.
 5. Update acceptance and Beta 1.0 WBS evidence only after the complete required matrix is green. Do not merge PR #45 or enable native MLS before owner approval.
+
+
+## 25. Stage 4 native MLS hardening — implementation update (2026-11-11)
+
+Implementation changes now present in this branch include membership reconciliation and P0.2 staged Commit metadata verification; durable membership Commit journal and idempotent KeyPackage claims; stale-epoch rebase; journaled revoked-device removal; durable Welcome receipts/ACK retry; WaitingForCommit persistence; Commit quarantine; late-event/unreadable handling; event/API response validation; per-room outbox isolation; and Rust/Flutter recovery diagnostics.
+
+Platform storage remains Android Keystore / iOS Keychain with no plaintext fallback. The native logout integration test now verifies local SQLCipher/key deletion even when the server endpoint is unreachable. The signed iOS protected-Keychain smoke test remains conditional on signing secrets and is not counted as passed when skipped.
+
+Evidence and exact CI state are recorded in `development/reports/2026-11-11-stage-4-native-mls-hardening-progress.md`. Latest source HEAD: `df53ff48a42d9b9ca1dc7b19f049f8f3b05585a6`.
+
+**Verification:** OpenMLS run #42986269774 and FRB run #42986269879 concluded failure, but job step summaries/logs were unavailable (`BlobNotFound`). Flutter mobile job #42986269746 was skipped by workflow branch condition. No local Cargo/Rust toolchain is available in this execution environment. Therefore tests are NOT VERIFIED; no PASS or 100% claim is made.
+
+**Acceptance:** Stage 4 NOT ACCEPTED / BLOCKED. Beta 1.0 WBS v1.1 baseline unchanged (42% implementation / 31% verification). Next gate is inspectable full CI on one exact final SHA.
