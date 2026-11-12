@@ -391,3 +391,8 @@ The following review covers every one of the 31 stable IDs. It compares the decl
 ### Screen review acceptance note
 
 Before Claude's final design handoff, compare the exact current HTML screen and its stable ID against this table. If the design changes an action, field, transition or state, update the manifest and API integration inventory together. A UI control with no verified backend contract must be explicitly labelled visual-only / disabled / BLOCKED and must not simulate a successful operation.
+
+
+## 14. A1 detailed audit supersedes the preliminary count
+
+The preliminary count in section 2.3 counted Git tree entries (including directories) as if they were files. The corrected file-level audit is documented in `development/reports/2026-11-12-A1-engine-tree-drift-audit.md`: 34 divergent common blob files, 11 divergent directory tree entries, 23 archive-only entries (20 files + 3 directories), and no POC-only entries. Canonical ownership is now explicit: Node backend/schema/migrations/tests remain in the archive engine tree; the Flutter-connected Rust MLS client remains in the POC tree because `mobile/rust/Cargo.toml` points there. No files were consolidated or deleted. A repeatable no-dependency audit script and unit tests were added under `scripts/`; execution remains NOT RUN.
