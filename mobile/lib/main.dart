@@ -556,7 +556,6 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
       } else if (call == 'POST /register') {
         await _session.registerAccount(
           email: (message.body['email'] ?? '').toString(),
-          registrationToken: (message.body['registrationToken'] ?? '').toString(),
           password: (message.body['password'] ?? '').toString(),
           nickname: (message.body['nickname'] ?? '').toString(),
           phone: message.body['phone']?.toString(),
