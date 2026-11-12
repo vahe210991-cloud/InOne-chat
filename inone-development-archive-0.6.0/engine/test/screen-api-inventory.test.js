@@ -27,6 +27,11 @@ test('screen API inventory covers all approved screens and keeps unconnected cal
   assert.equal(provider?.backendHandler, 'SOURCE_CONFIRMED');
   assert.equal(provider?.callableFromScreen, false);
 
+  const roomList = byId.get('CH-01').actions.find((item) => item.operation === 'GET /rooms/mine');
+  assert.equal(roomList?.backendHandler, 'SOURCE_CONFIRMED');
+  assert.equal(roomList?.flutterScreenAllowlist, true);
+  assert.equal(roomList?.callableFromScreen, true);
+
   const messageSend = byId.get('CH-02').htmlActions;
   assert.ok(messageSend.some((item) => item === 'POST message'));
   assert.ok(!byId.get('CH-02').actions.some((item) => item.callableFromScreen));
