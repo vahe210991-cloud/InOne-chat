@@ -97,3 +97,17 @@ const claudeSupportedApiCalls = <String, ClaudeApiRoute>{
   'GET /config/public': ClaudeApiRoute('GET', '/config/public', authenticated: false),
   'GET /rooms/mine': ClaudeApiRoute('GET', '/rooms/mine'),
 };
+
+/// Screen-scoped allowlist: a WebView screen may invoke only the operation
+/// explicitly assigned to that screen. Unknown/legacy screen IDs fail closed.
+const claudeScreenApiCalls = <String, Set<String>>{
+  'SC-01': {'POST /login'},
+  'SC-02': {'POST /register/email'},
+  'SC-03': {'POST /register/email/confirm', 'POST /register/email'},
+  'SC-04': {'POST /register'},
+  'SC-11': {'POST /login'},
+  'SC-12': {'POST /logout'},
+};
+
+bool claudeScreenAllowsApiCall(String screenId, String call) =>
+    claudeScreenApiCalls[screenId]?.contains(call) ?? false;
