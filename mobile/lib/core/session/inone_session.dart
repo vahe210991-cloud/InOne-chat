@@ -289,7 +289,8 @@ class InOneSession extends ChangeNotifier {
         'verificationLevel': result['verificationLevel'],
       };
     } catch (_) {
-      // Keep the ticket for a retry after transient transport/server errors.
+      // A failed registration POST leaves the ticket available for retry. Once
+      // the server accepts registration, the ticket is consumed before login.
       rethrow;
     }
   }
