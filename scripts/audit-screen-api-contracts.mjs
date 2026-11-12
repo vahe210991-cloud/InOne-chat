@@ -43,6 +43,7 @@ const routeEvidence = new Map([
   ['POST /rooms', /req\.method === 'POST' && p === '\/rooms'/u],
   ['GET /rooms/:id/members', /memberRoute && req\.method === 'GET'/u],
   ['POST /rooms/:id/settings', /settingsRoute && req\.method === 'POST'/u],
+  ['PUT /rooms/:id/name', /nameRoute && req\.method === 'PUT'/u],
 ]);
 
 const routeKeys = [...bridge.matchAll(/^\s*'((?:GET|POST|PUT|DELETE) \/[^']+)'\s*:/gmu)].map((m) => m[1]);
