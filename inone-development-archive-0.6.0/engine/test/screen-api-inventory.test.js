@@ -1,10 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 test('screen API inventory covers all approved screens and keeps unconnected calls blocked', () => {
   const run = spawnSync(process.execPath, ['scripts/audit-screen-api-contracts.mjs'], {
-    cwd: new URL('../../../../', import.meta.url),
+    cwd: resolve(dirname(fileURLToPath(import.meta.url)), '../../..'),
     encoding: 'utf8',
   });
   assert.equal(run.status, 0, run.stderr);
