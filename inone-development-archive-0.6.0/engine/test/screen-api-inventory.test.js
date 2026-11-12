@@ -38,9 +38,13 @@ test('screen API inventory covers all approved screens and keeps unconnected cal
   const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
   const bridgeRuntime = readFileSync(resolve(repoRoot, 'mobile/assets/ui-approval/interactions.js'), 'utf8');
   const roomScreen = readFileSync(resolve(repoRoot, 'mobile/assets/ui-approval/screens/chat/CH-01.html'), 'utf8');
+  const flutterHost = readFileSync(resolve(repoRoot, 'mobile/lib/main.dart'), 'utf8');
   assert.match(bridgeRuntime, /screen:document\.body\.dataset\.screen/u);
   assert.match(bridgeRuntime, /data-api-onload/u);
   assert.match(bridgeRuntime, /runAutoApi/u);
+  assert.match(bridgeRuntime, /setThemeMode:function/u);
+  assert.match(bridgeRuntime, /setInsets:function/u);
+  assert.match(flutterHost, /window\\.InOne\\.runAutoApi/u);
   assert.match(roomScreen, /data-api-onload="GET \/rooms\/mine"/u);
   assert.ok(report.limitations.some((item) => item.includes('does not prove a live request')));
 });
