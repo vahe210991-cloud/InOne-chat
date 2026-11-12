@@ -1,3 +1,17 @@
+# Historical verification baseline update — 2026-11-12
+
+Read `development/reports/2026-11-12-historical-test-evidence-baseline.md` before planning any checks. Historical evidence already confirms:
+- P0 backend/Rust/OpenMLS six-job acceptance on PR #25 (run #124) and post-merge main (run #134).
+- Stage 3 PR #44 exact-head CI: Node 382/382, PostgreSQL 124/124, OpenMLS/Rust bridge/format/P0 regression, Flutter analyze/tests and Android preview APK all PASS on `3d288777135d0c12145f18407e8768a02ae80a9f`.
+- Earlier Flutter/UI runs include full green Android preview pipeline #42579006574 and a separate 53-test pass where APK packaging failed with Gradle HTTP 504.
+- Stage 4 PR #45 is separate and remains NOT ACCEPTED / BLOCKED; later workflow attempts failed before steps and do not evidence test execution. Native MLS remains disabled.
+
+Do not repeat tests solely because a new session starts. Compare exact source/test/workflow paths and SHAs to the historical baseline; reuse unchanged-scope evidence and run only justified deltas or mandatory exact-head acceptance. This documentation update did not run product tests.
+
+Report: [historical test evidence baseline](../../development/reports/2026-11-12-historical-test-evidence-baseline.md). Branch PR #47 remains Draft/open/unmerged.
+
+---
+
 
 
 ---
