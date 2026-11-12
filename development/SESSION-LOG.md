@@ -1,3 +1,4 @@
+- CH-01 typed room-list slice added: HTML emits `GET /rooms/mine` with screen ID; Flutter allows only CH-01, uses `InOneRepositories.myRooms()` + `InOneRoomList` validation, then binds room display names/roles via safe text content. Existing backend `rooms-mine.test.js` is the historical runtime test basis; new inventory assertion is NOT RUN. Live Flutter→Node E2E NOT RUN.
 - Additional auth safety: a login response without an authenticated token pair remains on SC-11 in a waiting state; it cannot enter the authenticated menu. Device approval claim/poll lifecycle remains incomplete.
 ## 2026-11-12 — Screen API integration and bridge ownership work
 
