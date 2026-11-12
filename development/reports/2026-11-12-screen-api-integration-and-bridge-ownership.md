@@ -128,9 +128,9 @@ No new CI run is claimed. No product runtime test is claimed. No backend deploym
 
 1. Run the new inventory and ownership scripts on an authorized Node runner; fix only concrete failures.
 2. Run the focused backend smoke test and Flutter tests on an authorized runner.
-3. Implement the next vertical slice for CH-01 room list: typed `GET /rooms/mine`, response validation, data binding to the approved screen and an integration test that observes the backend request.
-4. Then add typed organization request reads/writes and secure file adapter, one explicit operation at a time.
-5. Extend the screen allowlist only together with DTO validation, role checks and tests.
-6. Build a Flutter integration harness against the live Node test server; record request IDs/status evidence so the backend's receipt is observable. Do not use production credentials or trigger irreversible operations in smoke tests.
+3. Run focused CH-01 tests and Flutter analyze/tests; the typed repository, response validation, ready-gated bridge dispatch and safe HTML data binding are already implemented.
+4. Build a Flutter-to-live-Node integration harness so the bridge-triggered request is observable at backend receipt.
+5. Add typed organization request reads/writes and a secure file adapter, one explicit operation at a time. Extend the screen allowlist only with DTO validation, role checks and tests.
+6. Do not use production credentials or trigger irreversible operations in smoke tests.
 
 Do not merge PR #45, enable native MLS, change WBS v1.1 percentages, or treat this branch as Stage 4 acceptance.
