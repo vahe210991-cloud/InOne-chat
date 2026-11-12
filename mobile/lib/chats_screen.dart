@@ -261,7 +261,10 @@ class _InOneChatsScreenState extends State<InOneChatsScreen> {
           break;
       }
     });
-    if (action == 'pin' || action == 'unpin') {\n      _notice('Закрепление пока действует только в этом сеансе.');\n    }\n    if (action == 'unread') {
+    if (action == 'pin' || action == 'unpin') {
+      _notice('Закрепление пока действует только в этом сеансе.');
+    }
+    if (action == 'unread') {
       _notice('Отметка непрочитанного пока не поддерживается backend.');
     }
     if (action == 'archive') {
