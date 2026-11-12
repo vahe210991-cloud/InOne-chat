@@ -547,3 +547,20 @@ Do not re-port these mechanisms. See Stage 4 report section 25 for the exact com
 - FRB and OpenMLS workflow trigger corrections are committed and re-fetched. Trigger policy now relies on branch-scoped push path allowlists plus manual dispatch; aggregate PR path triggers removed.
 - Local execution capability is limited to Node.js; Rust/Cargo, Flutter/Dart and Xcode are unavailable. No local test/build is claimed. CI startup blocker unresolved.
 - Stage 4 remains NOT ACCEPTED / BLOCKED; verification accepted 0%; keep native MLS disabled; no merge. Report section 38.
+
+
+## A1 ENGINE TREE AUDIT — 2026-11-12
+
+Detailed result: `development/reports/2026-11-12-A1-engine-tree-drift-audit.md`.
+
+Corrected counts at base SHA `016ba75045412652d362fa8c94ee166bfa371c23`: 45 divergent Git tree entries = 34 blob files + 11 directory entries; 23 archive-only entries = 20 files + 3 directories; 0 POC-only. Earlier shorthand “45 divergent files” was incorrect and is superseded by the detailed report.
+
+Canonical ownership decision:
+- Node.js backend, PostgreSQL schema/migrations, Node stores and backend tests: `inone-development-archive-0.6.0/engine/`.
+- Flutter-connected Rust MLS client and its Cargo path dependency: `inone-engine-poc-0.6.0/mobile-mls/mls-client/` (verified in `mobile/rust/Cargo.toml`).
+- FRB wrapper/generated bindings remain under `mobile/rust/`; exact bridge crate/codegen ownership is deferred to D2.
+- No files copied, merged, renamed or deleted.
+
+Added dependency-free drift audit utility `scripts/audit-engine-tree-drift.mjs` and unit test `scripts/audit-engine-tree-drift.test.mjs`. Commands and expected output are documented in the A1 report. Tests were NOT RUN; do not call them green.
+
+Next: D2 bridge/codegen ownership; then separate Rust parity tasks for OpenMLS failure classification and `messages.editWindowMinutes`; then reconcile MLS contract and add a drift guard. Do not consolidate or delete either engine tree until these steps are reviewed.
