@@ -448,11 +448,12 @@ class _RoomTile extends StatelessWidget {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onOpen,
-      onLongPressStart: (_) {
-        final box = context.findRenderObject() as RenderBox?;
-        if (box == null) return;
-        final origin = box.localToGlobal(Offset.zero);
-        onLongPress(origin & box.size);
+      onLongPressStart: (details) {
+        onLongPress(Rect.fromCenter(
+          center: details.globalPosition,
+          width: 1,
+          height: 1,
+        ));
       },
       child: SizedBox(
         height: 94,
