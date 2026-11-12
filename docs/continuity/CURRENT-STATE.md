@@ -554,3 +554,5 @@ Do not re-port these mechanisms. See Stage 4 report section 25 for the exact com
 - Stage 4 remains NOT ACCEPTED / BLOCKED; verification accepted 0%; keep native MLS disabled; no merge. Report section 38.
 
 - Pending device login now stays on SC-11/waiting when the backend did not issue an authenticated token pair; approval claim/poll remains incomplete.
+
+- CH-01 now emits a screen-scoped `GET /rooms/mine` call on screen load; Flutter parses the typed `InOneRoomList` response and safely binds room names/roles to the HTML. Existing backend `rooms-mine.test.js` covers authenticated HTTP route behavior. New branch tests NOT RUN; live Flutter→Node E2E NOT RUN.
