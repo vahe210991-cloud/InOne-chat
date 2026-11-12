@@ -1,3 +1,4 @@
+- Additional auth safety: a login response without an authenticated token pair remains on SC-11 in a waiting state; it cannot enter the authenticated menu. Device approval claim/poll lifecycle remains incomplete.
 ## 2026-11-12 — Screen API integration and bridge ownership work
 
 - Started all five Beta 1.0 plan workstreams. Reused A1 and historical test evidence; no repeat A1.
