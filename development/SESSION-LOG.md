@@ -515,3 +515,15 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Re-fetched and verified both workflow files. FRB uses branch-scoped `push.paths` for the workflow file and `mobile/**`; OpenMLS uses its existing push path allowlist; aggregate PR path triggers removed; manual dispatch retained.
 - Available execution container has Node.js only; no Rust/Cargo, Flutter/Dart or Xcode. No local tests/builds run. Actions jobs continue to fail before observable steps/logs; exact cause unknown.
 - Stage 4 NOT ACCEPTED / BLOCKED; verification accepted 0%; native MLS disabled; no merge. Report section 38.
+
+
+## 2026-11-12 — Beta 1.0 system/service audit and UI gap plan
+
+- Audited repository `vahe210991-cloud/InOne-chat` at source SHA `016ba75045412652d362fa8c94ee166bfa371c23`, current Stage 4 PR #45 branch. Read root instructions, AI mandate, WBS v1.1, Stage 3 backend/API audit, screen manifest/catalog, API contract matrix, Flutter handoff and mobile host/repository/session/network files.
+- Confirmed no separately deployed microservices in the inspected Beta 1.0 tree; backend is a modular Node.js monolith with PostgreSQL and storage/provider adapters.
+- Compared duplicate engine trees: 257 common relative paths, 212 identical blobs, 45 divergent common paths and 23 archive-only paths. Recorded as a high-priority source-of-truth issue; no source files were consolidated.
+- Confirmed 24 screen IDs in the current manifest plus seven approved-v1 IDs in the Flutter catalog (31 total). Reviewed all 31 screen HTML sources at a structural level and recorded screen-by-screen UX benchmark recommendations against official Teams, Slack and WhatsApp references.
+- Added `development/reports/2026-11-12-inone-system-audit-and-gap-plan.md` and `development/integrations/CLAUDE-UI-DESIGN-HANDOFF-2026-11-12.md`.
+- Owner explicitly authorized Claude for UI/UX design deliverables only. ChatGPT remains CTO/engineering integration and acceptance owner. No API keys or secret values are shared; none are needed for design.
+- No application source code, runtime configuration, secret, or CI billing setting changed. No server/build/test was run. This audit is source/documentation review only; Stage 4 remains NOT ACCEPTED / BLOCKED; native MLS remains disabled; WBS v1.1 percentages unchanged.
+- Working branch: `docs/beta1-system-audit-ui-gap-plan-2026-11-12`; documentation commit before continuity updates: `60a61aa64f1ddf932a7e8b683259b4fd445970ce`.
