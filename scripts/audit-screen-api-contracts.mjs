@@ -61,7 +61,9 @@ for (const item of [...manifest.screens, ...(manifest.approved ?? [])]) {
     manifestApi: item.api ?? null,
   });
 }
-for (const m of catalog.matchAll(/ClaudeScreenSource\(id:\s*'([^']+)'[\s\S]*?path:\s*'([^']+)'[\s\S]*?(?:api:\s*'([^']+)')?/gu)) {
+for (const line of catalog.split('\\n').filter((value) => value.includes('ClaudeScreenSource(id:'))) {
+  const m = line.match(/ClaudeScreenSource\\(id:\\s*'([^']+)',.*?path:\\s*'([^']+)'(?:,.*?api:\\s*'([^']+)')?/u);
+  if (!m) continue;
   const existing = sources.get(m[1]) ?? { id: m[1], name: m[1], file: m[2], manifestApi: null };
   existing.catalogApi = m[3] ?? null;
   sources.set(m[1], existing);
