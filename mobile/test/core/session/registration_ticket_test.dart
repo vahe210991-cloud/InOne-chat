@@ -20,7 +20,18 @@ void main() {
       }
       if (request.url.path == '/register') {
         return http.Response(
-          jsonEncode({'ok': true, 'userId': 'user-1'}),
+          jsonEncode({'userId': 'user-1', 'nickname': 'Person', 'verificationLevel': 1}),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+      if (request.url.path == '/login') {
+        return http.Response(
+          jsonEncode({
+            'userId': 'user-1',
+            'token': 'access-token',
+            'refreshToken': 'refresh-token',
+          }),
           200,
           headers: {'content-type': 'application/json'},
         );
@@ -48,13 +59,16 @@ void main() {
     );
 
     expect(registration['userId'], 'user-1');
+    expect(registration.containsKey('token'), isFalse);
     expect(requests.map((request) => request.url.path),
-        ['/register/email/confirm', '/register']);
+        ['/register/email/confirm', '/register', '/login']);
     final registerBody =
-        jsonDecode(requests.last.body) as Map<String, dynamic>;
+        jsonDecode(requests[1].body) as Map<String, dynamic>;
     expect(registerBody['registrationToken'], 'one-time-secret-ticket');
-    expect(requests.every((request) =>
+    expect(requests.take(2).every((request) =>
         !request.headers.containsKey('authorization')), isTrue);
+    expect(requests.last.headers.containsKey('authorization'), isFalse);
+    expect(session.isAuthenticated, isTrue);
 
     session.dispose();
     client.close();
