@@ -64,12 +64,19 @@ Generated artifacts (`mobile/rust/build.rs`, `mobile/rust/Cargo.lock`, `mobile/r
 The Stage 3 contract regression already checks the manifest's declared operations against actual backend handler evidence. The Stage 3 audit recorded 25 unique API operations from the 24-screen manifest with matching backend route evidence and included route/role regression tests in the default Node suite.
 
 Current screen-level integration is narrower:
-- Screen-scoped calls explicitly allowed: SC-01 `POST /login`; SC-02 `POST /register/email`; SC-03 `POST /register/email/confirm` and resend `POST /register/email`; SC-04 `POST /register`; SC-11 `POST /login`; SC-12 `POST /logout`.
+- Screen-scoped calls explicitly allowed: SC-01 `POST /login`; SC-02 `POST /register/email`; SC-03 `POST /register/email/confirm` and resend `POST /register/email`; SC-04 `POST /register`; SC-11 `POST /login`; SC-12 `POST /logout`; CH-01 `GET /rooms/mine`.
 - Other backend handlers are not automatically callable just because they exist in the global route map.
 - SC-05 provider nonce/verification, SC-06 provider registration, SC-07…SC-10 recovery, organization request writes/documents/decisions, user search, push-token updates, and room administration remain unconnected or incomplete in the screen bridge.
 - RQ-03, PS-01, ST-02, CH-01, GR-01, OR-01 and the handoff PR-01 have declared API needs in the manifest/catalog but their HTML currently has no corresponding `data-api` action or no screen-scoped dispatch. They do not yet make those requests from those handoff screens.
 - RQ-02 file selection remains unavailable; a `data-pick` declaration is not a native picker implementation.
 - CH-02's older HTML contains `POST message`, not a valid backend operation. Do not map it to plaintext `POST /rooms/:id/events`; backend intentionally rejects that path with 409. Message send/receive must remain in the MLS client flow. The canonical backend supports GET room event history, but the screen is not yet connected to it.
+
+### CH-01 live room-list vertical slice
+
+- The handoff HTML now emits `GET /rooms/mine` automatically on CH-01 load and includes its stable screen ID in bridge messages.
+- The Flutter bridge permits this read only from CH-01. Flutter calls the typed `InOneRepositories.myRooms()` repository, validates the response with `InOneRoomList`, and binds only room display names and roles through `textContent` into the screen. No room IDs, session tokens or MLS secrets are exposed to HTML.
+- Existing backend `rooms-mine.test.js` exercises the real HTTP handler with authenticated users and verifies membership scoping. A new source regression checks that the CH-01 HTML/runtime emits the API call.
+- This is source-level integration plus existing backend runtime-test evidence. The new test is NOT RUN on this branch; Flutter-to-live-server/device E2E remains NOT RUN.
 
 ### Critical implementation correction
 
