@@ -733,7 +733,7 @@ class _SearchSectionState extends State<_SearchSection> {
       padding: const EdgeInsets.only(bottom: 18),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+          Text(widget.title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
           const Spacer(),
           if (rooms.length > 3)
             TextButton(
