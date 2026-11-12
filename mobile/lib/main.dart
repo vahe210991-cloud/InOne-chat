@@ -61,12 +61,12 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
   late final WebViewController _controller;
   late final InOneSession _session;
   late final InOneRepositories _repositories;
-  String _selectedKey = 'approved:messages-light';
+  String _selectedKey = 'handoff:CH-01';
   final List<String> _handoffHistory = [];
   bool _loading = true;
   bool _pageReady = false;
   String? _error;
-  String _currentSource = 'approved';
+  String _currentSource = 'native';
   String? _testGalleryHtml;
   ProfileLoadStatus? _profileLoadStatus;
   int _profileRequestId = 0;
@@ -196,8 +196,7 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
           }
           return NavigationDecision.prevent;
         },
-      ))
-      ..loadFlutterAsset(approvedScreensAssetPath);
+      ));
   }
 
   Future<void> _waitForApprovedScreens() async {
