@@ -131,3 +131,16 @@ Every agent reports:
 - confirmation that no local-only required changes remain.
 
 These rules supersede the earlier blanket stop condition in section 2.4 only to the extent that safe repository-native work is possible. All other source-integrity, review, security, and no-merge safeguards remain in force.
+
+
+## 10. Screen API integration and backend receipt evidence
+
+1. A screen's API string in a manifest/catalog is a requirement declaration, not proof of a request.
+2. A `data-api` HTML attribute is not proof of Flutter dispatch. Flutter dispatch requires an explicit typed route and screen-scoped allowlist entry.
+3. A route handler in `server.js` is not proof the request was received. Backend receipt requires a real HTTP integration test or runtime trace.
+4. A mocked Dart HTTP test proves client serialization/handling only; it does not prove a Node backend received the request.
+5. A backend Node test using `createServer` and actual HTTP fetch proves backend route receipt/response for that test case, but does not prove the Flutter bridge invoked it.
+6. Full screen acceptance requires the chain: stable screen ID → HTML action → typed bridge allowlist → Flutter request → backend handler receipt → DTO/auth/permission outcome → response mapped to UI state. Record each link separately.
+7. Never expose registration tickets, access/refresh tokens, MLS keys, or private response fields to WebView. One-time credentials remain in host memory and are sent only by the trusted host client.
+8. Do not widen a global route allowlist without screen-scoped authorization, DTO validation and negative tests.
+9. Do not route plaintext message sends through legacy room-event APIs. CH-02 uses the MLS protocol path; backend ciphertext remains opaque.
