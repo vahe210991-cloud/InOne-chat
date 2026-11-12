@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -29,5 +30,10 @@ test('screen API inventory covers all approved screens and keeps unconnected cal
   const messageSend = byId.get('CH-02').htmlActions;
   assert.ok(messageSend.some((item) => item === 'POST message'));
   assert.ok(!byId.get('CH-02').actions.some((item) => item.callableFromScreen));
+  const bridgeRuntime = readFileSync('mobile/assets/ui-approval/interactions.js', 'utf8');
+  const roomScreen = readFileSync('mobile/assets/ui-approval/screens/chat/CH-01.html', 'utf8');
+  assert.match(bridgeRuntime, /screen:document\\.body\\.dataset\\.screen/u);
+  assert.match(bridgeRuntime, /data-api-onload/u);
+  assert.match(roomScreen, /data-api-onload="GET \/rooms\/mine"/u);
   assert.ok(report.limitations.some((item) => item.includes('does not prove a live request')));
 });
