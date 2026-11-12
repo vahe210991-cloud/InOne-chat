@@ -570,12 +570,13 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
           body: message.body.isEmpty ? null : message.body,
         );
       }
-      await _setClaudeScreenState('default');
+      final loginPending = call == 'POST /login' && !_session.isAuthenticated;
+      await _setClaudeScreenState(loginPending ? 'waiting' : 'default');
       final nextScreen = switch (call) {
         'POST /register/email' => 'SC-03',
         'POST /register/email/confirm' => 'SC-04',
         'POST /register' => 'SC-00',
-        'POST /login' => 'SC-00',
+        'POST /login' => loginPending ? 'SC-11' : 'SC-00',
         'POST /logout' => 'SC-01',
         _ => null,
       };
