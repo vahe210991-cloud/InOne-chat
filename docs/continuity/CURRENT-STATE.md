@@ -552,3 +552,5 @@ Do not re-port these mechanisms. See Stage 4 report section 25 for the exact com
 - FRB and OpenMLS workflow trigger corrections are committed and re-fetched. Trigger policy now relies on branch-scoped push path allowlists plus manual dispatch; aggregate PR path triggers removed.
 - Local execution capability is limited to Node.js; Rust/Cargo, Flutter/Dart and Xcode are unavailable. No local test/build is claimed. CI startup blocker unresolved.
 - Stage 4 remains NOT ACCEPTED / BLOCKED; verification accepted 0%; keep native MLS disabled; no merge. Report section 38.
+
+- Pending device login now stays on SC-11/waiting when the backend did not issue an authenticated token pair; approval claim/poll remains incomplete.
