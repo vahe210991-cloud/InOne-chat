@@ -355,15 +355,15 @@ class _InOneChatsScreenState extends State<InOneChatsScreen> {
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 18),
                 children: [
-                  _FolderChip(label: 'Все', value: 'all', selected: _folder == 'all',
+                  _FolderChip(label: 'Все', selected: _folder == 'all',
                       onTap: () => setState(() => _folder = 'all')),
-                  _FolderChip(label: 'Рабочие', value: 'work', selected: _folder == 'work',
+                  _FolderChip(label: 'Рабочие', selected: _folder == 'work',
                       onTap: () => setState(() => _folder = 'work')),
-                  _FolderChip(label: 'Личные', value: 'personal', selected: _folder == 'personal',
+                  _FolderChip(label: 'Личные', selected: _folder == 'personal',
                       onTap: () => setState(() => _folder = 'personal')),
-                  _FolderChip(label: 'Группы', value: 'groups', selected: _folder == 'groups',
+                  _FolderChip(label: 'Группы', selected: _folder == 'groups',
                       onTap: () => setState(() => _folder = 'groups')),
-                  _FolderChip(label: 'Каналы', value: 'channels', selected: _folder == 'channels',
+                  _FolderChip(label: 'Каналы', selected: _folder == 'channels',
                       onTap: () => setState(() => _folder = 'channels')),
                 ],
               ),
@@ -508,9 +508,8 @@ String _roleLabel(String role) => switch (role) {
     };
 
 class _FolderChip extends StatelessWidget {
-  const _FolderChip({required this.label, required this.value, required this.selected, required this.onTap});
+  const _FolderChip({required this.label, required this.selected, required this.onTap});
   final String label;
-  final String value;
   final bool selected;
   final VoidCallback onTap;
 
