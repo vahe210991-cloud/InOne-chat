@@ -5,7 +5,7 @@ New implementation branch: `feature/beta1-screen-api-integration-2026-11-12`.
 - A1 remains complete and is reused, not repeated.
 - B1 inventory generator and tests added: `scripts/audit-screen-api-contracts.mjs`.
 - D1/D2 ownership decision: canonical backend = `inone-development-archive-0.6.0/engine`; Flutter FRB = `mobile/rust`; canonical persistent MLS dependency = `inone-engine-poc-0.6.0/mobile-mls/mls-client`; standalone `mls-bridge` is not the Flutter dependency.
-- B2/B3 source route reconciliation and backend HTTP smoke test added. Only SC-01/02/03/04/11/12 currently have explicit screen-scoped API dispatch. Most other screen APIs remain backend-only or UI-only and must not be represented as connected.
+- B2/B3 source route reconciliation and backend HTTP smoke test added. SC-01/02/03/04/11/12 have explicit auth API dispatch; CH-01 additionally has the typed GET /rooms/mine screen-scoped dispatch and safe data binding. Most other screen APIs remain backend-only or UI-only and must not be represented as connected.
 - C2/C3 first vertical slice: host-only registration ticket + automatic authenticated login; per-screen WebView API allowlist.
 - Report: [screen API integration and bridge ownership](../../development/reports/2026-11-12-screen-api-integration-and-bridge-ownership.md).
 - Historical verification: [baseline](../../development/reports/2026-11-12-historical-test-evidence-baseline.md).
