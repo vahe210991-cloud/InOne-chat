@@ -20,3 +20,12 @@ These screens remain in the approved-screen gallery, with a visible `Beta 2.0 ·
 ## Current boundaries
 - This branch is a development integration branch based on the existing PR #30 head.
 - No merge to `main`, production release, or public backend/database exposure is performed here.
+
+
+## Current owner-authorized design handoff — 2026-11-12
+
+For new UI/UX design work, Claude must follow:
+- `development/integrations/CLAUDE-UI-DESIGN-HANDOFF-2026-11-12.md`
+- `development/reports/2026-11-12-inone-system-audit-and-gap-plan.md`
+
+The audit includes the 31-screen inventory, screen-by-screen industry UX benchmark review, API integration gaps and Beta 1.0 scope boundaries. Claude is authorized for UI/UX design deliverables only; ChatGPT owns technical integration and acceptance. No API keys or secret values are supplied or required for design.
