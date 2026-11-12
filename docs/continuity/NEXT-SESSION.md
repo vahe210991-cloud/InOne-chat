@@ -2,6 +2,24 @@
 
 ---
 
+# NEXT SESSION — A1 complete, proceed to D2 (2026-11-12)
+
+Read `development/reports/2026-11-12-A1-engine-tree-drift-audit.md` first.
+
+A1 has completed as a source audit. Corrected diff is 34 divergent blob files + 11 directory tree entries; 20 archive-only files + 3 directory entries; no POC-only files. Canonical Node backend is archive tree A. Flutter-connected Rust MLS client is POC tree B because `mobile/rust/Cargo.toml` depends on it. No source consolidation/deletion was performed.
+
+**Next execution: D2**
+1. Inspect `mobile/rust/Cargo.toml`, build scripts, FRB configuration, generated Dart/Rust bindings and imports.
+2. Determine whether either `mobile-mls/mls-bridge` crate is built/used by the actual Flutter app, or is only a historical standalone harness.
+3. Record exact dependency graph and canonical bridge ownership; do not switch paths before evidence.
+4. Add a low-cost static consistency check for Cargo path references and generated binding locations.
+5. Keep Rust tests NOT RUN until a runner is available; no heavy local build on the constrained laptop.
+
+Then: port useful archive-only Rust behavior into POC in isolated commits; reconcile MLS contract; add drift guard; no tree deletion until explicit reviewed migration.
+
+
+---
+
 # LATEST NEXT SESSION — 2026-11-12 (Beta 1.0, low-resource source-first)
 
 Start from `docs/beta1-system-audit-ui-gap-plan-2026-11-12` and exact branch/commit in the latest GitHub handoff. Read `AGENTS.md`, `development/AI-AGENT-MANDATE.md`, `development/PROGRESS-BASELINE.md`, the new audit report and Claude UI handoff.
