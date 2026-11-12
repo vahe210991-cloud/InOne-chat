@@ -523,7 +523,7 @@ class _FolderChip extends StatelessWidget {
           side: BorderSide(color: selected ? _lime : const Color(0xFFE3E6DF)),
           labelStyle: TextStyle(
             color: _ink,
-            fontWeight: selected ? FontWeight.w800 : FontWeight.w650,
+            fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
           ),
           padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
           shape: const StadiumBorder(),
