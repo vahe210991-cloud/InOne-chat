@@ -533,3 +533,16 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Re-fetched and verified both workflow files. FRB uses branch-scoped `push.paths` for the workflow file and `mobile/**`; OpenMLS uses its existing push path allowlist; aggregate PR path triggers removed; manual dispatch retained.
 - Available execution container has Node.js only; no Rust/Cargo, Flutter/Dart or Xcode. No local tests/builds run. Actions jobs continue to fail before observable steps/logs; exact cause unknown.
 - Stage 4 NOT ACCEPTED / BLOCKED; verification accepted 0%; native MLS disabled; no merge. Report section 38.
+
+## 2026-11-12 — Native Flutter CH-01 Chats screen
+
+- Created task branch `feature/beta1-native-chats-screen-2026-11-12` from PR #48 head `415dbf980b496c38f89d68c441fa8f45fb1560e9`.
+- Added native Flutter CH-01 screen at `mobile/lib/chats_screen.dart`; app now starts on CH-01 and the stable CH-01 handoff selection routes to this native screen.
+- Connected the screen to existing typed `InOneRepositories.myRooms()` → authenticated `GET /rooms/mine`; reused `InOneRoomList` validation and backend membership scoping. No new route or backend deployment.
+- Added loading/empty/error/unauthenticated states, refresh, kind-based filters, full-screen animated room-name search, inline «Показать все», five requested nav labels, and anchored scrollable long-press menu.
+- Added `mobile/test/chats_screen_test.dart` for authenticated repository request/rendering and search filtering.
+- Feature boundaries: no latest-message preview/timestamp, global contacts directory, message/file full-text search, story feed, chat creation, persistent pin/archive/unread, message history or channel management was added. Plaintext message send remains prohibited; message send/receive must follow MLS.
+- Report: `development/reports/2026-11-12-native-flutter-chats-screen.md`.
+- Base SHA `415dbf980b496c38f89d68c441fa8f45fb1560e9`; source implementation HEAD before report/docs commits `76efbd1361e29ac2890bcb967c604c3149700451`.
+- Flutter/Dart SDK unavailable locally; new widget tests, Flutter analyze, Android/iOS builds and device E2E are NOT RUN. No GitHub Actions workflow triggered. No new PASS claim.
+- WBS v1.1 unchanged: Beta 1.0 remains 42% implementation / 31% verification. Native MLS remains disabled; Stage 4 NOT ACCEPTED / BLOCKED. No merge.
