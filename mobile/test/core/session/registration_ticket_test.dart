@@ -74,6 +74,44 @@ void main() {
     client.close();
   });
 
+  test('registration does not create an authenticated session when login is pending',
+      () async {
+    final client = MockClient((request) async {
+      if (request.url.path == '/register/email/confirm') {
+        return http.Response('{"registrationToken":"ticket"}', 200);
+      }
+      if (request.url.path == '/register') {
+        return http.Response('{"userId":"user-2","nickname":"Pending","verificationLevel":1}', 200);
+      }
+      if (request.url.path == '/login') {
+        return http.Response('{"status":"approval_pending"}', 202);
+      }
+      return http.Response('{"error":"unexpected_route"}', 404);
+    });
+    final session = InOneSession(
+      baseUrl: 'https://api.inone.test',
+      httpClient: client,
+      readDeviceId: () async => 'device-2',
+      writeDeviceId: (_) async {},
+    );
+
+    await session.confirmEmailRegistration(
+      email: 'pending@example.test',
+      code: '123456',
+    );
+    final result = await session.registerAccount(
+      email: 'pending@example.test',
+      password: 'correct horse battery staple',
+      nickname: 'Pending',
+    );
+
+    expect(result['userId'], 'user-2');
+    expect(session.isAuthenticated, isFalse);
+
+    session.dispose();
+    client.close();
+  });
+
   test('registration cannot proceed without a host-held confirmation ticket',
       () async {
     final client = MockClient((_) async =>
