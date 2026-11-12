@@ -1,3 +1,16 @@
+## 2026-11-12 — Historical test evidence consolidated; mandatory reuse rule
+
+- Reviewed the prior repository test/acceptance reports and continuity records before planning any new checks.
+- Added `development/reports/2026-11-12-historical-test-evidence-baseline.md` with exact historical green runs, tested SHAs, suite counts, scope limits, partial failures and Stage 4's current blocked evidence boundary.
+- Confirmed historical evidence includes P0 PR #25 six-job acceptance (run #124 and post-merge #134), Stage 3 PR #44 Node 382/382 + PostgreSQL 124/124 + Rust/OpenMLS + Flutter/Android checks on exact head `3d288777135d0c12145f18407e8768a02ae80a9f`, and prior Flutter/UI green snapshots. Earlier failed/partial runs are explicitly retained, not relabelled green.
+- Established mandatory reuse protocol: compare target SHA and changed paths against historical test SHAs before proposing checks; rerun only for changed covered code, changed tests/workflow/toolchain, missing evidence, or an explicit fresh exact-SHA acceptance gate. Do not repeat broad source exploration when authoritative reports already cover it.
+- Updated continuity handoff and working rules. No product source, test code, feature flag, WBS percentage, PR merge state or deployment was changed.
+- Verification of this documentation change: GitHub fetch/write operations only. Product tests NOT RUN (documentation-only update).
+- Historical evidence report commit: `ab529927c47c198df81dca0c00ebb886ee195852`. This session's documentation branch remains PR #47, Draft/open/unmerged.
+- Next execution is D2 bridge ownership audit, but first reuse the historical evidence baseline and prior Stage 4 report; do not restart A1 or repeat completed audits.
+
+---
+
 ## 2026-11-11 — Conservative repository file cleanup
 
 - Inspected the complete recursive Git tree on the current base (964 entries / 853 files; response not truncated) and grouped exact duplicate blobs by SHA.
