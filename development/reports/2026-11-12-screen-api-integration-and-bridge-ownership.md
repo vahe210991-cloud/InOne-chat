@@ -73,7 +73,7 @@ Current screen-level integration is narrower:
 
 ### CH-01 live room-list vertical slice
 
-- The handoff HTML now emits `GET /rooms/mine` automatically on CH-01 load and includes its stable screen ID in bridge messages.
+- The handoff HTML now declares `GET /rooms/mine` for CH-01; the Flutter host triggers auto-load only after the WebView is ready and bridge messages include the stable screen ID.
 - The Flutter bridge permits this read only from CH-01. Flutter calls the typed `InOneRepositories.myRooms()` repository, validates the response with `InOneRoomList`, and binds only room display names and roles through `textContent` into the screen. No room IDs, session tokens or MLS secrets are exposed to HTML.
 - Existing backend `rooms-mine.test.js` exercises the real HTTP handler with authenticated users and verifies membership scoping. A new source regression checks that the CH-01 HTML/runtime emits the API call.
 - This is source-level integration plus existing backend runtime-test evidence. The new test is NOT RUN on this branch; Flutter-to-live-server/device E2E remains NOT RUN.
@@ -82,7 +82,7 @@ Current screen-level integration is narrower:
 
 Before this work, the Flutter host accepted any operation from the global bridge allowlist from any WebView screen. It also ignored the JSON result for generic route calls. A screen-scoped allowlist was added in `mobile/lib/claude_ui_bridge.dart` and enforced in `mobile/lib/main.dart`. Unknown screens and cross-screen API calls now fail closed. Tests cover this boundary.
 
-This intentionally reduces accidental reachability. It does not claim all 31 screens are now integrated. A login response without an authenticated token pair now remains on SC-11 in a waiting state instead of navigating into the authenticated menu. The full approval claim/pollSecret lifecycle is still not wired.
+This intentionally reduces accidental reachability. It does not claim all 31 screens are now integrated. A login or post-registration login response without an authenticated token pair now remains on SC-11 in a waiting state instead of navigating into the authenticated menu. The full approval claim/pollSecret lifecycle is still not wired.
 
 ## 5. C2/C3 — first typed Flutter vertical slice: verified email registration
 
