@@ -1,3 +1,16 @@
+## 2026-11-12 — Historical test evidence consolidated; mandatory reuse rule
+
+- Reviewed the prior repository test/acceptance reports and continuity records before planning any new checks.
+- Added `development/reports/2026-11-12-historical-test-evidence-baseline.md` with exact historical green runs, tested SHAs, suite counts, scope limits, partial failures and Stage 4's current blocked evidence boundary.
+- Confirmed historical evidence includes P0 PR #25 six-job acceptance (run #124 and post-merge #134), Stage 3 PR #44 Node 382/382 + PostgreSQL 124/124 + Rust/OpenMLS + Flutter/Android checks on exact head `3d288777135d0c12145f18407e8768a02ae80a9f`, and prior Flutter/UI green snapshots. Earlier failed/partial runs are explicitly retained, not relabelled green.
+- Established mandatory reuse protocol: compare target SHA and changed paths against historical test SHAs before proposing checks; rerun only for changed covered code, changed tests/workflow/toolchain, missing evidence, or an explicit fresh exact-SHA acceptance gate. Do not repeat broad source exploration when authoritative reports already cover it.
+- Updated continuity handoff and working rules. No product source, test code, feature flag, WBS percentage, PR merge state or deployment was changed.
+- Verification of this documentation change: GitHub fetch/write operations only. Product tests NOT RUN (documentation-only update).
+- Historical evidence report commit: `ab529927c47c198df81dca0c00ebb886ee195852`. This session's documentation branch remains PR #47, Draft/open/unmerged.
+- Next execution is D2 bridge ownership audit, but first reuse the historical evidence baseline and prior Stage 4 report; do not restart A1 or repeat completed audits.
+
+---
+
 ## 2026-11-11 — Conservative repository file cleanup
 
 - Inspected the complete recursive Git tree on the current base (964 entries / 853 files; response not truncated) and grouped exact duplicate blobs by SHA.
@@ -515,3 +528,28 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Re-fetched and verified both workflow files. FRB uses branch-scoped `push.paths` for the workflow file and `mobile/**`; OpenMLS uses its existing push path allowlist; aggregate PR path triggers removed; manual dispatch retained.
 - Available execution container has Node.js only; no Rust/Cargo, Flutter/Dart or Xcode. No local tests/builds run. Actions jobs continue to fail before observable steps/logs; exact cause unknown.
 - Stage 4 NOT ACCEPTED / BLOCKED; verification accepted 0%; native MLS disabled; no merge. Report section 38.
+
+
+## 2026-11-12 — Beta 1.0 system/service audit and UI gap plan
+
+- Audited repository `vahe210991-cloud/InOne-chat` at source SHA `016ba75045412652d362fa8c94ee166bfa371c23`, current Stage 4 PR #45 branch. Read root instructions, AI mandate, WBS v1.1, Stage 3 backend/API audit, screen manifest/catalog, API contract matrix, Flutter handoff and mobile host/repository/session/network files.
+- Confirmed no separately deployed microservices in the inspected Beta 1.0 tree; backend is a modular Node.js monolith with PostgreSQL and storage/provider adapters.
+- Compared duplicate engine trees: 257 common relative paths, 212 identical blobs, 45 divergent common paths and 23 archive-only paths. Recorded as a high-priority source-of-truth issue; no source files were consolidated.
+- Confirmed 24 screen IDs in the current manifest plus seven approved-v1 IDs in the Flutter catalog (31 total). Reviewed all 31 screen HTML sources at a structural level and recorded screen-by-screen UX benchmark recommendations against official Teams, Slack and WhatsApp references.
+- Added `development/reports/2026-11-12-inone-system-audit-and-gap-plan.md` and `development/integrations/CLAUDE-UI-DESIGN-HANDOFF-2026-11-12.md`.
+- Owner explicitly authorized Claude for UI/UX design deliverables only. ChatGPT remains CTO/engineering integration and acceptance owner. No API keys or secret values are shared; none are needed for design.
+- No application source code, runtime configuration, secret, or CI billing setting changed. No server/build/test was run. This audit is source/documentation review only; Stage 4 remains NOT ACCEPTED / BLOCKED; native MLS remains disabled; WBS v1.1 percentages unchanged.
+- Working branch: `docs/beta1-system-audit-ui-gap-plan-2026-11-12`; documentation commit before continuity updates: `60a61aa64f1ddf932a7e8b683259b4fd445970ce`.
+
+
+## 2026-11-12 — A1 engine source-tree drift audit completed
+
+- Audited exact Git tree at base commit `016ba75045412652d362fa8c94ee166bfa371c23`.
+- Corrected preliminary count: 45 differing tree entries comprise 34 divergent blob files + 11 directory tree entries. Archive-only = 20 files + 3 directories; POC-only = 0.
+- Reviewed backend package/bootstrap/migration/rules/schema/server/stores; reviewed Rust MLS client/bridge/dependencies/targeted tests; verified `mobile/rust/Cargo.toml` points to POC MLS client.
+- Set canonical ownership: Node backend/schema/migrations/tests in archive engine A; Flutter-connected Rust MLS client in POC engine B. FRB bridge/codegen remains under `mobile/rust/` pending D2.
+- Added detailed report `development/reports/2026-11-12-A1-engine-tree-drift-audit.md`.
+- Added no-dependency drift script `scripts/audit-engine-tree-drift.mjs` and unit tests `scripts/audit-engine-tree-drift.test.mjs`.
+- Updated preliminary system audit with corrected count. No source files were merged, copied, renamed or deleted.
+- Tests/build/server execution: NOT RUN. No green status claimed. A1 source audit completed; D2 is next.
+- Working documentation branch: `docs/beta1-system-audit-ui-gap-plan-2026-11-12`.

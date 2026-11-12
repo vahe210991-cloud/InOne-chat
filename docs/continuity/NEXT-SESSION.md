@@ -1,3 +1,56 @@
+# Mandatory continuation rule — historical evidence first (2026-11-12)
+
+Before planning checks or exploring code, read:
+1. [Historical test evidence baseline](../../development/reports/2026-11-12-historical-test-evidence-baseline.md).
+2. [Stage 4 single-executor progress report](../../development/reports/2026-11-11-stage-4-single-executor-progress.md).
+3. [A1 engine tree drift audit](../../development/reports/2026-11-12-A1-engine-tree-drift-audit.md).
+4. Existing Stage 3 and P0 closure reports linked by the historical baseline.
+
+Do not restart completed audits or rerun unchanged tests just because context has reset. Start from the last recorded task/handoff. Compare the target SHA and changed paths with the exact historical tested SHAs. Plan only justified delta checks, environment/toolchain changes, missing evidence, or a formally required fresh exact-SHA acceptance run.
+
+Next development task remains D2: determine actual Flutter FRB bridge ownership/dependency graph and add only a narrow static consistency guard if supported by evidence. No broad rediscovery. Keep PR #45 Stage 4 blocked, native MLS disabled, WBS v1.1 unchanged, and no merge without owner approval.
+
+Every substantial task must create a dated report and update SESSION-LOG, CURRENT-STATE and NEXT-SESSION. Test status must distinguish PASS / FAIL / BLOCKED / NOT RUN / IN PROGRESS.
+
+---
+
+
+
+---
+
+# NEXT SESSION — A1 complete, proceed to D2 (2026-11-12)
+
+Read `development/reports/2026-11-12-A1-engine-tree-drift-audit.md` first.
+
+A1 has completed as a source audit. Corrected diff is 34 divergent blob files + 11 directory tree entries; 20 archive-only files + 3 directory entries; no POC-only files. Canonical Node backend is archive tree A. Flutter-connected Rust MLS client is POC tree B because `mobile/rust/Cargo.toml` depends on it. No source consolidation/deletion was performed.
+
+**Next execution: D2**
+1. Inspect `mobile/rust/Cargo.toml`, build scripts, FRB configuration, generated Dart/Rust bindings and imports.
+2. Determine whether either `mobile-mls/mls-bridge` crate is built/used by the actual Flutter app, or is only a historical standalone harness.
+3. Record exact dependency graph and canonical bridge ownership; do not switch paths before evidence.
+4. Add a low-cost static consistency check for Cargo path references and generated binding locations.
+5. Keep Rust tests NOT RUN until a runner is available; no heavy local build on the constrained laptop.
+
+Then: port useful archive-only Rust behavior into POC in isolated commits; reconcile MLS contract; add drift guard; no tree deletion until explicit reviewed migration.
+
+
+---
+
+# LATEST NEXT SESSION — 2026-11-12 (Beta 1.0, low-resource source-first)
+
+Start from `docs/beta1-system-audit-ui-gap-plan-2026-11-12` and exact branch/commit in the latest GitHub handoff. Read `AGENTS.md`, `development/AI-AGENT-MANDATE.md`, `development/PROGRESS-BASELINE.md`, the new audit report and Claude UI handoff.
+
+1. Produce the exact 45-path divergence report between `inone-development-archive-0.6.0/engine/` and `inone-engine-poc-0.6.0/`; classify backend, Rust MLS, migrations, tests, docs and package manifests. Do not merge trees blindly.
+2. Extract all 31 screen IDs and every HTML bridge action into a normalized machine-readable inventory; reconcile manifest, catalog, HTML and API contract.
+3. Reconcile every action against exact backend route handler, auth, request/response DTO, errors, permissions, side effects and current Flutter host dispatch. Missing/ambiguous contract = BLOCKED.
+4. Define source ownership for Node backend and Rust MLS crate; add a deterministic drift guard after the owner-approved source decision.
+5. Implement one narrow typed Flutter vertical slice from a verified contract and add deterministic unit/contract tests; do not use mock success in production paths.
+6. Keep all checks honestly classified as PASS / FAIL / NOT RUN / BLOCKED. No server startup or heavy workstation build while resource limits remain.
+7. Update dated report, session log and continuity docs after each substantial task. Do not merge PR or enable native MLS without owner approval and exact-SHA green acceptance.
+
+**Known current boundary:** PR #45 Stage 4 is Draft/open/unmerged. `INONE_MLS_NATIVE_ENABLED=false`. WBS v1.1 remains 42% implementation / 31% verification baseline; no percentage change from this documentation audit.
+
+Historical handover notes below are retained for chronology.
 # Immediate next steps — 2026-11-09 12:11 Europe/Tallinn
 
 1. Run Flutter CI independently on post-import PR #36 head `cb09a4058719576df6d589f1f8b59be517b592b5`; verify the exact candidate SHA.

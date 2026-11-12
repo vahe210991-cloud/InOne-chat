@@ -1,3 +1,28 @@
+# Historical verification baseline update — 2026-11-12
+
+Read `development/reports/2026-11-12-historical-test-evidence-baseline.md` before planning any checks. Historical evidence already confirms:
+- P0 backend/Rust/OpenMLS six-job acceptance on PR #25 (run #124) and post-merge main (run #134).
+- Stage 3 PR #44 exact-head CI: Node 382/382, PostgreSQL 124/124, OpenMLS/Rust bridge/format/P0 regression, Flutter analyze/tests and Android preview APK all PASS on `3d288777135d0c12145f18407e8768a02ae80a9f`.
+- Earlier Flutter/UI runs include full green Android preview pipeline #42579006574 and a separate 53-test pass where APK packaging failed with Gradle HTTP 504.
+- Stage 4 PR #45 is separate and remains NOT ACCEPTED / BLOCKED; later workflow attempts failed before steps and do not evidence test execution. Native MLS remains disabled.
+
+Do not repeat tests solely because a new session starts. Compare exact source/test/workflow paths and SHAs to the historical baseline; reuse unchanged-scope evidence and run only justified deltas or mandatory exact-head acceptance. This documentation update did not run product tests.
+
+Report: [historical test evidence baseline](../../development/reports/2026-11-12-historical-test-evidence-baseline.md). Branch PR #47 remains Draft/open/unmerged.
+
+---
+
+
+
+---
+
+## LATEST AUDIT UPDATE — 2026-11-12
+
+A source-level Beta 1.0 system/service inventory and cross-screen gap plan was added at `development/reports/2026-11-12-inone-system-audit-and-gap-plan.md`. Claude's scoped UI design handoff is at `development/integrations/CLAUDE-UI-DESIGN-HANDOFF-2026-11-12.md`.
+
+Key verified findings on audited SHA `016ba75045412652d362fa8c94ee166bfa371c23`: no independently deployed microservices identified; backend is a modular Node.js monolith. Two engine source trees have 257 common paths, 212 identical blobs, 45 divergent common paths and 23 archive-only paths. Mobile inventory has 31 stable screen IDs (24 manifest + 7 catalog). Current bridge allowlist contains ten operations; numerous screen actions still need typed host/repository integration. Stage 4 remains NOT ACCEPTED / BLOCKED; native MLS stays disabled. WBS v1.1 percentages remain unchanged.
+
+Owner-authorized scope update: Claude may produce UI/UX design deliverables only. ChatGPT remains CTO and technical integration/acceptance owner. No API key or secret values are shared with Claude.
 > **UI SOURCE IMPORT UPDATE — 2026-11-09 12:11 (UTC+3):** Owner-provided `Ui.zip` is now present on the PR #36 task branch at `mobile/assets/ui-approval/`. CI run [#42586579987](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42586579987) passed all 15 steps: archive SHA verification, nested package import, 73-screen gallery check, Flutter pub get/analyze/tests, Android preview APK build and artifact upload. Run event SHA: `478cad39bc39e8002e55293e3015e72b68e26c8c`; import bot advanced branch head to `cb09a4058719576df6d589f1f8b59be517b592b5`. Remote tree contains 31 screen HTML files, 32 HTML including index, and 5 WOFF2 fonts. PR #36 remains draft/open/unmerged. Runtime WebView rendering, live bridge/API integration and device acceptance are NOT YET VERIFIED. WBS v1.1 unchanged. See [stage report](../../development/reports/2026-11-09-1211-ui-archive-import-ci.md).
 
 # InOne — текущее состояние проекта
@@ -536,3 +561,20 @@ Do not re-port these mechanisms. See Stage 4 report section 25 for the exact com
 - FRB and OpenMLS workflow trigger corrections are committed and re-fetched. Trigger policy now relies on branch-scoped push path allowlists plus manual dispatch; aggregate PR path triggers removed.
 - Local execution capability is limited to Node.js; Rust/Cargo, Flutter/Dart and Xcode are unavailable. No local test/build is claimed. CI startup blocker unresolved.
 - Stage 4 remains NOT ACCEPTED / BLOCKED; verification accepted 0%; keep native MLS disabled; no merge. Report section 38.
+
+
+## A1 ENGINE TREE AUDIT — 2026-11-12
+
+Detailed result: `development/reports/2026-11-12-A1-engine-tree-drift-audit.md`.
+
+Corrected counts at base SHA `016ba75045412652d362fa8c94ee166bfa371c23`: 45 divergent Git tree entries = 34 blob files + 11 directory entries; 23 archive-only entries = 20 files + 3 directories; 0 POC-only. Earlier shorthand “45 divergent files” was incorrect and is superseded by the detailed report.
+
+Canonical ownership decision:
+- Node.js backend, PostgreSQL schema/migrations, Node stores and backend tests: `inone-development-archive-0.6.0/engine/`.
+- Flutter-connected Rust MLS client and its Cargo path dependency: `inone-engine-poc-0.6.0/mobile-mls/mls-client/` (verified in `mobile/rust/Cargo.toml`).
+- FRB wrapper/generated bindings remain under `mobile/rust/`; exact bridge crate/codegen ownership is deferred to D2.
+- No files copied, merged, renamed or deleted.
+
+Added dependency-free drift audit utility `scripts/audit-engine-tree-drift.mjs` and unit test `scripts/audit-engine-tree-drift.test.mjs`. Commands and expected output are documented in the A1 report. Tests were NOT RUN; do not call them green.
+
+Next: D2 bridge/codegen ownership; then separate Rust parity tasks for OpenMLS failure classification and `messages.editWindowMinutes`; then reconcile MLS contract and add a drift guard. Do not consolidate or delete either engine tree until these steps are reviewed.

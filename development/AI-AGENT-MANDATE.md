@@ -48,3 +48,8 @@ This file is referenced by the repository-root `AGENTS.md`. It records the curre
 ## 4. Current execution ownership
 
 Until the owner explicitly changes this instruction, all investigation, implementation, testing, code review, reporting and repository archival are performed by ChatGPT alone. An external agent is not part of the current plan.
+
+
+## Owner update — 2026-11-12: Claude UI/UX design authorization
+
+The owner has explicitly authorized Claude to work on **UI/UX design deliverables only** for InOne. This is a narrow exception to the single-executor rule, not a transfer of CTO or engineering ownership. Claude may review the approved screen specifications, compare UX patterns with documented industry references, and prepare screen/design assets and a handoff package. ChatGPT remains responsible for backend/API/security architecture, code integration, contract verification, tests, repository acceptance, reports and release decisions. Claude must follow `development/integrations/CLAUDE-UI-DESIGN-HANDOFF-2026-11-12.md`. No credentials or secret values are to be supplied to Claude; design work requires no API keys.

@@ -131,3 +131,18 @@ Every agent reports:
 - confirmation that no local-only required changes remain.
 
 These rules supersede the earlier blanket stop condition in section 2.4 only to the extent that safe repository-native work is possible. All other source-integrity, review, security, and no-merge safeguards remain in force.
+
+
+## 9. Mandatory historical test evidence reuse — owner instruction (2026-11-12)
+
+This rule is mandatory and must not be bypassed by any future ChatGPT session, agent or developer.
+
+1. **Before planning any new tests/checks**, read `development/reports/2026-11-12-historical-test-evidence-baseline.md` and the linked prior acceptance reports. The repository already contains executed green test evidence; do not act as though verification starts from zero.
+2. Compare the exact target source SHA, changed paths, test files, workflow definitions and relevant toolchain/environment against the historical tested SHA before proposing a new run.
+3. Reuse historical evidence for unchanged source/test scope. A new chat/context reset is never, by itself, a reason to repeat code exploration or rerun tests.
+4. Plan/run only justified deltas: changed covered code, changed tests/workflows, materially changed toolchain/environment, missing or contradictory evidence, or a release/acceptance rule explicitly requiring a fresh run on one exact SHA.
+5. Keep the evidence boundary precise: historical PASS applies only to its recorded SHA and scope. It does not automatically certify later code. Unchanged-subtree continuity may be cited only when the path comparison supports it.
+6. Never convert a test file's existence, a proposed command, or a workflow that failed before executing steps into a PASS result.
+7. Every substantial report must be committed to GitHub and linked from `development/SESSION-LOG.md`, `docs/continuity/CURRENT-STATE.md`, and `docs/continuity/NEXT-SESSION.md`. Include exact SHAs, run IDs/links, commands where recorded, outcomes, scope and blockers.
+8. Continue from the last documented handoff. Do not repeatedly perform broad source audits whose conclusions are already in authoritative reports; spend the session advancing the next incomplete task.
+9. Status vocabulary: PASS, FAIL, BLOCKED, NOT RUN, IN PROGRESS. Documentation-only changes must say product tests NOT RUN unless actually executed.
