@@ -75,7 +75,7 @@ const rows = [];
 for (const source of [...sources.values()].sort((a, b) => a.id.localeCompare(b.id))) {
   const relative = source.file?.startsWith('screens/') ? `mobile/assets/ui-approval/${source.file}` : `mobile/assets/ui-approval/${source.file ?? ''}`;
   const html = read(relative);
-  const htmlActions = [...html.matchAll(/\bdata-api\s*=\s*(["'])(.*?)\1/gu)].map((m) => m[2].trim());
+  const htmlActions = [...html.matchAll(/\bdata-api(?:-onload)?\s*=\s*(["'])(.*?)\1/gu)].map((m) => m[2].trim());
   const declared = [...new Set([
     ...operationsFrom(source.manifestApi),
     ...operationsFrom(source.catalogApi),
