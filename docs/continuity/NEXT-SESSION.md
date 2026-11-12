@@ -1,3 +1,19 @@
+# Mandatory continuation rule — historical evidence first (2026-11-12)
+
+Before planning checks or exploring code, read:
+1. [Historical test evidence baseline](../../development/reports/2026-11-12-historical-test-evidence-baseline.md).
+2. [Stage 4 single-executor progress report](../../development/reports/2026-11-11-stage-4-single-executor-progress.md).
+3. [A1 engine tree drift audit](../../development/reports/2026-11-12-A1-engine-tree-drift-audit.md).
+4. Existing Stage 3 and P0 closure reports linked by the historical baseline.
+
+Do not restart completed audits or rerun unchanged tests just because context has reset. Start from the last recorded task/handoff. Compare the target SHA and changed paths with the exact historical tested SHAs. Plan only justified delta checks, environment/toolchain changes, missing evidence, or a formally required fresh exact-SHA acceptance run.
+
+Next development task remains D2: determine actual Flutter FRB bridge ownership/dependency graph and add only a narrow static consistency guard if supported by evidence. No broad rediscovery. Keep PR #45 Stage 4 blocked, native MLS disabled, WBS v1.1 unchanged, and no merge without owner approval.
+
+Every substantial task must create a dated report and update SESSION-LOG, CURRENT-STATE and NEXT-SESSION. Test status must distinguish PASS / FAIL / BLOCKED / NOT RUN / IN PROGRESS.
+
+---
+
 
 
 ---
