@@ -267,7 +267,8 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
     try {
       await _controller.runJavaScript(
         "if (window.InOne) { window.InOne.setThemeMode('auto'); "
-        "window.InOne.setInsets(${padding.top}, ${padding.bottom}); }",
+        "window.InOne.setInsets(${padding.top}, ${padding.bottom}); "
+        "if (typeof window.InOne.runAutoApi === 'function') window.InOne.runAutoApi(); }",
       );
     } catch (_) {
       if (mounted) setState(() => _error = 'Не удалось инициализировать утверждённый экран');
