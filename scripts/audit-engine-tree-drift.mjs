@@ -9,6 +9,8 @@
  *   node scripts/audit-engine-tree-drift.mjs --ref <commit-or-ref>
  */
 import { execFileSync } from 'node:child_process';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 export const ARCHIVE_ROOT = 'inone-development-archive-0.6.0/engine/';
 export const POC_ROOT = 'inone-engine-poc-0.6.0/';
@@ -122,7 +124,7 @@ function main() {
     : toMarkdown(report, ref) + '\n');
 }
 
-if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   try { main(); }
   catch (error) {
     process.stderr.write(`engine tree audit failed: ${error.message}\n`);
