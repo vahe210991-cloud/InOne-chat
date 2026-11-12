@@ -442,18 +442,16 @@ class _RoomTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final key = GlobalKey();
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onOpen,
-      onLongPress: () {
-        final box = key.currentContext?.findRenderObject() as RenderBox?;
+      onLongPressStart: (details) {
+        final box = context.findRenderObject() as RenderBox?;
         if (box == null) return;
         final origin = box.localToGlobal(Offset.zero);
         onLongPress(origin & box.size);
       },
       child: SizedBox(
-        key: key,
         height: 94,
         child: Row(
           children: [
