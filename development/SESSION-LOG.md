@@ -1,3 +1,18 @@
+## 2026-11-12 — Screen API integration and bridge ownership work
+
+- Started all five Beta 1.0 plan workstreams. Reused A1 and historical test evidence; no repeat A1.
+- Added screen API inventory generator/test, Flutter FRB ownership guard/test, backend live HTTP smoke test, and screen API inventory regression test.
+- Source ownership: Node/PostgreSQL backend remains archive engine tree; Flutter FRB crate `mobile/rust` links persistent OpenMLS `mls-client` in POC tree; standalone `mls-bridge` is not the Flutter dependency.
+- Hardened WebView API dispatch with per-screen allowlist. Added tests for cross-screen/unknown-call rejection.
+- Fixed verified-email registration ticket lifecycle: token remains host-only, new registration/logout clears it, registration requires host-held token, then normal login creates authenticated session per D11. Added Dart tests.
+- Backend request smoke test now starts real `createServer` and issues HTTP requests to route handlers. Flutter-to-live-backend E2E is still NOT RUN.
+- New report: `development/reports/2026-11-12-screen-api-integration-and-bridge-ownership.md`.
+- Historical test evidence baseline copied into this branch; exact historical PASS scopes remain unchanged.
+- New scripts/tests are committed but NOT RUN because no authorized runner was available in this session. Do not claim green.
+- Native MLS remains disabled; PR #45 remains Draft/open/unmerged; no WBS changes.
+
+---
+
 ## 2026-11-11 — Conservative repository file cleanup
 
 - Inspected the complete recursive Git tree on the current base (964 entries / 853 files; response not truncated) and grouped exact duplicate blobs by SHA.
