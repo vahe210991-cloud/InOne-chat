@@ -40,6 +40,7 @@ test('screen API inventory covers all approved screens and keeps unconnected cal
   const roomScreen = readFileSync(resolve(repoRoot, 'mobile/assets/ui-approval/screens/chat/CH-01.html'), 'utf8');
   assert.match(bridgeRuntime, /screen:document\.body\.dataset\.screen/u);
   assert.match(bridgeRuntime, /data-api-onload/u);
+  assert.match(bridgeRuntime, /runAutoApi/u);
   assert.match(roomScreen, /data-api-onload="GET \/rooms\/mine"/u);
   assert.ok(report.limitations.some((item) => item.includes('does not prove a live request')));
 });
