@@ -1,3 +1,19 @@
+# Screen API integration update — 2026-11-12
+
+New implementation branch: `feature/beta1-screen-api-integration-2026-11-12`.
+
+- A1 remains complete and is reused, not repeated.
+- B1 inventory generator and tests added: `scripts/audit-screen-api-contracts.mjs`.
+- D1/D2 ownership decision: canonical backend = `inone-development-archive-0.6.0/engine`; Flutter FRB = `mobile/rust`; canonical persistent MLS dependency = `inone-engine-poc-0.6.0/mobile-mls/mls-client`; standalone `mls-bridge` is not the Flutter dependency.
+- B2/B3 source route reconciliation and backend HTTP smoke test added. Only SC-01/02/03/04/11/12 currently have explicit screen-scoped API dispatch. Most other screen APIs remain backend-only or UI-only and must not be represented as connected.
+- C2/C3 first vertical slice: host-only registration ticket + automatic authenticated login; per-screen WebView API allowlist.
+- Report: [screen API integration and bridge ownership](../../development/reports/2026-11-12-screen-api-integration-and-bridge-ownership.md).
+- Historical verification: [baseline](../../development/reports/2026-11-12-historical-test-evidence-baseline.md).
+- New scripts and tests are NOT RUN; existing P0/Stage 3 historical PASS results apply only to their exact recorded SHAs.
+- Native MLS stays disabled. Stage 4 remains NOT ACCEPTED / BLOCKED. No merge or WBS change.
+
+---
+
 > **UI SOURCE IMPORT UPDATE — 2026-11-09 12:11 (UTC+3):** Owner-provided `Ui.zip` is now present on the PR #36 task branch at `mobile/assets/ui-approval/`. CI run [#42586579987](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42586579987) passed all 15 steps: archive SHA verification, nested package import, 73-screen gallery check, Flutter pub get/analyze/tests, Android preview APK build and artifact upload. Run event SHA: `478cad39bc39e8002e55293e3015e72b68e26c8c`; import bot advanced branch head to `cb09a4058719576df6d589f1f8b59be517b592b5`. Remote tree contains 31 screen HTML files, 32 HTML including index, and 5 WOFF2 fonts. PR #36 remains draft/open/unmerged. Runtime WebView rendering, live bridge/API integration and device acceptance are NOT YET VERIFIED. WBS v1.1 unchanged. See [stage report](../../development/reports/2026-11-09-1211-ui-archive-import-ci.md).
 
 # InOne — текущее состояние проекта
