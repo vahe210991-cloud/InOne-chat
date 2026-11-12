@@ -9,6 +9,6 @@ var a=e.target.closest('[data-api]');if(a){var f=a.closest('[data-form]'),b={},o
 if(f)f.querySelectorAll('input').forEach(function(i){b[i.name]=i.value;if(i.required&&!i.value){ok=false;i.style.borderColor='var(--danger)'}});
 var er=f&&f.querySelector('.err');if(!ok){if(er){er.textContent='Заполните обязательные поля';er.classList.add('on')}return}
 if(er)er.classList.remove('on');emit('api',{call:a.dataset.api,body:b})}});
-window.InOne={emit:emit,setTheme:setTheme,setData:function(o){Object.keys(o||{}).forEach(function(k){document.querySelectorAll('[data-bind="'+k+'"]') .forEach(function(e){e.textContent=String(o[k]??'')})})},runAutoApi:function(){document.querySelectorAll('[data-api-onload]').forEach(function(e){emit('api',{call:e.dataset.apiOnload,body:{}})})}};
+window.InOne={emit:emit,setTheme:setTheme,setThemeMode:function(mode){setTheme(mode==='dark'?'dark':'light')},setInsets:function(top,bottom){document.documentElement.style.setProperty('--inset-top',Number(top||0)+'px');document.documentElement.style.setProperty('--inset-bottom',Number(bottom||0)+'px')},setData:function(o){Object.keys(o||{}).forEach(function(k){document.querySelectorAll('[data-bind="'+k+'"]') .forEach(function(e){e.textContent=String(o[k]??'')})})},runAutoApi:function(){document.querySelectorAll('[data-api-onload]').forEach(function(e){emit('api',{call:e.dataset.apiOnload,body:{}})})}};
 // Flutter может вернуть ошибку: InOne.showError('Неверный пароль')
 window.InOne.showError=function(t){var e=document.querySelector('.err');if(e){e.textContent=t;e.classList.add('on')}}})();
