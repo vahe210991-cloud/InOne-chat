@@ -44,7 +44,7 @@ test('screen API inventory covers all approved screens and keeps unconnected cal
   assert.match(bridgeRuntime, /runAutoApi/u);
   assert.match(bridgeRuntime, /setThemeMode:function/u);
   assert.match(bridgeRuntime, /setInsets:function/u);
-  assert.match(flutterHost, /window\\.InOne\\.runAutoApi/u);
+  assert.match(flutterHost, /window\.InOne\.runAutoApi/u);
   assert.match(roomScreen, /data-api-onload="GET \/rooms\/mine"/u);
   assert.ok(report.limitations.some((item) => item.includes('does not prove a live request')));
 });
