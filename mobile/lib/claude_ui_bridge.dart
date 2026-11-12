@@ -107,6 +107,7 @@ const claudeScreenApiCalls = <String, Set<String>>{
   'SC-04': {'POST /register'},
   'SC-11': {'POST /login'},
   'SC-12': {'POST /logout'},
+  'CH-01': {'GET /rooms/mine'},
 };
 
 bool claudeScreenAllowsApiCall(String screenId, String call) =>
