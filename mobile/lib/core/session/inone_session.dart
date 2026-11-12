@@ -219,9 +219,14 @@ class InOneSession extends ChangeNotifier {
     return safeResult;
   }
 
-  Future<Map<String, dynamic>> startEmailRegistration(String email) =>
-      _client.post('/register/email',
-          authenticated: false, body: {'email': email.trim()});
+  Future<Map<String, dynamic>> startEmailRegistration(String email) async {
+    _registrationToken = null;
+    return _client.post(
+      '/register/email',
+      authenticated: false,
+      body: {'email': email.trim()},
+    );
+  }
 
   Future<Map<String, dynamic>> confirmEmailRegistration({
     required String email,
@@ -273,7 +278,16 @@ class InOneSession extends ChangeNotifier {
         },
       );
       _registrationToken = null;
-      return result;
+      // Beta 1.0 owner decision D11: successful registration proceeds to an
+      // authenticated session. The registration endpoint itself returns no
+      // access token, so authenticate through the normal login flow.
+      await login(email: email, password: password);
+      return <String, dynamic>{
+        'ok': true,
+        'userId': result['userId'],
+        'nickname': result['nickname'],
+        'verificationLevel': result['verificationLevel'],
+      };
     } catch (_) {
       // Keep the ticket for a retry after transient transport/server errors.
       rethrow;
