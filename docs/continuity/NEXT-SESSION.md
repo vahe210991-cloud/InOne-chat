@@ -11,7 +11,7 @@ Continue from branch `feature/beta1-screen-api-integration-2026-11-12`; do not r
 Immediate steps:
 1. On an authorized Node runner, execute `node scripts/audit-screen-api-contracts.mjs`, `node scripts/check-mobile-bridge-ownership.mjs`, and focused backend tests. Record exact SHA and output.
 2. Run Flutter analyze/tests, especially registration ticket and screen-scoped bridge tests.
-3. Implement CH-01 typed `GET /rooms/mine` vertical slice with response validation and actual HTML data binding.
+3. Run focused CH-01 tests and Flutter analyze/tests; the typed repository, response validation, ready-gated bridge dispatch and safe HTML data binding are already implemented.
 4. Build Flutter-to-live-Node integration test so a bridge-triggered request is observable at backend receipt. Do not claim all 31 screens are connected until each screen's API path is dispatched and tested.
 5. Continue route-by-route for organization requests, recovery/provider auth, search, push and MLS chat with explicit DTO and authorization checks.
 
