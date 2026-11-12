@@ -150,7 +150,7 @@ class _InOneChatsScreenState extends State<InOneChatsScreen> {
 
   Future<void> _openRoomActions(InOneRoom room, Rect anchor) async {
     final screen = MediaQuery.sizeOf(context);
-    final menuHeight = 310.0;
+    final menuHeight = screen.height * .54 < 420 ? screen.height * .54 : 420.0;
     final menuWidth = (screen.width - 28).clamp(260.0, 340.0).toDouble();
     final third = screen.height / 3;
     double top;
@@ -261,7 +261,7 @@ class _InOneChatsScreenState extends State<InOneChatsScreen> {
           break;
       }
     });
-    if (action == 'unread') {
+    if (action == 'pin' || action == 'unpin') {\n      _notice('Закрепление пока действует только в этом сеансе.');\n    }\n    if (action == 'unread') {
       _notice('Отметка непрочитанного пока не поддерживается backend.');
     }
     if (action == 'archive') {
@@ -372,7 +372,7 @@ class _InOneChatsScreenState extends State<InOneChatsScreen> {
                 const Text('Последние сообщения',
                     style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800, color: _ink)),
                 const Spacer(),
-                const Text('Сначала новые',
+                const Text('Ваши переписки',
                     style: TextStyle(color: _green, fontWeight: FontWeight.w700)),
               ]),
             ),
@@ -445,7 +445,7 @@ class _RoomTile extends StatelessWidget {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onOpen,
-      onLongPressStart: (details) {
+      onLongPressStart: (_) {
         final box = context.findRenderObject() as RenderBox?;
         if (box == null) return;
         final origin = box.localToGlobal(Offset.zero);
