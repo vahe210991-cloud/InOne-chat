@@ -527,3 +527,16 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Owner explicitly authorized Claude for UI/UX design deliverables only. ChatGPT remains CTO/engineering integration and acceptance owner. No API keys or secret values are shared; none are needed for design.
 - No application source code, runtime configuration, secret, or CI billing setting changed. No server/build/test was run. This audit is source/documentation review only; Stage 4 remains NOT ACCEPTED / BLOCKED; native MLS remains disabled; WBS v1.1 percentages unchanged.
 - Working branch: `docs/beta1-system-audit-ui-gap-plan-2026-11-12`; documentation commit before continuity updates: `60a61aa64f1ddf932a7e8b683259b4fd445970ce`.
+
+
+## 2026-11-12 — A1 engine source-tree drift audit completed
+
+- Audited exact Git tree at base commit `016ba75045412652d362fa8c94ee166bfa371c23`.
+- Corrected preliminary count: 45 differing tree entries comprise 34 divergent blob files + 11 directory tree entries. Archive-only = 20 files + 3 directories; POC-only = 0.
+- Reviewed backend package/bootstrap/migration/rules/schema/server/stores; reviewed Rust MLS client/bridge/dependencies/targeted tests; verified `mobile/rust/Cargo.toml` points to POC MLS client.
+- Set canonical ownership: Node backend/schema/migrations/tests in archive engine A; Flutter-connected Rust MLS client in POC engine B. FRB bridge/codegen remains under `mobile/rust/` pending D2.
+- Added detailed report `development/reports/2026-11-12-A1-engine-tree-drift-audit.md`.
+- Added no-dependency drift script `scripts/audit-engine-tree-drift.mjs` and unit tests `scripts/audit-engine-tree-drift.test.mjs`.
+- Updated preliminary system audit with corrected count. No source files were merged, copied, renamed or deleted.
+- Tests/build/server execution: NOT RUN. No green status claimed. A1 source audit completed; D2 is next.
+- Working documentation branch: `docs/beta1-system-audit-ui-gap-plan-2026-11-12`.
