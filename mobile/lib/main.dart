@@ -9,6 +9,7 @@ import 'approved_screens.dart';
 import 'claude_ui_bridge.dart';
 import 'claude_screen_catalog.dart';
 import 'core/data/inone_repositories.dart';
+import 'chats_screen.dart';
 import 'core/data/inone_profile.dart';
 import 'core/data/profile_load_status.dart';
 import 'core/data/profile_ui_bridge.dart';
@@ -73,6 +74,7 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
 
   bool get _isApproved => _selectedKey.startsWith('approved:');
   bool get _isHandoff => _selectedKey.startsWith('handoff:');
+  bool get _isNativeChats => _selectedKey == 'handoff:CH-01';
   bool get _isPersonalProfile =>
       _isApproved && _selectedId.startsWith('personal-profile-');
   String get _selectedId => _selectedKey.split(':').last;
@@ -469,9 +471,17 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
     } else if (key.startsWith('handoff:')) {
       final screen = _selectedHandoffScreen;
       if (screen == null) return;
-      _currentSource = 'handoff';
-      _pageReady = false;
-      unawaited(_controller.loadFlutterAsset(screen.assetPath));
+      if (screen.id == 'CH-01') {
+        // CH-01 is now a native Flutter screen backed by GET /rooms/mine.
+        _currentSource = 'native';
+        _pageReady = true;
+        _loading = false;
+        _error = null;
+      } else {
+        _currentSource = 'handoff';
+        _pageReady = false;
+        unawaited(_controller.loadFlutterAsset(screen.assetPath));
+      }
     } else {
       if (_currentSource != 'test') {
         unawaited(_loadTestGallery());
@@ -638,7 +648,14 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) {
+    if (_isNativeChats) {
+      return InOneChatsScreen(
+        repositories: _repositories,
+        session: _session,
+      );
+    }
+    return Scaffold(
         appBar: AppBar(
           title: Text(_selectedTitle, maxLines: 1, overflow: TextOverflow.ellipsis),
           actions: [
@@ -698,6 +715,7 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
           ),
         ),
       );
+  }
 }
 
 String _stageLabel(ScreenStage stage) => switch (stage) {
