@@ -566,7 +566,7 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
         final rooms = await _repositories.myRooms();
         final roomText = rooms.isEmpty
             ? 'Пока нет чатов'
-            : rooms.map((room) => '${room.displayName} · ${room.role}').join('\\n');
+            : rooms.map((room) => '${room.displayName} · ${room.role}').join('\n');
         await _setClaudeScreenData({'roomsText': roomText});
       } else {
         await _session.request(
