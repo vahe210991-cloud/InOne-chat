@@ -562,6 +562,12 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
         );
       } else if (call == 'POST /logout') {
         await _session.logout();
+      } else if (call == 'GET /rooms/mine') {
+        final rooms = await _repositories.myRooms();
+        final roomText = rooms.isEmpty
+            ? 'Пока нет чатов'
+            : rooms.map((room) => '${room.displayName} · ${room.role}').join('\\n');
+        await _setClaudeScreenData({'roomsText': roomText});
       } else {
         await _session.request(
           route.method,
@@ -587,6 +593,20 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
     } catch (_) {
       // Never forward raw exceptions or request bodies to WebView/UI logs.
       await _setClaudeScreenState('error', 'Не удалось выполнить запрос. Проверьте данные и соединение.');
+    }
+  }
+
+  Future<void> _setClaudeScreenData(Map<String, String> values) async {
+    if (!mounted || !_pageReady) return;
+    final encoded = jsonEncode(values);
+    try {
+      await _controller.runJavaScript('''
+        if (window.InOne && typeof window.InOne.setData === 'function') {
+          window.InOne.setData($encoded);
+        }
+      ''');
+    } catch (_) {
+      // The screen may have been replaced while the response was in flight.
     }
   }
 
