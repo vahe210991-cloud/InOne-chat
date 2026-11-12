@@ -75,7 +75,7 @@ Current screen-level integration is narrower:
 
 Before this work, the Flutter host accepted any operation from the global bridge allowlist from any WebView screen. It also ignored the JSON result for generic route calls. A screen-scoped allowlist was added in `mobile/lib/claude_ui_bridge.dart` and enforced in `mobile/lib/main.dart`. Unknown screens and cross-screen API calls now fail closed. Tests cover this boundary.
 
-This intentionally reduces accidental reachability. It does not claim all 31 screens are now integrated.
+This intentionally reduces accidental reachability. It does not claim all 31 screens are now integrated. A login response without an authenticated token pair now remains on SC-11 in a waiting state instead of navigating into the authenticated menu. The full approval claim/pollSecret lifecycle is still not wired.
 
 ## 5. C2/C3 — first typed Flutter vertical slice: verified email registration
 
