@@ -250,10 +250,13 @@ class _InOneChatsScreenState extends State<InOneChatsScreen> {
       switch (action) {
         case 'pin':
           _pinned.add(room.roomId);
+          break;
         case 'unpin':
           _pinned.remove(room.roomId);
+          break;
         case 'archive':
           _archived.add(room.roomId);
+          break;
         case 'unread':
           break;
       }
@@ -711,15 +714,23 @@ class _InOneChatSearchPageState extends State<_InOneChatSearchPage> {
   }
 }
 
-class _SearchSection extends StatelessWidget {
+class _SearchSection extends StatefulWidget {
   const _SearchSection({required this.title, required this.rooms});
   final String title;
   final List<InOneRoom> rooms;
 
   @override
+  State<_SearchSection> createState() => _SearchSectionState();
+}
+
+class _SearchSectionState extends State<_SearchSection> {
+  bool _showAll = false;
+
+  @override
   Widget build(BuildContext context) {
+    final rooms = widget.rooms;
     if (rooms.isEmpty) return const SizedBox.shrink();
-    final visible = rooms.take(3).toList();
+    final visible = _showAll ? rooms : rooms.take(3).toList();
     return Padding(
       padding: const EdgeInsets.only(bottom: 18),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -728,17 +739,8 @@ class _SearchSection extends StatelessWidget {
           const Spacer(),
           if (rooms.length > 3)
             TextButton(
-              onPressed: () => showModalBottomSheet<void>(
-                context: context,
-                isScrollControlled: true,
-                builder: (_) => SafeArea(
-                  child: ListView(
-                    shrinkWrap: true,
-                    children: rooms.map((room) => ListTile(title: Text(room.displayName))).toList(),
-                  ),
-                ),
-              ),
-              child: const Text('Показать все'),
+              onPressed: () => setState(() => _showAll = !_showAll),
+              child: Text(_showAll ? 'Свернуть' : 'Показать все'),
             ),
         ]),
         ...visible.map((room) => ListTile(
