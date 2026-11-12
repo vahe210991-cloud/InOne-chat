@@ -1,3 +1,14 @@
+
+
+---
+
+## LATEST AUDIT UPDATE — 2026-11-12
+
+A source-level Beta 1.0 system/service inventory and cross-screen gap plan was added at `development/reports/2026-11-12-inone-system-audit-and-gap-plan.md`. Claude's scoped UI design handoff is at `development/integrations/CLAUDE-UI-DESIGN-HANDOFF-2026-11-12.md`.
+
+Key verified findings on audited SHA `016ba75045412652d362fa8c94ee166bfa371c23`: no independently deployed microservices identified; backend is a modular Node.js monolith. Two engine source trees have 257 common paths, 212 identical blobs, 45 divergent common paths and 23 archive-only paths. Mobile inventory has 31 stable screen IDs (24 manifest + 7 catalog). Current bridge allowlist contains ten operations; numerous screen actions still need typed host/repository integration. Stage 4 remains NOT ACCEPTED / BLOCKED; native MLS stays disabled. WBS v1.1 percentages remain unchanged.
+
+Owner-authorized scope update: Claude may produce UI/UX design deliverables only. ChatGPT remains CTO and technical integration/acceptance owner. No API key or secret values are shared with Claude.
 > **UI SOURCE IMPORT UPDATE — 2026-11-09 12:11 (UTC+3):** Owner-provided `Ui.zip` is now present on the PR #36 task branch at `mobile/assets/ui-approval/`. CI run [#42586579987](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42586579987) passed all 15 steps: archive SHA verification, nested package import, 73-screen gallery check, Flutter pub get/analyze/tests, Android preview APK build and artifact upload. Run event SHA: `478cad39bc39e8002e55293e3015e72b68e26c8c`; import bot advanced branch head to `cb09a4058719576df6d589f1f8b59be517b592b5`. Remote tree contains 31 screen HTML files, 32 HTML including index, and 5 WOFF2 fonts. PR #36 remains draft/open/unmerged. Runtime WebView rendering, live bridge/API integration and device acceptance are NOT YET VERIFIED. WBS v1.1 unchanged. See [stage report](../../development/reports/2026-11-09-1211-ui-archive-import-ci.md).
 
 # InOne — текущее состояние проекта
