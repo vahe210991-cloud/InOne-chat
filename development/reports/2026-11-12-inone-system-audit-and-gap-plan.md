@@ -348,3 +348,46 @@ Every check has one of: PASS, FAIL, NOT RUN, BLOCKED. If no executable runtime e
 - `mobile/API-CONTRACTS-BETA-1.md` — canonical Beta 1.0 API matrix.
 - `development/integrations/FLUTTER-SCREEN-HANDOFF-FOR-CLAUDE.md` — UI implementation handoff constraints.
 - `docs/continuity/2026-11-12-development-environment-constraints.md` — workstation and billing constraints.
+
+
+## 13. Screen-by-screen UX benchmark review (source-level)
+
+The following review covers every one of the 31 stable IDs. It compares the declared screen purpose/actions with the cited industry patterns and records what InOne should preserve or avoid. This is a requirements/design review from the manifest, catalog and current HTML source; it is not a visual QA pass on a running device.
+
+| ID | UX review against benchmark | InOne decision / gap to resolve |
+|---|---|---|
+| SC-01 | Teams/Slack favor fast return to recent work, but secure enterprise chat must make account/device context clear before entry. | Keep sign-in minimal; clearly distinguish password vs provider paths; show privacy-safe rate/error states. Validate device ID binding and post-login routing. |
+| SC-02 | Standard account creation should explain why email is collected and what happens next. | Show email destination, resend timing and anti-enumeration-safe copy; prevent duplicate-account disclosure. |
+| SC-03 | One-time-code flows need clear expiry, resend cooldown and masked destination. | Add explicit expiry/cooldown/attempt feedback without exposing whether an account exists; confirm registrationToken remains host-only. |
+| SC-04 | Enterprise onboarding benefits from concise identity fields and transparent organization/phone requirements. | Explain phone is required but SMS confirmation is not currently available; do not show a false verified-phone state. |
+| SC-05 | Provider login should use native system authentication rather than embedded credential forms. | UI can present Google/Apple choices; actual native SDK callback, nonce and proof exchange remain BLOCKED until typed host/platform integration. |
+| SC-06 | Provider registration should avoid asking users to re-enter provider-owned data unnecessarily. | Ask only for required InOne nickname; show provider identity context without exposing raw provider tokens to WebView. |
+| SC-07 | Recovery UX must balance urgency and account-enumeration privacy. | Keep generic response copy, distinguish link/code paths only after safe server response; expose retryAt for 429. |
+| SC-08 | Deep-link confirmation needs an explicit destination and clear trust boundary. | Add link-expired/invalid/offline states; confirm GET preview is non-mutating and POST consumes token. |
+| SC-09 | Password reset should clearly state policy effects (sessions/devices/recovery delay). | Explain 48-hour recovery policy and PIN requirements accurately; do not imply instant recovery if server policy delays it. |
+| SC-10 | Security cancellation screens must make the event being cancelled unambiguous. | Keep recovery cancellation and pending-device admission cancellation separate in copy and typed action selection. |
+| SC-11 | Device approval is a trust decision; WhatsApp's multi-device model shows per-device identity/lifecycle is foundational. | Show requesting device identity, time/context and approve/deny outcomes; polling/claim/pollSecret flow is not yet wired end-to-end. |
+| SC-12 | Logout should be explicit and predictable on shared devices. | Confirmation/cancel behavior and local cleanup must be clear; do not auto-resume after explicit logout, even if remote logout fails. |
+| SC-00 | Teams organizes chats/channels and app destinations with clear navigation; Slack separates workspace navigation from user preferences. | Main menu should group chats, groups, organizations, profile and settings; admin entry must be role-gated and server-authorized. |
+| RQ-01 | Enterprise onboarding usually communicates organization identity and required proof documents before submission. | Clarify organization/legal identity fields, consent and review expectation; POST contract must supply validation/result DTO. |
+| RQ-02 | File upload UX should show type, size, progress, retry and successful attachment state. | Current HTML exposes select/upload/download actions; native picker/download adapter is absent. Add MIME/5 MB validation and safe error/retry states. |
+| RQ-03 | Teams-style workspace context makes organization membership status visible and actionable. | Keep pending/approved/rejected states, but replace demo organization rows with API data; include empty state and request detail navigation. |
+| RQ-04 | Detail pages should make status, timeline and evidence documents easy to inspect. | Bind only authorized applicant/staff data; secure document download and audited access still need host integration. |
+| PS-01 | Enterprise admin queues need filters, status grouping and clear reviewer workload. | Keep status filters; add pagination/empty/error states only where server contract supports them; staff-only route guard required. |
+| PS-02 | Review detail should separate read-only evidence from decision controls. | Show documents and audit context; decision action only for platform owner, not generic admin. Handle 403/409. |
+| PS-03 | High-impact admin actions need explicit confirmation and irreversible-action clarity. | Separate approve/reject confirmation; show reason input only if server contract supports it; platform-owner authorization must be server enforced. |
+| SR-01 | Teams search supports people/messages/files and filters; Slack search is context-aware. | Beta 1.0 screen is people search only: keep it focused, privacy-safe and typed; "Написать" requires verified personal-room creation contract, not merely search success. |
+| ST-01 | Slack's per-conversation notification preferences and mobile overrides are more useful than a single global toggle. | Current backend route only registers/removes current-device push token; do not design per-channel rules as functional until APIs/data model exist. Show OS permission/provider state accurately. |
+| ST-02 | Enterprise apps distinguish service availability from account/session state. | Use public/private config fields only as allowed; avoid demo data and avoid treating config as live health unless the backend contract says so. |
+| ST-03 | Consistent global banners reduce confusion across chat, search and settings. | Treat as shared state component, not a separate API feature; standardize offline, maintenance, unavailable, rate, error and session-expired semantics. |
+| CH-01 | Teams combines favorites/recent chats/unread quick views; Slack supports focused channel navigation. | Keep list scannable with room type, title, latest activity and unread only if supplied by backend; filters/favorites are blocked until supported by API/data. |
+| CH-02 | WhatsApp multi-device demonstrates secure per-device identity and encrypted state sync; Teams/Slack show conversation context and search. | Prioritize message chronology, sender/time, delivery/retry state and room identity. MLS decrypt/persist/ACK ordering must be invisible but reliable; no plaintext fallback. |
+| GR-01 | Teams teams/channels organize people and work by project/topic with membership-scoped visibility. | Make group vs channel semantics, organization context, visibility and membership clear; do not imply public/private semantics unsupported by current room contract. |
+| GR-02 | Group creation should disclose who will be included and the visibility/organization context. | Add member selection and prerequisites only from verified API capabilities; idempotent submit/loading/error states required. |
+| GR-04 | Mature collaboration apps expose settings according to role/capability, not generic admin status. | Every control must map to exact capability and route; disable/hide only as UX, backend remains authoritative. |
+| OR-01 | Teams workspace/team context helps users understand which organization owns the conversation. | Show only memberships and roles returned by `/orgs/mine`; avoid a client-only active-org filter if backend does not support it. |
+| PR-01 | Enterprise profile pages distinguish identity, account security and editable fields. | Current verified API is GET /profile; keep profile read-only until update contract exists. Do not show editable controls that cannot persist. |
+
+### Screen review acceptance note
+
+Before Claude's final design handoff, compare the exact current HTML screen and its stable ID against this table. If the design changes an action, field, transition or state, update the manifest and API integration inventory together. A UI control with no verified backend contract must be explicitly labelled visual-only / disabled / BLOCKED and must not simulate a successful operation.
