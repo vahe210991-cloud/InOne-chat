@@ -532,6 +532,7 @@ class InOneSession extends ChangeNotifier {
   }
 
   Future<void> _logoutOnce() async {
+    _registrationToken = null;
     final login = _loginInFlight;
     if (login != null) {
       try {
