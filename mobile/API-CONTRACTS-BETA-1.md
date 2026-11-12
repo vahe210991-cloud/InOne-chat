@@ -29,7 +29,7 @@ Status:
 | SC-01 | `POST /login` | Email/password + device metadata; returns access and refresh tokens, expiry metadata | Backend + host; verify complete error mapping |
 | SC-02 | `POST /register/email` | `202 {ok:true}`; same response for existing/non-existing email; rate limited | Backend + host |
 | SC-03 | `POST /register/email/confirm` | `200 {registrationToken}`; invalid/expired/locked code returns 403/410 | Backend + host; response navigation is host-driven |
-| SC-04 | `POST /register` | Email, registrationToken, password, nickname, optional/required phone per server config | Backend + host; owner policy says phone required, SMS confirmation not yet wired |
+| SC-04 | `POST /register` | Email, registrationToken, password, nickname, optional/required phone per server config | Backend + host; one-time registration ticket is held only in Flutter session memory; successful registration follows with normal login per D11. SMS confirmation not yet wired |
 | SC-05 | `POST /auth/nonce` → `POST /auth/provider/verify` | One-use nonce (10 min); provider google/apple; result is linked proof or registration ticket | Backend only; native provider callback and typed host flow pending |
 | SC-06 | `POST /register/provider` | One-use provider ticket + nickname; returns registration/session result | Backend only; typed host flow pending |
 | SC-07 | `POST /recovery/start` | Privacy-preserving `202 {ok:true}`; rate limit returns 429 + retryAt | Backend only; typed host flow and channel-specific copy pending |
@@ -49,7 +49,7 @@ Status:
 | ST-01 | `PUT /devices/me/push`; `DELETE /devices/me/push` | Authenticated current-device push-token lifecycle; feature flag applies | Backend only; native permission/token registration pending |
 | ST-02 | `GET /config/public`; `GET /config` | Public config unauthenticated; private config authenticated | Backend + host |
 | ST-03 | Shared state and public config | No separate screen-specific mutation | Client/shared host state |
-| CH-01 | `GET /rooms/mine` | Authenticated user's rooms | Backend + host; screen data binding pending |
+| CH-01 | `GET /rooms/mine` | Authenticated user's rooms | Screen-scoped Flutter dispatch + typed repository/response validation + safe HTML data binding implemented; new-branch tests NOT RUN and live Flutter→Node E2E NOT RUN |
 | CH-02 | `GET /rooms/:id/events`; `GET /mls/groups/:id/commits?since=N`; `GET /mls/welcomes`; `POST /mls/welcomes/:id/ack`; `POST /mls/groups/:id/messages`; `GET /sync?since=N&signal_since=M`; `POST /rooms/:id/read` | Room event history is ciphertext only; MLS commits/messages are epoch-checked; membership checked | Backend + protocol integration pending; no WebView direct send |
 | GR-01 | `GET /rooms/mine` | Authenticated user's rooms/groups | Backend + host; group-specific presentation pending |
 | GR-02 | `POST /rooms` | `roomId`, `kind`, optional `name`, members and org/feature gates | Backend only; typed create form and validation pending |
