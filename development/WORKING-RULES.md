@@ -144,3 +144,16 @@ These rules supersede the earlier blanket stop condition in section 2.4 only to 
 7. Never expose registration tickets, access/refresh tokens, MLS keys, or private response fields to WebView. One-time credentials remain in host memory and are sent only by the trusted host client.
 8. Do not widen a global route allowlist without screen-scoped authorization, DTO validation and negative tests.
 9. Do not route plaintext message sends through legacy room-event APIs. CH-02 uses the MLS protocol path; backend ciphertext remains opaque.
+
+
+## 11. Mandatory historical test evidence reuse
+
+This owner instruction is mandatory for every future ChatGPT session and contributor.
+
+1. Before planning checks, read `development/reports/2026-11-12-historical-test-evidence-baseline.md` and the linked P0/Stage 3 acceptance reports.
+2. Compare the exact target SHA, changed source paths, test files, workflows and material toolchain changes against the historical tested SHAs.
+3. Reuse historical evidence for unchanged source/test scope. A context reset is never a reason by itself to repeat broad code exploration or rerun unchanged tests.
+4. Rerun only justified deltas, missing/contradictory evidence, material environment changes, or an explicit exact-SHA release acceptance gate.
+5. A test file, proposed command, or workflow that failed before steps is never PASS.
+6. Every substantial task creates a dated report and updates SESSION-LOG, CURRENT-STATE and NEXT-SESSION with exact SHAs, run IDs, outcomes, scope and blockers.
+7. Use PASS / FAIL / BLOCKED / NOT RUN / IN PROGRESS precisely. Historical PASS applies only to its recorded SHA and scope.
