@@ -151,22 +151,22 @@ class _InOneChatsScreenState extends State<InOneChatsScreen> {
   Future<void> _openRoomActions(InOneRoom room, Rect anchor) async {
     final screen = MediaQuery.sizeOf(context);
     final menuHeight = 310.0;
-    final menuWidth = (screen.width - 28).clamp(260.0, 340.0);
+    final menuWidth = (screen.width - 28).clamp(260.0, 340.0).toDouble();
     final third = screen.height / 3;
     double top;
     if (anchor.top < third) {
-      top = (anchor.bottom + 8).clamp(12.0, screen.height - menuHeight - 12);
+      top = (anchor.bottom + 8).clamp(12.0, screen.height - menuHeight - 12).toDouble();
     } else if (anchor.bottom > screen.height - third) {
-      top = (anchor.top - menuHeight - 8).clamp(12.0, screen.height - menuHeight - 12);
+      top = (anchor.top - menuHeight - 8).clamp(12.0, screen.height - menuHeight - 12).toDouble();
     } else {
-      top = (anchor.center.dy - menuHeight / 2).clamp(12.0, screen.height - menuHeight - 12);
+      top = (anchor.center.dy - menuHeight / 2).clamp(12.0, screen.height - menuHeight - 12).toDouble();
     }
-    final left = (anchor.right - menuWidth).clamp(12.0, screen.width - menuWidth - 12);
+    final left = (anchor.right - menuWidth).clamp(12.0, screen.width - menuWidth - 12).toDouble();
     final action = await showGeneralDialog<String>(
       context: context,
       barrierLabel: 'Действия с чатом',
       barrierDismissible: true,
-      barrierColor: Colors.black.withValues(alpha: .08),
+      barrierColor: Colors.black.withOpacity(.08),
       transitionDuration: const Duration(milliseconds: 220),
       pageBuilder: (_, __, ___) => Stack(children: [
         Positioned(
@@ -176,7 +176,7 @@ class _InOneChatsScreenState extends State<InOneChatsScreen> {
           child: Material(
             color: Colors.white,
             elevation: 14,
-            shadowColor: Colors.black.withValues(alpha: .12),
+            shadowColor: Colors.black.withOpacity(.12),
             borderRadius: BorderRadius.circular(22),
             clipBehavior: Clip.antiAlias,
             child: ConstrainedBox(
