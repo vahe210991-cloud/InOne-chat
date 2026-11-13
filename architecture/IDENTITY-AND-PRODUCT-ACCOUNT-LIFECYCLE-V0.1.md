@@ -24,6 +24,18 @@ Every new registration MUST collect:
 
 The central Identity service stores both contact points. During the initial no-aggregator phase they are **unverified claims**, not proof that the registrant controls the phone number or mailbox. The system MUST NOT label them verified or use them alone for password recovery, account takeover, sensitive approvals or identity proof.
 
+### 2.1 Owner-approved contact reservation — Option A
+
+**Decision: APPROVED by the owner on 2026-11-13.** Phone and email are uniquely reserved across the central Identity service. Each normalized phone number and each normalized email address may have only one active claim.
+
+The first successful registration reserves the normalized contact. A later registration attempting to use an already-reserved contact is blocked with a generic conflict response; the system must not disclose the existing account or claimant. The uniqueness check must be atomic and database-enforced to prevent simultaneous registrations from both succeeding.
+
+Because contacts remain unverified while SMS/email delivery providers are unavailable, reservation is not proof that the registrant controls the contact. A person may reserve another person's contact first; this risk is explicitly accepted by the owner as part of Option A.
+
+Conflicts are handled manually through a restricted support/security procedure. No automatic transfer, account merge or identity linking is allowed. An authorized operator may reassign/release a claim only after reviewing the case and recording the evidence considered, decision, actor/reviewer, affected identity/contact references, before/after state, reason and timestamps. If evidence is insufficient or ambiguous, keep the reservation unchanged and escalate. Never reveal the existing claimant's identity or full contact data to the requester.
+
+Normalization must be consistent and conservative: phone numbers use E.164 where possible; email lookup normalization preserves the original display value and must not apply provider-specific transformations such as stripping dots or plus-tags.
+
 A registration is initiated through one of two entry points:
 1. Personal registration from InOne.
 2. Work registration from InOne Business, normally through an organization invitation.
