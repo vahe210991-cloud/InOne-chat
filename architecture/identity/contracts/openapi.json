@@ -163,7 +163,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GenericAccepted"
+                  "$ref": "#/components/schemas/RegistrationAccepted"
                 }
               }
             }
@@ -227,7 +227,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GenericAccepted"
+                  "$ref": "#/components/schemas/ProvisioningStatus"
                 }
               }
             }
@@ -270,7 +270,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GenericAccepted"
+                  "$ref": "#/components/schemas/CurrentIdentity"
                 }
               }
             }
@@ -313,7 +313,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GenericAccepted"
+                  "$ref": "#/components/schemas/ContactList"
                 }
               }
             }
@@ -357,7 +357,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GenericAccepted"
+                  "$ref": "#/components/schemas/Contact"
                 }
               }
             }
@@ -469,7 +469,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GenericAccepted"
+                  "$ref": "#/components/schemas/DeviceList"
                 }
               }
             }
@@ -586,7 +586,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GenericAccepted"
+                  "$ref": "#/components/schemas/RecoveryStarted"
                 }
               }
             }
@@ -635,7 +635,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GenericAccepted"
+                  "$ref": "#/components/schemas/RecoveryGrantResponse"
                 }
               }
             }
@@ -688,7 +688,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GenericAccepted"
+                  "$ref": "#/components/schemas/RecoveryCompleted"
                 }
               }
             }
@@ -741,7 +741,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GenericAccepted"
+                  "$ref": "#/components/schemas/RecoveryCompleted"
                 }
               }
             }
@@ -813,7 +813,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GenericAccepted"
+                  "$ref": "#/components/schemas/RecoveryCodesIssued"
                 }
               }
             }
@@ -930,7 +930,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GenericAccepted"
+                  "$ref": "#/components/schemas/ContactChangeAccepted"
                 }
               }
             }
@@ -987,7 +987,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GenericAccepted"
+                  "$ref": "#/components/schemas/ProvisioningStatus"
                 }
               }
             }
@@ -1205,8 +1205,7 @@
               "platform": {
                 "enum": [
                   "ios",
-                  "android",
-                  "web"
+                  "android"
                 ]
               },
               "display_name": {
@@ -1399,16 +1398,444 @@
       },
       "GenericAccepted": {
         "type": "object",
+        "required": [
+          "accepted"
+        ],
         "properties": {
-          "status": {
-            "type": "string"
+          "accepted": {
+            "const": true
           },
+          "request_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RegistrationAccepted": {
+        "type": "object",
+        "required": [
+          "identity_id",
+          "registration_status",
+          "provisioning_operation_id",
+          "product_accounts",
+          "contacts"
+        ],
+        "properties": {
+          "identity_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "registration_status": {
+            "const": "provisioning"
+          },
+          "provisioning_operation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "product_accounts": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "object",
+              "required": [
+                "product",
+                "context",
+                "status"
+              ],
+              "properties": {
+                "product": {
+                  "enum": [
+                    "inone",
+                    "propo"
+                  ]
+                },
+                "context": {
+                  "const": "personal"
+                },
+                "status": {
+                  "enum": [
+                    "pending_activation",
+                    "reserved",
+                    "provisioning"
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "contacts": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "object",
+              "required": [
+                "type",
+                "verification_status",
+                "masked_value"
+              ],
+              "properties": {
+                "type": {
+                  "enum": [
+                    "phone",
+                    "email"
+                  ]
+                },
+                "verification_status": {
+                  "const": "unverified"
+                },
+                "masked_value": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProvisioningStatus": {
+        "type": "object",
+        "required": [
+          "operation_id",
+          "status",
+          "steps"
+        ],
+        "properties": {
           "operation_id": {
             "type": "string",
             "format": "uuid"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "provisioning",
+              "partially_provisioned",
+              "provisioned_pending_activation",
+              "failed_retryable",
+              "blocked_conflict",
+              "completed_pair_active"
+            ]
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "product",
+                "status"
+              ],
+              "properties": {
+                "product": {
+                  "enum": [
+                    "inone",
+                    "inone_business",
+                    "propo"
+                  ]
+                },
+                "status": {
+                  "enum": [
+                    "pending",
+                    "succeeded",
+                    "failed_retryable",
+                    "failed_permanent",
+                    "reserved",
+                    "pending_activation",
+                    "active"
+                  ]
+                },
+                "product_account_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "retry_after_seconds": {
+            "type": "integer",
+            "minimum": 0
           }
         },
-        "additionalProperties": true
+        "additionalProperties": false
+      },
+      "Contact": {
+        "type": "object",
+        "required": [
+          "contact_id",
+          "type",
+          "verification_status",
+          "claim_status",
+          "masked_value"
+        ],
+        "properties": {
+          "contact_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "type": {
+            "enum": [
+              "phone",
+              "email"
+            ]
+          },
+          "verification_status": {
+            "enum": [
+              "unverified",
+              "pending",
+              "verified",
+              "rejected"
+            ]
+          },
+          "claim_status": {
+            "enum": [
+              "active",
+              "conflict",
+              "released"
+            ]
+          },
+          "masked_value": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Device": {
+        "type": "object",
+        "required": [
+          "device_id",
+          "platform",
+          "display_name",
+          "status",
+          "last_seen_at"
+        ],
+        "properties": {
+          "device_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "platform": {
+            "enum": [
+              "ios",
+              "android",
+              "web"
+            ]
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "active",
+              "revoked"
+            ]
+          },
+          "last_seen_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CurrentIdentity": {
+        "type": "object",
+        "required": [
+          "identity_id",
+          "status",
+          "contacts",
+          "device_count",
+          "product_accounts"
+        ],
+        "properties": {
+          "identity_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string"
+          },
+          "contacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Contact"
+            }
+          },
+          "device_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "product_accounts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "product",
+                "context",
+                "status"
+              ],
+              "properties": {
+                "product": {
+                  "enum": [
+                    "inone",
+                    "inone_business",
+                    "propo"
+                  ]
+                },
+                "context": {
+                  "enum": [
+                    "personal",
+                    "work"
+                  ]
+                },
+                "status": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "ContactList": {
+        "type": "object",
+        "required": [
+          "contacts"
+        ],
+        "properties": {
+          "contacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Contact"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "DeviceList": {
+        "type": "object",
+        "required": [
+          "devices"
+        ],
+        "properties": {
+          "devices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Device"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "RecoveryStarted": {
+        "type": "object",
+        "required": [
+          "status",
+          "message"
+        ],
+        "properties": {
+          "status": {
+            "const": "accepted"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RecoveryGrantResponse": {
+        "type": "object",
+        "required": [
+          "recovery_grant",
+          "expires_at",
+          "purpose"
+        ],
+        "properties": {
+          "recovery_grant": {
+            "type": "string",
+            "writeOnly": true
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "purpose": {
+            "enum": [
+              "password_reset",
+              "authenticator_replacement"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "RecoveryCompleted": {
+        "type": "object",
+        "required": [
+          "status",
+          "sessions_revoked"
+        ],
+        "properties": {
+          "status": {
+            "enum": [
+              "completed",
+              "authenticator_replaced"
+            ]
+          },
+          "sessions_revoked": {
+            "type": "boolean"
+          },
+          "security_hold_active": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RecoveryCodesIssued": {
+        "type": "object",
+        "required": [
+          "codes",
+          "count",
+          "shown_once"
+        ],
+        "properties": {
+          "codes": {
+            "type": "array",
+            "minItems": 10,
+            "maxItems": 10,
+            "items": {
+              "type": "string",
+              "writeOnly": true
+            }
+          },
+          "count": {
+            "const": 10
+          },
+          "shown_once": {
+            "const": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ContactChangeAccepted": {
+        "type": "object",
+        "required": [
+          "status",
+          "cooling_period_ends_at"
+        ],
+        "properties": {
+          "status": {
+            "const": "pending"
+          },
+          "cooling_period_ends_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
       }
     },
     "responses": {
