@@ -406,3 +406,6 @@ A dedicated task branch `stage0/identity-engineering-readiness-2026-11-13` has b
 CTO decisions recorded: login uses claimed phone OR email plus password, with both contacts still unverified; 5-minute access token; 30-day refresh inactivity; 90-day absolute session lifetime; rotating refresh token with family-reuse detection. See ADR-001.
 
 **Status:** documentation/configuration only. No Identity runtime, source code, DB schema, migrations, endpoints, product adapter, deployment or production credential was created. Contract CI and the Node/OIDC/WebAuthn/Argon2/PostgreSQL compatibility spike are not yet verified. Propo contract, exact app redirect URIs, privacy/legal review, KMS and production hosting remain external gates. Do not report Stage 0 fully passed until its CI and compatibility spike pass.
+
+
+Stage 0 review PR: [#51 — Identity Stage 0](https://github.com/vahe210991-cloud/InOne-chat/pull/51), based on architecture PR #50. PR #51 remains Draft/open/unmerged. The exact latest head must be re-fetched before verification; contract workflow result is not yet confirmed. No application implementation has begun.
