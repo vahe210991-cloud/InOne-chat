@@ -389,3 +389,20 @@ Identity service/API/lifecycle documents now contain the detailed recovery seque
 ## CTO Identity security and delivery baseline — 2026-11-13
 
 Added [IDENTITY-THREAT-MODEL-AND-IMPLEMENTATION-PLAN-V0.1.md](../../architecture/IDENTITY-THREAT-MODEL-AND-IMPLEMENTATION-PLAN-V0.1.md). It defines the Identity threat model, 28 abuse/threat cases, P0 launch blockers, security controls, token/session defaults, product/provisioning safeguards, observability, incident runbooks, staged implementation plan, test strategy and release checklist. CTO technical defaults: 5-minute access token, rotating refresh token (30-day inactivity / 90-day absolute), 5-minute step-up freshness, 10-minute recovery grant. Documentation only; no application code, schema, API, UI, deployment or runtime controls were implemented. Propo integration contract and legal/privacy review remain gates.
+
+
+## InOne Identity — Stage 0 engineering readiness (2026-11-13)
+
+A dedicated task branch `stage0/identity-engineering-readiness-2026-11-13` has been created from the architecture v0.1 branch. Stage 0 artifacts prepared:
+- `architecture/identity/ADR-IDENTITY-STACK-001.md` — Node.js 26 LTS, strict TypeScript, Fastify 5, PostgreSQL 18, OIDC/WebAuthn/Argon2id libraries, SQL-first migrations, transactional outbox and portable container decision.
+- `architecture/identity/STAGE-0-ENGINEERING-READINESS.md` — service boundaries, configuration, environments, operational contract, Stage 0 gates and Stage 1 backlog.
+- `architecture/identity/contracts/identity-openapi-v1.yaml` — machine-readable OpenAPI 3.1 contract.
+- `architecture/identity/contracts/identity-events-v1.asyncapi.yaml` — machine-readable AsyncAPI 3.0 event contract.
+- `architecture/identity/contracts/identity-client-registry-v1.template.yaml` — non-deployable client/audience/redirect registry template.
+- `architecture/identity/PROPO-ADAPTER-QUESTIONNAIRE.md` — external Propo API, identity, reservation and sandbox questions.
+- `architecture/identity/DATA-CLASSIFICATION-AND-PRIVACY.md` — data inventory and privacy/security handling.
+- `.github/workflows/identity-contracts.yml` — CI lint for OpenAPI and AsyncAPI using Node 26 and pinned Redocly CLI.
+
+CTO decisions recorded: login uses claimed phone OR email plus password, with both contacts still unverified; 5-minute access token; 30-day refresh inactivity; 90-day absolute session lifetime; rotating refresh token with family-reuse detection. See ADR-001.
+
+**Status:** documentation/configuration only. No Identity runtime, source code, DB schema, migrations, endpoints, product adapter, deployment or production credential was created. Contract CI and the Node/OIDC/WebAuthn/Argon2/PostgreSQL compatibility spike are not yet verified. Propo contract, exact app redirect URIs, privacy/legal review, KMS and production hosting remain external gates. Do not report Stage 0 fully passed until its CI and compatibility spike pass.
