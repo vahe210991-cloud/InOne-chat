@@ -169,3 +169,16 @@ This is an authoritative product-boundary decision. Requirements, screen invento
 
 The product split does not automatically imply separate or shared identity services, databases, backends, repositories, infrastructure, or UI foundations. Those remain governed by existing approved decisions or require separate ADRs. Existing InOne Beta 1.0 screens and implementation must be audited and classified before any migration or code change. See [owner decisions](DECISIONS.md#7-product-split-inone-and-inone-business--2026-11-13).
 
+
+## 12. New platform architecture baseline — 2026-11-13
+
+- Root architecture directory: architecture/README.md.
+- Product vision: architecture/PRODUCT-VISION.md.
+- Product boundaries: architecture/PRODUCT-BOUNDARIES.md.
+- Target system architecture: architecture/SYSTEM-ARCHITECTURE.md.
+- Domain model and organization access: architecture/DOMAIN-MODEL-AND-ACCESS.md.
+- Architecture laws: architecture/ARCHITECTURE-LAWS.md.
+- Owner questions: architecture/OPEN-OWNER-DECISIONS.md.
+- Development plan: development/architecture/README.md.
+- Status: version 0.1 draft; product direction derives from owner statements, technical topology and role details remain proposals/open decisions.
+- For the restart, historical code and CI are technical reference only, not accepted product completion. Read development/architecture/REPOSITORY-REBASELINE.md before reuse.
