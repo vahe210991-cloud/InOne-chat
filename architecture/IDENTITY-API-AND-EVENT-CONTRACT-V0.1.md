@@ -390,3 +390,16 @@ Before production, automate at minimum:
 27. Authenticator replacement requires a purpose-matched one-use grant and revokes only the selected lost/compromised authenticators.
 
 No endpoint, event or test listed here is implemented by this contract draft.
+
+
+## 14. Machine-readable Stage 0 contracts
+
+The normative machine-readable v1 contract files are maintained under [architecture/identity/contracts/](identity/contracts/):
+
+- [OpenAPI 3.1](identity/contracts/identity-openapi-v1.yaml) defines public registration, account, contact, device, recovery, internal provisioning and internal security-state endpoints.
+- [AsyncAPI 3.0](identity/contracts/identity-events-v1.asyncapi.yaml) defines versioned Identity-to-product events and payload schemas. Delivery is at-least-once from the transactional outbox; consumers deduplicate by event ID and reject stale aggregate versions.
+- [Client registry template](identity/contracts/identity-client-registry-v1.template.yaml) records product, platform, context, audience and PKCE policy. It is intentionally non-deployable until app identifiers, domains and exact redirect URIs are confirmed.
+
+The Stage 0 OpenAPI contract adds `GET /v1/internal/identities/{identity_id}/security-state` for product backends to check authoritative active security holds before designated high-risk actions when event freshness cannot be guaranteed. This endpoint returns only minimal security state, not contact or credential data. If Identity cannot confirm state, designated high-risk operations fail closed.
+
+These files describe intended contracts only. No endpoint, event publisher/consumer, client registration or runtime security behavior is implemented by documenting them. Contract validation is automated by `.github/workflows/identity-contracts.yml` and must pass on the exact Stage 0 PR head.
