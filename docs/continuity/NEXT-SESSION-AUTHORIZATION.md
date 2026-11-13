@@ -2,13 +2,13 @@
 
 **Starting point:** branch `architecture/product-and-platform-blueprint-2026-11-13`  
 **PR:** [#50](https://github.com/vahe210991-cloud/InOne-chat/pull/50), draft/open/unmerged  
-**Latest spec commit:** `a75651869e409a00e6678e601d03abe05c2c869b`
+**Latest authorization spec commit:** `b19d096deeac6e61b3c1c86b84e0090c51efcd47`
 
 Read first:
-1. [Backend authorization specification v0.1](../../architecture/BACKEND-AUTHORIZATION-SPEC-V0.1.md)
-2. [Approved Permission Matrix v1](../../architecture/PERMISSION-MATRIX-V1.md)
-3. [Organization positions and delegated access](../../architecture/ORG-POSITIONS-AND-DELEGATED-ACCESS.md)
-4. Existing organization API/schema/tests in `inone-engine-poc-0.6.0/` listed in the continuity state.
+1. [Identity and product-account lifecycle v0.1](../../architecture/IDENTITY-AND-PRODUCT-ACCOUNT-LIFECYCLE-V0.1.md)\n2. [Backend authorization specification v0.1](../../architecture/BACKEND-AUTHORIZATION-SPEC-V0.1.md)
+3. [Approved Permission Matrix v1](../../architecture/PERMISSION-MATRIX-V1.md)
+4. [Organization positions and delegated access](../../architecture/ORG-POSITIONS-AND-DELEGATED-ACCESS.md)
+5. Existing organization API/schema/tests in `inone-engine-poc-0.6.0/` listed in the continuity state.
 
 ## Next task — read-only endpoint inventory
 
@@ -57,3 +57,15 @@ Design the owner-facing employee assignment/edit interface and the corresponding
 
 The employee assignment/edit screen must include a separate **Financial authority** block for organization-specific, employee-specific operation permissions and limits. Capture per-transaction maximums, optional cumulative period caps, explicit currency and the applicable independent second-approval requirement. Do not add universal numeric defaults or permit the UI to bypass mandatory dual control. Version and audit every change. This remains design work: no screen/API/schema/runtime implementation is authorized or claimed by this note.
 \n\n## Owner-approved direction — Identity and paired product accounts (2026-11-13)\n\nThe owner approved mandatory phone and email at registration, centrally stored by InOne Identity as unverified claims until verification providers exist. Personal entry through InOne provisions InOne personal + Propo personal; work entry through InOne/invitation provisions InOne Business work + Propo work. The paired Propo account is reserved immediately and only becomes usable after its own first-device activation. Product backends and databases remain separate; Identity coordinates identity/authentication and product-account mapping. Invitations require explicit acceptance before work membership activation.\n\nRead [IDENTITY-AND-PRODUCT-ACCOUNT-LIFECYCLE-V0.1.md](../../architecture/IDENTITY-AND-PRODUCT-ACCOUNT-LIFECYCLE-V0.1.md). Next work is to close contact-claim conflicts/recovery, credentials/MFA, device lifecycle, invitation timing and Propo's personal/work account contract before implementation. Keep this documentation-only; do not change code/schema/API until separately approved.\n
+
+## Identity architecture — next design gate
+
+Before implementing registration, close the open items in the Identity lifecycle specification:
+- contact-claim uniqueness, dispute, change and recovery while phone/email are unverified;
+- credential, passkey/MFA, step-up and lost-device recovery policy;
+- device activation and product-scoped token exchange;
+- invitation lifecycle and exact point at which the work pair is provisioned;
+- Propo contract for distinct personal and work account contexts;
+- API/event schemas, service authentication, idempotency, retries and reconciliation.
+
+Keep this pass architecture-only. Do not implement Identity or modify product APIs, databases or UI until the design and threat model are reviewed.
