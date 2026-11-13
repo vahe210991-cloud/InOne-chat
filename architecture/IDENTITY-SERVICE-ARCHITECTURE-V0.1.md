@@ -192,17 +192,22 @@ Each contact point has:
 
 Do not infer verification from account creation, device activation, invitation acceptance or an administrator entering the contact.
 
-### 5.2 Uniqueness recommendation — requires explicit owner approval
+### 5.2 Owner-approved uniqueness and reservation policy — Option A
 
-To support the owner's goal of reserving contact details, proposed v1 policy:
-- allow at most one active claim for a normalized phone number and at most one active claim for a normalized email address across Identity;
-- enforce with database uniqueness on active claims;
-- do not expose claim existence through public registration or recovery endpoints;
-- on conflict, return a generic response and create a restricted support/dispute case;
-- never silently transfer the claim or account to a new identity;
-- release a claim only through a controlled, audited resolution process.
+**Owner decision: APPROVED — Option A (2026-11-13).** Phone numbers and email addresses are uniquely reserved across the entire InOne Identity system, using normalized values.
 
-**Important trade-off:** without proof of control, first-claim-wins can let someone reserve another person's phone/email and block the rightful owner. The platform cannot automatically decide who is legitimate. This policy reduces routine duplicates but creates a denial-of-registration risk. It must be approved with a human dispute process before implementation. Do not describe unverified claims as ownership.
+Normative v1 rules:
+- At most one active claim may exist for each normalized phone number and each normalized email address across all identities.
+- Normalize phone numbers to E.164 where possible. Normalize email for consistent lookup while preserving the original display value; do not invent provider-specific equivalence rules (for example, removing dots or plus-tags).
+- Enforce uniqueness transactionally in the Identity database, not only in application code. Concurrent registrations for the same normalized contact must have exactly one winner.
+- The first successful claim reserves the contact. A later registration attempting to claim it is blocked with a generic response that does not disclose whether a particular phone/email is registered.
+- A conflict creates or routes to a restricted manual dispute case. No automatic account merge, identity link, contact transfer or ownership reassignment is allowed.
+- A contact may be released or reassigned only after a controlled, documented and audited manual resolution by an authorized support/security operator. Record requester, reviewer, evidence reviewed, decision, affected identity/contact IDs, before/after state, reason and timestamps.
+- Never reveal the current claimant's identity or full contact details to the requester. Support access is least-privilege and audited.
+- Unverified reservation is not proof of real-world ownership. Until SMS/email proof-of-control is available, a claimant may have reserved someone else's contact. Device activation, invitation possession, password knowledge or a matching display name do not prove contact ownership.
+- If a dispute cannot be resolved safely with available evidence, keep the reservation unchanged and deny reassignment; escalate rather than guess.
+
+**Risk accepted by owner:** first-claim-wins can block the legitimate holder if another person registers the contact first. This is an explicit trade-off of Option A and requires a visible support/dispute path.
 
 ### 5.3 What unverified contacts may and may not do
 
