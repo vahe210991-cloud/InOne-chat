@@ -77,7 +77,9 @@ Stage 0 does **not** implement authentication or create production database/API 
 
 ## 5. Environments and configuration
 
-The isolated Codespaces configuration is `.devcontainer/identity/devcontainer.json`; its Compose file runs Node 26 and PostgreSQL 18 with a disposable local-only database. The setup and commands are documented in [.devcontainer/identity/README.md](../../.devcontainer/identity/README.md). Run `bash .devcontainer/identity/scripts/verify-stage0-environment.sh` from the repository root after creating the Codespace. The profile has not yet been built or run.\n\nStage 1 must define three isolated environments:
+The isolated Codespaces configuration is `.devcontainer/identity/devcontainer.json`; its Compose file runs Node 26 and PostgreSQL 18 with a disposable local-only database. The setup and commands are documented in [.devcontainer/identity/README.md](../../.devcontainer/identity/README.md). Run `bash .devcontainer/identity/scripts/verify-stage0-environment.sh` from the repository root after creating the Codespace. The profile has not yet been built or run.
+
+Stage 1 must define three isolated environments:
 
 | Environment | Data | Credentials | External products |
 |---|---|---|---|
