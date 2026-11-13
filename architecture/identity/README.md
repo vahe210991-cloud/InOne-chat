@@ -10,6 +10,7 @@ This is the Stage 0 contract/readiness package, not the running service.
 - Event examples: contracts/event-examples.json
 - Client registry: contracts/client-registry.json
 - Client registry schema: contracts/client-registry.schema.json
+- Client registry schema: contracts/client-registry.schema.json
 - Environment: ops/ENVIRONMENT-CONTRACT.md
 - Local development: ops/LOCAL-DEVELOPMENT.md
 
