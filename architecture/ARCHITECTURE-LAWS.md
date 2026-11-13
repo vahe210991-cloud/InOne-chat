@@ -64,3 +64,8 @@ Do not redesign or change an approved design system, product boundary, release s
 
 ## Law 20 — Every change is traceable
 Meaningful changes map to a requirement, ADR, API contract, migration, test and release criterion. Keep architecture, decisions, development plan and session evidence synchronized.
+
+
+## 12. Organization-scoped membership and delegated authority
+
+A person may belong to many organizations. Their role and permissions are scoped to each membership; never reuse one organization's role in another. A member may manage access only when explicitly delegated, only for members strictly below their own authority level, and only up to the permissions they are allowed to delegate. Enforce this on the server for every change, prevent self-elevation and equal/higher-level changes, and audit actor, target, previous access, new access, organization and timestamp. Existing `owner`/`admin`/`member` rules are the compatibility baseline; do not claim the current owner-only role-change route already implements this broader hierarchy.
