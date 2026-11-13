@@ -14,6 +14,8 @@ servers:
     host: adapter.example.invalid
     protocol: https
     description: Reserved host placeholder. Product adapter endpoints are configured per environment.
+    security:
+      - $ref: '#/components/securitySchemes/productAdapterMtls'
 channels:
   productAccountProvisionRequested:
     address: /events/identity.product_account.provision_requested
@@ -105,6 +107,10 @@ operations:
     messages:
       - $ref: '#/channels/contactChangeCompleted/messages/contactChangeCompleted'
 components:
+  securitySchemes:
+    productAdapterMtls:
+      type: X509
+      description: Identity authenticates to product adapters using a client X.509 certificate over HTTPS.
   messages:
     ProductAccountProvisionRequested:
       name: identity.product_account.provision_requested

@@ -12,17 +12,25 @@ servers:
     description: Reserved placeholder only. Replace after domain and environment approval.
 tags:
   - name: Registration
+    description: Public identity registration and initial product-account provisioning.
   - name: Account
+    description: Authenticated access to the current central identity.
   - name: Contacts
+    description: Management of phone and email contact claims.
   - name: Devices
+    description: Device enrollment, session management and revocation.
   - name: Recovery
+    description: Account recovery and recovery-code lifecycle.
   - name: Internal Provisioning
+    description: Authenticated service-to-service product-account provisioning.
   - name: Internal Security
+    description: Authenticated service-to-service security-state checks.
 paths:
   /v1/registrations:
     post:
       tags: [Registration]
       operationId: registerPersonalIdentity
+      security: []
       summary: Register an InOne personal identity and request its paired product accounts
       description: |
         Public registration is only for InOne personal context. The product pair
@@ -200,6 +208,7 @@ paths:
     post:
       tags: [Recovery]
       operationId: startAccountRecovery
+      security: []
       summary: Start a generic recovery attempt
       description: |
         Response must not reveal whether an identity or contact exists, which
@@ -239,6 +248,7 @@ paths:
     post:
       tags: [Recovery]
       operationId: submitRecoveryChallenge
+      security: []
       summary: Submit proof from an enrolled recovery method
       description: |
         Valid methods are an enrolled passkey, a trusted device with fresh
@@ -277,6 +287,7 @@ paths:
     post:
       tags: [Recovery]
       operationId: completeAccountRecovery
+      security: []
       summary: Complete a recovery operation using a short-lived recovery grant
       description: |
         The grant is single-use, purpose/client/device-bound and expires after
