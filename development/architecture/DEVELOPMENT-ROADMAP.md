@@ -12,7 +12,7 @@ Build the platform in dependency order. First settle identity, organizations, au
 Deliverables:
 - answers to blocking questions in [OPEN-OWNER-DECISIONS.md](../../architecture/OPEN-OWNER-DECISIONS.md);
 - product capability map for Propo / InOne Business / InOne;
-- organization-to-Seller-Account cardinality;
+- organization-to-Seller-Account cardinality (owner decision A1 already set to one-to-one; verify Propo identifier and contract);
 - person identity and login flow;
 - role/permission matrix;
 - data ownership matrix;
@@ -55,7 +55,7 @@ Exit gate:
 
 Exit gate:
 - test order/message/rating event can be delivered, deduplicated and recovered;
-- tenant/store mapping is verified;
+- one-to-one tenant/Seller Account mapping is verified against Propo's stable account identifier;
 - Business cannot access another seller's data;
 - Propo remains available if Business is offline.
 
