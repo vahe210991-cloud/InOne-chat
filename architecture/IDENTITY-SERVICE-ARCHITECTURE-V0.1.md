@@ -143,13 +143,14 @@ Do not implement a custom token protocol or pass passwords between products.
 - **Refresh token:** opaque, high-entropy, rotated on every use; server stores only a cryptographic hash.
 - **Service token:** machine-to-machine credential for product provisioning APIs; separate from user tokens.
 
-Recommended starting policy (owner/security review required):
-- access token lifetime: 5–10 minutes;
-- refresh token: 30 days maximum inactivity, subject to risk and device policy;
-- rotate refresh token on every refresh;
+CTO-decided v1 policy (2026-11-13):
+- access token lifetime: 5 minutes;
+- refresh token: 30 days maximum inactivity and 90 days absolute session lifetime;
+- rotate refresh token on every successful refresh;
 - reuse of an already-rotated refresh token revokes the associated token family/session and emits a security event;
-- signing keys rotate with overlapping verification period;
-- revoke sessions on password reset, credential compromise, account suspension or explicit device revocation.
+- sensitive-action step-up must be no older than 5 minutes;
+- signing keys rotate with an overlapping verification period;
+- revoke sessions across products on password reset, credential compromise, account suspension or explicit device revocation.
 
 Access token claims should be minimal:
 `iss`, `sub` (central `identity_id`), `aud` (exact product API), `iat`, `exp`, `jti`, `sid`, `client_id`, `auth_time`, `amr` and optional `acr`.
@@ -214,7 +215,7 @@ Normative v1 rules:
 Allowed:
 - be stored as required registration attributes;
 - be shown masked to the account holder;
-- be used as candidate login identifiers together with a valid password, if the owner approves this login behavior;
+- be used as login lookup identifiers with a valid password, under the CTO decision: phone OR email plus password; neither contact is treated as verified or as proof of ownership;
 - be used for internal duplicate/conflict detection.
 
 Not allowed:
@@ -485,7 +486,7 @@ Never provide an operator with an action to silently take over a user's identity
 
 ## 13. Implementation sequence
 
-1. **Architecture freeze:** threat-model the approved contact reservation and CTO recovery baseline; finalize token/session lifetimes, device policy and Propo account-context contract.
+1. **Stage 0 engineering readiness:** freeze the stack and machine-readable API/event contracts; validate token/session and crypto library compatibility in the Codespaces environment; obtain the Propo account-context contract. Token/session lifetimes are already fixed by CTO decision; device lifecycle implementation remains Stage 1.
 2. **Identity foundation:** database, migrations, config/secrets, health checks, audit, observability.
 3. **Authentication:** OIDC Authorization Code + PKCE, Argon2id password, passkeys, optional TOTP, recovery-code issuance, sessions, refresh rotation, logout and JWKS.
 4. **Contact claims:** required phone/email collection, normalization, unverified state, conflict-safe operations.
