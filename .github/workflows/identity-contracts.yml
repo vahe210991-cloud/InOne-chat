@@ -36,3 +36,5 @@ jobs:
         run: npx --yes @redocly/cli@2.77.0 lint architecture/identity/contracts/openapi.json
       - name: Validate event examples against JSON Schema 2020-12
         run: npx --yes ajv-cli@5.0.0 validate --spec=draft2020 --strict=true -s architecture/identity/contracts/event-examples.schema.json -d architecture/identity/contracts/event-examples.json
+      - name: Validate logical client registry
+        run: npx --yes ajv-cli@5.0.0 validate --spec=draft2020 --strict=true -s architecture/identity/contracts/client-registry.schema.json -d architecture/identity/contracts/client-registry.json
