@@ -297,3 +297,8 @@ No product code, UI, API, database schema, CI workflow, deployment or production
 ## Owner decision update — Seller Account cardinality (2026-11-13)
 
 A1 is no longer open. The owner selected Option A: one Propo Seller Account maps to exactly one InOne Business organization. One organization managing multiple stores/Seller Accounts is out of the initial scope. The architecture branch records this as a one-to-one constraint in the product-boundary, domain-model, system-architecture and roadmap documents. Still open: Propo's stable Seller Account identifier, employee/login model, multi-organization membership, identity linking and API/event contract. No application code or database schema has been changed by recording this decision.
+
+
+## Owner decision update — employee membership and access (2026-11-13)
+
+A3 is decided: one person may belong to multiple organizations with different roles/permissions per membership. One organization may have many employees. Access delegation must follow the authority hierarchy: a member may change access only for members below their own level and within their delegation ceiling. Existing main-branch engine reference already has organization membership and roles `owner`, `admin`, `member`, with multi-organization membership represented by `org_members` composite key and `GET /orgs/mine`. Its current role-change API is owner-only; the broader delegation rule is not yet implemented. Propo employee identity/login linkage remains open. No application code/schema changed in recording this decision.
