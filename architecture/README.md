@@ -33,3 +33,15 @@ The implementation path is in [development/architecture/](../development/archite
 ## Architecture versioning
 
 Use Architecture Decision Records (ADRs) for decisions that affect product boundaries, identity, data ownership, security, integration contracts, infrastructure or deployment. Each ADR must include context, decision, alternatives, consequences, status, owner approval and date.
+
+
+## InOne Identity — Stage 0 engineering readiness
+
+The contract-first preparation package is maintained in [architecture/identity/](identity/):
+- [Stage 0 Engineering Readiness](identity/STAGE-0-ENGINEERING-READINESS.md)
+- [Stack ADR-001](identity/ADR-IDENTITY-STACK-001.md)
+- [Propo adapter questionnaire](identity/PROPO-ADAPTER-QUESTIONNAIRE.md)
+- [Data classification and privacy inventory](identity/DATA-CLASSIFICATION-AND-PRIVACY.md)
+- [Machine-readable API and event contracts](identity/contracts/README.md)
+
+Stage 0 is a readiness milestone, not a running Identity service. The contract-validation workflow and compatibility spike must pass before Stage 1 implementation begins. Propo and privacy/legal evidence remain external gates before production integration.

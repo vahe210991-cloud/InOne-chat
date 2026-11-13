@@ -273,3 +273,28 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Existing role baseline: `owner`, `admin`, `member`; composite `(org_id, user_id)` membership key; `/orgs/mine` returns membership-specific role; only owner can currently change roles; admin may add/remove ordinary members; role changes are audited. Multiple owners are supported, with last-owner protection.
 - Important gap: current owner-only role-change route does not implement the newly required delegated hierarchy. Architecture docs now distinguish existing behavior from the new requirement.
 - Updated architecture, open decisions and continuity handoff docs on the existing draft PR branch. Documentation only; no code/schema/UI/API change, no tests run, no PR merged.
+
+
+## 2026-11-13 — InOne Identity Stage 0 engineering-readiness package
+
+- Created isolated task branch `stage0/identity-engineering-readiness-2026-11-13` from the architecture v0.1 branch; no shared branch was modified.
+- Read repository working rules and continuity handoff. Used repository-native editing only for focused documentation/configuration artifacts; no broad source-code changes.
+- Read backend architecture, authentication and deployment/CI plugin skills. Reviewed current official Node.js, PostgreSQL, Fastify, OIDC provider, WebAuthn, Argon2id, JOSE and OAuth security references.
+- Added stack ADR: Node.js 26 LTS, strict TypeScript, Fastify 5, PostgreSQL 18, oidc-provider, SimpleWebAuthn, Argon2id binding, JOSE, SQL-first migrations, transactional outbox and portable container packaging.
+- Added Stage 0 readiness plan, Propo adapter questionnaire, data classification/privacy inventory, OpenAPI 3.1 contract, AsyncAPI 3.0 contract, OIDC client registry template and contract-lint GitHub Actions workflow.
+- Recorded CTO technical defaults for phone-or-email login identifier and 5-minute access / 30-day refresh inactivity / 90-day absolute session / refresh rotation policy.
+- Updated Identity architecture/API contract and continuity indexes. All artifacts are documentation/configuration only; no service source, DB schema/migration, endpoint, product adapter, deployment or production secret was created.
+- **NOT RUN / PENDING:** Redocly workflow on exact PR head; Codespaces full-clone verification; Node/OIDC/Fastify/PostgreSQL/WebAuthn/Argon2 compatibility spike; Propo sandbox/API confirmation; privacy/legal review.
+- Stage 0 must not be marked fully passed until CI and compatibility spike pass. Production integration remains blocked by Propo and privacy/legal gates.
+
+
+## 2026-11-13 — Identity Stage 0 Codespaces environment
+
+- Added a separate `.devcontainer/identity/devcontainer.json` profile so Identity can use Node 26 and PostgreSQL 18 without replacing the mobile/Flutter environment.
+- Added Compose services for the workspace and PostgreSQL 18, persistent named volume at `/var/lib/postgresql` (the official PostgreSQL 18 image path), disposable local-only credentials, contract validation and environment verification scripts.
+- Added Codespaces instructions and exact `gh codespace create` command. Official GitHub docs confirm nested `.devcontainer/<name>/devcontainer.json` profiles are supported and selectable.
+- Configuration is not yet executed. This tool session has no Codespaces create action or Docker runtime; build, database health and script results remain NOT RUN. No claim of a working Codespace is made.
+
+- Static local checks: devcontainer JSON parsed; Compose and GitHub workflow YAML parsed; Stage 0 environment shell script passed `bash -n`. Redocly semantic lint and Codespaces container startup were not run.
+
+- CI verification follow-up: first contract workflow run #40 and its rerun both failed. GitHub's job-log download returned 404, so the failure cause is unknown. Simplified the job to GitHub-hosted Ubuntu + pinned setup-node Node 26 (instead of a job-level Node container) and left the CI gate unchecked pending a new exact-head result.

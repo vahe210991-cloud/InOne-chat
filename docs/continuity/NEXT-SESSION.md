@@ -263,3 +263,24 @@ No code changes are authorized by the architecture draft itself.
 - New required behavior: explicit delegation down the authority chain only. An actor cannot manage equal/higher-level members or grant authority beyond their own delegation ceiling.
 - Inspect and preserve the existing organization API/tests; do not confuse the current owner-only role-change endpoint with the broader delegated hierarchy requirement.
 - Propo employee identity/login mapping remains open.
+
+
+## Latest continuation instruction — Identity Stage 0 (2026-11-13)
+
+Current task branch: `stage0/identity-engineering-readiness-2026-11-13`, based on the architecture v0.1 branch. The Stage 0 package is documented in `architecture/identity/STAGE-0-ENGINEERING-READINESS.md`.
+
+Immediate sequence:
+1. Verify the GitHub PR head and wait for `.github/workflows/identity-contracts.yml`; inspect both Redocly lint results on the exact head SHA.
+2. Open GitHub Codespaces on this branch (owner-selected environment), verify complete clone/refs and `git status`, then execute the Stage 0 compatibility spike in ADR-001 with synthetic data only.
+3. Fix any OpenAPI/AsyncAPI or compatibility findings on this task branch; do not mark unexecuted checks PASS.
+4. Send `architecture/identity/PROPO-ADAPTER-QUESTIONNAIRE.md` to the Propo technical owner and track evidence. Do not invent endpoints or IDs.
+5. Obtain privacy/legal review for data controller roles, lawful basis, retention/deletion and data residency before any production user data.
+6. Once contract CI and compatibility spike pass, Stage 0 internal readiness can close and Stage 1 can begin on a fresh branch. Production Propo provisioning remains blocked until the Propo contract is confirmed.
+
+No Identity service source, database schema or runtime endpoint exists yet. No production deployment is authorized by Stage 0.
+
+
+Review PR: [#51 — Identity Stage 0](https://github.com/vahe210991-cloud/InOne-chat/pull/51). Keep it Draft. Verify exact head SHA and contract CI before declaring Stage 0 contract validation complete.
+
+
+Identity Stage 0 environment: create a Codespace on branch `stage0/identity-engineering-readiness-2026-11-13` using `.devcontainer/identity/devcontainer.json`. GitHub CLI command: `gh codespace create -r vahe210991-cloud/InOne-chat -b stage0/identity-engineering-readiness-2026-11-13 --devcontainer-path .devcontainer/identity/devcontainer.json`. Then run `bash .devcontainer/identity/scripts/verify-stage0-environment.sh`. Record exact output; do not mark environment/contract validation PASS until it succeeds.

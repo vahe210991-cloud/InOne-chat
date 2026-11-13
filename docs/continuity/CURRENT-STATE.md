@@ -389,3 +389,29 @@ Identity service/API/lifecycle documents now contain the detailed recovery seque
 ## CTO Identity security and delivery baseline — 2026-11-13
 
 Added [IDENTITY-THREAT-MODEL-AND-IMPLEMENTATION-PLAN-V0.1.md](../../architecture/IDENTITY-THREAT-MODEL-AND-IMPLEMENTATION-PLAN-V0.1.md). It defines the Identity threat model, 28 abuse/threat cases, P0 launch blockers, security controls, token/session defaults, product/provisioning safeguards, observability, incident runbooks, staged implementation plan, test strategy and release checklist. CTO technical defaults: 5-minute access token, rotating refresh token (30-day inactivity / 90-day absolute), 5-minute step-up freshness, 10-minute recovery grant. Documentation only; no application code, schema, API, UI, deployment or runtime controls were implemented. Propo integration contract and legal/privacy review remain gates.
+
+
+## InOne Identity — Stage 0 engineering readiness (2026-11-13)
+
+A dedicated task branch `stage0/identity-engineering-readiness-2026-11-13` has been created from the architecture v0.1 branch. Stage 0 artifacts prepared:
+- `architecture/identity/ADR-IDENTITY-STACK-001.md` — Node.js 26 LTS, strict TypeScript, Fastify 5, PostgreSQL 18, OIDC/WebAuthn/Argon2id libraries, SQL-first migrations, transactional outbox and portable container decision.
+- `architecture/identity/STAGE-0-ENGINEERING-READINESS.md` — service boundaries, configuration, environments, operational contract, Stage 0 gates and Stage 1 backlog.
+- `architecture/identity/contracts/identity-openapi-v1.yaml` — machine-readable OpenAPI 3.1 contract.
+- `architecture/identity/contracts/identity-events-v1.asyncapi.yaml` — machine-readable AsyncAPI 3.0 event contract.
+- `architecture/identity/contracts/identity-client-registry-v1.template.yaml` — non-deployable client/audience/redirect registry template.
+- `architecture/identity/PROPO-ADAPTER-QUESTIONNAIRE.md` — external Propo API, identity, reservation and sandbox questions.
+- `architecture/identity/DATA-CLASSIFICATION-AND-PRIVACY.md` — data inventory and privacy/security handling.
+- `.github/workflows/identity-contracts.yml` — CI lint for OpenAPI and AsyncAPI using Node 26 and pinned Redocly CLI.
+
+CTO decisions recorded: login uses claimed phone OR email plus password, with both contacts still unverified; 5-minute access token; 30-day refresh inactivity; 90-day absolute session lifetime; rotating refresh token with family-reuse detection. See ADR-001.
+
+**Status:** documentation/configuration only. No Identity runtime, source code, DB schema, migrations, endpoints, product adapter, deployment or production credential was created. Contract CI and the Node/OIDC/WebAuthn/Argon2/PostgreSQL compatibility spike are not yet verified. Propo contract, exact app redirect URIs, privacy/legal review, KMS and production hosting remain external gates. Do not report Stage 0 fully passed until its CI and compatibility spike pass.
+
+
+Stage 0 review PR: [#51 — Identity Stage 0](https://github.com/vahe210991-cloud/InOne-chat/pull/51), based on architecture PR #50. PR #51 remains Draft/open/unmerged. The exact latest head must be re-fetched before verification; contract workflow result is not yet confirmed. No application implementation has begun.
+
+
+Identity Stage 0 environment addendum: added `.devcontainer/identity/devcontainer.json`, Compose profile with Node 26 + PostgreSQL 18, local-only database, contract validation script and environment verification script. PostgreSQL 18 volume is mounted at `/var/lib/postgresql` per the official image's v18 path change. The profile is documented in `.devcontainer/identity/README.md`. It is configuration-only until a Codespace is created; container build, DB health and contract lint are still NOT RUN/NOT VERIFIED because this session has no Codespaces creation or Docker runtime tool.
+
+
+CI verification update: first Identity contract workflow run #40 failed. The job log archive could not be retrieved (GitHub returned 404); failure cause remains unknown. Workflow now uses GitHub-hosted Ubuntu with pinned Node 26 setup rather than a job-level container. Latest-head rerun is not yet confirmed; CI remains NOT PASS.

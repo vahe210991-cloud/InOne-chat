@@ -143,13 +143,14 @@ Do not implement a custom token protocol or pass passwords between products.
 - **Refresh token:** opaque, high-entropy, rotated on every use; server stores only a cryptographic hash.
 - **Service token:** machine-to-machine credential for product provisioning APIs; separate from user tokens.
 
-Recommended starting policy (owner/security review required):
-- access token lifetime: 5–10 minutes;
-- refresh token: 30 days maximum inactivity, subject to risk and device policy;
-- rotate refresh token on every refresh;
+CTO-decided v1 policy (2026-11-13):
+- access token lifetime: 5 minutes;
+- refresh token: 30 days maximum inactivity and 90 days absolute session lifetime;
+- rotate refresh token on every successful refresh;
 - reuse of an already-rotated refresh token revokes the associated token family/session and emits a security event;
-- signing keys rotate with overlapping verification period;
-- revoke sessions on password reset, credential compromise, account suspension or explicit device revocation.
+- sensitive-action step-up must be no older than 5 minutes;
+- signing keys rotate with an overlapping verification period;
+- revoke sessions across products on password reset, credential compromise, account suspension or explicit device revocation.
 
 Access token claims should be minimal:
 `iss`, `sub` (central `identity_id`), `aud` (exact product API), `iat`, `exp`, `jti`, `sid`, `client_id`, `auth_time`, `amr` and optional `acr`.
@@ -214,7 +215,7 @@ Normative v1 rules:
 Allowed:
 - be stored as required registration attributes;
 - be shown masked to the account holder;
-- be used as candidate login identifiers together with a valid password, if the owner approves this login behavior;
+- be used as login lookup identifiers with a valid password, under the CTO decision: phone OR email plus password; neither contact is treated as verified or as proof of ownership;
 - be used for internal duplicate/conflict detection.
 
 Not allowed:
@@ -485,7 +486,7 @@ Never provide an operator with an action to silently take over a user's identity
 
 ## 13. Implementation sequence
 
-1. **Architecture freeze:** threat-model the approved contact reservation and CTO recovery baseline; finalize token/session lifetimes, device policy and Propo account-context contract.
+1. **Stage 0 engineering readiness:** freeze the stack and machine-readable API/event contracts; validate token/session and crypto library compatibility in the Codespaces environment; obtain the Propo account-context contract. Token/session lifetimes are already fixed by CTO decision; device lifecycle implementation remains Stage 1.
 2. **Identity foundation:** database, migrations, config/secrets, health checks, audit, observability.
 3. **Authentication:** OIDC Authorization Code + PKCE, Argon2id password, passkeys, optional TOTP, recovery-code issuance, sessions, refresh rotation, logout and JWKS.
 4. **Contact claims:** required phone/email collection, normalization, unverified state, conflict-safe operations.
@@ -502,14 +503,14 @@ Each stage requires tests and review before proceeding to the next. No stage is 
 
 The following are intentionally not silently decided:
 1. **DECIDED — contact uniqueness, Option A (owner-approved 2026-11-13):** first-claim-wins global reservation for normalized phone/email, generic conflict response, restricted manual dispute review, no automatic transfer/merge/link. The unverified-contact squatting risk is explicitly accepted. Remaining work: define operator access, evidence standards, escalation, retention and user-facing support flow.
-2. **Login identifier:** may user sign in with either claimed phone or claimed email plus password while both are unverified, or should login use a separate username? Recommendation: allow either as a lookup identifier plus password, clearly treating it as an identifier, not proof of contact ownership.
+2. **CTO DECIDED — login identifier:** the user may sign in with either claimed phone or claimed email plus password. Both remain unverified lookup identifiers; neither is proof of contact ownership, MFA or recovery.
 3. **CTO DECISION — credential baseline and recovery v1:** Argon2id password; passkeys preferred; optional TOTP; 10 single-use recovery codes; recovery only by enrolled passkey, fresh trusted-device step-up or recovery code; no reset through unverified contacts. If all authenticators/codes are lost, no v1 manual override until independent identity-proofing and two-person review exist.
 4. **CTO DECISION — recovery controls:** one-use 10-minute purpose-bound grant; revoke all sessions after password reset; 24-hour hold on sensitive operations after recovery-code reset; contact replacement requires passkey/TOTP step-up and 72-hour cooling period.
-5. **Token/session defaults:** 5–10 minute access tokens and rotating refresh tokens with 30-day inactivity maximum remain recommendations pending security review.
+5. **CTO DECIDED — token/session defaults:** 5-minute access tokens; rotating opaque refresh tokens; 30-day inactivity expiry; 90-day absolute session lifetime; refresh-token reuse revokes the active family; sensitive-action step-up age is at most 5 minutes.
 6. **Business invitation authority:** invitation remains owned by InOne Business; Identity authenticates invitee and provisions the account pair.
 7. **Propo contract:** confirm Propo can maintain separate personal/work account principals and return stable account IDs. This is a blocking integration dependency.
 
-Until these gates are closed, this remains an architecture proposal, not an implementation specification ready for production.
+The login identifier and token/session defaults are now fixed CTO technical decisions. The stack is recorded in [ADR-IDENTITY-STACK-001](identity/ADR-IDENTITY-STACK-001.md). Propo's stable personal/work principals and API contract remain the blocking product-integration dependency. Stage 0 contracts and readiness gates are maintained in [Identity Stage 0](identity/STAGE-0-ENGINEERING-READINESS.md). This remains a design specification, not an implementation or production authorization.
 
 ## 15. Non-goals
 

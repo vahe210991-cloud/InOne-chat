@@ -1,0 +1,330 @@
+asyncapi: 3.0.0
+info:
+  title: InOne Identity Product Events
+  version: 1.0.0
+  description: |
+    Stage 0 logical event contract. Events are committed to the Identity
+    PostgreSQL outbox and delivered at least once to authenticated product
+    adapters over HTTPS. This file does not select a broker or define live
+    webhook URLs. Consumers must deduplicate by event_id and reject stale
+    aggregate versions.
+defaultContentType: application/json
+servers:
+  productAdapter:
+    host: adapter.example.invalid
+    protocol: https
+    description: Reserved host placeholder. Product adapter endpoints are configured per environment.
+    security:
+      - $ref: '#/components/securitySchemes/productAdapterMtls'
+channels:
+  productAccountProvisionRequested:
+    address: /events/identity.product_account.provision_requested
+    messages:
+      productAccountProvisionRequested:
+        $ref: '#/components/messages/ProductAccountProvisionRequested'
+  sessionRevoked:
+    address: /events/identity.session.revoked
+    messages:
+      sessionRevoked:
+        $ref: '#/components/messages/SessionRevoked'
+  credentialChanged:
+    address: /events/identity.credential.changed
+    messages:
+      credentialChanged:
+        $ref: '#/components/messages/CredentialChanged'
+  recoveryCompleted:
+    address: /events/identity.recovery.completed
+    messages:
+      recoveryCompleted:
+        $ref: '#/components/messages/RecoveryCompleted'
+  securityHoldPlaced:
+    address: /events/identity.security_hold.placed
+    messages:
+      securityHoldPlaced:
+        $ref: '#/components/messages/SecurityHoldPlaced'
+  securityHoldReleased:
+    address: /events/identity.security_hold.released
+    messages:
+      securityHoldReleased:
+        $ref: '#/components/messages/SecurityHoldReleased'
+  contactChangeStarted:
+    address: /events/identity.contact_change.started
+    messages:
+      contactChangeStarted:
+        $ref: '#/components/messages/ContactChangeStarted'
+  contactChangeCompleted:
+    address: /events/identity.contact_change.completed
+    messages:
+      contactChangeCompleted:
+        $ref: '#/components/messages/ContactChangeCompleted'
+operations:
+  sendProductAccountProvisionRequested:
+    action: send
+    channel:
+      $ref: '#/channels/productAccountProvisionRequested'
+    messages:
+      - $ref: '#/channels/productAccountProvisionRequested/messages/productAccountProvisionRequested'
+  sendSessionRevoked:
+    action: send
+    channel:
+      $ref: '#/channels/sessionRevoked'
+    messages:
+      - $ref: '#/channels/sessionRevoked/messages/sessionRevoked'
+  sendCredentialChanged:
+    action: send
+    channel:
+      $ref: '#/channels/credentialChanged'
+    messages:
+      - $ref: '#/channels/credentialChanged/messages/credentialChanged'
+  sendRecoveryCompleted:
+    action: send
+    channel:
+      $ref: '#/channels/recoveryCompleted'
+    messages:
+      - $ref: '#/channels/recoveryCompleted/messages/recoveryCompleted'
+  sendSecurityHoldPlaced:
+    action: send
+    channel:
+      $ref: '#/channels/securityHoldPlaced'
+    messages:
+      - $ref: '#/channels/securityHoldPlaced/messages/securityHoldPlaced'
+  sendSecurityHoldReleased:
+    action: send
+    channel:
+      $ref: '#/channels/securityHoldReleased'
+    messages:
+      - $ref: '#/channels/securityHoldReleased/messages/securityHoldReleased'
+  sendContactChangeStarted:
+    action: send
+    channel:
+      $ref: '#/channels/contactChangeStarted'
+    messages:
+      - $ref: '#/channels/contactChangeStarted/messages/contactChangeStarted'
+  sendContactChangeCompleted:
+    action: send
+    channel:
+      $ref: '#/channels/contactChangeCompleted'
+    messages:
+      - $ref: '#/channels/contactChangeCompleted/messages/contactChangeCompleted'
+components:
+  securitySchemes:
+    productAdapterMtls:
+      type: X509
+      description: Identity authenticates to product adapters using a client X.509 certificate over HTTPS.
+  messages:
+    ProductAccountProvisionRequested:
+      name: identity.product_account.provision_requested
+      title: Product account provisioning request
+      payload:
+        $ref: '#/components/schemas/ProductAccountProvisionRequested'
+    SessionRevoked:
+      name: identity.session.revoked
+      title: Session revoked
+      payload:
+        $ref: '#/components/schemas/SessionRevoked'
+    CredentialChanged:
+      name: identity.credential.changed
+      title: Credential changed
+      payload:
+        $ref: '#/components/schemas/CredentialChanged'
+    RecoveryCompleted:
+      name: identity.recovery.completed
+      title: Recovery completed
+      payload:
+        $ref: '#/components/schemas/RecoveryCompleted'
+    SecurityHoldPlaced:
+      name: identity.security_hold.placed
+      title: Security hold placed
+      payload:
+        $ref: '#/components/schemas/SecurityHold'
+    SecurityHoldReleased:
+      name: identity.security_hold.released
+      title: Security hold released
+      payload:
+        $ref: '#/components/schemas/SecurityHold'
+    ContactChangeStarted:
+      name: identity.contact_change.started
+      title: Contact change started
+      payload:
+        $ref: '#/components/schemas/ContactChange'
+    ContactChangeCompleted:
+      name: identity.contact_change.completed
+      title: Contact change completed
+      payload:
+        $ref: '#/components/schemas/ContactChange'
+  schemas:
+    EventEnvelope:
+      type: object
+      additionalProperties: false
+      required: [event_id, event_type, event_version, occurred_at, correlation_id, aggregate_id, aggregate_version, data]
+      properties:
+        event_id:
+          type: string
+          format: uuid
+        event_type:
+          type: string
+        event_version:
+          const: 1
+        occurred_at:
+          type: string
+          format: date-time
+        correlation_id:
+          type: string
+          minLength: 1
+        causation_id:
+          type: [string, 'null']
+        aggregate_id:
+          type: string
+        aggregate_version:
+          type: integer
+          minimum: 1
+        data:
+          type: object
+    ProductAccountProvisionRequested:
+      allOf:
+        - $ref: '#/components/schemas/EventEnvelope'
+        - type: object
+          properties:
+            event_type:
+              const: identity.product_account.provision_requested
+            data:
+              type: object
+              additionalProperties: false
+              required: [operation_id, step_id, identity_id, product, account_context, provisioning_mode, product_contract_version]
+              properties:
+                operation_id:
+                  type: string
+                  format: uuid
+                step_id:
+                  type: string
+                  format: uuid
+                identity_id:
+                  type: string
+                  format: uuid
+                product:
+                  type: string
+                  enum: [inone, inone_business, propo]
+                account_context:
+                  type: string
+                  enum: [personal, work]
+                provisioning_mode:
+                  type: string
+                  enum: [create_active, create_reserved]
+                product_contract_version:
+                  type: string
+    SessionRevoked:
+      allOf:
+        - $ref: '#/components/schemas/EventEnvelope'
+        - type: object
+          properties:
+            event_type:
+              const: identity.session.revoked
+            data:
+              type: object
+              additionalProperties: false
+              required: [identity_id, session_id, reason]
+              properties:
+                identity_id:
+                  type: string
+                  format: uuid
+                session_id:
+                  type: string
+                reason:
+                  type: string
+    CredentialChanged:
+      allOf:
+        - $ref: '#/components/schemas/EventEnvelope'
+        - type: object
+          properties:
+            event_type:
+              const: identity.credential.changed
+            data:
+              type: object
+              additionalProperties: false
+              required: [identity_id, security_version, reason]
+              properties:
+                identity_id:
+                  type: string
+                  format: uuid
+                security_version:
+                  type: integer
+                  minimum: 0
+                reason:
+                  type: string
+    RecoveryCompleted:
+      allOf:
+        - $ref: '#/components/schemas/EventEnvelope'
+        - type: object
+          properties:
+            event_type:
+              const: identity.recovery.completed
+            data:
+              type: object
+              additionalProperties: false
+              required: [identity_id, recovery_method, security_version]
+              properties:
+                identity_id:
+                  type: string
+                  format: uuid
+                recovery_method:
+                  type: string
+                  enum: [passkey, trusted_device_step_up, recovery_code]
+                security_version:
+                  type: integer
+                  minimum: 0
+    SecurityHold:
+      allOf:
+        - $ref: '#/components/schemas/EventEnvelope'
+        - type: object
+          properties:
+            event_type:
+              type: string
+              enum: [identity.security_hold.placed, identity.security_hold.released]
+            data:
+              type: object
+              additionalProperties: false
+              required: [identity_id, hold_id, hold_type, status, security_version]
+              properties:
+                identity_id:
+                  type: string
+                  format: uuid
+                hold_id:
+                  type: string
+                  format: uuid
+                hold_type:
+                  type: string
+                  enum: [recovery_code_reset, contact_change_pending, security_review]
+                status:
+                  type: string
+                  enum: [active, released, expired]
+                security_version:
+                  type: integer
+                  minimum: 0
+                expires_at:
+                  type: [string, 'null']
+                  format: date-time
+    ContactChange:
+      allOf:
+        - $ref: '#/components/schemas/EventEnvelope'
+        - type: object
+          properties:
+            event_type:
+              type: string
+              enum: [identity.contact_change.started, identity.contact_change.completed]
+            data:
+              type: object
+              additionalProperties: false
+              required: [identity_id, contact_id, status, effective_at]
+              properties:
+                identity_id:
+                  type: string
+                  format: uuid
+                contact_id:
+                  type: string
+                  format: uuid
+                status:
+                  type: string
+                  enum: [pending, completed]
+                effective_at:
+                  type: string
+                  format: date-time

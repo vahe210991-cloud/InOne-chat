@@ -182,3 +182,32 @@ The product split does not automatically imply separate or shared identity servi
 - Development plan: development/architecture/README.md.
 - Status: version 0.1 draft; product direction derives from owner statements, technical topology and role details remain proposals/open decisions.
 - For the restart, historical code and CI are technical reference only, not accepted product completion. Read development/architecture/REPOSITORY-REBASELINE.md before reuse.
+
+
+## 13. InOne Identity — Stage 0 engineering readiness (2026-11-13)
+
+Task branch: `stage0/identity-engineering-readiness-2026-11-13`.
+
+- `architecture/identity/STAGE-0-ENGINEERING-READINESS.md` — readiness gate, environments, Stage 1 backlog and external gates.
+- `architecture/identity/ADR-IDENTITY-STACK-001.md` — CTO stack decision and compatibility spike acceptance.
+- `architecture/identity/PROPO-ADAPTER-QUESTIONNAIRE.md` — Propo technical discovery request; awaiting response.
+- `architecture/identity/DATA-CLASSIFICATION-AND-PRIVACY.md` — data classification and privacy/legal review requirements.
+- `architecture/identity/contracts/identity-openapi-v1.yaml` — machine-readable HTTP contract.
+- `architecture/identity/contracts/identity-events-v1.asyncapi.yaml` — machine-readable event contract.
+- `architecture/identity/contracts/identity-client-registry-v1.template.yaml` — non-deployable OIDC client registry template with deliberately empty redirect URI allowlists.
+- `.github/workflows/identity-contracts.yml` — contract lint CI, pinned Redocly CLI 2.77.0 and checkout action SHA.
+
+Stage 0 status at handoff: artifacts created; CI and runtime compatibility spike pending. No application source, database migration, API runtime, Propo adapter, deployment or production secrets created. External Propo and privacy/legal gates remain open.
+
+
+Review PR for this package: [#51 — Identity Stage 0](https://github.com/vahe210991-cloud/InOne-chat/pull/51), task branch `stage0/identity-engineering-readiness-2026-11-13`, based on architecture PR #50. Draft/open/unmerged; CI and compatibility spike remain unverified.
+
+
+Identity Stage 0 development environment:
+- `.devcontainer/identity/devcontainer.json` — dedicated Codespaces profile.
+- `.devcontainer/identity/docker-compose.yml` — Node 26 workspace and PostgreSQL 18 service with persistent named volume.
+- `.devcontainer/identity/scripts/verify-stage0-environment.sh` — checks Node 26, PostgreSQL 18 connectivity and contract lint.
+- `.devcontainer/identity/scripts/validate-contracts.sh` — pinned Redocly contract lint.
+- `.devcontainer/identity/README.md` — Codespaces creation command and setup steps.
+
+Status: configuration added, not built or run. This environment is isolated from Flutter/mobile configuration. The available GitHub connector does not expose a Codespaces creation action; an authorized Codespace must be created through GitHub UI/CLI and verified on the task branch.

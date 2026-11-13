@@ -1,0 +1,46 @@
+name: Identity contract validation
+
+on:
+  pull_request:
+    paths:
+      - "architecture/identity/**"
+      - ".devcontainer/identity/**"
+      - ".github/workflows/identity-contracts.yml"
+  push:
+    branches:
+      - "stage0/identity-engineering-readiness-2026-11-13"
+    paths:
+      - "architecture/identity/**"
+      - ".devcontainer/identity/**"
+      - ".github/workflows/identity-contracts.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: identity-contract-validation
+  cancel-in-progress: true
+
+jobs:
+  validate-contracts:
+    name: Validate OpenAPI and AsyncAPI contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js 26 LTS
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "26"
+
+      - name: Verify toolchain
+        run: |
+          node --version
+          npm --version
+
+      - name: Validate contracts
+        run: bash .devcontainer/identity/scripts/validate-contracts.sh

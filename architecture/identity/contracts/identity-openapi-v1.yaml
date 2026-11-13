@@ -1,0 +1,883 @@
+openapi: 3.1.0
+info:
+  title: InOne Identity API
+  version: 1.0.0
+  summary: Contract-first public and service API for InOne Identity
+  description: |
+    Stage 0 contract. It defines intended API behavior and is not evidence that
+    any endpoint is implemented. OIDC standard endpoints are provided by the
+    selected OIDC provider and are described by discovery metadata.
+servers:
+  - url: https://identity.example.invalid
+    description: Reserved placeholder only. Replace after domain and environment approval.
+tags:
+  - name: Registration
+    description: Public identity registration and initial product-account provisioning.
+  - name: Account
+    description: Authenticated access to the current central identity.
+  - name: Contacts
+    description: Management of phone and email contact claims.
+  - name: Devices
+    description: Device enrollment, session management and revocation.
+  - name: Recovery
+    description: Account recovery and recovery-code lifecycle.
+  - name: Internal Provisioning
+    description: Authenticated service-to-service product-account provisioning.
+  - name: Internal Security
+    description: Authenticated service-to-service security-state checks.
+paths:
+  /v1/registrations:
+    post:
+      tags: [Registration]
+      operationId: registerPersonalIdentity
+      security: []
+      summary: Register an InOne personal identity and request its paired product accounts
+      description: |
+        Public registration is only for InOne personal context. The product pair
+        is selected by Identity, never by the client. Phone and email are stored
+        as unverified claims. A 202 response means provisioning is pending or
+        underway, not that every product has activated the account.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PersonalRegistrationRequest'
+      responses:
+        '202':
+          description: Registration accepted; provisioning state is asynchronous.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegistrationAccepted'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Generic contact-claim conflict; does not identify the existing claimant.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /v1/registrations/{operation_id}:
+    get:
+      tags: [Registration]
+      operationId: getOwnProvisioningOperation
+      summary: Read provisioning status for the authenticated identity
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OperationId'
+      responses:
+        '200':
+          description: Current operation state visible to its owning identity.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProvisioningOperation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/me:
+    get:
+      tags: [Account]
+      operationId: getCurrentIdentity
+      summary: Read the authenticated user's central identity summary
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Minimal identity summary. No credentials or unmasked contacts.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentitySummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /v1/me/contacts:
+    get:
+      tags: [Contacts]
+      operationId: listOwnContactClaims
+      summary: List the caller's contact claims
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Own masked contact claims and verification states.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ContactClaim'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Contacts]
+      operationId: addOwnContactClaim
+      summary: Add a contact claim without implying verification
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddContactRequest'
+      responses:
+        '201':
+          description: Contact claim created as unverified.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContactClaim'
+        '409':
+          description: Generic contact claim conflict.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /v1/me/devices:
+    get:
+      tags: [Devices]
+      operationId: listOwnDevices
+      summary: List devices and sessions associated with the current identity
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Own device list.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Device'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /v1/me/devices/{device_id}:
+    delete:
+      tags: [Devices]
+      operationId: revokeOwnDevice
+      summary: Revoke sessions for one enrolled device
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: device_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Device sessions revoked.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/auth/logout:
+    post:
+      tags: [Devices]
+      operationId: logoutCurrentSession
+      summary: Revoke the current session
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Current session revoked.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /v1/recovery/start:
+    post:
+      tags: [Recovery]
+      operationId: startAccountRecovery
+      security: []
+      summary: Start a generic recovery attempt
+      description: |
+        Response must not reveal whether an identity or contact exists, which
+        authenticators are enrolled, or whether recovery is available.
+        Unverified phone/email are lookup identifiers only and never recovery factors.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [login_identifier, client_id]
+              properties:
+                login_identifier:
+                  type: string
+                  minLength: 1
+                  maxLength: 320
+                client_id:
+                  type: string
+                  minLength: 1
+                  maxLength: 128
+                device_binding:
+                  type: string
+                  minLength: 16
+                  maxLength: 256
+      responses:
+        '202':
+          description: Generic accepted response; equivalent for known and unknown identities.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecoveryStartAccepted'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /v1/recovery/challenge:
+    post:
+      tags: [Recovery]
+      operationId: submitRecoveryChallenge
+      security: []
+      summary: Submit proof from an enrolled recovery method
+      description: |
+        Valid methods are an enrolled passkey, a trusted device with fresh
+        passkey/TOTP step-up, or one unused recovery code. The trusted device
+        session alone is insufficient.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [attempt_id, method, proof]
+              properties:
+                attempt_id:
+                  type: string
+                  format: uuid
+                method:
+                  type: string
+                  enum: [passkey, trusted_device_step_up, recovery_code]
+                proof:
+                  type: object
+                  description: Method-specific proof; never log or persist raw proof after validation.
+      responses:
+        '202':
+          description: Generic challenge response.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecoveryChallengeAccepted'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /v1/recovery/complete:
+    post:
+      tags: [Recovery]
+      operationId: completeAccountRecovery
+      security: []
+      summary: Complete a recovery operation using a short-lived recovery grant
+      description: |
+        The grant is single-use, purpose/client/device-bound and expires after
+        10 minutes. Password reset revokes all existing product sessions.
+        Recovery-code use invalidates the old code set and places a 24-hour
+        sensitive-action hold.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [recovery_grant, new_password]
+              properties:
+                recovery_grant:
+                  type: string
+                  minLength: 32
+                  maxLength: 2048
+                new_password:
+                  type: string
+                  minLength: 1
+                  maxLength: 1024
+      responses:
+        '200':
+          description: Recovery completed; sessions revoked and applicable holds placed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, sessions_revoked]
+                properties:
+                  status:
+                    const: completed
+                  sessions_revoked:
+                    type: boolean
+                  security_hold:
+                    type: [object, 'null']
+                    properties:
+                      type:
+                        type: string
+                      expires_at:
+                        type: string
+                        format: date-time
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '410':
+          description: Grant expired or already consumed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /v1/me/security/recovery-codes:
+    post:
+      tags: [Recovery]
+      operationId: issueOrRotateRecoveryCodes
+      summary: Issue or rotate one-time recovery codes
+      description: Initial issuance requires recent password re-authentication. Rotation requires passkey/TOTP or fresh password plus an unused recovery code. Raw codes are returned once only.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reauthentication_proof]
+              properties:
+                reauthentication_proof:
+                  type: object
+                  description: Fresh password/passkey/TOTP proof; never log.
+      responses:
+        '200':
+          description: Ten one-time codes returned once. Server stores only keyed hashes.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [codes, generated_at]
+                properties:
+                  codes:
+                    type: array
+                    minItems: 10
+                    maxItems: 10
+                    items:
+                      type: string
+                  generated_at:
+                    type: string
+                    format: date-time
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Step-up required.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /v1/me/security/sessions/revoke-all:
+    post:
+      tags: [Recovery]
+      operationId: revokeAllOwnSessions
+      summary: Revoke all sessions across all product contexts
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: All sessions revoked.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /v1/me/contacts/{contact_id}/change:
+    post:
+      tags: [Contacts]
+      operationId: requestContactReplacement
+      summary: Start a protected contact replacement
+      description: Requires fresh passkey/TOTP step-up. Old claim remains reserved during a 72-hour cooling period. Sensitive actions are blocked while the change is pending.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: contact_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddContactRequest'
+      responses:
+        '202':
+          description: Contact replacement pending cooling period.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, activates_at]
+                properties:
+                  status:
+                    const: pending
+                  activates_at:
+                    type: string
+                    format: date-time
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Step-up required.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /v1/internal/provisioning/operations:
+    post:
+      tags: [Internal Provisioning]
+      operationId: requestWorkAccountPairProvisioning
+      summary: Request work-account provisioning after Business invitation acceptance
+      description: |
+        Business is the authority for invitation acceptance, inviter permission,
+        organization membership and role assignment. Identity verifies the
+        authenticated Business service and provisions only the work pair.
+      security:
+        - serviceMtls: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [identity_id, entry_product, account_context, invitation_reference, business_membership_reference]
+              properties:
+                identity_id:
+                  type: string
+                  format: uuid
+                entry_product:
+                  const: inone_business
+                account_context:
+                  const: work
+                invitation_reference:
+                  type: string
+                  minLength: 1
+                  maxLength: 256
+                business_membership_reference:
+                  type: string
+                  minLength: 1
+                  maxLength: 256
+      responses:
+        '202':
+          description: Work pair provisioning accepted or existing operation returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegistrationAccepted'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Service identity or scope is not authorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /v1/internal/provisioning/acknowledgements:
+    post:
+      tags: [Internal Provisioning]
+      operationId: acknowledgeProductProvisioning
+      summary: Acknowledge a product account creation/reservation result
+      security:
+        - serviceMtls: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProvisioningAcknowledgement'
+      responses:
+        '202':
+          description: Acknowledgement accepted and deduplicated.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /v1/internal/provisioning/operations/{operation_id}:
+    get:
+      tags: [Internal Provisioning]
+      operationId: reconcileProvisioningOperation
+      summary: Read operation state for an authorized product adapter
+      security:
+        - serviceMtls: []
+      parameters:
+        - $ref: '#/components/parameters/OperationId'
+      responses:
+        '200':
+          description: Operation state for reconciliation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProvisioningOperation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/internal/identities/{identity_id}/security-state:
+    get:
+      tags: [Internal Security]
+      operationId: getIdentitySecurityState
+      summary: Check current security holds before a designated high-risk product action
+      description: Product services use this authoritative state when event freshness cannot be guaranteed. If Identity is unavailable, designated high-risk actions fail closed.
+      security:
+        - serviceMtls: []
+      parameters:
+        - name: identity_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Minimal security state; no contact or credential data.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentitySecurityState'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    serviceMtls:
+      type: mutualTLS
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Stable opaque key; the server binds it to a canonical request fingerprint.
+      schema:
+        type: string
+        minLength: 16
+        maxLength: 128
+    OperationId:
+      name: operation_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  responses:
+    BadRequest:
+      description: Invalid request.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    Unauthorized:
+      description: Authentication required or invalid.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    NotFound:
+      description: Resource not found or not visible to caller.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    RateLimited:
+      description: Request throttled.
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+  schemas:
+    PersonalRegistrationRequest:
+      type: object
+      additionalProperties: false
+      required: [entry_product, account_context, phone, email, password, client_id, device, terms_version]
+      properties:
+        entry_product:
+          const: inone
+        account_context:
+          const: personal
+        phone:
+          type: string
+          pattern: '^\\+[1-9][0-9]{7,14}$'
+        email:
+          type: string
+          format: email
+          maxLength: 320
+        password:
+          type: string
+          minLength: 1
+          maxLength: 1024
+          writeOnly: true
+        client_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        device:
+          $ref: '#/components/schemas/DeviceRegistration'
+        terms_version:
+          type: string
+          minLength: 1
+          maxLength: 64
+    DeviceRegistration:
+      type: object
+      additionalProperties: false
+      required: [platform, client_instance_id]
+      properties:
+        platform:
+          type: string
+          enum: [ios, android, web]
+        client_instance_id:
+          type: string
+          minLength: 16
+          maxLength: 256
+        display_name:
+          type: string
+          maxLength: 100
+    RegistrationAccepted:
+      type: object
+      additionalProperties: false
+      required: [identity_id, registration_status, provisioning_operation_id, product_accounts]
+      properties:
+        identity_id:
+          type: string
+          format: uuid
+        registration_status:
+          type: string
+          enum: [provisioning, provisioning_pending, completed]
+        provisioning_operation_id:
+          type: string
+          format: uuid
+        product_accounts:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items:
+            $ref: '#/components/schemas/ProductAccountState'
+    ProductAccountState:
+      type: object
+      additionalProperties: false
+      required: [product, account_context, status]
+      properties:
+        product:
+          type: string
+          enum: [inone, inone_business, propo]
+        account_context:
+          type: string
+          enum: [personal, work]
+        status:
+          type: string
+          enum: [requested, provisioning, reserved, active, failed_retryable, failed_permanent, suspended]
+        product_account_id:
+          type: [string, 'null']
+    ProvisioningOperation:
+      type: object
+      additionalProperties: false
+      required: [operation_id, status, steps]
+      properties:
+        operation_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [requested, provisioning, partial, completed, failed_retryable, failed_permanent]
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductAccountState'
+        correlation_id:
+          type: string
+    IdentitySummary:
+      type: object
+      additionalProperties: false
+      required: [identity_id, status, contacts, product_accounts]
+      properties:
+        identity_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending, active, suspended, closed]
+        contacts:
+          type: array
+          items:
+            $ref: '#/components/schemas/ContactClaim'
+        product_accounts:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductAccountState'
+    ContactClaim:
+      type: object
+      additionalProperties: false
+      required: [contact_id, type, masked_value, verification_status, claim_status]
+      properties:
+        contact_id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [phone, email]
+        masked_value:
+          type: string
+        verification_status:
+          type: string
+          enum: [unverified, pending, verified, rejected]
+        claim_status:
+          type: string
+          enum: [active, conflict, released]
+    AddContactRequest:
+      type: object
+      additionalProperties: false
+      required: [type, value]
+      properties:
+        type:
+          type: string
+          enum: [phone, email]
+        value:
+          type: string
+          minLength: 3
+          maxLength: 320
+    Device:
+      type: object
+      additionalProperties: false
+      required: [device_id, platform, status, last_seen_at]
+      properties:
+        device_id:
+          type: string
+          format: uuid
+        platform:
+          type: string
+          enum: [ios, android, web]
+        display_name:
+          type: string
+        status:
+          type: string
+          enum: [active, revoked]
+        last_seen_at:
+          type: string
+          format: date-time
+    RecoveryStartAccepted:
+      type: object
+      additionalProperties: false
+      required: [status, attempt_id]
+      properties:
+        status:
+          const: accepted
+        attempt_id:
+          type: string
+          format: uuid
+    RecoveryChallengeAccepted:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status:
+          const: accepted
+        recovery_grant:
+          type: string
+          description: Returned only after a valid enrolled factor; opaque and single-use.
+    ProvisioningAcknowledgement:
+      type: object
+      additionalProperties: false
+      required: [operation_id, step_id, product, account_context, status, product_contract_version, correlation_id]
+      properties:
+        operation_id:
+          type: string
+          format: uuid
+        step_id:
+          type: string
+          format: uuid
+        product:
+          type: string
+          enum: [inone, inone_business, propo]
+        account_context:
+          type: string
+          enum: [personal, work]
+        status:
+          type: string
+          enum: [succeeded, failed_retryable, failed_permanent]
+        product_account_id:
+          type: [string, 'null']
+        product_contract_version:
+          type: string
+        correlation_id:
+          type: string
+    IdentitySecurityState:
+      type: object
+      additionalProperties: false
+      required: [identity_id, security_version, holds]
+      properties:
+        identity_id:
+          type: string
+          format: uuid
+        security_version:
+          type: integer
+          minimum: 0
+        holds:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [hold_id, type, status]
+            properties:
+              hold_id:
+                type: string
+                format: uuid
+              type:
+                type: string
+                enum: [recovery_code_reset, contact_change_pending, security_review]
+              status:
+                type: string
+                enum: [active, released, expired]
+              expires_at:
+                type: [string, 'null']
+                format: date-time
+    ApiError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message, retryable, request_id]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            retryable:
+              type: boolean
+            request_id:
+              type: string
