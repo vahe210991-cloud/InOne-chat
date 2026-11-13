@@ -412,3 +412,6 @@ Stage 0 review PR: [#51 — Identity Stage 0](https://github.com/vahe210991-clou
 
 
 Identity Stage 0 environment addendum: added `.devcontainer/identity/devcontainer.json`, Compose profile with Node 26 + PostgreSQL 18, local-only database, contract validation script and environment verification script. PostgreSQL 18 volume is mounted at `/var/lib/postgresql` per the official image's v18 path change. The profile is documented in `.devcontainer/identity/README.md`. It is configuration-only until a Codespace is created; container build, DB health and contract lint are still NOT RUN/NOT VERIFIED because this session has no Codespaces creation or Docker runtime tool.
+
+
+CI verification update: first Identity contract workflow run #40 failed. The job log archive could not be retrieved (GitHub returned 404); failure cause remains unknown. Workflow now uses GitHub-hosted Ubuntu with pinned Node 26 setup rather than a job-level container. Latest-head rerun is not yet confirmed; CI remains NOT PASS.
