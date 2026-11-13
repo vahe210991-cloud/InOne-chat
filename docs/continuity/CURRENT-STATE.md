@@ -292,3 +292,8 @@ New product model:
 Architecture v0.1 draft added under the root architecture directory. Development sequence and backend evolution plan added under development/architecture. Product direction is owner-derived; topology, identity, organization-to-seller cardinality, role matrix, data ownership details and Propo API/event contracts remain open.
 
 No product code, UI, API, database schema, CI workflow, deployment or production service was changed. No Actions were started and no PR was merged. See the architecture draft and owner questions register. 
+
+
+## Owner decision update — Seller Account cardinality (2026-11-13)
+
+A1 is no longer open. The owner selected Option A: one Propo Seller Account maps to exactly one InOne Business organization. One organization managing multiple stores/Seller Accounts is out of the initial scope. The architecture branch records this as a one-to-one constraint in the product-boundary, domain-model, system-architecture and roadmap documents. Still open: Propo's stable Seller Account identifier, employee/login model, multi-organization membership, identity linking and API/event contract. No application code or database schema has been changed by recording this decision.
