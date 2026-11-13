@@ -12,7 +12,7 @@
 | Orders and purchases | Marketplace system of record | Seller-side operational view, notifications and actions through Propo contract | No |
 | Buyer-to-seller messages | Marketplace-originated conversation/context | Seller inbox and authorized employee handling | Personal messaging remains separate |
 | Ratings/reviews | Marketplace system of record | Store notifications and analytics | No |
-| Seller/store account | Propo Seller Account | Connected seller workspace | Not an organization account |
+| Seller/store account | Propo Seller Account (one account per Business organization in v1) | One-to-one connected seller workspace | Not an organization account |
 | Organization and employees | Propo seller/store association is an input to integration; canonical ownership TBD | Organization workspace, membership and role experience | No |
 | Internal team chat and work threads | No | Primary | No, except personal/social spaces |
 | Kanban, CRM, Leads, Deals | No unless Propo contract explicitly owns a record | Primary workspace; domain ownership must be specified | No |
@@ -33,7 +33,7 @@ The platform must model at least these concepts separately:
 - **Person identity:** the human who signs in.
 - **InOne profile:** the person's personal/social profile.
 - **Organization:** a legal/business or operational entity using InOne Business.
-- **Store / Seller Account:** Propo's marketplace seller entity/account. Whether this is identical to an organization or can contain multiple stores is an open decision.
+- **Store / Seller Account:** Propo's marketplace seller entity/account. Owner decision A1: exactly one Propo Seller Account is connected to exactly one InOne Business organization in the initial release. One organization managing multiple Seller Accounts/stores is out of initial scope.
 - **Membership:** a person's relationship to an organization.
 - **Role and permissions:** what that member may do in a specific organization and context.
 - **Session / active context:** the person, device, product and organization context in which an action is performed.
@@ -46,7 +46,7 @@ Proposed experience:
 - InOne and InOne Business have separate application identities, navigation trees, permissions and release scopes.
 - When a person is entitled to both, each application may provide a secure switch/open action to the other.
 - Switching must preserve the correct account and organization context without copying access tokens into URLs, WebViews, logs or clipboard.
-- If the person belongs to several organizations, the active organization must be explicit and visible in InOne Business.
+- If the person belongs to several organizations, the active organization must be explicit and visible in InOne Business. Each organization has exactly one connected Propo Seller Account in the initial release.
 - Deep links must be authorized by the destination backend; hiding a UI item is not authorization.
 
 The exact packaging (two app-store apps, one app with separate packages, or another distribution model) is not yet decided. The owner has approved two separate applications at product level; packaging and shared-client code are technical decisions still open.
@@ -82,3 +82,8 @@ Do not inherit the old InOne Beta 1.0 / Beta 2.0 labels as the new product plan 
 - InOne personal/social.
 
 No feature is considered in scope merely because a legacy branch or screen contains it.
+
+
+## 7. Approved initial Seller Account cardinality
+
+The owner selected Option A: **one Propo Seller Account = one InOne Business organization**. The initial product does not support one organization managing multiple Seller Accounts/stores. This is a cardinality decision, not a claim that Propo already exposes a particular employee or authentication model. The Propo stable account identifier and integration contract still require confirmation.
