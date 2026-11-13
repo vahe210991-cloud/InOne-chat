@@ -136,3 +136,14 @@ This decision approves the product behavior and configuration model. UI screens,
 The configuration belongs to the employee's membership and assignment within that organization, not globally to the person or merely to the position title. Organization settings remain tenant-isolated. No universal numeric defaults are introduced. The block cannot disable mandatory independent two-person approval for sensitive operations. Changes are versioned and audited; missing or ambiguous limits deny/escalate.
 
 This approves the interface requirement and policy behavior only. Screen design details, API, persistence schema and runtime enforcement remain to be designed and implemented separately. No application code or database schema was changed by this decision.
+
+
+## Owner decision — central identity and paired product-account registration (2026-11-13)
+
+**Status: OWNER-APPROVED PRODUCT DIRECTION; technical design draft.** Registration requires phone number and email. Identity stores both centrally; without SMS/email verification providers they remain unverified claims and must not be used alone for recovery, authentication or sensitive authorization.
+
+Personal registration through InOne provisions an InOne personal account plus a reserved Propo personal account. Work registration through InOne Business provisions an InOne Business work account plus a reserved Propo work account. The paired Propo account is created immediately but cannot be used until first-device activation in Propo. Personal and work contexts are separate; one person may hold both pairs.
+
+A separate InOne Identity service owns central identity/authentication/contact claims/device-session and product-account mapping. InOne, InOne Business and Propo retain separate backends and databases, local account principals and domain data. Work onboarding uses scoped invitations: explicit acceptance precedes provisioning/reuse of the work pair and activation of organization membership. Cross-product provisioning uses authenticated versioned APIs/events, idempotency, durable outbox/inbox, retries and reconciliation; no shared product database or direct cross-product SQL.
+
+See [IDENTITY-AND-PRODUCT-ACCOUNT-LIFECYCLE-V0.1.md](IDENTITY-AND-PRODUCT-ACCOUNT-LIFECYCLE-V0.1.md). Open design items include unverified-contact conflicts/recovery, credential/MFA policy, device recovery, invitation timing and Propo's support for separate personal/work principals. No implementation is implied.
