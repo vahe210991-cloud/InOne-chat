@@ -358,3 +358,17 @@ This decision approves the product behavior and configuration model. UI screens,
 
 The owner approved a distinct **Financial authority** block within the InOne Business employee position assignment/edit interface. The block configures employee-specific financial operation permissions and limits for that organization membership/assignment: per-transaction maximum, optional cumulative period caps, explicit currency and the applicable independent second-approval requirement. It is not a global person-level or title-only setting, introduces no universal numeric defaults, and cannot weaken mandatory dual control. Changes must be versioned and audited. This is a documented UI/policy decision only; no screen, API, database schema or runtime behavior has been implemented by recording it.
 \n\n## Owner decision update — central identity and paired product-account registration (2026-11-13)\n\nThe owner approved mandatory phone and email collection, a separate central InOne Identity service, and automatic paired account provisioning: InOne personal → Propo personal; InOne Business work → Propo work. Each paired Propo account is reserved immediately and remains inaccessible until first-device activation in Propo. Product backends/databases remain separate; Identity owns central identity/authentication/contact claims and product-account mapping. Work onboarding retains invitation and explicit acceptance. Contacts remain unverified in the no-aggregator phase; invitation possession/device activation do not prove phone/email ownership.\n\nArchitecture draft: [IDENTITY-AND-PRODUCT-ACCOUNT-LIFECYCLE-V0.1.md](../../architecture/IDENTITY-AND-PRODUCT-ACCOUNT-LIFECYCLE-V0.1.md). This is a product/architecture decision only: no code, API, schema, UI or service has been implemented. See the draft for open security and integration gates.\n
+
+## Identity technical architecture status — 2026-11-13
+
+Created documentation-only architecture proposals:
+- `architecture/IDENTITY-SERVICE-ARCHITECTURE-V0.1.md`
+- `architecture/IDENTITY-API-AND-EVENT-CONTRACT-V0.1.md`
+
+Updated:
+- `architecture/IDENTITY-AND-PRODUCT-ACCOUNT-LIFECYCLE-V0.1.md`
+- `architecture/BACKEND-AUTHORIZATION-SPEC-V0.1.md`
+
+The design proposes a modular-monolith Identity service with dedicated PostgreSQL, OIDC Authorization Code + PKCE, central credentials and contact claims, product-scoped access tokens, device/session lifecycle, and durable idempotent account-pair provisioning. InOne Business owns invitation and membership authority. Product services own their account state and product permissions.
+
+**Status:** architecture draft only. No implementation, schema migration, API route, UI, deployment or application tests. Technical defaults requiring owner approval are listed in the Identity architecture document.
