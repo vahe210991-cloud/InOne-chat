@@ -66,3 +66,10 @@ Read [PROGRESS-BASELINE.md](PROGRESS-BASELINE.md) in full before every implement
 
 - [Full Beta 1.0 / 2.0 audit](reports/2026-11-09-0935-full-beta-audit.md)
 - [UI source import and integration stage](reports/2026-11-09-1015-ui-integration-start.md)
+
+
+## New platform architecture (2026-11-13)
+
+The owner has asked to restart product architecture from first principles while preserving the repository as a technical reference. Read the architecture development workspace and the root platform architecture.
+
+The new product model is Propo (marketplace) + InOne Business (seller organization back office) + InOne (personal/social app). Existing code, progress and CI history are not treated as completed implementation for this restart. The required first engineering activity is a read-only repository re-baseline, followed by owner decisions and approved release scope. See REPOSITORY-REBASELINE.md.
