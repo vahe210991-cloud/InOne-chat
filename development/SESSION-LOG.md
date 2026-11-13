@@ -296,3 +296,5 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Configuration is not yet executed. This tool session has no Codespaces create action or Docker runtime; build, database health and script results remain NOT RUN. No claim of a working Codespace is made.
 
 - Static local checks: devcontainer JSON parsed; Compose and GitHub workflow YAML parsed; Stage 0 environment shell script passed `bash -n`. Redocly semantic lint and Codespaces container startup were not run.
+
+- CI verification follow-up: first contract workflow run #40 failed. GitHub's job-log download returned 404, so the failure cause is unknown. Simplified the job to GitHub-hosted Ubuntu + pinned setup-node Node 26 (instead of a job-level Node container) and left the CI gate unchecked pending a new exact-head result.
