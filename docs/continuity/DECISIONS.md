@@ -160,3 +160,20 @@ Not approved / still open:
 - Approval expiry/quorum defaults and exact treatment of owner-initiated transactions.
 
 The earlier illustrative monetary amounts are examples only and are not policy. This decision approves the control model, not implementation, migrations, API changes or production enforcement. No application code or database schema was changed.
+
+
+## Owner decision — organization-configurable employee financial limits (2026-11-13)
+
+**Status: APPROVED.** Monetary limits are not fixed globally by InOne and are not imposed as universal numeric defaults. Each InOne Business organization configures its own limits through the product interface. When the organization owner assigns or edits an employee's position/authority, the owner configures that employee's applicable financial limits as part of the assignment.
+
+Requirements:
+- Limits and policy settings are tenant-isolated; one organization's configuration never affects another organization.
+- Limits are configured per employee membership/position assignment, not merely by a global position title. Employees with the same title may have different limits; the same person may have different limits in different organizations.
+- The interface must allow the owner to configure limits by operation type (for example payout, refund, discount, procurement, inventory write-off), with per-transaction and optional cumulative period caps where applicable.
+- Currency must be explicit for every monetary limit; no implicit currency conversion.
+- Limit changes are versioned and audited (actor, employee, organization, operation, previous/new value, currency, effective time and reason where supplied).
+- Missing or ambiguous limits do not mean unlimited authority; the operation is denied or escalated until configured.
+- These configurable limits remain subordinate to the approved independent two-person approval model. An initiator cannot approve their own sensitive transaction.
+- No universal numeric thresholds or default monetary values are to be hard-coded by InOne. The organization owner controls the organization's configuration through the UI, subject to permission and delegation rules.
+
+This decision approves the product behavior and configuration model. UI screens, API, persistence schema and enforcement are not yet implemented by recording this decision.
