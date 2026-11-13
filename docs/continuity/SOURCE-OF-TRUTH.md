@@ -182,3 +182,19 @@ The product split does not automatically imply separate or shared identity servi
 - Development plan: development/architecture/README.md.
 - Status: version 0.1 draft; product direction derives from owner statements, technical topology and role details remain proposals/open decisions.
 - For the restart, historical code and CI are technical reference only, not accepted product completion. Read development/architecture/REPOSITORY-REBASELINE.md before reuse.
+
+
+## 13. InOne Identity — Stage 0 engineering readiness (2026-11-13)
+
+Task branch: `stage0/identity-engineering-readiness-2026-11-13`.
+
+- `architecture/identity/STAGE-0-ENGINEERING-READINESS.md` — readiness gate, environments, Stage 1 backlog and external gates.
+- `architecture/identity/ADR-IDENTITY-STACK-001.md` — CTO stack decision and compatibility spike acceptance.
+- `architecture/identity/PROPO-ADAPTER-QUESTIONNAIRE.md` — Propo technical discovery request; awaiting response.
+- `architecture/identity/DATA-CLASSIFICATION-AND-PRIVACY.md` — data classification and privacy/legal review requirements.
+- `architecture/identity/contracts/identity-openapi-v1.yaml` — machine-readable HTTP contract.
+- `architecture/identity/contracts/identity-events-v1.asyncapi.yaml` — machine-readable event contract.
+- `architecture/identity/contracts/identity-client-registry-v1.template.yaml` — non-deployable OIDC client registry template with deliberately empty redirect URI allowlists.
+- `.github/workflows/identity-contracts.yml` — contract lint CI, pinned Redocly CLI 2.77.0 and checkout action SHA.
+
+Stage 0 status at handoff: artifacts created; CI and runtime compatibility spike pending. No application source, database migration, API runtime, Propo adapter, deployment or production secrets created. External Propo and privacy/legal gates remain open.
