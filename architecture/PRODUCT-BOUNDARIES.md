@@ -34,8 +34,8 @@ The platform must model at least these concepts separately:
 - **InOne profile:** the person's personal/social profile.
 - **Organization:** a legal/business or operational entity using InOne Business.
 - **Store / Seller Account:** Propo's marketplace seller entity/account. Owner decision A1: exactly one Propo Seller Account is connected to exactly one InOne Business organization in the initial release. One organization managing multiple Seller Accounts/stores is out of initial scope.
-- **Membership:** a person's relationship to an organization.
-- **Role and permissions:** what that member may do in a specific organization and context.
+- **Membership:** a person's relationship to one organization. A person may have memberships in several organizations.
+- **Role and permissions:** assigned per membership, not globally. The same person may be an owner in one organization and a member in another.
 - **Session / active context:** the person, device, product and organization context in which an action is performed.
 
 A person's identity must not be confused with the organization that employs or authorizes them.
@@ -46,7 +46,7 @@ Proposed experience:
 - InOne and InOne Business have separate application identities, navigation trees, permissions and release scopes.
 - When a person is entitled to both, each application may provide a secure switch/open action to the other.
 - Switching must preserve the correct account and organization context without copying access tokens into URLs, WebViews, logs or clipboard.
-- If the person belongs to several organizations, the active organization must be explicit and visible in InOne Business. Each organization has exactly one connected Propo Seller Account in the initial release.
+- If the person belongs to several organizations, the active organization must be explicit and visible in InOne Business. Each organization has exactly one connected Propo Seller Account in the initial release. Authorization is recalculated against the active organization's membership and permissions on every request.
 - Deep links must be authorized by the destination backend; hiding a UI item is not authorization.
 
 The exact packaging (two app-store apps, one app with separate packages, or another distribution model) is not yet decided. The owner has approved two separate applications at product level; packaging and shared-client code are technical decisions still open.
@@ -87,3 +87,8 @@ No feature is considered in scope merely because a legacy branch or screen conta
 ## 7. Approved initial Seller Account cardinality
 
 The owner selected Option A: **one Propo Seller Account = one InOne Business organization**. The initial product does not support one organization managing multiple Seller Accounts/stores. This is a cardinality decision, not a claim that Propo already exposes a particular employee or authentication model. The Propo stable account identifier and integration contract still require confirmation.
+
+
+## 8. Owner-approved employee membership model
+
+One Business organization can have many employees. A single person can belong to multiple organizations, with a separate role and permission set in each organization. Access-management authority is delegated down the organization's authority chain: a member can modify access only for members below their own level and only within the authority they are permitted to delegate. This does not imply that Propo uses separate employee credentials; Propo's identity/linking contract remains to be confirmed.
