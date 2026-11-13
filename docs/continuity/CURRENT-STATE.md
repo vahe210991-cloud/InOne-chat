@@ -409,3 +409,6 @@ CTO decisions recorded: login uses claimed phone OR email plus password, with bo
 
 
 Stage 0 review PR: [#51 — Identity Stage 0](https://github.com/vahe210991-cloud/InOne-chat/pull/51), based on architecture PR #50. PR #51 remains Draft/open/unmerged. The exact latest head must be re-fetched before verification; contract workflow result is not yet confirmed. No application implementation has begun.
+
+
+Identity Stage 0 environment addendum: added `.devcontainer/identity/devcontainer.json`, Compose profile with Node 26 + PostgreSQL 18, local-only database, contract validation script and environment verification script. PostgreSQL 18 volume is mounted at `/var/lib/postgresql` per the official image's v18 path change. The profile is documented in `.devcontainer/identity/README.md`. It is configuration-only until a Codespace is created; container build, DB health and contract lint are still NOT RUN/NOT VERIFIED because this session has no Codespaces creation or Docker runtime tool.
