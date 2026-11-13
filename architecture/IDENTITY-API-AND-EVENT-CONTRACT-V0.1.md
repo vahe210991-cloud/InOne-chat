@@ -203,7 +203,7 @@ Consumes the recovery grant atomically, sets a new Argon2id password and records
 
 ### POST /v1/me/security/recovery-codes
 
-Requires fresh step-up with an enrolled passkey or TOTP. Generates 10 one-time high-entropy codes, displays them once, stores only salted/peppered hashes and invalidates the previous set. A recovery code is consumed atomically and cannot be reused. Recovery codes cannot authorize financial approvals or ordinary step-up actions.
+Initial issuance requires recent password re-authentication; if a passkey/TOTP is already enrolled, require it as additional step-up. Rotation requires passkey/TOTP or fresh password re-authentication plus one unused recovery code. Generates 10 one-time codes with at least 128 bits of cryptographic randomness each, displays them once, stores only keyed hashes and invalidates the previous set. A recovery code is consumed atomically and cannot be reused. Recovery codes cannot authorize financial approvals or ordinary step-up actions. Sensitive InOne Business financial permissions require an enrolled passkey or TOTP plus a fresh recovery-code set.
 
 ### POST /v1/me/security/sessions/revoke-all
 
@@ -368,12 +368,14 @@ Before production, automate at minimum:
 15. Revoked device cannot refresh a session.
 16. Recovery start never reveals whether an identity/contact exists.
 17. Unverified phone/email cannot complete recovery or receive reset links.
-18. Passkey recovery creates a purpose-bound grant and revokes all other sessions after password reset.
-19. Recovery-code replay is rejected atomically; use invalidates the complete previous code set.
-20. Recovery-code password reset places a 24-hour hold on sensitive actions across all product contexts.
-21. A trusted-device approval without fresh step-up is rejected.
-22. Support cannot reset credentials in v1 without independent identity proofing and two-person approval.
-23. Business administrator cannot recover central Identity credentials.
-24. Contact change requires passkey/TOTP step-up, retains old claim for 72 hours and cannot bypass uniqueness conflicts.
+18. Initial recovery-code issuance works for a password-authenticated user who has not yet enrolled passkeys/TOTP; rotation requires a stronger recovery proof.
+19. Sensitive Business financial permissions are unavailable until passkey/TOTP and recovery codes are enrolled.
+20. Passkey recovery creates a purpose-bound grant and revokes all other sessions after password reset.
+21. Recovery-code replay is rejected atomically; use invalidates the complete previous code set.
+22. Recovery-code password reset places a 24-hour hold on sensitive actions across all product contexts.
+23. A trusted-device approval without fresh step-up is rejected.
+24. Support cannot reset credentials in v1 without independent identity proofing and two-person approval.
+25. Business administrator cannot recover central Identity credentials.
+26. Contact change requires passkey/TOTP step-up, retains old claim for 72 hours and cannot bypass uniqueness conflicts.
 
 No endpoint, event or test listed here is implemented by this contract draft.
