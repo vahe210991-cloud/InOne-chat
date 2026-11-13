@@ -1,0 +1,117 @@
+schema_version: 1
+status: template_only_not_deployable
+issuer: https://identity.example.invalid
+policy:
+  authorization_flow: authorization_code
+  pkce_method: S256
+  exact_redirect_uri_match: true
+  wildcard_redirect_uris_allowed: false
+  implicit_grant_allowed: false
+  password_grant_allowed: false
+  refresh_token_rotation: required
+  access_token_lifetime_seconds: 300
+  refresh_token_idle_lifetime_seconds: 2592000
+  session_absolute_lifetime_seconds: 7776000
+  token_audience_must_be_exact: true
+  client_secret_in_native_apps_allowed: false
+  client_registration_requires_review: true
+environments:
+  local:
+    issuer: http://localhost:8080
+    clients:
+      - client_id: inone-ios-local
+        product: inone
+        platforms: [ios]
+        account_contexts: [personal]
+        client_type: public_native
+        audience: https://api.inone.local.invalid
+        redirect_uris: []
+        post_logout_redirect_uris: []
+        status: blocked_until_bundle_id_and_scheme_are_confirmed
+      - client_id: inone-android-local
+        product: inone
+        platforms: [android]
+        account_contexts: [personal]
+        client_type: public_native
+        audience: https://api.inone.local.invalid
+        redirect_uris: []
+        post_logout_redirect_uris: []
+        status: blocked_until_package_id_and_scheme_are_confirmed
+      - client_id: inone-business-ios-local
+        product: inone_business
+        platforms: [ios]
+        account_contexts: [work]
+        client_type: public_native
+        audience: https://api.inone-business.local.invalid
+        redirect_uris: []
+        post_logout_redirect_uris: []
+        status: blocked_until_bundle_id_and_scheme_are_confirmed
+      - client_id: inone-business-android-local
+        product: inone_business
+        platforms: [android]
+        account_contexts: [work]
+        client_type: public_native
+        audience: https://api.inone-business.local.invalid
+        redirect_uris: []
+        post_logout_redirect_uris: []
+        status: blocked_until_package_id_and_scheme_are_confirmed
+      - client_id: propo-ios-local
+        product: propo
+        platforms: [ios]
+        account_contexts: [personal, work]
+        client_type: public_native
+        audience: https://api.propo.local.invalid
+        redirect_uris: []
+        post_logout_redirect_uris: []
+        status: blocked_until_propo_app_identifiers_are_confirmed
+      - client_id: propo-android-local
+        product: propo
+        platforms: [android]
+        account_contexts: [personal, work]
+        client_type: public_native
+        audience: https://api.propo.local.invalid
+        redirect_uris: []
+        post_logout_redirect_uris: []
+        status: blocked_until_propo_app_identifiers_are_confirmed
+      - client_id: inone-web-local
+        product: inone
+        platforms: [web]
+        account_contexts: [personal]
+        client_type: pending_spa_or_confidential_bff
+        audience: https://api.inone.local.invalid
+        redirect_uris: []
+        post_logout_redirect_uris: []
+        status: blocked_until_web_origin_and_client_architecture_are_confirmed
+      - client_id: inone-business-web-local
+        product: inone_business
+        platforms: [web]
+        account_contexts: [work]
+        client_type: pending_spa_or_confidential_bff
+        audience: https://api.inone-business.local.invalid
+        redirect_uris: []
+        post_logout_redirect_uris: []
+        status: blocked_until_web_origin_and_client_architecture_are_confirmed
+      - client_id: propo-web-local
+        product: propo
+        platforms: [web]
+        account_contexts: [personal, work]
+        client_type: pending_spa_or_confidential_bff
+        audience: https://api.propo.local.invalid
+        redirect_uris: []
+        post_logout_redirect_uris: []
+        status: blocked_until_propo_web_origin_and_client_architecture_are_confirmed
+  staging:
+    issuer: https://identity.staging.example.invalid
+    clients: []
+    status: not_configured
+  production:
+    issuer: https://identity.example.invalid
+    clients: []
+    status: not_configured
+notes:
+  - This is a design template, not live OIDC client configuration.
+  - .invalid domains are reserved placeholders and must never be deployed.
+  - Exact redirect URIs must be populated from approved app bundle IDs, package IDs, verified web origins and callback schemes.
+  - Never use wildcard redirect URIs or a shared client secret in native apps.
+  - Staging and production clients must have separate IDs, audiences, keys and redirect allowlists.
+  - Propo client identifiers and redirect schemes require confirmation from the Propo technical owner.
