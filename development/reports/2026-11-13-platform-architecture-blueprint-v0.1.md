@@ -89,3 +89,8 @@ The owner requested that all current repository implementation be treated as not
 ## 8. Owner decision recorded after v0.1 draft
 
 On 2026-11-13 the owner selected Option A for question A1: one Propo Seller Account corresponds to exactly one InOne Business organization. One organization managing multiple stores/Seller Accounts is not part of the first release. The domain model and integration constraints have been updated accordingly. Propo's stable Seller Account ID, employee/login model and API/event contract remain to be confirmed; this decision does not resolve them.
+
+
+## 9. Owner decisions received after v0.1 draft — organization membership
+
+The owner confirmed that each InOne Business organization may contain many employees and one person may belong to multiple organizations with different roles/permissions in each. Existing engine references were inspected: `org_members` uses `(org_id, user_id)` as its composite primary key; `GET /orgs/mine` returns membership-specific roles; current organization role values are `owner`, `admin`, `member`. Current API allows only owners to change roles, while admins may add/remove ordinary members. The new owner requirement is delegated access management down the authority hierarchy, limited to members below the actor and the actor's own delegation ceiling. This broader hierarchy is not yet implemented in the existing API and must be designed and tested. Propo employee identity/login mapping remains unresolved.
