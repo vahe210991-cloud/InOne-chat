@@ -380,6 +380,8 @@ Identity authenticates; product services authorize.
 - A token issued for one audience MUST be rejected by another product API.
 - Product APIs must validate signature, issuer, audience, expiry, token ID and relevant session/revocation strategy.
 - Use short-lived access tokens to bound revocation delay; high-risk actions also check current session/step-up state.
+- Product APIs must enforce Identity security holds for high-risk actions using authenticated revocation/hold events plus a current-state check where required; never rely on a stale client claim. A recovery-code reset hold blocks the defined sensitive operations until expiry or audited security release.
+- Sensitive InOne Business financial actions require a fresh passkey/TOTP step-up (recommended maximum age: 5 minutes), and the independent initiator/approver control remains mandatory. Recovery codes never satisfy financial step-up.
 - Service-to-service provisioning uses separate credentials, mutual TLS or signed client credentials, allowlisted scopes and key rotation. Never reuse a user's access token for backend provisioning.
 
 No product should trust a role, financial limit or membership value supplied by the client. Product authorization remains server-side.
