@@ -119,3 +119,8 @@
 - It does not decide common identity/login, database topology, deployment topology, or whether shared platform services are physically shared.
 - Do not use direct Propo database access. Define a versioned integration contract before implementation.
 - The architecture draft is in the root architecture directory; unresolved owner questions are in OPEN-OWNER-DECISIONS.md.
+
+
+## 8. Propo Seller Account ↔ InOne Business organization cardinality — 2026-11-13
+
+**Owner decision: Option A.** One Propo Seller Account corresponds to exactly one InOne Business organization, and one InOne Business organization connects to exactly one Propo Seller Account in the initial release. Option B (one organization managing multiple stores/Seller Accounts) is not required now and is excluded from v1 scope. Keep the integration boundary explicit so this can be extended later by a separately approved decision and migration. This does not decide how many employees a Seller Account supports, whether Propo has separate employee identities, or how login/account linking works.
