@@ -502,14 +502,14 @@ Each stage requires tests and review before proceeding to the next. No stage is 
 
 The following are intentionally not silently decided:
 1. **DECIDED — contact uniqueness, Option A (owner-approved 2026-11-13):** first-claim-wins global reservation for normalized phone/email, generic conflict response, restricted manual dispute review, no automatic transfer/merge/link. The unverified-contact squatting risk is explicitly accepted. Remaining work: define operator access, evidence standards, escalation, retention and user-facing support flow.
-2. **Login identifier:** may user sign in with either claimed phone or claimed email plus password while both are unverified, or should login use a separate username? Recommendation: allow either as a lookup identifier plus password, clearly treating it as an identifier, not proof of contact ownership.
+2. **CTO DECIDED — login identifier:** the user may sign in with either claimed phone or claimed email plus password. Both remain unverified lookup identifiers; neither is proof of contact ownership, MFA or recovery.
 3. **CTO DECISION — credential baseline and recovery v1:** Argon2id password; passkeys preferred; optional TOTP; 10 single-use recovery codes; recovery only by enrolled passkey, fresh trusted-device step-up or recovery code; no reset through unverified contacts. If all authenticators/codes are lost, no v1 manual override until independent identity-proofing and two-person review exist.
 4. **CTO DECISION — recovery controls:** one-use 10-minute purpose-bound grant; revoke all sessions after password reset; 24-hour hold on sensitive operations after recovery-code reset; contact replacement requires passkey/TOTP step-up and 72-hour cooling period.
-5. **Token/session defaults:** 5–10 minute access tokens and rotating refresh tokens with 30-day inactivity maximum remain recommendations pending security review.
+5. **CTO DECIDED — token/session defaults:** 5-minute access tokens; rotating opaque refresh tokens; 30-day inactivity expiry; 90-day absolute session lifetime; refresh-token reuse revokes the active family; sensitive-action step-up age is at most 5 minutes.
 6. **Business invitation authority:** invitation remains owned by InOne Business; Identity authenticates invitee and provisions the account pair.
 7. **Propo contract:** confirm Propo can maintain separate personal/work account principals and return stable account IDs. This is a blocking integration dependency.
 
-Until these gates are closed, this remains an architecture proposal, not an implementation specification ready for production.
+The login identifier and token/session defaults are now fixed CTO technical decisions. The stack is recorded in [ADR-IDENTITY-STACK-001](identity/ADR-IDENTITY-STACK-001.md). Propo's stable personal/work principals and API contract remain the blocking product-integration dependency. Stage 0 contracts and readiness gates are maintained in [Identity Stage 0](identity/STAGE-0-ENGINEERING-READINESS.md). This remains a design specification, not an implementation or production authorization.
 
 ## 15. Non-goals
 
