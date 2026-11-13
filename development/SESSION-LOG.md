@@ -294,3 +294,5 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Added Compose services for the workspace and PostgreSQL 18, persistent named volume at `/var/lib/postgresql` (the official PostgreSQL 18 image path), disposable local-only credentials, contract validation and environment verification scripts.
 - Added Codespaces instructions and exact `gh codespace create` command. Official GitHub docs confirm nested `.devcontainer/<name>/devcontainer.json` profiles are supported and selectable.
 - Configuration is not yet executed. This tool session has no Codespaces create action or Docker runtime; build, database health and script results remain NOT RUN. No claim of a working Codespace is made.
+
+- Static local checks: devcontainer JSON parsed; Compose and GitHub workflow YAML parsed; Stage 0 environment shell script passed `bash -n`. Redocly semantic lint and Codespaces container startup were not run.
