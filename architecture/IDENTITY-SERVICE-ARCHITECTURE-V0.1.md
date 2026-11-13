@@ -312,11 +312,60 @@ Rules:
 - revoked devices cannot refresh sessions;
 - do not treat device activation as verification of phone/email.
 
-Recommended recovery baseline:
-- passkey or another previously enrolled authenticator;
-- one-time recovery codes stored by the user;
-- if no trusted authenticator/recovery code exists and all contacts are unverified, no automated recovery is safe;
-- Business owner may revoke/reissue a work invitation or membership, but cannot reset central Identity credentials or access personal InOne data.
+### 7.1 CTO decision — credential and account-recovery policy (v1)
+
+**Status: CTO architecture decision for v1.** This policy is adopted as the technical baseline for Identity. It is not an owner-approved product feature scope or an implementation claim.
+
+#### Credential baseline
+- Password is the initial universal credential. Store only an Argon2id hash in Identity; calibrate parameters on production hardware, rate-limit by identity and network/device signals, and use generic authentication errors.
+- Passkeys (WebAuthn) are the preferred phishing-resistant second authenticator and should be supported in the first secure release where the selected OIDC stack permits.
+- TOTP authenticator app is an optional second authenticator. SMS/email OTP is not a recovery factor until a verified delivery-and-proof-of-control flow exists.
+- Generate 10 single-use high-entropy recovery codes when the user configures account recovery. Show them once, require explicit acknowledgement that they have been saved, and store only salted/peppered hashes. A code is consumed atomically and can never be reused. Rotating the set invalidates every previous code.
+- Recovery codes are for account recovery only; they are not a login method for routine use, a step-up factor for financial approvals, or proof of phone/email ownership.
+- Do not permit a user to disable their last usable authenticator/recovery path without first enrolling a replacement, except through the controlled recovery process.
+
+#### Recovery methods and precedence
+1. **Existing passkey:** the user proves possession with a fresh WebAuthn assertion, then may establish a new password or replace a lost authenticator.
+2. **Existing trusted session/device:** an already-authenticated device may approve a recovery request only after fresh step-up using a previously enrolled passkey or TOTP. An unlocked app or an old session by itself is insufficient.
+3. **One-time recovery code:** the user enters one unused recovery code. Identity issues a short-lived, single-use recovery grant bound to the identity, client, device and purpose. The grant expires after 10 minutes and cannot be exchanged for a general access token.
+4. **No remaining authenticator or recovery code:** open a support recovery case, but do not reset credentials or transfer contacts based on unverified phone/email, password knowledge, invitation possession, device activation, organization confirmation, profile details or payment/account metadata alone. In v1, no manual override is allowed until an independent identity-proofing process with documented evidence standards, trained reviewers and a second approver is separately designed and approved. If proof cannot be established, access remains blocked.
+
+#### Recovery sequence
+1. User starts recovery using phone or email as a lookup identifier. The API returns the same generic response and status shape whether or not an account exists; it never confirms a contact claim or exposes available authenticators.
+2. The user completes a challenge with an enrolled passkey or one unused recovery code. A trusted-device approval is accepted only with fresh step-up as described above.
+3. Identity validates the challenge, risk controls and rate limits, then creates a one-use recovery grant (10-minute lifetime, purpose-bound, client/device-bound).
+4. The user sets a new password and reviews active devices/authenticators. The transaction consumes the grant, records the credential change, revokes all existing refresh-token families and sessions across InOne, InOne Business and Propo, and creates only a restricted recovery session on the current device.
+5. If a recovery code was used, invalidate the entire old recovery-code set and require a new set to be generated before the user can restore sensitive Business permissions. The used code and all other old codes remain unusable.
+6. A recovery-code reset places the identity under a 24-hour security hold. During the hold, block sensitive actions: financial initiation/approval, payout or bank-detail changes, owner/role changes, identity linking, disabling security controls and bulk exports. Normal low-risk account use may continue. This hold does not replace InOne Business's independent two-person approval policy.
+7. Emit immutable audit/security events and show the recovery result in the account's security activity. Do not notify unverified phone/email addresses.
+
+A passkey-based recovery with a fresh valid assertion does not require the 24-hour hold, but still revokes all other sessions after a password reset or authenticator replacement.
+
+#### Contact changes while contacts are unverified
+- A phone/email change requires a current authenticated session and fresh step-up with an enrolled passkey or TOTP. Password-only authentication and unverified contact challenges are insufficient.
+- Reserve the new normalized value atomically as a pending change; keep the old claim active during a 72-hour cooling period. Revoke other sessions, preserve the initiating session, and block sensitive actions during the pending change.
+- The user may cancel from the initiating trusted session with fresh step-up. On completion, mark the new claim active and release/supersede the old claim in one audited transaction. If the process is abandoned, expire the pending claim and preserve the old one.
+- Because contacts are unverified, do not send security alerts to them or treat either value as proof of ownership. A contact already reserved by another identity follows the separate manual dispute policy; contact change never silently takes it over.
+- If no passkey/TOTP exists, do not allow self-service contact replacement. Route to support; do not bypass the control using the unverified old/new contact.
+
+#### Business and product boundaries
+- A Business owner/admin may revoke or reissue a work invitation and manage organization membership within delegated authority. They cannot reset central Identity credentials, approve recovery for a personal identity, take over a Propo account, or access personal InOne data.
+- Loss of a central Identity credential affects access to all linked product contexts. Recovery restores the central identity session; each product still independently checks local account state and authorization.
+- If an employee cannot recover Identity, the organization may invite a newly authenticated identity as a new member. This does not transfer the old identity's personal data, chats, Propo history or account ownership. Any migration/linking requires a separate high-assurance, explicitly audited process.
+
+#### Manual recovery case controls (future capability, not enabled in v1)
+- Support can create a case and provide status without revealing whether a contact is registered.
+- A future manual override requires independently verifiable identity proofing that does not rely on unverified contact claims, plus two-person review (case operator and independent security approver), immutable evidence/decision audit, a cooling period and notification through a newly verified channel.
+- Until that proofing capability and its privacy/legal controls exist, the case can be investigated but cannot result in credential reset, contact reassignment or account transfer.
+
+#### Required abuse controls and data model
+- Rate-limit recovery start, challenge attempts, recovery-code attempts and manual case creation; add progressive delays and risk-based throttling without revealing account existence.
+- Store recovery-code hashes, recovery grants (hashed token, purpose, expiry, consumed timestamp, client/device binding), recovery cases, security holds and authenticator lifecycle in Identity.
+- Consume recovery grants and recovery codes atomically; make all completion operations idempotent and concurrency-safe.
+- Record actor, identity, device, method, correlation ID, timestamp, result and reason code. Never log passwords, raw recovery codes, raw tokens or full contact values.
+- Security events include identity.recovery.started, identity.recovery.challenge_succeeded, identity.recovery.completed, identity.recovery.denied, identity.credential.changed, identity.sessions.revoked, identity.contact_change.started, identity.contact_change.completed and identity.security_hold.placed/released.
+
+**Security consequence:** with no verified contacts and no previously enrolled authenticator/recovery code, v1 intentionally fails closed. Account recovery may be impossible. The registration and security UI must tell users to save recovery codes and enroll a passkey; support must never promise recovery that the system cannot safely perform.
 
 ## 8. Product authorization and token exchange
 
@@ -348,7 +397,10 @@ Dedicated Identity PostgreSQL database. Names are proposed and are not migration
 | `provisioning_steps` | per-product acknowledgements | operation_id, product, command_id, product_account_id, state, updated_at |
 | `outbox_events` | durable event delivery | event_id, aggregate_id, event_type, payload_version, payload, published_at |
 | `security_events` | append-only security audit | event_id, identity_id, event_type, actor, device_id, correlation_id, occurred_at, redacted metadata |
-| `recovery_cases` | manual/automated recovery process | case_id, identity_id, state, opened_at, reviewed_by, resolution_code |
+| `recovery_cases` | restricted recovery support workflow | case_id, identity_id, state, opened_at, reviewed_by, resolution_code, evidence_ref, second_approver_id |
+| `recovery_codes` | one-time recovery secrets | code_id, identity_id, code_hash, created_at, consumed_at, revoked_at |
+| `recovery_grants` | short-lived purpose-bound recovery grants | grant_id, identity_id, token_hash, purpose, client_id, device_id, expires_at, consumed_at |
+| `security_holds` | temporary restrictions after high-risk recovery | hold_id, identity_id, reason, starts_at, ends_at, released_at, released_by |
 
 Recommended constraints:
 - unique `(identity_id, product, account_context)` for one account per product/context in v1;
@@ -428,15 +480,15 @@ Never provide an operator with an action to silently take over a user's identity
 
 ## 13. Implementation sequence
 
-1. **Architecture freeze:** finalize the approved contact uniqueness/dispute policy in the threat model; approve the remaining authentication baseline, token lifetimes, device/recovery policy and Propo account-context contract.
+1. **Architecture freeze:** threat-model the approved contact reservation and CTO recovery baseline; finalize token/session lifetimes, device policy and Propo account-context contract.
 2. **Identity foundation:** database, migrations, config/secrets, health checks, audit, observability.
-3. **Authentication:** OIDC Authorization Code + PKCE, password credential, sessions, refresh rotation, logout, JWKS.
+3. **Authentication:** OIDC Authorization Code + PKCE, Argon2id password, passkeys, optional TOTP, recovery-code issuance, sessions, refresh rotation, logout and JWKS.
 4. **Contact claims:** required phone/email collection, normalization, unverified state, conflict-safe operations.
 5. **Product provisioning:** product adapters, outbox/inbox, idempotency, retries, reconciliation and account mapping.
-6. **Device lifecycle:** device enrollment, session management and revocation.
+6. **Device and recovery lifecycle:** device enrollment, session management, recovery grants/codes, security holds, support-case controls and revocation.
 7. **Business invitations:** integrate Business-owned invitation acceptance and membership activation.
 8. **Propo integration:** confirm Propo APIs and support for personal/work account contexts; then implement its adapter.
-9. **Hardening:** threat model, abuse controls, recovery, penetration tests, backup/restore and failure drills.
+9. **Hardening:** threat model, recovery abuse controls, penetration tests, backup/restore and failure drills.
 10. **Client integration:** InOne, InOne Business and Propo login/registration UI and product-scoped session handling.
 
 Each stage requires tests and review before proceeding to the next. No stage is implemented by this architecture document.
@@ -446,10 +498,10 @@ Each stage requires tests and review before proceeding to the next. No stage is 
 The following are intentionally not silently decided:
 1. **DECIDED — contact uniqueness, Option A (owner-approved 2026-11-13):** first-claim-wins global reservation for normalized phone/email, generic conflict response, restricted manual dispute review, no automatic transfer/merge/link. The unverified-contact squatting risk is explicitly accepted. Remaining work: define operator access, evidence standards, escalation, retention and user-facing support flow.
 2. **Login identifier:** may user sign in with either claimed phone or claimed email plus password while both are unverified, or should login use a separate username? Recommendation: allow either as a lookup identifier plus password, clearly treating it as an identifier, not proof of contact ownership.
-3. **Password policy:** approve password as the initial credential, with passkeys/MFA added next? Recommendation: yes, password + optional passkey/MFA, with Argon2id and rate limits.
-4. **Recovery:** approve recovery codes/passkey-only recovery in v1 and no automated reset through unverified contacts? Recommendation: yes. Manual support recovery requires an audited identity-proofing policy.
-5. **Token/session defaults:** approve 5–10 minute access tokens and rotating refresh tokens with 30-day inactivity maximum? Recommendation: yes as initial defaults, adjustable after risk review.
-6. **Business invitation authority:** confirm invitation remains fully owned by InOne Business, with Identity only authenticating invitee and provisioning the account pair. Recommendation: yes.
+3. **CTO DECISION — credential baseline and recovery v1:** Argon2id password; passkeys preferred; optional TOTP; 10 single-use recovery codes; recovery only by enrolled passkey, fresh trusted-device step-up or recovery code; no reset through unverified contacts. If all authenticators/codes are lost, no v1 manual override until independent identity-proofing and two-person review exist.
+4. **CTO DECISION — recovery controls:** one-use 10-minute purpose-bound grant; revoke all sessions after password reset; 24-hour hold on sensitive operations after recovery-code reset; contact replacement requires passkey/TOTP step-up and 72-hour cooling period.
+5. **Token/session defaults:** 5–10 minute access tokens and rotating refresh tokens with 30-day inactivity maximum remain recommendations pending security review.
+6. **Business invitation authority:** invitation remains owned by InOne Business; Identity authenticates invitee and provisions the account pair.
 7. **Propo contract:** confirm Propo can maintain separate personal/work account principals and return stable account IDs. This is a blocking integration dependency.
 
 Until these gates are closed, this remains an architecture proposal, not an implementation specification ready for production.
