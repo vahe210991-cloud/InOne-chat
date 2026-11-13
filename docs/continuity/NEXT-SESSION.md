@@ -281,3 +281,6 @@ No Identity service source, database schema or runtime endpoint exists yet. No p
 
 
 Review PR: [#51 — Identity Stage 0](https://github.com/vahe210991-cloud/InOne-chat/pull/51). Keep it Draft. Verify exact head SHA and contract CI before declaring Stage 0 contract validation complete.
+
+
+Identity Stage 0 environment: create a Codespace on branch `stage0/identity-engineering-readiness-2026-11-13` using `.devcontainer/identity/devcontainer.json`. GitHub CLI command: `gh codespace create -r vahe210991-cloud/InOne-chat -b stage0/identity-engineering-readiness-2026-11-13 --devcontainer-path .devcontainer/identity/devcontainer.json`. Then run `bash .devcontainer/identity/scripts/verify-stage0-environment.sh`. Record exact output; do not mark environment/contract validation PASS until it succeeds.
