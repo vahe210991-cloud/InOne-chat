@@ -171,7 +171,7 @@ Phone and email are required and normalized for lookup/deduplication. Because th
 ## 9. Authentication, recovery and security boundaries
 
 - Credentials are held centrally by Identity; product backends trust short-lived, audience-restricted tokens and validate product membership/authorization locally.
-- Password/passkey policy, MFA and recovery mechanisms require a separate security design. Do not infer recovery authority from unverified contact data.
+- Identity credentials use the CTO v1 baseline: Argon2id password, passkeys preferred, optional TOTP and 10 one-time recovery codes. Recovery uses an enrolled passkey, fresh trusted-device step-up or recovery code; unverified contacts are never recovery factors. Recovery-code reset revokes all sessions and places a 24-hour hold on sensitive actions. If all authenticators/codes are lost, v1 has no manual reset override until independent identity proofing and two-person review are designed.
 - No automatic account merge based on matching phone/email.
 - Linking/unlinking accounts requires authentication to the relevant identities, explicit consent, conflict checks and immutable audit.
 - Organization administrators can manage/reissue a work invitation or membership within delegated authority. They cannot reset a person's central credentials, take over a personal InOne account, read personal chats or recover the person's private data.
@@ -205,9 +205,8 @@ Enforce unique constraints for `(identity_id, product, account_context)` where o
 - Invitation-based work onboarding is retained.
 
 **Still requires architecture/security closure before implementation:**
-- Contact uniqueness is decided (Option A); contact-change, contact release, dormant reservation and account-recovery procedures while contacts are unverified still require detailed security design.
-- Password/passkey/MFA policy and recovery workflow.
-- Device activation and trusted-device lifecycle, including lost-device recovery.
+- Contact uniqueness is decided (Option A); the CTO recovery baseline is defined. Detailed support case operations, independent identity-proofing provider/evidence standards, contact release and dormant reservation policy still require threat-model and operational design.
+- Device activation and trusted-device lifecycle, including device binding and revocation implementation.
 - Whether invitation pre-provisions a placeholder before acceptance or provisions the pair only on acceptance (this draft recommends acceptance-triggered provisioning; invite record itself is pending before acceptance).
 - Exact Propo account-context API contract and whether Propo supports separate personal/work principals.
 - Identity API/event schemas, token exchange, service-to-service authentication and threat model.
@@ -224,4 +223,4 @@ The implementation-level proposal is maintained in two companion documents:
 
 **Boundary clarification:** InOne Business owns organization invitations and membership decisions. Identity does not own Business invitation authority or permission grants. It authenticates the invitee and provisions product accounts only after an authenticated Business acceptance request.
 
-**Technical defaults still pending owner approval:** login identifier behavior for unverified contacts, password/passkey/MFA baseline, recovery policy, token/session lifetimes, and Propo's separate personal/work account API contract. Contact uniqueness/dispute policy is owner-approved (Option A); detailed operator procedures and implementation design remain outstanding.
+**Remaining owner/product or integration gates:** login identifier behavior for unverified contacts, token/session lifetimes, and Propo's separate personal/work account API contract. Credential and recovery technical baseline is set by the CTO for v1; contact uniqueness is owner-approved (Option A). All remain documentation until implementation is separately authorized.
