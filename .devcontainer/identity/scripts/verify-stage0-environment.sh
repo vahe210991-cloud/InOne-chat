@@ -14,13 +14,14 @@ if ! command -v psql >/dev/null 2>&1 || ! command -v pg_isready >/dev/null 2>&1;
   exit 1
 fi
 
-if [[ -z "$IDENTITY_DATABASE_URL" ]]; then
+if ! printenv IDENTITY_DATABASE_URL >/dev/null 2>&1; then
   echo "FAIL: IDENTITY_DATABASE_URL is not configured in the Identity devcontainer." >&2
   exit 1
 fi
+DATABASE_URL="$(printenv IDENTITY_DATABASE_URL)"
 
 pg_isready -h postgres -p 5432 -U identity_dev -d identity_dev
-SERVER_VERSION="$(psql "$IDENTITY_DATABASE_URL" -Atc 'SHOW server_version;')"
+SERVER_VERSION="$(psql "$DATABASE_URL" -Atc 'SHOW server_version;')"
 case "$SERVER_VERSION" in
   18.*) echo "PASS: PostgreSQL $SERVER_VERSION" ;;
   *) echo "FAIL: expected PostgreSQL 18, found $SERVER_VERSION" >&2; exit 1 ;;
