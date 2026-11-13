@@ -193,3 +193,15 @@ Personal registration through InOne provisions an InOne personal account plus a 
 A separate InOne Identity service owns central identity/authentication/contact claims/device-session and product-account mapping. InOne, InOne Business and Propo retain separate backends and databases, local account principals and domain data. Work onboarding uses scoped invitations: explicit acceptance precedes provisioning/reuse of the work pair and activation of organization membership. Cross-product provisioning uses authenticated versioned APIs/events, idempotency, durable outbox/inbox, retries and reconciliation; no shared product database or direct cross-product SQL.
 
 See [IDENTITY-AND-PRODUCT-ACCOUNT-LIFECYCLE-V0.1.md](IDENTITY-AND-PRODUCT-ACCOUNT-LIFECYCLE-V0.1.md). Open design items include unverified-contact conflicts/recovery, credential/MFA policy, device recovery, invitation timing and Propo's support for separate personal/work principals. No implementation is implied.
+
+
+## Identity service architecture — technical design added (2026-11-13)
+
+The owner-approved registration/account-pair behavior is now expanded into a technical proposal:
+- [IDENTITY-SERVICE-ARCHITECTURE-V0.1.md](../../architecture/IDENTITY-SERVICE-ARCHITECTURE-V0.1.md)
+- [IDENTITY-API-AND-EVENT-CONTRACT-V0.1.md](../../architecture/IDENTITY-API-AND-EVENT-CONTRACT-V0.1.md)
+- [IDENTITY-AND-PRODUCT-ACCOUNT-LIFECYCLE-V0.1.md](../../architecture/IDENTITY-AND-PRODUCT-ACCOUNT-LIFECYCLE-V0.1.md)
+
+Proposed: a separately deployed modular-monolith Identity service with dedicated PostgreSQL, OIDC Authorization Code + PKCE, central credentials/contact claims/device sessions, product-scoped tokens, and durable idempotent provisioning orchestration. Product APIs remain authoritative for product account state and permissions. InOne Business owns invitations and membership; Identity only authenticates the invitee and provisions product account pairs after Business confirms acceptance.
+
+The detailed technical defaults are proposals, not owner-approved decisions. Contact uniqueness/dispute policy, login identifiers, credential/MFA and recovery policy, token lifetimes and Propo personal/work API support remain approval gates. No code, schema, API or service has been implemented.
