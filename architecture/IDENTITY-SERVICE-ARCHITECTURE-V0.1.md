@@ -368,6 +368,8 @@ A passkey-based recovery with a fresh valid assertion does not require the 24-ho
 
 **Security consequence:** with no verified contacts and no previously enrolled authenticator/recovery code, v1 intentionally fails closed. Account recovery may be impossible. The registration and security UI must tell users to save recovery codes and enroll a passkey; support must never promise recovery that the system cannot safely perform.
 
+Detailed state machine, lost-device scenarios and implementation checklist: [IDENTITY-RECOVERY-FLOW-V0.1.md](IDENTITY-RECOVERY-FLOW-V0.1.md).
+
 ## 8. Product authorization and token exchange
 
 Identity authenticates; product services authorize.
