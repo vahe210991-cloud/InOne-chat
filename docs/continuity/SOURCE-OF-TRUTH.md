@@ -198,3 +198,6 @@ Task branch: `stage0/identity-engineering-readiness-2026-11-13`.
 - `.github/workflows/identity-contracts.yml` — contract lint CI, pinned Redocly CLI 2.77.0 and checkout action SHA.
 
 Stage 0 status at handoff: artifacts created; CI and runtime compatibility spike pending. No application source, database migration, API runtime, Propo adapter, deployment or production secrets created. External Propo and privacy/legal gates remain open.
+
+
+Review PR for this package: [#51 — Identity Stage 0](https://github.com/vahe210991-cloud/InOne-chat/pull/51), task branch `stage0/identity-engineering-readiness-2026-11-13`, based on architecture PR #50. Draft/open/unmerged; CI and compatibility spike remain unverified.
