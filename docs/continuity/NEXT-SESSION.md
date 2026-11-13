@@ -278,3 +278,6 @@ Immediate sequence:
 6. Once contract CI and compatibility spike pass, Stage 0 internal readiness can close and Stage 1 can begin on a fresh branch. Production Propo provisioning remains blocked until the Propo contract is confirmed.
 
 No Identity service source, database schema or runtime endpoint exists yet. No production deployment is authorized by Stage 0.
+
+
+Review PR: [#51 — Identity Stage 0](https://github.com/vahe210991-cloud/InOne-chat/pull/51). Keep it Draft. Verify exact head SHA and contract CI before declaring Stage 0 contract validation complete.
