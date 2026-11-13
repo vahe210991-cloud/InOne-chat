@@ -9,8 +9,8 @@ The questions below are intentionally specific. They are the minimum set needed 
 ## A. Propo Seller Account and organization model
 
 1. **DECIDED — Option A.** One Propo Seller Account corresponds to exactly one InOne Business organization. One organization does not manage multiple Seller Accounts/stores in the first release. Option B is not in the initial scope. The model should avoid unnecessary multi-store complexity while not making future expansion impossible.
-2. Can one Seller Account have several employees with separate logins and permissions, or does Propo currently share one seller login?
-3. Can one person work for several organizations/stores at the same time?
+2. One organization can have multiple employees (owner-confirmed). How are those employees represented in Propo: separate Propo user identities/logins linked to one Seller Account, or shared seller credentials? This integration detail remains open.
+3. **DECIDED:** one person may belong to several organizations at the same time and may have different roles/permissions in each. This is already supported by the existing InOne organization-membership model; preserve it.
 4. Who is the canonical owner of the organization/store profile: Propo, InOne Business, or field-by-field ownership?
 5. Can an organization exist in InOne Business before it has a Propo Seller Account, or must it be provisioned from Propo first?
 
@@ -23,8 +23,8 @@ The questions below are intentionally specific. They are the minimum set needed 
 
 ## C. Organization roles and permissions
 
-10. Do you want a fixed role set (Owner, Admin, Manager, Sales, Content, Support, Analyst, Employee) or custom roles created by the organization owner?
-11. Can there be multiple owners? Who can transfer ownership?
+10. The existing implementation has the fixed organization roles `owner`, `admin`, `member`; use these as the compatibility baseline rather than replacing them with an invented catalogue. Should the new Business model add more predefined roles or custom organization-defined roles on top of this baseline?
+11. The existing implementation permits multiple owners. Should that remain the rule for InOne Business, and what confirmation/audit process is required for ownership transfer?
 12. Which exact actions are reserved to the owner: profile editing, employee invitations, role management, seller-account linking, Wallet/financial operations, content publishing, deletion?
 13. Can employees publish organization posts/stories/statuses, or is that restricted to owner/admin/marketing roles?
 14. Do content and permissions need an approval workflow before publishing or changing marketplace listings?
@@ -63,7 +63,7 @@ The questions below are intentionally specific. They are the minimum set needed 
 
 ## Suggested answer order
 
-A1 is decided (Option A). Next, answer A2–A5, B6–B9, C10–C14, D15–D19. The detailed semantics of Wallet, Flags, CRM and analytics can then be specified as separate domain decisions. The detailed semantics of Wallet, Flags, CRM and analytics can then be specified as separate domain decisions.
+A1 and A3 are decided. A2 is partly decided (multiple employees per organization; Propo employee identity/linking remains open). Next, resolve A2/A4/A5, B6–B9 and C10–C14, then D15–D19. The detailed semantics of Wallet, Flags, CRM and analytics can then be specified as separate domain decisions. The detailed semantics of Wallet, Flags, CRM and analytics can then be specified as separate domain decisions.
 
 
 ## Recorded owner decision — A1 (2026-11-13)
@@ -72,3 +72,13 @@ A1 is decided (Option A). Next, answer A2–A5, B6–B9, C10–C14, D15–D19. T
 - **Not in initial scope:** one InOne Business organization managing multiple Propo Seller Accounts/stores (Option B).
 - **Implementation implication:** enforce a one-to-one SellerAccountConnection in the initial model and verify the mapping against Propo's stable Seller Account identifier. Do not assume anything about employee accounts, login sharing or Propo's internal data model; those remain open questions.
 - **Future-proofing:** keep the integration boundary explicit so multi-store support can be added through a separately approved schema migration and product decision, without implementing it now.
+
+
+## Recorded owner decisions — organization membership and access (2026-11-13)
+
+- One InOne Business organization may have many employees.
+- One person may belong to multiple organizations simultaneously.
+- A person's role and permissions are attached to each organization membership, not globally to the person. The same person may have different authority in different organizations.
+- Only a member with explicit authority to manage access may grant/change permissions. That member may manage only members below their own position/authority level; they may not change an equal or higher-level member's access or grant authority beyond their own delegation ceiling.
+- Existing code baseline: organization roles `owner`, `admin`, `member`; role assignment is organization-scoped. Preserve these semantics as the starting point; extend only after the complete permission hierarchy is specified.
+- Still open: Propo employee identity/login linkage; whether additional fixed or custom roles are needed; detailed permission matrix and delegation rules for sensitive actions.
