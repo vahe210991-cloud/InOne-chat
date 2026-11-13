@@ -159,3 +159,8 @@ Every work item must include:
 - Do not connect to Propo by direct database access.
 - Do not build AI features before access control, audit and data contracts.
 - Do not activate legacy screens simply because they exist in a branch.
+
+
+### Owner decision update — organization membership and access
+
+The first foundation slice must preserve many-to-many person/organization membership (one person in multiple organizations; many people in one organization) with role/permissions per membership. Use the existing `owner`/`admin`/`member` behavior as compatibility baseline. Before implementing Business-specific roles, map existing capabilities and design the new owner-required delegation ceiling: actors may change access only for members below their authority level and within their own delegated scope. Add negative tests for self-escalation and equal/higher-level access changes.
