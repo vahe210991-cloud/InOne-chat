@@ -125,6 +125,7 @@ Configuration must be schema-validated at startup. Production must fail to start
 - [x] Propo adapter questionnaire is prepared.
 - [x] Threat model and P0 launch blockers exist.
 - [x] Identity Codespaces configuration and verification script are prepared.
+- [x] Devcontainer JSON, Compose/workflow YAML syntax and shell-script syntax checks pass locally.
 - [ ] Codespaces image build, PostgreSQL health and environment verification pass.
 - [ ] Contract CI passes on the exact Stage 0 PR head.
 - [ ] OIDC/Passkey/Argon2/PostgreSQL compatibility spike is executed in the Stage 0 development environment.
