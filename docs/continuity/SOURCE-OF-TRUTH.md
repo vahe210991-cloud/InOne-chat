@@ -182,3 +182,23 @@ The product split does not automatically imply separate or shared identity servi
 - Development plan: development/architecture/README.md.
 - Status: version 0.1 draft; product direction derives from owner statements, technical topology and role details remain proposals/open decisions.
 - For the restart, historical code and CI are technical reference only, not accepted product completion. Read development/architecture/REPOSITORY-REBASELINE.md before reuse.
+
+
+## InOne Identity Stage 0 package — 2026-11-13
+
+Task branch: stage0/identity-readiness-2026-11-13 (based on architecture branch at 05bc226526d9c984b6ccb2b9f44dbad8459dcd6e). See report development/reports/2026-11-13-1326-identity-stage0-readiness.md.
+
+Artifacts:
+- architecture/IDENTITY-STAGE-0-READINESS-PACK-V0.1.md
+- architecture/identity/ADR-001-RUNTIME-AND-IDENTITY-PROTOCOL.md
+- architecture/identity/contracts/openapi.json
+- architecture/identity/contracts/event-envelope.schema.json
+- architecture/identity/contracts/event-examples.json and event-examples.schema.json
+- architecture/identity/contracts/client-registry.json and client-registry.schema.json
+- architecture/identity/ops/ENVIRONMENT-CONTRACT.md
+- architecture/identity/ops/LOCAL-DEVELOPMENT.md
+- .github/workflows/identity-contracts.yml
+- services/identity/README.md
+- development/AI-AGENT-MANDATE.md restored verbatim from the existing mandate branch (source blob SHA 80a36b484b48019e1200d521bde520d0419a2054).
+
+Status: documentation/contract scaffolding only; no executable Identity service, migrations, secrets, database, containers or deployment. JSON parse/reference scan passed; contract CI not run. Complete clone blocked by DNS resolution. Do not treat this branch as main or Stage 0 as accepted until the blocker and exact-head CI are resolved.
