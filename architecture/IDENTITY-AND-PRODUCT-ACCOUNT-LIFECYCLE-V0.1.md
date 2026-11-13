@@ -192,7 +192,7 @@ Names are illustrative and require schema review:
 - Each product DB: local product account table with unique product account ID, identity reference, context and lifecycle state.
 - Provisioning: durable outbox/inbox records and correlation IDs.
 
-Enforce unique constraints for `(identity_id, product, account_context)` where one account per context is the approved initial model. Do not impose global uniqueness of a phone number/email across unrelated people without a verified-contact dispute policy; define exact claim conflict handling before schema implementation.
+Enforce unique constraints for `(identity_id, product, account_context)` where one account per context is the approved initial model. Also enforce one active claim per normalized phone number and one active claim per normalized email address globally, implementing the owner-approved Option A policy. Because contacts are unverified in the initial phase, conflicts use generic errors and a restricted manual dispute process; never auto-transfer, merge or link identities. Exact DDL, encrypted lookup/index design and operator workflow remain implementation design tasks.
 
 ## 12. Decisions and implementation gates
 
@@ -205,7 +205,7 @@ Enforce unique constraints for `(identity_id, product, account_context)` where o
 - Invitation-based work onboarding is retained.
 
 **Still requires architecture/security closure before implementation:**
-- Exact identity uniqueness/claim-conflict and contact-change/recovery procedures while contacts are unverified.
+- Contact uniqueness is decided (Option A); contact-change, contact release, dormant reservation and account-recovery procedures while contacts are unverified still require detailed security design.
 - Password/passkey/MFA policy and recovery workflow.
 - Device activation and trusted-device lifecycle, including lost-device recovery.
 - Whether invitation pre-provisions a placeholder before acceptance or provisions the pair only on acceptance (this draft recommends acceptance-triggered provisioning; invite record itself is pending before acceptance).
@@ -224,4 +224,4 @@ The implementation-level proposal is maintained in two companion documents:
 
 **Boundary clarification:** InOne Business owns organization invitations and membership decisions. Identity does not own Business invitation authority or permission grants. It authenticates the invitee and provisions product accounts only after an authenticated Business acceptance request.
 
-**Technical defaults still pending owner approval:** contact-claim uniqueness/dispute policy, login identifier behavior for unverified contacts, password/passkey/MFA baseline, recovery policy, token/session lifetimes, and Propo's separate personal/work account API contract.
+**Technical defaults still pending owner approval:** login identifier behavior for unverified contacts, password/passkey/MFA baseline, recovery policy, token/session lifetimes, and Propo's separate personal/work account API contract. Contact uniqueness/dispute policy is owner-approved (Option A); detailed operator procedures and implementation design remain outstanding.
