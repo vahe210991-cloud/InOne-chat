@@ -356,9 +356,10 @@ Recommended constraints:
 - unique idempotency key within operation scope;
 - one active password credential per identity unless multi-credential policy explicitly permits more;
 - one active session refresh-token hash;
-- partial unique contact claim index only if owner approves first-claim-wins policy.
+- database-enforced uniqueness for active normalized phone claims and active normalized email claims, implementing the owner-approved first-claim-wins policy;
+- use a keyed HMAC/blind index for normalized lookup so uniqueness can be enforced without exposing plaintext values in indexes; encrypt raw sensitive contact values at rest and keep encryption keys outside the database.
 
-Do not add a uniqueness constraint on phone/email until the conflict policy is explicitly approved. Store raw sensitive contact values encrypted at rest; use keyed HMAC/blind index for normalized lookup where appropriate. Keep encryption keys outside the database.
+The global phone/email uniqueness policy is owner-approved. Exact DDL, index lifecycle, encrypted lookup implementation and migration strategy remain engineering design tasks; they are not implemented by this document.
 
 ## 10. API surface — v1 proposal
 
@@ -427,7 +428,7 @@ Never provide an operator with an action to silently take over a user's identity
 
 ## 13. Implementation sequence
 
-1. **Architecture freeze:** approve contact uniqueness/dispute policy, authentication baseline, token lifetimes, device/recovery policy and Propo account-context contract.
+1. **Architecture freeze:** finalize the approved contact uniqueness/dispute policy in the threat model; approve the remaining authentication baseline, token lifetimes, device/recovery policy and Propo account-context contract.
 2. **Identity foundation:** database, migrations, config/secrets, health checks, audit, observability.
 3. **Authentication:** OIDC Authorization Code + PKCE, password credential, sessions, refresh rotation, logout, JWKS.
 4. **Contact claims:** required phone/email collection, normalization, unverified state, conflict-safe operations.
@@ -443,7 +444,7 @@ Each stage requires tests and review before proceeding to the next. No stage is 
 ## 14. Open owner decisions / technical gates
 
 The following are intentionally not silently decided:
-1. **Contact uniqueness:** approve first-claim-wins global reservation with manual dispute, or allow duplicate unverified claims until verified? Recommendation: first-claim-wins only if a credible manual dispute route and user-facing warning are approved.
+1. **DECIDED — contact uniqueness, Option A (owner-approved 2026-11-13):** first-claim-wins global reservation for normalized phone/email, generic conflict response, restricted manual dispute review, no automatic transfer/merge/link. The unverified-contact squatting risk is explicitly accepted. Remaining work: define operator access, evidence standards, escalation, retention and user-facing support flow.
 2. **Login identifier:** may user sign in with either claimed phone or claimed email plus password while both are unverified, or should login use a separate username? Recommendation: allow either as a lookup identifier plus password, clearly treating it as an identifier, not proof of contact ownership.
 3. **Password policy:** approve password as the initial credential, with passkeys/MFA added next? Recommendation: yes, password + optional passkey/MFA, with Argon2id and rate limits.
 4. **Recovery:** approve recovery codes/passkey-only recovery in v1 and no automated reset through unverified contacts? Recommendation: yes. Manual support recovery requires an audited identity-proofing policy.
