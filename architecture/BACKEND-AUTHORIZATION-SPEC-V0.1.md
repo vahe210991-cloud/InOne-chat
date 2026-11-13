@@ -250,9 +250,9 @@ with terminal alternatives `rejected`, `cancelled`, `expired`, `failed`.
 - A separate release permission may be required when payment provider execution is distinct from approval.
 - No silent emergency bypass. If an emergency process is later approved, it must be narrowly scoped, time-bound, independently audited and subject to post-event review.
 
-### 6.3 Policy catalogue remains to be finalized
+### 6.3 Policy catalogue — operation details remain to be finalized
 
-The owner approved dual control for critical financial operations, but the exact covered operation list and approver eligibility are not fully decided. Proposed initial candidates for owner review:
+The owner has approved the financial-control model in principle: critical financial operations use independent two-person control (`initiator → independent approver → execution`). The final operation-by-operation catalogue, eligibility rules and monetary thresholds remain open. Proposed initial candidates for owner review:
 - payout initiation/release;
 - bank/payment destination changes;
 - refunds above configurable threshold;
@@ -440,3 +440,25 @@ No production enforcement change or data migration is authorized by this documen
 - Existing POC has `owner/admin/member`, multi-organization membership, owner-only role changes and last-owner protection.
 - The seven-level position hierarchy, Observer/Auditor profile, atomic permission catalogue, delegation graph, configurable limits and two-person financial approval are specified here but are NOT implemented by this document.
 - No DB migration, API route, middleware or application code has been changed.
+
+
+## Owner decision — Financial Policy v1 (2026-11-13)
+
+**Status: APPROVED — approval model. Monetary limits remain OPEN.** The owner explicitly approved the proposed financial-control model with no remarks, while requiring monetary limits to be refined separately.
+
+Approved baseline:
+- Sensitive financial actions follow `initiator → independent approver → execution`.
+- Initiator and approver must be different natural-person identities; self-approval is prohibited across sessions/devices/accounts and delegated contexts.
+- Initiation and approval are separate atomic permissions. An approver must independently satisfy permission, organization membership, resource scope, delegation ceiling and applicable limit checks.
+- If no eligible independent approver exists, execution is blocked; there is no implicit one-person bypass.
+- Approval binds to an immutable transaction snapshot. A material change invalidates prior approval and requires a new approval decision.
+- Approval state transitions and execution are idempotent, concurrency-safe and auditable.
+- Observer/Auditor cannot initiate or approve financial operations by default.
+- Missing or ambiguous limit configuration is deny/escalate, never unlimited.
+
+Not approved / still open:
+- Numeric thresholds, currencies and per-transaction/daily/weekly/monthly caps.
+- Final operation-by-operation dual-approval catalogue and approver eligibility details.
+- Approval expiry/quorum defaults and exact treatment of owner-initiated transactions.
+
+The earlier illustrative monetary amounts are examples only and are not policy. This decision approves the control model, not implementation, migrations, API changes or production enforcement. No application code or database schema was changed.
