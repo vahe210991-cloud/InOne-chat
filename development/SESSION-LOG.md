@@ -263,3 +263,13 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Updated architecture/OPEN-OWNER-DECISIONS.md, PRODUCT-BOUNDARIES.md, DOMAIN-MODEL-AND-ACCESS.md, SYSTEM-ARCHITECTURE.md, development/architecture/DEVELOPMENT-ROADMAP.md, architecture report and continuity handoff/decision records.
 - The one-to-one mapping is an owner-approved product constraint. Propo's stable Seller Account identifier, employee account model, identity linking and API/event contract remain open and must be verified with Propo.
 - Documentation-only update on the existing architecture branch and draft PR #50. No code, UI, API, DB schema, CI, deployment or service changed; no PR merged and no Actions started.
+
+
+## 2026-11-13 — Owner decision: multi-organization membership and delegated access
+
+- Confirmed: one organization may have many employees; one person may belong to multiple organizations with different roles/permissions in each.
+- Confirmed: access-management authority follows the organization hierarchy. A delegated member can change access only for members below their own level and within their own delegation ceiling.
+- Audited existing main-branch references: `ORG_API.md`, `migrations/0020-organizations.sql`, `src/store.js`, `src/server.js`, `test/org-management.test.js`, `test/admin-journal.test.js`.
+- Existing role baseline: `owner`, `admin`, `member`; composite `(org_id, user_id)` membership key; `/orgs/mine` returns membership-specific role; only owner can currently change roles; admin may add/remove ordinary members; role changes are audited. Multiple owners are supported, with last-owner protection.
+- Important gap: current owner-only role-change route does not implement the newly required delegated hierarchy. Architecture docs now distinguish existing behavior from the new requirement.
+- Updated architecture, open decisions and continuity handoff docs on the existing draft PR branch. Documentation only; no code/schema/UI/API change, no tests run, no PR merged.
