@@ -1,6 +1,6 @@
 # InOne Identity — Stage 0 readiness pack v0.1
 
-**Status:** CTO technical baseline recorded; ready to begin Stage 1 core implementation after external gates are understood  
+**Status:** Stage 0 package authored in this branch; acceptance is BLOCKED pending a complete repository working copy and green contract CI on the exact final SHA  
 **Date:** 2026-11-13  
 **Branch:** stage0/identity-readiness-2026-11-13  
 **Base:** architecture/product-and-platform-blueprint-2026-11-13 @ 05bc226526d9c984b6ccb2b9f44dbad8459dcd6e  
@@ -18,7 +18,7 @@ Stage 0 provides:
 - Explicit Propo adapter deferral until stable IDs, reservation/activation semantics, API/event docs and sandbox are provided.
 - Explicit privacy/legal, app callback and production-infrastructure gates.
 
-**READY_FOR_STAGE_1 = true** for isolated non-production Identity core development.  
+**READY_FOR_STAGE_1 = false until the repository working-copy requirement is satisfied and contract CI is green on the exact final SHA.**  
 **READY_FOR_PRODUCTION = false.**
 
 ## 2. CTO technical baseline
@@ -93,7 +93,8 @@ Identity core Stage 1 can proceed with a fake test adapter. No Propo production 
 - [x] Identity HTTP contract and event schema.
 - [x] Three representative event examples; the schema defines all twelve agreed event types.
 - [x] Environment and secrets contract.
-- [x] Automated contract validation workflow.
+- [x] Automated contract validation workflow authored.
+- [ ] Contract CI green on exact final SHA — NOT RUN.
 - [x] Propo adapter explicitly deferred.
 - [x] Stage 1 work packages and acceptance gates.
 
@@ -103,6 +104,7 @@ External gates:
 - [ ] Privacy/legal review: lawful basis, controller/processor roles, data residency, retention/deletion, user rights and incident-notification requirements — required before production.
 - [ ] Independent security review of final OIDC/WebAuthn configuration — required before production.
 - [ ] Owner approval of production host, regions, KMS and cost envelope — required before cloud provisioning.
+- [ ] Complete repository clone/working copy verified per mandatory repository rules — BLOCKED by GitHub DNS resolution in current environment.
 
 ## 8. Stage 1 implementation order
 
