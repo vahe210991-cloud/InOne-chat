@@ -1,0 +1,12 @@
+{
+  "name": "InOne Identity — Node 26 + PostgreSQL 18",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "identity-workspace",
+  "workspaceFolder": "/workspaces/InOne-chat",
+  "shutdownAction": "stopCompose",
+  "forwardPorts": [8080],
+  "portsAttributes": { "8080": { "label": "Identity API (Stage 1)", "onAutoForward": "notify" } },
+  "remoteUser": "node",
+  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y postgresql-client",
+  "customizations": { "vscode": { "extensions": ["dbaeumer.vscode-eslint", "redhat.vscode-yaml", "ms-azuretools.vscode-docker"] } }
+}
