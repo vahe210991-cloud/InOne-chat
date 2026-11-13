@@ -8,7 +8,7 @@ The questions below are intentionally specific. They are the minimum set needed 
 
 ## A. Propo Seller Account and organization model
 
-1. Is one Propo Seller Account exactly one organization in InOne Business, or can one organization manage several stores/Seller Accounts?
+1. **DECIDED — Option A.** One Propo Seller Account corresponds to exactly one InOne Business organization. One organization does not manage multiple Seller Accounts/stores in the first release. Option B is not in the initial scope. The model should avoid unnecessary multi-store complexity while not making future expansion impossible.
 2. Can one Seller Account have several employees with separate logins and permissions, or does Propo currently share one seller login?
 3. Can one person work for several organizations/stores at the same time?
 4. Who is the canonical owner of the organization/store profile: Propo, InOne Business, or field-by-field ownership?
@@ -63,4 +63,12 @@ The questions below are intentionally specific. They are the minimum set needed 
 
 ## Suggested answer order
 
-To unblock architecture, answer A1–A5, B6–B9, C10–C14, D15–D19 first. The detailed semantics of Wallet, Flags, CRM and analytics can then be specified as separate domain decisions.
+A1 is decided (Option A). Next, answer A2–A5, B6–B9, C10–C14, D15–D19. The detailed semantics of Wallet, Flags, CRM and analytics can then be specified as separate domain decisions. The detailed semantics of Wallet, Flags, CRM and analytics can then be specified as separate domain decisions.
+
+
+## Recorded owner decision — A1 (2026-11-13)
+
+- **Selected:** Option A — one Propo Seller Account maps to exactly one InOne Business organization.
+- **Not in initial scope:** one InOne Business organization managing multiple Propo Seller Accounts/stores (Option B).
+- **Implementation implication:** enforce a one-to-one SellerAccountConnection in the initial model and verify the mapping against Propo's stable Seller Account identifier. Do not assume anything about employee accounts, login sharing or Propo's internal data model; those remain open questions.
+- **Future-proofing:** keep the integration boundary explicit so multi-store support can be added through a separately approved schema migration and product decision, without implementing it now.
