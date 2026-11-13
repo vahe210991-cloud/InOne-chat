@@ -429,14 +429,7 @@
         ],
         "responses": {
           "204": {
-            "description": "Successful response.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GenericAccepted"
-                }
-              }
-            }
+            "description": "Successful response."
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"
@@ -521,14 +514,7 @@
         ],
         "responses": {
           "204": {
-            "description": "Successful response.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GenericAccepted"
-                }
-              }
-            }
+            "description": "Successful response."
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"
@@ -564,14 +550,7 @@
         ],
         "responses": {
           "204": {
-            "description": "Successful response.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GenericAccepted"
-                }
-              }
-            }
+            "description": "Successful response."
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"
@@ -899,14 +878,7 @@
         ],
         "responses": {
           "204": {
-            "description": "Successful response.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GenericAccepted"
-                }
-              }
-            }
+            "description": "Successful response."
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"
