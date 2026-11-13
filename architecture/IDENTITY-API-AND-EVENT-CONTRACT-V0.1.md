@@ -187,7 +187,41 @@ Revokes the selected device and all its refresh-token families. Require step-up 
 
 Revokes current session/token family. Global logout is a separate explicit operation.
 
-## 8. Business invitation integration
+## 8. Account recovery and credential security
+
+### POST /v1/recovery/start
+
+Starts a recovery attempt using a phone/email lookup identifier. Always returns the same generic response shape and status whether the identity exists or not. Never returns enrolled authenticator types, masked contacts, claimant details or account existence. Apply per-identity (where resolvable), IP, device and global abuse limits.
+
+### POST /v1/recovery/challenge
+
+Validates a previously enrolled passkey assertion or one unused recovery code. A trusted-device approval is accepted only when the device has an active session and completes fresh passkey/TOTP step-up. An old session or unlocked app alone is not sufficient. On success, issue an opaque single-use recovery grant with a 10-minute TTL, bound to identity, client, device and `purpose=password_reset|authenticator_replacement`.
+
+### POST /v1/recovery/complete
+
+Consumes the recovery grant atomically, sets a new Argon2id password and records the credential change. Revoke all existing refresh-token families/sessions across all product contexts. Issue only a restricted recovery session to the current device. If the grant was created using a recovery code, invalidate the entire previous recovery-code set and require a new set before restoring sensitive Business permissions; place a 24-hour security hold on sensitive operations. A passkey-based recovery does not trigger this hold but still revokes other sessions after password reset.
+
+### POST /v1/me/security/recovery-codes
+
+Requires fresh step-up with an enrolled passkey or TOTP. Generates 10 one-time high-entropy codes, displays them once, stores only salted/peppered hashes and invalidates the previous set. A recovery code is consumed atomically and cannot be reused. Recovery codes cannot authorize financial approvals or ordinary step-up actions.
+
+### POST /v1/me/security/sessions/revoke-all
+
+Requires fresh step-up. Revokes all sessions and refresh-token families across InOne, InOne Business and Propo; emits a security event. The caller must authenticate again.
+
+### POST /v1/me/contacts/{contact_id}/change
+
+Requires current session plus fresh passkey/TOTP step-up. Reserves the new normalized contact as a pending change, retains the old claim for a 72-hour cooling period, revokes other sessions and blocks sensitive actions during the pending period. The initiating trusted session may cancel with fresh step-up. On completion, supersede/release the old claim and activate the new claim in one audited transaction. No unverified-contact notification or verification is implied.
+
+### Manual recovery support boundary
+
+Support may open and track a restricted recovery case but v1 has no manual credential-reset override. Unverified phone/email, password knowledge, device activation, invitation possession, organization confirmation or account metadata are not sufficient evidence. A future override requires independent identity proofing, documented evidence standards, trained operator plus independent security approver, immutable audit and a cooling period. If proofing is unavailable or inconclusive, keep access blocked.
+
+Business administrators may reissue a work invitation or manage membership within their delegated authority; they cannot reset central Identity credentials or recover a user's personal InOne/Propo account.
+
+Recovery grants and recovery codes must be single-use, short-lived/hashed as applicable, purpose- and device-bound, rate-limited and protected against concurrent replay. API responses must not permit account enumeration. Never log passwords, raw recovery codes, raw tokens or full contact values.
+
+## 9. Business invitation integration
 
 Invitation lifecycle and membership are owned by InOne Business.
 
@@ -308,6 +342,11 @@ Initial stable error codes:
 - `PROVISIONING_FAILED_RETRYABLE`
 - `PRODUCT_ADAPTER_UNAVAILABLE`
 - `RATE_LIMITED`
+- `RECOVERY_CHALLENGE_INVALID`
+- `RECOVERY_GRANT_EXPIRED_OR_CONSUMED`
+- `RECOVERY_NOT_AVAILABLE`
+- `RECOVERY_CASE_PENDING`
+- `SECURITY_HOLD_ACTIVE`
 
 ## 13. Contract acceptance tests
 
@@ -327,5 +366,14 @@ Before production, automate at minimum:
 13. Business administrator cannot reset central Identity credentials or access personal InOne data.
 14. Refresh-token reuse triggers the defined session-family response.
 15. Revoked device cannot refresh a session.
+16. Recovery start never reveals whether an identity/contact exists.
+17. Unverified phone/email cannot complete recovery or receive reset links.
+18. Passkey recovery creates a purpose-bound grant and revokes all other sessions after password reset.
+19. Recovery-code replay is rejected atomically; use invalidates the complete previous code set.
+20. Recovery-code password reset places a 24-hour hold on sensitive actions across all product contexts.
+21. A trusted-device approval without fresh step-up is rejected.
+22. Support cannot reset credentials in v1 without independent identity proofing and two-person approval.
+23. Business administrator cannot recover central Identity credentials.
+24. Contact change requires passkey/TOTP step-up, retains old claim for 72 hours and cannot bypass uniqueness conflicts.
 
 No endpoint, event or test listed here is implemented by this contract draft.
