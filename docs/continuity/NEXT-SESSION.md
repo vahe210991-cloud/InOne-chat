@@ -240,7 +240,7 @@ Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone
 ## Architecture restart — next actions (2026-11-13)
 
 1. Owner review of architecture v0.1: architecture/README.md and linked product/system/domain/laws documents.
-2. Answer blocking questions in architecture/OPEN-OWNER-DECISIONS.md, beginning with employee identities, cross-product login, owner/admin permissions and buyer-message contract. Seller Account cardinality is already decided: one Seller Account ↔ one Business organization for v1.
+2. Answer blocking questions in architecture/OPEN-OWNER-DECISIONS.md, beginning with Propo employee identity/linking, cross-product login, the detailed delegated role/permission matrix and buyer-message contract. Seller Account cardinality is one-to-one for v1; multi-organization membership is owner-approved and already represented in the existing engine.
 3. Obtain Propo API documentation, event/webhook specification, sandbox access and technical owner.
 4. Complete a read-only repository re-baseline per development/architecture/REPOSITORY-REBASELINE.md. Treat all existing code and CI evidence as historical/reference until independently verified for the new product scope.
 5. After owner decisions, publish ADRs for identity, data ownership, backend topology, database boundaries, messaging security and Propo integration.
@@ -254,3 +254,12 @@ No code changes are authorized by the architecture draft itself.
 
 - Seller Account cardinality: **Option A, one-to-one**. Do not design v1 for one organization to manage multiple Propo stores/Seller Accounts.
 - Continue with A2–A5 and identity/employee questions. Confirm Propo's stable Seller Account ID and contract before implementing the connection.
+
+
+### Decision received — multiple organizations and delegated roles (2026-11-13)
+
+- One organization can have many employees; one person can belong to several organizations with different roles/permissions in each.
+- Existing role baseline: `owner`, `admin`, `member`.
+- New required behavior: explicit delegation down the authority chain only. An actor cannot manage equal/higher-level members or grant authority beyond their own delegation ceiling.
+- Inspect and preserve the existing organization API/tests; do not confuse the current owner-only role-change endpoint with the broader delegated hierarchy requirement.
+- Propo employee identity/login mapping remains open.
