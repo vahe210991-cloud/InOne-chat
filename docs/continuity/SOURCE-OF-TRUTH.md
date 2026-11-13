@@ -201,3 +201,13 @@ Stage 0 status at handoff: artifacts created; CI and runtime compatibility spike
 
 
 Review PR for this package: [#51 — Identity Stage 0](https://github.com/vahe210991-cloud/InOne-chat/pull/51), task branch `stage0/identity-engineering-readiness-2026-11-13`, based on architecture PR #50. Draft/open/unmerged; CI and compatibility spike remain unverified.
+
+
+Identity Stage 0 development environment:
+- `.devcontainer/identity/devcontainer.json` — dedicated Codespaces profile.
+- `.devcontainer/identity/docker-compose.yml` — Node 26 workspace and PostgreSQL 18 service with persistent named volume.
+- `.devcontainer/identity/scripts/verify-stage0-environment.sh` — checks Node 26, PostgreSQL 18 connectivity and contract lint.
+- `.devcontainer/identity/scripts/validate-contracts.sh` — pinned Redocly contract lint.
+- `.devcontainer/identity/README.md` — Codespaces creation command and setup steps.
+
+Status: configuration added, not built or run. This environment is isolated from Flutter/mobile configuration. The available GitHub connector does not expose a Codespaces creation action; an authorized Codespace must be created through GitHub UI/CLI and verified on the task branch.
