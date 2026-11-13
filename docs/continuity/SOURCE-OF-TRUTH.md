@@ -157,3 +157,15 @@ GitHub — постоянное хранилище кода, истории, р�
 - Manifest version `0.8-approval-batch-2`; source files include `screen-manifest.json`, v1/v2 design tokens and interactions, API integration docs, screens and screenshots.
 - Source audit and unresolved API/security notes: [UI integration report](../../development/reports/2026-11-09-1015-ui-integration-start.md).
 - Status: **verified locally, not yet durably imported to GitHub**. Do not remove the original owner attachment or treat temporary extracted files as authoritative. Upload is blocked until a supported Git transport/Codespace or binary upload path is available. Do not claim the source bundle is in GitHub until its remote hash is verified.
+
+## 11. Owner-approved product direction — two applications (2026-11-13)
+
+The owner has approved a two-application product structure:
+
+- **InOne** is the personal/social application: news feed, publications, personal chats, groups, Threads, and related social communication features.
+- **InOne Business** is the professional/work application: Kanban, CRM, Leads, Deals, Wallet, Flags, and other business tools, with integration/interoperation with **Propo Seller Account**.
+
+This is an authoritative product-boundary decision. Requirements, screen inventories, navigation, UX, and release scopes must identify which application owns each capability. Do not design the two products as one combined app/navigation.
+
+The product split does not automatically imply separate or shared identity services, databases, backends, repositories, infrastructure, or UI foundations. Those remain governed by existing approved decisions or require separate ADRs. Existing InOne Beta 1.0 screens and implementation must be audited and classified before any migration or code change. See [owner decisions](DECISIONS.md#7-product-split-inone-and-inone-business--2026-11-13).
+
