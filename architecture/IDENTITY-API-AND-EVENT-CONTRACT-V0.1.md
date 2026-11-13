@@ -144,6 +144,19 @@ It does not return passwords, hashes, recovery codes, internal risk signals or o
 
 ## 6. Contact management
 
+### 6.0 Owner-approved unique reservation and conflict handling
+
+Owner decision: **Option A approved (2026-11-13)**. Identity enforces one active claim per normalized phone number and one active claim per normalized email address globally.
+
+API behavior:
+- Registration and contact-add operations attempt an atomic uniqueness reservation. Concurrent claims resolve transactionally; only one can succeed.
+- If a phone or email is already actively reserved, reject the operation with the generic `CONTACT_CLAIM_CONFLICT` error envelope. Do not reveal which contact matched, the claimant identity, account status or other contact details.
+- The API must not offer automatic merge, account linking, transfer or reassignment.
+- A conflict may create a restricted support case through an internal workflow. Public endpoints expose only a neutral case/reference state where appropriate.
+- Manual resolution is an operator-only, authenticated, least-privilege workflow with audit trail: requester, reviewer/operator, evidence and rationale, affected contact/identity IDs, prior/new claim state, timestamps and resolution outcome. Reassignment is permitted only after explicit authorized resolution; unresolved/ambiguous cases remain blocked.
+- The API must never treat unverified contacts, invitation possession or device activation as proof of contact ownership.
+- Do not expose an endpoint that allows a user or organization administrator to take over another identity's contact.
+
 ### GET /v1/me/contacts
 
 Returns the caller's own contact claims, masked by default.
