@@ -236,3 +236,15 @@ Required next work:
 
 Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone-and-inone-business--2026-11-13).
 
+
+## Architecture restart — next actions (2026-11-13)
+
+1. Owner review of architecture v0.1: architecture/README.md and linked product/system/domain/laws documents.
+2. Answer blocking questions in architecture/OPEN-OWNER-DECISIONS.md, beginning with Propo Seller Account ↔ organization cardinality, employee identities, cross-product login, owner/admin permissions and buyer-message contract.
+3. Obtain Propo API documentation, event/webhook specification, sandbox access and technical owner.
+4. Complete a read-only repository re-baseline per development/architecture/REPOSITORY-REBASELINE.md. Treat all existing code and CI evidence as historical/reference until independently verified for the new product scope.
+5. After owner decisions, publish ADRs for identity, data ownership, backend topology, database boundaries, messaging security and Propo integration.
+6. Define the first InOne Business vertical slice and separate InOne personal/social release scope.
+7. Only then begin implementation on an isolated task branch with API contracts, migrations, permission tests and acceptance criteria.
+
+No code changes are authorized by the architecture draft itself.
