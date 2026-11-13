@@ -28,7 +28,7 @@ Produce `architecture/BUSINESS-ENDPOINT-AUTHORIZATION-INVENTORY.md` and a gap re
 ## Financial policy decision (owner-approved 2026-11-13)
 
 - The independent two-person control model is APPROVED: initiator → independent approver → execution; no self-approval; separate initiate/approve permissions; immutable approval snapshot; fail closed if no eligible approver; full audit.
-- Monetary limits remain OPEN: numeric thresholds, currencies and cumulative caps must be refined and approved separately.
+- Monetary limits are organization-configurable, not globally fixed: the owner sets employee-specific limits when assigning/editing position/authority in the UI. No universal numeric defaults. The operation-level configuration catalogue and UI/API/schema design remain to be specified.
 - Exact operation-by-operation dual-approval catalogue, owner-initiated transaction eligibility, quorum and expiry still require detailed policy closure.
 - Whether approval-policy changes require dual control.
 - Confirm one active primary position per membership (current recommendation).
@@ -46,3 +46,8 @@ Produce `architecture/BUSINESS-ENDPOINT-AUTHORIZATION-INVENTORY.md` and a gap re
 ## Next financial-policy work
 
 Prepare a CFO proposal for monetary limits using an operation-based schedule, explicit currency, per-transaction and cumulative caps, configurable organization/position/employee ceilings, and deny-by-default behavior. Do not invent default amounts or hard-code thresholds. Present recommended values only after establishing the business currency, typical transaction sizes, expected sales/turnover and risk appetite. Owner approval is required before implementation.
+
+
+## Next financial-limits design task
+
+Design the owner-facing employee assignment/edit interface and the corresponding data model/API for organization-isolated, employee-specific, operation-level limits. Include per-transaction and optional cumulative caps, explicit currency, effective dates, versioning, audit, delegation ceilings and deny-by-default behavior. Do not add global numeric defaults. Keep the independent two-person approval requirement intact.
