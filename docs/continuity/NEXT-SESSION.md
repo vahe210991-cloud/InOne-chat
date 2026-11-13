@@ -263,3 +263,10 @@ No code changes are authorized by the architecture draft itself.
 - New required behavior: explicit delegation down the authority chain only. An actor cannot manage equal/higher-level members or grant authority beyond their own delegation ceiling.
 - Inspect and preserve the existing organization API/tests; do not confuse the current owner-only role-change endpoint with the broader delegated hierarchy requirement.
 - Propo employee identity/login mapping remains open.
+
+
+## Current next action — InOne Identity Stage 0 (2026-11-13)
+
+Read development/reports/2026-11-13-1326-identity-stage0-readiness.md and the Stage 0 package at architecture/IDENTITY-STAGE-0-READINESS-PACK-V0.1.md.
+
+**Do not begin Stage 1 yet.** Stage 0 artifacts are authored on branch stage0/identity-readiness-2026-11-13, but the mandatory complete-clone rule could not be satisfied because github.com DNS resolution failed in the current environment. First obtain a full repository working copy or an explicit one-time owner exception for repository-native GitHub API documentation work. Then open a draft Stage 0 PR, run Redocly/Ajv contract CI on the exact final SHA, resolve all failures, and verify the provider-specific OIDC/WebAuthn contract details. No production host, client registration, Propo adapter or legal/privacy gate is approved by Stage 0.
