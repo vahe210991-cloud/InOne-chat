@@ -191,4 +191,4 @@ Never report the entire Stage 0 as passed while its CI or compatibility spike re
 - Propo sandbox/API and privacy/legal review: external gates pending.
 
 
-Contract CI history: initial workflow run #40 completed with failure. The GitHub job-log endpoint returned 404, so the failure cause could not be established from available evidence. I changed the workflow from a job-level Node container to a pinned GitHub-hosted Ubuntu runner with Node 26 setup to remove container-startup ambiguity. A passing run on the latest PR head is still required; do not mark CI PASS based on the configuration change.
+Contract CI history: initial workflow run #40 and its rerun both completed with failure. The GitHub job-log endpoint returned 404, so the failure cause could not be established from available evidence. I changed the workflow from a job-level Node container to a pinned GitHub-hosted Ubuntu runner with Node 26 setup to remove container-startup ambiguity. A passing run on the latest PR head is still required; do not mark CI PASS based on the configuration change.
