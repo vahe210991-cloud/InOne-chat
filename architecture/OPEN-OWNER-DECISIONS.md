@@ -1,0 +1,66 @@
+# Open decisions for the owner
+
+**Version:** 0.1  
+**Status:** Blocking questions register  
+**Rule:** Until answered, the related design remains a proposal. Do not fill gaps by assumption.
+
+The questions below are intentionally specific. They are the minimum set needed to freeze the first system architecture without inventing Propo behavior.
+
+## A. Propo Seller Account and organization model
+
+1. Is one Propo Seller Account exactly one organization in InOne Business, or can one organization manage several stores/Seller Accounts?
+2. Can one Seller Account have several employees with separate logins and permissions, or does Propo currently share one seller login?
+3. Can one person work for several organizations/stores at the same time?
+4. Who is the canonical owner of the organization/store profile: Propo, InOne Business, or field-by-field ownership?
+5. Can an organization exist in InOne Business before it has a Propo Seller Account, or must it be provisioned from Propo first?
+
+## B. Identity and authentication
+
+6. Should InOne, InOne Business and Propo use one common person identity/login, with product-specific sessions and permissions?
+7. Does Propo already have a stable immutable Seller Account ID and a stable user/person ID for each employee? If yes, what are the names and semantics?
+8. Should a Propo employee be able to open InOne Business automatically after Propo login, or must they explicitly link/activate the account?
+9. Is InOne personal profile the same identity as the employee identity, or should users be able to keep personal and professional identities/profile visibility separate?
+
+## C. Organization roles and permissions
+
+10. Do you want a fixed role set (Owner, Admin, Manager, Sales, Content, Support, Analyst, Employee) or custom roles created by the organization owner?
+11. Can there be multiple owners? Who can transfer ownership?
+12. Which exact actions are reserved to the owner: profile editing, employee invitations, role management, seller-account linking, Wallet/financial operations, content publishing, deletion?
+13. Can employees publish organization posts/stories/statuses, or is that restricted to owner/admin/marketing roles?
+14. Do content and permissions need an approval workflow before publishing or changing marketplace listings?
+
+## D. Buyer communication and marketplace integration
+
+15. Are buyer messages currently stored and handled in Propo, and does Propo expose an API/webhook/event stream for them?
+16. Should employee replies in InOne Business be sent as the seller/store identity, with the employee identity recorded internally for audit?
+17. Which marketplace events must arrive in Business first: new order, payment status, buyer message, review/rating, listing rejection, stock/status changes, delivery, refund?
+18. Must notifications arrive in real time, or are bounded delays acceptable? What is the target (for example, seconds/minutes)?
+19. Can InOne Business perform marketplace actions (edit listing, change price/stock, accept/cancel order), or is the first release read/notify/reply only?
+
+## E. Business modules
+
+20. What exactly is Wallet: Propo seller balance, payout account, transaction history, payment initiation, expense wallet, or a combination?
+21. What does Flags mean in your business concept: feature flags, alerts/labels, operational statuses, risk flags, or something else?
+22. Is CRM intended to manage Propo buyers/customers, leads generated outside Propo, or both?
+23. Are Leads and Deals separate from Propo orders? What are their lifecycle stages?
+24. Is Kanban for internal tasks, sales pipeline, listing launch workflow, or configurable boards for all these?
+25. What are the first three calculations/analytics the owner/store manager must see?
+
+## F. Personal and organization social content
+
+26. Is InOne Business's news feed a private organization feed, a public store feed, or both?
+27. Where are organization publications/stories/statuses displayed: Propo, InOne Business only, or shared to InOne with a clear organization identity?
+28. Should personal InOne communities/channels be discoverable from InOne Business, or remain separate?
+29. Can a person post as themselves in InOne Business, as an organization, or both with an explicit identity switch?
+
+## G. Technical and operational choices
+
+30. Should InOne and InOne Business ship as two separate App Store / Google Play applications with separate bundle IDs, or is "two separate apps" a product-level distinction with shared distribution still open?
+31. Do you want a single backend codebase with isolated domain modules initially, or separate InOne and Business backend deployments from the first release?
+32. Should InOne Business use the existing InOne identity service plan, or should Propo remain the identity authority for seller employees?
+33. Which Propo API documentation, sandbox environment and technical contact can be used to define the integration contract?
+34. Which countries/currencies are in the first release? Armenia is confirmed as Propo's marketplace market; the legal, privacy, tax and data residency requirements still need specialist confirmation.
+
+## Suggested answer order
+
+To unblock architecture, answer A1–A5, B6–B9, C10–C14, D15–D19 first. The detailed semantics of Wallet, Flags, CRM and analytics can then be specified as separate domain decisions.
