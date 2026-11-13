@@ -286,3 +286,11 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Updated Identity architecture/API contract and continuity indexes. All artifacts are documentation/configuration only; no service source, DB schema/migration, endpoint, product adapter, deployment or production secret was created.
 - **NOT RUN / PENDING:** Redocly workflow on exact PR head; Codespaces full-clone verification; Node/OIDC/Fastify/PostgreSQL/WebAuthn/Argon2 compatibility spike; Propo sandbox/API confirmation; privacy/legal review.
 - Stage 0 must not be marked fully passed until CI and compatibility spike pass. Production integration remains blocked by Propo and privacy/legal gates.
+
+
+## 2026-11-13 — Identity Stage 0 Codespaces environment
+
+- Added a separate `.devcontainer/identity/devcontainer.json` profile so Identity can use Node 26 and PostgreSQL 18 without replacing the mobile/Flutter environment.
+- Added Compose services for the workspace and PostgreSQL 18, persistent named volume at `/var/lib/postgresql` (the official PostgreSQL 18 image path), disposable local-only credentials, contract validation and environment verification scripts.
+- Added Codespaces instructions and exact `gh codespace create` command. Official GitHub docs confirm nested `.devcontainer/<name>/devcontainer.json` profiles are supported and selectable.
+- Configuration is not yet executed. This tool session has no Codespaces create action or Docker runtime; build, database health and script results remain NOT RUN. No claim of a working Codespace is made.
