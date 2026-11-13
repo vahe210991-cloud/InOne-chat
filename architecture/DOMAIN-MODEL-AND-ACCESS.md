@@ -24,12 +24,12 @@ The exact canonical identity service and subject format are open. A phone number
 - `OrganizationAuditEvent`: record of sensitive changes.
 
 ### Propo connection
-- `SellerAccountConnection`: mapping between a Business organization and a Propo Seller Account.
+- `SellerAccountConnection`: one-to-one mapping between a Business organization and a Propo Seller Account in the initial release. Enforce uniqueness on both `organization_id` and the external Propo Seller Account ID.
 - `ExternalResourceReference`: stable reference to a Propo-owned listing, order, buyer conversation, review or store.
 - `IntegrationEventReceipt`: durable idempotent receipt for Propo events.
 - `IntegrationOutboxMessage`: outbound Business-to-Propo command/event, if the contract supports it.
 
-The mapping cardinality (one organization to one seller account, one-to-many or many-to-many) is not decided.
+Owner decision A1: the initial mapping is one-to-one — one organization has exactly one Seller Account, and one Seller Account maps to exactly one organization. Multi-store/multi-account organization support is not in v1.
 
 ### Work and communication
 - `Workspace`: a work context inside an organization.
