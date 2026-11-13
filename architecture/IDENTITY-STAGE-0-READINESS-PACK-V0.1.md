@@ -91,7 +91,7 @@ Identity core Stage 1 can proceed with a fake test adapter. No Propo production 
 - [x] Runtime/library/database ADR.
 - [x] OIDC client and audience policy.
 - [x] Identity HTTP contract and event schema.
-- [x] Event examples for agreed event types.
+- [x] Three representative event examples; the schema defines all twelve agreed event types.
 - [x] Environment and secrets contract.
 - [x] Automated contract validation workflow.
 - [x] Propo adapter explicitly deferred.
