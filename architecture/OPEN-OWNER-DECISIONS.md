@@ -157,3 +157,16 @@ A documentation-only threat model and staged delivery plan has been added at [ID
 CTO technical defaults for v1: 5-minute access tokens; rotating opaque refresh tokens with 30-day inactivity and 90-day absolute lifetime; 5-minute maximum step-up age for sensitive actions; 10-minute single-use recovery grants. These are technical defaults, not owner-approved product-policy choices, and must be validated during implementation/security review.
 
 No P0 threat control may be omitted for launch. Propo API/sandbox behavior and privacy/legal requirements remain external gates. This document does not implement code, schema, API, UI or runtime controls.
+
+
+## CTO technical decisions — Identity Stage 0 (2026-11-13)
+
+Under the owner's delegation to the CTO, the following implementation decisions are fixed for the v1 engineering baseline; they do not change owner-approved product policy:
+
+- **Login identifier:** a user may authenticate with either their claimed phone number or claimed email plus password. Both remain unverified lookup identifiers; the string alone is never proof of contact ownership, MFA, recovery or financial approval.
+- **Session defaults:** 5-minute access token; rotating opaque refresh token; 30-day inactivity expiry; 90-day absolute session lifetime; refresh-token reuse revokes the active family; sensitive-action step-up age is at most 5 minutes.
+- **Stack:** Node.js 26 LTS, strict TypeScript, Fastify 5, PostgreSQL 18, oidc-provider 9.14.0, @simplewebauthn/server 14.1.0, @node-rs/argon2 2.2.2, jose 6.2.17, SQL-first migrations, PostgreSQL transactional outbox. See [ADR-IDENTITY-STACK-001](identity/ADR-IDENTITY-STACK-001.md).
+- **OIDC security profile:** Authorization Code + PKCE S256, exact redirect allowlists, product-specific audiences, no implicit/password grants, rotating refresh tokens.
+- **Deployment:** OCI/container portable; hosting provider deliberately not selected yet. GitHub Codespaces remains the owner-selected development environment, but existing scaffolding must be validated before it is treated as working.
+
+The machine-readable contracts and readiness checklist are in [Identity Stage 0](identity/STAGE-0-ENGINEERING-READINESS.md). These are CTO technical decisions, not implementation evidence. Propo account IDs/API behavior, exact redirect URIs, privacy/legal requirements, KMS provider and production hosting remain open external gates.
