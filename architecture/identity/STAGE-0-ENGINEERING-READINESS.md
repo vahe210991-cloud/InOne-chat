@@ -170,3 +170,14 @@ The next task is Stage 0 verification, not product feature implementation:
 5. Only after CI and compatibility spike pass, open Stage 1 implementation work on a new branch.
 
 Never report the entire Stage 0 as passed while its CI or compatibility spike remains NOT RUN.
+
+
+## Repository handoff metadata
+
+- Task branch: `stage0/identity-engineering-readiness-2026-11-13`
+- Draft PR: https://github.com/vahe210991-cloud/InOne-chat/pull/51
+- Parent architecture PR: https://github.com/vahe210991-cloud/InOne-chat/pull/50
+- Stage 0 PR head at initial opening: `bef433d33c194ea096f1067078f6d6a041f0623d` (re-fetch the PR before using this as the latest head)
+- Contract CI status at handoff: pending; do not mark PASS without an exact-head workflow result.
+- Compatibility spike: NOT RUN.
+- Propo sandbox/API and privacy/legal review: external gates pending.
