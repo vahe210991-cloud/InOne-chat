@@ -69,3 +69,12 @@ Before implementing registration, close the open items in the Identity lifecycle
 - API/event schemas, service authentication, idempotency, retries and reconciliation.
 
 Keep this pass architecture-only. Do not implement Identity or modify product APIs, databases or UI until the design and threat model are reviewed.
+
+## Identity architecture review — current next step
+
+Read these documents first:
+1. [Identity service architecture v0.1](../../architecture/IDENTITY-SERVICE-ARCHITECTURE-V0.1.md)
+2. [Identity API and event contract v0.1](../../architecture/IDENTITY-API-AND-EVENT-CONTRACT-V0.1.md)
+3. [Identity and product-account lifecycle v0.1](../../architecture/IDENTITY-AND-PRODUCT-ACCOUNT-LIFECYCLE-V0.1.md)
+
+Next, obtain owner decisions on the technical gates in section 14 of the Identity service architecture: contact uniqueness/dispute, login identifier, password/passkey/MFA, recovery, token/session defaults, Business invitation ownership, and Propo personal/work account contract. Do not implement until those decisions and the threat model are reviewed. Keep Identity as a modular monolith for v1 unless measured scale or isolation requirements justify splitting it.
