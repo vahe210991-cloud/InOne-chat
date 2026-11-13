@@ -54,7 +54,7 @@ These are CTO proposals and require owner review where they affect product or in
 ## 4. Open owner decisions
 
 The detailed list is in architecture/OPEN-OWNER-DECISIONS.md. Highest priority:
-1. Propo Seller Account to organization cardinality.
+1. ~~Propo Seller Account to organization cardinality.~~ **DECIDED:** Option A — one Seller Account ↔ one InOne Business organization; Option B (one organization managing multiple stores/accounts) is out of v1.
 2. Employee identity/login and multi-organization membership.
 3. Common identity across Propo, InOne Business and InOne.
 4. Fixed roles vs custom roles; owner/admin/financial privileges.
@@ -84,3 +84,8 @@ The owner requested that all current repository implementation be treated as not
 3. Run a complete read-only repository re-baseline.
 4. Publish ADRs for identity, organization mapping, data ownership, database topology, messaging security and integration.
 5. Approve the first InOne Business vertical slice and InOne personal/social release scope.
+
+
+## 8. Owner decision recorded after v0.1 draft
+
+On 2026-11-13 the owner selected Option A for question A1: one Propo Seller Account corresponds to exactly one InOne Business organization. One organization managing multiple stores/Seller Accounts is not part of the first release. The domain model and integration constraints have been updated accordingly. Propo's stable Seller Account ID, employee/login model and API/event contract remain to be confirmed; this decision does not resolve them.
