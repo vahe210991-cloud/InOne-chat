@@ -68,3 +68,37 @@
 - A unified/shared operational database for InOne + Propo is deferred to the next beta release and must not block Beta 1.0.
 - Beta 1.0 should retain stable globally unique identifiers, explicit API/event boundaries, and migration-friendly schema design. It must not introduce runtime dependence on Propo.
 - See [ADR-011 — Independent InOne database for Beta 1.0](ADR-011-BETA1-INDEPENDENT-DATABASE.md).
+
+## 7. Product split: InOne and InOne Business — 2026-11-13
+
+**Owner decision (approved 2026-11-13, UTC+3):** The product will be delivered as two separate applications with distinct product purposes.
+
+### InOne — personal and social application
+- Personal-use product.
+- News feed.
+- User publications/posts.
+- One-to-one chats.
+- Groups and group chats.
+- Threads.
+- Other personal/social communication and community features.
+
+### InOne Business — professional/work application
+- Professional work environment.
+- Kanban.
+- CRM.
+- Leads.
+- Deals.
+- Wallet.
+- Flags.
+- Other business and operational tools.
+- Integration/interoperation with **Propo Seller Account**.
+
+### Product boundary and implementation rules
+- Treat InOne and InOne Business as two separate applications/products, not as one application with a single combined navigation.
+- Product scope, screen inventory, navigation, release criteria, and UX flows must be classified against the correct application.
+- Social/personal capabilities belong to InOne; professional workflow and business-management capabilities belong to InOne Business unless the owner explicitly changes the boundary.
+- Propo Seller Account integration is an explicit part of the InOne Business direction.
+- This decision establishes the product split. It does **not**, by itself, decide whether the applications share identity, backend services, databases, repositories, infrastructure, or common UI components. Preserve existing approved identity/database/security decisions until a separate technical decision is recorded.
+- Existing InOne Beta 1.0 work and approved UI must not be silently rebranded or moved between products. Audit current screens and APIs against this split and propose a migration/classification plan before changing implementation.
+- Do not expand InOne Business scope by assuming that every Propo Seller Account capability is already specified; define and version the integration contract separately.
+
