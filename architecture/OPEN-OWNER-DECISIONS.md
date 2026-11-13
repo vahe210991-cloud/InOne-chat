@@ -23,8 +23,8 @@ The questions below are intentionally specific. They are the minimum set needed 
 
 ## C. Organization roles and permissions
 
-10. The existing implementation has the fixed organization roles `owner`, `admin`, `member`; use these as the compatibility baseline rather than replacing them with an invented catalogue. Should the new Business model add more predefined roles or custom organization-defined roles on top of this baseline?
-11. The existing implementation permits multiple owners. Should that remain the rule for InOne Business, and what confirmation/audit process is required for ownership transfer?
+10. **DECIDED:** preserve existing `owner`, `admin`, `member` as a compatibility baseline; InOne Business adds the owner-approved seven-level position hierarchy, separate functional roles and atomic permissions. Additional positions are created by an owner and assigned/delegated down the hierarchy. See [organization positions and delegated access](ORG-POSITIONS-AND-DELEGATED-ACCESS.md).
+11. **DECIDED:** multiple owners remain permitted. Owners are peers at the highest level; ordinary lower-level delegation cannot modify another owner's access. Ownership transfer/removal requires a separately specified audited flow.
 12. Which exact actions are reserved to the owner: profile editing, employee invitations, role management, seller-account linking, Wallet/financial operations, content publishing, deletion?
 13. Can employees publish organization posts/stories/statuses, or is that restricted to owner/admin/marketing roles?
 14. Do content and permissions need an approval workflow before publishing or changing marketplace listings?
@@ -81,4 +81,9 @@ A1 and A3 are decided. A2 is partly decided (multiple employees per organization
 - A person's role and permissions are attached to each organization membership, not globally to the person. The same person may have different authority in different organizations.
 - Only a member with explicit authority to manage access may grant/change permissions. That member may manage only members below their own position/authority level; they may not change an equal or higher-level member's access or grant authority beyond their own delegation ceiling.
 - Existing code baseline: organization roles `owner`, `admin`, `member`; role assignment is organization-scoped. Preserve these semantics as the starting point; extend only after the complete permission hierarchy is specified.
-- Still open: Propo employee identity/login linkage; whether additional fixed or custom roles are needed; detailed permission matrix and delegation rules for sensitive actions.
+- Still open: Propo employee identity/login linkage; detailed action-level permission matrix, delegation ceilings by department, sensitive-action approval rules and migration mapping for existing roles.
+
+
+## Recorded owner decision — InOne Business positions and hierarchy (2026-11-13)
+
+The owner approved the seven-level hierarchy: Owner; Internet Store Director; Deputy Director; Department Head; Senior Specialist/Team Lead; Specialist; Operator/Assistant. Observer/Auditor is a separate non-hierarchical read-only profile. Multiple owners are permitted. Additional positions are created by an owner and assigned/delegated down the hierarchy. Position, functional role and atomic permissions are separate authorization dimensions. See [ORG-POSITIONS-AND-DELEGATED-ACCESS.md](ORG-POSITIONS-AND-DELEGATED-ACCESS.md). The detailed action-level permission matrix and sensitive-action rules remain the next approval gate.
