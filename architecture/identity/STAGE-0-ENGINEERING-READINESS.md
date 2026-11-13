@@ -41,7 +41,7 @@ Stage 0 does **not** implement authentication or create production database/API 
 | Data classification | PII, credentials, secrets, logs, retention and privacy controls | Prepared; legal review pending |
 | Propo adapter questionnaire | Requests stable IDs, personal/work principals, reservation/activation, API and sandbox facts | Prepared; Propo response pending |
 | Threat model | Attackers, trust boundaries, 28 threats, P0 controls | Existing v0.1 document |
-| CI contract validator | Reproducible OpenAPI/AsyncAPI lint | Added in this Stage 0 branch; must pass before Stage 0 closure |
+| CI contract validator | Reproducible OpenAPI/AsyncAPI lint | Added in this Stage 0 branch; must pass before Stage 0 closure |\n| Identity Codespaces profile | Node 26 + PostgreSQL 18 isolated development environment | Configuration added; build/start/health verification pending |
 | Stage 1 backlog and gate | Ordered implementation scope and acceptance tests | Defined below |
 
 ## 4. Contract and security rules
@@ -76,7 +76,7 @@ Stage 0 does **not** implement authentication or create production database/API 
 
 ## 5. Environments and configuration
 
-Stage 1 must define three isolated environments:
+The isolated Codespaces configuration is `.devcontainer/identity/devcontainer.json`; its Compose file runs Node 26 and PostgreSQL 18 with a disposable local-only database. The setup and commands are documented in [.devcontainer/identity/README.md](../../.devcontainer/identity/README.md). Run `bash .devcontainer/identity/scripts/verify-stage0-environment.sh` from the repository root after creating the Codespace. The profile has not yet been built or run.\n\nStage 1 must define three isolated environments:
 
 | Environment | Data | Credentials | External products |
 |---|---|---|---|
