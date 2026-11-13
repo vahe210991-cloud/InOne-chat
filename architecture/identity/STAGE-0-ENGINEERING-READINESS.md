@@ -75,8 +75,6 @@ Stage 0 does **not** implement authentication or create production database/API 
 - Audit and outbox writes occur in the same transaction as the security state change.
 - No plaintext password, token, recovery code, invitation token or TOTP secret is stored in logs or event payloads.
 
-The isolated Codespaces configuration is `.devcontainer/identity/devcontainer.json`; its Compose file runs Node 26 and PostgreSQL 18 with a disposable local-only database. Setup instructions are in [.devcontainer/identity/README.md](../../.devcontainer/identity/README.md). After creating the Codespace, run `bash .devcontainer/identity/scripts/verify-stage0-environment.sh` from the repository root. The profile has not yet been built or run.
-
 ## 5. Environments and configuration
 
 The isolated Codespaces configuration is `.devcontainer/identity/devcontainer.json`; its Compose file runs Node 26 and PostgreSQL 18 with a disposable local-only database. The setup and commands are documented in [.devcontainer/identity/README.md](../../.devcontainer/identity/README.md). Run `bash .devcontainer/identity/scripts/verify-stage0-environment.sh` from the repository root after creating the Codespace. The profile has not yet been built or run.\n\nStage 1 must define three isolated environments:
@@ -124,6 +122,8 @@ Configuration must be schema-validated at startup. Production must fail to start
 - [x] Data classification/privacy inventory is prepared.
 - [x] Propo adapter questionnaire is prepared.
 - [x] Threat model and P0 launch blockers exist.
+- [x] Identity Codespaces configuration and verification script are prepared.
+- [ ] Codespaces image build, PostgreSQL health and environment verification pass.
 - [ ] Contract CI passes on the exact Stage 0 PR head.
 - [ ] OIDC/Passkey/Argon2/PostgreSQL compatibility spike is executed in the Stage 0 development environment.
 
