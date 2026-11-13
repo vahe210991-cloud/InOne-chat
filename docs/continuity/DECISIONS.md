@@ -177,3 +177,8 @@ Requirements:
 - No universal numeric thresholds or default monetary values are to be hard-coded by InOne. The organization owner controls the organization's configuration through the UI, subject to permission and delegation rules.
 
 This decision approves the product behavior and configuration model. UI screens, API, persistence schema and enforcement are not yet implemented by recording this decision.
+
+
+## Owner decision — Financial authority block in employee assignment (2026-11-13)
+
+The owner approved a separate **Financial authority** block on the InOne Business employee position assignment/edit screen. It will hold employee-specific, organization-specific financial operation permissions and configurable limits (per-transaction maximum, optional cumulative period caps and explicit currency), and surface the independent second-approval requirement. It does not create universal numeric defaults and cannot bypass mandatory dual control. Configuration changes are versioned and audited. This is an approved UI/policy requirement; screen, API, schema and enforcement are not yet implemented.
