@@ -307,3 +307,8 @@ A3 is decided: one person may belong to multiple organizations with different ro
 ## Owner decision update — InOne Business position hierarchy (2026-11-13)
 
 The owner approved the proposed seven-level position hierarchy: Owner, Internet Store Director, Deputy Director, Department Head, Senior Specialist/Team Lead, Specialist, Operator/Assistant. Observer/Auditor is a separate non-hierarchical read-only profile. Multiple owners are permitted. Additional positions are created by an owner and assigned/delegated down the hierarchy. Position, functional role and atomic permissions are distinct concepts. The detailed action-level matrix, department delegation ceilings, sensitive-action approval rules and migration mapping remain to be designed and approved. The authoritative draft is [ORG-POSITIONS-AND-DELEGATED-ACCESS.md](../../architecture/ORG-POSITIONS-AND-DELEGATED-ACCESS.md). No application code or database schema was changed by recording this decision.
+
+
+## Owner decision update — InOne Business permission matrix v1 (2026-11-13)
+
+The owner approved the proposed permission matrix without remarks. Critical financial operations require two-stage approval; limits are configurable by the owner for positions and individual employees; department heads are scoped to their own department by default. The authoritative baseline is [PERMISSION-MATRIX-V1.md](../../architecture/PERMISSION-MATRIX-V1.md). This approval authorizes backend specification, not a claim that authorization code is already implemented. No application code or database schema was changed by recording this decision.
