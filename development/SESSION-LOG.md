@@ -254,3 +254,12 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - All architecture and development documents are drafts except the product direction explicitly stated by the owner. Questions about identity, Seller Account cardinality, organization roles, data ownership, Propo APIs/events, Wallet and Flags remain open.
 - Existing repository implementation is treated as historical/reference only for this restart. No source code, UI, API, database, CI, deployment or service was changed. No Actions were started; no PR merged.
 - Work is on documentation-only branch architecture/product-and-platform-blueprint-2026-11-13, based on main at session start. A draft PR will be opened for owner review.
+
+
+## 2026-11-13 — Owner decision A1: one Seller Account per Business organization
+
+- Owner selected Option A: one Propo Seller Account corresponds to exactly one InOne Business organization.
+- Option B (one organization managing multiple stores/Seller Accounts) is excluded from the initial release; do not add multi-store complexity now.
+- Updated architecture/OPEN-OWNER-DECISIONS.md, PRODUCT-BOUNDARIES.md, DOMAIN-MODEL-AND-ACCESS.md, SYSTEM-ARCHITECTURE.md, development/architecture/DEVELOPMENT-ROADMAP.md, architecture report and continuity handoff/decision records.
+- The one-to-one mapping is an owner-approved product constraint. Propo's stable Seller Account identifier, employee account model, identity linking and API/event contract remain open and must be verified with Propo.
+- Documentation-only update on the existing architecture branch and draft PR #50. No code, UI, API, DB schema, CI, deployment or service changed; no PR merged and no Actions started.
