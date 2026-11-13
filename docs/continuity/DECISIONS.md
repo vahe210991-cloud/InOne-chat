@@ -204,4 +204,14 @@ The owner-approved registration/account-pair behavior is now expanded into a tec
 
 Proposed: a separately deployed modular-monolith Identity service with dedicated PostgreSQL, OIDC Authorization Code + PKCE, central credentials/contact claims/device sessions, product-scoped tokens, and durable idempotent provisioning orchestration. Product APIs remain authoritative for product account state and permissions. InOne Business owns invitations and membership; Identity only authenticates the invitee and provisions product account pairs after Business confirms acceptance.
 
-The detailed technical defaults are proposals, not owner-approved decisions. Contact uniqueness/dispute policy, login identifiers, credential/MFA and recovery policy, token lifetimes and Propo personal/work API support remain approval gates. No code, schema, API or service has been implemented.
+The detailed technical defaults remain proposals except for the contact policy: the owner approved Option A for global unique phone/email reservation with first-claim-wins and manual conflict resolution. Login identifiers, credential/MFA and recovery policy, token lifetimes and Propo personal/work API support remain approval gates. No code, schema, API or service has been implemented.
+
+## Owner decision — unique reservation of phone and email (2026-11-13)
+
+**Status: APPROVED — Option A.** InOne Identity must reserve each normalized phone number and email address uniquely across the system. The first successful claim reserves the contact; subsequent registration attempts using an already-reserved contact are blocked with a generic response that does not reveal the existing claimant/account.
+
+Conflicts require a restricted, audited manual dispute process. No automatic transfer, account merge or identity linking is permitted. Reassignment/release is possible only after an authorized operator reviews the case and records the evidence, decision, actor/reviewer, affected identity/contact references, before/after state, reason and timestamps. If evidence is insufficient or ambiguous, leave the reservation unchanged and escalate.
+
+The owner explicitly accepts the risk that, while phone/email remain unverified in the no-provider phase, someone may reserve another person's contact and block the legitimate holder. Reservation is not proof of ownership; invitation possession or device activation does not change this. Use conservative normalization (phone E.164 where possible; preserve email display form and do not strip dots/plus-tags by provider-specific rules).
+
+This is an approved architecture/product policy only. No service, endpoint, database constraint, support UI or runtime behavior has been implemented.
