@@ -204,7 +204,7 @@ The owner-approved registration/account-pair behavior is now expanded into a tec
 
 Proposed: a separately deployed modular-monolith Identity service with dedicated PostgreSQL, OIDC Authorization Code + PKCE, central credentials/contact claims/device sessions, product-scoped tokens, and durable idempotent provisioning orchestration. Product APIs remain authoritative for product account state and permissions. InOne Business owns invitations and membership; Identity only authenticates the invitee and provisions product account pairs after Business confirms acceptance.
 
-The detailed technical defaults remain proposals except for the contact policy: the owner approved Option A for global unique phone/email reservation with first-claim-wins and manual conflict resolution. Login identifiers, credential/MFA and recovery policy, token lifetimes and Propo personal/work API support remain approval gates. No code, schema, API or service has been implemented.
+The owner approved Option A for global unique phone/email reservation. The CTO has now set the v1 credential/recovery baseline: Argon2id password, passkeys preferred, optional TOTP, 10 one-time recovery codes, no recovery through unverified contacts, fail-closed behavior if all authenticators/codes are lost, global session revocation after password reset, 24-hour sensitive-action hold after recovery-code reset, and 72-hour cooling period for contact replacement. Token/session lifetime details and Propo personal/work API support remain open. No code, schema, API or service has been implemented.
 
 ## Owner decision — unique reservation of phone and email (2026-11-13)
 
