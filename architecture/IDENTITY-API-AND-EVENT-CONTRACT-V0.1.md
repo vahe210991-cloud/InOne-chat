@@ -302,8 +302,14 @@ Initial event catalogue:
 | `identity.product_account.status_changed` | Identity | Product adapters/clients as authorized | Notify lifecycle state change |
 | `identity.session.revoked` | Identity | Product APIs/gateway | Accelerate revocation propagation |
 | `identity.contact.verified` | Identity | Authorized product consumers | Notify verified contact state if needed |
+| `identity.credential.changed` | Identity | Product APIs/gateway | Invalidate sessions and require fresh authentication |
+| `identity.recovery.completed` | Identity | Product APIs/gateway | Record completed recovery and apply recovery policy |
+| `identity.security_hold.placed` | Identity | InOne Business, InOne, Propo APIs | Enforce temporary deny rules for sensitive actions |
+| `identity.security_hold.released` | Identity | InOne Business, InOne, Propo APIs | Remove hold after expiry or audited release |
+| `identity.contact_change.started` | Identity | Identity clients / security activity | Show pending contact replacement and cooling period |
+| `identity.contact_change.completed` | Identity | Authorized product consumers | Update contact-claim state without implying verification |
 
-Events contain identifiers and minimum metadata only. Never publish password hashes, raw tokens, recovery codes or full phone/email values.
+Events contain identifiers and minimum metadata only. Never publish password hashes, raw tokens, recovery codes or full phone/email values. Product APIs must enforce `identity.security_hold.placed` for sensitive operations and use a current-state check where event delivery may be delayed; do not rely on stale client-side state.
 
 ## 11. Product adapter contract
 
