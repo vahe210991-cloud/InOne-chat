@@ -80,3 +80,9 @@ Read these documents first:
 3. [Identity and product-account lifecycle v0.1](../../architecture/IDENTITY-AND-PRODUCT-ACCOUNT-LIFECYCLE-V0.1.md)
 
 Next, review the CTO-defined credential/recovery baseline and close remaining gates in section 14: login identifier, token/session defaults, device lifecycle, invitation timing and Propo personal/work account contract. Complete threat modeling before implementation. Do not implement until the architecture and threat model are reviewed. Keep Identity as a modular monolith for v1 unless measured scale or isolation requirements justify splitting it.
+
+## Identity recovery design — CTO decision completed (2026-11-13)
+
+The v1 credential/recovery policy is defined; do not reopen it as an owner decision unless new security evidence requires a change. Read [IDENTITY-RECOVERY-FLOW-V0.1.md](../../architecture/IDENTITY-RECOVERY-FLOW-V0.1.md) for the state machine, decision tree, lost-device cases and implementation checklist.
+
+Next work is threat modeling and implementation planning for recovery, device/session revocation propagation, security holds in product APIs, and the remaining integration gates (login identifier, token/session lifetimes, invitation timing and Propo account-context contract). This remains architecture-only. No Identity runtime, schema, API route or UI has been implemented.
