@@ -22,7 +22,7 @@ services:
       POSTGRES_PASSWORD: identity_local_only
       POSTGRES_DB: identity_dev
     volumes:
-      - identity-postgres-data:/var/lib/postgresql/data
+      - identity-postgres-data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U identity_dev -d identity_dev"]
       interval: 5s
