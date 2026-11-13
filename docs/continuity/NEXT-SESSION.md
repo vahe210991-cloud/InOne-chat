@@ -240,7 +240,7 @@ Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone
 ## Architecture restart — next actions (2026-11-13)
 
 1. Owner review of architecture v0.1: architecture/README.md and linked product/system/domain/laws documents.
-2. Answer blocking questions in architecture/OPEN-OWNER-DECISIONS.md, beginning with Propo Seller Account ↔ organization cardinality, employee identities, cross-product login, owner/admin permissions and buyer-message contract.
+2. Answer blocking questions in architecture/OPEN-OWNER-DECISIONS.md, beginning with employee identities, cross-product login, owner/admin permissions and buyer-message contract. Seller Account cardinality is already decided: one Seller Account ↔ one Business organization for v1.
 3. Obtain Propo API documentation, event/webhook specification, sandbox access and technical owner.
 4. Complete a read-only repository re-baseline per development/architecture/REPOSITORY-REBASELINE.md. Treat all existing code and CI evidence as historical/reference until independently verified for the new product scope.
 5. After owner decisions, publish ADRs for identity, data ownership, backend topology, database boundaries, messaging security and Propo integration.
@@ -248,3 +248,9 @@ Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone
 7. Only then begin implementation on an isolated task branch with API contracts, migrations, permission tests and acceptance criteria.
 
 No code changes are authorized by the architecture draft itself.
+
+
+### Decision received — 2026-11-13
+
+- Seller Account cardinality: **Option A, one-to-one**. Do not design v1 for one organization to manage multiple Propo stores/Seller Accounts.
+- Continue with A2–A5 and identity/employee questions. Confirm Propo's stable Seller Account ID and contract before implementing the connection.
