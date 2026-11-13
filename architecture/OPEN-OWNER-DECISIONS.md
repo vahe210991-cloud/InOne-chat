@@ -87,3 +87,26 @@ A1 and A3 are decided. A2 is partly decided (multiple employees per organization
 ## Recorded owner decision — InOne Business positions and hierarchy (2026-11-13)
 
 The owner approved the seven-level hierarchy: Owner; Internet Store Director; Deputy Director; Department Head; Senior Specialist/Team Lead; Specialist; Operator/Assistant. Observer/Auditor is a separate non-hierarchical read-only profile. Multiple owners are permitted. Additional positions are created by an owner and assigned/delegated down the hierarchy. Position, functional role and atomic permissions are separate authorization dimensions. See [ORG-POSITIONS-AND-DELEGATED-ACCESS.md](ORG-POSITIONS-AND-DELEGATED-ACCESS.md). The owner approved Permission Matrix v1 on 2026-11-13: critical financial operations require two-stage approval; transaction limits are owner-configurable by position and employee; department heads are scoped to their own department by default. See [PERMISSION-MATRIX-V1.md](PERMISSION-MATRIX-V1.md). The next gate is detailed permission-code, approval-policy and migration design.
+
+
+
+## Owner decision — Financial Policy v1 (2026-11-13)
+
+**Status: APPROVED — approval model. Monetary limits remain OPEN.** The owner explicitly approved the proposed financial-control model with no remarks, while requiring monetary limits to be refined separately.
+
+Approved baseline:
+- Sensitive financial actions follow `initiator → independent approver → execution`.
+- Initiator and approver must be different natural-person identities; self-approval is prohibited across sessions/devices/accounts and delegated contexts.
+- Initiation and approval are separate atomic permissions. An approver must independently satisfy permission, organization membership, resource scope, delegation ceiling and applicable limit checks.
+- If no eligible independent approver exists, execution is blocked; there is no implicit one-person bypass.
+- Approval binds to an immutable transaction snapshot. A material change invalidates prior approval and requires a new approval decision.
+- Approval state transitions and execution are idempotent, concurrency-safe and auditable.
+- Observer/Auditor cannot initiate or approve financial operations by default.
+- Missing or ambiguous limit configuration is deny/escalate, never unlimited.
+
+Not approved / still open:
+- Numeric thresholds, currencies and per-transaction/daily/weekly/monthly caps.
+- Final operation-by-operation dual-approval catalogue and approver eligibility details.
+- Approval expiry/quorum defaults and exact treatment of owner-initiated transactions.
+
+The earlier illustrative monetary amounts are examples only and are not policy. This decision approves the control model, not implementation, migrations, API changes or production enforcement. No application code or database schema was changed.
