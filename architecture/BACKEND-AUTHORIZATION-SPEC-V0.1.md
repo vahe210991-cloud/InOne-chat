@@ -218,19 +218,21 @@ A delegated manager may grant a subset to a subordinate but may not delegate a p
 
 ### 6.1 Limit model
 
+A limit policy MUST be configurable independently by each organization through the InOne Business interface. InOne MUST NOT impose universal numeric defaults or hard-coded monetary thresholds.
+
+The owner configures an employee's financial limits when assigning or editing that employee's position/authority. The effective limit is attached to the organization membership/position assignment and operation, not only to the position title. Two employees with the same title may have different limits, and one person may have different limits in different organizations.
+
 A limit policy should support:
-- permission/operation key;
-- organization;
-- position and optional employee override;
-- department/resource scope;
+- organization and employee membership/position assignment;
+- permission/operation key (for example payout, refund, discount, procurement, inventory write-off);
+- department/resource scope where relevant;
 - maximum per transaction;
-- optional cumulative period cap (daily/weekly/monthly);
-- currency (ISO 4217);
-- effective-from/to;
-- policy version;
+- optional cumulative period caps (daily/weekly/monthly);
+- explicit currency (ISO 4217);
+- effective-from/to and policy version;
 - creator/approver and audit references.
 
-An employee override can only narrow the applicable ceiling. If policy allows an owner to raise an employee limit, the new value must still be <= organization maximum and be separately audited. A delegated manager cannot raise a limit above their own ceiling. No implicit FX conversion; if cross-currency operations are needed, use a documented rate source, timestamp and rounding policy. Missing or ambiguous limits deny or escalate.
+Limits are tenant-isolated. A delegated manager cannot widen a limit beyond their own authority/delegation ceiling; owner changes are subject to the approved sensitive-policy controls. No implicit FX conversion. Missing or ambiguous limits deny or escalate, never imply unlimited authority. Changes are versioned and audited.
 
 ### 6.2 Dual-control transaction lifecycle
 
@@ -462,3 +464,20 @@ Not approved / still open:
 - Approval expiry/quorum defaults and exact treatment of owner-initiated transactions.
 
 The earlier illustrative monetary amounts are examples only and are not policy. This decision approves the control model, not implementation, migrations, API changes or production enforcement. No application code or database schema was changed.
+
+
+## Owner decision — organization-configurable employee financial limits (2026-11-13)
+
+**Status: APPROVED.** Monetary limits are not fixed globally by InOne and are not imposed as universal numeric defaults. Each InOne Business organization configures its own limits through the product interface. When the organization owner assigns or edits an employee's position/authority, the owner configures that employee's applicable financial limits as part of the assignment.
+
+Requirements:
+- Limits and policy settings are tenant-isolated; one organization's configuration never affects another organization.
+- Limits are configured per employee membership/position assignment, not merely by a global position title. Employees with the same title may have different limits; the same person may have different limits in different organizations.
+- The interface must allow the owner to configure limits by operation type (for example payout, refund, discount, procurement, inventory write-off), with per-transaction and optional cumulative period caps where applicable.
+- Currency must be explicit for every monetary limit; no implicit currency conversion.
+- Limit changes are versioned and audited (actor, employee, organization, operation, previous/new value, currency, effective time and reason where supplied).
+- Missing or ambiguous limits do not mean unlimited authority; the operation is denied or escalated until configured.
+- These configurable limits remain subordinate to the approved independent two-person approval model. An initiator cannot approve their own sensitive transaction.
+- No universal numeric thresholds or default monetary values are to be hard-coded by InOne. The organization owner controls the organization's configuration through the UI, subject to permission and delegation rules.
+
+This decision approves the product behavior and configuration model. UI screens, API, persistence schema and enforcement are not yet implemented by recording this decision.
