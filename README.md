@@ -1,13 +1,30 @@
-# InOne-chat
+# InOne platform
 
-Secure messenger.
+InOne is a product platform built around three connected but distinct products:
 
-## Development workspace
+- **Propo** — marketplace and classifieds in Armenia.
+- **InOne Business** — the professional back office and team workspace for organizations selling through Propo.
+- **InOne** — personal and social communication for individuals.
 
-Every developer/AI session must first read [`development/README.md`](development/README.md) and follow [`development/WORKING-RULES.md`](development/WORKING-RULES.md). Follow the working mode in `development/WORKING-RULES.md`: use a complete clone/Codespace for broad code changes and repository-native GitHub editing for focused changes that can be safely inspected and verified. GitHub is the only durable source of truth; local copies are temporary, and no required/current file may remain local-only.
+The product vision and technical boundaries are documented in the architecture directory. The implementation plan is in development/architecture.
 
-## Project continuity
+## Start here
 
-Before starting or resuming work, read [`docs/continuity/README.md`](docs/continuity/README.md). It is the persistent handoff index for all development sessions and contains the current state, approved decisions, source-artifact map, and exact next steps.
+1. [Product vision](architecture/PRODUCT-VISION.md)
+2. [Product boundaries](architecture/PRODUCT-BOUNDARIES.md)
+3. [System architecture](architecture/SYSTEM-ARCHITECTURE.md)
+4. [Domain model and organization permissions](architecture/DOMAIN-MODEL-AND-ACCESS.md)
+5. [Architecture laws](architecture/ARCHITECTURE-LAWS.md)
+6. [Open decisions for the owner](architecture/OPEN-OWNER-DECISIONS.md)
+7. [Development roadmap](development/architecture/DEVELOPMENT-ROADMAP.md)
 
-Do not rely on previous chat memory as the source of truth. Update `docs/continuity/` at the end of every substantial session.
+## Project status
+
+The architecture documents are version 0.1 drafts based on the owner's product direction and previously inspected repository structure. The owner must approve unresolved decisions before implementation. Existing repository code, branches, screens, tests and CI records are historical technical references; they are not assumed complete or production-accepted for this restart.
+
+## Development rules and continuity
+
+- Read development/README.md and development/WORKING-RULES.md before development.
+- Read docs/continuity/README.md for durable project decisions and handoff.
+- GitHub is the durable source of truth. Never rely on chat memory or local-only files.
+- Do not merge PRs, run deployments, expose services or change product code without the required owner authorization.

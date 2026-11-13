@@ -242,3 +242,34 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - No application code, UI, API, backend, database, CI workflow, PR state, or branch topology changed. No Actions were started and no PR was merged.
 - Next: inventory and classify existing screens, routes, repositories, APIs, and navigation into InOne, InOne Business, shared platform, or unresolved; prepare an impact map for owner review before code changes.
 
+
+## 2026-11-13 — Architecture restart: Propo + InOne Business + InOne
+
+- Owner clarified the business vision: Propo is the Armenian marketplace/classifieds project; InOne Business is the seller organization's backstage/back office and internal operating workspace connected to Propo Seller Account; InOne is the personal/social app.
+- Owner-stated Business scenarios include internal product/campaign threads, buyer messages, purchase/rating notifications, sales analytics, calculations, organization employees and permissions, Kanban, CRM, Leads, Deals, Wallet, Flags, organization publications/news feed/stories/statuses and owner profile editing.
+- Owner-stated InOne capabilities include personal chats, groups, communities, channels, news feed, personal publications/profile (avatar, cover, About me), stories and statuses.
+- Created root architecture v0.1 documents: product vision, product boundaries, system architecture, domain model/access, architecture laws and open owner decisions.
+- Created development architecture documents: phased roadmap, backend evolution/optimization and repository re-baseline.
+- Updated root README, development README, DECISIONS and SOURCE-OF-TRUTH; continuity updates added.
+- All architecture and development documents are drafts except the product direction explicitly stated by the owner. Questions about identity, Seller Account cardinality, organization roles, data ownership, Propo APIs/events, Wallet and Flags remain open.
+- Existing repository implementation is treated as historical/reference only for this restart. No source code, UI, API, database, CI, deployment or service was changed. No Actions were started; no PR merged.
+- Work is on documentation-only branch architecture/product-and-platform-blueprint-2026-11-13, based on main at session start. A draft PR will be opened for owner review.
+
+
+## 2026-11-13 — Owner decision A1: one Seller Account per Business organization
+
+- Owner selected Option A: one Propo Seller Account corresponds to exactly one InOne Business organization.
+- Option B (one organization managing multiple stores/Seller Accounts) is excluded from the initial release; do not add multi-store complexity now.
+- Updated architecture/OPEN-OWNER-DECISIONS.md, PRODUCT-BOUNDARIES.md, DOMAIN-MODEL-AND-ACCESS.md, SYSTEM-ARCHITECTURE.md, development/architecture/DEVELOPMENT-ROADMAP.md, architecture report and continuity handoff/decision records.
+- The one-to-one mapping is an owner-approved product constraint. Propo's stable Seller Account identifier, employee account model, identity linking and API/event contract remain open and must be verified with Propo.
+- Documentation-only update on the existing architecture branch and draft PR #50. No code, UI, API, DB schema, CI, deployment or service changed; no PR merged and no Actions started.
+
+
+## 2026-11-13 — Owner decision: multi-organization membership and delegated access
+
+- Confirmed: one organization may have many employees; one person may belong to multiple organizations with different roles/permissions in each.
+- Confirmed: access-management authority follows the organization hierarchy. A delegated member can change access only for members below their own level and within their own delegation ceiling.
+- Audited existing main-branch references: `ORG_API.md`, `migrations/0020-organizations.sql`, `src/store.js`, `src/server.js`, `test/org-management.test.js`, `test/admin-journal.test.js`.
+- Existing role baseline: `owner`, `admin`, `member`; composite `(org_id, user_id)` membership key; `/orgs/mine` returns membership-specific role; only owner can currently change roles; admin may add/remove ordinary members; role changes are audited. Multiple owners are supported, with last-owner protection.
+- Important gap: current owner-only role-change route does not implement the newly required delegated hierarchy. Architecture docs now distinguish existing behavior from the new requirement.
+- Updated architecture, open decisions and continuity handoff docs on the existing draft PR branch. Documentation only; no code/schema/UI/API change, no tests run, no PR merged.

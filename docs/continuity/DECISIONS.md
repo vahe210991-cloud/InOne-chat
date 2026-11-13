@@ -102,3 +102,116 @@
 - Existing InOne Beta 1.0 work and approved UI must not be silently rebranded or moved between products. Audit current screens and APIs against this split and propose a migration/classification plan before changing implementation.
 - Do not expand InOne Business scope by assuming that every Propo Seller Account capability is already specified; define and version the integration contract separately.
 
+
+## 8. InOne Business as Propo seller back office — 2026-11-13
+
+**Owner-approved product direction:**
+- Propo is the marketplace and classifieds project in Armenia.
+- InOne Business is the logical professional continuation of Propo and the backstage/back office for seller organizations operating on Propo.
+- Seller organizations use InOne Business to coordinate employees and work around marketplace operations: internal discussions/threads about products and campaigns, buyer messages, purchase/order notifications, rating notifications, sales analytics, calculations and business tools.
+- Business direction includes organization employees and roles/permissions, Kanban, CRM, Leads, Deals, Wallet, Flags, organization-related publications/news feed/stories/statuses, and integration with Propo Seller Account.
+- Owner rights include the ability to edit the organization profile. The complete permission matrix remains to be approved.
+- InOne remains the separate personal/social application: personal chats, groups, communities, channels, news feed, personal publications/profile, avatar, cover, About me, stories and statuses.
+
+**Architecture implications / not yet decided:**
+- Propo remains the marketplace project; exact system-of-record ownership and API/event contracts must be confirmed with Propo.
+- The product direction does not decide whether a Propo Seller Account equals one organization, how many employees it supports, or whether one organization can connect multiple stores.
+- It does not decide common identity/login, database topology, deployment topology, or whether shared platform services are physically shared.
+- Do not use direct Propo database access. Define a versioned integration contract before implementation.
+- The architecture draft is in the root architecture directory; unresolved owner questions are in OPEN-OWNER-DECISIONS.md.
+
+
+## 8. Propo Seller Account ↔ InOne Business organization cardinality — 2026-11-13
+
+**Owner decision: Option A.** One Propo Seller Account corresponds to exactly one InOne Business organization, and one InOne Business organization connects to exactly one Propo Seller Account in the initial release. Option B (one organization managing multiple stores/Seller Accounts) is not required now and is excluded from v1 scope. Keep the integration boundary explicit so this can be extended later by a separately approved decision and migration. This does not decide how many employees a Seller Account supports, whether Propo has separate employee identities, or how login/account linking works.
+
+
+## 9. InOne Business organization membership and delegated access — 2026-11-13
+
+**Owner decisions:**
+
+- Each organization may have many employees.
+- A person may belong to several organizations at once.
+- Roles and permissions are scoped to each organization membership; the same person may have different rights in each organization.
+- A member with explicit delegation may manage access only for members below their own position/authority level, and may not grant authority beyond their own delegation ceiling.
+- The existing engine's organization roles (`owner`, `admin`, `member`) are the compatibility baseline. The existing API currently permits only the owner to change roles; delegated lower-level management is a requirement to design, not a capability already present.
+
+See the architecture branch's domain/access model for the audited existing API/schema/test references and the difference between current behavior and the new requirement.
+
+
+
+## Owner decision — Financial Policy v1 (2026-11-13)
+
+**Status: APPROVED — approval model. Monetary limits remain OPEN.** The owner explicitly approved the proposed financial-control model with no remarks, while requiring monetary limits to be refined separately.
+
+Approved baseline:
+- Sensitive financial actions follow `initiator → independent approver → execution`.
+- Initiator and approver must be different natural-person identities; self-approval is prohibited across sessions/devices/accounts and delegated contexts.
+- Initiation and approval are separate atomic permissions. An approver must independently satisfy permission, organization membership, resource scope, delegation ceiling and applicable limit checks.
+- If no eligible independent approver exists, execution is blocked; there is no implicit one-person bypass.
+- Approval binds to an immutable transaction snapshot. A material change invalidates prior approval and requires a new approval decision.
+- Approval state transitions and execution are idempotent, concurrency-safe and auditable.
+- Observer/Auditor cannot initiate or approve financial operations by default.
+- Missing or ambiguous limit configuration is deny/escalate, never unlimited.
+
+Not approved / still open:
+- Numeric thresholds, currencies and per-transaction/daily/weekly/monthly caps.
+- Final operation-by-operation dual-approval catalogue and approver eligibility details.
+- Approval expiry/quorum defaults and exact treatment of owner-initiated transactions.
+
+The earlier illustrative monetary amounts are examples only and are not policy. This decision approves the control model, not implementation, migrations, API changes or production enforcement. No application code or database schema was changed.
+
+
+## Owner decision — organization-configurable employee financial limits (2026-11-13)
+
+**Status: APPROVED.** Monetary limits are not fixed globally by InOne and are not imposed as universal numeric defaults. Each InOne Business organization configures its own limits through the product interface. When the organization owner assigns or edits an employee's position/authority, the owner configures that employee's applicable financial limits as part of the assignment.
+
+Requirements:
+- Limits and policy settings are tenant-isolated; one organization's configuration never affects another organization.
+- Limits are configured per employee membership/position assignment, not merely by a global position title. Employees with the same title may have different limits; the same person may have different limits in different organizations.
+- The interface must allow the owner to configure limits by operation type (for example payout, refund, discount, procurement, inventory write-off), with per-transaction and optional cumulative period caps where applicable.
+- Currency must be explicit for every monetary limit; no implicit currency conversion.
+- Limit changes are versioned and audited (actor, employee, organization, operation, previous/new value, currency, effective time and reason where supplied).
+- Missing or ambiguous limits do not mean unlimited authority; the operation is denied or escalated until configured.
+- These configurable limits remain subordinate to the approved independent two-person approval model. An initiator cannot approve their own sensitive transaction.
+- No universal numeric thresholds or default monetary values are to be hard-coded by InOne. The organization owner controls the organization's configuration through the UI, subject to permission and delegation rules.
+
+This decision approves the product behavior and configuration model. UI screens, API, persistence schema and enforcement are not yet implemented by recording this decision.
+
+
+## Owner decision — Financial authority block in employee assignment (2026-11-13)
+
+The owner approved a separate **Financial authority** block on the InOne Business employee position assignment/edit screen. It will hold employee-specific, organization-specific financial operation permissions and configurable limits (per-transaction maximum, optional cumulative period caps and explicit currency), and surface the independent second-approval requirement. It does not create universal numeric defaults and cannot bypass mandatory dual control. Configuration changes are versioned and audited. This is an approved UI/policy requirement; screen, API, schema and enforcement are not yet implemented.
+
+
+## Owner decision — central identity and paired product-account registration (2026-11-13)
+
+**Status: OWNER-APPROVED PRODUCT DIRECTION; technical design draft.** Registration requires phone number and email. Identity stores both centrally; without SMS/email verification providers they remain unverified claims and must not be used alone for recovery, authentication or sensitive authorization.
+
+Personal registration through InOne provisions an InOne personal account plus a reserved Propo personal account. Work registration through InOne Business provisions an InOne Business work account plus a reserved Propo work account. The paired Propo account is created immediately but cannot be used until first-device activation in Propo. Personal and work contexts are separate; one person may hold both pairs.
+
+A separate InOne Identity service owns central identity/authentication/contact claims/device-session and product-account mapping. InOne, InOne Business and Propo retain separate backends and databases, local account principals and domain data. Work onboarding uses scoped invitations: explicit acceptance precedes provisioning/reuse of the work pair and activation of organization membership. Cross-product provisioning uses authenticated versioned APIs/events, idempotency, durable outbox/inbox, retries and reconciliation; no shared product database or direct cross-product SQL.
+
+See [IDENTITY-AND-PRODUCT-ACCOUNT-LIFECYCLE-V0.1.md](IDENTITY-AND-PRODUCT-ACCOUNT-LIFECYCLE-V0.1.md). Open design items include unverified-contact conflicts/recovery, credential/MFA policy, device recovery, invitation timing and Propo's support for separate personal/work principals. No implementation is implied.
+
+
+## Identity service architecture — technical design added (2026-11-13)
+
+The owner-approved registration/account-pair behavior is now expanded into a technical proposal:
+- [IDENTITY-SERVICE-ARCHITECTURE-V0.1.md](../../architecture/IDENTITY-SERVICE-ARCHITECTURE-V0.1.md)
+- [IDENTITY-API-AND-EVENT-CONTRACT-V0.1.md](../../architecture/IDENTITY-API-AND-EVENT-CONTRACT-V0.1.md)
+- [IDENTITY-AND-PRODUCT-ACCOUNT-LIFECYCLE-V0.1.md](../../architecture/IDENTITY-AND-PRODUCT-ACCOUNT-LIFECYCLE-V0.1.md)
+
+Proposed: a separately deployed modular-monolith Identity service with dedicated PostgreSQL, OIDC Authorization Code + PKCE, central credentials/contact claims/device sessions, product-scoped tokens, and durable idempotent provisioning orchestration. Product APIs remain authoritative for product account state and permissions. InOne Business owns invitations and membership; Identity only authenticates the invitee and provisions product account pairs after Business confirms acceptance.
+
+The owner approved Option A for global unique phone/email reservation. The CTO has now set the v1 credential/recovery baseline: Argon2id password, passkeys preferred, optional TOTP, 10 one-time recovery codes, no recovery through unverified contacts, fail-closed behavior if all authenticators/codes are lost, global session revocation after password reset, 24-hour sensitive-action hold after recovery-code reset, and 72-hour cooling period for contact replacement. Token/session lifetime details and Propo personal/work API support remain open. No code, schema, API or service has been implemented.
+
+## Owner decision — unique reservation of phone and email (2026-11-13)
+
+**Status: APPROVED — Option A.** InOne Identity must reserve each normalized phone number and email address uniquely across the system. The first successful claim reserves the contact; subsequent registration attempts using an already-reserved contact are blocked with a generic response that does not reveal the existing claimant/account.
+
+Conflicts require a restricted, audited manual dispute process. No automatic transfer, account merge or identity linking is permitted. Reassignment/release is possible only after an authorized operator reviews the case and records the evidence, decision, actor/reviewer, affected identity/contact references, before/after state, reason and timestamps. If evidence is insufficient or ambiguous, leave the reservation unchanged and escalate.
+
+The owner explicitly accepts the risk that, while phone/email remain unverified in the no-provider phase, someone may reserve another person's contact and block the legitimate holder. Reservation is not proof of ownership; invitation possession or device activation does not change this. Use conservative normalization (phone E.164 where possible; preserve email display form and do not strip dots/plus-tags by provider-specific rules).
+
+This is an approved architecture/product policy only. No service, endpoint, database constraint, support UI or runtime behavior has been implemented.
