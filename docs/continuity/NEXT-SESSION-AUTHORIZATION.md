@@ -51,3 +51,8 @@ Prepare a CFO proposal for monetary limits using an operation-based schedule, ex
 ## Next financial-limits design task
 
 Design the owner-facing employee assignment/edit interface and the corresponding data model/API for organization-isolated, employee-specific, operation-level limits. Include per-transaction and optional cumulative caps, explicit currency, effective dates, versioning, audit, delegation ceilings and deny-by-default behavior. Do not add global numeric defaults. Keep the independent two-person approval requirement intact.
+
+
+## Owner-approved UI requirement — Financial authority block (2026-11-13)
+
+The employee assignment/edit screen must include a separate **Financial authority** block for organization-specific, employee-specific operation permissions and limits. Capture per-transaction maximums, optional cumulative period caps, explicit currency and the applicable independent second-approval requirement. Do not add universal numeric defaults or permit the UI to bypass mandatory dual control. Version and audit every change. This remains design work: no screen/API/schema/runtime implementation is authorized or claimed by this note.
