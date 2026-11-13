@@ -180,3 +180,10 @@ Key model requirements:
 - The current POC does not implement the approved seven-level hierarchy or general delegated role changes.
 
 The action-level permission matrix, department-specific delegation ceilings, sensitive-action approval policy and migration mapping remain to be approved before implementation.
+
+
+## 8. Owner-approved permission matrix v1 (2026-11-13)
+
+The owner approved the position-based permission matrix without remarks. Critical financial operations require two-stage approval; transaction limits are configurable by the owner per position and employee; department heads are scoped to their own department by default. The authoritative policy baseline is [PERMISSION-MATRIX-V1.md](PERMISSION-MATRIX-V1.md).
+
+The matrix is a policy baseline for backend design, not implemented behavior. Position, functional assignment, atomic permission, resource scope, delegation ceiling and transaction approval policy must remain distinct authorization dimensions. Existing owner/admin/member memberships must be migrated explicitly; admin/member do not imply a specific new position or financial authority.
