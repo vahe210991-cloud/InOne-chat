@@ -4,12 +4,14 @@ on:
   pull_request:
     paths:
       - "architecture/identity/**"
+      - ".devcontainer/identity/**"
       - ".github/workflows/identity-contracts.yml"
   push:
     branches:
       - "stage0/identity-engineering-readiness-2026-11-13"
     paths:
       - "architecture/identity/**"
+      - ".devcontainer/identity/**"
       - ".github/workflows/identity-contracts.yml"
 
 permissions:
@@ -37,8 +39,5 @@ jobs:
           node --version
           npm --version
 
-      - name: Lint OpenAPI 3.1 contract
-        run: npx --yes @redocly/cli@2.77.0 lint architecture/identity/contracts/identity-openapi-v1.yaml
-
-      - name: Lint AsyncAPI 3.0 event contract
-        run: npx --yes @redocly/cli@2.77.0 lint architecture/identity/contracts/identity-events-v1.asyncapi.yaml
+      - name: Validate contracts
+        run: bash .devcontainer/identity/scripts/validate-contracts.sh
