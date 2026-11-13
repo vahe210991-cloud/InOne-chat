@@ -218,3 +218,21 @@ Latest exact-head evidence: [push run 42465804591](https://github.com/vahe210991
 ## Mandatory approved WBS and current UI stage — 2026-11-09
 
 Before any work, read [AGENTS.md](../../AGENTS.md), the full [AI agent mandate](../../development/AI-AGENT-MANDATE.md), and the full [owner-approved progress baseline](../../development/PROGRESS-BASELINE.md). The WBS is approved and immutable without a new owner decision. Current UI stage is Beta 1.0 UI-01 through UI-06; continue from [UI integration report](../../development/reports/2026-11-09-1015-ui-integration-start.md) and branch `feat/beta1-ui-source-integration`. The owner-provided Ui.zip has been checksum-verified locally; its full binary/source package is not yet confirmed uploaded to GitHub. Do not claim import complete until remote files/checksums are verified.
+
+## New owner-approved product direction — 2026-11-13
+
+Before expanding screen implementation, perform a product-boundary impact review based on the owner's decision to create two separate apps:
+
+1. **InOne:** personal/social application — feed, publications, personal chats, groups, Threads, and related social functions.
+2. **InOne Business:** professional application — Kanban, CRM, Leads, Deals, Wallet, Flags, other business tools, integrated with Propo Seller Account.
+
+Required next work:
+- Inventory current screens, routes, API contracts, repositories, and navigation.
+- Classify every capability as InOne, InOne Business, shared platform capability, or unresolved.
+- Identify which of the 11 approved InOne UI screens belong to the personal/social app and whether any current business-oriented concepts should be reserved for InOne Business.
+- Produce a proposed product boundary / migration map and list technical decisions still needed (identity, backend/API boundaries, data ownership, app packaging, shared components).
+- Do not move code, split services/databases, alter approved UI, or merge PRs until the owner reviews the impact map and authorizes implementation.
+- Preserve existing Beta 1.0, identity, database, MLS, and security decisions unless explicitly superseded by a separate owner decision.
+
+Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone-and-inone-business--2026-11-13).
+
