@@ -201,6 +201,10 @@ Validates a previously enrolled passkey assertion or one unused recovery code. A
 
 Consumes the recovery grant atomically, sets a new Argon2id password and records the credential change. Revoke all existing refresh-token families/sessions across all product contexts. Issue only a restricted recovery session to the current device. If the grant was created using a recovery code, invalidate the entire previous recovery-code set and require a new set before restoring sensitive Business permissions; place a 24-hour security hold on sensitive operations. A passkey-based recovery does not trigger this hold but still revokes other sessions after password reset.
 
+### POST /v1/recovery/authenticators/replace
+
+Consumes a recovery grant with purpose `authenticator_replacement`, enrolls a new passkey or TOTP authenticator, and revokes only the explicitly selected lost/compromised authenticator records. The operation is single-use, audited and followed by global session revocation. If the grant was obtained with a recovery code, the 24-hour sensitive-action hold applies. Never allow the endpoint to disable the last usable authenticator without enrolling a replacement.
+
 ### POST /v1/me/security/recovery-codes
 
 Initial issuance requires recent password re-authentication; if a passkey/TOTP is already enrolled, require it as additional step-up. Rotation requires passkey/TOTP or fresh password re-authentication plus one unused recovery code. Generates 10 one-time codes with at least 128 bits of cryptographic randomness each, displays them once, stores only keyed hashes and invalidates the previous set. A recovery code is consumed atomically and cannot be reused. Recovery codes cannot authorize financial approvals or ordinary step-up actions. Sensitive InOne Business financial permissions require an enrolled passkey or TOTP plus a fresh recovery-code set.
@@ -383,5 +387,6 @@ Before production, automate at minimum:
 24. Support cannot reset credentials in v1 without independent identity proofing and two-person approval.
 25. Business administrator cannot recover central Identity credentials.
 26. Contact change requires passkey/TOTP step-up, retains old claim for 72 hours and cannot bypass uniqueness conflicts.
+27. Authenticator replacement requires a purpose-matched one-use grant and revokes only the selected lost/compromised authenticators.
 
 No endpoint, event or test listed here is implemented by this contract draft.
