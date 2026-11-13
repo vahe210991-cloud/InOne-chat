@@ -481,3 +481,17 @@ Requirements:
 - No universal numeric thresholds or default monetary values are to be hard-coded by InOne. The organization owner controls the organization's configuration through the UI, subject to permission and delegation rules.
 
 This decision approves the product behavior and configuration model. UI screens, API, persistence schema and enforcement are not yet implemented by recording this decision.
+
+
+### 6.4 Employee assignment UI — separate Financial authority block (owner-approved 2026-11-13)
+
+The employee position assignment/edit screen MUST contain a distinct, clearly separated **Financial authority** block. This is an approved product/UI requirement, not an implemented screen.
+
+The block is configured for the specific employee membership in the current organization and its active position/authority assignment. It MUST support operation-level enablement and limits, including where applicable:
+- allowed financial operation(s);
+- maximum amount per transaction;
+- optional cumulative daily, weekly and/or monthly caps;
+- explicit currency for each monetary limit;
+- whether an independent second approval is required under the organization's approval policy.
+
+The UI must make clear that these values are employee-specific and organization-specific. It must not imply that a position title alone grants a monetary limit, nor apply one organization's settings to another. Missing/ambiguous configuration remains deny/escalate. The second-approval control cannot weaken the approved mandatory dual-control rules for sensitive operations; it may only express stricter organization policy or configure operations whose approval requirement is legitimately configurable. Every change is versioned and audited. The exact field layout, operation catalogue, API and persistence design remain subsequent architecture work; no implementation is implied.
