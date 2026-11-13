@@ -242,3 +242,15 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - No application code, UI, API, backend, database, CI workflow, PR state, or branch topology changed. No Actions were started and no PR was merged.
 - Next: inventory and classify existing screens, routes, repositories, APIs, and navigation into InOne, InOne Business, shared platform, or unresolved; prepare an impact map for owner review before code changes.
 
+
+## 2026-11-13 — Architecture restart: Propo + InOne Business + InOne
+
+- Owner clarified the business vision: Propo is the Armenian marketplace/classifieds project; InOne Business is the seller organization's backstage/back office and internal operating workspace connected to Propo Seller Account; InOne is the personal/social app.
+- Owner-stated Business scenarios include internal product/campaign threads, buyer messages, purchase/rating notifications, sales analytics, calculations, organization employees and permissions, Kanban, CRM, Leads, Deals, Wallet, Flags, organization publications/news feed/stories/statuses and owner profile editing.
+- Owner-stated InOne capabilities include personal chats, groups, communities, channels, news feed, personal publications/profile (avatar, cover, About me), stories and statuses.
+- Created root architecture v0.1 documents: product vision, product boundaries, system architecture, domain model/access, architecture laws and open owner decisions.
+- Created development architecture documents: phased roadmap, backend evolution/optimization and repository re-baseline.
+- Updated root README, development README, DECISIONS and SOURCE-OF-TRUTH; continuity updates added.
+- All architecture and development documents are drafts except the product direction explicitly stated by the owner. Questions about identity, Seller Account cardinality, organization roles, data ownership, Propo APIs/events, Wallet and Flags remain open.
+- Existing repository implementation is treated as historical/reference only for this restart. No source code, UI, API, database, CI, deployment or service was changed. No Actions were started; no PR merged.
+- Work is on documentation-only branch architecture/product-and-platform-blueprint-2026-11-13, based on main at session start. A draft PR will be opened for owner review.
