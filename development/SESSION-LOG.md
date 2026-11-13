@@ -1,3 +1,21 @@
+## 2026-11-13 13:26 Europe/Tallinn — InOne Identity Stage 0 readiness (HANDOFF INCOMPLETE)
+
+- Owner requested a fully working Stage 0 and delegated technical decisions to CTO.
+- Task branch: stage0/identity-readiness-2026-11-13; base architecture/product-and-platform-blueprint-2026-11-13 at 05bc226526d9c984b6ccb2b9f44dbad8459dcd6e.
+- Verified pre-log branch HEAD: 9f22f0cb3ac8aaf00f87ffd4d983afb847269890.
+- Report: development/reports/2026-11-13-1326-identity-stage0-readiness.md; initial report commit 60d03f21b6f7d421e407187e2f23891f26fb3bd8.
+- Remote tree comparison against the base: 15 files added, 4 files modified, 0 deleted. No source file was changed.
+- Added Stage 0 readiness pack, CTO ADR-001, OpenAPI 3.1, event schema (12 event types), 3 representative event fixtures, OIDC client registry/schema, environment and local development contracts, contract-validation workflow and service workspace README.
+- Restored development/AI-AGENT-MANDATE.md verbatim from docs/mandatory-ai-agent-protocol-2026-11-09 (source blob SHA 80a36b484b48019e1200d521bde520d0419a2054); it was absent from the architecture base branch despite AGENTS.md requiring it.
+- CTO stack decision: Node.js 26 LTS, TypeScript strict, Fastify 5, oidc-provider 9, SimpleWebAuthn 14, argon2 0.45, PostgreSQL 18.7, pg, SQL-first persistence. Propo adapter deferred until its contract/sandbox is supplied.
+- JSON parse and local OpenAPI reference scan: PASS. 204 responses have no bodies. Redocly/Ajv CI: NOT RUN; fetch_commit_workflow_runs returned an empty list for pre-log head 9f22f0c. App tests: NOT RUN.
+- Complete repository clone attempt (git clone --mirror) failed with DNS error: Could not resolve host github.com. Mandatory WORKING-RULES require complete clone before edits. The current environment only supports GitHub API operations; the protocol requires stop and owner clarification.
+- Stage 0 package status: authored, NOT accepted/closed. PR not opened; no Actions run; no server/container/database, production secrets, deployment or merge.
+- PR #50 remains draft/open/unmerged. No changes to main.
+- Next session must resolve complete-clone blocker or obtain explicit one-time owner exception, then open draft Stage 0 PR and run contract CI on exact head. Do not begin Stage 1 before Stage 0 acceptance.
+- Previous five and next five tasks, exact verification and cumulative WBS continuity are recorded in the report above.
+- Cumulative baseline unchanged: InOne overall 25% historical; Beta 1.0 42% implementation / 31% verification; Beta 2.0 2% / 0% per development/PROGRESS-BASELINE.md v1.1. Identity Stage 0 work is not counted in Beta 1.0.
+
 ## 2026-11-11 — Conservative repository file cleanup
 
 - Inspected the complete recursive Git tree on the current base (964 entries / 853 files; response not truncated) and grouped exact duplicate blobs by SHA.
