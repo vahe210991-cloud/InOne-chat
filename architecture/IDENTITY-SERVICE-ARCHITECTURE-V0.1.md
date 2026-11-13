@@ -320,9 +320,10 @@ Rules:
 - Password is the initial universal credential. Store only an Argon2id hash in Identity; calibrate parameters on production hardware, rate-limit by identity and network/device signals, and use generic authentication errors.
 - Passkeys (WebAuthn) are the preferred phishing-resistant second authenticator and should be supported in the first secure release where the selected OIDC stack permits.
 - TOTP authenticator app is an optional second authenticator. SMS/email OTP is not a recovery factor until a verified delivery-and-proof-of-control flow exists.
-- Generate 10 single-use high-entropy recovery codes when the user configures account recovery. Show them once, require explicit acknowledgement that they have been saved, and store only salted/peppered hashes. A code is consumed atomically and can never be reused. Rotating the set invalidates every previous code.
+- Generate 10 single-use recovery codes (at least 128 bits of cryptographic randomness each) during recovery setup. Show them once, require explicit acknowledgement that they have been saved, and store only keyed hashes. Initial issuance requires recent password re-authentication; if passkey/TOTP is already enrolled, require it as additional step-up. Rotation requires a passkey/TOTP assertion or a fresh password re-authentication plus one unused recovery code. A code is consumed atomically and can never be reused. Rotating the set invalidates every previous code.
 - Recovery codes are for account recovery only; they are not a login method for routine use, a step-up factor for financial approvals, or proof of phone/email ownership.
 - Do not permit a user to disable their last usable authenticator/recovery path without first enrolling a replacement, except through the controlled recovery process.
+- Before granting sensitive InOne Business financial permissions, require at least one passkey or TOTP authenticator and a fresh recovery-code set. Recovery codes cannot satisfy the step-up requirement for a financial operation.
 
 #### Recovery methods and precedence
 1. **Existing passkey:** the user proves possession with a fresh WebAuthn assertion, then may establish a new password or replace a lost authenticator.
@@ -331,7 +332,7 @@ Rules:
 4. **No remaining authenticator or recovery code:** open a support recovery case, but do not reset credentials or transfer contacts based on unverified phone/email, password knowledge, invitation possession, device activation, organization confirmation, profile details or payment/account metadata alone. In v1, no manual override is allowed until an independent identity-proofing process with documented evidence standards, trained reviewers and a second approver is separately designed and approved. If proof cannot be established, access remains blocked.
 
 #### Recovery sequence
-1. User starts recovery using phone or email as a lookup identifier. The API returns the same generic response and status shape whether or not an account exists; it never confirms a contact claim or exposes available authenticators.
+1. User starts recovery using phone or email as a lookup identifier. The API returns the same generic response and status shape whether or not an account exists; it never confirms a contact claim or exposes available authenticators. The UI offers the same generic choices (use a passkey or enter a recovery code); the server validates the selected proof without exposing account-specific authenticator inventory.
 2. The user completes a challenge with an enrolled passkey or one unused recovery code. A trusted-device approval is accepted only with fresh step-up as described above.
 3. Identity validates the challenge, risk controls and rate limits, then creates a one-use recovery grant (10-minute lifetime, purpose-bound, client/device-bound).
 4. The user sets a new password and reviews active devices/authenticators. The transaction consumes the grant, records the credential change, revokes all existing refresh-token families and sessions across InOne, InOne Business and Propo, and creates only a restricted recovery session on the current device.
