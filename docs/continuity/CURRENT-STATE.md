@@ -372,3 +372,9 @@ Updated:
 The design proposes a modular-monolith Identity service with dedicated PostgreSQL, OIDC Authorization Code + PKCE, central credentials and contact claims, product-scoped access tokens, device/session lifecycle, and durable idempotent account-pair provisioning. InOne Business owns invitation and membership authority. Product services own their account state and product permissions.
 
 **Status:** architecture draft only. No implementation, schema migration, API route, UI, deployment or application tests. Technical defaults requiring owner approval are listed in the Identity architecture document.
+
+## Owner decision update — Identity contact reservation Option A (2026-11-13)
+
+The owner approved global unique reservation of phone numbers and email addresses in InOne Identity. Each normalized contact may have one active claim; first successful claim wins, and subsequent attempts are blocked with a generic response that does not reveal the existing account. Conflicts require restricted, audited manual review; no automatic transfer, account merge or identity linking. Unresolved/ambiguous cases remain blocked. Since contacts are unverified until SMS/email providers are added, the owner explicitly accepts the risk of a person reserving someone else's contact and preventing the legitimate holder from registering. Reservation is not proof of ownership.
+
+The architecture, API/event contract, lifecycle and continuity records are updated. This remains documentation only: no database constraint, endpoint, support UI or runtime workflow has been implemented.
