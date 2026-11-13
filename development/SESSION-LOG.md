@@ -230,3 +230,15 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Import bot commit advanced branch to `cb09a4058719576df6d589f1f8b59be517b592b5`. The workflow tested the workspace after import but run's event SHA is prior commit `478cad39...`; request an independent CI run on the new head.
 - PR remains draft/open/unmerged; main unchanged by this task. Runtime WebView rendering, live API/bridge, visual parity and device E2E remain unverified.
 - WBS baseline v1.1 unchanged: Beta 1.0 42% implementation / 31% verification; Beta 2.0 2% / 0%; overall historical 25%.
+
+## 2026-11-13 — Owner decision: split product into InOne and InOne Business
+
+- Owner approved two separate applications:
+  - **InOne:** personal/social application with news feed, publications, personal chats, groups, Threads, and related social features.
+  - **InOne Business:** professional/work application with Kanban, CRM, Leads, Deals, Wallet, Flags, other business tools, and integration with Propo Seller Account.
+- Recorded as an authoritative product decision in `docs/continuity/DECISIONS.md` section 7 and added to `docs/continuity/SOURCE-OF-TRUTH.md`.
+- Updated continuity handoff documents to require a product-boundary impact review before reorganizing screens or implementation.
+- Important: this decision defines product boundaries only. It does not automatically decide separate/shared identity, backend, databases, repositories, or infrastructure.
+- No application code, UI, API, backend, database, CI workflow, PR state, or branch topology changed. No Actions were started and no PR was merged.
+- Next: inventory and classify existing screens, routes, repositories, APIs, and navigation into InOne, InOne Business, shared platform, or unresolved; prepare an impact map for owner review before code changes.
+
