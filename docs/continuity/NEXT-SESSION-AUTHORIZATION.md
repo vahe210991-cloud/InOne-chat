@@ -63,8 +63,8 @@ The employee assignment/edit screen must include a separate **Financial authorit
 Before implementing registration, close the remaining open items in the Identity lifecycle specification. **Contact uniqueness is no longer open:** the owner approved Option A (global unique reservation, first-claim-wins, generic conflict response, restricted manual dispute resolution, no automatic transfer/merge/link; unresolved cases stay blocked). The risk of reserving another person's unverified contact is explicitly accepted.
 
 Remaining design gates:
-- contact-change and account-recovery procedure while phone/email are unverified;
-- credential, passkey/MFA, step-up and lost-device recovery policy;
+- CTO recovery baseline is documented; threat-model and operationalize recovery abuse controls, manual support case boundary and device lifecycle;
+- finalize token/session lifetimes and login identifier behavior;
 - device activation and product-scoped token exchange;
 - invitation lifecycle and exact point at which the work pair is provisioned;
 - Propo contract for distinct personal and work account contexts;
@@ -79,4 +79,4 @@ Read these documents first:
 2. [Identity API and event contract v0.1](../../architecture/IDENTITY-API-AND-EVENT-CONTRACT-V0.1.md)
 3. [Identity and product-account lifecycle v0.1](../../architecture/IDENTITY-AND-PRODUCT-ACCOUNT-LIFECYCLE-V0.1.md)
 
-Next, obtain owner decisions on the technical gates in section 14 of the Identity service architecture: contact uniqueness/dispute, login identifier, password/passkey/MFA, recovery, token/session defaults, Business invitation ownership, and Propo personal/work account contract. Do not implement until those decisions and the threat model are reviewed. Keep Identity as a modular monolith for v1 unless measured scale or isolation requirements justify splitting it.
+Next, review the CTO-defined credential/recovery baseline and close remaining gates in section 14: login identifier, token/session defaults, device lifecycle, invitation timing and Propo personal/work account contract. Complete threat modeling before implementation. Do not implement until the architecture and threat model are reviewed. Keep Identity as a modular monolith for v1 unless measured scale or isolation requirements justify splitting it.
