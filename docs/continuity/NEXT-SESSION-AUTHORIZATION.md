@@ -60,8 +60,10 @@ The employee assignment/edit screen must include a separate **Financial authorit
 
 ## Identity architecture — next design gate
 
-Before implementing registration, close the open items in the Identity lifecycle specification:
-- contact-claim uniqueness, dispute, change and recovery while phone/email are unverified;
+Before implementing registration, close the remaining open items in the Identity lifecycle specification. **Contact uniqueness is no longer open:** the owner approved Option A (global unique reservation, first-claim-wins, generic conflict response, restricted manual dispute resolution, no automatic transfer/merge/link; unresolved cases stay blocked). The risk of reserving another person's unverified contact is explicitly accepted.
+
+Remaining design gates:
+- contact-change and account-recovery procedure while phone/email are unverified;
 - credential, passkey/MFA, step-up and lost-device recovery policy;
 - device activation and product-scoped token exchange;
 - invitation lifecycle and exact point at which the work pair is provisioned;
