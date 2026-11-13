@@ -102,3 +102,20 @@
 - Existing InOne Beta 1.0 work and approved UI must not be silently rebranded or moved between products. Audit current screens and APIs against this split and propose a migration/classification plan before changing implementation.
 - Do not expand InOne Business scope by assuming that every Propo Seller Account capability is already specified; define and version the integration contract separately.
 
+
+## 8. InOne Business as Propo seller back office — 2026-11-13
+
+**Owner-approved product direction:**
+- Propo is the marketplace and classifieds project in Armenia.
+- InOne Business is the logical professional continuation of Propo and the backstage/back office for seller organizations operating on Propo.
+- Seller organizations use InOne Business to coordinate employees and work around marketplace operations: internal discussions/threads about products and campaigns, buyer messages, purchase/order notifications, rating notifications, sales analytics, calculations and business tools.
+- Business direction includes organization employees and roles/permissions, Kanban, CRM, Leads, Deals, Wallet, Flags, organization-related publications/news feed/stories/statuses, and integration with Propo Seller Account.
+- Owner rights include the ability to edit the organization profile. The complete permission matrix remains to be approved.
+- InOne remains the separate personal/social application: personal chats, groups, communities, channels, news feed, personal publications/profile, avatar, cover, About me, stories and statuses.
+
+**Architecture implications / not yet decided:**
+- Propo remains the marketplace project; exact system-of-record ownership and API/event contracts must be confirmed with Propo.
+- The product direction does not decide whether a Propo Seller Account equals one organization, how many employees it supports, or whether one organization can connect multiple stores.
+- It does not decide common identity/login, database topology, deployment topology, or whether shared platform services are physically shared.
+- Do not use direct Propo database access. Define a versioned integration contract before implementation.
+- The architecture draft is in the root architecture directory; unresolved owner questions are in OPEN-OWNER-DECISIONS.md.
