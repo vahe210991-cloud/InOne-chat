@@ -148,3 +148,12 @@ Personal registration through InOne provisions an InOne personal account plus a 
 A separate InOne Identity service owns central identity/authentication/contact claims/device-session and product-account mapping. InOne, InOne Business and Propo retain separate backends and databases, local account principals and domain data. Work onboarding uses scoped invitations: explicit acceptance precedes provisioning/reuse of the work pair and activation of organization membership. Cross-product provisioning uses authenticated versioned APIs/events, idempotency, durable outbox/inbox, retries and reconciliation; no shared product database or direct cross-product SQL.
 
 See [IDENTITY-AND-PRODUCT-ACCOUNT-LIFECYCLE-V0.1.md](IDENTITY-AND-PRODUCT-ACCOUNT-LIFECYCLE-V0.1.md) and [IDENTITY-RECOVERY-FLOW-V0.1.md](IDENTITY-RECOVERY-FLOW-V0.1.md). Contact uniqueness is owner-approved (Option A); credential and recovery baseline is set by the CTO for v1: Argon2id, passkeys preferred, optional TOTP, 10 recovery codes, no unverified-contact reset, fail-closed if all factors are lost, global session revocation after reset, 24-hour hold after recovery-code reset and 72-hour contact-change cooling period. Remaining design/integration items include device implementation, token/session defaults, invitation timing and Propo's support for separate personal/work principals. No implementation is implied.
+
+
+## CTO security baseline — Identity threat model and implementation plan (2026-11-13)
+
+A documentation-only threat model and staged delivery plan has been added at [IDENTITY-THREAT-MODEL-AND-IMPLEMENTATION-PLAN-V0.1.md](IDENTITY-THREAT-MODEL-AND-IMPLEMENTATION-PLAN-V0.1.md). It records assets, trust boundaries, attacker capabilities, 28 threat cases, P0 launch blockers, preventive/detective controls, token/session technical defaults, product isolation, provisioning safeguards, operational alerts/runbooks, eight delivery stages, test strategy and release gates.
+
+CTO technical defaults for v1: 5-minute access tokens; rotating opaque refresh tokens with 30-day inactivity and 90-day absolute lifetime; 5-minute maximum step-up age for sensitive actions; 10-minute single-use recovery grants. These are technical defaults, not owner-approved product-policy choices, and must be validated during implementation/security review.
+
+No P0 threat control may be omitted for launch. Propo API/sandbox behavior and privacy/legal requirements remain external gates. This document does not implement code, schema, API, UI or runtime controls.
