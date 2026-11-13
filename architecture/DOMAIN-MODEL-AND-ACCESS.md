@@ -164,3 +164,19 @@ Audit logs must be append-only from the application's perspective, scoped and ac
 - `inone-engine-poc-0.6.0/src/store.js`: `listUserOrgs(userId)` returns each membership and its role.
 - `inone-engine-poc-0.6.0/src/server.js`: `GET /orgs/mine`, member add/remove and role-change routes.
 - `inone-engine-poc-0.6.0/ORG_API.md`, `test/org-management.test.js`, `test/admin-journal.test.js`: current API and authorization behavior.
+
+
+## 7. Owner-approved position hierarchy (2026-11-13)
+
+The owner approved the seven-level InOne Business hierarchy and separate Observer/Auditor profile. The authoritative structural specification is [ORG-POSITIONS-AND-DELEGATED-ACCESS.md](ORG-POSITIONS-AND-DELEGATED-ACCESS.md).
+
+Key model requirements:
+- Position, functional assignment and atomic permission set are separate fields/concepts.
+- Positions are organization-scoped; a person may hold different positions in different organizations.
+- Multiple owners are allowed and are peers at the top level.
+- Custom positions are created by an owner and assigned down the hierarchy under delegation ceilings.
+- Observer/Auditor is a separate read-only profile with explicit resource scope, not a lower hierarchy rank.
+- Existing owner/admin/member roles remain a compatibility baseline and must not be mechanically mapped to unverified positions.
+- The current POC does not implement the approved seven-level hierarchy or general delegated role changes.
+
+The action-level permission matrix, department-specific delegation ceilings, sensitive-action approval policy and migration mapping remain to be approved before implementation.
