@@ -124,3 +124,16 @@
 ## 8. Propo Seller Account ↔ InOne Business organization cardinality — 2026-11-13
 
 **Owner decision: Option A.** One Propo Seller Account corresponds to exactly one InOne Business organization, and one InOne Business organization connects to exactly one Propo Seller Account in the initial release. Option B (one organization managing multiple stores/Seller Accounts) is not required now and is excluded from v1 scope. Keep the integration boundary explicit so this can be extended later by a separately approved decision and migration. This does not decide how many employees a Seller Account supports, whether Propo has separate employee identities, or how login/account linking works.
+
+
+## 9. InOne Business organization membership and delegated access — 2026-11-13
+
+**Owner decisions:**
+
+- Each organization may have many employees.
+- A person may belong to several organizations at once.
+- Roles and permissions are scoped to each organization membership; the same person may have different rights in each organization.
+- A member with explicit delegation may manage access only for members below their own position/authority level, and may not grant authority beyond their own delegation ceiling.
+- The existing engine's organization roles (`owner`, `admin`, `member`) are the compatibility baseline. The existing API currently permits only the owner to change roles; delegated lower-level management is a requirement to design, not a capability already present.
+
+See the architecture branch's domain/access model for the audited existing API/schema/test references and the difference between current behavior and the new requirement.
