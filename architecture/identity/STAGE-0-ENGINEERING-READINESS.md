@@ -41,7 +41,8 @@ Stage 0 does **not** implement authentication or create production database/API 
 | Data classification | PII, credentials, secrets, logs, retention and privacy controls | Prepared; legal review pending |
 | Propo adapter questionnaire | Requests stable IDs, personal/work principals, reservation/activation, API and sandbox facts | Prepared; Propo response pending |
 | Threat model | Attackers, trust boundaries, 28 threats, P0 controls | Existing v0.1 document |
-| CI contract validator | Reproducible OpenAPI/AsyncAPI lint | Added in this Stage 0 branch; must pass before Stage 0 closure |\n| Identity Codespaces profile | Node 26 + PostgreSQL 18 isolated development environment | Configuration added; build/start/health verification pending |
+| CI contract validator | Reproducible OpenAPI/AsyncAPI lint | Added in this Stage 0 branch; must pass before Stage 0 closure |
+| Identity Codespaces profile | Node 26 + PostgreSQL 18 isolated development environment | Configuration added; build/start/health verification pending |
 | Stage 1 backlog and gate | Ordered implementation scope and acceptance tests | Defined below |
 
 ## 4. Contract and security rules
@@ -73,6 +74,8 @@ Stage 0 does **not** implement authentication or create production database/API 
 - Refresh token rotation and family revocation are transactionally consistent.
 - Audit and outbox writes occur in the same transaction as the security state change.
 - No plaintext password, token, recovery code, invitation token or TOTP secret is stored in logs or event payloads.
+
+The isolated Codespaces configuration is `.devcontainer/identity/devcontainer.json`; its Compose file runs Node 26 and PostgreSQL 18 with a disposable local-only database. Setup instructions are in [.devcontainer/identity/README.md](../../.devcontainer/identity/README.md). After creating the Codespace, run `bash .devcontainer/identity/scripts/verify-stage0-environment.sh` from the repository root. The profile has not yet been built or run.
 
 ## 5. Environments and configuration
 
@@ -164,10 +167,12 @@ Stage 1 is complete only when:
 
 The next task is Stage 0 verification, not product feature implementation:
 1. Wait for the contract-lint workflow on this PR head.
-2. Open the repository in the owner-selected GitHub Codespaces environment on this branch; verify full clone/refs and current HEAD.
-3. Run the compatibility spike from ADR-001 and capture exact command output.
-4. Send the Propo questionnaire to its technical owner and track the response as an external integration gate.
-5. Only after CI and compatibility spike pass, open Stage 1 implementation work on a new branch.
+2. Create GitHub Codespaces on this branch using `.devcontainer/identity/devcontainer.json`; verify complete clone/refs and `git status`.
+3. Run `bash .devcontainer/identity/scripts/verify-stage0-environment.sh` and capture exact output.
+4. Execute the compatibility spike from ADR-001 with synthetic data only and capture exact command output.
+5. Send the Propo questionnaire to its technical owner and track the response as an external integration gate.
+6. Obtain privacy/legal review for data controller roles, lawful basis, retention/deletion and data residency before production user data.
+7. Only after contract CI and the compatibility spike pass, close internal Stage 0 readiness and open Stage 1 implementation work on a new branch.
 
 Never report the entire Stage 0 as passed while its CI or compatibility spike remains NOT RUN.
 
