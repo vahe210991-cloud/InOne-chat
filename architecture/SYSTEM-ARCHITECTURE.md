@@ -229,3 +229,8 @@ Not decided. Candidate deployment units:
 - Shared platform services only if ownership and failure isolation are defined.
 
 Do not deploy or expose any service as part of this architecture-writing stage.
+
+
+## Owner-approved constraint — Seller Account cardinality (2026-11-13)
+
+For the initial InOne Business model, one Propo Seller Account maps to exactly one Business organization, and one Business organization connects to exactly one Propo Seller Account. The organization-to-account connection must be unique on both sides. Do not implement a multi-store organization or account aggregation in v1. Propo's actual immutable Seller Account identifier and API/event semantics must still be verified with the Propo project before integration implementation.
