@@ -267,3 +267,15 @@ This section supersedes stale earlier statements in this file that no applied P0
 - Added asset-path mapping, rootBundle loader, v1 bridge compatibility, tests and deterministic importer. Runtime local-font patch affects only imported runtime copy; source remains immutable.
 - v1 chat POST message, and v2 missing/unverified API routes remain BLOCKED. CH-02 `GET /rooms/:id/events` remains unresolved.
 - CI run #42578333371: platform setup, geometry, 73-screen gallery check, pub get, analyze and tests PASS; Android APK still in progress at last observation. It predates later commits; latest head not verified.
+
+## Owner decision update — 2026-11-13: two-app product structure
+
+The owner has approved two separate applications:
+
+- **InOne:** personal/social use — news feed, publications, personal chats, groups, Threads, and related social features.
+- **InOne Business:** professional work — Kanban, CRM, Leads, Deals, Wallet, Flags, other business tools, and integration with Propo Seller Account.
+
+This changes the product boundary and future scope classification. It does not itself authorize code changes, PR merges, backend/database separation, or changes to the approved Beta 1.0 UI. Existing screens, APIs, repositories, and roadmap items must be audited and mapped to InOne or InOne Business before implementation is reorganized.
+
+Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone-and-inone-business--2026-11-13).
+
