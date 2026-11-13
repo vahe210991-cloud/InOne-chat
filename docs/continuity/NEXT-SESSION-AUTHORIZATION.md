@@ -25,11 +25,11 @@ For every existing organization/business route:
 
 Produce `architecture/BUSINESS-ENDPOINT-AUTHORIZATION-INVENTORY.md` and a gap report. Do not edit handlers, DB migrations, UI or API behavior during this pass.
 
-## Still requires owner/product policy closure
+## Financial policy decision (owner-approved 2026-11-13)
 
-- Exact critical-financial operation catalogue and thresholds.
-- Approver eligibility, especially when an owner initiates.
-- Currency defaults, quorum and expiry.
+- The independent two-person control model is APPROVED: initiator → independent approver → execution; no self-approval; separate initiate/approve permissions; immutable approval snapshot; fail closed if no eligible approver; full audit.
+- Monetary limits remain OPEN: numeric thresholds, currencies and cumulative caps must be refined and approved separately.
+- Exact operation-by-operation dual-approval catalogue, owner-initiated transaction eligibility, quorum and expiry still require detailed policy closure.
 - Whether approval-policy changes require dual control.
 - Confirm one active primary position per membership (current recommendation).
 - Propo Seller Account ID, employee identity and API/event contract.
@@ -41,3 +41,8 @@ Produce `architecture/BUSINESS-ENDPOINT-AUTHORIZATION-INVENTORY.md` and a gap re
 - Do not merge PR #50.
 - No implementation or DB migration until endpoint inventory, policy closure and schema design are reviewed.
 - Clearly label each test PASS/FAIL/BLOCKED/NOT RUN; do not imply documentation was runtime-tested.
+
+
+## Next financial-policy work
+
+Prepare a CFO proposal for monetary limits using an operation-based schedule, explicit currency, per-transaction and cumulative caps, configurable organization/position/employee ceilings, and deny-by-default behavior. Do not invent default amounts or hard-code thresholds. Present recommended values only after establishing the business currency, typical transaction sizes, expected sales/turnover and risk appetite. Owner approval is required before implementation.
