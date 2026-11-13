@@ -16,10 +16,10 @@ The questions below are intentionally specific. They are the minimum set needed 
 
 ## B. Identity and authentication
 
-6. Should InOne, InOne Business and Propo use one common person identity/login, with product-specific sessions and permissions?
-7. Does Propo already have a stable immutable Seller Account ID and a stable user/person ID for each employee? If yes, what are the names and semantics?
-8. Should a Propo employee be able to open InOne Business automatically after Propo login, or must they explicitly link/activate the account?
-9. Is InOne personal profile the same identity as the employee identity, or should users be able to keep personal and professional identities/profile visibility separate?
+6. **DECIDED — central InOne Identity.** A separate Identity service is the central person-authentication authority. Each product retains its own backend, database, product-local account and authorization checks. Product sessions/tokens are audience-scoped.
+7. **OPEN — Propo identifiers and API contract.** Does Propo already have a stable immutable Seller Account ID and stable user/person ID for each employee? Confirm exact names, semantics, account creation/reservation API and whether Propo supports separate personal/work account contexts.
+8. **DECIDED IN PRINCIPLE — no implicit cross-product authorization.** A user may use a central Identity session to enter another product through an explicit product-scoped OIDC/authorization flow, but a token/session for Propo does not itself grant InOne Business access. Business must independently verify membership and permissions.
+9. **DECIDED — separate personal and work contexts.** One central identity may hold an InOne personal + Propo personal pair and later an InOne Business work + Propo work pair. Product data and visibility remain separate; no silent merge of personal/work profiles or marketplace principals.
 
 ## C. Organization roles and permissions
 
