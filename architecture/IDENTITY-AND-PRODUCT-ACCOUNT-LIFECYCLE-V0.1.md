@@ -202,3 +202,14 @@ Enforce unique constraints for `(identity_id, product, account_context)` where o
 - Retention/deletion, account closure, dormant reservations and contact release policy.
 
 No implementation, migration, API route, UI or deployment is authorized or implied by recording this product decision.
+
+
+## 13. Detailed Identity technical architecture
+
+The implementation-level proposal is maintained in two companion documents:
+- [IDENTITY-SERVICE-ARCHITECTURE-V0.1.md](IDENTITY-SERVICE-ARCHITECTURE-V0.1.md) — service boundaries, OIDC, credentials, contact claims, sessions/devices, provisioning saga, database model, security and implementation sequence.
+- [IDENTITY-API-AND-EVENT-CONTRACT-V0.1.md](IDENTITY-API-AND-EVENT-CONTRACT-V0.1.md) — proposed endpoint surface, request/response examples, events, product adapter contract, idempotency and acceptance tests.
+
+**Boundary clarification:** InOne Business owns organization invitations and membership decisions. Identity does not own Business invitation authority or permission grants. It authenticates the invitee and provisions product accounts only after an authenticated Business acceptance request.
+
+**Technical defaults still pending owner approval:** contact-claim uniqueness/dispute policy, login identifier behavior for unverified contacts, password/passkey/MFA baseline, recovery policy, token/session lifetimes, and Propo's separate personal/work account API contract.
