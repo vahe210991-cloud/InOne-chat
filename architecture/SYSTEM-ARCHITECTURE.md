@@ -234,3 +234,12 @@ Do not deploy or expose any service as part of this architecture-writing stage.
 ## Owner-approved constraint — Seller Account cardinality (2026-11-13)
 
 For the initial InOne Business model, one Propo Seller Account maps to exactly one Business organization, and one Business organization connects to exactly one Propo Seller Account. The organization-to-account connection must be unique on both sides. Do not implement a multi-store organization or account aggregation in v1. Propo's actual immutable Seller Account identifier and API/event semantics must still be verified with the Propo project before integration implementation.
+
+
+## Owner-approved membership and delegation constraints (2026-11-13)
+
+- One organization may have many employees.
+- A person may belong to multiple organizations at once.
+- Each organization membership carries its own role and permissions; the same person may have different authority in each organization.
+- Members with explicit access-management delegation may grant/change access only for members below their own authority level and within their delegation ceiling.
+- Existing `owner`, `admin`, `member` roles are the implementation baseline. The current engine has owner-only role changes; the broader delegated hierarchy is a new requirement and must be designed/tested explicitly.
