@@ -10,7 +10,13 @@ This is an isolated development environment for the new Identity service. It doe
 4. Select the file .devcontainer/identity/devcontainer.json.
 5. Create the Codespace and wait for the Node and PostgreSQL services to become healthy.
 
-If GitHub offers only the default configuration, use **Codespaces: Configure Dev Container** and select this file path. Do not overwrite another product's root devcontainer configuration.
+The configuration is selectable because it is one level below the .devcontainer directory. GitHub lists multiple configurations in the Codespaces creation options. You can also create it with GitHub CLI:
+
+~~~bash
+gh codespace create -r vahe210991-cloud/InOne-chat -b stage0/identity-engineering-readiness-2026-11-13 --devcontainer-path .devcontainer/identity/devcontainer.json
+~~~
+
+Choose an available machine size when prompted. Do not overwrite another product's root devcontainer configuration.
 
 ## Verify Stage 0 environment
 
