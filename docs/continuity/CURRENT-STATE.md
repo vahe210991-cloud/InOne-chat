@@ -389,3 +389,14 @@ Identity service/API/lifecycle documents now contain the detailed recovery seque
 ## CTO Identity security and delivery baseline — 2026-11-13
 
 Added [IDENTITY-THREAT-MODEL-AND-IMPLEMENTATION-PLAN-V0.1.md](../../architecture/IDENTITY-THREAT-MODEL-AND-IMPLEMENTATION-PLAN-V0.1.md). It defines the Identity threat model, 28 abuse/threat cases, P0 launch blockers, security controls, token/session defaults, product/provisioning safeguards, observability, incident runbooks, staged implementation plan, test strategy and release checklist. CTO technical defaults: 5-minute access token, rotating refresh token (30-day inactivity / 90-day absolute), 5-minute step-up freshness, 10-minute recovery grant. Documentation only; no application code, schema, API, UI, deployment or runtime controls were implemented. Propo integration contract and legal/privacy review remain gates.
+
+
+## InOne Identity — Stage 0 readiness package (2026-11-13)
+
+A dedicated task branch has been created: stage0/identity-readiness-2026-11-13, based on architecture/product-and-platform-blueprint-2026-11-13 at 05bc226526d9c984b6ccb2b9f44dbad8459dcd6e.
+
+Created and committed the Stage 0 readiness pack, CTO runtime/protocol ADR, Identity OpenAPI 3.1 contract, JSON Schema 2020-12 event envelope (12 event types), representative event fixtures, OIDC client/audience registry and schema, environment/secrets contract, local-development plan, Identity workspace README and GitHub Actions contract-validation workflow. The mandatory AI-agent mandate was restored verbatim from branch docs/mandatory-ai-agent-protocol-2026-11-09 because this architecture branch referenced it but did not contain it.
+
+CTO baseline: Node.js 26 LTS, TypeScript strict, Fastify 5, oidc-provider 9, SimpleWebAuthn 14, Argon2id, PostgreSQL 18.7 and SQL-first persistence. Propo production adapter is explicitly deferred pending stable personal/work principal IDs, Seller Account contract, reservation/activation behavior, API/events and sandbox.
+
+**Stage 0 is authored but not accepted/closed.** JSON syntax and local OpenAPI reference scan passed in Code Mode. Redocly/Ajv CI is NOT RUN. A complete repository clone was attempted but failed because the environment could not resolve github.com. The mandatory repository rules require a complete working copy before editing; therefore handoff is INCOMPLETE until the owner provides an authorized full-clone environment or explicitly grants a one-time exception for this documentation-only GitHub API workflow. No Stage 0 PR was opened, no server/container/database was started, and no deployment or application source change was made. See development/reports/2026-11-13-1326-identity-stage0-readiness.md.
