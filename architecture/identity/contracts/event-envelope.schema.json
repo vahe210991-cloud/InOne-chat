@@ -1,0 +1,748 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.inone.invalid/identity/event-envelope-v0.1.schema.json",
+  "title": "InOne Identity event envelope v0.1",
+  "description": "At-least-once event. Never include credentials, hashes, tokens, recovery codes or full contact values.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/identity_product_account_provision_requested"
+    },
+    {
+      "$ref": "#/$defs/product_product_account_provisioned"
+    },
+    {
+      "$ref": "#/$defs/product_product_account_provision_failed"
+    },
+    {
+      "$ref": "#/$defs/identity_product_account_status_changed"
+    },
+    {
+      "$ref": "#/$defs/identity_session_revoked"
+    },
+    {
+      "$ref": "#/$defs/identity_contact_verified"
+    },
+    {
+      "$ref": "#/$defs/identity_credential_changed"
+    },
+    {
+      "$ref": "#/$defs/identity_recovery_completed"
+    },
+    {
+      "$ref": "#/$defs/identity_security_hold_placed"
+    },
+    {
+      "$ref": "#/$defs/identity_security_hold_released"
+    },
+    {
+      "$ref": "#/$defs/identity_contact_change_started"
+    },
+    {
+      "$ref": "#/$defs/identity_contact_change_completed"
+    }
+  ],
+  "$defs": {
+    "base": {
+      "type": "object",
+      "required": [
+        "event_id",
+        "event_type",
+        "event_version",
+        "occurred_at",
+        "correlation_id",
+        "aggregate_id",
+        "data"
+      ],
+      "properties": {
+        "event_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "event_type": {
+          "type": "string"
+        },
+        "event_version": {
+          "const": 1
+        },
+        "occurred_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "correlation_id": {
+          "type": "string",
+          "minLength": 8
+        },
+        "causation_id": {
+          "type": "string"
+        },
+        "aggregate_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "data": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    "identity_product_account_provision_requested": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base"
+        },
+        {
+          "type": "object",
+          "required": [
+            "event_type",
+            "event_version",
+            "data"
+          ],
+          "properties": {
+            "event_type": {
+              "const": "identity.product_account.provision_requested"
+            },
+            "event_version": {
+              "const": 1
+            },
+            "data": {
+              "type": "object",
+              "required": [
+                "operation_id",
+                "step_id",
+                "identity_id",
+                "product",
+                "account_context",
+                "idempotency_key",
+                "provisioning_policy_version"
+              ],
+              "properties": {
+                "operation_id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "step_id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "identity_id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "product": {
+                  "enum": [
+                    "inone",
+                    "inone_business",
+                    "propo"
+                  ]
+                },
+                "account_context": {
+                  "enum": [
+                    "personal",
+                    "work"
+                  ]
+                },
+                "idempotency_key": {
+                  "type": "string"
+                },
+                "provisioning_policy_version": {
+                  "type": "string"
+                },
+                "invitation_reference": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        }
+      ]
+    },
+    "product_product_account_provisioned": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base"
+        },
+        {
+          "type": "object",
+          "required": [
+            "event_type",
+            "event_version",
+            "data"
+          ],
+          "properties": {
+            "event_type": {
+              "const": "product.product_account.provisioned"
+            },
+            "event_version": {
+              "const": 1
+            },
+            "data": {
+              "type": "object",
+              "required": [
+                "operation_id",
+                "step_id",
+                "product",
+                "account_context",
+                "product_account_id",
+                "account_status"
+              ],
+              "properties": {
+                "operation_id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "step_id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "product": {
+                  "enum": [
+                    "inone",
+                    "inone_business",
+                    "propo"
+                  ]
+                },
+                "account_context": {
+                  "enum": [
+                    "personal",
+                    "work"
+                  ]
+                },
+                "product_account_id": {
+                  "type": "string"
+                },
+                "account_status": {
+                  "enum": [
+                    "reserved",
+                    "pending_activation",
+                    "active"
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        }
+      ]
+    },
+    "product_product_account_provision_failed": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base"
+        },
+        {
+          "type": "object",
+          "required": [
+            "event_type",
+            "event_version",
+            "data"
+          ],
+          "properties": {
+            "event_type": {
+              "const": "product.product_account.provision_failed"
+            },
+            "event_version": {
+              "const": 1
+            },
+            "data": {
+              "type": "object",
+              "required": [
+                "operation_id",
+                "step_id",
+                "product",
+                "account_context",
+                "failure_class",
+                "error_code"
+              ],
+              "properties": {
+                "operation_id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "step_id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "product": {
+                  "enum": [
+                    "inone",
+                    "inone_business",
+                    "propo"
+                  ]
+                },
+                "account_context": {
+                  "enum": [
+                    "personal",
+                    "work"
+                  ]
+                },
+                "failure_class": {
+                  "enum": [
+                    "retryable",
+                    "permanent"
+                  ]
+                },
+                "error_code": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        }
+      ]
+    },
+    "identity_product_account_status_changed": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base"
+        },
+        {
+          "type": "object",
+          "required": [
+            "event_type",
+            "event_version",
+            "data"
+          ],
+          "properties": {
+            "event_type": {
+              "const": "identity.product_account.status_changed"
+            },
+            "event_version": {
+              "const": 1
+            },
+            "data": {
+              "type": "object",
+              "required": [
+                "product",
+                "account_context",
+                "product_account_id",
+                "previous_status",
+                "status"
+              ],
+              "properties": {
+                "product": {
+                  "enum": [
+                    "inone",
+                    "inone_business",
+                    "propo"
+                  ]
+                },
+                "account_context": {
+                  "enum": [
+                    "personal",
+                    "work"
+                  ]
+                },
+                "product_account_id": {
+                  "type": "string"
+                },
+                "previous_status": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        }
+      ]
+    },
+    "identity_session_revoked": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base"
+        },
+        {
+          "type": "object",
+          "required": [
+            "event_type",
+            "event_version",
+            "data"
+          ],
+          "properties": {
+            "event_type": {
+              "const": "identity.session.revoked"
+            },
+            "event_version": {
+              "const": 1
+            },
+            "data": {
+              "type": "object",
+              "required": [
+                "session_id",
+                "device_id",
+                "scope"
+              ],
+              "properties": {
+                "session_id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "device_id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "scope": {
+                  "enum": [
+                    "session",
+                    "device",
+                    "all_identity_sessions"
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        }
+      ]
+    },
+    "identity_contact_verified": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base"
+        },
+        {
+          "type": "object",
+          "required": [
+            "event_type",
+            "event_version",
+            "data"
+          ],
+          "properties": {
+            "event_type": {
+              "const": "identity.contact.verified"
+            },
+            "event_version": {
+              "const": 1
+            },
+            "data": {
+              "type": "object",
+              "required": [
+                "contact_id",
+                "contact_type"
+              ],
+              "properties": {
+                "contact_id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "contact_type": {
+                  "enum": [
+                    "phone",
+                    "email"
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        }
+      ]
+    },
+    "identity_credential_changed": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base"
+        },
+        {
+          "type": "object",
+          "required": [
+            "event_type",
+            "event_version",
+            "data"
+          ],
+          "properties": {
+            "event_type": {
+              "const": "identity.credential.changed"
+            },
+            "event_version": {
+              "const": 1
+            },
+            "data": {
+              "type": "object",
+              "required": [
+                "credential_type",
+                "security_version"
+              ],
+              "properties": {
+                "credential_type": {
+                  "enum": [
+                    "password",
+                    "passkey",
+                    "totp"
+                  ]
+                },
+                "security_version": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        }
+      ]
+    },
+    "identity_recovery_completed": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base"
+        },
+        {
+          "type": "object",
+          "required": [
+            "event_type",
+            "event_version",
+            "data"
+          ],
+          "properties": {
+            "event_type": {
+              "const": "identity.recovery.completed"
+            },
+            "event_version": {
+              "const": 1
+            },
+            "data": {
+              "type": "object",
+              "required": [
+                "recovery_method",
+                "sessions_revoked",
+                "security_hold_active"
+              ],
+              "properties": {
+                "recovery_method": {
+                  "enum": [
+                    "passkey",
+                    "trusted_device_step_up",
+                    "recovery_code"
+                  ]
+                },
+                "sessions_revoked": {
+                  "type": "boolean"
+                },
+                "security_hold_active": {
+                  "type": "boolean"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        }
+      ]
+    },
+    "identity_security_hold_placed": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base"
+        },
+        {
+          "type": "object",
+          "required": [
+            "event_type",
+            "event_version",
+            "data"
+          ],
+          "properties": {
+            "event_type": {
+              "const": "identity.security_hold.placed"
+            },
+            "event_version": {
+              "const": 1
+            },
+            "data": {
+              "type": "object",
+              "required": [
+                "hold_id",
+                "hold_type",
+                "applies_to",
+                "expires_at",
+                "reason_code"
+              ],
+              "properties": {
+                "hold_id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "hold_type": {
+                  "enum": [
+                    "recovery_code_reset",
+                    "contact_change",
+                    "security_incident"
+                  ]
+                },
+                "applies_to": {
+                  "type": "array",
+                  "items": {
+                    "enum": [
+                      "financial",
+                      "payout",
+                      "refund",
+                      "sensitive_account_change",
+                      "all_sensitive"
+                    ]
+                  }
+                },
+                "expires_at": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "reason_code": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        }
+      ]
+    },
+    "identity_security_hold_released": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base"
+        },
+        {
+          "type": "object",
+          "required": [
+            "event_type",
+            "event_version",
+            "data"
+          ],
+          "properties": {
+            "event_type": {
+              "const": "identity.security_hold.released"
+            },
+            "event_version": {
+              "const": 1
+            },
+            "data": {
+              "type": "object",
+              "required": [
+                "hold_id",
+                "hold_type",
+                "released_at",
+                "release_reason_code"
+              ],
+              "properties": {
+                "hold_id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "hold_type": {
+                  "type": "string"
+                },
+                "released_at": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "release_reason_code": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        }
+      ]
+    },
+    "identity_contact_change_started": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base"
+        },
+        {
+          "type": "object",
+          "required": [
+            "event_type",
+            "event_version",
+            "data"
+          ],
+          "properties": {
+            "event_type": {
+              "const": "identity.contact_change.started"
+            },
+            "event_version": {
+              "const": 1
+            },
+            "data": {
+              "type": "object",
+              "required": [
+                "contact_id",
+                "contact_type",
+                "cooling_period_ends_at"
+              ],
+              "properties": {
+                "contact_id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "contact_type": {
+                  "enum": [
+                    "phone",
+                    "email"
+                  ]
+                },
+                "cooling_period_ends_at": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        }
+      ]
+    },
+    "identity_contact_change_completed": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base"
+        },
+        {
+          "type": "object",
+          "required": [
+            "event_type",
+            "event_version",
+            "data"
+          ],
+          "properties": {
+            "event_type": {
+              "const": "identity.contact_change.completed"
+            },
+            "event_version": {
+              "const": 1
+            },
+            "data": {
+              "type": "object",
+              "required": [
+                "contact_id",
+                "contact_type",
+                "previous_contact_id"
+              ],
+              "properties": {
+                "contact_id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "contact_type": {
+                  "enum": [
+                    "phone",
+                    "email"
+                  ]
+                },
+                "previous_contact_id": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        }
+      ]
+    }
+  }
+}

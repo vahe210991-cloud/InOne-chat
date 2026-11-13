@@ -1,0 +1,191 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.inone.invalid/identity/client-registry-v0.1.schema.json",
+  "contractVersion": "0.1",
+  "status": "logical-registration-baseline-not-enabled",
+  "issuer": "IDENTITY_ISSUER_URL",
+  "protocol": {
+    "responseTypes": [
+      "code"
+    ],
+    "grantTypes": [
+      "authorization_code",
+      "refresh_token"
+    ],
+    "pkce": {
+      "required": true,
+      "methods": [
+        "S256"
+      ],
+      "plainAllowed": false
+    },
+    "dynamicClientRegistration": false,
+    "implicitGrant": false,
+    "resourceOwnerPasswordGrant": false,
+    "redirectUriPolicy": "Exact-match allowlist per environment; no wildcards or open redirects.",
+    "audiencePolicy": "Identity selects exactly one API audience from registered client."
+  },
+  "audiences": {
+    "inone": "urn:inone:api",
+    "inone_business": "urn:inone-business:api",
+    "propo": "urn:propo:api"
+  },
+  "clients": [
+    {
+      "clientId": "inone-mobile",
+      "product": "inone",
+      "kind": "public-native",
+      "contexts": [
+        "personal"
+      ],
+      "audience": "urn:inone:api",
+      "authMethod": "none",
+      "pkce": true,
+      "redirectUris": [],
+      "status": "blocked-pending-app-identifiers"
+    },
+    {
+      "clientId": "inone-web-bff",
+      "product": "inone",
+      "kind": "confidential-bff",
+      "contexts": [
+        "personal"
+      ],
+      "audience": "urn:inone:api",
+      "authMethod": "private_key_jwt",
+      "pkce": true,
+      "redirectUris": [],
+      "status": "blocked-pending-approved-web-callbacks"
+    },
+    {
+      "clientId": "inone-business-mobile",
+      "product": "inone_business",
+      "kind": "public-native",
+      "contexts": [
+        "work"
+      ],
+      "audience": "urn:inone-business:api",
+      "authMethod": "none",
+      "pkce": true,
+      "redirectUris": [],
+      "status": "blocked-pending-app-identifiers"
+    },
+    {
+      "clientId": "inone-business-web-bff",
+      "product": "inone_business",
+      "kind": "confidential-bff",
+      "contexts": [
+        "work"
+      ],
+      "audience": "urn:inone-business:api",
+      "authMethod": "private_key_jwt",
+      "pkce": true,
+      "redirectUris": [],
+      "status": "blocked-pending-approved-web-callbacks"
+    },
+    {
+      "clientId": "propo-mobile",
+      "product": "propo",
+      "kind": "public-native",
+      "contexts": [
+        "personal",
+        "work"
+      ],
+      "audience": "urn:propo:api",
+      "authMethod": "none",
+      "pkce": true,
+      "redirectUris": [],
+      "status": "blocked-pending-app-identifiers"
+    },
+    {
+      "clientId": "propo-web-bff",
+      "product": "propo",
+      "kind": "confidential-bff",
+      "contexts": [
+        "personal",
+        "work"
+      ],
+      "audience": "urn:propo:api",
+      "authMethod": "private_key_jwt",
+      "pkce": true,
+      "redirectUris": [],
+      "status": "blocked-pending-approved-web-callbacks"
+    }
+  ],
+  "serviceClients": [
+    {
+      "clientId": "service.inone-business",
+      "purpose": "accepted-invitation-work-pair-provisioning",
+      "auth": [
+        "private_key_jwt",
+        "mutual_tls"
+      ],
+      "scopes": [
+        "identity.provision:create"
+      ]
+    },
+    {
+      "clientId": "service.inone-adapter",
+      "purpose": "product-provisioning-acknowledgement",
+      "auth": [
+        "private_key_jwt",
+        "mutual_tls"
+      ],
+      "scopes": [
+        "identity.provision:ack",
+        "identity.provision:read"
+      ]
+    },
+    {
+      "clientId": "service.propo-adapter",
+      "purpose": "product-provisioning-acknowledgement",
+      "auth": [
+        "private_key_jwt",
+        "mutual_tls"
+      ],
+      "scopes": [
+        "identity.provision:ack",
+        "identity.provision:read"
+      ]
+    }
+  ],
+  "claims": {
+    "required": [
+      "iss",
+      "sub",
+      "aud",
+      "iat",
+      "exp",
+      "jti",
+      "sid",
+      "client_id",
+      "auth_time",
+      "amr"
+    ],
+    "optional": [
+      "acr",
+      "sec_ver",
+      "product_account_id",
+      "account_context"
+    ],
+    "forbidden": [
+      "phone",
+      "email",
+      "organization_role",
+      "position",
+      "department",
+      "financial_limit",
+      "product_permission",
+      "raw_credential",
+      "recovery_code"
+    ],
+    "productAccountReference": "Audience-scoped reference only; never an authorization grant."
+  },
+  "blockers": [
+    "iOS bundle IDs and callback inventory",
+    "Android package IDs, signing fingerprints and app-link callback inventory",
+    "Approved web origins and exact BFF callback/logout URIs",
+    "Propo app identifiers and callback inventory",
+    "Provider conformance test for discovery and actual JWKS URI"
+  ]
+}

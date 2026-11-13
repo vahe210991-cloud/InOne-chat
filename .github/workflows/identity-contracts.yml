@@ -1,0 +1,38 @@
+name: Identity contract validation
+
+on:
+  pull_request:
+    paths:
+      - "architecture/identity/**"
+      - "architecture/IDENTITY-STAGE-0-READINESS-PACK-V0.1.md"
+      - ".github/workflows/identity-contracts.yml"
+  push:
+    branches:
+      - "stage0/identity-readiness-2026-11-13"
+    paths:
+      - "architecture/identity/**"
+      - ".github/workflows/identity-contracts.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: identity-contracts-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate OpenAPI and event contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Set up Node.js 26 LTS
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "26"
+      - name: Lint OpenAPI 3.1
+        run: npx --yes @redocly/cli@2.77.0 lint architecture/identity/contracts/openapi.json
+      - name: Validate event examples against JSON Schema 2020-12
+        run: npx --yes ajv-cli@5.0.0 validate --spec=draft2020 --strict=true -s architecture/identity/contracts/event-examples.schema.json -d architecture/identity/contracts/event-examples.json

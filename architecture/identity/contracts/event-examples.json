@@ -1,0 +1,50 @@
+[
+  {
+    "event_id": "aaaaaaaa-aaaa-4aaa-8aaa-000000000001",
+    "event_type": "identity.product_account.provision_requested",
+    "event_version": 1,
+    "occurred_at": "2026-11-13T12:00:00Z",
+    "correlation_id": "corr-stage0-example-0001",
+    "aggregate_id": "33333333-3333-4333-8333-333333333333",
+    "data": {
+      "operation_id": "11111111-1111-4111-8111-111111111111",
+      "step_id": "22222222-2222-4222-8222-222222222222",
+      "identity_id": "33333333-3333-4333-8333-333333333333",
+      "product": "propo",
+      "account_context": "personal",
+      "idempotency_key": "idem-stage0-0001",
+      "provisioning_policy_version": "1"
+    }
+  },
+  {
+    "event_id": "aaaaaaaa-aaaa-4aaa-8aaa-000000000002",
+    "event_type": "identity.security_hold.placed",
+    "event_version": 1,
+    "occurred_at": "2026-11-13T12:00:00Z",
+    "correlation_id": "corr-stage0-example-0002",
+    "aggregate_id": "33333333-3333-4333-8333-333333333333",
+    "data": {
+      "hold_id": "77777777-7777-4777-8777-777777777777",
+      "hold_type": "recovery_code_reset",
+      "applies_to": [
+        "financial",
+        "payout"
+      ],
+      "expires_at": "2026-11-14T12:00:00Z",
+      "reason_code": "RECOVERY_CODE_RESET"
+    }
+  },
+  {
+    "event_id": "aaaaaaaa-aaaa-4aaa-8aaa-000000000003",
+    "event_type": "identity.session.revoked",
+    "event_version": 1,
+    "occurred_at": "2026-11-13T12:00:00Z",
+    "correlation_id": "corr-stage0-example-0003",
+    "aggregate_id": "33333333-3333-4333-8333-333333333333",
+    "data": {
+      "session_id": "44444444-4444-4444-8444-444444444444",
+      "device_id": "55555555-5555-4555-8555-555555555555",
+      "scope": "all_identity_sessions"
+    }
+  }
+]
