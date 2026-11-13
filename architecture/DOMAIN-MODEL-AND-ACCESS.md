@@ -1,7 +1,7 @@
 # Domain model and organization access
 
 **Version:** 0.1  
-**Status:** Conceptual model; role matrix is a proposal, not approved policy
+**Status:** Conceptual model informed by the existing organization implementation and owner decisions; detailed Business permission matrix remains to be finalized
 
 ## 1. Core entities
 
@@ -16,8 +16,8 @@ The exact canonical identity service and subject format are open. A phone number
 
 ### Organization
 - `Organization`: company/store team workspace in InOne Business.
-- `OrganizationMembership`: link between a person and organization, with status and membership dates.
-- `OrganizationRole`: named role within one organization.
+- `OrganizationMembership`: organization-scoped link between a person and organization, with status, membership dates, role and/or delegated permissions. A person may have many memberships.
+- `OrganizationRole`: role assigned to a membership, never a single global role on the person. Different memberships may carry different roles/permissions.
 - `Permission`: atomic capability such as `organization.profile.update`.
 - `RolePermission`: mapping from role to permissions.
 - `MembershipInvitation`: invitation and acceptance lifecycle.
@@ -67,7 +67,16 @@ Every request that acts on organization data must be authorized against:
 - operation and current state;
 - Propo Seller Account/store scope where relevant.
 
-A valid login is not proof of organization membership. Membership is not proof of owner authority. UI visibility is not a security boundary.
+A valid login is not proof of organization membership. Membership in Organization A grants no rights in Organization B. A valid membership is not proof of authority to manage other members. UI visibility is not a security boundary.
+
+### Membership and delegation rules approved by the owner
+
+- One organization may contain many employees; one person may belong to several organizations simultaneously.
+- Role and permissions are evaluated independently for each `(person, organization)` membership.
+- Access-management operations require explicit delegation. The actor may change only the access of members strictly below the actor's own position/authority level; equal or higher-level members are out of scope.
+- The actor cannot grant a target permissions or authority exceeding the actor's own delegation ceiling. Self-elevation and privilege escalation through role assignment must be denied server-side.
+- Keep platform-level roles separate from organization-level roles.
+- Existing implementation baseline is `owner`, `admin`, `member`. This baseline is not a reason to invent a new catalogue; preserve its semantics while specifying the owner-approved delegation extension.
 
 ### Example permission namespace
 
@@ -95,20 +104,18 @@ Illustrative names only:
 
 Do not implement these exact permissions until the owner approves a role/permission matrix.
 
-## 3. Candidate starter roles (proposal only)
+## 3. Existing role baseline and extension rules
 
-| Role | Intended responsibility | Example permission direction |
-|---|---|---|
-| Owner | Legal/business owner; full organization control | Profile, members, roles, seller connection, financial controls, all modules |
-| Organization admin | Day-to-day workspace administration | Members and settings, but ownership/financial transfer may be excluded |
-| Store manager | Store operations | Orders, listings, team workflow and sales overview |
-| Sales manager | Sales and customer pipeline | Buyer inbox, leads, deals, sales metrics |
-| Content/marketing manager | Store content and campaigns | Listing content, banners, publications, stories |
-| Customer support | Buyer conversations and service | Inbox, order context, customer support actions |
-| Analyst | Reporting | Read-only approved analytics |
-| Employee | Assigned operational work | Narrow task- and module-specific permissions |
+The existing engine implementation defines three organization roles: `owner`, `admin`, and `member`. The API and tests establish these current behaviors:
 
-This is not an approved final role catalogue. The owner must confirm whether these roles are needed, whether custom roles are allowed, and which permissions are financial/high-risk.
+- `owner` can add members with an explicit role and change an existing member's role; multiple owners are permitted, but the last owner cannot be demoted or removed.
+- `admin` can add/remove ordinary `member` accounts and manage organization settings/links; the admin cannot promote members or change roles in the current implementation.
+- `member` can access member-level organization resources but cannot manage membership or read the administrative log.
+- Platform `owner`/`admin` roles are a separate authorization domain and must not be confused with organization roles.
+
+The owner wants access delegation to follow the organization's authority chain: a member with the relevant delegation may manage only members below their own level. The current implementation's owner-only role-change endpoint is narrower than this requirement; it must not be described as already implementing the full delegation hierarchy.
+
+Do not add a speculative Store Manager/Sales/Marketing/Support/Analyst role catalogue. First map the current roles and capabilities, then obtain owner approval for any additions or custom roles.
 
 ## 4. Owner and profile permissions
 
@@ -124,7 +131,7 @@ Still to clarify:
 
 ## 5. Multi-organization and employee lifecycle
 
-Design must support a person potentially belonging to more than one organization unless the owner decides otherwise. Do not hardcode a single global organization role into the person account.
+**Owner decision:** a person may belong to multiple organizations. This is already supported by the existing `org_members` relation, whose composite primary key is `(org_id, user_id)`, and by `GET /orgs/mine` returning the current user's memberships. Preserve this behavior. The role is scoped to each membership; never hardcode one global organization role on the person account.
 
 Membership lifecycle should eventually define:
 - invited;
@@ -149,3 +156,11 @@ Audit at least:
 - security and recovery events.
 
 Audit logs must be append-only from the application's perspective, scoped and access-controlled, and must not contain passwords, OTP codes, tokens or plaintext cryptographic key material.
+
+
+### Existing implementation references reviewed (main)
+
+- `inone-engine-poc-0.6.0/migrations/0020-organizations.sql`: composite primary key `(org_id, user_id)` and organization-scoped role column constrained to `owner`, `admin`, `member`.
+- `inone-engine-poc-0.6.0/src/store.js`: `listUserOrgs(userId)` returns each membership and its role.
+- `inone-engine-poc-0.6.0/src/server.js`: `GET /orgs/mine`, member add/remove and role-change routes.
+- `inone-engine-poc-0.6.0/ORG_API.md`, `test/org-management.test.js`, `test/admin-journal.test.js`: current API and authorization behavior.
