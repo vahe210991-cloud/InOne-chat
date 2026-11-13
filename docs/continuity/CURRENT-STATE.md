@@ -279,3 +279,16 @@ This changes the product boundary and future scope classification. It does not i
 
 Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone-and-inone-business--2026-11-13).
 
+
+## Architecture restart — owner direction and draft v0.1 (2026-11-13)
+
+The owner has asked to treat all existing repository implementation as not yet completed for the purpose of a new architecture and development plan. Existing source, branches, UI assets, tests and CI records are preserved as historical technical references; they are not accepted as production-ready or as proof of current feature completion.
+
+New product model:
+- **Propo:** marketplace and classifieds in Armenia.
+- **InOne Business:** professional backstage/back office for seller organizations operating on Propo; employee roles/permissions, internal product/campaign discussions and threads, buyer messages, purchase and rating notifications, sales analytics, calculations, Kanban, CRM, Leads, Deals, Wallet, Flags, organization profile/content and Propo Seller Account integration.
+- **InOne:** personal/social product; personal chats, groups, communities, channels, news feed, publications, profile (avatar, cover, About me), stories and statuses.
+
+Architecture v0.1 draft added under the root architecture directory. Development sequence and backend evolution plan added under development/architecture. Product direction is owner-derived; topology, identity, organization-to-seller cardinality, role matrix, data ownership details and Propo API/event contracts remain open.
+
+No product code, UI, API, database schema, CI workflow, deployment or production service was changed. No Actions were started and no PR was merged. See the architecture draft and owner questions register. 
