@@ -5,11 +5,13 @@ import assert from 'node:assert/strict';
 import { loadConfig } from '../src/config.js';
 
 const DOCS_SECRET = randomBytes(24).toString('hex');
+const OBJECT_SECRET = randomBytes(24).toString('hex');
 const GOOD = {
   NODE_ENV: 'production',
   DATABASE_URL: 'postgresql://db.inone.test/inone',
   INONE_PIN_PEPPER: 'q8Lw2rT6vN1zXc4bH9mK0pJs7dFg5aYe',
   INONE_DOCS_SECRET: DOCS_SECRET,
+  INONE_OBJECT_SECRET: OBJECT_SECRET,
   INONE_PUBLIC_URL: 'https://inone.test',
   INONE_FILES_DIR: '/var/lib/inone/objects',
 };
@@ -62,6 +64,12 @@ test('разработка работает с локальными значен
   const config = loadConfig({ NODE_ENV: 'development', DATABASE_URL: 'postgresql://db.inone.test/inone' });
   assert.equal(config.publicUrl, 'http://localhost:8080');
   assert.match(config.pinPepper, /dev-only/);
+});
+
+test('production requires a stable non-placeholder object URL signing secret', () => {
+  assert.throws(() => loadConfig({ ...GOOD, INONE_OBJECT_SECRET: '' }), /INONE_OBJECT_SECRET must be at least 32 characters/);
+  assert.throws(() => loadConfig({ ...GOOD, INONE_OBJECT_SECRET: 'replace-with-object-signing-secret-at-least-32-characters' }), /INONE_OBJECT_SECRET looks like a test or example value/);
+  assert.equal(loadConfig({ ...GOOD, INONE_MAIL_TRANSPORT: 'smtp', INONE_SMTP_HOST: 'smtp.provider.test', INONE_SMTP_FROM: 'InOne <noreply@inone.test>' }).objectSecret, OBJECT_SECRET);
 });
 
 test('production отклоняет placeholder secrets, URLs и SMTP credentials', () => {
