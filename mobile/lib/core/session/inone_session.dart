@@ -69,6 +69,7 @@ class InOneSession extends ChangeNotifier {
   Future<Map<String, dynamic>> login({
     required String email,
     required String password,
+    String? identityCode,
   }) async {
     await initialize();
     final platform = Platform.isIOS
@@ -85,6 +86,7 @@ class InOneSession extends ChangeNotifier {
         'deviceId': _deviceId,
         'label': 'InOne mobile client',
         'platform': platform,
+        if (identityCode != null) 'identityCode': identityCode.trim(),
       },
     );
     await _acceptSession(result);
@@ -93,6 +95,31 @@ class InOneSession extends ChangeNotifier {
 
   Future<Map<String, dynamic>> startEmailRegistration(String email) =>
       _client.post('/register/email', authenticated: false, body: {'email': email.trim()});
+  Future<Map<String, dynamic>> startRecovery(String email) =>
+      _client.post('/recovery/start', authenticated: false, body: {'email': email.trim()});
+
+  Future<Map<String, dynamic>> completeRecovery({
+    required String email,
+    required String code,
+    required String newPassword,
+    String pin = '',
+  }) =>
+      _client.post('/recovery/complete', authenticated: false, body: {
+        'email': email.trim(),
+        'code': code.trim(),
+        'newPassword': newPassword,
+        if (pin.isNotEmpty) 'pin': pin,
+      });
+
+  Future<Map<String, dynamic>> cancelRecoveryByCode({
+    required String email,
+    required String code,
+  }) =>
+      _client.post('/recovery/cancel-by-code', authenticated: false, body: {
+        'email': email.trim(),
+        'code': code.trim(),
+      });
+
 
   Future<Map<String, dynamic>> confirmEmailRegistration({
     required String email,
