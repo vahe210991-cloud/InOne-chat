@@ -50,6 +50,7 @@ export async function startServer({ config, logger = createLogger({ level: confi
     quotaBytes: config.fileQuotaBytes ?? null,
     registrationMode: config.registrationMode,
     publicUrl: config.publicUrl,
+    fileBaseUrl: config.publicUrl,
     bodyLimit: config.bodyLimitBytes,
         requirePhone: config.requirePhone,
     mailer,
