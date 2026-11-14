@@ -1,3 +1,17 @@
+## 2026-11-14 — InOne engine stabilization and source reconciliation
+
+- Worked only on `feat/flutter-ui-dart-migration-2026-11-14`; `main` unchanged. At handoff, branch compare was ahead 280 / behind 0; latest code/test commit `9747f91ecef04db34379578c3d7132d54eb7815f`.
+- Reconciled backend ownership: canonical Node/PostgreSQL P0 source is `inone-development-archive-0.6.0/engine/`; `inone-engine-poc-0.6.0/` is not a production server. POC Node startup now refuses production even with a DB pool; persistent OpenMLS client is retained.
+- Canonical backend production startup now requires PostgreSQL; added regression test. Phone verification defaults off; production config refuses SMS/phone-required until a real SMS provider is integrated. Added placeholder rejection for secrets, PostgreSQL URL, public URL and SMTP credentials, plus request timeout/file quota validation tests.
+- Matrix crypto package moved to devDependencies in canonical backend lockfile; server cleanup interval and SMTP transport now close on graceful shutdown.
+- Fixed duplicate `push` key in Flutter workflow; hardened Rust formatter push step against untrusted PR ref; added active branch to P0 CI push trigger.
+- Static checks: package/lock JSON and dependency parity PASS; single Flutter push key PASS; canonical server storage call inventory 177/177 names found in both Postgres and memory stores; static route/store comparison confirms P0 backend is ahead of POC. These checks do not replace runtime tests.
+- Flutter workflow run #43571536430 failed before steps; logs unavailable (BlobNotFound). No new test suite is claimed as executed. P0 push run could not be independently read through the available PR-only run listing.
+- Full report: `development/reports/2026-11-14-engine-stability-audit.md`. Exact next steps: `docs/continuity/NEXT-SESSION.md`.
+- No merge, deployment, secret use, destructive deletion or main-branch change.
+
+---
+
 ## 2026-11-11 — Conservative repository file cleanup
 
 - Inspected the complete recursive Git tree on the current base (964 entries / 853 files; response not truncated) and grouped exact duplicate blobs by SHA.
