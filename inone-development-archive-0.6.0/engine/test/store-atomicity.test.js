@@ -43,6 +43,7 @@ test('organization approval, owner membership and decision log roll back togethe
   const client = {
     async query(sql) {
       statements.push(sql);
+      if (sql.startsWith('SELECT role FROM platform_roles')) return { rows: [{ role: 'owner' }] };
       if (sql.startsWith('SELECT applicant_id, name, status')) return { rows: [{ applicant_id: '@applicant', name: 'Org', status: 'pending' }] };
       if (sql.startsWith('INSERT INTO org_request_log')) throw new Error('simulated approval audit failure');
       return { rows: [], rowCount: 1 };
