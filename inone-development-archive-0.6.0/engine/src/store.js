@@ -1952,6 +1952,42 @@ function numOrNull(v) {
   return v === null || v === undefined ? null : Number(v);
 }
 
+
+async function persistRecoveryRow(c, userId, next) {
+  await c.query(
+    `UPDATE recovery SET req_status = $2, req_started_at = $3, req_expires_at = $4, req_code_hash = $5,
+       req_attempts = $6, window_started_at = $7, window_key_reset_at = $8, window_previous_hash = $9,
+       identity_check = $10, identity_code_hash = $11, identity_attempts = $12, locked_until = $13, starts = $14, req_link_hash = $15, req_link_confirmed = $16
+     WHERE user_id = $1`,
+    [userId, next.reqStatus, next.reqStartedAt, next.reqExpiresAt, next.reqCodeHash, next.reqAttempts,
+     next.windowStartedAt, next.windowKeyResetAt, next.windowPreviousHash, next.identityCheck,
+     next.identityCodeHash, next.identityAttempts, next.lockedUntil, JSON.stringify(next.starts), next.reqLinkHash, next.reqLinkConfirmed],
+  );
+}
+
+async function revokeDeviceInTransaction(c, deviceKey, device, nowMs) {
+  await c.query('UPDATE devices SET revoked = TRUE WHERE device_key = $1', [deviceKey]);
+  await c.query('DELETE FROM tokens WHERE device_key = $1', [deviceKey]);
+  await c.query('DELETE FROM refresh_tokens WHERE device_key = $1', [deviceKey]);
+  await c.query('DELETE FROM device_keys WHERE device_key = $1', [deviceKey]);
+  await c.query('DELETE FROM one_time_keys WHERE device_key = $1', [deviceKey]);
+  await c.query('DELETE FROM inbox WHERE device_key = $1', [deviceKey]);
+  await c.query('DELETE FROM push_tokens WHERE device_key = $1', [deviceKey]);
+  await c.query('DELETE FROM device_signing_keys WHERE device_key = $1', [deviceKey]);
+  await c.query(
+    'DELETE FROM mls_key_packages WHERE user_id = $1 AND device_id = $2 AND consumed_at IS NULL',
+    [device.user_id, device.device_id],
+  );
+  await c.query(
+    'DELETE FROM mls_welcomes WHERE user_id = $1 AND device_id = $2 AND acked_at IS NULL',
+    [device.user_id, device.device_id],
+  );
+  await c.query(
+    "INSERT INTO mls_device_removals (room_id, user_id, device_id, created_at) SELECT g.room_id, $1, $2, $3 FROM mls_groups g JOIN room_members m ON m.room_id = g.room_id WHERE m.user_id = $1 AND g.epoch > 0 ON CONFLICT (room_id, user_id, device_id) DO NOTHING",
+    [device.user_id, device.device_id, nowMs],
+  );
+}
+
 function fromRecoveryRow(r) {
   return {
     reqStatus: r.req_status, reqStartedAt: Number(r.req_started_at), reqExpiresAt: Number(r.req_expires_at),
