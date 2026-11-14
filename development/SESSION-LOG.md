@@ -322,3 +322,13 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Commits: `e3ef907ed9fec1383d4d3900e1f47f52495622d6`, `bb26bf80a6072b0e0d48527b041960651aa7b816`, `58fafebe5566ea5b6f6afbadd8942fe5e166b62f`.
 - Tests were not run. Flutter run #632 failed before steps and had no retrievable logs; this is not evidence of a Flutter source failure. P0 matrix on the exact SHA remains unverified.
 - PR #52 remains Draft/open with base `stage0/identity-engineering-readiness-2026-11-13`. No merge, retarget, deployment, or main-branch change was performed.
+
+## 2026-11-14 — Engine security hardening follow-up
+
+- Fixed PostgreSQL refresh rotation so consumption of the old token and insertion of the new access/refresh pair occur in one transaction, with device-first locking and a revocation recheck. Memory store mirrors the route contract.
+- Added concurrent refresh replay coverage, fake transaction rollback coverage, and included `sessions.test.js` in `npm run test:db`.
+- Fixed signed file URL origin: production uses configured `INONE_PUBLIC_URL` instead of untrusted request Host and socket TLS detection. Added Host-header poisoning regression test.
+- Changed restore script to use `pg_restore --single-transaction`; added a regression assertion.
+- Earlier in this session: removed write permissions/automatic push from Rust format job; added PostgreSQL readiness probe before HTTP listen when migrations are disabled.
+- Latest engine code SHA before docs: `133a8c8dc3d28fa3c923288354dbf98821e90afb`. P0 run #43591312640 on exact SHA failed before steps in all six jobs; step arrays were empty and logs unavailable. No local tests were run; no test PASS is claimed.
+- `main` untouched; branch 376 ahead / 0 behind. PR #52 remains Draft/open with base `stage0/identity-engineering-readiness-2026-11-13`; no merge or retarget.
