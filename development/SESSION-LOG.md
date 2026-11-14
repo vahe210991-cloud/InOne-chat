@@ -312,3 +312,13 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Static local checks: devcontainer JSON parsed; Compose and GitHub workflow YAML parsed; Stage 0 environment shell script passed `bash -n`. Redocly semantic lint and Codespaces container startup were not run.
 
 - CI verification follow-up: first contract workflow run #40 and its rerun both failed. GitHub's job-log download returned 404, so the failure cause is unknown. Simplified the job to GitHub-hosted Ubuntu + pinned setup-node Node 26 (instead of a job-level Node container) and left the CI gate unchecked pending a new exact-head result.
+
+## 2026-11-14 — Engine hardening follow-up
+
+- Revalidated the working branch and canonical engine path. Branch head before follow-up was `a24ade78e6051d8f61fd54f985a9287aaf9f2769`; main was unchanged.
+- Removed write permissions and automated branch push from the P0 Rust formatting job. CI now checks formatting only.
+- Added a PostgreSQL readiness probe for the explicit `INONE_RUN_MIGRATIONS=false` startup mode. Server startup now fails before HTTP listen if the database is unavailable.
+- Added two regression tests in `engine/test/main.test.js` for the successful probe and DB-unavailable failure.
+- Commits: `e3ef907ed9fec1383d4d3900e1f47f52495622d6`, `bb26bf80a6072b0e0d48527b041960651aa7b816`, `58fafebe5566ea5b6f6afbadd8942fe5e166b62f`.
+- Tests were not run. Flutter run #632 failed before steps and had no retrievable logs; this is not evidence of a Flutter source failure. P0 matrix on the exact SHA remains unverified.
+- PR #52 remains Draft/open with base `stage0/identity-engineering-readiness-2026-11-13`. No merge, retarget, deployment, or main-branch change was performed.
