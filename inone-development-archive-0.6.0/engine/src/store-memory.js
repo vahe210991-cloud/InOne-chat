@@ -239,6 +239,22 @@ export function createMemoryStore({ pinPepper }) {
       if (organizations.has(orgId)) throw new Error('organization exists');
       organizations.set(orgId, { orgId, name, status, createdBy: createdBy ?? null, createdAt });
     },
+    addOrgMemberWithAudit({ orgId, userId, role, actorId, at }) {
+      if (!ORG_ROLES.includes(role)) return { ok: false, reason: 'invalid_role' };
+      const org = organizations.get(orgId);
+      if (!org) return { ok: false, reason: 'not_found' };
+      if (org.status !== 'approved') return { ok: false, reason: 'not_approved' };
+      const members = orgMembers.get(orgId) ?? new Map();
+      const actorRole = members.get(actorId)?.role;
+      if (actorRole !== 'owner' && actorRole !== 'admin') return { ok: false, reason: 'forbidden' };
+      if (actorRole === 'admin' && role !== 'member') return { ok: false, reason: 'forbidden' };
+      if (members.has(userId)) return { ok: false, reason: 'already_member' };
+      if (!accounts.has(userId)) return { ok: false, reason: 'unknown_user' };
+      members.set(userId, { role, joinedAt: at });
+      orgMembers.set(orgId, members);
+      adminActions.push({ orgId, actor: actorId, action: 'member_add', target: userId, detail: role, at });
+      return { ok: true };
+    },
     addOrgMember(orgId, userId, role, joinedAt) {
       return addOrgMembership(orgId, userId, role, joinedAt);
     },
