@@ -75,6 +75,8 @@ test('production отклоняет placeholder secrets, URLs и SMTP credential
 test('неверные числа отклоняются', () => {
   assert.throws(() => loadConfig({ ...GOOD, PORT: 'много' }), /PORT must be a port number/);
   assert.throws(() => loadConfig({ ...GOOD, INONE_BODY_LIMIT_BYTES: '10' }), /at least 1024/);
+  assert.throws(() => loadConfig({ ...GOOD, INONE_REQUEST_TIMEOUT_MS: '0' }), /between 1000 and 300000/);
+  assert.throws(() => loadConfig({ ...GOOD, INONE_FILE_QUOTA_BYTES: '-1' }), /positive safe integer/);
 });
 
 test('продакшен со SMTP, адресом отправителя и TLS проходит проверку', () => {
