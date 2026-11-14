@@ -1,6 +1,6 @@
 // ============================================================================
-// Память PoC: тот же интерфейс, что у store.js (PostgreSQL), но без базы.
-// Операции синхронные: JavaScript не чередует их, поэтому гонок нет.
+// Memory adapter for tests/local development only; production must use the PostgreSQL store.
+// Operations are synchronous, so the test adapter does not model database concurrency.
 // Правила PIN совпадают с store.js (verifyPin). Токены лежат как ключевые хэши, как и в базе.
 // ============================================================================
 import { channelNameKey } from './room-names.js';
