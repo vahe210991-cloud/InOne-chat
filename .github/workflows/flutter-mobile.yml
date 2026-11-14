@@ -4,15 +4,11 @@ on:
   push:
     branches:
       - feat/flutter-ui-dart-migration-2026-11-14
+      - main
     paths:
       - 'mobile/**'
       - '.github/workflows/flutter-mobile.yml'
   pull_request:
-    paths:
-      - 'mobile/**'
-      - '.github/workflows/flutter-mobile.yml'
-  push:
-    branches: [main]
     paths:
       - 'mobile/**'
       - '.github/workflows/flutter-mobile.yml'
