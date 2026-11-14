@@ -1351,14 +1351,15 @@ if (req.method === 'POST' && orgRoleRoute) {
   if (!d) return send(res, 401, { error: 'unauthorized' });
   const orgId = decodeURIComponent(orgRoleRoute[1]);
   const userId = decodeURIComponent(orgRoleRoute[2]);
-  if ((await storage.orgRoleOf(orgId, d.userId)) !== 'owner') return send(res, 403, { error: 'only owners change roles', code: 'org_role_required' });
   const role = body.role;
   if (!['owner', 'admin', 'member'].includes(role)) return send(res, 400, { error: 'role must be owner, admin or member' });
-  const current = await storage.orgRoleOf(orgId, userId);
-  if (!current) return send(res, 404, { error: 'not found' });
-  if (current === 'owner' && role !== 'owner' && (await storage.countOrgOwners(orgId)) <= 1) return send(res, 409, { error: 'the last owner cannot be demoted', code: 'last_owner' });
-  await storage.setOrgMemberRole(orgId, userId, role);
-  await storage.logAdminAction({ orgId, actor: d.userId, action: 'role_change', target: userId, detail: current + '->' + role, at: now() });
+  const changed = await storage.changeOrgMemberRole({ orgId, userId, actorId: d.userId, role, at: now() });
+  if (!changed.ok) {
+    if (changed.reason === 'not_found') return send(res, 404, { error: 'organization or member not found' });
+    if (changed.reason === 'last_owner') return send(res, 409, { error: 'the last owner cannot be demoted', code: 'last_owner' });
+    if (changed.reason === 'forbidden') return send(res, 403, { error: 'only owners change roles', code: 'org_role_required' });
+    return send(res, 400, { error: 'invalid role' });
+  }
   return send(res, 200, { userId, role });
 }
 if (req.method === 'DELETE' && orgMemberRoute) {
@@ -1367,26 +1368,26 @@ if (req.method === 'DELETE' && orgMemberRoute) {
   const orgId = decodeURIComponent(orgMemberRoute[1]);
   const userId = decodeURIComponent(orgMemberRoute[2]);
   if (userId === d.userId) return send(res, 400, { error: 'use leave to leave the organization' });
-  const myRole = await storage.orgRoleOf(orgId, d.userId);
-  const targetRole = await storage.orgRoleOf(orgId, userId);
-  if (!targetRole) return send(res, 404, { error: 'not found' });
-  if (myRole !== 'owner' && !(myRole === 'admin' && targetRole === 'member')) return send(res, 403, { error: 'org role required to remove this member', code: 'org_role_required' });
-  if (targetRole === 'owner' && (await storage.countOrgOwners(orgId)) <= 1) return send(res, 409, { error: 'the last owner cannot be removed', code: 'last_owner' });
-  if ((await storage.countOwnedRoomsInOrg(orgId, userId)) > 0) return send(res, 409, { error: 'transfer ownership of the rooms first', code: 'owns_rooms' });
-  await storage.removeOrgMember(orgId, userId);
-  await storage.logAdminAction({ orgId, actor: d.userId, action: 'member_remove', target: userId, detail: targetRole, at: now() });
+  const removed = await storage.removeOrgMemberWithAudit({ orgId, userId, actorId: d.userId, at: now() });
+  if (!removed.ok) {
+    if (removed.reason === 'not_found') return send(res, 404, { error: 'not found' });
+    if (removed.reason === 'last_owner') return send(res, 409, { error: 'the last owner cannot be removed', code: 'last_owner' });
+    if (removed.reason === 'owns_rooms') return send(res, 409, { error: 'transfer ownership of the rooms first', code: 'owns_rooms' });
+    return send(res, 403, { error: 'org role required to remove this member', code: 'org_role_required' });
+  }
   return send(res, 200, { removed: true });
 }
 if (req.method === 'POST' && orgLeaveRoute) {
   const d = await authed(req);
   if (!d) return send(res, 401, { error: 'unauthorized' });
   const orgId = decodeURIComponent(orgLeaveRoute[1]);
-  const myRole = await storage.orgRoleOf(orgId, d.userId);
-  if (!myRole) return send(res, 404, { error: 'not found' });
-  if (myRole === 'owner' && (await storage.countOrgOwners(orgId)) <= 1) return send(res, 409, { error: 'the last owner cannot leave', code: 'last_owner' });
-  if ((await storage.countOwnedRoomsInOrg(orgId, d.userId)) > 0) return send(res, 409, { error: 'transfer ownership of the rooms first', code: 'owns_rooms' });
-  await storage.removeOrgMember(orgId, d.userId);
-  await storage.logAdminAction({ orgId, actor: d.userId, action: 'member_leave', target: d.userId, detail: myRole, at: now() });
+  const left = await storage.removeOrgMemberWithAudit({ orgId, userId: d.userId, actorId: d.userId, at: now(), leave: true });
+  if (!left.ok) {
+    if (left.reason === 'not_found' || left.reason === 'not_member') return send(res, 404, { error: 'not found' });
+    if (left.reason === 'last_owner') return send(res, 409, { error: 'the last owner cannot leave', code: 'last_owner' });
+    if (left.reason === 'owns_rooms') return send(res, 409, { error: 'transfer ownership of the rooms first', code: 'owns_rooms' });
+    return send(res, 403, { error: 'cannot leave this organization' });
+  }
   return send(res, 200, { left: true });
 }
 // Настройки организации (шаг 5.5): меняют владелец и администратор; каждое изменение пишется в журнал.
