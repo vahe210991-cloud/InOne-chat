@@ -214,10 +214,8 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
     if (backup) await mailTo(backup.email, subject, text);
   };
   const revokeDevice = async (rec) => {
-    await storage.revokeDevice(key(rec.userId, rec.deviceId));
-    // Отозванное устройство больше не выдаётся как получатель ключевых пакетов и приветствий.
-    await storage.mlsDropDevicePackages(rec.userId, rec.deviceId);
-    await storage.mlsRecordDeviceRemovals(rec.userId, rec.deviceId, now());
+    // Credential revocation, pending MLS cleanup and group-removal markers are one store transaction.
+    await storage.revokeDevice(key(rec.userId, rec.deviceId), now());
   };
   // Код восстановления хранится только как ключевой хэш; сам код есть лишь в письме (C-08).
   const recoveryCodeHash = (userId, code) => keyedHash(pinPepper, `recovery:${userId}`, code);
