@@ -21,21 +21,15 @@ class InOneMobileApp extends StatefulWidget {
 }
 
 class _InOneMobileAppState extends State<InOneMobileApp> {
+  final _messengerKey = GlobalKey<ScaffoldMessengerState>();
   late final InOneSession _session;
   late final InOneRepositories _repositories;
 
   String _screen = 'login';
   String _registrationEmail = '';
   String _registrationToken = '';
-  String _recoveryEmail = '';
-  String _cancelMode = 'recovery';
-  String _loginEmail = '';
-  String _loginPassword = '';
-  String? _waitingUntil;
-  Map<String, dynamic>? _loginResponse;
   InOneProfile? _profile;
   List<InOneRoom> _rooms = const [];
-  InOneFailure? _loadFailure;
   bool _darkMode = false;
   bool _initializing = true;
 
@@ -54,8 +48,8 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
   Future<void> _initialize() async {
     try {
       await _session.initialize();
-    } catch (error) {
-      _loadFailure = _toFailure(error);
+    } catch (_) {
+      // The first authenticated operation will surface a safe UI error.
     }
     if (mounted) setState(() => _initializing = false);
   }
@@ -112,17 +106,21 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
   }
 
   Future<InOneFailure?> _login(String email, String password) async {
-    _loginEmail = email;
-    _loginPassword = password;
     try {
-      _loginResponse = await _session.login(email: email, password: password);
+      final response = await _session.login(email: email, password: password);
       if (_session.isAuthenticated) return null;
 
-      final status = _loginResponse?['status'];
-      if (status == 'waiting_period' && _loginResponse?['activateAt'] is String) {
-        _waitingUntil = _loginResponse!['activateAt'] as String;
-        _cancelMode = 'admission';
-        return null;
+      final status = response['status'];
+      if (status == 'waiting_period' && response['activateAt'] is String) {
+        final raw = response['activateAt'] as String;
+        final parsed = DateTime.tryParse(raw)?.toLocal();
+        final display = parsed == null
+            ? raw
+            : '${parsed.day.toString().padLeft(2, '0')}.${parsed.month.toString().padLeft(2, '0')}.${parsed.year} ${parsed.hour.toString().padLeft(2, '0')}:${parsed.minute.toString().padLeft(2, '0')}';
+        return InOneFailure(
+          InOneScreenState.error,
+          message: 'Вход с нового устройства станет доступен $display. После этого повторите вход.',
+        );
       }
       if (status == 'approval_required') {
         return const InOneFailure(
@@ -146,41 +144,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
   }
 
   void _afterLogin() {
-    if (_session.isAuthenticated) {
-      unawaited(_loadAuthenticatedData());
-    } else if (_waitingUntil != null) {
-      setState(() => _screen = 'waiting');
-    }
-  }
-
-  Future<InOneFailure?> _recheckWaitingLogin() async {
-    try {
-      _loginResponse = await _session.login(email: _loginEmail, password: _loginPassword);
-      if (_session.isAuthenticated) {
-        return null;
-      }
-      final status = _loginResponse?['status'];
-      if (status == 'waiting_period' && _loginResponse?['activateAt'] is String) {
-        _waitingUntil = _loginResponse!['activateAt'] as String;
-        return null;
-      }
-      return const InOneFailure(
-        InOneScreenState.error,
-        message: 'Состояние входа изменилось. Вернитесь ко входу и повторите попытку.',
-      );
-    } catch (error) {
-      return _toFailure(error);
-    }
-  }
-
-  void _afterWaitingRecheck() {
-    if (_session.isAuthenticated) {
-      unawaited(_loadAuthenticatedData());
-    } else if (_waitingUntil == null) {
-      setState(() => _screen = 'login');
-    } else {
-      setState(() {});
-    }
+    if (_session.isAuthenticated) unawaited(_loadAuthenticatedData());
   }
 
   Future<void> _loadAuthenticatedData() async {
@@ -188,10 +152,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
       setState(() => _screen = 'login');
       return;
     }
-    setState(() {
-      _screen = 'loading';
-      _loadFailure = null;
-    });
+    setState(() => _screen = 'loading');
     try {
       final profile = await _repositories.profile();
       final rooms = await _repositories.myRooms();
@@ -201,12 +162,8 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
         _rooms = rooms;
         _screen = 'messages';
       });
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _loadFailure = _toFailure(error);
-        _screen = 'loadError';
-      });
+    } catch (_) {
+      if (mounted) setState(() => _screen = 'loadError');
     }
   }
 
@@ -255,52 +212,6 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
         ));
   }
 
-  Future<InOneFailure?> _startRecovery(String email) async {
-    _recoveryEmail = email.trim();
-    return _runApi(() => _session.request(
-          'POST',
-          '/recovery/start',
-          authenticated: false,
-          body: {'email': _recoveryEmail},
-        ));
-  }
-
-  Future<InOneFailure?> _completeRecovery(
-    String code,
-    String newPassword,
-    String pin,
-  ) async {
-    if (_recoveryEmail.isEmpty) {
-      return const InOneFailure(
-        InOneScreenState.error,
-        message: 'Сначала запросите восстановление по электронной почте.',
-      );
-    }
-    return _runApi(() => _session.request(
-          'POST',
-          '/recovery/complete',
-          authenticated: false,
-          body: {
-            'email': _recoveryEmail,
-            'code': code,
-            'newPassword': newPassword,
-            if (pin.isNotEmpty) 'pin': pin,
-          },
-        ));
-  }
-
-  Future<InOneFailure?> _cancelAttempt(String email, String code) async {
-    final path = _cancelMode == 'admission'
-        ? '/admission/cancel'
-        : '/recovery/cancel-by-code';
-    return _runApi(() => _session.request(
-          'POST',
-          path,
-          authenticated: false,
-          body: {'email': email.trim(), 'code': code.trim()},
-        ));
-  }
-
   Future<InOneFailure?> _logout() async {
     try {
       await _session.logout();
@@ -316,15 +227,12 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
       _rooms = const [];
       _registrationEmail = '';
       _registrationToken = '';
-      _recoveryEmail = '';
-      _waitingUntil = null;
-      _loginPassword = '';
       _screen = 'login';
     });
   }
 
   void _notice(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    _messengerKey.currentState?.showSnackBar(SnackBar(content: Text(message)));
   }
 
   List<InOneChatPreview> get _chatPreviews => _rooms.map((room) {
@@ -356,13 +264,14 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
     switch (tab) {
       case InOneTab.messages:
         setState(() => _screen = 'messages');
+        return;
       case InOneTab.profile:
         setState(() => _screen = 'profile');
-        break;
+        return;
       case InOneTab.feed:
       case InOneTab.calls:
         _notice('Этот раздел пока не входит в подключённый объём Beta 1.0.');
-        break;
+        return;
     }
   }
 
@@ -380,7 +289,9 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
             message: 'Вход через Google и Apple пока заблокирован: нативная проверка провайдера не подключена.',
           ),
           onRegister: () => setState(() => _screen = 'registerEmail'),
-          onForgotPassword: () => setState(() => _screen = 'recoveryStart'),
+          onForgotPassword: () => _notice(
+            'Восстановление временно отключено до подключения deep link подтверждения и утверждения предупреждения о сбросе ключей.',
+          ),
           onSuccess: _afterLogin,
         );
       case 'registerEmail':
@@ -409,40 +320,6 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
             _notice('Регистрация завершена. Теперь войдите в аккаунт.');
           },
         );
-      case 'recoveryStart':
-        return InOneRecoveryStartScreen(
-          onSubmit: _startRecovery,
-          onBack: () => setState(() => _screen = 'login'),
-          onEnterCode: () => setState(() => _screen = 'newPassword'),
-        );
-      case 'newPassword':
-        return InOneNewPasswordScreen(
-          onSubmit: _completeRecovery,
-          keyResetWarning: null,
-          onDone: () {
-            setState(() => _screen = 'login');
-            _notice('Пароль изменён. Войдите с новым паролем.');
-          },
-        );
-      case 'notYou':
-        return InOneNotYouScreen(
-          onSubmit: _cancelAttempt,
-          onBack: () => setState(() => _screen = 'login'),
-          onDone: () {
-            setState(() => _screen = 'login');
-            _notice('Запрос отменён.');
-          },
-        );
-      case 'waiting':
-        return InOneLoginWaitingScreen(
-          activateAt: _waitingUntil ?? '—',
-          onRecheck: _recheckWaitingLogin,
-          onNotMe: () {
-            _cancelMode = 'admission';
-            setState(() => _screen = 'notYou');
-          },
-          onDone: _afterWaitingRecheck,
-        );
       case 'logout':
         return InOneLogoutScreen(
           onLogout: _logout,
@@ -456,8 +333,9 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
       case 'messages':
         return InOneMessagesScreen(
           chats: _chatPreviews,
+          unreadCountsAvailable: false,
           onOpenChat: (chat) => _notice(
-            'История и отправка сообщений пока заблокированы до подключения нативного MLS-клиента и зашифрованного локального хранилища. Сообщение не отправлено.',
+            'История и отправка сообщений заблокированы до подключения нативного MLS-клиента и зашифрованного локального хранилища. Сообщение не отправлено.',
           ),
           onSearch: () => _notice('Поиск по содержимому сообщений пока не реализован.'),
           onFilter: () => _notice('Дополнительные фильтры пока недоступны.'),
@@ -490,7 +368,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
           onSubmit: _login,
           onProvider: (provider) async => const InOneFailure(InOneScreenState.error),
           onRegister: () => setState(() => _screen = 'registerEmail'),
-          onForgotPassword: () => setState(() => _screen = 'recoveryStart'),
+          onForgotPassword: () => _notice('Восстановление пароля пока недоступно.'),
           onSuccess: _afterLogin,
         );
     }
@@ -499,18 +377,15 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      scaffoldMessengerKey: _messengerKey,
       title: 'InOne',
       debugShowCheckedModeBanner: false,
       theme: InOneTheme.light(),
       darkTheme: InOneTheme.dark(),
       themeMode: _darkMode ? ThemeMode.dark : ThemeMode.light,
-      home: Scaffold(
-        body: SafeArea(
-          child: InOneStatusScope(
-            state: InOneScreenState.idle,
-            child: _buildScreen(),
-          ),
-        ),
+      home: InOneStatusScope(
+        state: InOneScreenState.idle,
+        child: _buildScreen(),
       ),
     );
   }
