@@ -545,12 +545,8 @@ export function createMemoryStore({ pinPepper }) {
         }
         for (const [roomId, epoch] of mlsGroups) {
           const room = rooms.get(roomId);
-          if (epoch <= 0 || !room?.members.has(d.userId)) continue;
-          const marker = deviceRemovals.find((item) => item.roomId === roomId && item.userId === d.userId && item.deviceId === d.deviceId);
-          if (marker) {
-            marker.createdAt = nowMs;
-            marker.doneAt = null;
-          } else {
+          if (epoch > 0 && room?.members.has(d.userId)
+              && !deviceRemovals.some((item) => item.roomId === roomId && item.userId === d.userId && item.deviceId === d.deviceId)) {
             deviceRemovals.push({ roomId, userId: d.userId, deviceId: d.deviceId, createdAt: nowMs, doneAt: null });
           }
         }
@@ -1231,12 +1227,7 @@ export function createMemoryStore({ pinPepper }) {
     mlsRecordDeviceRemovals(userId, deviceId, nowMs) {
       for (const [roomId, group] of mlsGroups) {
         const room = rooms.get(roomId);
-        if (group <= 0 || !room?.members.has(userId)) continue;
-        const marker = deviceRemovals.find((r) => r.roomId === roomId && r.userId === userId && r.deviceId === deviceId);
-        if (marker) {
-          marker.createdAt = nowMs;
-          marker.doneAt = null;
-        } else {
+        if (group > 0 && room && room.members.has(userId) && !deviceRemovals.some((r) => r.roomId === roomId && r.userId === userId && r.deviceId === deviceId)) {
           deviceRemovals.push({ roomId, userId, deviceId, createdAt: nowMs, doneAt: null });
         }
       }
