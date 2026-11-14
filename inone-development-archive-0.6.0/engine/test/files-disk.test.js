@@ -47,7 +47,7 @@ test('хранилище на диске: объект называется св
     const store = createFsObjectStore(dir);
     const id = randomBytes(16).toString('hex');
     await store.put(id, Buffer.from('шифротекст'));
-    assert.equal(statSync(dir).mode & 0o777, 0o700, 'каталог объектов закрыт от других пользователей');
+    if (process.platform !== 'win32') assert.equal(statSync(dir).mode & 0o777, 0o700, 'каталог объектов закрыт от других пользователей');
     assert.deepEqual(readdirSync(dir), [id], 'на диске только идентификатор');
     assert.equal((await store.get(id)).toString('utf8'), 'шифротекст');
     await store.remove(id);
