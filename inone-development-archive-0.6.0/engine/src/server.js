@@ -1272,7 +1272,12 @@ if (req.method === 'POST' && orgReqDocs) {
   const objectKey = randomBytes(16).toString('hex');
   await objectStore.put(objectKey, encryptDoc(content));
   try {
-    await storage.addOrgRequestDocument({ docId, requestId, kind, size: content.length, sha256: createHash('sha256').update(content).digest('hex'), objectKey, uploadedBy: d.userId, createdAt: now() });
+    const saved = await storage.addOrgRequestDocument({ docId, requestId, kind, size: content.length, sha256: createHash('sha256').update(content).digest('hex'), objectKey, uploadedBy: d.userId, createdAt: now() });
+    if (!saved.ok) {
+      await objectStore.remove(objectKey).catch(() => {});
+      if (saved.reason === 'already_decided') return send(res, 409, { error: 'request is already decided' });
+      return send(res, 404, { error: 'not found' });
+    }
   } catch (error) {
     await objectStore.remove(objectKey).catch(() => {});
     throw error;
@@ -1309,11 +1314,16 @@ if (req.method === 'POST' && orgReqDecision) {
   if (body.decision !== 'approve' && body.decision !== 'reject') return send(res, 400, { error: 'decision must be approve or reject' });
   if (body.decision === 'reject') {
     const rejected = await storage.decideOrgRequest({ requestId, status: 'rejected', decidedBy: d.userId, decidedAt: now(), orgId: null });
-    if (!rejected) return send(res, 409, { error: 'request was already decided' });
+    if (!rejected.ok) {
+      if (rejected.reason === 'forbidden') return send(res, 403, { error: 'only the platform owner decides', code: 'not_platform_owner' });
+      if (rejected.reason === 'not_found') return send(res, 404, { error: 'not found' });
+      return send(res, 409, { error: 'request was already decided' });
+    }
     return send(res, 200, { status: 'rejected' });
   }
   const approved = await storage.approveOrgRequest({ requestId, decidedBy: d.userId, decidedAt: now() });
   if (!approved.ok) {
+    if (approved.reason === 'forbidden') return send(res, 403, { error: 'only the platform owner decides', code: 'not_platform_owner' });
     if (approved.reason === 'not_found') return send(res, 404, { error: 'not found' });
     return send(res, 409, { error: 'request was already decided' });
   }
