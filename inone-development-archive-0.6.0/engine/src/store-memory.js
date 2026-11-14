@@ -286,21 +286,28 @@ export function createMemoryStore({ pinPepper }) {
       return [...orgRequests.values()].filter((r) => all || r.applicantId === userId).map((r) => ({ requestId: r.requestId, applicantId: r.applicantId, name: r.name, status: r.status, createdAt: r.createdAt })).sort((a, b) => a.createdAt - b.createdAt);
     },
     addOrgRequestDocument({ docId, requestId, kind, size, sha256, objectKey, uploadedBy, createdAt }) {
+      const request = orgRequests.get(requestId);
+      if (!request || request.applicantId !== uploadedBy) return { ok: false, reason: 'not_found' };
+      if (request.status !== 'pending') return { ok: false, reason: 'already_decided' };
       orgRequestDocs.set(docId, { docId, requestId, kind, size, sha256, objectKey, uploadedBy, createdAt });
       orgRequestLog.push({ requestId, actor: uploadedBy, action: 'document', at: createdAt });
+      return { ok: true };
     },
     listOrgRequestDocuments(requestId) {
       return [...orgRequestDocs.values()].filter((x) => x.requestId === requestId).map((x) => ({ docId: x.docId, kind: x.kind, size: x.size, sha256: x.sha256, createdAt: x.createdAt })).sort((a, b) => a.createdAt - b.createdAt);
     },
     getOrgRequestDocument(docId) { const x = orgRequestDocs.get(docId); return x ? { ...x } : null; },
     decideOrgRequest({ requestId, status, decidedBy, decidedAt, orgId }) {
+      if (platformRoles.get(decidedBy) !== 'owner') return { ok: false, reason: 'forbidden' };
       const r = orgRequests.get(requestId);
-      if (!r || r.status !== 'pending') return false;
+      if (!r) return { ok: false, reason: 'not_found' };
+      if (r.status !== 'pending') return { ok: false, reason: 'already_decided' };
       r.status = status; r.decidedBy = decidedBy; r.decidedAt = decidedAt; r.orgId = orgId;
       orgRequestLog.push({ requestId, actor: decidedBy, action: status === 'approved' ? 'approve' : 'reject', at: decidedAt });
-      return true;
+      return { ok: true };
     },
     approveOrgRequest({ requestId, decidedBy, decidedAt }) {
+      if (platformRoles.get(decidedBy) !== 'owner') return { ok: false, reason: 'forbidden' };
       const r = orgRequests.get(requestId);
       if (!r) return { ok: false, reason: 'not_found' };
       if (r.status !== 'pending') return { ok: false, reason: 'already_decided' };
