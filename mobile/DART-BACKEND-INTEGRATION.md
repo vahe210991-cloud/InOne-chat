@@ -84,7 +84,7 @@ The backend is not modified by this migration. Do not infer routes from screen l
 | Files | Status |
 |---|---|
 | `inone.dart`, `models/inone_models.dart`, `state/inone_state.dart`, `theme/*`, `widgets/*` | Shared Flutter presentation layer. No direct HTTP. Models are UI models, not wire DTOs. |
-| `example/inone_gallery.dart`, `example/inone_demo_data.dart` | Demo/gallery only. Must not be imported by production app or used as fallback data. |
+| `mobile/example/ui_dart_source/inone_gallery.dart`, `inone_demo_data.dart` | Demo/gallery only, outside `lib/`. Must not be imported by production app or used as fallback data. |
 
 ## 4. Currently active real API flows
 
