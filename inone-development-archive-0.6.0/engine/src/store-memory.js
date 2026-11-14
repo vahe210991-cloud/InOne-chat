@@ -8,7 +8,7 @@ import { MLS_REGULAR_MAX_AGE_MS, MLS_LAST_RESORT_MAX_AGE_MS } from './mls-rules.
 import { DEFAULT_ADMIN_CAPABILITIES, DEFAULT_MEMBER_CAPABILITIES } from './room-permissions.js';
 import { createHmac, randomBytes } from 'node:crypto';
 import { decideLogin } from './login-throttle.js';
-import { checkCode as checkRecoveryCode, completeRecovery as applyRecoveryCompletion, freshRecovery } from './recovery-rules.js';
+import { cancelWindow, checkCode as checkRecoveryCode, closeWindowIfDue, completeRecovery as applyRecoveryCompletion, freshRecovery, windowOpen } from './recovery-rules.js';
 import { freshPhone } from './phone-rules.js';
 import { applyHit } from './rate-limit.js';
 import { freshEmailCode } from './email-code-rules.js';
@@ -666,6 +666,43 @@ export function createMemoryStore({ pinPepper }) {
       recovery.set(userId, structuredClone(next));
       recoveryCancels.set(userId, { codeHash: cancelCodeHash, expiresAt: next.windowKeyResetAt });
       return { status: 'ok', keyResetAt: next.windowKeyResetAt };
+    },
+    finalizeRecoveryDevices(userId, nowMs) {
+      const current = recovery.get(userId) ?? freshRecovery();
+      const closed = closeWindowIfDue(current, nowMs);
+      if (closed.dueSince === null) return { dueSince: null, revoked: 0 };
+      recovery.set(userId, structuredClone(closed.next));
+      let revoked = 0;
+      for (const [deviceKey, device] of devices) {
+        if (device.userId === userId && !device.revoked && device.createdAt < closed.dueSince) {
+          this.revokeDevice(deviceKey, nowMs);
+          revoked += 1;
+        }
+      }
+      return { dueSince: closed.dueSince, revoked };
+    },
+    cancelRecoveryAtomic(userId, { nowMs, actorDeviceId = null, cancelCodeHash = null }) {
+      if (!accounts.has(userId)) return { status: 'none' };
+      const current = structuredClone(recovery.get(userId) ?? freshRecovery());
+      if (!windowOpen(current, nowMs)) return { status: 'none' };
+      if (actorDeviceId !== null) {
+        const device = devices.get(`${userId}|${actorDeviceId}`);
+        if (!device || device.revoked || device.createdAt >= current.windowStartedAt) return { status: 'forbidden' };
+      } else {
+        const saved = recoveryCancels.get(userId);
+        if (!saved || nowMs > saved.expiresAt || saved.codeHash !== cancelCodeHash) return { status: 'wrong_code' };
+      }
+      if (current.windowPreviousHash) accounts.set(userId, current.windowPreviousHash);
+      let revoked = 0;
+      for (const [deviceKey, device] of devices) {
+        if (device.userId === userId && !device.revoked && device.createdAt >= current.windowStartedAt) {
+          this.revokeDevice(deviceKey, nowMs);
+          revoked += 1;
+        }
+      }
+      recovery.set(userId, structuredClone(cancelWindow(current)));
+      recoveryCancels.delete(userId);
+      return { status: 'ok', revoked };
     },
     recoveryHashes() {
       return Object.fromEntries([...recovery]
