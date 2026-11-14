@@ -43,6 +43,7 @@ export async function startServer({ config, logger = createLogger({ level: confi
   const app = createServer({
     pinPepper: config.pinPepper,
     docsSecret: config.docsSecret || null,
+    objectSecret: config.objectSecret || undefined,
     testUi: config.testUi,
     store,
     trustProxy: config.trustProxy,
