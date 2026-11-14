@@ -295,23 +295,13 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
   Future<void> _loadSystemStatus() async {
     setState(() => _screen = 'systemStatusLoading');
     try {
-      final response = await _repositories.publicConfig();
-      final rawFlags = response['flags'];
-      if (rawFlags is! Map) {
-        throw const ApiException(code: 'invalid_response', statusCode: 502, retryable: false);
-      }
-      final flags = Map<String, dynamic>.from(rawFlags);
-      final maintenance = flags['maintenance.enabled'];
-      final appVersion = flags['app.minVersion'];
-      if (maintenance is! bool || appVersion is! String) {
-        throw const ApiException(code: 'invalid_response', statusCode: 502, retryable: false);
-      }
+      final config = await _repositories.publicConfig();
       if (!mounted) return;
       setState(() {
         _systemStatus = InOneSystemStatus(
-          version: appVersion,
-          maintenance: maintenance,
-          flags: {'maintenance.enabled': maintenance},
+          version: config.minimumAppVersion,
+          maintenance: config.maintenanceEnabled,
+          flags: {'maintenance.enabled': config.maintenanceEnabled},
         );
         _screen = 'systemStatus';
       });
