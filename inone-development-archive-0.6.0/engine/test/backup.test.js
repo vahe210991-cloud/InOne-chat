@@ -101,3 +101,7 @@ dbTest('хранение: остаются последние копии, ста
     rmSync(dir, { recursive: true, force: true });
   }
 });
+test('restore-db uses a single transaction so failed restores cannot leave a partial schema', () => {
+  const script = readFileSync(path.join(root, 'scripts/restore-db.sh'), 'utf8');
+  assert.match(script, /pg_restore --single-transaction .*--exit-on-error/);
+});
