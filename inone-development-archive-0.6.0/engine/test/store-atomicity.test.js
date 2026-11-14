@@ -7,6 +7,8 @@ test('organization setting and its audit row roll back together', async () => {
   const client = {
     async query(sql) {
       statements.push(sql);
+      if (sql.startsWith('SELECT org_id FROM organizations')) return { rows: [{ org_id: 'org-1' }], rowCount: 1 };
+      if (sql.startsWith('SELECT role FROM org_members')) return { rows: [{ role: 'owner' }] };
       if (sql.startsWith('SELECT max_group_members')) return { rows: [] };
       if (sql.startsWith('INSERT INTO org_settings (')) return { rows: [], rowCount: 1 };
       if (sql.startsWith('INSERT INTO org_settings_log')) throw new Error('simulated audit insert failure');
