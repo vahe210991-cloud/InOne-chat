@@ -35,3 +35,42 @@ test('organization setting rejects unknown SQL column selectors', async () => {
     /invalid organization setting field/,
   );
 });
+
+test('organization approval, owner membership and decision log roll back together', async () => {
+  const statements = [];
+  const client = {
+    async query(sql) {
+      statements.push(sql);
+      if (sql.startsWith('SELECT applicant_id, name, status')) return { rows: [{ applicant_id: '@applicant', name: 'Org', status: 'pending' }] };
+      if (sql.startsWith('INSERT INTO org_request_log')) throw new Error('simulated approval audit failure');
+      return { rows: [], rowCount: 1 };
+    },
+    release() { statements.push('RELEASE'); },
+  };
+  const store = createStore({ pool: { async connect() { return client; } }, pinPepper: 'a'.repeat(48) });
+  await assert.rejects(store.approveOrgRequest({ requestId: 'request-1', decidedBy: '@platform-owner', decidedAt: 1 }), /simulated approval audit failure/);
+  assert.ok(statements.includes('BEGIN'));
+  assert.ok(statements.includes('ROLLBACK'));
+  assert.equal(statements.includes('COMMIT'), false);
+  assert.equal(statements.at(-1), 'RELEASE');
+});
+
+test('owner role change and admin audit row roll back together', async () => {
+  const statements = [];
+  const client = {
+    async query(sql) {
+      statements.push(sql);
+      if (sql.startsWith('SELECT org_id FROM organizations')) return { rows: [{ org_id: 'org-1' }], rowCount: 1 };
+      if (sql.startsWith('SELECT user_id, role FROM org_members')) return { rows: [{ user_id: '@owner', role: 'owner' }, { user_id: '@target', role: 'member' }] };
+      if (sql.startsWith('INSERT INTO admin_action_log')) throw new Error('simulated role audit failure');
+      return { rows: [], rowCount: 1 };
+    },
+    release() { statements.push('RELEASE'); },
+  };
+  const store = createStore({ pool: { async connect() { return client; } }, pinPepper: 'a'.repeat(48) });
+  await assert.rejects(store.changeOrgMemberRole({ orgId: 'org-1', userId: '@target', actorId: '@owner', role: 'admin', at: 1 }), /simulated role audit failure/);
+  assert.ok(statements.includes('BEGIN'));
+  assert.ok(statements.includes('ROLLBACK'));
+  assert.equal(statements.includes('COMMIT'), false);
+  assert.equal(statements.at(-1), 'RELEASE');
+});
