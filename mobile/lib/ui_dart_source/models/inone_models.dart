@@ -63,10 +63,10 @@ class InOneOrgProfile {
   });
   final String name;
   final String subtitle;
-  final int members;
-  final int projects;
-  final int teams;
-  final String about;
+  final int? members;
+  final int? projects;
+  final int? teams;
+  final String? about;
   final bool verified;
   final ImageProvider? cover;
   final ImageProvider? logo;
@@ -84,10 +84,10 @@ class InOneWorkspaceSummary {
     this.projectsCaption = 'in progress',
   });
   final String name;
-  final int activeProjects;
-  final int tasksDue;
-  final int teamMembers;
-  final int activeGroups;
+  final int? activeProjects;
+  final int? tasksDue;
+  final int? teamMembers;
+  final int? activeGroups;
   final bool hasUnread;
   final String projectsCaption;
 }
