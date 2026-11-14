@@ -100,7 +100,9 @@ test('link revocation and cross-organization membership cleanup roll back with a
   const client = {
     async query(sql) {
       statements.push(sql);
-      if (sql.startsWith('SELECT org_a, org_b, status')) return { rows: [{ org_a: 'org-a', org_b: 'org-b', status: 'active' }] };
+      if (sql.startsWith('SELECT org_id FROM organizations')) return { rows: [{ org_id: 'org-a' }], rowCount: 1 };
+      if (sql.startsWith('SELECT org_a, org_b, proposed_by_org, status')) return { rows: [{ org_a: 'org-a', org_b: 'org-b', proposed_by_org: 'org-a', status: 'active' }] };
+      if (sql.startsWith('SELECT role FROM org_members')) return { rows: [{ role: 'owner' }] };
       if (sql.startsWith('UPDATE org_links')) return { rows: [], rowCount: 1 };
       if (sql.startsWith('INSERT INTO admin_action_log')) throw new Error('simulated link audit failure');
       return { rows: [], rowCount: 1 };
@@ -108,7 +110,7 @@ test('link revocation and cross-organization membership cleanup roll back with a
     release() { statements.push('RELEASE'); },
   };
   const store = createStore({ pool: { async connect() { return client; } }, pinPepper: 'a'.repeat(48) });
-  await assert.rejects(store.transitionOrgLinkStatus({ linkId: 'link-1', fromStatus: 'active', status: 'revoked', decidedBy: '@owner', decidedAt: 2 }), /simulated link audit failure/);
+  await assert.rejects(store.transitionOrgLinkStatus({ linkId: 'link-1', orgId: 'org-a', fromStatus: 'active', status: 'revoked', decidedBy: '@owner', decidedAt: 2 }), /simulated link audit failure/);
   assert.ok(statements.includes('BEGIN'));
   assert.ok(statements.includes('ROLLBACK'));
   assert.equal(statements.includes('COMMIT'), false);
