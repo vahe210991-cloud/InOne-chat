@@ -568,17 +568,46 @@ export function createStore({ pool, pinPepper }) {
       return Number(rows[0].expires_at) > nowMs ? 'valid' : 'expired';
     },
 
-    /** Погашает токен обновления: 'ok' (он был одноразовым), 'reused', 'expired' или 'unknown'. */
-    async consumeRefreshToken(raw, nowMs) {
+    /** Возвращает устройство refresh-токена без изменения его состояния (для recovery preflight). */
+    async refreshTokenDevice(raw) {
+      const { rows } = await pool.query('SELECT device_key FROM refresh_tokens WHERE token_hash = $1', [keyed(pinPepper, 'refresh', raw)]);
+      return rows[0]?.device_key ?? null;
+    },
+
+    /**
+     * Одноразовая ротация refresh-токена и выпуск новой пары в одной транзакции.
+     * Сначала блокируется устройство, затем refresh row — тот же порядок, что при отзыве устройства.
+     * Сбой вставки новой пары откатывает и погашение старого токена.
+     */
+    async rotateSession(raw, nowMs, accessTtlMs, refreshTtlMs) {
       const hash = keyed(pinPepper, 'refresh', raw);
-      const { rows } = await pool.query('SELECT device_key, expires_at, used_at FROM refresh_tokens WHERE token_hash = $1', [hash]);
-      if (rows.length === 0) return { state: 'unknown' };
-      const row = rows[0];
-      if (row.used_at !== null) return { state: 'reused', deviceKey: row.device_key };
-      if (Number(row.expires_at) <= nowMs) return { state: 'expired' };
-      const { rowCount } = await pool.query('UPDATE refresh_tokens SET used_at = $2 WHERE token_hash = $1 AND used_at IS NULL', [hash, nowMs]);
-      if (rowCount === 0) return { state: 'reused', deviceKey: row.device_key };
-      return { state: 'ok', deviceKey: row.device_key };
+      const accessToken = randomBytes(16).toString('hex');
+      const refreshToken = randomBytes(16).toString('hex');
+      const accessExpiresAt = nowMs + accessTtlMs;
+      const refreshExpiresAt = nowMs + refreshTtlMs;
+      return inTransaction(async (c) => {
+        const initial = await c.query('SELECT device_key FROM refresh_tokens WHERE token_hash = $1', [hash]);
+        if (initial.rows.length === 0) return { state: 'unknown' };
+        const deviceKey = initial.rows[0].device_key;
+        const device = await c.query('SELECT revoked FROM devices WHERE device_key = $1 FOR UPDATE', [deviceKey]);
+        if (device.rows.length === 0 || device.rows[0].revoked) return { state: 'revoked', deviceKey };
+        const { rows } = await c.query(
+          'SELECT device_key, expires_at, used_at FROM refresh_tokens WHERE token_hash = $1 AND device_key = $2 FOR UPDATE',
+          [hash, deviceKey],
+        );
+        if (rows.length === 0) return { state: 'unknown' };
+        const row = rows[0];
+        if (row.used_at !== null) return { state: 'reused', deviceKey };
+        if (Number(row.expires_at) <= nowMs) return { state: 'expired' };
+        const consumed = await c.query(
+          'UPDATE refresh_tokens SET used_at = $2 WHERE token_hash = $1 AND used_at IS NULL',
+          [hash, nowMs],
+        );
+        if (consumed.rowCount !== 1) return { state: 'reused', deviceKey };
+        await c.query('INSERT INTO tokens (token_hash, device_key, expires_at) VALUES ($1, $2, $3)', [keyed(pinPepper, 'token', accessToken), deviceKey, accessExpiresAt]);
+        await c.query('INSERT INTO refresh_tokens (token_hash, device_key, expires_at, used_at) VALUES ($1, $2, $3, NULL)', [keyed(pinPepper, 'refresh', refreshToken), deviceKey, refreshExpiresAt]);
+        return { state: 'ok', deviceKey, accessToken, accessExpiresAt, refreshToken, refreshExpiresAt };
+      });
     },
 
     /** Завершает сессии устройства: токены доступа и обновления удаляются. Само устройство остаётся. */
