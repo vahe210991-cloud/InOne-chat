@@ -1421,8 +1421,11 @@ if (req.method === 'POST' && orgSettingsRoute) {
   if (field === 'maxGroupMembers' && value !== null && (!Number.isInteger(value) || value < 2 || value > globalMax)) return send(res, 400, { error: `maxGroupMembers must be 2..${globalMax} or null` });
   if (field === 'channelsEnabled' && typeof value !== 'boolean') return send(res, 400, { error: 'channelsEnabled must be true or false' });
   if (field === 'fileQuotaBytes' && value !== null && (!Number.isInteger(value) || value < 1)) return send(res, 400, { error: 'fileQuotaBytes must be a positive integer or null' });
-  await storage.setOrgSetting({ orgId, field, value, actor: d.userId, at: now() });
-  await storage.logAdminAction({ orgId, actor: d.userId, action: 'setting_change', target: field, detail: JSON.stringify(value), at: now() });
+  const updated = await storage.setOrgSetting({ orgId, field, value, actor: d.userId, at: now() });
+  if (!updated.ok) {
+    if (updated.reason === 'not_found') return send(res, 404, { error: 'not found' });
+    return send(res, 403, { error: 'only owners and admins change settings', code: 'org_role_required' });
+  }
   return send(res, 200, { settings: await storage.orgSettings(orgId) });
 }
 if (req.method === 'GET' && orgSettingsLogRoute) {
