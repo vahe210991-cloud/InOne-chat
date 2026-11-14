@@ -55,7 +55,9 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
     } catch (_) {
       // The first authenticated operation will surface a safe UI error.
     }
-    if (mounted) setState(() => _initializing = false);
+    if (!mounted) return;
+    setState(() => _initializing = false);
+    if (_session.isAuthenticated) await _loadAuthenticatedData();
   }
 
   @override
