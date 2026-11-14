@@ -330,16 +330,9 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
   // Через 48 часов после восстановления старые устройства отключаются, если их не отменили (D5, D8).
   // Окно хранится в базе: переживает перезапуск сервера.
   const finalizeRecoveryIfDue = async (userId) => {
-    const current = await storage.recoveryGet(userId);
-    if (current.windowKeyResetAt === null || now() < current.windowKeyResetAt) return;
-    const dueSince = await storage.recoveryUpdate(userId, (r) => {
-      const out = closeWindowIfDue(r, now());
-      return { next: out.next, result: out.dueSince };
-    });
-    if (dueSince === null) return;
-    for (const rec of await storage.devicesOfUser(userId)) {
-      if (!rec.revoked && rec.createdAt < dueSince) await revokeDevice(rec);
-    }
+    if (!userId) return;
+    const result = await storage.finalizeRecoveryDevices(userId, now());
+    if (result.dueSince === null) return;
     await mail(userId, 'Старые устройства отключены', 'Прошло 48 часов после восстановления. Устройства, существовавшие до восстановления, отключены.');
   };
   const authed = async (req) => {
@@ -2768,23 +2761,15 @@ if (req.method === 'POST' && p === '/login') {
       }
 
       if (req.method === 'POST' && p === '/recovery/cancel-by-code') {
-        // Отмена восстановления кодом из письма: нужна, если устройств для отмены нет (решение владельца).
         const email = normalizeEmail(body.email);
         const perEmail = await checkRate('recoveryCancelPerEmail', email);
         if (!perEmail.allowed) return send(res, 429, { error: 'too many attempts, try later' });
         const userId = await storage.userIdByEmail(email);
-        const r = userId ? await storage.recoveryGet(userId) : null;
-        const saved = userId ? await storage.recoveryCancelGet(userId) : null;
         const code = typeof body.code === 'string' ? body.code : '';
-        const ok = !!r && windowOpen(r, now()) && !!saved && now() <= saved.expiresAt && sameHex(recoveryCancelHash(userId, code), saved.codeHash);
-        if (!ok) return send(res, 403, { error: 'wrong code' });
-        // Вернуть прежний пароль и отключить устройства, появившиеся после запроса. PIN не меняется.
-        if (r.windowPreviousHash) await storage.setPasswordHash(userId, r.windowPreviousHash);
-        for (const rec of await storage.devicesOfUser(userId)) {
-          if (!rec.revoked && rec.createdAt >= r.windowStartedAt) await revokeDevice(rec);
-        }
-        await storage.recoveryUpdate(userId, (cur) => ({ next: cancelWindow(cur), result: null }));
-        await storage.recoveryCancelClear(userId);
+        const result = userId
+          ? await storage.cancelRecoveryAtomic(userId, { nowMs: now(), cancelCodeHash: recoveryCancelHash(userId, code) })
+          : { status: 'wrong_code' };
+        if (result.status !== 'ok') return send(res, 403, { error: 'wrong code' });
         await mail(userId, 'Восстановление отменено', 'Восстановление отменено кодом отмены. Прежний пароль возвращён.');
         await alertDevices(userId, { kind: 'recovery_cancelled' });
         return send(res, 200, { ok: true });
@@ -2792,16 +2777,9 @@ if (req.method === 'POST' && p === '/login') {
       if (req.method === 'POST' && p === '/recovery/cancel') {
         const d = await authed(req);
         if (!d) return send(res, 401, { error: 'unauthorized' });
-        const r = await storage.recoveryGet(d.userId);
-        if (!windowOpen(r, now())) return send(res, 404, { error: 'no active recovery' });
-        // Отменить могут только устройства, существовавшие до запроса восстановления (D8).
-        if (!(d.createdAt < r.windowStartedAt)) return send(res, 403, { error: 'only devices that existed before the recovery can cancel' });
-        // Вернуть прежний пароль и отключить устройства, появившиеся после запроса. PIN не меняется.
-        if (r.windowPreviousHash) await storage.setPasswordHash(d.userId, r.windowPreviousHash);
-        for (const rec of await storage.devicesOfUser(d.userId)) {
-          if (!rec.revoked && rec.createdAt >= r.windowStartedAt) await revokeDevice(rec);
-        }
-        await storage.recoveryUpdate(d.userId, (cur) => ({ next: cancelWindow(cur), result: null }));
+        const result = await storage.cancelRecoveryAtomic(d.userId, { nowMs: now(), actorDeviceId: d.deviceId });
+        if (result.status === 'none') return send(res, 404, { error: 'no active recovery' });
+        if (result.status === 'forbidden') return send(res, 403, { error: 'only devices that existed before the recovery can cancel' });
         await mail(d.userId, 'Восстановление отменено',
           'Восстановление отменено с устройства, которое существовало до запроса. Прежний пароль возвращён.');
         await alertDevices(d.userId, { kind: 'recovery_cancelled' });
