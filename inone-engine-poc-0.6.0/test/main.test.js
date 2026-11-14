@@ -18,10 +18,16 @@ const CONFIG = {
   runMigrations: false,
 };
 
-test('production не запускается без PostgreSQL и не использует память', async () => {
+test('дублирующий POC-сервер запрещён для production даже с PostgreSQL', async () => {
+  const productionConfig = { ...CONFIG, nodeEnv: 'production', production: true };
+  const logger = createLogger({ level: 'error', write: () => {} });
   await assert.rejects(
-    startServer({ config: { ...CONFIG, nodeEnv: 'production', production: true }, logger: createLogger({ level: 'error', write: () => {} }) }),
-    /production server requires PostgreSQL/,
+    startServer({ config: productionConfig, logger }),
+    /inone-engine-poc is not a production backend/,
+  );
+  await assert.rejects(
+    startServer({ config: productionConfig, logger, pool: {} }),
+    /inone-engine-poc is not a production backend/,
   );
 });
 
