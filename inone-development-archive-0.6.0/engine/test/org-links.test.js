@@ -171,8 +171,7 @@ test('F-02 PostgreSQL: cross-organization link revocation waits for an in-flight
     assert.equal((await call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/accept`, s.carol.token, {})).status, 200);
 
     const originalConnect = s.pool.connect.bind(s.pool);
-    const originalPoolQuery = s.pool.query.bind(s.pool);
-    restorePoolHooks = () => { s.pool.connect = originalConnect; s.pool.query = originalPoolQuery; };
+    restorePoolHooks = () => { s.pool.connect = originalConnect; };
     let signalShareLock;
     let signalRevokeAttempt;
     const shareLockReady = new Promise((resolve) => { signalShareLock = resolve; });
@@ -180,6 +179,7 @@ test('F-02 PostgreSQL: cross-organization link revocation waits for an in-flight
     const joinGate = new Promise((resolve) => { releaseJoin = resolve; });
 
     // Hold the open-join transaction immediately after it acquires the active-link share lock.
+    // The revocation now locks the link row through its own transaction client.
     s.pool.connect = async (...args) => {
       if (args.length > 0) return originalConnect(...args); // preserve node-postgres callback-style callers
       const client = await originalConnect();
@@ -192,14 +192,10 @@ test('F-02 PostgreSQL: cross-organization link revocation waits for an in-flight
           await joinGate;
           return result;
         }
+        if (sql.includes('SELECT org_a, org_b, status FROM org_links WHERE link_id = $1 FOR UPDATE')) signalRevokeAttempt();
         return originalQuery(query, ...params);
       };
       return client;
-    };
-    s.pool.query = async (query, ...params) => {
-      const sql = typeof query === 'string' ? query : query?.text ?? '';
-      if (sql.includes('UPDATE org_links SET status')) signalRevokeAttempt();
-      return originalPoolQuery(query, ...params);
     };
 
     const joining = call(s.base, 'POST', `/rooms/${enc(ROOM)}/join`, s.carol.token, {});
