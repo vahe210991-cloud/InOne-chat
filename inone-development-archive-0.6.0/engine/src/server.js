@@ -27,7 +27,7 @@ import { readFileSync } from 'node:fs';
 import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, randomInt, randomUUID, scryptSync, timingSafeEqual, createPublicKey, createVerify } from 'node:crypto';
 import { createMemoryStore } from './store-memory.js';
 import { LOGIN_POLICY } from './login-throttle.js';
-import { windowOpen, requestCode, confirmLink, checkCode, completeRecovery, cancelWindow, issueIdentity, checkIdentity, closeWindowIfDue } from './recovery-rules.js';
+import { windowOpen, requestCode, confirmLink, issueIdentity, checkIdentity } from './recovery-rules.js';
 import { createMemorySms } from './sms.js';
 import { isPhone, requestPhoneCode, checkPhoneCode } from './phone-rules.js';
 import { normalizePhone } from './phone-international.js';
