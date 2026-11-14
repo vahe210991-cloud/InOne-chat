@@ -58,11 +58,11 @@ export async function startServer({ config, logger = createLogger({ level: confi
   await new Promise((resolve, reject) => {
     app.server.once('error', reject);
     app.server.listen(config.port, config.host, resolve);
-    const cleanupTimer = setInterval(() => {
-      app.sweepExpired().catch(() => {});
-    }, 10 * 60_000);
-    cleanupTimer.unref();
   });
+  const cleanupTimer = setInterval(() => {
+    app.sweepExpired().catch(() => {});
+  }, 10 * 60_000);
+  cleanupTimer.unref();
   const port = app.server.address().port;
   logger.info('server started', { port, environment: config.nodeEnv });
   if (config.devEmailCode) logger.warn('development email code is enabled: never use this in production', { environment: config.nodeEnv });
@@ -70,7 +70,9 @@ export async function startServer({ config, logger = createLogger({ level: confi
   const stop = () => {
     stopping ??= (async () => {
       logger.info('shutting down');
+      clearInterval(cleanupTimer);
       await new Promise((resolve) => app.server.close(resolve));
+      mailer?.close?.();
       if (pool) await pool.end();
       logger.info('stopped');
     })();
