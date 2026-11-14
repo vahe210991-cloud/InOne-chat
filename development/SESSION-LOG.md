@@ -1,3 +1,19 @@
+## 2026-11-14 17:01 — Owner request: Stage 4 / Flutter MLS integration audit
+
+- Owner explicitly requested work on six Beta 1.0 items: Flutter↔Rust MLS FFI, platform Keychain/Keystore + SQLCipher key transfer, Rust-owned session refresh, MLS message send/decrypt, encrypted-only attachments, and verified-phone recovery deep links.
+- Created isolated task branch `task/beta1-stage4-mls-merge-audit-2026-11-14` from Flutter migration HEAD `eda47ce560cb1468438460147cbd49cd2f4a4747`; no changes to main, PR #52, or PR #45.
+- Static audit found Stage 4 implementation in PR #45 (`feature/stage-4-native-mls-runtime-2026-11-11`, HEAD `016ba75045412652d362fa8c94ee166bfa371c23`), but it is not integrated into current Flutter branch. Branches diverged; wholesale merge would risk replacing newer Flutter app/UI.
+- PR #45 contains Rust session/KeyStore and Dart bridge source, but FRB generated bindings are absent and Android/iOS runtime acceptance is not proven. Current Flutter branch still owns refresh token in Dart.
+- MLS text send/decrypt exists in Stage 4 client source but current Flutter app is not connected. File attachments have no native encryption/upload/decrypt path; backend object storage stores the bytes it receives, so client-side AEAD + MLS-wrapped file key is required.
+- Recovery backend has SMS + email-link two-channel flow for verified-phone accounts. GET confirmation is preview-only; POST consumes the link. Current Flutter app has SC-08 source but no deep-link intake, no SC-08 route, and no confirm-link API method. Production SMS provider is currently disabled/not integrated; do not claim verified-phone recovery production-ready.
+- Detailed audit: [2026-11-14 Stage 4 / Flutter MLS integration audit](reports/2026-11-14-1701-stage4-flutter-mls-integration-audit.md).
+- Audit artifact commit: `cd24212752a50e280ed48f03249b6e783d06f787`. No product code changed; no Rust/Flutter tests, codegen, builds, device tests or Actions dispatch performed.
+- Exact blocker: available GitHub connector is repository-native and does not provide a complete private-repository working copy or build runner. The private repo cannot be cloned into the available Vercel sandbox through its public-Git-source contract. Broad multi-file native integration must wait for an authorized complete clone/Codespace/runner; do not attempt unverified partial file overlay.
+- Next: restore missing mandatory mandate file on a reviewed docs path; then reconcile PR #45 source selectively with current Flutter app on a full clone; generate FRB; run Rust/Flutter CI; complete Android/iOS runtime tests; design encrypted attachment flow; wire app links and verify SMS provider/domain association.
+- No merge, deployment, server start, secret handling, destructive change or production enablement.
+
+---
+
 ## 2026-11-14 — InOne engine stabilization and source reconciliation
 
 - Worked only on `feat/flutter-ui-dart-migration-2026-11-14`; `main` unchanged. At handoff, branch compare confirmed ahead of main / behind 0; latest code/test commit `24ed7477ed308f82d5e61c97bba5aac3f5f2da65`.
