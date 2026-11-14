@@ -10,6 +10,11 @@ import { createSmtpMailer } from './mail-smtp.js';
 
 /** Запускает сервер. pool = null — память (только для тестов и разработки). */
 export async function startServer({ config, logger = createLogger({ level: config.logLevel }), pool = null }) {
+  // Production must never fall back to the in-memory store: that would lose accounts,
+  // sessions and other persistent state on restart or when another process handles a request.
+  if ((config.production === true || config.nodeEnv === 'production') && !pool) {
+    throw new Error('production server requires PostgreSQL; refusing to start with the in-memory store');
+  }
   let store;
   if (pool) {
     if (config.runMigrations) await migrate(pool, { logger });
