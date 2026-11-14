@@ -569,8 +569,11 @@ export function createStore({ pool, pinPepper }) {
     },
 
     /** Возвращает устройство refresh-токена без изменения его состояния (для recovery preflight). */
-    async refreshTokenDevice(raw) {
-      const { rows } = await pool.query('SELECT device_key FROM refresh_tokens WHERE token_hash = $1', [keyed(pinPepper, 'refresh', raw)]);
+    async refreshTokenDevice(raw, nowMs) {
+      const { rows } = await pool.query(
+        'SELECT device_key FROM refresh_tokens WHERE token_hash = $1 AND used_at IS NULL AND expires_at > $2',
+        [keyed(pinPepper, 'refresh', raw), nowMs],
+      );
       return rows[0]?.device_key ?? null;
     },
 
