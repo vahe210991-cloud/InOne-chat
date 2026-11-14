@@ -19,6 +19,7 @@
 | `DATABASE_URL` | PostgreSQL connection string | обязательно |
 | `INONE_PIN_PEPPER` | HMAC pepper для PIN и кодов | случайный секрет, не менее 32 символов |
 | `INONE_DOCS_SECRET` | секрет защищённых служебных документов | случайный секрет, не менее 32 символов |
+| `INONE_OBJECT_SECRET` | постоянный HMAC-секрет подписанных upload/download URL | случайный секрет, не менее 32 символов; одинаковый на всех экземплярах сервера |
 | `INONE_PUBLIC_URL` | публичный URL сервиса | только `https://` |
 | `INONE_FILES_DIR` | постоянное файловое хранилище | обязательно |
 | `INONE_REGISTRATION_MODE` | `verified` или `open` | только `verified` |
@@ -35,7 +36,7 @@
 | `INONE_SMTP_USER`, `INONE_SMTP_PASSWORD` | SMTP credentials | если требует провайдер |
 | `INONE_SMTP_FROM` | адрес отправителя | обязательно |
 
-Production-конфигурация отклоняется без HTTPS URL, PostgreSQL URL, сильных секретов, SMTP с TLS, постоянного файлового каталога и выключенного test UI. Production startup через `src/main.js` дополнительно запрещает запуск без PostgreSQL pool. Телефон не требуется по умолчанию, пока SMS provider не подключён.
+Production-конфигурация отклоняется без HTTPS URL, PostgreSQL URL, сильных секретов (включая отдельный `INONE_OBJECT_SECRET`), SMTP с TLS, постоянного файлового каталога и выключенного test UI. Production startup через `src/main.js` дополнительно запрещает запуск без PostgreSQL pool. Телефон не требуется по умолчанию, пока SMS provider не подключён.
 
 ## Первый запуск
 
