@@ -63,7 +63,7 @@ class InOneSession extends ChangeNotifier {
         'email': email.trim(),
         'password': password,
         'deviceId': _deviceId,
-        'label': 'InOne Flutter test client',
+        'label': 'InOne mobile client',
         'platform': platform,
       },
     );
