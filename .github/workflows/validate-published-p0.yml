@@ -7,7 +7,9 @@ on:
       - "inone-development-archive-0.6.0/engine/**"
       - ".github/workflows/validate-published-p0.yml"
   push:
-    branches: [main]
+    branches:
+      - main
+      - feat/flutter-ui-dart-migration-2026-11-14
     paths:
       - "inone-development-archive-0.6.0/engine/**"
       - ".github/workflows/validate-published-p0.yml"
