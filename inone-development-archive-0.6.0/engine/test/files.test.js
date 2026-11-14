@@ -34,9 +34,9 @@ async function http(base, method, path, { token, body, headers = {} } = {}) {
 const jsonBody = (value) => JSON.stringify(value);
 const JSON_HEADERS = { 'content-type': 'application/json' };
 
-async function start() {
+async function start({ fileBaseUrl = null } = {}) {
   const db = await storeForTest(PEPPER);
-  const srv = createServer({ defaultOrgAutoJoin: true, registrationMode: 'open', requirePhone: false, pinPepper: PEPPER, store: db?.store, objectSecret: 'test-object-secret-0123456789abcdef' });
+  const srv = createServer({ defaultOrgAutoJoin: true, registrationMode: 'open', requirePhone: false, pinPepper: PEPPER, store: db?.store, objectSecret: 'test-object-secret-0123456789abcdef', ...(fileBaseUrl ? { fileBaseUrl } : {}) });
   await new Promise((resolve) => srv.server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${srv.server.address().port}`;
   const alice = await ChatClient.create(base, ALICE, 'A_PHONE', PW);
@@ -198,6 +198,21 @@ test('очистка: брошенные загрузки старше суто�
     await s.alice.renewSession(); // сутки прошли: сессия обновляется, как в приложении
     assert.equal((await http(s.base, 'GET', `/files/${enc(abandoned)}/url`, { token: s.alice.token })).status, 404, 'брошенная пропала');
     assert.equal((await http(s.base, 'GET', `/files/${enc(kept)}/url`, { token: s.alice.token })).status, 200, 'готовая осталась');
+  } finally {
+    await s.stop();
+  }
+});
+test('подписанные ссылки не используют подменённый Host заголовок', async () => {
+  const s = await start({ fileBaseUrl: 'https://files.inone.test' });
+  try {
+    const bytes = randomBytes(128);
+    const created = await http(s.base, 'POST', '/files', {
+      token: s.alice.token,
+      body: jsonBody({ kind: 'file', size: bytes.length, sha256: sha(bytes), roomId: ROOM }),
+      headers: { ...JSON_HEADERS, host: 'attacker.example' },
+    });
+    assert.equal(created.status, 200);
+    assert.equal(new URL(created.json.uploadUrl).origin, 'https://files.inone.test');
   } finally {
     await s.stop();
   }
