@@ -11,7 +11,9 @@
 - The 45-file Dart source package is under `mobile/lib/ui_dart_source/`.
 - The old HTML/WebView host is no longer the application entry point.
 - The 22 owner-approved root HTML reference screens were moved, without content changes, to `мусорный ящик/HTML-эталоны/`.
-- Other imported HTML bundles and old WebView support files are retained as reference material pending their archival/removal commit. They must not be reconnected to production navigation.
+- All 219 files from the former `mobile/assets/` HTML gallery/approval bundles, including HTML, JS, CSS, fonts and reference screenshots, were moved to `мусорный ящик/HTML-архив/mobile-assets/`.
+- The old WebView host, JS bridge, HTML screen catalogs, HTML-only tests and import scripts were moved to `мусорный ящик/Legacy-WebView-host/`.
+- There are no HTML assets or WebView source files under the active `mobile/` runtime. A CI guard checks this invariant.
 
 ## 2. Backend source of truth
 
