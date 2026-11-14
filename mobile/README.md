@@ -20,7 +20,8 @@ The native Flutter shell currently connects:
 5. Read-only current profile — `GET /profile`
 6. Current user's room list — `GET /rooms/mine`
 7. Current user's organization memberships — `GET /orgs/mine`
-8. Logout — `POST /logout`
+8. Public system status — `GET /config/public`
+9. Logout — `POST /logout`
 
 See [Dart/backend integration map](DART-BACKEND-INTEGRATION.md) for the screen-by-screen status, blocked operations, Beta 1.0 boundaries and security gates.
 
