@@ -29,6 +29,10 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
   String _screen = 'login';
   String _registrationEmail = '';
   String _registrationToken = '';
+  String _recoveryEmail = '';
+  String _pendingLoginEmail = '';
+  String _pendingLoginPassword = '';
+  String _waitingActivateAt = '';
   InOneProfile? _profile;
   List<InOneRoom> _rooms = const [];
   List<InOneOrganization> _organizations = const [];
@@ -118,15 +122,11 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
 
       final status = response['status'];
       if (status == 'waiting_period' && response['activateAt'] is String) {
-        final raw = response['activateAt'] as String;
-        final parsed = DateTime.tryParse(raw)?.toLocal();
-        final display = parsed == null
-            ? raw
-            : '${parsed.day.toString().padLeft(2, '0')}.${parsed.month.toString().padLeft(2, '0')}.${parsed.year} ${parsed.hour.toString().padLeft(2, '0')}:${parsed.minute.toString().padLeft(2, '0')}';
-        return InOneFailure(
-          InOneScreenState.error,
-          message: 'Вход с нового устройства станет доступен $display. После этого повторите вход.',
-        );
+        _pendingLoginEmail = email.trim();
+        _pendingLoginPassword = password;
+        _waitingActivateAt = _formatActivationTime(response['activateAt'] as String);
+        if (mounted) setState(() => _screen = 'loginWaiting');
+        return null;
       }
       if (status == 'approval_required') {
         return const InOneFailure(
@@ -135,10 +135,10 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
         );
       }
       if (status == 'identity_check_required') {
-        return const InOneFailure(
-          InOneScreenState.error,
-          message: 'Для входа требуется дополнительная проверка личности. Этот сценарий ещё не подключён.',
-        );
+        _pendingLoginEmail = email.trim();
+        _pendingLoginPassword = password;
+        if (mounted) setState(() => _screen = 'identityCode');
+        return null;
       }
       return const InOneFailure(
         InOneScreenState.error,
@@ -152,6 +152,103 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
   void _afterLogin() {
     if (_session.isAuthenticated) unawaited(_loadAuthenticatedData());
   }
+  String _formatActivationTime(String raw) {
+    final parsed = DateTime.tryParse(raw)?.toLocal();
+    if (parsed == null) return raw;
+    return '${parsed.day.toString().padLeft(2, '0')}.${parsed.month.toString().padLeft(2, '0')}.${parsed.year} ${parsed.hour.toString().padLeft(2, '0')}:${parsed.minute.toString().padLeft(2, '0')}';
+  }
+
+  Future<InOneFailure?> _confirmIdentityCode(String code) async {
+    try {
+      final result = await _session.login(
+        email: _pendingLoginEmail,
+        password: _pendingLoginPassword,
+        identityCode: code,
+      );
+      if (_session.isAuthenticated) return null;
+      if (result['status'] == 'identity_check_required') {
+        return const InOneFailure(InOneScreenState.error, message: 'Запрошен новый код подтверждения.');
+      }
+      return const InOneFailure(InOneScreenState.error, message: 'Сервер не выдал активную сессию.');
+    } catch (error) {
+      return _toFailure(error);
+    }
+  }
+
+  Future<InOneFailure?> _resendIdentityCode() async {
+    try {
+      final result = await _session.login(email: _pendingLoginEmail, password: _pendingLoginPassword);
+      if (_session.isAuthenticated || result['status'] == 'identity_check_required') return null;
+      return const InOneFailure(InOneScreenState.error, message: 'Не удалось повторно отправить код.');
+    } catch (error) {
+      return _toFailure(error);
+    }
+  }
+
+  Future<InOneFailure?> _recheckWaitingLogin() async {
+    try {
+      final result = await _session.login(email: _pendingLoginEmail, password: _pendingLoginPassword);
+      if (_session.isAuthenticated) return null;
+      if (result['status'] == 'waiting_period' && result['activateAt'] is String) {
+        _waitingActivateAt = _formatActivationTime(result['activateAt'] as String);
+        if (mounted) setState(() {});
+        return null;
+      }
+      return const InOneFailure(InOneScreenState.error, message: 'Вход пока не подтверждён.');
+    } catch (error) {
+      return _toFailure(error);
+    }
+  }
+
+  Future<InOneFailure?> _startRecovery(String email) async {
+    _recoveryEmail = email.trim();
+    try {
+      await _session.startRecovery(_recoveryEmail);
+      return null;
+    } catch (error) {
+      return _toFailure(error);
+    }
+  }
+
+  Future<InOneFailure?> _completeRecovery(String code, String newPassword, String pin) async {
+    try {
+      await _session.completeRecovery(
+        email: _recoveryEmail,
+        code: code,
+        newPassword: newPassword,
+        pin: pin,
+      );
+      return null;
+    } catch (error) {
+      return _toFailure(error);
+    }
+  }
+
+  Future<InOneFailure?> _cancelRecoveryByCode(String email, String code) async {
+    try {
+      await _session.cancelRecoveryByCode(email: email, code: code);
+      return null;
+    } catch (error) {
+      return _toFailure(error);
+    }
+  }
+
+  void _finishRecovery() {
+    setState(() {
+      _recoveryEmail = '';
+      _screen = 'login';
+    });
+    _notice('Восстановление завершено. Теперь войдите с новым паролем.');
+  }
+
+  void _finishRecoveryCancellation() {
+    setState(() {
+      _recoveryEmail = '';
+      _screen = 'login';
+    });
+    _notice('Восстановление отменено. Прежний пароль восстановлен.');
+  }
+
 
   Future<void> _loadAuthenticatedData() async {
     if (!_session.isAuthenticated) {
@@ -383,10 +480,40 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
             message: 'Вход через Google и Apple пока заблокирован: нативная проверка провайдера не подключена.',
           ),
           onRegister: () => setState(() => _screen = 'registerEmail'),
-          onForgotPassword: () => _notice(
-            'Восстановление временно отключено до подключения deep link подтверждения и утверждения предупреждения о сбросе ключей.',
-          ),
+          onForgotPassword: () => setState(() => _screen = 'recoveryStart'),
           onSuccess: _afterLogin,
+        );
+      case 'identityCode':
+        return InOneEmailCodeScreen(
+          onConfirm: _confirmIdentityCode,
+          onResend: _resendIdentityCode,
+          onBack: () => setState(() => _screen = 'login'),
+          onDone: _afterLogin,
+        );
+      case 'loginWaiting':
+        return InOneLoginWaitingScreen(
+          activateAt: _waitingActivateAt,
+          onRecheck: _recheckWaitingLogin,
+          onNotMe: () => setState(() => _screen = 'notYou'),
+          onDone: _afterLogin,
+        );
+      case 'recoveryStart':
+        return InOneRecoveryStartScreen(
+          onSubmit: _startRecovery,
+          onBack: () => setState(() => _screen = 'login'),
+          onEnterCode: () => setState(() => _screen = 'recoveryPassword'),
+          onNotMe: () => setState(() => _screen = 'notYou'),
+        );
+      case 'recoveryPassword':
+        return InOneNewPasswordScreen(
+          onSubmit: _completeRecovery,
+          onDone: _finishRecovery,
+        );
+      case 'notYou':
+        return InOneNotYouScreen(
+          onSubmit: _cancelRecoveryByCode,
+          onBack: () => setState(() => _screen = 'login'),
+          onDone: _finishRecoveryCancellation,
         );
       case 'registerEmail':
         return InOneRegisterEmailScreen(
