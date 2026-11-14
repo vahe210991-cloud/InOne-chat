@@ -17,7 +17,13 @@ export async function startServer({ config, logger = createLogger({ level: confi
   }
   let store;
   if (pool) {
-    if (config.runMigrations) await migrate(pool, { logger });
+    if (config.runMigrations) {
+      await migrate(pool, { logger });
+    } else {
+      // Even when schema changes are managed externally, fail before binding HTTP
+      // if PostgreSQL is unavailable; otherwise /healthz could report a false start.
+      await pool.query('SELECT 1');
+    }
     store = createStore({ pool, pinPepper: config.pinPepper });
   }
   const mailer = config.mailTransport === 'smtp'
