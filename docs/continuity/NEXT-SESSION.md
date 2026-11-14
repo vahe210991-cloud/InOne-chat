@@ -1,8 +1,8 @@
 # Immediate next steps — 2026-11-14 (engine stabilization)
 
-1. Verify exact current branch HEAD and clean worktree: `feat/flutter-ui-dart-migration-2026-11-14`; expected code/test commit `d98e749bb7ccc1eaa478a47fe304ba3dad6b9e92`. Do not modify `main`.
+1. Verify exact current branch HEAD and clean worktree: `feat/flutter-ui-dart-migration-2026-11-14`; expected code/test commit `24ed7477ed308f82d5e61c97bba5aac3f5f2da65`. Do not modify `main`.
 2. Inspect GitHub Actions for the current branch after the P0 workflow trigger update. Confirm Node 22, PostgreSQL 16, Rust 1.91 format/check/test jobs on one exact SHA. The available connector view previously returned only PR-triggered runs, so push-run status was not independently confirmed here.
-3. If CI fails, inspect the actual failing step/log before changing code. Do not infer a failure from the older Flutter workflow run #43571536430: it failed before steps and logs were unavailable (BlobNotFound).
+3. If CI fails, inspect the actual failing step/log before changing code. Do not infer a failure from the older Flutter workflow run #43573883217: it failed before steps and logs were unavailable (BlobNotFound).
 4. Run backend tests on a controlled environment: `npm ci`, `npm test`, clean PostgreSQL migration, `npm run test:db`, upgrade migration on a copy, and verify data integrity.
 5. Run Rust persistent OpenMLS client tests and FFI integration checks; confirm SQLCipher DB key is supplied by iOS Keychain / Android Keystore, not MemoryKeyStore.
 6. Run Flutter `dart format`, `flutter analyze`, `flutter test`, Android/iOS builds and physical-device MLS tests. Until these pass, keep message send/receive fail-closed and do not enable native MLS.
