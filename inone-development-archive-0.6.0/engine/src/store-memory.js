@@ -407,16 +407,22 @@ export function createMemoryStore({ pinPepper }) {
     createOrgLink({ linkId, proposingOrg, otherOrg, proposedBy, createdAt }) {
       const a = proposingOrg < otherOrg ? proposingOrg : otherOrg;
       const b = proposingOrg < otherOrg ? otherOrg : proposingOrg;
+      const orgA = organizations.get(a);
+      const orgB = organizations.get(b);
+      if (!orgA || !orgB) return { ok: false, reason: 'not_found' };
+      if (orgA.status !== 'approved' || orgB.status !== 'approved') return { ok: false, reason: 'not_approved' };
+      const actorRole = orgMembers.get(proposingOrg)?.get(proposedBy)?.role;
+      if (actorRole !== 'owner' && actorRole !== 'admin') return { ok: false, reason: 'forbidden' };
       for (const l of [...orgLinks.values()]) {
         if (l.orgA === a && l.orgB === b) {
-          if (l.status !== 'revoked') return false;
+          if (l.status !== 'revoked') return { ok: false, reason: 'already_exists' };
           orgLinks.delete(l.linkId);
         }
       }
       orgLinks.set(linkId, { linkId, orgA: a, orgB: b, status: 'proposed', proposingOrg, proposedBy, decidedBy: null, createdAt, decidedAt: null });
       adminActions.push({ orgId: proposingOrg, actor: proposedBy, action: 'link_propose', target: otherOrg, detail: linkId, at: createdAt });
       adminActions.push({ orgId: otherOrg, actor: proposedBy, action: 'link_propose', target: proposingOrg, detail: linkId, at: createdAt });
-      return true;
+      return { ok: true };
     },
     getOrgLink(linkId) {
       const l = orgLinks.get(linkId);
