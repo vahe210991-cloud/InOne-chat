@@ -46,7 +46,7 @@ The backend is not modified by this migration. Do not infer routes from screen l
 | Dart screen | Backend contract | Status | Notes |
 |---|---|---|---|
 | `inone_messages_screen.dart` | `GET /rooms/mine` | **Connected for room list** | Real room IDs, names and kinds are mapped. No last-message preview, timestamp or unread count is fabricated. |
-| `inone_chat_thread_screen.dart` | `GET /rooms/:id/events`, MLS commits/welcomes/sync, `POST /mls/groups/:id/messages` | **Blocked pending native MLS** | History contains encrypted events. Native MLS processing and durable encrypted local storage are required before history/send can be displayed. No plaintext fallback or direct event POST. |
+| `inone_chat_thread_screen.dart` | `GET /rooms/:id/events`, MLS commits/welcomes/sync, `POST /mls/groups/:id/messages` | **Blocked pending production native MLS** | The Rust `mls-bridge` is an in-memory POC with no Dart/FRB bridge or platform persistence; its own bridge report records an open plaintext-send defect. `mls-client` has SQLCipher storage but no Flutter bridge or production Keychain/Keystore `KeyStore` adapter. Mobile Android/iOS builds were not run. Neither crate is safe to expose to this screen yet. No plaintext fallback or direct event POST. |
 | `inone_profile_screen.dart` | `GET /profile` | **Connected read-only** | Name, email/handle and verification level are mapped. Task/activity/project counts show `—`; endpoint does not supply them. Profile editing is blocked; no verified update endpoint. |
 | `inone_org_profile_screen.dart` | `GET /orgs/mine` | **Partial / not active** | API provides organization name/status/role, not the members/projects/about/cover fields required by the design model. |
 | `inone_workspace_screen.dart` | No verified Beta 1.0 endpoint for task/project/activity metrics | **Blocked** | Do not fill the model with demo counts. |
@@ -103,7 +103,7 @@ Requests use the existing `InOneSession` / `ApiClient` / `InOneRepositories` bou
 - No backend routes or contracts were changed.
 - Stable IDs remain opaque strings; internal room IDs are not used as fallback display labels.
 - No sample message text, unread count, timestamps, task counts, project counts or organization statistics are fabricated.
-- MLS history/send remains fail-closed until native MLS processing and durable local persistence are integrated. Never use `POST /rooms/:id/events` as fallback.
+- MLS history/send remains fail-closed until a production Flutter/Rust bridge, platform Keychain/Keystore key provider, SQLCipher persistence, server session/token ownership, background sync and Android/iOS device tests are complete. The current in-memory `mls-bridge` POC is explicitly not production-safe. Never use `POST /rooms/:id/events` as fallback.
 - Do not ACK delivery/signal streams before durable local persistence.
 - RQ/PS Beta 1.0 scope discrepancy remains open.
 - Native provider login, recovery deep links, file picker/download, push token registration and localization selection remain separate integration tasks.
