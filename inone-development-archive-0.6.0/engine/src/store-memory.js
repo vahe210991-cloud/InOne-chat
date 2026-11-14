@@ -129,6 +129,38 @@ export function createMemoryStore({ pinPepper }) {
     createFile({ fileId, ownerId, roomId, kind, size, sha256, createdAt }) {
       files.set(fileId, { fileId, ownerId, roomId, kind, size, sha256, status: 'pending', createdAt, completedAt: null });
     },
+    reserveFile({ fileId, ownerId, roomId, kind, size, sha256, createdAt, pendingLimit, quotaBytes }) {
+      if (!accounts.has(ownerId)) return { ok: false, reason: 'owner' };
+      let orgId = null;
+      if (roomId !== null) {
+        const room = rooms.get(roomId);
+        if (!room) return { ok: false, reason: 'room' };
+        if (!room.members.has(ownerId)) return { ok: false, reason: 'membership' };
+        if (room.owner !== ownerId && !(room.capabilities.get(ownerId) ?? []).includes('send_messages')) {
+          return { ok: false, reason: 'capability' };
+        }
+        orgId = room.orgId ?? null;
+      }
+      const ownerFiles = [...files.values()].filter((f) => f.ownerId === ownerId);
+      if (ownerFiles.filter((f) => ['pending', 'uploaded'].includes(f.status)).length >= pendingLimit) {
+        return { ok: false, reason: 'pending_limit' };
+      }
+      const ownerBytes = ownerFiles.filter((f) => ['pending', 'uploaded', 'ready'].includes(f.status)).reduce((sum, f) => sum + f.size, 0);
+      if (quotaBytes !== null && ownerBytes + size > quotaBytes) return { ok: false, reason: 'owner_quota' };
+      if (orgId !== null) {
+        const orgQuota = orgSettingsMap.get(orgId)?.fileQuotaBytes ?? null;
+        if (orgQuota !== null) {
+          let orgBytes = 0;
+          for (const f of files.values()) {
+            const room = rooms.get(f.roomId);
+            if (room?.orgId === orgId && ['pending', 'uploaded', 'ready'].includes(f.status)) orgBytes += f.size;
+          }
+          if (orgBytes + size > orgQuota) return { ok: false, reason: 'org_quota' };
+        }
+      }
+      files.set(fileId, { fileId, ownerId, roomId, kind, size, sha256, status: 'pending', createdAt, completedAt: null });
+      return { ok: true };
+    },
     getFile(fileId) {
       const f = files.get(fileId);
       return f ? { ...f } : null;
