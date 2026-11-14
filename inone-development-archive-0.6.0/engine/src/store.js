@@ -305,11 +305,14 @@ export function createStore({ pool, pinPepper }) {
     },
     async setOrgSetting({ orgId, field, value, actor, at }) {
       const column = { maxGroupMembers: 'max_group_members', channelsEnabled: 'channels_enabled', fileQuotaBytes: 'file_quota_bytes' }[field];
-      const { rows } = await pool.query('SELECT max_group_members, channels_enabled, file_quota_bytes FROM org_settings WHERE org_id = $1', [orgId]);
-      const r = rows[0];
-      const old = !r ? { maxGroupMembers: null, channelsEnabled: true, fileQuotaBytes: null }[field] : { maxGroupMembers: r.max_group_members, channelsEnabled: r.channels_enabled, fileQuotaBytes: r.file_quota_bytes === null ? null : Number(r.file_quota_bytes) }[field];
-      await pool.query(`INSERT INTO org_settings (org_id, ${column}) VALUES ($1, $2) ON CONFLICT (org_id) DO UPDATE SET ${column} = EXCLUDED.${column}`, [orgId, value]);
-      await pool.query('INSERT INTO org_settings_log (org_id, actor, field, old_value, new_value, at) VALUES ($1, $2, $3, $4, $5, $6)', [orgId, actor, field, JSON.stringify(old), JSON.stringify(value), at]);
+      if (!column) throw new Error('invalid organization setting field');
+      return inTransaction(async (c) => {
+        const { rows } = await c.query('SELECT max_group_members, channels_enabled, file_quota_bytes FROM org_settings WHERE org_id = $1', [orgId]);
+        const r = rows[0];
+        const old = !r ? { maxGroupMembers: null, channelsEnabled: true, fileQuotaBytes: null }[field] : { maxGroupMembers: r.max_group_members, channelsEnabled: r.channels_enabled, fileQuotaBytes: r.file_quota_bytes === null ? null : Number(r.file_quota_bytes) }[field];
+        await c.query(`INSERT INTO org_settings (org_id, ${column}) VALUES ($1, $2) ON CONFLICT (org_id) DO UPDATE SET ${column} = EXCLUDED.${column}`, [orgId, value]);
+        await c.query('INSERT INTO org_settings_log (org_id, actor, field, old_value, new_value, at) VALUES ($1, $2, $3, $4, $5, $6)', [orgId, actor, field, JSON.stringify(old), JSON.stringify(value), at]);
+      });
     },
     async listOrgSettingsLog(orgId) {
       const { rows } = await pool.query('SELECT actor, field, old_value, new_value, at FROM org_settings_log WHERE org_id = $1 ORDER BY id', [orgId]);
