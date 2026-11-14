@@ -4,7 +4,7 @@ The production mobile entry point is now Flutter/Dart:
 
 - `lib/main.dart` → `InOneMobileApp`
 - `lib/app/inone_mobile_app.dart` — native application shell
-- `lib/ui_dart_source/` — the 45-file modular Dart UI package
+- `lib/ui_dart_source/` — the production Dart UI package (screens, models, theme and widgets); `example/ui_dart_source/` holds the two demo/gallery files outside the production library
 - `lib/core/network/`, `lib/core/session/`, `lib/core/data/` — shared API client, session and typed repositories
 
 The legacy HTML/WebView host is no longer the application entry point. Approved HTML source material is retained in the repository archive for design/reference purposes only; it is not an active production navigation target.
