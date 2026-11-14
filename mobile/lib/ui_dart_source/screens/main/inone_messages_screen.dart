@@ -150,12 +150,13 @@ class _ChatRow extends StatelessWidget {
                 children: [
                   Text(chat.name, style: InOneText.style(14, FontWeight.w700, c.text)),
                   const SizedBox(height: 3),
-                  Text(
-                    chat.lastMessage,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: InOneText.style(12, FontWeight.w400, c.muted),
-                  ),
+                  if (chat.lastMessage?.isNotEmpty == true)
+                    Text(
+                      chat.lastMessage!,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: InOneText.style(12, FontWeight.w400, c.muted),
+                    ),
                 ],
               ),
             ),
@@ -163,7 +164,8 @@ class _ChatRow extends StatelessWidget {
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text(chat.time, style: InOneText.style(11, FontWeight.w400, c.muted)),
+                if (chat.time.isNotEmpty)
+                  Text(chat.time, style: InOneText.style(11, FontWeight.w400, c.muted)),
                 if (chat.unread > 0) ...[
                   const SizedBox(height: 5),
                   InOneCountBadge(chat.unread),
