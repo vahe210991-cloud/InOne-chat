@@ -10,10 +10,10 @@ import { createSmtpMailer } from './mail-smtp.js';
 
 /** Запускает сервер. pool = null — память (только для тестов и разработки). */
 export async function startServer({ config, logger = createLogger({ level: config.logLevel }), pool = null }) {
-  // Production must never fall back to the in-memory store: that would lose accounts,
-  // sessions and other persistent state on restart or when another process handles a request.
-  if ((config.production === true || config.nodeEnv === 'production') && !pool) {
-    throw new Error('production server requires PostgreSQL; refusing to start with the in-memory store');
+  // This tree is retained for the persistent OpenMLS client and historical tests.
+  // Its duplicate Node server is behind the canonical P0 backend and must never be deployed.
+  if (config.production === true || config.nodeEnv === 'production') {
+    throw new Error('inone-engine-poc is not a production backend; use inone-development-archive-0.6.0/engine');
   }
   let store;
   if (pool) {
