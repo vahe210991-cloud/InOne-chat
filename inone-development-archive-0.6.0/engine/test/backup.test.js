@@ -60,7 +60,7 @@ dbTest('копия восстанавливается в пустую базу �
     const backups = execFileSync('bash', [path.join(root, 'scripts/backup-db.sh')], {
       env: { ...process.env, DATABASE_URL: srcUrl, FILES_DIR: objectsDir, BACKUP_DIR: dir },
       encoding: 'utf8',
-    }).trim().split('\\n');
+    }).trim().split('\n');
     const [dumpPath, filesArchive] = backups;
     assert.ok(filesArchive, 'создан отдельный архив object store');
 
