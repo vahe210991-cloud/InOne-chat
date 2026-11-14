@@ -172,3 +172,29 @@
 3. Продолжить аудит auth/session/OTP lifecycle, object storage, backup/restore и MLS Flutter FFI; исправлять только подтверждённые дефекты с регрессионными тестами.
 4. Проверить, что новая DB readiness ветка покрывает pool error и не меняет режим миграций.
 5. Не объявлять движок production-ready до runtime/backup/restore/SMTP/TLS/MLS и независимого security review.
+
+## 9. Follow-up hardening — session rotation, file URLs and restore atomicity
+
+Проверенный engine/code head до обновления документации: `133a8c8dc3d28fa3c923288354dbf98821e90afb`.
+
+### Исправления
+
+- **Refresh rotation:** ранее PostgreSQL сначала отдельным запросом помечал refresh token использованным, а затем другой транзакцией выпускал новую пару. Ошибка между этими действиями могла оставить пользователя без рабочей сессии. Добавлены `refreshTokenDevice` (read-only preflight) и `rotateSession`: новая ротация выполняет device-first row lock, затем блокирует refresh row, проверяет expiry/reuse/revocation, погашает старый токен и записывает access+refresh в одной транзакции. Ошибка вставки откатывает весь переход.
+- Маршрут `/token/refresh` выполняет due recovery до погашения токена и использует только `rotateSession`; PostgreSQL и memory adapters имеют одинаковый контракт.
+- Добавлены тесты конкурентной ротации, rollback при сбое вставки и включение `sessions.test.js` в `test:db` (раньше DB integration suite не запускал тесты сессий).
+- **Signed file URLs:** upload/download URL теперь в production строятся от настроенного `INONE_PUBLIC_URL` (`fileBaseUrl`), а не из недоверенного `Host` header и локального socket TLS state. Это устраняет host-header poisoning и ошибочную схему HTTP за TLS reverse proxy. Добавлен regression test с подменённым Host.
+- **DB restore:** `pg_restore` запускается с `--single-transaction`, чтобы SQL restore failure не оставлял частично восстановленную схему. Добавлена проверка этого требования.
+
+### Проверка и CI
+
+- Изменения закоммичены только в рабочую ветку. `main` не менялся.
+- Полный P0 workflow запущен на exact code SHA `133a8c8dc3d28fa3c923288354dbf98821e90afb`, run #43591312640. Все 6 jobs завершились failure примерно за 3–4 секунды; GitHub API показывает пустые `steps` для каждой job, а logs недоступны (BlobNotFound). Это означает, что ни Node, ни PostgreSQL, ни Rust checks не дали исполнимого результата; нельзя трактовать это как подтверждённые ошибки тестов или как PASS.
+- `npm test`, `npm run test:db`, Rust и Flutter команды локально в этой сессии не запускались.
+- PR #52 остаётся Draft/open, base — `stage0/identity-engineering-readiness-2026-11-13`; merge и retarget не выполнялись.
+
+### Следующие действия
+
+1. Восстановить доступность GitHub Actions runner / выяснить причину job-level failure до steps; затем повторить полный P0 matrix на актуальном SHA.
+2. Проверить реальные PostgreSQL tests конкурентной ротации и транзакционного rollback.
+3. Продолжить аудит account/session revocation, OTP rate limits, object storage recovery/consistency, backup file archive safety и MLS FFI.
+4. Не объявлять engine production-ready без runtime/restore/SMTP/TLS/MLS validation и независимого security review.
