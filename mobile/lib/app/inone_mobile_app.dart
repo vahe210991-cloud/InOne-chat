@@ -4,6 +4,7 @@ import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 
 import '../core/data/inone_profile.dart';
+import '../core/data/inone_organization.dart';
 import '../core/data/inone_repositories.dart';
 import '../core/data/inone_room.dart';
 import '../core/network/api_environment.dart';
@@ -30,6 +31,8 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
   String _registrationToken = '';
   InOneProfile? _profile;
   List<InOneRoom> _rooms = const [];
+  List<InOneOrganization> _organizations = const [];
+  InOneOrganization? _selectedOrganization;
   bool _darkMode = false;
   bool _initializing = true;
 
@@ -156,10 +159,13 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
     try {
       final profile = await _repositories.profile();
       final rooms = await _repositories.myRooms();
+      final organizations = await _repositories.myOrganizations();
       if (!mounted) return;
       setState(() {
         _profile = profile;
         _rooms = rooms;
+        _organizations = organizations;
+        _selectedOrganization = organizations.isEmpty ? null : organizations.first;
         _screen = 'messages';
       });
     } catch (_) {
@@ -225,6 +231,8 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
     setState(() {
       _profile = null;
       _rooms = const [];
+      _organizations = const [];
+      _selectedOrganization = null;
       _registrationEmail = '';
       _registrationToken = '';
       _screen = 'login';
@@ -258,6 +266,66 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
       projects: '—',
       verified: profile.verificationLevel > 0,
     );
+  }
+
+  InOneWorkspaceSummary get _workspaceSummary => InOneWorkspaceSummary(
+        name: _selectedOrganization?.name ?? 'Личное пространство',
+        activeProjects: null,
+        tasksDue: null,
+        teamMembers: null,
+        activeGroups: null,
+        projectsCaption: '',
+      );
+
+  InOneOrgProfile get _organizationProfile {
+    final org = _selectedOrganization!;
+    return InOneOrgProfile(
+      name: org.name,
+      subtitle: '${org.role} · ${org.status}',
+      members: null,
+      projects: null,
+      teams: null,
+      about: null,
+      verified: false,
+    );
+  }
+
+  void _openOrganization() {
+    if (_selectedOrganization == null) {
+      _notice('У этой учётной записи пока нет подтверждённых организаций.');
+      return;
+    }
+    setState(() => _screen = 'organization');
+  }
+
+  Future<void> _chooseOrganization() async {
+    if (_organizations.length < 2) {
+      _notice('Доступна одна организация. Переключение не требуется.');
+      return;
+    }
+    final selected = await showDialog<InOneOrganization>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Выберите организацию'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final org in _organizations)
+              ListTile(
+                title: Text(org.name),
+                subtitle: Text('${org.role} · ${org.status}'),
+                onTap: () => Navigator.of(dialogContext).pop(org),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (selected != null && mounted) {
+      setState(() {
+        _selectedOrganization = selected;
+        _screen = 'workspace';
+      });
+    }
   }
 
   void _selectTab(InOneTab tab) {
@@ -330,6 +398,35 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
         return const Scaffold(body: Center(child: CircularProgressIndicator()));
       case 'loadError':
         return InOneLoadingErrorScreen(onRetry: () => unawaited(_loadAuthenticatedData()));
+      case 'workspace':
+        return InOneWorkspaceScreen(
+          summary: _workspaceSummary,
+          modules: [
+            InOneModuleTile(label: 'Messages', icon: Icons.forum_outlined, onTap: () => setState(() => _screen = 'messages')),
+            InOneModuleTile(label: 'Organization', icon: Icons.business_outlined, onTap: _openOrganization),
+            InOneModuleTile(label: 'Profile', icon: Icons.person_outline, onTap: () => setState(() => _screen = 'profile')),
+            InOneModuleTile(label: 'Notifications', icon: Icons.notifications_outlined, onTap: () => _notice('Лента уведомлений пока не подключена к серверному контракту.')),
+          ],
+          activity: const [],
+          onSwitchWorkspace: _chooseOrganization,
+          onNotifications: () => _notice('Лента уведомлений пока не подключена к серверному контракту.'),
+          onCustomize: () => _notice('Настройка модулей пока недоступна.'),
+          onSeeAll: () => _notice('Лента активности пока не предоставляется backend.'),
+          onTab: _selectTab,
+          onAdd: () => _notice('Создание публикаций не входит в Beta 1.0.'),
+        );
+      case 'organization':
+        if (_selectedOrganization == null) {
+          return InOneLoadingErrorScreen(onRetry: () => unawaited(_loadAuthenticatedData()));
+        }
+        return InOneOrgProfileScreen(
+          profile: _organizationProfile,
+          onBack: () => setState(() => _screen = 'workspace'),
+          onMore: _chooseOrganization,
+          onEditCover: null,
+          onTab: _selectTab,
+          onAdd: () => _notice('Создание публикаций не входит в Beta 1.0.'),
+        );
       case 'messages':
         return InOneMessagesScreen(
           chats: _chatPreviews,
@@ -349,6 +446,16 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
         return InOneProfileScreen(
           profile: _userProfile,
           menu: [
+            InOneProfileMenuItem(
+              label: 'Рабочее пространство',
+              icon: Icons.workspaces_outline,
+              onTap: () => setState(() => _screen = 'workspace'),
+            ),
+            InOneProfileMenuItem(
+              label: 'Организация',
+              icon: Icons.business_outlined,
+              onTap: _openOrganization,
+            ),
             InOneProfileMenuItem(
               label: 'Выйти из аккаунта',
               icon: Icons.logout,
