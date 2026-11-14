@@ -192,7 +192,7 @@ test('F-02 PostgreSQL: cross-organization link revocation waits for an in-flight
           await joinGate;
           return result;
         }
-        if (sql.includes('SELECT org_a, org_b, proposed_by_org, status FROM org_links WHERE link_id = $1 FOR UPDATE')) signalRevokeAttempt();
+        if (sql.includes('SELECT org_id FROM organizations WHERE org_id = $1 FOR UPDATE')) signalRevokeAttempt();
         return originalQuery(query, ...params);
       };
       return client;
