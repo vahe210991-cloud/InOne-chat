@@ -115,13 +115,13 @@
 - Статическая инвентаризация: 173 уникальных `storage.<method>()` вызовов в canonical server; все имена найдены в PostgreSQL store и memory store. Это проверка наличия интерфейсных имён, а не доказательство корректности SQL/транзакций.
 - Сравнение route path literals и store operation names двух серверных деревьев завершено; результаты приведены в разделе 2.
 - SQL static scan: 328 `.query()` call sites; обнаружены только две interpolated SQL templates, обе используют allowlist-значения колонок (`setOrgSetting` и `setRoomAppearance`); string-concatenated SQL queries не обнаружены.
-- В `npm test` включены `migrate-runner.test.js` и `store-atomicity.test.js`; добавлены fake-client rollback tests для settings, request approval, member add/remove/role, link create/revoke. Это исходники тестов, не выполненный результат.
+- В `npm test` включены `migrate-runner.test.js` и `store-atomicity.test.js`; добавлены fake-client rollback tests для settings, request approval, member add/remove/role, link create/revoke; добавлен PostgreSQL race test для одновременных owner demotions и test concurrent duplicate link proposals. Это исходники тестов, не выполненный результат.
 
 ## 5. CI и runtime evidence
 
 - Исторический P0 CI на exact SHA из P0 closure report: 6/6 jobs PASS.
 - После новых изменений полный Node/PostgreSQL/Rust suite здесь не запускался.
-- Flutter workflow run #43571536430 завершился failure до выполнения steps; получение job logs вернуло BlobNotFound. Поэтому это не является ни тестовым провалом приложения, ни успешной проверкой.
+- Последний видимый Flutter workflow run #43573883217 (job #132383812030) завершился failure до выполнения steps; получение job logs вернуло BlobNotFound. Steps отсутствуют, поэтому Flutter tests не стартовали. Поэтому это не является ни тестовым провалом приложения, ни успешной проверкой.
 - Доступный workflow-runs wrapper показывает только PR-triggered runs; push run текущей ветки этим способом не подтверждён.
 - Локальные `npm test`, `npm run test:db`, `cargo test`, `flutter analyze` и `flutter test` не запускались.
 
