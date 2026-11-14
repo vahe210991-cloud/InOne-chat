@@ -18,6 +18,8 @@
 | `INONE_PIN_PEPPER` | перец для хэшей PIN и кодов | обязательна в продакшене |
 | `INONE_PUBLIC_URL` | публичный адрес за прокси, https в продакшене | — |
 | `INONE_REGISTRATION_MODE` | `verified` (с проверкой почты) или `open` | `verified` |
+| `INONE_REQUIRE_PHONE` | требовать телефон при регистрации; включать только при готовом SMS-провайдере | `false` |
+| `INONE_SMS_ENABLED` | включить SMS-проверку только с реальным провайдером | `false` |
 | `INONE_TRUST_PROXY` | доверять заголовкам прокси про адрес клиента | `false` |
 | `INONE_BODY_LIMIT_BYTES` | максимальный размер тела запроса | 4 МБ |
 | `INONE_REQUEST_TIMEOUT_MS` | время на запрос | 30 с |
