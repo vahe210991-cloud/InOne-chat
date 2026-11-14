@@ -112,8 +112,10 @@
 - В Flutter workflow остался один `push` block: PASS.
 - В P0 workflow добавлен trigger для текущей ветки: PASS.
 - Production PostgreSQL guard и новые regression tests присутствуют в исходниках: PASS.
-- Статическая инвентаризация: 177 уникальных `storage.<method>()` вызовов в canonical server; все имена найдены в PostgreSQL store и memory store. Это проверка наличия интерфейсных имён, а не доказательство корректности SQL/транзакций.
+- Статическая инвентаризация: 173 уникальных `storage.<method>()` вызовов в canonical server; все имена найдены в PostgreSQL store и memory store. Это проверка наличия интерфейсных имён, а не доказательство корректности SQL/транзакций.
 - Сравнение route path literals и store operation names двух серверных деревьев завершено; результаты приведены в разделе 2.
+- SQL static scan: 328 `.query()` call sites; обнаружены только две interpolated SQL templates, обе используют allowlist-значения колонок (`setOrgSetting` и `setRoomAppearance`); string-concatenated SQL queries не обнаружены.
+- В `npm test` включены `migrate-runner.test.js` и `store-atomicity.test.js`; добавлены fake-client rollback tests для settings, request approval, member add/remove/role, link create/revoke. Это исходники тестов, не выполненный результат.
 
 ## 5. CI и runtime evidence
 
