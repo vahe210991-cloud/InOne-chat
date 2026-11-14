@@ -17,7 +17,7 @@
 
 ## 2. Backend source of truth
 
-- `inone-engine-poc-0.6.0/src/server.js` — route handlers and request/response behavior.
+- `inone-development-archive-0.6.0/engine/src/server.js` — route handlers and request/response behavior.
 - `mobile/API-CONTRACTS-BETA-1.md` — existing screen-to-contract matrix and security constraints.
 - `development/integrations/FLUTTER-SCREEN-HANDOFF-FOR-CLAUDE.md` — Beta 1.0 boundary and integration requirements.
 
