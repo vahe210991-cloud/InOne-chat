@@ -376,7 +376,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
       case 'login':
         return InOneLoginScreen(
           onSubmit: _login,
-          onProvider: (provider) async => const InOneFailure(
+          onProvider: (_) async => const InOneFailure(
             InOneScreenState.error,
             message: 'Вход через Google и Apple пока заблокирован: нативная проверка провайдера не подключена.',
           ),
@@ -467,7 +467,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
         return InOneMessagesScreen(
           chats: _chatPreviews,
           unreadCountsAvailable: false,
-          onOpenChat: (chat) => _notice(
+          onOpenChat: (_) => _notice(
             'История и отправка сообщений заблокированы до подключения нативного MLS-клиента и зашифрованного локального хранилища. Сообщение не отправлено.',
           ),
           onSearch: () => _notice('Поиск по содержимому сообщений пока не реализован.'),
