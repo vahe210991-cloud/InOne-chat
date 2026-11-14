@@ -1,6 +1,7 @@
 import '../session/inone_session.dart';
 import 'inone_profile.dart';
 import 'inone_organization.dart';
+import 'inone_public_config.dart';
 import 'inone_room.dart';
 
 /// Typed backend repositories used by the native Flutter application.
@@ -25,8 +26,8 @@ class InOneRepositories {
       session.request('GET', '/approvals');
   Future<Map<String, dynamic>> organizationRequests() =>
       session.request('GET', '/org-requests');
-  Future<Map<String, dynamic>> publicConfig() =>
-      session.request('GET', '/config/public', authenticated: false);
+  Future<InOnePublicConfig> publicConfig() async =>
+      InOnePublicConfig.fromJson(await session.request('GET', '/config/public', authenticated: false));
 
   Future<Map<String, dynamic>> get(
     String path, {
