@@ -332,3 +332,10 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Earlier in this session: removed write permissions/automatic push from Rust format job; added PostgreSQL readiness probe before HTTP listen when migrations are disabled.
 - Latest engine code SHA before docs: `133a8c8dc3d28fa3c923288354dbf98821e90afb`. P0 run #43591312640 on exact SHA failed before steps in all six jobs; step arrays were empty and logs unavailable. No local tests were run; no test PASS is claimed.
 - `main` untouched; branch 376 ahead / 0 behind. PR #52 remains Draft/open with base `stage0/identity-engineering-readiness-2026-11-13`; no merge or retarget.
+
+## 2026-11-14 — Exact-head engine verification
+
+- Latest branch head: `dff9ebf9c69ac6ae08f6a91f7df3213652c3c87b`; branch 381 ahead / 0 behind main.
+- Static source checks confirmed the readiness probe, atomic refresh rotation, trusted production file URL origin, transactional DB restore, regression tests and PostgreSQL suite inclusion.
+- P0 run #43591433401 and Flutter run #43591437303 on exact head failed before any steps. P0's six jobs have empty step arrays; logs unavailable. No tests are confirmed as executed; no PASS claimed.
+- PR #52 remains Draft/open, base `stage0/identity-engineering-readiness-2026-11-13`. No merge, retarget, deployment or main-branch change.
