@@ -10,7 +10,7 @@ import { MLS_REGULAR_MAX_AGE_MS, MLS_LAST_RESORT_MAX_AGE_MS } from './mls-rules.
 import { DEFAULT_ADMIN_CAPABILITIES, DEFAULT_MEMBER_CAPABILITIES } from './room-permissions.js';
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { decideLogin } from './login-throttle.js';
-import { checkCode as checkRecoveryCode, completeRecovery as applyRecoveryCompletion, freshRecovery } from './recovery-rules.js';
+import { cancelWindow, checkCode as checkRecoveryCode, closeWindowIfDue, completeRecovery as applyRecoveryCompletion, freshRecovery, windowOpen } from './recovery-rules.js';
 import { freshPhone } from './phone-rules.js';
 import { applyHit } from './rate-limit.js';
 
@@ -745,35 +745,9 @@ export function createStore({ pool, pinPepper }) {
       return rows; // имена столбцов как в таблице: так читает журнал команда scripts/set-flag.mjs
     },
     async revokeDevice(deviceKey, nowMs = Date.now()) {
-      // Revoke identity, all credentials, queued delivery and pending MLS material atomically.
-      // Device row is the serialization point and matches rotateSession's device-first lock order.
       await inTransaction(async (c) => {
-        const { rows } = await c.query(
-          'SELECT user_id, device_id FROM devices WHERE device_key = $1 FOR UPDATE',
-          [deviceKey],
-        );
-        const device = rows[0];
-        if (!device) return;
-        await c.query('UPDATE devices SET revoked = TRUE WHERE device_key = $1', [deviceKey]);
-        await c.query('DELETE FROM tokens WHERE device_key = $1', [deviceKey]);
-        await c.query('DELETE FROM refresh_tokens WHERE device_key = $1', [deviceKey]);
-        await c.query('DELETE FROM device_keys WHERE device_key = $1', [deviceKey]);
-        await c.query('DELETE FROM one_time_keys WHERE device_key = $1', [deviceKey]);
-        await c.query('DELETE FROM inbox WHERE device_key = $1', [deviceKey]);
-        await c.query('DELETE FROM push_tokens WHERE device_key = $1', [deviceKey]);
-        await c.query('DELETE FROM device_signing_keys WHERE device_key = $1', [deviceKey]);
-        await c.query(
-          'DELETE FROM mls_key_packages WHERE user_id = $1 AND device_id = $2 AND consumed_at IS NULL',
-          [device.user_id, device.device_id],
-        );
-        await c.query(
-          'DELETE FROM mls_welcomes WHERE user_id = $1 AND device_id = $2 AND acked_at IS NULL',
-          [device.user_id, device.device_id],
-        );
-        await c.query(
-          "INSERT INTO mls_device_removals (room_id, user_id, device_id, created_at) SELECT g.room_id, $1, $2, $3 FROM mls_groups g JOIN room_members m ON m.room_id = g.room_id WHERE m.user_id = $1 AND g.epoch > 0 ON CONFLICT (room_id, user_id, device_id) DO NOTHING",
-          [device.user_id, device.device_id, nowMs],
-        );
+        const { rows } = await c.query('SELECT user_id, device_id FROM devices WHERE device_key = $1 FOR UPDATE', [deviceKey]);
+        if (rows[0]) await revokeDeviceInTransaction(c, deviceKey, rows[0], nowMs);
       });
     },
 
@@ -966,6 +940,59 @@ export function createStore({ pool, pinPepper }) {
       });
     },
 
+    /** Close the 48h window and revoke every pre-recovery device in the same transaction. */
+    async finalizeRecoveryDevices(userId, nowMs) {
+      return inTransaction(async (c) => {
+        await c.query('INSERT INTO recovery (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING', [userId]);
+        const { rows } = await c.query('SELECT * FROM recovery WHERE user_id = $1 FOR UPDATE', [userId]);
+        const current = fromRecoveryRow(rows[0]);
+        const closed = closeWindowIfDue(current, nowMs);
+        if (closed.dueSince === null) return { dueSince: null, revoked: 0 };
+        await persistRecoveryRow(c, userId, closed.next);
+        const devices = await c.query(
+          'SELECT device_key, user_id, device_id FROM devices WHERE user_id = $1 AND NOT revoked AND created_at < $2 ORDER BY device_key FOR UPDATE',
+          [userId, closed.dueSince],
+        );
+        for (const device of devices.rows) await revokeDeviceInTransaction(c, device.device_key, device, nowMs);
+        return { dueSince: closed.dueSince, revoked: devices.rows.length };
+      });
+    },
+
+    /** Cancel recovery with either a pre-existing device or the one-time email cancellation code. */
+    async cancelRecoveryAtomic(userId, { nowMs, actorDeviceId = null, cancelCodeHash = null }) {
+      return inTransaction(async (c) => {
+        const account = await c.query('SELECT password_hash FROM accounts WHERE user_id = $1 FOR UPDATE', [userId]);
+        if (account.rows.length === 0) return { status: 'none' };
+        await c.query('INSERT INTO recovery (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING', [userId]);
+        const { rows } = await c.query('SELECT * FROM recovery WHERE user_id = $1 FOR UPDATE', [userId]);
+        const current = fromRecoveryRow(rows[0]);
+        if (!windowOpen(current, nowMs)) return { status: 'none' };
+        if (actorDeviceId !== null) {
+          const device = await c.query(
+            'SELECT created_at, revoked FROM devices WHERE device_key = $1 AND user_id = $2 FOR UPDATE',
+            [`${userId}|${actorDeviceId}`, userId],
+          );
+          if (!device.rows[0] || device.rows[0].revoked || Number(device.rows[0].created_at) >= current.windowStartedAt) {
+            return { status: 'forbidden' };
+          }
+        } else {
+          const saved = await c.query('SELECT code_hash, expires_at FROM recovery_cancel_codes WHERE user_id = $1 FOR UPDATE', [userId]);
+          if (!saved.rows[0] || nowMs > Number(saved.rows[0].expires_at)
+              || !sameHex(saved.rows[0].code_hash, cancelCodeHash ?? '')) return { status: 'wrong_code' };
+        }
+        if (current.windowPreviousHash) {
+          await c.query('UPDATE accounts SET password_hash = $2 WHERE user_id = $1', [userId, current.windowPreviousHash]);
+        }
+        const devices = await c.query(
+          'SELECT device_key, user_id, device_id FROM devices WHERE user_id = $1 AND NOT revoked AND created_at >= $2 ORDER BY device_key FOR UPDATE',
+          [userId, current.windowStartedAt],
+        );
+        for (const device of devices.rows) await revokeDeviceInTransaction(c, device.device_key, device, nowMs);
+        await persistRecoveryRow(c, userId, cancelWindow(current));
+        await c.query('DELETE FROM recovery_cancel_codes WHERE user_id = $1', [userId]);
+        return { status: 'ok', revoked: devices.rows.length };
+      });
+    },
     /** Только хэши кодов и статусы: для снимка состояния в тестах. */
     async recoveryHashes() {
       const { rows } = await pool.query('SELECT user_id, req_status, req_code_hash FROM recovery WHERE req_code_hash IS NOT NULL');
