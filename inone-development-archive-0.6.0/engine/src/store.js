@@ -353,11 +353,16 @@ export function createStore({ pool, pinPepper }) {
     async createOrgLink({ linkId, proposingOrg, otherOrg, proposedBy, createdAt }) {
       const a = proposingOrg < otherOrg ? proposingOrg : otherOrg;
       const b = proposingOrg < otherOrg ? otherOrg : proposingOrg;
-      const existing = await pool.query('SELECT status FROM org_links WHERE org_a = $1 AND org_b = $2', [a, b]);
-      if (existing.rows[0] && existing.rows[0].status !== 'revoked') return false;
-      if (existing.rows[0]) await pool.query('DELETE FROM org_links WHERE org_a = $1 AND org_b = $2', [a, b]);
-      await pool.query("INSERT INTO org_links (link_id, org_a, org_b, proposed_by_org, status, proposed_by, created_at) VALUES ($1, $2, $3, $4, 'proposed', $5, $6)", [linkId, a, b, proposingOrg, proposedBy, createdAt]);
-      return true;
+      return inTransaction(async (c) => {
+        const { rowCount } = await c.query(
+          "INSERT INTO org_links (link_id, org_a, org_b, proposed_by_org, status, proposed_by, created_at) VALUES ($1, $2, $3, $4, 'proposed', $5, $6) ON CONFLICT (org_a, org_b) DO UPDATE SET link_id = EXCLUDED.link_id, proposed_by_org = EXCLUDED.proposed_by_org, status = 'proposed', proposed_by = EXCLUDED.proposed_by, created_at = EXCLUDED.created_at, decided_by = NULL, decided_at = NULL WHERE org_links.status = 'revoked' RETURNING link_id",
+          [linkId, a, b, proposingOrg, proposedBy, createdAt],
+        );
+        if (rowCount !== 1) return false;
+        await c.query("INSERT INTO admin_action_log (org_id, actor, action, target, detail, at) VALUES ($1, $2, 'link_propose', $3, $4, $5)", [proposingOrg, proposedBy, otherOrg, linkId, createdAt]);
+        await c.query("INSERT INTO admin_action_log (org_id, actor, action, target, detail, at) VALUES ($1, $2, 'link_propose', $3, $4, $5)", [otherOrg, proposedBy, proposingOrg, linkId, createdAt]);
+        return true;
+      });
     },
     async getOrgLink(linkId) {
       const { rows } = await pool.query('SELECT link_id, org_a, org_b, status, proposed_by_org FROM org_links WHERE link_id = $1', [linkId]);
@@ -368,11 +373,32 @@ export function createStore({ pool, pinPepper }) {
       await pool.query('UPDATE org_links SET status = $2, decided_by = $3, decided_at = $4 WHERE link_id = $1', [linkId, status, decidedBy, decidedAt]);
     },
     async transitionOrgLinkStatus({ linkId, fromStatus, status, decidedBy, decidedAt }) {
-      const { rowCount } = await pool.query(
-        'UPDATE org_links SET status = $3, decided_by = $4, decided_at = $5 WHERE link_id = $1 AND status = $2',
-        [linkId, fromStatus, status, decidedBy, decidedAt],
-      );
-      return rowCount === 1;
+      return inTransaction(async (c) => {
+        const { rows } = await c.query('SELECT org_a, org_b, status FROM org_links WHERE link_id = $1 FOR UPDATE', [linkId]);
+        const link = rows[0];
+        if (!link || link.status !== fromStatus) return false;
+        const { rowCount } = await c.query(
+          'UPDATE org_links SET status = $3, decided_by = $4, decided_at = $5 WHERE link_id = $1 AND status = $2',
+          [linkId, fromStatus, status, decidedBy, decidedAt],
+        );
+        if (rowCount !== 1) return false;
+        if (status === 'revoked') {
+          await c.query(`DELETE FROM room_members rm USING rooms r
+            WHERE rm.room_id = r.room_id AND r.org_id = $1
+              AND rm.user_id IN (SELECT user_id FROM org_members WHERE org_id = $2)
+              AND rm.user_id NOT IN (SELECT user_id FROM org_members WHERE org_id = $1)`, [link.org_a, link.org_b]);
+          await c.query(`DELETE FROM room_members rm USING rooms r
+            WHERE rm.room_id = r.room_id AND r.org_id = $2
+              AND rm.user_id IN (SELECT user_id FROM org_members WHERE org_id = $1)
+              AND rm.user_id NOT IN (SELECT user_id FROM org_members WHERE org_id = $2)`, [link.org_a, link.org_b]);
+        }
+        const action = status === 'active' ? 'link_accept' : status === 'revoked' ? 'link_revoke' : null;
+        if (action) {
+          await c.query('INSERT INTO admin_action_log (org_id, actor, action, target, detail, at) VALUES ($1, $2, $3, $4, $5, $6)', [link.org_a, decidedBy, action, link.org_b, linkId, decidedAt]);
+          await c.query('INSERT INTO admin_action_log (org_id, actor, action, target, detail, at) VALUES ($1, $2, $3, $4, $5, $6)', [link.org_b, decidedBy, action, link.org_a, linkId, decidedAt]);
+        }
+        return true;
+      });
     },
     async activeLinkBetween(x, y) {
       const a = x < y ? x : y;
