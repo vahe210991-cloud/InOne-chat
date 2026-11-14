@@ -262,9 +262,14 @@ export function createStore({ pool, pinPepper }) {
       return rows.map((r) => ({ requestId: r.request_id, applicantId: r.applicant_id, name: r.name, status: r.status, createdAt: Number(r.created_at) }));
     },
     async addOrgRequestDocument({ docId, requestId, kind, size, sha256, objectKey, uploadedBy, createdAt }) {
-      await inTransaction(async (c) => {
+      return inTransaction(async (c) => {
+        const { rows } = await c.query('SELECT applicant_id, status FROM org_requests WHERE request_id = $1 FOR UPDATE', [requestId]);
+        const request = rows[0];
+        if (!request || request.applicant_id !== uploadedBy) return { ok: false, reason: 'not_found' };
+        if (request.status !== 'pending') return { ok: false, reason: 'already_decided' };
         await c.query('INSERT INTO org_request_documents (doc_id, request_id, kind, size, sha256, object_key, uploaded_by, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)', [docId, requestId, kind, size, sha256, objectKey, uploadedBy, createdAt]);
         await c.query("INSERT INTO org_request_log (request_id, actor, action, at) VALUES ($1, $2, 'document', $3)", [requestId, uploadedBy, createdAt]);
+        return { ok: true };
       });
     },
     async listOrgRequestDocuments(requestId) {
@@ -279,17 +284,24 @@ export function createStore({ pool, pinPepper }) {
     },
     async decideOrgRequest({ requestId, status, decidedBy, decidedAt, orgId }) {
       return inTransaction(async (c) => {
+        const { rows: roleRows } = await c.query('SELECT role FROM platform_roles WHERE user_id = $1 FOR UPDATE', [decidedBy]);
+        if (roleRows[0]?.role !== 'owner') return { ok: false, reason: 'forbidden' };
+        const { rows } = await c.query('SELECT status FROM org_requests WHERE request_id = $1 FOR UPDATE', [requestId]);
+        if (!rows[0]) return { ok: false, reason: 'not_found' };
+        if (rows[0].status !== 'pending') return { ok: false, reason: 'already_decided' };
         const { rowCount } = await c.query(
           "UPDATE org_requests SET status = $2, decided_by = $3, decided_at = $4, org_id = $5 WHERE request_id = $1 AND status = 'pending'",
           [requestId, status, decidedBy, decidedAt, orgId],
         );
-        if (rowCount !== 1) return false;
+        if (rowCount !== 1) return { ok: false, reason: 'already_decided' };
         await c.query('INSERT INTO org_request_log (request_id, actor, action, at) VALUES ($1, $2, $3, $4)', [requestId, decidedBy, status === 'approved' ? 'approve' : 'reject', decidedAt]);
-        return true;
+        return { ok: true };
       });
     },
     async approveOrgRequest({ requestId, decidedBy, decidedAt }) {
       return inTransaction(async (c) => {
+        const { rows: roleRows } = await c.query('SELECT role FROM platform_roles WHERE user_id = $1 FOR UPDATE', [decidedBy]);
+        if (roleRows[0]?.role !== 'owner') return { ok: false, reason: 'forbidden' };
         const { rows } = await c.query('SELECT applicant_id, name, status FROM org_requests WHERE request_id = $1 FOR UPDATE', [requestId]);
         const request = rows[0];
         if (!request) return { ok: false, reason: 'not_found' };
