@@ -687,6 +687,53 @@ export function createStore({ pool, pinPepper }) {
     async createFile({ fileId, ownerId, roomId, kind, size, sha256, createdAt }) {
       await pool.query('INSERT INTO files (file_id, owner_id, room_id, kind, size, sha256, status, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)', [fileId, ownerId, roomId, kind, size, sha256, 'pending', createdAt]);
     },
+    /**
+     * Reserve quota and pending-upload capacity under row locks before creating metadata.
+     * Owner and organization usage checks can no longer race across concurrent uploads.
+     */
+    async reserveFile({ fileId, ownerId, roomId, kind, size, sha256, createdAt, pendingLimit, quotaBytes }) {
+      return inTransaction(async (c) => {
+        const owner = await c.query('SELECT user_id FROM accounts WHERE user_id = $1 FOR UPDATE', [ownerId]);
+        if (owner.rows.length === 0) return { ok: false, reason: 'owner' };
+        let orgId = null;
+        if (roomId !== null) {
+          const room = await c.query('SELECT owner, org_id FROM rooms WHERE room_id = $1 FOR UPDATE', [roomId]);
+          if (!room.rows[0]) return { ok: false, reason: 'room' };
+          const member = await c.query('SELECT capabilities FROM room_members WHERE room_id = $1 AND user_id = $2 FOR UPDATE', [roomId, ownerId]);
+          if (!member.rows[0]) return { ok: false, reason: 'membership' };
+          const canSend = room.rows[0].owner === ownerId || (member.rows[0].capabilities ?? []).includes('send_messages');
+          if (!canSend) return { ok: false, reason: 'capability' };
+          orgId = room.rows[0].org_id;
+        }
+        const usage = await c.query(
+          `SELECT COUNT(*) FILTER (WHERE status IN ('pending', 'uploaded'))::int AS pending,
+                  COALESCE(SUM(size) FILTER (WHERE status IN ('pending', 'uploaded', 'ready')), 0)::bigint AS bytes
+             FROM files WHERE owner_id = $1`,
+          [ownerId],
+        );
+        if (Number(usage.rows[0].pending) >= pendingLimit) return { ok: false, reason: 'pending_limit' };
+        if (quotaBytes !== null && Number(usage.rows[0].bytes) + size > quotaBytes) return { ok: false, reason: 'owner_quota' };
+        if (orgId !== null) {
+          await c.query('SELECT org_id FROM organizations WHERE org_id = $1 FOR UPDATE', [orgId]);
+          const settings = await c.query('SELECT file_quota_bytes FROM org_settings WHERE org_id = $1', [orgId]);
+          const orgQuota = settings.rows[0]?.file_quota_bytes == null ? null : Number(settings.rows[0].file_quota_bytes);
+          if (orgQuota !== null) {
+            const orgUsage = await c.query(
+              `SELECT COALESCE(SUM(f.size), 0)::bigint AS bytes
+                 FROM files f JOIN rooms r ON r.room_id = f.room_id
+                WHERE r.org_id = $1 AND f.status IN ('pending', 'uploaded', 'ready')`,
+              [orgId],
+            );
+            if (Number(orgUsage.rows[0].bytes) + size > orgQuota) return { ok: false, reason: 'org_quota' };
+          }
+        }
+        await c.query(
+          'INSERT INTO files (file_id, owner_id, room_id, kind, size, sha256, status, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+          [fileId, ownerId, roomId, kind, size, sha256, 'pending', createdAt],
+        );
+        return { ok: true };
+      });
+    },
     async getFile(fileId) {
       const { rows } = await pool.query('SELECT file_id, owner_id, room_id, kind, size, sha256, status, created_at, completed_at FROM files WHERE file_id = $1', [fileId]);
       const r = rows[0];
