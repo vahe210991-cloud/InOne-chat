@@ -18,6 +18,13 @@ const CONFIG = {
   runMigrations: false,
 };
 
+test('production не запускается без PostgreSQL и не использует память', async () => {
+  await assert.rejects(
+    startServer({ config: { ...CONFIG, nodeEnv: 'production', production: true }, logger: createLogger({ level: 'error', write: () => {} }) }),
+    /production server requires PostgreSQL/,
+  );
+});
+
 test('сервер поднимается, отвечает и останавливается', async () => {
   const app = await startServer({ config: CONFIG, logger: createLogger({ level: 'error', write: () => {} }) });
   const base = `http://127.0.0.1:${app.port}`;
