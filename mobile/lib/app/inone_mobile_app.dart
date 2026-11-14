@@ -252,7 +252,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
       name: profile.nickname?.isNotEmpty == true
           ? profile.nickname!
           : (profile.email ?? 'Пользователь'),
-      handle: profile.email ?? profile.userId,
+      handle: profile.email ?? 'Аккаунт InOne',
       myTasks: '—',
       activity: '—',
       projects: '—',
