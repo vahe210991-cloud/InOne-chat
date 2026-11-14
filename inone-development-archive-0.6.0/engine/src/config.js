@@ -39,17 +39,27 @@ export function loadConfig(env = process.env) {
   };
   const errors = [];
   if (!config.databaseUrl) errors.push('DATABASE_URL is required');
+  else {
+    try {
+      const database = new URL(config.databaseUrl);
+      if (!['postgres:', 'postgresql:'].includes(database.protocol) || database.hostname.toLowerCase() === 'host' || database.hostname.toLowerCase().includes('example')) errors.push('DATABASE_URL must be a valid PostgreSQL URL, not a placeholder');
+    } catch {
+      errors.push('DATABASE_URL must be a valid PostgreSQL URL');
+    }
+  }
   if (!['verified', 'open'].includes(config.registrationMode)) errors.push('INONE_REGISTRATION_MODE must be verified or open');
   if (!Number.isInteger(config.port) || config.port < 0 || config.port > 65535) errors.push('PORT must be a port number');
   if (!Number.isInteger(config.bodyLimitBytes) || config.bodyLimitBytes < 1024) errors.push('INONE_BODY_LIMIT_BYTES must be at least 1024');
+  if (!Number.isInteger(config.requestTimeoutMs) || config.requestTimeoutMs < 1000 || config.requestTimeoutMs > 300000) errors.push('INONE_REQUEST_TIMEOUT_MS must be between 1000 and 300000');
+  if (config.fileQuotaBytes !== null && (!Number.isSafeInteger(config.fileQuotaBytes) || config.fileQuotaBytes <= 0)) errors.push('INONE_FILE_QUOTA_BYTES must be a positive safe integer');
   if (production) {
     if (config.registrationMode === 'open') errors.push('open registration is not allowed in production');
     if (config.pinPepper.length < 32) errors.push('INONE_PIN_PEPPER must be at least 32 characters in production');
     if (TEST_SECRET_MARKERS.some((m) => config.pinPepper.toLowerCase().includes(m))) errors.push('INONE_PIN_PEPPER looks like a test or example value');
     if (TEST_SECRET_MARKERS.some((m) => config.docsSecret.toLowerCase().includes(m))) errors.push('INONE_DOCS_SECRET looks like a test or example value');
     if (!config.publicUrl.startsWith('https://')) errors.push('INONE_PUBLIC_URL must start with https:// in production');
-    if (/\\.example(?:\\.|$)/i.test(config.publicUrl)) errors.push('INONE_PUBLIC_URL must not use an example domain');
-    // Коды подтверждения должны уходить на почту. В этой сборке реального транспорта нет: продакшен не стартует молча.
+    if (config.publicUrl.toLowerCase().includes('example')) errors.push('INONE_PUBLIC_URL must not use an example domain');
+    // Production verification codes must use a real SMTP transport; memory mail is test-only.
     if (config.mailTransport !== 'smtp') errors.push('production needs a real mail transport: set INONE_MAIL_TRANSPORT=smtp');
     if (config.smsEnabled) errors.push('production SMS provider is not integrated; INONE_SMS_ENABLED must remain false');
     if (config.requirePhone) errors.push('INONE_REQUIRE_PHONE must remain false until a production SMS provider is integrated');
