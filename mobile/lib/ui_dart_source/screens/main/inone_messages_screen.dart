@@ -16,12 +16,14 @@ class InOneMessagesScreen extends StatefulWidget {
     required this.onTab,
     required this.onAdd,
     this.onFilter,
+    this.unreadCountsAvailable = true,
   });
 
   final List<InOneChatPreview> chats;
   final ValueChanged<InOneChatPreview> onOpenChat;
   final VoidCallback onSearch;
   final VoidCallback? onFilter;
+  final bool unreadCountsAvailable;
   final ValueChanged<InOneTab> onTab;
 
   /// «+» — добавить публикацию.
@@ -35,6 +37,11 @@ class _InOneMessagesScreenState extends State<InOneMessagesScreen> {
   int _filter = 0;
 
   List<InOneChatPreview> get _visible {
+    if (!widget.unreadCountsAvailable) {
+      return _filter == 1
+          ? widget.chats.where((c) => c.kind == InOneChatKind.group).toList()
+          : widget.chats;
+    }
     switch (_filter) {
       case 1:
         return widget.chats.where((c) => c.unread > 0).toList();
@@ -72,7 +79,9 @@ class _InOneMessagesScreenState extends State<InOneMessagesScreen> {
             InOneSearchBar(hint: 'Search messages', onTap: widget.onSearch),
             const SizedBox(height: 14),
             InOneFilterChips(
-              labels: const ['All', 'Unread', 'Groups'],
+              labels: widget.unreadCountsAvailable
+                  ? const ['All', 'Unread', 'Groups']
+                  : const ['All', 'Groups'],
               selectedIndex: _filter,
               onChanged: (i) => setState(() => _filter = i),
             ),
