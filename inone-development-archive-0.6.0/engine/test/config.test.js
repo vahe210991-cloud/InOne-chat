@@ -14,6 +14,15 @@ const GOOD = {
   INONE_FILES_DIR: '/var/lib/inone/objects',
 };
 
+test('телефон не требуется без явного включения, SMS выключен по умолчанию', () => {
+  const config = loadConfig({ NODE_ENV: 'development', DATABASE_URL: 'postgresql://db.example/inone' });
+  assert.equal(config.requirePhone, false);
+  assert.equal(config.smsEnabled, false);
+  const phoneRequired = loadConfig({ NODE_ENV: 'development', DATABASE_URL: 'postgresql://db.example/inone', INONE_REQUIRE_PHONE: 'true', INONE_SMS_ENABLED: 'true' });
+  assert.equal(phoneRequired.requirePhone, true);
+  assert.equal(phoneRequired.smsEnabled, true);
+});
+
 test('продакшен без реального почтового транспорта не стартует', () => {
   assert.throws(() => loadConfig(GOOD), /needs a real mail transport/);
   assert.throws(() => loadConfig({ ...GOOD, INONE_MAIL_TRANSPORT: 'smtp' }), /INONE_SMTP_HOST is required/);
