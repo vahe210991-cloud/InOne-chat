@@ -1,6 +1,6 @@
 ## 2026-11-14 — InOne engine stabilization and source reconciliation
 
-- Worked only on `feat/flutter-ui-dart-migration-2026-11-14`; `main` unchanged. At handoff, branch compare was ahead 280 / behind 0; latest code/test commit `9747f91ecef04db34379578c3d7132d54eb7815f`.
+- Worked only on `feat/flutter-ui-dart-migration-2026-11-14`; `main` unchanged. At handoff, branch compare was ahead 280 / behind 0; latest code/test commit `fbabc237fc18c3f6b77b6983ba2c6deffb33323b`.
 - Reconciled backend ownership: canonical Node/PostgreSQL P0 source is `inone-development-archive-0.6.0/engine/`; `inone-engine-poc-0.6.0/` is not a production server. POC Node startup now refuses production even with a DB pool; persistent OpenMLS client is retained.
 - Canonical backend production startup now requires PostgreSQL; added regression test. Phone verification defaults off; production config refuses SMS/phone-required until a real SMS provider is integrated. Added placeholder rejection for secrets, PostgreSQL URL, public URL and SMTP credentials, plus request timeout/file quota validation tests.
 - Matrix crypto package moved to devDependencies in canonical backend lockfile; server cleanup interval and SMTP transport now close on graceful shutdown.
