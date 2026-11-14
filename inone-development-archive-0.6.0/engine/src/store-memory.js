@@ -8,7 +8,7 @@ import { MLS_REGULAR_MAX_AGE_MS, MLS_LAST_RESORT_MAX_AGE_MS } from './mls-rules.
 import { DEFAULT_ADMIN_CAPABILITIES, DEFAULT_MEMBER_CAPABILITIES } from './room-permissions.js';
 import { createHmac, randomBytes } from 'node:crypto';
 import { decideLogin } from './login-throttle.js';
-import { freshRecovery } from './recovery-rules.js';
+import { checkCode as checkRecoveryCode, completeRecovery as applyRecoveryCompletion, freshRecovery } from './recovery-rules.js';
 import { freshPhone } from './phone-rules.js';
 import { applyHit } from './rate-limit.js';
 import { freshEmailCode } from './email-code-rules.js';
@@ -645,6 +645,27 @@ export function createMemoryStore({ pinPepper }) {
       const { next, result } = change(cur ? structuredClone(cur) : freshRecovery());
       recovery.set(userId, structuredClone(next));
       return result;
+    },
+    completeRecoveryAtomic(userId, { codeHash, nowMs, passwordHash, cancelCodeHash }) {
+      if (!accounts.has(userId)) return { status: 'none' };
+      const current = structuredClone(recovery.get(userId) ?? freshRecovery());
+      const checked = checkRecoveryCode(current, {
+        nowMs,
+        codeOk: !!current.reqCodeHash && current.reqCodeHash === codeHash,
+      });
+      if (checked.outcome !== 'ok') {
+        recovery.set(userId, structuredClone(checked.next));
+        return { status: checked.outcome };
+      }
+      const next = applyRecoveryCompletion(current, { nowMs, previousHash: accounts.get(userId) });
+      next.reqCodeHash = null;
+      next.reqLinkHash = null;
+      next.reqLinkConfirmed = false;
+      next.reqAttempts = 0;
+      accounts.set(userId, passwordHash);
+      recovery.set(userId, structuredClone(next));
+      recoveryCancels.set(userId, { codeHash: cancelCodeHash, expiresAt: next.windowKeyResetAt });
+      return { status: 'ok', keyResetAt: next.windowKeyResetAt };
     },
     recoveryHashes() {
       return Object.fromEntries([...recovery]
