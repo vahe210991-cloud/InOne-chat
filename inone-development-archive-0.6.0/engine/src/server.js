@@ -1491,7 +1491,6 @@ if (req.method === 'POST' && orgLinkActRoute) {
     return send(res, 200, { status: 'active' });
   }
   if (link.status === 'revoked') return send(res, 409, { error: 'link is already revoked' });
-  const other = link.orgA === orgId ? link.orgB : link.orgA;
   const transitioned = await storage.transitionOrgLinkStatus({
     linkId, orgId, fromStatus: link.status, status: 'revoked', decidedBy: d.userId, decidedAt: now(),
   });
