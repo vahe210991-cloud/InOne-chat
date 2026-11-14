@@ -1108,7 +1108,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         const raw = typeof body.refreshToken === 'string' ? body.refreshToken : '';
         // Complete recovery actions before consuming the refresh token. The store then
         // rotates both tokens atomically and rechecks device revocation under a row lock.
-        const deviceKey = raw ? await storage.refreshTokenDevice(raw) : null;
+        const deviceKey = raw ? await storage.refreshTokenDevice(raw, now()) : null;
         if (deviceKey) {
           const before = await storage.deviceRecord(deviceKey);
           if (before) await finalizeRecoveryIfDue(before.userId);
