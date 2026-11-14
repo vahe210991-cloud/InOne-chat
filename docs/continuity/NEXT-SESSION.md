@@ -1,3 +1,18 @@
+# Immediate next steps — 2026-11-14 (engine stabilization)
+
+1. Verify exact current branch HEAD and clean worktree: `feat/flutter-ui-dart-migration-2026-11-14`; expected code/test commit `9747f91ecef04db34379578c3d7132d54eb7815f`. Do not modify `main`.
+2. Inspect GitHub Actions for the current branch after the P0 workflow trigger update. Confirm Node 22, PostgreSQL 16, Rust 1.91 format/check/test jobs on one exact SHA. The available connector view previously returned only PR-triggered runs, so push-run status was not independently confirmed here.
+3. If CI fails, inspect the actual failing step/log before changing code. Do not infer a failure from the older Flutter workflow run #43571536430: it failed before steps and logs were unavailable (BlobNotFound).
+4. Run backend tests on a controlled environment: `npm ci`, `npm test`, clean PostgreSQL migration, `npm run test:db`, upgrade migration on a copy, and verify data integrity.
+5. Run Rust persistent OpenMLS client tests and FFI integration checks; confirm SQLCipher DB key is supplied by iOS Keychain / Android Keystore, not MemoryKeyStore.
+6. Run Flutter `dart format`, `flutter analyze`, `flutter test`, Android/iOS builds and physical-device MLS tests. Until these pass, keep message send/receive fail-closed and do not enable native MLS.
+7. On target infrastructure, verify SMTP delivery, TLS/proxy, backup/restore, multi-instance behavior, monitoring and alerts.
+8. Preserve POC source history; do not move the entire `inone-engine-poc-0.6.0/` directory to trash because its persistent OpenMLS client is still needed. Its duplicate Node server is blocked from production.
+
+Evidence: [engine stability audit](../../development/reports/2026-11-14-engine-stability-audit.md). No PR merge is authorized by this handoff.
+
+---
+
 # Immediate next steps — 2026-11-09 12:11 Europe/Tallinn
 
 1. Run Flutter CI independently on post-import PR #36 head `cb09a4058719576df6d589f1f8b59be517b592b5`; verify the exact candidate SHA.
