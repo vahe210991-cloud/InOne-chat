@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:inone_mobile/ui_dart_source/inone.dart';
 import 'inone_demo_data.dart';
 
+void main() => runApp(const InOneGalleryApp());
+
 /// ДЕМО-галерея всех экранов InOne (только для предпросмотра, не для продакшена).
 /// Запуск: `runApp(const InOneGalleryApp());`
 class InOneGalleryApp extends StatefulWidget {
