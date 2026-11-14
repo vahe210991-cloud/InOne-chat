@@ -158,3 +158,30 @@ test('member removal and its audit row roll back together', async () => {
   assert.ok(statements.includes('ROLLBACK'));
   assert.equal(statements.includes('COMMIT'), false);
 });
+
+test('device revocation rolls back credentials and MLS cleanup as one transaction', async () => {
+  const statements = [];
+  const client = {
+    async query(sql) {
+      statements.push(sql);
+      if (sql.startsWith('SELECT user_id, device_id FROM devices')) {
+        return { rows: [{ user_id: '@alice', device_id: 'phone-1' }], rowCount: 1 };
+      }
+      if (sql.startsWith('INSERT INTO mls_device_removals')) {
+        throw new Error('simulated MLS removal marker failure');
+      }
+      return { rows: [], rowCount: 1 };
+    },
+    release() { statements.push('RELEASE'); },
+  };
+  const store = createStore({ pool: { async connect() { return client; } }, pinPepper: 'a'.repeat(48) });
+  await assert.rejects(store.revokeDevice('@alice|phone-1', 1234), /simulated MLS removal marker failure/);
+  assert.ok(statements.includes('BEGIN'));
+  for (const table of ['tokens', 'refresh_tokens', 'device_keys', 'one_time_keys', 'inbox', 'push_tokens', 'device_signing_keys', 'mls_key_packages', 'mls_welcomes']) {
+    assert.ok(statements.some((sql) => sql.startsWith(`DELETE FROM ${table}`)), `${table} cleanup is in the transaction`);
+  }
+  assert.ok(statements.some((sql) => sql.startsWith('UPDATE devices SET revoked')));
+  assert.ok(statements.includes('ROLLBACK'));
+  assert.equal(statements.includes('COMMIT'), false);
+  assert.equal(statements.at(-1), 'RELEASE');
+});
