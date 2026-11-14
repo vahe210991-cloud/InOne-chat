@@ -33,6 +33,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
   List<InOneRoom> _rooms = const [];
   List<InOneOrganization> _organizations = const [];
   InOneOrganization? _selectedOrganization;
+  InOneSystemStatus? _systemStatus;
   bool _darkMode = false;
   bool _initializing = true;
 
@@ -233,6 +234,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
       _rooms = const [];
       _organizations = const [];
       _selectedOrganization = null;
+      _systemStatus = null;
       _registrationEmail = '';
       _registrationToken = '';
       _screen = 'login';
@@ -288,6 +290,34 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
       about: null,
       verified: false,
     );
+  }
+
+  Future<void> _loadSystemStatus() async {
+    setState(() => _screen = 'systemStatusLoading');
+    try {
+      final response = await _repositories.publicConfig();
+      final rawFlags = response['flags'];
+      if (rawFlags is! Map) {
+        throw const ApiException(code: 'invalid_response', statusCode: 502, retryable: false);
+      }
+      final flags = Map<String, dynamic>.from(rawFlags);
+      final maintenance = flags['maintenance.enabled'];
+      final appVersion = flags['app.minVersion'];
+      if (maintenance is! bool || appVersion is! String) {
+        throw const ApiException(code: 'invalid_response', statusCode: 502, retryable: false);
+      }
+      if (!mounted) return;
+      setState(() {
+        _systemStatus = InOneSystemStatus(
+          version: appVersion,
+          maintenance: maintenance,
+          flags: {'maintenance.enabled': maintenance},
+        );
+        _screen = 'systemStatus';
+      });
+    } catch (_) {
+      if (mounted) setState(() => _screen = 'systemStatusError');
+    }
   }
 
   void _openOrganization() {
@@ -409,11 +439,11 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
             InOneModuleTile(label: 'Messages', icon: Icons.forum_outlined, onTap: () => setState(() => _screen = 'messages')),
             InOneModuleTile(label: 'Organization', icon: Icons.business_outlined, onTap: _openOrganization),
             InOneModuleTile(label: 'Profile', icon: Icons.person_outline, onTap: () => setState(() => _screen = 'profile')),
-            InOneModuleTile(label: 'Notifications', icon: Icons.notifications_outlined, onTap: () => _notice('Лента уведомлений пока не подключена к серверному контракту.')),
+            InOneModuleTile(label: 'System status', icon: Icons.settings_outlined, onTap: () => unawaited(_loadSystemStatus())),
           ],
           activity: const [],
           onSwitchWorkspace: _chooseOrganization,
-          onNotifications: () => _notice('Лента уведомлений пока не подключена к серверному контракту.'),
+          onNotifications: () => unawaited(_loadSystemStatus()),
           onCustomize: () => _notice('Настройка модулей пока недоступна.'),
           onSeeAll: () => _notice('Лента активности пока не предоставляется backend.'),
           onTab: _selectTab,
@@ -430,6 +460,18 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
           onEditCover: null,
           onTab: _selectTab,
           onAdd: () => _notice('Создание публикаций не входит в Beta 1.0.'),
+        );
+      case 'systemStatusLoading':
+        return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      case 'systemStatusError':
+        return InOneLoadingErrorScreen(onRetry: () => unawaited(_loadSystemStatus()));
+      case 'systemStatus':
+        if (_systemStatus == null) {
+          return InOneLoadingErrorScreen(onRetry: () => unawaited(_loadSystemStatus()));
+        }
+        return InOneSystemStatusScreen(
+          status: _systemStatus!,
+          onMenu: () => setState(() => _screen = 'workspace'),
         );
       case 'messages':
         return InOneMessagesScreen(
@@ -459,6 +501,11 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
               label: 'Организация',
               icon: Icons.business_outlined,
               onTap: _openOrganization,
+            ),
+            InOneProfileMenuItem(
+              label: 'Состояние системы',
+              icon: Icons.settings_outlined,
+              onTap: () => unawaited(_loadSystemStatus()),
             ),
             InOneProfileMenuItem(
               label: 'Выйти из аккаунта',
