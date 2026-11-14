@@ -442,16 +442,22 @@ export function createStore({ pool, pinPepper }) {
     async setOrgLinkStatus({ linkId, status, decidedBy, decidedAt }) {
       await pool.query('UPDATE org_links SET status = $2, decided_by = $3, decided_at = $4 WHERE link_id = $1', [linkId, status, decidedBy, decidedAt]);
     },
-    async transitionOrgLinkStatus({ linkId, fromStatus, status, decidedBy, decidedAt }) {
+    async transitionOrgLinkStatus({ linkId, fromStatus, status, decidedBy, decidedAt, orgId }) {
       return inTransaction(async (c) => {
-        const { rows } = await c.query('SELECT org_a, org_b, status FROM org_links WHERE link_id = $1 FOR UPDATE', [linkId]);
+        const { rowCount: orgCount } = await c.query('SELECT org_id FROM organizations WHERE org_id = $1 FOR UPDATE', [orgId]);
+        if (orgCount !== 1) return { ok: false, reason: 'not_found' };
+        const { rows } = await c.query('SELECT org_a, org_b, proposed_by_org, status FROM org_links WHERE link_id = $1 FOR UPDATE', [linkId]);
         const link = rows[0];
-        if (!link || link.status !== fromStatus) return false;
+        if (!link || (link.org_a !== orgId && link.org_b !== orgId)) return { ok: false, reason: 'not_found' };
+        if (link.status !== fromStatus) return { ok: false, reason: 'state_changed' };
+        if (status === 'active' && link.proposed_by_org === orgId) return { ok: false, reason: 'wrong_side' };
+        const { rows: actorRows } = await c.query('SELECT role FROM org_members WHERE org_id = $1 AND user_id = $2 FOR UPDATE', [orgId, decidedBy]);
+        if (!['owner', 'admin'].includes(actorRows[0]?.role)) return { ok: false, reason: 'forbidden' };
         const { rowCount } = await c.query(
           'UPDATE org_links SET status = $3, decided_by = $4, decided_at = $5 WHERE link_id = $1 AND status = $2',
           [linkId, fromStatus, status, decidedBy, decidedAt],
         );
-        if (rowCount !== 1) return false;
+        if (rowCount !== 1) return { ok: false, reason: 'state_changed' };
         if (status === 'revoked') {
           await c.query(`DELETE FROM room_members rm USING rooms r
             WHERE rm.room_id = r.room_id AND r.org_id = $1
@@ -467,7 +473,7 @@ export function createStore({ pool, pinPepper }) {
           await c.query('INSERT INTO admin_action_log (org_id, actor, action, target, detail, at) VALUES ($1, $2, $3, $4, $5, $6)', [link.org_a, decidedBy, action, link.org_b, linkId, decidedAt]);
           await c.query('INSERT INTO admin_action_log (org_id, actor, action, target, detail, at) VALUES ($1, $2, $3, $4, $5, $6)', [link.org_b, decidedBy, action, link.org_a, linkId, decidedAt]);
         }
-        return true;
+        return { ok: true };
       });
     },
     async activeLinkBetween(x, y) {
