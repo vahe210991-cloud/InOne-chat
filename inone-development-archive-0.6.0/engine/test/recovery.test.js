@@ -433,3 +433,36 @@ test('кнопка на странице подтверждения отправ
     await stop();
   }
 });
+
+test('один код восстановления нельзя применить дважды параллельными запросами', async () => {
+  const { base, srv, stop } = await start();
+  try {
+    await createVerified(base, srv, ALICE, 'A_PHONE', PW, PHONE_A);
+    const code = await startRecovery(base, srv, ALICE, PHONE_A);
+    const send = () => fetch(`${base}/recovery/complete`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ userId: ALICE, code, newPassword: NEW_PW }),
+    });
+    const results = await Promise.all([send(), send()]);
+    assert.deepEqual(results.map((r) => r.status).sort(), [200, 403]);
+    assert.equal((await rawLogin(base, ALICE, NEW_PW, 'B_ONCE')).status, 202);
+  } finally {
+    await stop();
+  }
+});
+
+test('повторная отправка identity-кода после восстановления ограничена на аккаунт', async () => {
+  const { base, srv, stop } = await start();
+  try {
+    await createVerified(base, srv, ALICE, 'A_PHONE', PW, PHONE_A);
+    const code = await startRecovery(base, srv, ALICE, PHONE_A);
+    await post(base, '/recovery/complete', { userId: ALICE, code, newPassword: NEW_PW });
+    assert.equal((await rawLogin(base, ALICE, NEW_PW, 'B_ID')).status, 202);
+    assert.equal((await rawLogin(base, ALICE, NEW_PW, 'B_ID')).status, 202);
+    assert.equal((await rawLogin(base, ALICE, NEW_PW, 'B_ID')).status, 202);
+    assert.equal((await rawLogin(base, ALICE, NEW_PW, 'B_ID')).status, 429);
+  } finally {
+    await stop();
+  }
+});
