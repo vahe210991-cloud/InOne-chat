@@ -1105,18 +1105,27 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         return send(res, 200, { ok: true, deviceId: match.deviceId });
       }
       if (req.method === 'POST' && p === '/token/refresh') {
-  const raw = typeof body.refreshToken === 'string' ? body.refreshToken : '';
-  const r = raw ? await storage.consumeRefreshToken(raw, now()) : { state: 'unknown' };
-  if (r.state === 'ok') {
-    let rec = await storage.deviceRecord(r.deviceKey);
-    if (rec) {
-      await finalizeRecoveryIfDue(rec.userId);
-      rec = await storage.deviceRecord(r.deviceKey);
-    }
-    if (!rec || rec.revoked) return send(res, 401, { error: 'device revoked', code: 'device_revoked' });
-    return send(res, 200, sessionBody(await issueSession(r.deviceKey), rec.deviceId));
-  }
-  if (r.state === 'reused') {
+        const raw = typeof body.refreshToken === 'string' ? body.refreshToken : '';
+        // Complete recovery actions before consuming the refresh token. The store then
+        // rotates both tokens atomically and rechecks device revocation under a row lock.
+        const deviceKey = raw ? await storage.refreshTokenDevice(raw) : null;
+        if (deviceKey) {
+          const before = await storage.deviceRecord(deviceKey);
+          if (before) await finalizeRecoveryIfDue(before.userId);
+        }
+        const r = raw
+          ? await storage.rotateSession(raw, now(), ACCESS_TTL_MS, REFRESH_TTL_MS)
+          : { state: 'unknown' };
+        if (r.state === 'ok') {
+          const rec = await storage.deviceRecord(r.deviceKey);
+          if (!rec || rec.revoked) {
+            await storage.endSession(r.deviceKey);
+            return send(res, 401, { error: 'device revoked', code: 'device_revoked' });
+          }
+          return send(res, 200, sessionBody(r, rec.deviceId));
+        }
+        if (r.state === 'revoked') return send(res, 401, { error: 'device revoked', code: 'device_revoked' });
+        if (r.state === 'reused') {
     // Повтор старого токена обновления: сессия устройства отзывается целиком, событие уходит в журнал.
     const rec = await storage.deviceRecord(r.deviceKey);
     if (rec) await revokeDevice(rec);
