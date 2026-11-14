@@ -10,7 +10,7 @@ import { MLS_REGULAR_MAX_AGE_MS, MLS_LAST_RESORT_MAX_AGE_MS } from './mls-rules.
 import { DEFAULT_ADMIN_CAPABILITIES, DEFAULT_MEMBER_CAPABILITIES } from './room-permissions.js';
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { decideLogin } from './login-throttle.js';
-import { freshRecovery } from './recovery-rules.js';
+import { checkCode as checkRecoveryCode, completeRecovery as applyRecoveryCompletion, freshRecovery } from './recovery-rules.js';
 import { freshPhone } from './phone-rules.js';
 import { applyHit } from './rate-limit.js';
 
@@ -912,6 +912,57 @@ export function createStore({ pool, pinPepper }) {
            next.identityCodeHash, next.identityAttempts, next.lockedUntil, JSON.stringify(next.starts), next.reqLinkHash, next.reqLinkConfirmed],
         );
         return result;
+      });
+    },
+    /**
+     * One-time recovery completion: validate/consume the code, replace password,
+     * open the 48h window and save the cancellation hash in one DB transaction.
+     */
+    async completeRecoveryAtomic(userId, { codeHash, nowMs, passwordHash, cancelCodeHash }) {
+      return inTransaction(async (c) => {
+        const account = await c.query('SELECT password_hash FROM accounts WHERE user_id = $1 FOR UPDATE', [userId]);
+        if (account.rows.length === 0) return { status: 'none' };
+        await c.query('INSERT INTO recovery (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING', [userId]);
+        const { rows } = await c.query('SELECT * FROM recovery WHERE user_id = $1 FOR UPDATE', [userId]);
+        const current = fromRecoveryRow(rows[0]);
+        const checked = checkRecoveryCode(current, {
+          nowMs,
+          codeOk: !!current.reqCodeHash && sameHex(current.reqCodeHash, codeHash),
+        });
+        if (checked.outcome !== 'ok') {
+          const next = checked.next;
+          await c.query(
+            `UPDATE recovery SET req_status = $2, req_started_at = $3, req_expires_at = $4, req_code_hash = $5,
+               req_attempts = $6, window_started_at = $7, window_key_reset_at = $8, window_previous_hash = $9,
+               identity_check = $10, identity_code_hash = $11, identity_attempts = $12, locked_until = $13, starts = $14, req_link_hash = $15, req_link_confirmed = $16
+             WHERE user_id = $1`,
+            [userId, next.reqStatus, next.reqStartedAt, next.reqExpiresAt, next.reqCodeHash, next.reqAttempts,
+             next.windowStartedAt, next.windowKeyResetAt, next.windowPreviousHash, next.identityCheck,
+             next.identityCodeHash, next.identityAttempts, next.lockedUntil, JSON.stringify(next.starts), next.reqLinkHash, next.reqLinkConfirmed],
+          );
+          return { status: checked.outcome };
+        }
+        const next = applyRecoveryCompletion(current, { nowMs, previousHash: account.rows[0].password_hash });
+        next.reqCodeHash = null;
+        next.reqLinkHash = null;
+        next.reqLinkConfirmed = false;
+        next.reqAttempts = 0;
+        await c.query('UPDATE accounts SET password_hash = $2 WHERE user_id = $1', [userId, passwordHash]);
+        await c.query(
+          `UPDATE recovery SET req_status = $2, req_started_at = $3, req_expires_at = $4, req_code_hash = $5,
+             req_attempts = $6, window_started_at = $7, window_key_reset_at = $8, window_previous_hash = $9,
+             identity_check = $10, identity_code_hash = $11, identity_attempts = $12, locked_until = $13, starts = $14, req_link_hash = $15, req_link_confirmed = $16
+           WHERE user_id = $1`,
+          [userId, next.reqStatus, next.reqStartedAt, next.reqExpiresAt, next.reqCodeHash, next.reqAttempts,
+           next.windowStartedAt, next.windowKeyResetAt, next.windowPreviousHash, next.identityCheck,
+           next.identityCodeHash, next.identityAttempts, next.lockedUntil, JSON.stringify(next.starts), next.reqLinkHash, next.reqLinkConfirmed],
+        );
+        await c.query(
+          `INSERT INTO recovery_cancel_codes (user_id, code_hash, expires_at) VALUES ($1, $2, $3)
+           ON CONFLICT (user_id) DO UPDATE SET code_hash = EXCLUDED.code_hash, expires_at = EXCLUDED.expires_at`,
+          [userId, cancelCodeHash, next.windowKeyResetAt],
+        );
+        return { status: 'ok', keyResetAt: next.windowKeyResetAt };
       });
     },
 
