@@ -16,8 +16,8 @@ export function loadConfig(env = process.env) {
     registrationMode: env.INONE_REGISTRATION_MODE ?? 'verified',
     trustProxy: env.INONE_TRUST_PROXY === 'true',
     filesDir: env.INONE_FILES_DIR ?? '',
-  docsSecret: env.INONE_DOCS_SECRET ?? '',
-  testUi: env.INONE_TEST_UI === '1',
+    docsSecret: env.INONE_DOCS_SECRET ?? '',
+    testUi: env.INONE_TEST_UI === '1',
     fileQuotaBytes: env.INONE_FILE_QUOTA_BYTES ? Number(env.INONE_FILE_QUOTA_BYTES) : null,
     bodyLimitBytes: Number(env.INONE_BODY_LIMIT_BYTES ?? 4 * 1024 * 1024),
     requestTimeoutMs: Number(env.INONE_REQUEST_TIMEOUT_MS ?? 30000),
@@ -32,9 +32,9 @@ export function loadConfig(env = process.env) {
     smtpUser: env.INONE_SMTP_USER ?? '',
     smtpPassword: env.INONE_SMTP_PASSWORD ?? '',
     smtpFrom: env.INONE_SMTP_FROM ?? '',
-        requirePhone: env.INONE_REQUIRE_PHONE === 'true',
-        smsEnabled: env.INONE_SMS_ENABLED === 'true',
-        phoneBlockedCountries: (env.INONE_PHONE_BLOCKED_COUNTRIES ?? '').split(',').map((c) => c.trim().toUpperCase()).filter(Boolean),
+    requirePhone: env.INONE_REQUIRE_PHONE === 'true',
+    smsEnabled: env.INONE_SMS_ENABLED === 'true',
+    phoneBlockedCountries: (env.INONE_PHONE_BLOCKED_COUNTRIES ?? '').split(',').map((c) => c.trim().toUpperCase()).filter(Boolean),
     phoneAllowedCountries: (env.INONE_PHONE_ALLOWED_COUNTRIES ?? DEFAULT_PHONE_COUNTRIES.join(',')).split(',').map((c) => c.trim().toUpperCase()).filter(Boolean),
   };
   const errors = [];
@@ -42,7 +42,7 @@ export function loadConfig(env = process.env) {
   else {
     try {
       const database = new URL(config.databaseUrl);
-      if (!['postgres:', 'postgresql:'].includes(database.protocol) || database.hostname.toLowerCase() === 'host' || database.hostname.toLowerCase().includes('example')) errors.push('DATABASE_URL must be a valid PostgreSQL URL, not a placeholder');
+      if (!['postgres:', 'postgresql:'].includes(database.protocol) || database.hostname.toLowerCase() === 'host' || database.hostname.toLowerCase().includes('example') || ['change-me', 'replace-with'].some((marker) => database.username.toLowerCase().includes(marker) || database.password.toLowerCase().includes(marker))) errors.push('DATABASE_URL must be a valid PostgreSQL URL, not a placeholder');
     } catch {
       errors.push('DATABASE_URL must be a valid PostgreSQL URL');
     }
@@ -66,8 +66,8 @@ export function loadConfig(env = process.env) {
     if (config.mailTransport === 'smtp' && !config.smtpRequireTls) errors.push('production SMTP must require TLS (INONE_SMTP_REQUIRE_TLS)');
     if (config.smtpHost.toLowerCase().includes('example')) errors.push('INONE_SMTP_HOST must not use an example host');
     if (config.smtpFrom.toLowerCase().includes('example')) errors.push('INONE_SMTP_FROM must not use an example address');
-    if (config.smtpUser.toLowerCase().includes('replace-with') || config.smtpPassword.toLowerCase().includes('replace-with') || config.smtpPassword.toLowerCase().includes('change-me')) errors.push('SMTP credentials still contain placeholder values');
-        if (!config.filesDir) errors.push('INONE_FILES_DIR is required in production: files kept in memory are lost on restart');
+    if (config.smtpUser.toLowerCase().includes('replace-with') || config.smtpUser.toLowerCase().includes('change-me') || config.smtpPassword.toLowerCase().includes('replace-with') || config.smtpPassword.toLowerCase().includes('change-me')) errors.push('SMTP credentials still contain placeholder values');
+    if (!config.filesDir) errors.push('INONE_FILES_DIR is required in production: files kept in memory are lost on restart');
     if (config.docsSecret.length < 32) errors.push('INONE_DOCS_SECRET must be at least 32 characters in production');
     if (config.testUi) errors.push('INONE_TEST_UI must not be set in production');
   } else if (!config.pinPepper) {
