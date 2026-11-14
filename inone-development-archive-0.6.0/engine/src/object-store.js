@@ -35,8 +35,13 @@ export function createFsObjectStore(dir) {
       const target = fileOf(key);
       await mkdir(root, { recursive: true, mode: 0o700 });
       const temp = `${target}.${randomBytes(8).toString('hex')}.tmp`;
-      await writeFile(temp, bytes, { mode: 0o600 });
-      await rename(temp, target); // атомарно: читатель видит либо весь объект, либо ничего
+      try {
+        await writeFile(temp, bytes, { mode: 0o600 });
+        await rename(temp, target); // атомарно: читатель видит либо весь объект, либо ничего
+      } catch (error) {
+        await rm(temp, { force: true }).catch(() => {});
+        throw error;
+      }
     },
     async get(key) {
       try {
