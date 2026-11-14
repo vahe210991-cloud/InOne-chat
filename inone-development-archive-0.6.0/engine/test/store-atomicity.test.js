@@ -185,3 +185,68 @@ test('device revocation rolls back credentials and MLS cleanup as one transactio
   assert.equal(statements.includes('COMMIT'), false);
   assert.equal(statements.at(-1), 'RELEASE');
 });
+
+test('recovery code consumption, password replacement and cancellation hash commit atomically', async () => {
+  const statements = [];
+  const recoveryRow = {
+    req_status: 'pending', req_started_at: 100, req_expires_at: 10000, req_code_hash: 'a'.repeat(64),
+    req_attempts: 0, req_link_hash: null, req_link_confirmed: true,
+    window_started_at: null, window_key_reset_at: null, window_previous_hash: null,
+    identity_check: false, identity_code_hash: null, identity_attempts: 0, locked_until: 0, starts: [100],
+  };
+  const client = {
+    async query(sql, params = []) {
+      statements.push({ sql, params });
+      if (sql.startsWith('SELECT password_hash FROM accounts')) return { rows: [{ password_hash: 'old-password-hash' }] };
+      if (sql.startsWith('SELECT * FROM recovery')) return { rows: [recoveryRow] };
+      return { rows: [], rowCount: 1 };
+    },
+    release() { statements.push({ sql: 'RELEASE' }); },
+  };
+  const store = createStore({ pool: { async connect() { return client; } }, pinPepper: 'a'.repeat(48) });
+  const result = await store.completeRecoveryAtomic('@alice', {
+    codeHash: 'a'.repeat(64), nowMs: 1000, passwordHash: 'new-password-hash', cancelCodeHash: 'b'.repeat(64),
+  });
+  assert.equal(result.status, 'ok');
+  assert.ok(statements.some((x) => x.sql === 'BEGIN'));
+  assert.ok(statements.some((x) => x.sql.startsWith('UPDATE accounts SET password_hash')));
+  assert.ok(statements.some((x) => x.sql.startsWith('UPDATE recovery SET req_status')));
+  assert.ok(statements.some((x) => x.sql.startsWith('INSERT INTO recovery_cancel_codes')));
+  assert.ok(statements.some((x) => x.sql === 'COMMIT'));
+  const recoveryUpdate = statements.find((x) => x.sql.startsWith('UPDATE recovery SET req_status'));
+  assert.equal(recoveryUpdate.params[4], null, 'successful recovery code is consumed in the same transaction');
+});
+
+test('recovery cancellation rolls password restore and post-recovery device revocation back together', async () => {
+  const statements = [];
+  const recoveryRow = {
+    req_status: 'completed', req_started_at: 100, req_expires_at: 10000, req_code_hash: null,
+    req_attempts: 0, req_link_hash: null, req_link_confirmed: false,
+    window_started_at: 100, window_key_reset_at: 10000, window_previous_hash: 'old-password-hash',
+    identity_check: true, identity_code_hash: null, identity_attempts: 0, locked_until: 0, starts: [100],
+  };
+  const client = {
+    async query(sql, params = []) {
+      statements.push({ sql, params });
+      if (sql.startsWith('SELECT password_hash FROM accounts')) return { rows: [{ password_hash: 'new-password-hash' }] };
+      if (sql.startsWith('SELECT * FROM recovery')) return { rows: [recoveryRow] };
+      if (sql.startsWith('SELECT code_hash, expires_at FROM recovery_cancel_codes')) return { rows: [{ code_hash: 'b'.repeat(64), expires_at: 10000 }] };
+      if (sql.startsWith('SELECT device_key, user_id, device_id FROM devices')) {
+        return { rows: [{ device_key: '@alice|new-phone', user_id: '@alice', device_id: 'new-phone' }] };
+      }
+      if (sql.startsWith('INSERT INTO mls_device_removals')) throw new Error('simulated MLS removal marker failure');
+      return { rows: [], rowCount: 1 };
+    },
+    release() { statements.push({ sql: 'RELEASE' }); },
+  };
+  const store = createStore({ pool: { async connect() { return client; } }, pinPepper: 'a'.repeat(48) });
+  await assert.rejects(
+    store.cancelRecoveryAtomic('@alice', { nowMs: 1000, cancelCodeHash: 'b'.repeat(64) }),
+    /simulated MLS removal marker failure/,
+  );
+  assert.ok(statements.some((x) => x.sql === 'BEGIN'));
+  assert.ok(statements.some((x) => x.sql.startsWith('UPDATE accounts SET password_hash')));
+  assert.ok(statements.some((x) => x.sql.startsWith('UPDATE devices SET revoked')));
+  assert.ok(statements.some((x) => x.sql === 'ROLLBACK'));
+  assert.equal(statements.some((x) => x.sql === 'COMMIT'), false);
+});
