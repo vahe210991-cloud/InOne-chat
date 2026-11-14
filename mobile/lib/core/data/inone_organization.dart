@@ -18,7 +18,7 @@ class InOneOrganization {
     final name = json['name'];
     final status = json['status'];
     final role = json['role'];
-    if (orgId is! String || name is! String || status is! String || role is! String) {
+    if (orgId is! String || orgId.isEmpty || name is! String || status is! String || role is! String) {
       throw const ApiException(code: 'invalid_response', statusCode: 502, retryable: false);
     }
     return InOneOrganization(
