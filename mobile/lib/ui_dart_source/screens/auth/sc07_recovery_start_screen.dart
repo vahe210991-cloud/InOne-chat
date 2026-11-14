@@ -82,7 +82,7 @@ class _InOneRecoveryStartScreenState extends State<InOneRecoveryStartScreen>
             const SizedBox(height: 10),
             InOneButton(
               label: 'Это не я',
-              kind: InOneButtonKind.ghost,
+              kind: InOneButtonKind.outline,
               onPressed: widget.onNotMe,
             ),
           ],
