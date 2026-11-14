@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../models/inone_models.dart';
-import '../widgets/inone_icons.dart';
+import 'package:inone_mobile/ui_dart_source/models/inone_models.dart';
+import 'package:inone_mobile/ui_dart_source/widgets/inone_icons.dart';
 
 /// ДЕМО-ДАННЫЕ из макетов. Только для галереи и предпросмотра:
 /// в рабочем приложении данные приходят из репозиториев, а не отсюда.
