@@ -10,13 +10,13 @@ import '../network/api_exception.dart';
 
 /// Mobile session owner for the pre-native-MLS integration phase.
 ///
-/// Access and refresh tokens stay in memory. Only the stable, non-secret
-/// device identifier is stored in Keychain/Android Keystore. When the native
-/// MLS bridge becomes the refresh-token owner, rotation must move there.
+/// Access tokens stay in memory; the rotating refresh token is persisted in
+/// Keychain/Android Keystore until the native MLS bridge takes ownership.
 class InOneSession extends ChangeNotifier {
   InOneSession({required this.baseUrl});
 
   static const _deviceIdKey = 'inone.device_id';
+  static const _refreshTokenKey = 'inone.refresh_token';
   static const _storage = FlutterSecureStorage();
 
   final String baseUrl;
@@ -24,6 +24,8 @@ class InOneSession extends ChangeNotifier {
   String? _refreshToken;
   String? _deviceId;
   Future<void>? _refreshInFlight;
+  Future<void>? _initializeInFlight;
+  bool _initialized = false;
 
   late final ApiClient _client = ApiClient(
     baseUrl: baseUrl,
@@ -34,8 +36,16 @@ class InOneSession extends ChangeNotifier {
   bool get isAuthenticated => _accessToken != null && _accessToken!.isNotEmpty;
   bool get isConfigured => baseUrl.trim().isNotEmpty;
 
-  Future<void> initialize() async {
-    if (_deviceId != null) return;
+  Future<void> initialize() {
+    if (_initialized) return Future<void>.value();
+    final active = _initializeInFlight;
+    if (active != null) return active;
+    final operation = _initializeInternal();
+    _initializeInFlight = operation;
+    return operation.whenComplete(() => _initializeInFlight = null);
+  }
+
+  Future<void> _initializeInternal() async {
     var id = await _storage.read(key: _deviceIdKey);
     if (id == null || id.isEmpty) {
       final bytes = List<int>.generate(32, (_) => Random.secure().nextInt(256));
@@ -43,7 +53,17 @@ class InOneSession extends ChangeNotifier {
       await _storage.write(key: _deviceIdKey, value: id);
     }
     _deviceId = id;
+    _refreshToken = await _storage.read(key: _refreshTokenKey);
+    _initialized = true;
     notifyListeners();
+
+    if (_refreshToken != null && _refreshToken!.isNotEmpty) {
+      try {
+        await _rotateRefreshToken();
+      } on ApiException {
+        // Transient errors retain the refresh token; invalid/revoked tokens are cleared.
+      }
+    }
   }
 
   Future<Map<String, dynamic>> login({
@@ -67,7 +87,7 @@ class InOneSession extends ChangeNotifier {
         'platform': platform,
       },
     );
-    _acceptSession(result);
+    await _acceptSession(result);
     return result;
   }
 
@@ -131,7 +151,7 @@ class InOneSession extends ChangeNotifier {
   Future<void> _rotateRefreshToken() async {
     final current = _refreshToken;
     if (current == null || current.isEmpty) {
-      _clearSession();
+      await _clearSession();
       throw const ApiException(code: 'session_expired', statusCode: 401, retryable: false);
     }
     try {
@@ -140,17 +160,20 @@ class InOneSession extends ChangeNotifier {
         authenticated: false,
         body: {'refreshToken': current},
       );
-      _acceptSession(result);
-    } on ApiException {
-      _clearSession();
+      await _acceptSession(result);
+    } on ApiException catch (error) {
+      if (error.statusCode == 401 || error.statusCode == 403) {
+        await _clearSession();
+      }
       rethrow;
     }
   }
 
-  void _acceptSession(Map<String, dynamic> result) {
+  Future<void> _acceptSession(Map<String, dynamic> result) async {
     final access = result['token'];
     final refresh = result['refreshToken'];
     if (access is String && access.isNotEmpty && refresh is String && refresh.isNotEmpty) {
+      await _storage.write(key: _refreshTokenKey, value: refresh);
       _accessToken = access;
       _refreshToken = refresh;
       notifyListeners();
@@ -161,13 +184,14 @@ class InOneSession extends ChangeNotifier {
     try {
       if (isAuthenticated) await request('POST', '/logout');
     } finally {
-      _clearSession();
+      await _clearSession();
     }
   }
 
-  void _clearSession() {
+  Future<void> _clearSession() async {
     _accessToken = null;
     _refreshToken = null;
+    await _storage.delete(key: _refreshTokenKey);
     notifyListeners();
   }
 
