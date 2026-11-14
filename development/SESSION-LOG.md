@@ -1,3 +1,12 @@
+## 2026-11-14 17:03 — Stage 4 MLS source-boundary clarification
+
+- Follow-up static check confirmed `mobile/rust/Cargo.toml` in PR #45 links `../../inone-engine-poc-0.6.0/mobile-mls/mls-client`, not the canonical engine client at `inone-development-archive-0.6.0/engine/mobile-mls/mls-client`.
+- These client source blobs differ substantially on both Stage 4 and current Flutter refs. Stage 4 integration workflow tests against canonical engine via `INONE_ENGINE_DIR`, while linking the POC-path mobile client. Treat this as an explicit ownership boundary; do not assume the two crates are interchangeable or copy the POC server into production.
+- Addendum: [Stage 4 source-boundary clarification](reports/2026-11-14-1703-stage4-source-boundary-addendum.md), commit `5221a5517b79f959bac2b33f08f806e05aa17177`.
+- Corrected next-step status: obtaining a complete private-repository working copy/build runner is BLOCKED, not in progress. No source implementation or tests were attempted through partial file writes.
+
+---
+
 ## 2026-11-14 17:01 — Owner request: Stage 4 / Flutter MLS integration audit
 
 - Owner explicitly requested work on six Beta 1.0 items: Flutter↔Rust MLS FFI, platform Keychain/Keystore + SQLCipher key transfer, Rust-owned session refresh, MLS message send/decrypt, encrypted-only attachments, and verified-phone recovery deep links.
