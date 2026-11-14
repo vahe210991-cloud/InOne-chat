@@ -1,0 +1,62 @@
+name: OpenMLS client validation
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/openmls-client.yml"
+      - "inone-engine-poc-0.6.0/mobile-mls/mls-client/**"
+      - "inone-engine-poc-0.6.0/src/**"
+      - "inone-engine-poc-0.6.0/package.json"
+      - "inone-engine-poc-0.6.0/package-lock.json"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/openmls-client.yml"
+      - "inone-engine-poc-0.6.0/mobile-mls/mls-client/**"
+      - "inone-engine-poc-0.6.0/src/**"
+      - "inone-engine-poc-0.6.0/package.json"
+      - "inone-engine-poc-0.6.0/package-lock.json"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: openmls-client-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  openmls-client:
+    name: Rust client + real engine integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      INONE_ENGINE_DIR: ${{ github.workspace }}/inone-engine-poc-0.6.0
+      RUST_TEST_THREADS: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: inone-engine-poc-0.6.0/package-lock.json
+
+      - name: Install engine dependencies
+        run: npm ci --prefix inone-engine-poc-0.6.0
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.91"
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            inone-engine-poc-0.6.0/mobile-mls/mls-client -> target
+
+      - name: Test persistent OpenMLS client
+        run: cargo test --locked --manifest-path inone-engine-poc-0.6.0/mobile-mls/mls-client/Cargo.toml -- --test-threads=1
