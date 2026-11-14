@@ -7,25 +7,25 @@ import { loadConfig } from '../src/config.js';
 const DOCS_SECRET = randomBytes(24).toString('hex');
 const GOOD = {
   NODE_ENV: 'production',
-  DATABASE_URL: 'postgresql://db.example/inone',
+  DATABASE_URL: 'postgresql://db.inone.test/inone',
   INONE_PIN_PEPPER: 'q8Lw2rT6vN1zXc4bH9mK0pJs7dFg5aYe',
   INONE_DOCS_SECRET: DOCS_SECRET,
-  INONE_PUBLIC_URL: 'https://inone.example',
+  INONE_PUBLIC_URL: 'https://inone.test',
   INONE_FILES_DIR: '/var/lib/inone/objects',
 };
 
 test('телефон не требуется без явного включения, SMS выключен по умолчанию', () => {
-  const config = loadConfig({ NODE_ENV: 'development', DATABASE_URL: 'postgresql://db.example/inone' });
+  const config = loadConfig({ NODE_ENV: 'development', DATABASE_URL: 'postgresql://db.inone.test/inone' });
   assert.equal(config.requirePhone, false);
   assert.equal(config.smsEnabled, false);
-  const phoneRequired = loadConfig({ NODE_ENV: 'development', DATABASE_URL: 'postgresql://db.example/inone', INONE_REQUIRE_PHONE: 'true', INONE_SMS_ENABLED: 'true' });
+  const phoneRequired = loadConfig({ NODE_ENV: 'development', DATABASE_URL: 'postgresql://db.inone.test/inone', INONE_REQUIRE_PHONE: 'true', INONE_SMS_ENABLED: 'true' });
   assert.equal(phoneRequired.requirePhone, true);
   assert.equal(phoneRequired.smsEnabled, true);
 });
 
 test('production запрещает SMS и обязательный телефон без интегрированного провайдера', () => {
-  assert.throws(() => loadConfig({ ...GOOD, INONE_MAIL_TRANSPORT: 'smtp', INONE_SMTP_HOST: 'smtp.provider.test', INONE_SMTP_FROM: 'InOne <noreply@inone.example>', INONE_SMS_ENABLED: 'true' }), /SMS provider is not integrated/);
-  assert.throws(() => loadConfig({ ...GOOD, INONE_MAIL_TRANSPORT: 'smtp', INONE_SMTP_HOST: 'smtp.provider.test', INONE_SMTP_FROM: 'InOne <noreply@inone.example>', INONE_REQUIRE_PHONE: 'true' }), /INONE_REQUIRE_PHONE must remain false/);
+  assert.throws(() => loadConfig({ ...GOOD, INONE_MAIL_TRANSPORT: 'smtp', INONE_SMTP_HOST: 'smtp.provider.test', INONE_SMTP_FROM: 'InOne <noreply@inone.test>', INONE_SMS_ENABLED: 'true' }), /SMS provider is not integrated/);
+  assert.throws(() => loadConfig({ ...GOOD, INONE_MAIL_TRANSPORT: 'smtp', INONE_SMTP_HOST: 'smtp.provider.test', INONE_SMTP_FROM: 'InOne <noreply@inone.test>', INONE_REQUIRE_PHONE: 'true' }), /INONE_REQUIRE_PHONE must remain false/);
 });
 
 test('продакшен без реального почтового транспорта не стартует', () => {
@@ -59,9 +59,17 @@ test('продакшен требует адрес https', () => {
 });
 
 test('разработка работает с локальными значениями, перец помечен и не годится для продакшена', () => {
-  const config = loadConfig({ NODE_ENV: 'development', DATABASE_URL: 'postgresql://db.example/inone' });
+  const config = loadConfig({ NODE_ENV: 'development', DATABASE_URL: 'postgresql://db.inone.test/inone' });
   assert.equal(config.publicUrl, 'http://localhost:8080');
   assert.match(config.pinPepper, /dev-only/);
+});
+
+test('production отклоняет placeholder secrets, URLs и SMTP credentials', () => {
+  const smtp = { ...GOOD, INONE_MAIL_TRANSPORT: 'smtp', INONE_SMTP_HOST: 'smtp.provider.test', INONE_SMTP_FROM: 'InOne <noreply@inone.test>' };
+  assert.throws(() => loadConfig({ ...smtp, INONE_DOCS_SECRET: 'change-me-this-is-only-a-placeholder-secret' }), /INONE_DOCS_SECRET looks like a test or example value/);
+  assert.throws(() => loadConfig({ ...smtp, DATABASE_URL: 'postgresql://inone:change-me@HOST:5432/inone' }), /DATABASE_URL must be a valid PostgreSQL URL, not a placeholder/);
+  assert.throws(() => loadConfig({ ...smtp, INONE_SMTP_PASSWORD: 'replace-with-smtp-password' }), /SMTP credentials still contain placeholder values/);
+  assert.throws(() => loadConfig({ ...smtp, INONE_PUBLIC_URL: 'https://inone.example.com' }), /must not use an example domain/);
 });
 
 test('неверные числа отклоняются', () => {
@@ -70,22 +78,22 @@ test('неверные числа отклоняются', () => {
 });
 
 test('продакшен со SMTP, адресом отправителя и TLS проходит проверку', () => {
-  const config = loadConfig({ ...GOOD, INONE_MAIL_TRANSPORT: 'smtp', INONE_SMTP_HOST: 'smtp.provider.test', INONE_SMTP_FROM: 'InOne <noreply@inone.example>' });
+  const config = loadConfig({ ...GOOD, INONE_MAIL_TRANSPORT: 'smtp', INONE_SMTP_HOST: 'smtp.provider.test', INONE_SMTP_FROM: 'InOne <noreply@inone.test>' });
   assert.equal(config.mailTransport, 'smtp');
   assert.equal(config.smtpRequireTls, true);
   assert.equal(config.smtpPort, 587);
 });
 
 test('продакшен отказывается от SMTP без TLS', () => {
-  assert.throws(() => loadConfig({ ...GOOD, INONE_MAIL_TRANSPORT: 'smtp', INONE_SMTP_HOST: 'smtp.provider.test', INONE_SMTP_FROM: 'InOne <noreply@inone.example>', INONE_SMTP_REQUIRE_TLS: 'false' }), /must require TLS/);
+  assert.throws(() => loadConfig({ ...GOOD, INONE_MAIL_TRANSPORT: 'smtp', INONE_SMTP_HOST: 'smtp.provider.test', INONE_SMTP_FROM: 'InOne <noreply@inone.test>', INONE_SMTP_REQUIRE_TLS: 'false' }), /must require TLS/);
 });
 
 test('SMTP без адреса отправителя не запускается', () => {
-  assert.throws(() => loadConfig({ NODE_ENV: 'development', DATABASE_URL: 'postgresql://db.example/inone', INONE_MAIL_TRANSPORT: 'smtp', INONE_SMTP_HOST: 'smtp.provider.test' }), /INONE_SMTP_FROM is required/);
+  assert.throws(() => loadConfig({ NODE_ENV: 'development', DATABASE_URL: 'postgresql://db.inone.test/inone', INONE_MAIL_TRANSPORT: 'smtp', INONE_SMTP_HOST: 'smtp.provider.test' }), /INONE_SMTP_FROM is required/);
 });
 
 test('продакшен без INONE_FILES_DIR не стартует: файлы в памяти пропадут при перезапуске', () => {
-  const PROD = { ...GOOD, INONE_MAIL_TRANSPORT: 'smtp', INONE_SMTP_HOST: 'smtp.provider.test', INONE_SMTP_FROM: 'InOne <noreply@inone.example>' };
+  const PROD = { ...GOOD, INONE_MAIL_TRANSPORT: 'smtp', INONE_SMTP_HOST: 'smtp.provider.test', INONE_SMTP_FROM: 'InOne <noreply@inone.test>' };
   assert.throws(() => loadConfig({ ...PROD, INONE_FILES_DIR: '' }), /INONE_FILES_DIR/);
   const ok = loadConfig({ ...PROD, INONE_FILES_DIR: '/var/lib/inone/objects' });
   assert.equal(ok.filesDir, '/var/lib/inone/objects');
