@@ -179,7 +179,7 @@ test('F-02 PostgreSQL: cross-organization link revocation waits for an in-flight
     const joinGate = new Promise((resolve) => { releaseJoin = resolve; });
 
     // Hold the open-join transaction immediately after it acquires the active-link share lock.
-    // The revocation now locks the link row through its own transaction client.
+    // Revocation rechecks the actor membership under a transaction row lock before changing the link.
     s.pool.connect = async (...args) => {
       if (args.length > 0) return originalConnect(...args); // preserve node-postgres callback-style callers
       const client = await originalConnect();
@@ -201,7 +201,7 @@ test('F-02 PostgreSQL: cross-organization link revocation waits for an in-flight
     const joining = call(s.base, 'POST', `/rooms/${enc(ROOM)}/join`, s.carol.token, {});
     await waitForSignal(shareLockReady, 'open join did not acquire the active-link share lock');
     const revoking = call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/revoke`, s.carol.token, {});
-    await waitForSignal(revokeAttempted, 'link revocation did not attempt its conditional update');
+    await waitForSignal(revokeAttempted, 'link revocation did not attempt its membership lock');
     releaseJoin();
 
     const joined = await joining;
