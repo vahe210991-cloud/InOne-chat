@@ -19,7 +19,8 @@ The native Flutter shell currently connects:
 4. Account creation — `POST /register`
 5. Read-only current profile — `GET /profile`
 6. Current user's room list — `GET /rooms/mine`
-7. Logout — `POST /logout`
+7. Current user's organization memberships — `GET /orgs/mine`
+8. Logout — `POST /logout`
 
 See [Dart/backend integration map](DART-BACKEND-INTEGRATION.md) for the screen-by-screen status, blocked operations, Beta 1.0 boundaries and security gates.
 
