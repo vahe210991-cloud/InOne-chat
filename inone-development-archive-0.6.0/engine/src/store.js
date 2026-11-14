@@ -744,14 +744,36 @@ export function createStore({ pool, pinPepper }) {
       const { rows } = await pool.query('SELECT old_value, new_value, actor, reason, changed_at FROM flag_changes WHERE key = $1 ORDER BY id', [key]);
       return rows; // имена столбцов как в таблице: так читает журнал команда scripts/set-flag.mjs
     },
-    async revokeDevice(deviceKey) {
-      // Отключённое устройство теряет ключи, одноразовые ключи и очередь доставки.
+    async revokeDevice(deviceKey, nowMs = Date.now()) {
+      // Revoke identity, all credentials, queued delivery and pending MLS material atomically.
+      // Device row is the serialization point and matches rotateSession's device-first lock order.
       await inTransaction(async (c) => {
+        const { rows } = await c.query(
+          'SELECT user_id, device_id FROM devices WHERE device_key = $1 FOR UPDATE',
+          [deviceKey],
+        );
+        const device = rows[0];
+        if (!device) return;
         await c.query('UPDATE devices SET revoked = TRUE WHERE device_key = $1', [deviceKey]);
+        await c.query('DELETE FROM tokens WHERE device_key = $1', [deviceKey]);
+        await c.query('DELETE FROM refresh_tokens WHERE device_key = $1', [deviceKey]);
         await c.query('DELETE FROM device_keys WHERE device_key = $1', [deviceKey]);
         await c.query('DELETE FROM one_time_keys WHERE device_key = $1', [deviceKey]);
         await c.query('DELETE FROM inbox WHERE device_key = $1', [deviceKey]);
         await c.query('DELETE FROM push_tokens WHERE device_key = $1', [deviceKey]);
+        await c.query('DELETE FROM device_signing_keys WHERE device_key = $1', [deviceKey]);
+        await c.query(
+          'DELETE FROM mls_key_packages WHERE user_id = $1 AND device_id = $2 AND consumed_at IS NULL',
+          [device.user_id, device.device_id],
+        );
+        await c.query(
+          'DELETE FROM mls_welcomes WHERE user_id = $1 AND device_id = $2 AND acked_at IS NULL',
+          [device.user_id, device.device_id],
+        );
+        await c.query(
+          "INSERT INTO mls_device_removals (room_id, user_id, device_id, created_at) SELECT g.room_id, $1, $2, $3 FROM mls_groups g JOIN room_members m ON m.room_id = g.room_id WHERE m.user_id = $1 AND g.epoch > 0 ON CONFLICT (room_id, user_id, device_id) DO NOTHING",
+          [device.user_id, device.device_id, nowMs],
+        );
       });
     },
 
