@@ -201,10 +201,10 @@ export function createStore({ pool, pinPepper }) {
     async addOrgMemberWithAudit({ orgId, userId, role, actorId, at }) {
       if (!['owner', 'admin', 'member'].includes(role)) return { ok: false, reason: 'invalid_role' };
       return inTransaction(async (c) => {
+        const { rows } = await c.query('SELECT user_id, role FROM org_members WHERE org_id = $1 ORDER BY user_id FOR UPDATE', [orgId]);
         const { rows: orgRows } = await c.query('SELECT status FROM organizations WHERE org_id = $1 FOR UPDATE', [orgId]);
         if (!orgRows[0]) return { ok: false, reason: 'not_found' };
         if (orgRows[0].status !== 'approved') return { ok: false, reason: 'not_approved' };
-        const { rows } = await c.query('SELECT user_id, role FROM org_members WHERE org_id = $1 ORDER BY user_id FOR UPDATE', [orgId]);
         const actorRole = rows.find((row) => row.user_id === actorId)?.role;
         if (actorRole !== 'owner' && actorRole !== 'admin') return { ok: false, reason: 'forbidden' };
         if (actorRole === 'admin' && role !== 'member') return { ok: false, reason: 'forbidden' };
@@ -319,9 +319,9 @@ export function createStore({ pool, pinPepper }) {
     async changeOrgMemberRole({ orgId, userId, actorId, role, at }) {
       if (!['owner', 'admin', 'member'].includes(role)) return { ok: false, reason: 'invalid_role' };
       return inTransaction(async (c) => {
+        const { rows } = await c.query('SELECT user_id, role FROM org_members WHERE org_id = $1 ORDER BY user_id FOR UPDATE', [orgId]);
         const { rowCount: orgCount } = await c.query('SELECT org_id FROM organizations WHERE org_id = $1 FOR UPDATE', [orgId]);
         if (orgCount !== 1) return { ok: false, reason: 'not_found' };
-        const { rows } = await c.query('SELECT user_id, role FROM org_members WHERE org_id = $1 ORDER BY user_id FOR UPDATE', [orgId]);
         const roles = new Map(rows.map((row) => [row.user_id, row.role]));
         if (roles.get(actorId) !== 'owner') return { ok: false, reason: 'forbidden' };
         const current = roles.get(userId);
@@ -335,9 +335,9 @@ export function createStore({ pool, pinPepper }) {
     },
     async removeOrgMemberWithAudit({ orgId, userId, actorId, at, leave = false }) {
       return inTransaction(async (c) => {
+        const { rows } = await c.query('SELECT user_id, role FROM org_members WHERE org_id = $1 ORDER BY user_id FOR UPDATE', [orgId]);
         const { rowCount: orgCount } = await c.query('SELECT org_id FROM organizations WHERE org_id = $1 FOR UPDATE', [orgId]);
         if (orgCount !== 1) return { ok: false, reason: 'not_found' };
-        const { rows } = await c.query('SELECT user_id, role FROM org_members WHERE org_id = $1 ORDER BY user_id FOR UPDATE', [orgId]);
         const roles = new Map(rows.map((row) => [row.user_id, row.role]));
         const actorRole = roles.get(actorId);
         const targetRole = roles.get(userId);
@@ -394,9 +394,9 @@ export function createStore({ pool, pinPepper }) {
       const column = { maxGroupMembers: 'max_group_members', channelsEnabled: 'channels_enabled', fileQuotaBytes: 'file_quota_bytes' }[field];
       if (!column) return { ok: false, reason: 'invalid_field' };
       return inTransaction(async (c) => {
+        const { rows: actorRows } = await c.query('SELECT role FROM org_members WHERE org_id = $1 AND user_id = $2 FOR UPDATE', [orgId, actor]);
         const { rowCount: orgCount } = await c.query('SELECT org_id FROM organizations WHERE org_id = $1 FOR UPDATE', [orgId]);
         if (orgCount !== 1) return { ok: false, reason: 'not_found' };
-        const { rows: actorRows } = await c.query('SELECT role FROM org_members WHERE org_id = $1 AND user_id = $2 FOR UPDATE', [orgId, actor]);
         if (!['owner', 'admin'].includes(actorRows[0]?.role)) return { ok: false, reason: 'forbidden' };
         const { rows } = await c.query('SELECT max_group_members, channels_enabled, file_quota_bytes FROM org_settings WHERE org_id = $1', [orgId]);
         const r = rows[0];
