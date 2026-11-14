@@ -522,6 +522,23 @@ export function createMemoryStore({ pinPepper }) {
       if (!t) return 'unknown';
       return t.expiresAt > nowMs ? 'valid' : 'expired';
     },
+    refreshTokenDevice: (raw) => refreshes.get(keyed('refresh', raw))?.deviceKey ?? null,
+    rotateSession(raw, nowMs, accessTtlMs, refreshTtlMs) {
+      const t = refreshes.get(keyed('refresh', raw));
+      if (!t) return { state: 'unknown' };
+      const device = devices.get(t.deviceKey);
+      if (!device || device.revoked) return { state: 'revoked', deviceKey: t.deviceKey };
+      if (t.usedAt !== null) return { state: 'reused', deviceKey: t.deviceKey };
+      if (t.expiresAt <= nowMs) return { state: 'expired' };
+      const accessToken = randomBytes(16).toString('hex');
+      const refreshToken = randomBytes(16).toString('hex');
+      const accessExpiresAt = nowMs + accessTtlMs;
+      const refreshExpiresAt = nowMs + refreshTtlMs;
+      t.usedAt = nowMs;
+      tokens.set(keyed('token', accessToken), { deviceKey: t.deviceKey, expiresAt: accessExpiresAt });
+      refreshes.set(keyed('refresh', refreshToken), { deviceKey: t.deviceKey, expiresAt: refreshExpiresAt, usedAt: null });
+      return { state: 'ok', deviceKey: t.deviceKey, accessToken, accessExpiresAt, refreshToken, refreshExpiresAt };
+    },
     consumeRefreshToken: (raw, nowMs) => {
       const t = refreshes.get(keyed('refresh', raw));
       if (!t) return { state: 'unknown' };
