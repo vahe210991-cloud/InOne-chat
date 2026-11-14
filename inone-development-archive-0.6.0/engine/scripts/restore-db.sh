@@ -4,10 +4,10 @@
 # Использование: ./scripts/restore-db.sh <копия базы.dump> <адрес пустой базы> [<архив файлов> <пустая папка файлов>]
 set -euo pipefail
 umask 077
-dump="\${1:?укажите файл копии базы}"
-target="\${2:?укажите адрес пустой базы}"
-files_archive="\${3:-}"
-files_target="\${4:-}"
+dump="${1:?укажите файл копии базы}"
+target="${2:?укажите адрес пустой базы}"
+files_archive="${3:-}"
+files_target="${4:-}"
 files_stage=""
 
 cleanup() {
@@ -57,6 +57,7 @@ if [ -n "$files_archive" ]; then
   mkdir -p "$files_parent"
   files_stage="$(mktemp -d "$files_parent/.inone-restore.XXXXXX")"
   tar --no-same-owner --no-same-permissions -C "$files_stage" -xzf "$files_archive"
+  if [ -d "$files_target" ]; then rmdir "$files_target"; fi
 fi
 
 tables="$(psql "$target" -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog', 'information_schema');")"
@@ -66,7 +67,6 @@ pg_restore --single-transaction --no-owner --no-acl --exit-on-error --dbname="$t
 echo "восстановлено: $target"
 
 if [ -n "$files_archive" ]; then
-  if [ -d "$files_target" ]; then rmdir "$files_target"; fi
   mv "$files_stage" "$files_target"
   files_stage=""
   echo "файлы восстановлены: $files_target"
