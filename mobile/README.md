@@ -1,76 +1,65 @@
-# InOne Beta 1.0 — unified screen and API test host
+# InOne Beta 1.0 — native Flutter mobile client
 
-The Flutter host now exposes the 22 owner-approved visual variants and the complete 73-entry test-screen catalogue in one searchable picker (95 selectable entries total).
+The production mobile entry point is now Flutter/Dart:
 
-## Screen catalogue
+- `lib/main.dart` → `InOneMobileApp`
+- `lib/app/inone_mobile_app.dart` — native application shell
+- `lib/ui_dart_source/` — the 45-file modular Dart UI package
+- `lib/core/network/`, `lib/core/session/`, `lib/core/data/` — shared API client, session and typed repositories
 
-- 22 approved HTML screen variants: 11 light and 11 dark. These retain the existing approved HTML asset and WebView presentation.
-- 51 Beta 0.7.1 test screens.
-- 1 deferred screen (CH-07, moved to 0.8).
-- 21 future concepts: calendar, tasks, files, CRM, Sindy AI, stories, geolocation and Propo map integration.
-- The 73 additional screens now load from the original owner-provided full-screen design gallery v0.8. The HTML is packaged as deterministic gzip/base64 text parts and reconstructed in memory without rewriting the source. Each Flutter catalogue ID selects its matching original gallery card.
+The legacy HTML/WebView host is no longer the application entry point. Approved HTML source material is retained in the repository archive for design/reference purposes only; it is not an active production navigation target.
 
-## Backend connection
+## Current connected flows
 
-The Flutter test host uses the local development backend by default; no public URL is required.
+The native Flutter shell currently connects:
 
-- Android emulator: `http://10.0.2.2:8080` (the host computer's port 8080).
-- iOS simulator / desktop: `http://127.0.0.1:8080`.
-- Physical device: pass the host computer's private LAN address explicitly.
+1. Email/password login — `POST /login`
+2. Email registration request — `POST /register/email`
+3. Email code confirmation — `POST /register/email/confirm`
+4. Account creation — `POST /register`
+5. Read-only current profile — `GET /profile`
+6. Current user's room list — `GET /rooms/mine`
+7. Logout — `POST /logout`
 
-Run the backend from `../inone-engine-poc-0.6.0` on port `8080` using its development instructions, then start the app:
+See [Dart/backend integration map](DART-BACKEND-INTEGRATION.md) for the screen-by-screen status, blocked operations, Beta 1.0 boundaries and security gates.
+
+## API environment
+
+The API origin is supplied through `INONE_API_BASE_URL`. No production host is hard-coded.
+
+- Android emulator default: `http://10.0.2.2:8080`
+- iOS simulator / desktop default: `http://127.0.0.1:8080`
+- Physical device: pass the development/staging host's LAN address explicitly.
+
+Example:
 
 ```sh
 cd mobile
 flutter pub get
-flutter run
-```
-
-If the backend listens on another host or port, override the default without changing source code:
-
-```sh
 flutter run --dart-define=INONE_API_BASE_URL=http://192.168.1.20:8080
 ```
 
-The LAN address above is an example only. Keep the backend bound to the local development network; do not expose it publicly. Never commit credentials or tokens.
+The LAN address is an example only. Use a controlled development/staging backend; do not expose the development engine publicly.
 
-The API panel provides:
-- Email/password login against `POST /login`.
-- In-memory access and refresh token handling.
-- One serialized refresh attempt after an authenticated 401, using `POST /token/refresh`.
-- Logout through `POST /logout`.
-- Read-only GET probes for routes that are present in the current main-branch backend, including `/healthz` and `/readyz` connectivity checks.
-- JSON response/error output for QA.
+## Security and known boundaries
 
-Only the stable device identifier is persisted, using platform secure storage. Access and refresh tokens remain in memory and are never passed into WebView JavaScript.
+- Access/refresh tokens remain in memory; the stable device identifier is stored using platform secure storage.
+- Profile is read-only until a verified update endpoint exists.
+- Room list metadata is connected, but message history and sending remain blocked until native MLS processing and durable encrypted local persistence are integrated.
+- Never send plaintext messages or use `POST /rooms/:id/events` as a fallback.
+- Provider login, recovery deep links, device-approval flows, file upload/download, APNs/FCM registration and notification-feed mapping are not yet enabled.
+- Leads, Kanban and deal detail remain Beta 2.0 placeholders.
+- RQ/PS scope differs between the screen handoff and API contract documents; these screens are not in active Beta 1.0 navigation pending owner resolution.
+- Demo data and gallery callbacks are not production data sources.
 
-### Personal profile API integration
+## Validation
 
-Selecting either approved personal-profile variant performs an authenticated `GET /profile` through the existing `InOneSession` and `InOneRepositories` path. The returned nickname, email, and verification level update the matching identity fields in the bundled original profile screen. The existing session remains the sole owner of access/refresh tokens and handles one refresh retry after a 401.
-
-The update is limited to the currently selected profile section of the approved local Flutter asset. Main-frame navigation to other origins is blocked, the update writes text with `textContent`, and no JavaScript channel or credentials are exposed. On logout or leaving the profile screen, identity fields are cleared. The sample task/activity/project counts remain visible as labels but show `—` because `/profile` does not provide those values.
-
-Loading, unauthenticated, empty-profile, and error states appear in a native banner without replacing the WebView or changing the approved screen design. Use the profile refresh action to fetch the latest account summary.
-
-## Current integration boundary
-
-- The personal-profile identity fields are connected to the authenticated profile API; other approved screens remain visual previews and their HTML demo controls are not wired to production actions.
-- The 73 test entries use the original full-screen HTML gallery. The gallery asset integrity test checks all 73 card IDs against the Flutter catalogue.
-- Generic API probing is read-only. POST/PUT/DELETE actions require dedicated forms, validated payloads and explicit confirmation.
-- Native Android/iOS MLS FFI, secure message database, upload flow, offline queue and two-device E2E are not completed by this increment.
-- The Flutter session temporarily owns refresh-token rotation. When the native MLS bridge is integrated, ownership must move to the native MLS session layer rather than running two refresh owners.
-
-## Tests
+Run from `mobile/`:
 
 ```sh
-cd mobile
-flutter test
+dart format --output=none --set-exit-if-changed .
 flutter analyze
+flutter test
 ```
 
-The tests assert the 22 approved variants, 73 test entries, the 51/1/21 stage split, 95 unique picker entries and the API transport contract.
-
-
-## Backend deployment note
-
-The current engine deployment guide describes the checked-in server build as development/test, not production-ready. SMTP/domain delivery, SMS where required, deployment/proxy validation, backup/restore and monitoring still need operational acceptance. Use a controlled staging API until those items are closed.
+Only report results from checks actually run on the exact commit being reviewed. Android/iOS device acceptance and native MLS end-to-end tests remain separate release gates.
