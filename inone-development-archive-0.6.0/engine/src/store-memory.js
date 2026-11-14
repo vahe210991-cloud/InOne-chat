@@ -302,6 +302,38 @@ export function createMemoryStore({ pinPepper }) {
     listOrgMembers(orgId) {
       return [...(orgMembers.get(orgId) ?? new Map()).entries()].map(([userId, m]) => ({ userId, role: m.role })).sort((a, b) => a.userId.localeCompare(b.userId));
     },
+    changeOrgMemberRole({ orgId, userId, actorId, role, at }) {
+      if (!['owner', 'admin', 'member'].includes(role)) return { ok: false, reason: 'invalid_role' };
+      if (!organizations.has(orgId)) return { ok: false, reason: 'not_found' };
+      const members = orgMembers.get(orgId) ?? new Map();
+      if (members.get(actorId)?.role !== 'owner') return { ok: false, reason: 'forbidden' };
+      const current = members.get(userId)?.role;
+      if (!current) return { ok: false, reason: 'not_found' };
+      const ownerCount = [...members.values()].filter((m) => m.role === 'owner').length;
+      if (current === 'owner' && role !== 'owner' && ownerCount <= 1) return { ok: false, reason: 'last_owner' };
+      members.get(userId).role = role;
+      adminActions.push({ orgId, actor: actorId, action: 'role_change', target: userId, detail: current + '->' + role, at });
+      return { ok: true, current };
+    },
+    removeOrgMemberWithAudit({ orgId, userId, actorId, at, leave = false }) {
+      if (!organizations.has(orgId)) return { ok: false, reason: 'not_found' };
+      const members = orgMembers.get(orgId) ?? new Map();
+      const actorRole = members.get(actorId)?.role;
+      const targetRole = members.get(userId)?.role;
+      if (!targetRole) return { ok: false, reason: leave ? 'not_member' : 'not_found' };
+      if (leave) {
+        if (actorId !== userId) return { ok: false, reason: 'forbidden' };
+      } else if (!(actorRole === 'owner' || (actorRole === 'admin' && targetRole === 'member'))) {
+        return { ok: false, reason: 'forbidden' };
+      }
+      const ownerCount = [...members.values()].filter((m) => m.role === 'owner').length;
+      if (targetRole === 'owner' && ownerCount <= 1) return { ok: false, reason: 'last_owner' };
+      if ([...rooms.values()].some((room) => room.orgId === orgId && room.owner === userId)) return { ok: false, reason: 'owns_rooms' };
+      for (const room of rooms.values()) if (room.orgId === orgId) { room.members.delete(userId); room.admins.delete(userId); }
+      members.delete(userId);
+      adminActions.push({ orgId, actor: actorId, action: leave ? 'member_leave' : 'member_remove', target: userId, detail: targetRole, at });
+      return { ok: true, targetRole };
+    },
     setOrgMemberRole(orgId, userId, role) {
       const m = orgMembers.get(orgId)?.get(userId);
       if (m) m.role = role;
