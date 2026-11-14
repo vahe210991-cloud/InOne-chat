@@ -439,3 +439,20 @@ Flutter run #632 на exact SHA завершился failure до steps; дос�
 Latest branch head: `dff9ebf9c69ac6ae08f6a91f7df3213652c3c87b`. Source-level static checks confirmed the latest hardening is present: DB readiness when migrations are disabled; atomic refresh rotation in PostgreSQL and memory stores; trusted configured origin for production signed file URLs; transactional database restore; regression tests and DB-suite inclusion. These checks do not substitute for test execution.
 
 P0 run #43591433401 and Flutter run #43591437303 both failed before any steps on the exact SHA; all P0 jobs have empty step arrays and logs are unavailable. No test result is established. Branch is 381 ahead / 0 behind main. `main` is untouched. PR #52 remains Draft/open and targets `stage0/identity-engineering-readiness-2026-11-13`.
+
+
+## Stage 4 / Flutter MLS integration audit — 2026-11-14
+
+Owner requested six Beta 1.0 work items: Flutter↔Rust MLS FFI, Keychain/Keystore SQLCipher key storage, Rust-owned refresh lifecycle, MLS send/decrypt, encrypted-only file attachments, and verified-phone recovery deep links.
+
+The current Flutter migration branch (`feat/flutter-ui-dart-migration-2026-11-14`, code SHA `eda47ce560cb1468438460147cbd49cd2f4a4747`) does not contain the Stage 4 native bridge. A separate draft PR #45 contains Rust bridge/session/secure-store source and MLS text send/sync, but FRB generated outputs and Android/iOS runtime acceptance are missing. PR #45 and PR #52 are on diverged branches; do not merge PR #45 wholesale or replace the current Flutter app.
+
+Additional confirmed gaps:
+- Current Flutter session still owns refresh token in Dart.
+- Current app has SC-08 recovery confirmation screen source but no deep-link intake, no route to SC-08, and no confirm-link API method.
+- Stage 4 client exposes text send/sync only; no native file attachment encryption/upload/decryption path exists. Backend file storage stores uploaded bytes as received, so attachment encryption must happen on-device before upload and the file key must be delivered only inside MLS.
+- Verified-phone recovery uses two channels: SMS code + email confirmation link. GET link is preview-only; POST consumes it. Production config currently disables/forbids the SMS provider; do not call this path production-ready until a real SMS provider is configured and tested. App Links also need a confirmed public hostname, Android signing fingerprint and Apple Team ID.
+
+The audit and source evidence are recorded in `development/reports/2026-11-14-1701-stage4-flutter-mls-integration-audit.md`. Isolated documentation/audit branch: `task/beta1-stage4-mls-merge-audit-2026-11-14`. No product code was changed and no tests/builds/device runs were executed.
+
+**Blocking environment:** current tools permit GitHub repository-native inspection/writes but not a complete private-repository clone or Rust/Flutter build. Broad multi-file native integration is not safe through individual Contents API writes. Continue only after obtaining a full authorized working copy and executable CI runner. `main`, PR #45 and PR #52 remain untouched/unmerged.
