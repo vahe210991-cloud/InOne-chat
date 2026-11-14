@@ -433,3 +433,9 @@ Flutter run #632 на exact SHA завершился failure до steps; дос�
 Текущий engine code SHA на момент фиксации отчёта: `133a8c8dc3d28fa3c923288354dbf98821e90afb`. P0 run #43591312640 на exact SHA завершился до steps во всех шести jobs; GitHub не предоставил logs. Это не даёт ни PASS, ни результатов тестов. Локальные тесты не запускались.
 
 `main` не изменялся. PR #52 остаётся Draft/open и направлен в `stage0/identity-engineering-readiness-2026-11-13`; не менять base и не сливать без отдельного решения владельца.
+
+## Engine status — exact-head verification 2026-11-14
+
+Latest branch head: `dff9ebf9c69ac6ae08f6a91f7df3213652c3c87b`. Source-level static checks confirmed the latest hardening is present: DB readiness when migrations are disabled; atomic refresh rotation in PostgreSQL and memory stores; trusted configured origin for production signed file URLs; transactional database restore; regression tests and DB-suite inclusion. These checks do not substitute for test execution.
+
+P0 run #43591433401 and Flutter run #43591437303 both failed before any steps on the exact SHA; all P0 jobs have empty step arrays and logs are unavailable. No test result is established. Branch is 381 ahead / 0 behind main. `main` is untouched. PR #52 remains Draft/open and targets `stage0/identity-engineering-readiness-2026-11-13`.
