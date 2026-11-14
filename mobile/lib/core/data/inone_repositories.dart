@@ -1,5 +1,6 @@
 import '../session/inone_session.dart';
 import 'inone_profile.dart';
+import 'inone_organization.dart';
 import 'inone_room.dart';
 
 /// Typed backend repositories used by the native Flutter application.
@@ -16,8 +17,8 @@ class InOneRepositories {
       InOneProfile.fromJson(await session.request('GET', '/profile'));
   Future<List<InOneRoom>> myRooms() async =>
       InOneRoomList.fromJson(await session.request('GET', '/rooms/mine')).rooms;
-  Future<Map<String, dynamic>> myOrganizations() =>
-      session.request('GET', '/orgs/mine');
+  Future<List<InOneOrganization>> myOrganizations() async =>
+      InOneOrganizationList.fromJson(await session.request('GET', '/orgs/mine')).orgs;
   Future<Map<String, dynamic>> myDevices() =>
       session.request('GET', '/devices/mine');
   Future<Map<String, dynamic>> loginApprovals() =>
