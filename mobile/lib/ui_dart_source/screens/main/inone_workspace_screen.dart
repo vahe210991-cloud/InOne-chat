@@ -47,12 +47,14 @@ class InOneWorkspaceScreen extends StatelessWidget {
             _sectionHeader(context, 'Modules', 'Customize', onCustomize),
             const SizedBox(height: 11),
             _modulesGrid(context),
-            const SizedBox(height: 20),
-            _sectionHeader(context, 'Recent activity', 'See all', onSeeAll),
-            const SizedBox(height: 10),
-            for (var i = 0; i < activity.length; i++) ...[
-              if (i > 0) const SizedBox(height: 12),
-              _activityRow(context, activity[i]),
+            if (activity.isNotEmpty) ...[
+              const SizedBox(height: 20),
+              _sectionHeader(context, 'Recent activity', 'See all', onSeeAll),
+              const SizedBox(height: 10),
+              for (var i = 0; i < activity.length; i++) ...[
+                if (i > 0) const SizedBox(height: 12),
+                _activityRow(context, activity[i]),
+              ],
             ],
           ],
         ),
@@ -156,38 +158,39 @@ class InOneWorkspaceScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                '${summary.activeProjects}',
+                summary.activeProjects?.toString() ?? '—',
                 style: InOneText.style(34, FontWeight.w700, c.heroFg, height: 1, letterSpacing: -0.68),
               ),
               const SizedBox(width: 9),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: c.heroPillBg,
-                    borderRadius: BorderRadius.circular(InOneRadius.pill),
-                  ),
-                  child: Text(
-                    summary.projectsCaption,
-                    style: InOneText.style(11, FontWeight.w700, c.heroPillFg),
+              if (summary.projectsCaption.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: c.heroPillBg,
+                      borderRadius: BorderRadius.circular(InOneRadius.pill),
+                    ),
+                    child: Text(
+                      summary.projectsCaption,
+                      style: InOneText.style(11, FontWeight.w700, c.heroPillFg),
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
           const SizedBox(height: 16),
           Row(
             children: [
-              stat('${summary.tasksDue}', 'Tasks due'),
+              stat(summary.tasksDue?.toString() ?? '—', 'Tasks due'),
               const SizedBox(width: 14),
               divider(),
               const SizedBox(width: 14),
-              stat('${summary.teamMembers}', 'Team members'),
+              stat(summary.teamMembers?.toString() ?? '—', 'Team members'),
               const SizedBox(width: 14),
               divider(),
               const SizedBox(width: 14),
-              stat('${summary.activeGroups}', 'Active groups'),
+              stat(summary.activeGroups?.toString() ?? '—', 'Active groups'),
             ],
           ),
         ],
