@@ -417,3 +417,11 @@ Identity Stage 0 environment addendum: added `.devcontainer/identity/devcontaine
 
 
 CI verification update: first Identity contract workflow run #40 failed. The job log archive could not be retrieved (GitHub returned 404); failure cause remains unknown. Workflow now uses GitHub-hosted Ubuntu with pinned Node 26 setup rather than a job-level container. Latest-head rerun is not yet confirmed; CI remains NOT PASS.
+
+## Engine hardening update — 2026-11-14
+
+Канонический backend остаётся в `inone-development-archive-0.6.0/engine/`. В рабочей ветке `feat/flutter-ui-dart-migration-2026-11-14` на SHA `58fafebe5566ea5b6f6afbadd8942fe5e166b62f` внесены два точечных исправления: P0 Rust-format workflow переведён в read-only check без автоматического push; startup при отключённых миграциях теперь проверяет PostgreSQL через `SELECT 1` до открытия HTTP-порта. Для DB readiness добавлены два регрессионных теста, но запуск тестов ещё не выполнен.
+
+PR #52 открыт как Draft и направлен в `stage0/identity-engineering-readiness-2026-11-13`; не менять base и не сливать без отдельного решения владельца. Ветка на момент записи ahead of main на 358 commits, behind на 0. `main` не менялся.
+
+Flutter run #632 на exact SHA завершился failure до steps; доступных job steps/logs нет. Не трактовать это как failure тестов приложения. P0 matrix на exact SHA пока не подтверждён. Следующая сессия должна продолжить read-only аудит engine auth/session/OTP, object storage, backup/restore и MLS FFI, затем выполнить реальные тесты в контролируемом окружении.
