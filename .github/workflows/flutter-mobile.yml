@@ -1,6 +1,12 @@
 name: Flutter mobile validation
 
 on:
+  push:
+    branches:
+      - feat/flutter-ui-dart-migration-2026-11-14
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/flutter-mobile.yml'
   pull_request:
     paths:
       - 'mobile/**'
