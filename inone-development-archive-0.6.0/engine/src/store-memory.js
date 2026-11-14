@@ -384,11 +384,17 @@ export function createMemoryStore({ pinPepper }) {
       return s ? { ...s } : { maxGroupMembers: null, channelsEnabled: true, fileQuotaBytes: null };
     },
     setOrgSetting({ orgId, field, value, actor, at }) {
+      if (!['maxGroupMembers', 'channelsEnabled', 'fileQuotaBytes'].includes(field)) return { ok: false, reason: 'invalid_field' };
+      if (!organizations.has(orgId)) return { ok: false, reason: 'not_found' };
+      const actorRole = orgMembers.get(orgId)?.get(actor)?.role;
+      if (!['owner', 'admin'].includes(actorRole)) return { ok: false, reason: 'forbidden' };
       const cur = { maxGroupMembers: null, channelsEnabled: true, fileQuotaBytes: null, ...(orgSettingsMap.get(orgId) ?? {}) };
       const old = cur[field];
       cur[field] = value;
       orgSettingsMap.set(orgId, cur);
       orgSettingsLog.push({ orgId, actor, field, old, new: value, at });
+      adminActions.push({ orgId, actor, action: 'setting_change', target: field, detail: JSON.stringify(value), at });
+      return { ok: true };
     },
     listOrgSettingsLog(orgId) {
       return orgSettingsLog.filter((e) => e.orgId === orgId).map((e) => ({ actor: e.actor, field: e.field, old: e.old, new: e.new, at: e.at }));
