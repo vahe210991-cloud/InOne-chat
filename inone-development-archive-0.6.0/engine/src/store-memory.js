@@ -432,9 +432,14 @@ export function createMemoryStore({ pinPepper }) {
       const l = orgLinks.get(linkId);
       l.status = status; l.decidedBy = decidedBy; l.decidedAt = decidedAt;
     },
-    transitionOrgLinkStatus({ linkId, fromStatus, status, decidedBy, decidedAt }) {
+    transitionOrgLinkStatus({ linkId, fromStatus, status, decidedBy, decidedAt, orgId }) {
+      if (!organizations.has(orgId)) return { ok: false, reason: 'not_found' };
       const l = orgLinks.get(linkId);
-      if (!l || l.status !== fromStatus) return false;
+      if (!l || (l.orgA !== orgId && l.orgB !== orgId)) return { ok: false, reason: 'not_found' };
+      if (l.status !== fromStatus) return { ok: false, reason: 'state_changed' };
+      if (status === 'active' && l.proposingOrg === orgId) return { ok: false, reason: 'wrong_side' };
+      const actorRole = orgMembers.get(orgId)?.get(decidedBy)?.role;
+      if (actorRole !== 'owner' && actorRole !== 'admin') return { ok: false, reason: 'forbidden' };
       l.status = status;
       l.decidedBy = decidedBy;
       l.decidedAt = decidedAt;
@@ -451,7 +456,7 @@ export function createMemoryStore({ pinPepper }) {
         adminActions.push({ orgId: l.orgA, actor: decidedBy, action, target: l.orgB, detail: linkId, at: decidedAt });
         adminActions.push({ orgId: l.orgB, actor: decidedBy, action, target: l.orgA, detail: linkId, at: decidedAt });
       }
-      return true;
+      return { ok: true };
     },
     activeLinkBetween(x, y) {
       const a = x < y ? x : y;
