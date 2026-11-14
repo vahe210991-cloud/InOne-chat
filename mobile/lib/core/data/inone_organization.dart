@@ -1,3 +1,5 @@
+import '../network/api_exception.dart';
+
 class InOneOrganization {
   const InOneOrganization({
     required this.orgId,
@@ -17,7 +19,7 @@ class InOneOrganization {
     final status = json['status'];
     final role = json['role'];
     if (orgId is! String || name is! String || status is! String || role is! String) {
-      throw const FormatException('Invalid organization response');
+      throw const ApiException(code: 'invalid_response', statusCode: 502, retryable: false);
     }
     return InOneOrganization(
       orgId: orgId,
@@ -36,12 +38,12 @@ class InOneOrganizationList {
   factory InOneOrganizationList.fromJson(Map<String, dynamic> json) {
     final raw = json['orgs'];
     if (raw is! List) {
-      throw const FormatException('Invalid organizations response');
+      throw const ApiException(code: 'invalid_response', statusCode: 502, retryable: false);
     }
     return InOneOrganizationList(
       raw.map((item) {
         if (item is! Map) {
-          throw const FormatException('Invalid organization item');
+          throw const ApiException(code: 'invalid_response', statusCode: 502, retryable: false);
         }
         return InOneOrganization.fromJson(Map<String, dynamic>.from(item));
       }).toList(growable: false),
