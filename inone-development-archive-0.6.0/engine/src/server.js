@@ -1480,17 +1480,26 @@ if (req.method === 'POST' && orgLinkActRoute) {
     if (link.status !== 'proposed') return send(res, 409, { error: 'link is not waiting for acceptance' });
     if (link.proposingOrg === orgId) return send(res, 403, { error: 'the proposing side cannot accept its own link', code: 'link_own_side' });
     const transitioned = await storage.transitionOrgLinkStatus({
-      linkId, fromStatus: 'proposed', status: 'active', decidedBy: d.userId, decidedAt: now(),
+      linkId, orgId, fromStatus: 'proposed', status: 'active', decidedBy: d.userId, decidedAt: now(),
     });
-    if (!transitioned) return send(res, 409, { error: 'link is not waiting for acceptance' });
+    if (!transitioned.ok) {
+      if (transitioned.reason === 'forbidden') return send(res, 403, { error: 'only owners and admins decide links', code: 'org_role_required' });
+      if (transitioned.reason === 'not_found') return send(res, 404, { error: 'not found' });
+      if (transitioned.reason === 'wrong_side') return send(res, 403, { error: 'the proposing side cannot accept its own link', code: 'link_own_side' });
+      return send(res, 409, { error: 'link is not waiting for acceptance' });
+    }
     return send(res, 200, { status: 'active' });
   }
   if (link.status === 'revoked') return send(res, 409, { error: 'link is already revoked' });
   const other = link.orgA === orgId ? link.orgB : link.orgA;
   const transitioned = await storage.transitionOrgLinkStatus({
-    linkId, fromStatus: link.status, status: 'revoked', decidedBy: d.userId, decidedAt: now(),
+    linkId, orgId, fromStatus: link.status, status: 'revoked', decidedBy: d.userId, decidedAt: now(),
   });
-  if (!transitioned) return send(res, 409, { error: 'link state changed; reload and retry' });
+  if (!transitioned.ok) {
+    if (transitioned.reason === 'forbidden') return send(res, 403, { error: 'only owners and admins decide links', code: 'org_role_required' });
+    if (transitioned.reason === 'not_found') return send(res, 404, { error: 'not found' });
+    return send(res, 409, { error: 'link state changed; reload and retry' });
+  }
   return send(res, 200, { status: 'revoked' });
 }
 // Журнал действий администраторов (шаг 5.7): читают владелец и администратор организации. Содержимое комнат сюда не попадает.
