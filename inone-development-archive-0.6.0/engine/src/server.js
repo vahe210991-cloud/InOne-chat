@@ -1303,14 +1303,16 @@ if (req.method === 'POST' && orgReqDecision) {
   if (r.status !== 'pending') return send(res, 409, { error: 'request is already decided' });
   if (body.decision !== 'approve' && body.decision !== 'reject') return send(res, 400, { error: 'decision must be approve or reject' });
   if (body.decision === 'reject') {
-    await storage.decideOrgRequest({ requestId, status: 'rejected', decidedBy: d.userId, decidedAt: now(), orgId: null });
+    const rejected = await storage.decideOrgRequest({ requestId, status: 'rejected', decidedBy: d.userId, decidedAt: now(), orgId: null });
+    if (!rejected) return send(res, 409, { error: 'request was already decided' });
     return send(res, 200, { status: 'rejected' });
   }
-  const orgId = `org-${requestId}`;
-  await storage.createOrganization({ orgId, name: r.name, status: 'approved', createdBy: r.applicantId, createdAt: now() });
-  await storage.addOrgMember(orgId, r.applicantId, 'owner', now());
-  await storage.decideOrgRequest({ requestId, status: 'approved', decidedBy: d.userId, decidedAt: now(), orgId });
-  return send(res, 200, { status: 'approved', orgId });
+  const approved = await storage.approveOrgRequest({ requestId, decidedBy: d.userId, decidedAt: now() });
+  if (!approved.ok) {
+    if (approved.reason === 'not_found') return send(res, 404, { error: 'not found' });
+    return send(res, 409, { error: 'request was already decided' });
+  }
+  return send(res, 200, { status: 'approved', orgId: approved.orgId });
 }
 // Управление организацией (шаг 5.4). Роли: владелец, администратор, участник. Владелец меняет роли;
 // владелец и администратор добавляют и удаляют участников (администратор — только обычных); выход снимает доступ к комнатам организации.
