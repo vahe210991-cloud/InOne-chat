@@ -1,7 +1,7 @@
 # Beta 1.0 API contract matrix
 
 **Статус:** рабочая каноническая карта Stage 3; не является заявлением о production readiness.  
-**Backend source:** `inone-engine-poc-0.6.0/src/server.js`  
+**Backend source:** `inone-development-archive-0.6.0/engine/src/server.js`  
 **Mobile host:** `mobile/lib/main.dart`, `mobile/lib/app/inone_mobile_app.dart`, `mobile/lib/core/network/api_client.dart`, `mobile/lib/core/session/inone_session.dart`  
 **Экранные источники:** `mobile/lib/ui_dart_source/`; прежние HTML-пакеты сохранены только в `мусорный ящик/`.
 
@@ -108,14 +108,14 @@ The engine's `npm test` suite already includes dedicated suites for:
 - files, push, configuration and secret-log hygiene.
 
 The following test files are the primary integration evidence:
-- `inone-engine-poc-0.6.0/test/mls-messages.test.js`
-- `inone-engine-poc-0.6.0/test/mls-offline.test.js`
-- `inone-engine-poc-0.6.0/test/sync-ack.test.js`
-- `inone-engine-poc-0.6.0/test/org-requests.test.js`
-- `inone-engine-poc-0.6.0/test/org-access.test.js`
-- `inone-engine-poc-0.6.0/test/org-isolation-matrix.test.js`
-- `inone-engine-poc-0.6.0/test/room-permissions.test.js`
-- `inone-engine-poc-0.6.0/test/sessions.test.js`
+- `inone-development-archive-0.6.0/engine/test/mls-messages.test.js`
+- `inone-development-archive-0.6.0/engine/test/mls-offline.test.js`
+- `inone-development-archive-0.6.0/engine/test/sync-ack.test.js`
+- `inone-development-archive-0.6.0/engine/test/org-requests.test.js`
+- `inone-development-archive-0.6.0/engine/test/org-access.test.js`
+- `inone-development-archive-0.6.0/engine/test/org-isolation-matrix.test.js`
+- `inone-development-archive-0.6.0/engine/test/room-permissions.test.js`
+- `inone-development-archive-0.6.0/engine/test/sessions.test.js`
 - `mobile/test/core/data/inone_repositories_test.dart`
 - `mobile/test/core/network/api_client_test.dart`
 
