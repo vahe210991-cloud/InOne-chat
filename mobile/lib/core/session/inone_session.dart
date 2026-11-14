@@ -119,6 +119,18 @@ class InOneSession extends ChangeNotifier {
         'email': email.trim(),
         'code': code.trim(),
       });
+  Future<List<Map<String, dynamic>>> listDevices() async {
+    final result = await request('GET', '/devices/mine');
+    final items = result['devices'];
+    if (items is! List) return const [];
+    return items.whereType<Map<String, dynamic>>().toList(growable: false);
+  }
+
+  Future<void> revokeDevice(String deviceId) async {
+    await request('DELETE', '/devices/${Uri.encodeComponent(deviceId)}');
+    if (deviceId == _deviceId) await _clearSession();
+  }
+
 
 
   Future<Map<String, dynamic>> confirmEmailRegistration({
