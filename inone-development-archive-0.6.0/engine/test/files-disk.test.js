@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, randomBytes } from 'node:crypto';
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createServer } from '../src/server.js';
@@ -47,6 +47,7 @@ test('хранилище на диске: объект называется св
     const store = createFsObjectStore(dir);
     const id = randomBytes(16).toString('hex');
     await store.put(id, Buffer.from('шифротекст'));
+    assert.equal(statSync(dir).mode & 0o777, 0o700, 'каталог объектов закрыт от других пользователей');
     assert.deepEqual(readdirSync(dir), [id], 'на диске только идентификатор');
     assert.equal((await store.get(id)).toString('utf8'), 'шифротекст');
     await store.remove(id);
