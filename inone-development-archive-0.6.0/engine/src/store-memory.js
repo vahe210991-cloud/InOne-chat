@@ -522,7 +522,10 @@ export function createMemoryStore({ pinPepper }) {
       if (!t) return 'unknown';
       return t.expiresAt > nowMs ? 'valid' : 'expired';
     },
-    refreshTokenDevice: (raw) => refreshes.get(keyed('refresh', raw))?.deviceKey ?? null,
+    refreshTokenDevice(raw, nowMs) {
+      const t = refreshes.get(keyed('refresh', raw));
+      return t && t.usedAt === null && t.expiresAt > nowMs ? t.deviceKey : null;
+    },
     rotateSession(raw, nowMs, accessTtlMs, refreshTtlMs) {
       const t = refreshes.get(keyed('refresh', raw));
       if (!t) return { state: 'unknown' };
