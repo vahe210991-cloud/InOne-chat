@@ -279,8 +279,23 @@ export function createMemoryStore({ pinPepper }) {
     getOrgRequestDocument(docId) { const x = orgRequestDocs.get(docId); return x ? { ...x } : null; },
     decideOrgRequest({ requestId, status, decidedBy, decidedAt, orgId }) {
       const r = orgRequests.get(requestId);
+      if (!r || r.status !== 'pending') return false;
       r.status = status; r.decidedBy = decidedBy; r.decidedAt = decidedAt; r.orgId = orgId;
       orgRequestLog.push({ requestId, actor: decidedBy, action: status === 'approved' ? 'approve' : 'reject', at: decidedAt });
+      return true;
+    },
+    approveOrgRequest({ requestId, decidedBy, decidedAt }) {
+      const r = orgRequests.get(requestId);
+      if (!r) return { ok: false, reason: 'not_found' };
+      if (r.status !== 'pending') return { ok: false, reason: 'already_decided' };
+      const orgId = `org-${requestId}`;
+      organizations.set(orgId, { orgId, name: r.name, status: 'approved', createdBy: r.applicantId, createdAt: decidedAt });
+      const members = orgMembers.get(orgId) ?? new Map();
+      members.set(r.applicantId, { role: 'owner', joinedAt: decidedAt });
+      orgMembers.set(orgId, members);
+      r.status = 'approved'; r.decidedBy = decidedBy; r.decidedAt = decidedAt; r.orgId = orgId;
+      orgRequestLog.push({ requestId, actor: decidedBy, action: 'approve', at: decidedAt });
+      return { ok: true, orgId };
     },
     logOrgRequest(requestId, actor, action, at) { orgRequestLog.push({ requestId, actor, action, at }); },
     listOrgRequestLog(requestId) { return orgRequestLog.filter((x) => x.requestId === requestId).map((x) => ({ actor: x.actor, action: x.action, at: x.at })); },
