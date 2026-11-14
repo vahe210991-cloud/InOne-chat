@@ -392,3 +392,6 @@ Owner has explicitly requested all six items below for Beta 1.0. Use the isolate
 ### Current blocker
 
 The repository is private. Available tools do not provide a full clone/Codespace or Rust/Flutter build runner. Individual GitHub file edits are not sufficient for this broad cross-language/native integration. First obtain an authorized full working copy and verify clean status, exact refs, submodules/LFS; then implement in a task branch and run codegen + exact-head CI. Do not merge PR #45 or PR #52, change backend contracts, or enable native MLS until the relevant acceptance gates pass.
+
+
+Source-boundary warning: Stage 4 mobile Rust depends on the POC-path `mobile-mls/mls-client`, not the canonical engine's similarly named crate. PR #45 tests against canonical engine through `INONE_ENGINE_DIR` but links the POC-path mobile client. Compare APIs/provenance and preserve this boundary before porting; do not treat the crates as interchangeable. Details: `development/reports/2026-11-14-1703-stage4-source-boundary-addendum.md`. Full private clone/build runner is BLOCKED in the current tool environment.
