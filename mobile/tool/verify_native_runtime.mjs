@@ -11,7 +11,7 @@ if (!main.includes("app/inone_mobile_app.dart") || !main.includes("InOneMobileAp
 if (/webview_flutter|WebViewController|loadFlutterAsset|InOneBridge/.test(main)) {
   throw new Error('The application entry point still contains a legacy HTML/WebView runtime path.');
 }
-if (/webview_flutter/.test(pubspec) || /^\s+assets:\s*$/m.test(pubspec)) {
+if (/webview_flutter/.test(pubspec) || /webview_flutter/.test(lockfile) || /^\s+assets:\s*$/m.test(pubspec)) {
   throw new Error('The mobile pubspec must not bundle WebView or legacy HTML assets.');
 }
 
