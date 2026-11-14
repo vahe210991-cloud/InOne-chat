@@ -419,11 +419,11 @@ export function createStore({ pool, pinPepper }) {
       const a = proposingOrg < otherOrg ? proposingOrg : otherOrg;
       const b = proposingOrg < otherOrg ? otherOrg : proposingOrg;
       return inTransaction(async (c) => {
+        const { rows: actorRows } = await c.query('SELECT role FROM org_members WHERE org_id = $1 AND user_id = $2 FOR UPDATE', [proposingOrg, proposedBy]);
+        if (!['owner', 'admin'].includes(actorRows[0]?.role)) return { ok: false, reason: 'forbidden' };
         const { rows: orgRows } = await c.query('SELECT org_id, status FROM organizations WHERE org_id = ANY($1::text[]) ORDER BY org_id FOR UPDATE', [[a, b]]);
         if (orgRows.length !== 2) return { ok: false, reason: 'not_found' };
         if (orgRows.some((org) => org.status !== 'approved')) return { ok: false, reason: 'not_approved' };
-        const { rows: actorRows } = await c.query('SELECT role FROM org_members WHERE org_id = $1 AND user_id = $2 FOR UPDATE', [proposingOrg, proposedBy]);
-        if (!['owner', 'admin'].includes(actorRows[0]?.role)) return { ok: false, reason: 'forbidden' };
         const { rowCount } = await c.query(
           "INSERT INTO org_links (link_id, org_a, org_b, proposed_by_org, status, proposed_by, created_at) VALUES ($1, $2, $3, $4, 'proposed', $5, $6) ON CONFLICT (org_a, org_b) DO UPDATE SET link_id = EXCLUDED.link_id, proposed_by_org = EXCLUDED.proposed_by_org, status = 'proposed', proposed_by = EXCLUDED.proposed_by, created_at = EXCLUDED.created_at, decided_by = NULL, decided_at = NULL WHERE org_links.status = 'revoked' RETURNING link_id",
           [linkId, a, b, proposingOrg, proposedBy, createdAt],
@@ -444,6 +444,8 @@ export function createStore({ pool, pinPepper }) {
     },
     async transitionOrgLinkStatus({ linkId, fromStatus, status, decidedBy, decidedAt, orgId }) {
       return inTransaction(async (c) => {
+        const { rows: actorRows } = await c.query('SELECT role FROM org_members WHERE org_id = $1 AND user_id = $2 FOR UPDATE', [orgId, decidedBy]);
+        if (!['owner', 'admin'].includes(actorRows[0]?.role)) return { ok: false, reason: 'forbidden' };
         const { rowCount: orgCount } = await c.query('SELECT org_id FROM organizations WHERE org_id = $1 FOR UPDATE', [orgId]);
         if (orgCount !== 1) return { ok: false, reason: 'not_found' };
         const { rows } = await c.query('SELECT org_a, org_b, proposed_by_org, status FROM org_links WHERE link_id = $1 FOR UPDATE', [linkId]);
@@ -451,8 +453,6 @@ export function createStore({ pool, pinPepper }) {
         if (!link || (link.org_a !== orgId && link.org_b !== orgId)) return { ok: false, reason: 'not_found' };
         if (link.status !== fromStatus) return { ok: false, reason: 'state_changed' };
         if (status === 'active' && link.proposed_by_org === orgId) return { ok: false, reason: 'wrong_side' };
-        const { rows: actorRows } = await c.query('SELECT role FROM org_members WHERE org_id = $1 AND user_id = $2 FOR UPDATE', [orgId, decidedBy]);
-        if (!['owner', 'admin'].includes(actorRows[0]?.role)) return { ok: false, reason: 'forbidden' };
         const { rowCount } = await c.query(
           'UPDATE org_links SET status = $3, decided_by = $4, decided_at = $5 WHERE link_id = $1 AND status = $2',
           [linkId, fromStatus, status, decidedBy, decidedAt],
