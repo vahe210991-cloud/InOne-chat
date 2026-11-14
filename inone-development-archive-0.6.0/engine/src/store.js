@@ -419,14 +419,19 @@ export function createStore({ pool, pinPepper }) {
       const a = proposingOrg < otherOrg ? proposingOrg : otherOrg;
       const b = proposingOrg < otherOrg ? otherOrg : proposingOrg;
       return inTransaction(async (c) => {
+        const { rows: orgRows } = await c.query('SELECT org_id, status FROM organizations WHERE org_id = ANY($1::text[]) ORDER BY org_id FOR UPDATE', [[a, b]]);
+        if (orgRows.length !== 2) return { ok: false, reason: 'not_found' };
+        if (orgRows.some((org) => org.status !== 'approved')) return { ok: false, reason: 'not_approved' };
+        const { rows: actorRows } = await c.query('SELECT role FROM org_members WHERE org_id = $1 AND user_id = $2 FOR UPDATE', [proposingOrg, proposedBy]);
+        if (!['owner', 'admin'].includes(actorRows[0]?.role)) return { ok: false, reason: 'forbidden' };
         const { rowCount } = await c.query(
           "INSERT INTO org_links (link_id, org_a, org_b, proposed_by_org, status, proposed_by, created_at) VALUES ($1, $2, $3, $4, 'proposed', $5, $6) ON CONFLICT (org_a, org_b) DO UPDATE SET link_id = EXCLUDED.link_id, proposed_by_org = EXCLUDED.proposed_by_org, status = 'proposed', proposed_by = EXCLUDED.proposed_by, created_at = EXCLUDED.created_at, decided_by = NULL, decided_at = NULL WHERE org_links.status = 'revoked' RETURNING link_id",
           [linkId, a, b, proposingOrg, proposedBy, createdAt],
         );
-        if (rowCount !== 1) return false;
+        if (rowCount !== 1) return { ok: false, reason: 'already_exists' };
         await c.query("INSERT INTO admin_action_log (org_id, actor, action, target, detail, at) VALUES ($1, $2, 'link_propose', $3, $4, $5)", [proposingOrg, proposedBy, otherOrg, linkId, createdAt]);
         await c.query("INSERT INTO admin_action_log (org_id, actor, action, target, detail, at) VALUES ($1, $2, 'link_propose', $3, $4, $5)", [otherOrg, proposedBy, proposingOrg, linkId, createdAt]);
-        return true;
+        return { ok: true };
       });
     },
     async getOrgLink(linkId) {
