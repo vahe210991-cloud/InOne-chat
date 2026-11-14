@@ -298,6 +298,47 @@ export function createStore({ pool, pinPepper }) {
       const { rows } = await pool.query('SELECT user_id, role FROM org_members WHERE org_id = $1 ORDER BY user_id', [orgId]);
       return rows.map((r) => ({ userId: r.user_id, role: r.role }));
     },
+    async changeOrgMemberRole({ orgId, userId, actorId, role, at }) {
+      if (!['owner', 'admin', 'member'].includes(role)) return { ok: false, reason: 'invalid_role' };
+      return inTransaction(async (c) => {
+        const { rowCount: orgCount } = await c.query('SELECT org_id FROM organizations WHERE org_id = $1 FOR UPDATE', [orgId]);
+        if (orgCount !== 1) return { ok: false, reason: 'not_found' };
+        const { rows } = await c.query('SELECT user_id, role FROM org_members WHERE org_id = $1 ORDER BY user_id FOR UPDATE', [orgId]);
+        const roles = new Map(rows.map((row) => [row.user_id, row.role]));
+        if (roles.get(actorId) !== 'owner') return { ok: false, reason: 'forbidden' };
+        const current = roles.get(userId);
+        if (!current) return { ok: false, reason: 'not_found' };
+        const ownerCount = rows.filter((row) => row.role === 'owner').length;
+        if (current === 'owner' && role !== 'owner' && ownerCount <= 1) return { ok: false, reason: 'last_owner' };
+        await c.query('UPDATE org_members SET role = $3 WHERE org_id = $1 AND user_id = $2', [orgId, userId, role]);
+        await c.query("INSERT INTO admin_action_log (org_id, actor, action, target, detail, at) VALUES ($1, $2, 'role_change', $3, $4, $5)", [orgId, actorId, userId, current + '->' + role, at]);
+        return { ok: true, current };
+      });
+    },
+    async removeOrgMemberWithAudit({ orgId, userId, actorId, at, leave = false }) {
+      return inTransaction(async (c) => {
+        const { rowCount: orgCount } = await c.query('SELECT org_id FROM organizations WHERE org_id = $1 FOR UPDATE', [orgId]);
+        if (orgCount !== 1) return { ok: false, reason: 'not_found' };
+        const { rows } = await c.query('SELECT user_id, role FROM org_members WHERE org_id = $1 ORDER BY user_id FOR UPDATE', [orgId]);
+        const roles = new Map(rows.map((row) => [row.user_id, row.role]));
+        const actorRole = roles.get(actorId);
+        const targetRole = roles.get(userId);
+        if (!targetRole) return { ok: false, reason: leave ? 'not_member' : 'not_found' };
+        if (leave) {
+          if (actorId !== userId) return { ok: false, reason: 'forbidden' };
+        } else if (!(actorRole === 'owner' || (actorRole === 'admin' && targetRole === 'member'))) {
+          return { ok: false, reason: 'forbidden' };
+        }
+        const ownerCount = rows.filter((row) => row.role === 'owner').length;
+        if (targetRole === 'owner' && ownerCount <= 1) return { ok: false, reason: 'last_owner' };
+        const { rows: owned } = await c.query('SELECT COUNT(*)::int AS n FROM rooms WHERE org_id = $1 AND owner = $2', [orgId, userId]);
+        if (owned[0].n > 0) return { ok: false, reason: 'owns_rooms' };
+        await c.query('DELETE FROM room_members WHERE user_id = $2 AND room_id IN (SELECT room_id FROM rooms WHERE org_id = $1)', [orgId, userId]);
+        await c.query('DELETE FROM org_members WHERE org_id = $1 AND user_id = $2', [orgId, userId]);
+        await c.query('INSERT INTO admin_action_log (org_id, actor, action, target, detail, at) VALUES ($1, $2, $3, $4, $5, $6)', [orgId, actorId, leave ? 'member_leave' : 'member_remove', userId, targetRole, at]);
+        return { ok: true, targetRole };
+      });
+    },
     async setOrgMemberRole(orgId, userId, role) {
       await pool.query('UPDATE org_members SET role = $3 WHERE org_id = $1 AND user_id = $2', [orgId, userId, role]);
     },
