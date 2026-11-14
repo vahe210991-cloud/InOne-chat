@@ -1,7 +1,7 @@
 # Beta 1.0 API contract matrix
 
 **Статус:** рабочая каноническая карта Stage 3; не является заявлением о production readiness.  
-**Backend source:** `inone-development-archive-0.6.0/engine/src/server.js`  
+**Backend source:** `inone-engine-poc-0.6.0/src/server.js`  
 **Mobile host:** `mobile/lib/main.dart`, `mobile/lib/app/inone_mobile_app.dart`, `mobile/lib/core/network/api_client.dart`, `mobile/lib/core/session/inone_session.dart`  
 **Экранные источники:** `mobile/lib/ui_dart_source/`; прежние HTML-пакеты сохранены только в `мусорный ящик/`.
 
@@ -108,8 +108,8 @@ The engine's `npm test` suite already includes dedicated suites for:
 - files, push, configuration and secret-log hygiene.
 
 The following test files are the primary integration evidence:
-- `engine/test/mls-messages.test.js`
-- `engine/test/mls-offline.test.js`
+- `inone-engine-poc-0.6.0/test/mls-messages.test.js`
+- `inone-engine-poc-0.6.0/test/mls-offline.test.js`
 - `engine/test/sync-ack.test.js`
 - `engine/test/org-requests.test.js`
 - `engine/test/org-access.test.js`
