@@ -1153,16 +1153,20 @@ if (req.method === 'POST' && p === '/files') {
     if (!r.members.includes(d.userId)) return send(res, 403, { error: 'not a member' });
     if (!hasCapability(r, d.userId, 'send_messages')) return send(res, 403, { error: 'missing capability: send_messages' });
   } else if (kind !== 'avatar') return send(res, 400, { error: 'roomId is required for this kind' });
-  if ((await storage.countPendingFiles(d.userId)) >= PENDING_LIMIT) return send(res, 429, { error: 'too many unfinished uploads' });
-  // Квота по объёму: механизм есть; значение задаёт владелец (по умолчанию не задано).
-  if (quotaBytes !== null && (await storage.bytesForOwner(d.userId)) + size > quotaBytes) return send(res, 413, { error: 'storage quota exceeded' });
-  if (forRoom !== undefined) {
-    const fileOrg = await storage.roomOrg(forRoom);
-    const orgQuota = (await storage.orgSettings(fileOrg)).fileQuotaBytes;
-    if (orgQuota !== null && (await storage.bytesForOrg(fileOrg)) + size > orgQuota) return send(res, 413, { error: 'organization storage quota exceeded', code: 'org_quota_exceeded' });
-  }
   const fileId = randomBytes(16).toString('hex');
-  await storage.createFile({ fileId, ownerId: d.userId, roomId: forRoom ?? null, kind, size, sha256: digest, createdAt: now() });
+  const reserved = await storage.reserveFile({
+    fileId, ownerId: d.userId, roomId: forRoom ?? null, kind, size, sha256: digest,
+    createdAt: now(), pendingLimit: PENDING_LIMIT, quotaBytes,
+  });
+  if (!reserved.ok) {
+    if (reserved.reason === 'pending_limit') return send(res, 429, { error: 'too many unfinished uploads' });
+    if (reserved.reason === 'owner_quota') return send(res, 413, { error: 'storage quota exceeded' });
+    if (reserved.reason === 'org_quota') return send(res, 413, { error: 'organization storage quota exceeded', code: 'org_quota_exceeded' });
+    if (reserved.reason === 'membership') return send(res, 403, { error: 'not a member' });
+    if (reserved.reason === 'capability') return send(res, 403, { error: 'missing capability: send_messages' });
+    if (reserved.reason === 'room') return send(res, 404, { error: 'room not found' });
+    return send(res, 404, { error: 'owner not found' });
+  }
   const expires = now() + UPLOAD_TTL_MS;
   const path = `/objects/${fileId}?expires=${expires}&sig=${signFor('PUT', fileId, expires, size, digest)}`;
   return send(res, 200, { fileId, uploadUrl: absoluteUrl(req, path), method: 'PUT', headers: { 'content-length': String(size) }, expiresAt: new Date(expires).toISOString() });
