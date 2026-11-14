@@ -425,3 +425,11 @@ CI verification update: first Identity contract workflow run #40 failed. The job
 PR #52 открыт как Draft и направлен в `stage0/identity-engineering-readiness-2026-11-13`; не менять base и не сливать без отдельного решения владельца. Ветка на момент записи ahead of main на 358 commits, behind на 0. `main` не менялся.
 
 Flutter run #632 на exact SHA завершился failure до steps; доступных job steps/logs нет. Не трактовать это как failure тестов приложения. P0 matrix на exact SHA пока не подтверждён. Следующая сессия должна продолжить read-only аудит engine auth/session/OTP, object storage, backup/restore и MLS FFI, затем выполнить реальные тесты в контролируемом окружении.
+
+## Engine security hardening update — 2026-11-14
+
+В каноническом backend `inone-development-archive-0.6.0/engine/` выполнены дополнительные исправления: refresh token rotation теперь атомарна вместе с выпуском новой пары и повторно проверяет статус устройства под блокировкой; тесты сессий добавлены в PostgreSQL integration suite; подписанные file URLs в production формируются из доверенного `INONE_PUBLIC_URL`, а не из Host header; восстановление PostgreSQL выполняется в одной транзакции через `pg_restore --single-transaction`.
+
+Текущий engine code SHA на момент фиксации отчёта: `133a8c8dc3d28fa3c923288354dbf98821e90afb`. P0 run #43591312640 на exact SHA завершился до steps во всех шести jobs; GitHub не предоставил logs. Это не даёт ни PASS, ни результатов тестов. Локальные тесты не запускались.
+
+`main` не изменялся. PR #52 остаётся Draft/open и направлен в `stage0/identity-engineering-readiness-2026-11-13`; не менять base и не сливать без отдельного решения владельца.
