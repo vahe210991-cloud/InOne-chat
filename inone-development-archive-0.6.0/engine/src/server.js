@@ -1590,6 +1590,12 @@ if (req.method === 'POST' && p === '/login') {
         }
         if (!existing && rec.identityCheck) {
           if (identityCode === undefined) {
+            // Repeated login requests must not bypass the five-attempt code lock by
+            // issuing unlimited fresh six-digit identity codes.
+            const identityRate = await checkRate('identityCodePerAccount', userId);
+            if (!identityRate.allowed) {
+              return send(res, 429, { error: 'too many identity codes, try later', retryAt: new Date(identityRate.retryAt).toISOString() });
+            }
             const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
             await storage.recoveryUpdate(userId, (r) => ({ next: issueIdentity(r, { codeHash: identityCodeHash(userId, code) }), result: null }));
             await mail(userId, 'Подтверждение входа после восстановления',
