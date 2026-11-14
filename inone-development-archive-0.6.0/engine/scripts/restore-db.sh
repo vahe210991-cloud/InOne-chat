@@ -57,12 +57,12 @@ if [ -n "$files_archive" ]; then
   mkdir -p "$files_parent"
   files_stage="$(mktemp -d "$files_parent/.inone-restore.XXXXXX")"
   tar --no-same-owner --no-same-permissions -C "$files_stage" -xzf "$files_archive"
-  if [ -d "$files_target" ]; then rmdir "$files_target"; fi
 fi
 
 tables="$(psql "$target" -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog', 'information_schema');")"
 [ "$tables" = "0" ] || { echo "цель не пустая ($tables таблиц): восстановление остановлено" >&2; exit 1; }
 
+if [ -n "$files_archive" ] && [ -d "$files_target" ]; then rmdir "$files_target"; fi
 pg_restore --single-transaction --no-owner --no-acl --exit-on-error --dbname="$target" "$dump"
 echo "восстановлено: $target"
 
