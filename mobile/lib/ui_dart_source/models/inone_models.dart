@@ -133,7 +133,7 @@ class InOneChatPreview {
   });
   final String id;
   final String name;
-  final String lastMessage;
+  final String? lastMessage;
   final String time;
   final InOneChatKind kind;
   final int unread;
