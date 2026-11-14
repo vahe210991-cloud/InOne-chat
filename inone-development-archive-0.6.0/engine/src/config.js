@@ -1,6 +1,6 @@
 // Настройки сервера из переменных окружения. Неверная конфигурация останавливает запуск до открытия порта.
 import { DEFAULT_PHONE_COUNTRIES } from './phone-international.js';
-const TEST_PEPPER_MARKERS = ['test-pepper', 'change-me', 'example', 'dev-only'];
+const TEST_SECRET_MARKERS = ['test-pepper', 'change-me', 'example', 'dev-only', 'replace-with'];
 
 export function loadConfig(env = process.env) {
   const nodeEnv = env.NODE_ENV ?? 'development';
@@ -45,13 +45,18 @@ export function loadConfig(env = process.env) {
   if (production) {
     if (config.registrationMode === 'open') errors.push('open registration is not allowed in production');
     if (config.pinPepper.length < 32) errors.push('INONE_PIN_PEPPER must be at least 32 characters in production');
-    if (TEST_PEPPER_MARKERS.some((m) => config.pinPepper.includes(m))) errors.push('INONE_PIN_PEPPER looks like a test or example value');
+    if (TEST_SECRET_MARKERS.some((m) => config.pinPepper.toLowerCase().includes(m))) errors.push('INONE_PIN_PEPPER looks like a test or example value');
+    if (TEST_SECRET_MARKERS.some((m) => config.docsSecret.toLowerCase().includes(m))) errors.push('INONE_DOCS_SECRET looks like a test or example value');
     if (!config.publicUrl.startsWith('https://')) errors.push('INONE_PUBLIC_URL must start with https:// in production');
+    if (/\\.example(?:\\.|$)/i.test(config.publicUrl)) errors.push('INONE_PUBLIC_URL must not use an example domain');
     // Коды подтверждения должны уходить на почту. В этой сборке реального транспорта нет: продакшен не стартует молча.
     if (config.mailTransport !== 'smtp') errors.push('production needs a real mail transport: set INONE_MAIL_TRANSPORT=smtp');
     if (config.smsEnabled) errors.push('production SMS provider is not integrated; INONE_SMS_ENABLED must remain false');
     if (config.requirePhone) errors.push('INONE_REQUIRE_PHONE must remain false until a production SMS provider is integrated');
     if (config.mailTransport === 'smtp' && !config.smtpRequireTls) errors.push('production SMTP must require TLS (INONE_SMTP_REQUIRE_TLS)');
+    if (config.smtpHost.toLowerCase().includes('example')) errors.push('INONE_SMTP_HOST must not use an example host');
+    if (config.smtpFrom.toLowerCase().includes('example')) errors.push('INONE_SMTP_FROM must not use an example address');
+    if (config.smtpUser.toLowerCase().includes('replace-with') || config.smtpPassword.toLowerCase().includes('replace-with') || config.smtpPassword.toLowerCase().includes('change-me')) errors.push('SMTP credentials still contain placeholder values');
         if (!config.filesDir) errors.push('INONE_FILES_DIR is required in production: files kept in memory are lost on restart');
     if (config.docsSecret.length < 32) errors.push('INONE_DOCS_SECRET must be at least 32 characters in production');
     if (config.testUi) errors.push('INONE_TEST_UI must not be set in production');
