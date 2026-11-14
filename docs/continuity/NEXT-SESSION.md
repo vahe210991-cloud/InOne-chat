@@ -1,6 +1,6 @@
 # Immediate next steps — 2026-11-14 (engine stabilization)
 
-1. Verify exact current branch HEAD and clean worktree: `feat/flutter-ui-dart-migration-2026-11-14`; expected code/test commit `9747f91ecef04db34379578c3d7132d54eb7815f`. Do not modify `main`.
+1. Verify exact current branch HEAD and clean worktree: `feat/flutter-ui-dart-migration-2026-11-14`; expected code/test commit `fbabc237fc18c3f6b77b6983ba2c6deffb33323b`. Do not modify `main`.
 2. Inspect GitHub Actions for the current branch after the P0 workflow trigger update. Confirm Node 22, PostgreSQL 16, Rust 1.91 format/check/test jobs on one exact SHA. The available connector view previously returned only PR-triggered runs, so push-run status was not independently confirmed here.
 3. If CI fails, inspect the actual failing step/log before changing code. Do not infer a failure from the older Flutter workflow run #43571536430: it failed before steps and logs were unavailable (BlobNotFound).
 4. Run backend tests on a controlled environment: `npm ci`, `npm test`, clean PostgreSQL migration, `npm run test:db`, upgrade migration on a copy, and verify data integrity.
