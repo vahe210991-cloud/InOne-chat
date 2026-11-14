@@ -49,6 +49,8 @@ export function loadConfig(env = process.env) {
     if (!config.publicUrl.startsWith('https://')) errors.push('INONE_PUBLIC_URL must start with https:// in production');
     // Коды подтверждения должны уходить на почту. В этой сборке реального транспорта нет: продакшен не стартует молча.
     if (config.mailTransport !== 'smtp') errors.push('production needs a real mail transport: set INONE_MAIL_TRANSPORT=smtp');
+    if (config.smsEnabled) errors.push('production SMS provider is not integrated; INONE_SMS_ENABLED must remain false');
+    if (config.requirePhone) errors.push('INONE_REQUIRE_PHONE must remain false until a production SMS provider is integrated');
     if (config.mailTransport === 'smtp' && !config.smtpRequireTls) errors.push('production SMTP must require TLS (INONE_SMTP_REQUIRE_TLS)');
         if (!config.filesDir) errors.push('INONE_FILES_DIR is required in production: files kept in memory are lost on restart');
     if (config.docsSecret.length < 32) errors.push('INONE_DOCS_SECRET must be at least 32 characters in production');
