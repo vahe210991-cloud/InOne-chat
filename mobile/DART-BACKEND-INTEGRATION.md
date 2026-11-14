@@ -76,7 +76,7 @@ The backend is not modified by this migration. Do not infer routes from screen l
 | Dart screen | Backend contract | Status | Notes |
 |---|---|---|---|
 | `st01_notifications_settings_screen.dart` | `PUT/DELETE /devices/me/push` | **Backend verified; native integration missing** | Requires real APNs/FCM token lifecycle, platform permission and feature-flag handling. |
-| `st02_system_status_screen.dart` | `GET /config/public`, `GET /config` | **Backend verified; not yet bound** | Public/private fields must be filtered according to server contract. |
+| `st02_system_status_screen.dart` | `GET /config/public` | **Connected** | Reads only public `maintenance.enabled` and `app.minVersion` flags; does not request private configuration. |
 | `st03_banners_states_screen.dart` | Client/shared state | **UI component** | Must not simulate real server outage or maintenance state. |
 
 ### Shared source files and demo code
@@ -95,7 +95,8 @@ The backend is not modified by this migration. Do not infer routes from screen l
 5. Read current profile — `GET /profile`.
 6. Read current user's rooms — `GET /rooms/mine`.
 7. Read current user's organization memberships — `GET /orgs/mine`.
-8. Logout — `POST /logout`.
+8. Read public system configuration — `GET /config/public`.
+9. Logout — `POST /logout`.
 
 Requests use the existing `InOneSession` / `ApiClient` / `InOneRepositories` boundary. Organization memberships are parsed into a typed DTO. Access and refresh tokens remain in memory; only the stable device ID is stored using platform secure storage.
 
