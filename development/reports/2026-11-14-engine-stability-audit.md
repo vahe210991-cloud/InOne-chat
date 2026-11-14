@@ -146,3 +146,29 @@
 10. Threat model review и независимый security/crypto audit.
 
 **Итог:** серверный P0 backend имеет постоянный PostgreSQL path и принятую историческую P0 CI базу; новые fail-closed исправления внесены в рабочую ветку. Дублирующий POC server исключён из production. Клиентский MLS путь ещё не интегрирован с активным Flutter runtime. До прохождения текущего CI и оставшихся эксплуатационных/мобильных проверок весь движок нельзя объявлять сертифицированным production-safe.
+
+## 8. Follow-up hardening — 2026-11-14
+
+Текущая проверенная ветка: `feat/flutter-ui-dart-migration-2026-11-14`; итоговый SHA этого набора изменений: `58fafebe5566ea5b6f6afbadd8942fe5e166b62f`.
+
+### Исправления, внесённые после первичного аудита
+
+- `.github/workflows/validate-published-p0.yml`: убраны job-level права `contents: write`, автоматическое форматирование с последующим commit/push в PR. Rust job теперь выполняет только `cargo fmt -- --check` для обоих Rust manifests; применяется наследуемое read-only разрешение workflow.
+- `engine/src/main.js`: если `runMigrations=false`, перед созданием HTTP-сервера выполняется `pool.query('SELECT 1')`. Недоступная PostgreSQL теперь останавливает startup до открытия порта.
+- `engine/test/main.test.js`: добавлены проверки вызова DB readiness probe и отказа запуска при ошибке PostgreSQL в режиме без миграций.
+
+### Статус проверки
+
+- Изменения записаны в GitHub в рабочую ветку; `main` не изменялся, merge не выполнялся.
+- Тесты Node, PostgreSQL, Rust и Flutter после этих изменений не запускались из этой сессии. Добавленные тесты пока являются непроверенными запуском.
+- Flutter workflow run #632 на SHA `58fafebe5566ea5b6f6afbadd8942fe5e166b62f` завершился failure до выполнения steps; у job нет списка steps и доступных logs. Это не подтверждает ошибку Flutter-кода и не подтверждает успешную сборку.
+- P0 PR workflow не следует считать подтверждённым на exact SHA только по результату Flutter workflow. Нужна отдельная проверка полного P0 matrix.
+- PR #52 остаётся Draft/open и направлен в `stage0/identity-engineering-readiness-2026-11-13`, а не в `main`. Не менять target и не сливать без отдельного решения владельца.
+
+### Следующие технические проверки
+
+1. Проверить exact-head P0 CI: Node suite, PostgreSQL integration, Rust/OpenMLS client и bridge.
+2. Выполнить `npm test` и `npm run test:db` в контролируемой среде.
+3. Продолжить аудит auth/session/OTP lifecycle, object storage, backup/restore и MLS Flutter FFI; исправлять только подтверждённые дефекты с регрессионными тестами.
+4. Проверить, что новая DB readiness ветка покрывает pool error и не меняет режим миграций.
+5. Не объявлять движок production-ready до runtime/backup/restore/SMTP/TLS/MLS и независимого security review.
