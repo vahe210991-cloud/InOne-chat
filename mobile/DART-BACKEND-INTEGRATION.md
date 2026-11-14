@@ -113,7 +113,7 @@ Requests use the existing `InOneSession` / `ApiClient` / `InOneRepositories` bou
 
 ## 6. Next implementation order
 
-1. Archive/remove the old HTML/WebView runtime and add regression checks proving it is unreachable.
+1. Obtain a successful native-only Flutter CI run on the current PR head and retain the no-HTML/WebView regression guard.
 2. Resolve the RQ/PS Beta 1.0 scope decision.
 3. Complete typed organization-request repositories and native file upload/download adapters if in scope.
 4. Implement deep links and full recovery/device-approval state machines.
