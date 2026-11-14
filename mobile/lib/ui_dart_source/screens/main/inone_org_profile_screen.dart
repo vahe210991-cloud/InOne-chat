@@ -78,9 +78,9 @@ class InOneOrgProfileScreen extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
               child: Row(
                 children: [
-                  _Stat(value: '${profile.members}', label: 'Members'),
-                  _Stat(value: '${profile.projects}', label: 'Projects'),
-                  _Stat(value: '${profile.teams}', label: 'Teams'),
+                  _Stat(value: profile.members?.toString() ?? '—', label: 'Members'),
+                  _Stat(value: profile.projects?.toString() ?? '—', label: 'Projects'),
+                  _Stat(value: profile.teams?.toString() ?? '—', label: 'Teams'),
                 ],
               ),
             ),
@@ -93,7 +93,7 @@ class InOneOrgProfileScreen extends StatelessWidget {
                 children: [
                   Text('About organization', style: InOneText.style(13, FontWeight.w700, c.text)),
                   const SizedBox(height: 6),
-                  Text(profile.about, style: InOneText.style(11.5, FontWeight.w400, c.sub, height: 1.5)),
+                  Text(profile.about?.isNotEmpty == true ? profile.about! : '—', style: InOneText.style(11.5, FontWeight.w400, c.sub, height: 1.5)),
                 ],
               ),
             ),
