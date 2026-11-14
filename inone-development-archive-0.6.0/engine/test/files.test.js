@@ -35,9 +35,9 @@ async function http(base, method, path, { token, body, headers = {} } = {}) {
 const jsonBody = (value) => JSON.stringify(value);
 const JSON_HEADERS = { 'content-type': 'application/json' };
 
-async function start({ fileBaseUrl = null } = {}) {
+async function start({ fileBaseUrl = null, quotaBytes = null } = {}) {
   const db = await storeForTest(PEPPER);
-  const srv = createServer({ defaultOrgAutoJoin: true, registrationMode: 'open', requirePhone: false, pinPepper: PEPPER, store: db?.store, objectSecret: 'test-object-secret-0123456789abcdef', ...(fileBaseUrl ? { fileBaseUrl } : {}) });
+  const srv = createServer({ defaultOrgAutoJoin: true, registrationMode: 'open', requirePhone: false, pinPepper: PEPPER, store: db?.store, objectSecret: 'test-object-secret-0123456789abcdef', quotaBytes, ...(fileBaseUrl ? { fileBaseUrl } : {}) });
   await new Promise((resolve) => srv.server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${srv.server.address().port}`;
   const alice = await ChatClient.create(base, ALICE, 'A_PHONE', PW);
@@ -234,6 +234,19 @@ test('подписанные ссылки не используют подмен
     });
     assert.equal(created.status, 200);
     assert.equal(new URL(created.json.uploadUrl).origin, 'https://files.inone.test');
+  } finally {
+    await s.stop();
+  }
+});
+test('concurrent upload reservations cannot exceed the per-owner storage quota', async () => {
+  const s = await start({ quotaBytes: 10 });
+  try {
+    const bytes = randomBytes(8);
+    const attempts = await Promise.all([
+      announce(s, s.alice.token, bytes),
+      announce(s, s.alice.token, bytes),
+    ]);
+    assert.deepEqual(attempts.map((r) => r.status).sort(), [200, 413]);
   } finally {
     await s.stop();
   }
