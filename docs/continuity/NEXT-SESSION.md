@@ -299,3 +299,25 @@ Review PR: [#51 — Identity Stage 0](https://github.com/vahe210991-cloud/InOne-
 
 
 Identity Stage 0 environment: create a Codespace on branch `stage0/identity-engineering-readiness-2026-11-13` using `.devcontainer/identity/devcontainer.json`. GitHub CLI command: `gh codespace create -r vahe210991-cloud/InOne-chat -b stage0/identity-engineering-readiness-2026-11-13 --devcontainer-path .devcontainer/identity/devcontainer.json`. Then run `bash .devcontainer/identity/scripts/verify-stage0-environment.sh`. Record exact output; do not mark environment/contract validation PASS until it succeeds.
+
+## Engine hardening — next session continuation (2026-11-14)
+
+Current branch: `feat/flutter-ui-dart-migration-2026-11-14`; latest audited SHA: `58fafebe5566ea5b6f6afbadd8942fe5e166b62f`.
+
+Changes already committed:
+- P0 workflow no longer has a write-enabled Rust formatting job or auto-commits/pushes formatting changes; it only checks formatting.
+- Canonical engine startup now probes PostgreSQL with `SELECT 1` before binding the HTTP port when migrations are explicitly disabled.
+- Two regression tests cover successful probe and startup refusal on DB failure. They have NOT been run.
+
+Important repository state:
+- PR #52 is still Draft/open, with base `stage0/identity-engineering-readiness-2026-11-13`; do not retarget or merge without owner authorization.
+- Branch was 358 commits ahead of main and 0 behind; main untouched.
+- Flutter workflow run #632 failed before any job steps. Logs/steps are unavailable; do not infer an application test failure or pass.
+- P0 Node/PostgreSQL/Rust matrix has not been confirmed on this exact SHA.
+
+Next actions:
+1. Read current exact branch HEAD before editing.
+2. Verify the P0 workflow run for the exact SHA (including push-triggered run); run Node, PostgreSQL, Rust/OpenMLS checks.
+3. Continue focused read-only audit of auth/session/OTP, object-store isolation and limits, backup/restore, and Flutter MLS FFI/key lifecycle.
+4. Make only evidence-backed changes and add tests. Do not touch main, merge PR, change its base, deploy, or claim tests passed unless actually verified.
+5. Keep runtime/production certification separate from source-level readiness.
