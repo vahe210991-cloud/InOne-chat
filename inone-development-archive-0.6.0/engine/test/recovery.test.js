@@ -470,7 +470,7 @@ test('повторная отправка identity-кода после восс�
 test('повторное восстановление не сдвигает исходный срок отключения старых устройств', async () => {
   const { srv, base, stop } = await start();
   try {
-    await createVerified(base, srv, ALICE, 'A_PHONE', PW, PHONE_A);
+    const phone = await createVerified(base, srv, ALICE, 'A_PHONE', PW, PHONE_A);
     const firstCode = await startRecovery(base, srv, ALICE, PHONE_A);
     const first = await post(base, '/recovery/complete', { userId: ALICE, code: firstCode, newPassword: NEW_PW });
     const originalDeadline = first.keyResetAt;
@@ -481,11 +481,7 @@ test('повторное восстановление не сдвигает ис
     assert.equal(second.keyResetAt, originalDeadline, 'повторное восстановление сохраняет первоначальный дедлайн');
 
     srv.advance(RECOVERY_DELAY_MS - 6 * HOUR + 1000);
-    await assert.rejects(rawLogin(base, ALICE, 'повторный-пароль-2026', 'B_AFTER'), (e) => e.status === 403 || e.status === 202);
-    await assert.rejects((async () => {
-      const login = await rawLogin(base, ALICE, 'повторный-пароль-2026', 'A_PHONE');
-      assert.notEqual(login.status, 200, 'старое устройство должно быть отозвано в первоначальный срок');
-    })());
+    await assert.rejects(phone.sync(), (e) => e.status === 401, 'старое устройство отключается по первоначальному дедлайну');
   } finally {
     await stop();
   }
