@@ -2794,6 +2794,9 @@ if (req.method === 'POST' && p === '/login') {
         const { code, pin, newPassword } = body;
         const userId = body.userId ?? (typeof body.email === 'string' ? await storage.userIdByEmail(normalizeEmail(body.email)) : null);
         if (!userId || !(await storage.hasAccount(userId))) return send(res, 404, { error: 'no active recovery' });
+        const perAddress = await checkRate('recoveryCompletePerAddress', clientIp(req));
+        const perAccount = await checkRate('recoveryCompletePerAccount', userId);
+        if (!perAddress.allowed || !perAccount.allowed) return send(res, 429, { error: 'too many recovery completion attempts, try later' });
         if ((await storage.providerLinksOf(userId)).length > 0) return send(res, 409, { error: 'password recovery is disabled for accounts linked to Google or Apple' });
         if (typeof newPassword !== 'string' || newPassword.length < MIN_PASSWORD_LENGTH) {
           return send(res, 400, { error: `newPassword required (min ${MIN_PASSWORD_LENGTH} chars)` });
