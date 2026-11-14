@@ -23,6 +23,11 @@ test('телефон не требуется без явного включен�
   assert.equal(phoneRequired.smsEnabled, true);
 });
 
+test('production запрещает SMS и обязательный телефон без интегрированного провайдера', () => {
+  assert.throws(() => loadConfig({ ...GOOD, INONE_MAIL_TRANSPORT: 'smtp', INONE_SMTP_HOST: 'smtp.provider.test', INONE_SMTP_FROM: 'InOne <noreply@inone.example>', INONE_SMS_ENABLED: 'true' }), /SMS provider is not integrated/);
+  assert.throws(() => loadConfig({ ...GOOD, INONE_MAIL_TRANSPORT: 'smtp', INONE_SMTP_HOST: 'smtp.provider.test', INONE_SMTP_FROM: 'InOne <noreply@inone.example>', INONE_REQUIRE_PHONE: 'true' }), /INONE_REQUIRE_PHONE must remain false/);
+});
+
 test('продакшен без реального почтового транспорта не стартует', () => {
   assert.throws(() => loadConfig(GOOD), /needs a real mail transport/);
   assert.throws(() => loadConfig({ ...GOOD, INONE_MAIL_TRANSPORT: 'smtp' }), /INONE_SMTP_HOST is required/);
