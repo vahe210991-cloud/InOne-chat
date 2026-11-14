@@ -226,8 +226,10 @@ export function createStore({ pool, pinPepper }) {
       return rows[0]?.role ?? null;
     },
     async createOrgRequest({ requestId, applicantId, name, createdAt }) {
-      await pool.query('INSERT INTO org_requests (request_id, applicant_id, name, status, created_at) VALUES ($1, $2, $3, $4, $5)', [requestId, applicantId, name, 'pending', createdAt]);
-      await pool.query("INSERT INTO org_request_log (request_id, actor, action, at) VALUES ($1, $2, 'created', $3)", [requestId, applicantId, createdAt]);
+      await inTransaction(async (c) => {
+        await c.query('INSERT INTO org_requests (request_id, applicant_id, name, status, created_at) VALUES ($1, $2, $3, $4, $5)', [requestId, applicantId, name, 'pending', createdAt]);
+        await c.query("INSERT INTO org_request_log (request_id, actor, action, at) VALUES ($1, $2, 'created', $3)", [requestId, applicantId, createdAt]);
+      });
     },
     async getOrgRequest(requestId) {
       const { rows } = await pool.query('SELECT request_id, applicant_id, name, status, org_id, created_at, decided_at, decided_by FROM org_requests WHERE request_id = $1', [requestId]);
@@ -242,8 +244,10 @@ export function createStore({ pool, pinPepper }) {
       return rows.map((r) => ({ requestId: r.request_id, applicantId: r.applicant_id, name: r.name, status: r.status, createdAt: Number(r.created_at) }));
     },
     async addOrgRequestDocument({ docId, requestId, kind, size, sha256, objectKey, uploadedBy, createdAt }) {
-      await pool.query('INSERT INTO org_request_documents (doc_id, request_id, kind, size, sha256, object_key, uploaded_by, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)', [docId, requestId, kind, size, sha256, objectKey, uploadedBy, createdAt]);
-      await pool.query("INSERT INTO org_request_log (request_id, actor, action, at) VALUES ($1, $2, 'document', $3)", [requestId, uploadedBy, createdAt]);
+      await inTransaction(async (c) => {
+        await c.query('INSERT INTO org_request_documents (doc_id, request_id, kind, size, sha256, object_key, uploaded_by, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)', [docId, requestId, kind, size, sha256, objectKey, uploadedBy, createdAt]);
+        await c.query("INSERT INTO org_request_log (request_id, actor, action, at) VALUES ($1, $2, 'document', $3)", [requestId, uploadedBy, createdAt]);
+      });
     },
     async listOrgRequestDocuments(requestId) {
       const { rows } = await pool.query('SELECT doc_id, kind, size, sha256, created_at FROM org_request_documents WHERE request_id = $1 ORDER BY created_at', [requestId]);
@@ -256,8 +260,32 @@ export function createStore({ pool, pinPepper }) {
       return { docId: r.doc_id, requestId: r.request_id, kind: r.kind, size: Number(r.size), sha256: r.sha256, objectKey: r.object_key };
     },
     async decideOrgRequest({ requestId, status, decidedBy, decidedAt, orgId }) {
-      await pool.query('UPDATE org_requests SET status = $2, decided_by = $3, decided_at = $4, org_id = $5 WHERE request_id = $1', [requestId, status, decidedBy, decidedAt, orgId]);
-      await pool.query('INSERT INTO org_request_log (request_id, actor, action, at) VALUES ($1, $2, $3, $4)', [requestId, decidedBy, status === 'approved' ? 'approve' : 'reject', decidedAt]);
+      return inTransaction(async (c) => {
+        const { rowCount } = await c.query(
+          "UPDATE org_requests SET status = $2, decided_by = $3, decided_at = $4, org_id = $5 WHERE request_id = $1 AND status = 'pending'",
+          [requestId, status, decidedBy, decidedAt, orgId],
+        );
+        if (rowCount !== 1) return false;
+        await c.query('INSERT INTO org_request_log (request_id, actor, action, at) VALUES ($1, $2, $3, $4)', [requestId, decidedBy, status === 'approved' ? 'approve' : 'reject', decidedAt]);
+        return true;
+      });
+    },
+    async approveOrgRequest({ requestId, decidedBy, decidedAt }) {
+      return inTransaction(async (c) => {
+        const { rows } = await c.query('SELECT applicant_id, name, status FROM org_requests WHERE request_id = $1 FOR UPDATE', [requestId]);
+        const request = rows[0];
+        if (!request) return { ok: false, reason: 'not_found' };
+        if (request.status !== 'pending') return { ok: false, reason: 'already_decided' };
+        const orgId = `org-${requestId}`;
+        await c.query(
+          "INSERT INTO organizations (org_id, name, status, created_by, created_at) VALUES ($1, $2, 'approved', $3, $4) ON CONFLICT (org_id) DO NOTHING",
+          [orgId, request.name, request.applicant_id, decidedAt],
+        );
+        await c.query("INSERT INTO org_members (org_id, user_id, role, joined_at) VALUES ($1, $2, 'owner', $3) ON CONFLICT (org_id, user_id) DO NOTHING", [orgId, request.applicant_id, decidedAt]);
+        await c.query("UPDATE org_requests SET status = 'approved', decided_by = $2, decided_at = $3, org_id = $4 WHERE request_id = $1 AND status = 'pending'", [requestId, decidedBy, decidedAt, orgId]);
+        await c.query("INSERT INTO org_request_log (request_id, actor, action, at) VALUES ($1, $2, 'approve', $3)", [requestId, decidedBy, decidedAt]);
+        return { ok: true, orgId };
+      });
     },
     async logOrgRequest(requestId, actor, action, at) {
       await pool.query('INSERT INTO org_request_log (request_id, actor, action, at) VALUES ($1, $2, $3, $4)', [requestId, actor, action, at]);
