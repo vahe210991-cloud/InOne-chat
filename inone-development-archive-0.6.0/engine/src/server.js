@@ -1331,19 +1331,18 @@ if (req.method === 'POST' && orgMembersRoute) {
   const d = await authed(req);
   if (!d) return send(res, 401, { error: 'unauthorized' });
   const orgId = decodeURIComponent(orgMembersRoute[1]);
-  const status = await storage.orgStatus(orgId);
-  if (status === null) return send(res, 404, { error: 'not found' });
-  if (status !== 'approved') return send(res, 403, { error: 'organization is not approved', code: 'org_not_approved' });
-  const myRole = await storage.orgRoleOf(orgId, d.userId);
-  if (myRole !== 'owner' && myRole !== 'admin') return send(res, 403, { error: 'only owners and admins add members', code: 'org_role_required' });
   const userId = typeof body.userId === 'string' ? body.userId : '';
   const role = typeof body.role === 'string' ? body.role : 'member';
   if (!['owner', 'admin', 'member'].includes(role)) return send(res, 400, { error: 'role must be owner, admin or member' });
-  if (myRole === 'admin' && role !== 'member') return send(res, 403, { error: 'admins add only members', code: 'org_role_required' });
-  if (!(await storage.hasAccount(userId))) return send(res, 404, { error: 'unknown user' });
-  if (await storage.orgRoleOf(orgId, userId)) return send(res, 409, { error: 'already a member' });
-  await storage.addOrgMember(orgId, userId, role, now());
-  await storage.logAdminAction({ orgId, actor: d.userId, action: 'member_add', target: userId, detail: role, at: now() });
+  const added = await storage.addOrgMemberWithAudit({ orgId, userId, role, actorId: d.userId, at: now() });
+  if (!added.ok) {
+    if (added.reason === 'not_found') return send(res, 404, { error: 'organization not found' });
+    if (added.reason === 'not_approved') return send(res, 403, { error: 'organization is not approved', code: 'org_not_approved' });
+    if (added.reason === 'unknown_user') return send(res, 404, { error: 'unknown user' });
+    if (added.reason === 'already_member') return send(res, 409, { error: 'already a member' });
+    if (added.reason === 'invalid_role') return send(res, 400, { error: 'role must be owner, admin or member' });
+    return send(res, 403, { error: 'org role required to add this member', code: 'org_role_required' });
+  }
   return send(res, 200, { userId, role });
 }
 if (req.method === 'POST' && orgRoleRoute) {
