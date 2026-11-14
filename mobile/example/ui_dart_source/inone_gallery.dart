@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../inone.dart';
+import 'package:inone_mobile/ui_dart_source/inone.dart';
 import 'inone_demo_data.dart';
 
 /// ДЕМО-галерея всех экранов InOne (только для предпросмотра, не для продакшена).
