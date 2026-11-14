@@ -11,6 +11,7 @@ class InOneRecoveryStartScreen extends StatefulWidget {
     required this.onSubmit,
     required this.onBack,
     required this.onEnterCode,
+    this.onNotMe,
   });
 
   /// POST /recovery/start. `null` — успех.
@@ -19,6 +20,7 @@ class InOneRecoveryStartScreen extends StatefulWidget {
 
   /// Перейти к вводу кода (SC-09).
   final VoidCallback onEnterCode;
+  final VoidCallback? onNotMe;
 
   @override
   State<InOneRecoveryStartScreen> createState() => _InOneRecoveryStartScreenState();
@@ -76,6 +78,14 @@ class _InOneRecoveryStartScreenState extends State<InOneRecoveryStartScreen>
             kind: InOneButtonKind.outline,
             onPressed: widget.onEnterCode,
           ),
+          if (widget.onNotMe != null) ...[
+            const SizedBox(height: 10),
+            InOneButton(
+              label: 'Это не я',
+              kind: InOneButtonKind.ghost,
+              onPressed: widget.onNotMe,
+            ),
+          ],
         ],
       ],
     );
