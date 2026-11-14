@@ -360,6 +360,8 @@ export function createMemoryStore({ pinPepper }) {
         }
       }
       orgLinks.set(linkId, { linkId, orgA: a, orgB: b, status: 'proposed', proposingOrg, proposedBy, decidedBy: null, createdAt, decidedAt: null });
+      adminActions.push({ orgId: proposingOrg, actor: proposedBy, action: 'link_propose', target: otherOrg, detail: linkId, at: createdAt });
+      adminActions.push({ orgId: otherOrg, actor: proposedBy, action: 'link_propose', target: proposingOrg, detail: linkId, at: createdAt });
       return true;
     },
     getOrgLink(linkId) {
@@ -376,6 +378,19 @@ export function createMemoryStore({ pinPepper }) {
       l.status = status;
       l.decidedBy = decidedBy;
       l.decidedAt = decidedAt;
+      if (status === 'revoked') {
+        const inOrg = (org, u) => orgMembers.get(org)?.has(u) ?? false;
+        for (const r of rooms.values()) {
+          if (r.orgId !== l.orgA && r.orgId !== l.orgB) continue;
+          const other = r.orgId === l.orgA ? l.orgB : l.orgA;
+          for (const u of [...r.members]) if (inOrg(other, u) && !inOrg(r.orgId, u)) { r.members.delete(u); r.admins.delete(u); }
+        }
+      }
+      const action = status === 'active' ? 'link_accept' : status === 'revoked' ? 'link_revoke' : null;
+      if (action) {
+        adminActions.push({ orgId: l.orgA, actor: decidedBy, action, target: l.orgB, detail: linkId, at: decidedAt });
+        adminActions.push({ orgId: l.orgB, actor: decidedBy, action, target: l.orgA, detail: linkId, at: decidedAt });
+      }
       return true;
     },
     activeLinkBetween(x, y) {
