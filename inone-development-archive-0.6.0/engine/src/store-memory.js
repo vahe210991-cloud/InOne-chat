@@ -496,9 +496,29 @@ export function createMemoryStore({ pinPepper }) {
       p.nickname = nickname;
       profiles.set(userId, p);
     },
-    revokeDevice(dk) {
+    revokeDevice(dk, nowMs = Date.now()) {
       const d = devices.get(dk);
-      if (d) d.revoked = true;
+      if (d) {
+        d.revoked = true;
+        for (const [hash, token] of tokens) if (token.deviceKey === dk) tokens.delete(hash);
+        for (const [hash, token] of refreshes) if (token.deviceKey === dk) refreshes.delete(hash);
+        signingKeys.delete(dk);
+        for (let i = mlsPackages.length - 1; i >= 0; i--) {
+          const item = mlsPackages[i];
+          if (item.userId === d.userId && item.deviceId === d.deviceId && item.consumedAt === null) mlsPackages.splice(i, 1);
+        }
+        for (let i = mlsWelcomes.length - 1; i >= 0; i--) {
+          const item = mlsWelcomes[i];
+          if (item.userId === d.userId && item.deviceId === d.deviceId && item.ackedAt === null) mlsWelcomes.splice(i, 1);
+        }
+        for (const [roomId, epoch] of mlsGroups) {
+          const room = rooms.get(roomId);
+          if (epoch > 0 && room?.members.has(d.userId)
+              && !deviceRemovals.some((item) => item.roomId === roomId && item.userId === d.userId && item.deviceId === d.deviceId)) {
+            deviceRemovals.push({ roomId, userId: d.userId, deviceId: d.deviceId, createdAt: nowMs, doneAt: null });
+          }
+        }
+      }
       deviceKeys.delete(dk);
       oneTimeKeys.delete(dk);
       inbox.delete(dk);
