@@ -82,6 +82,8 @@ test('organization link proposal and both audit rows roll back together', async 
   const client = {
     async query(sql) {
       statements.push(sql);
+      if (sql.startsWith('SELECT role FROM org_members')) return { rows: [{ role: 'owner' }] };
+      if (sql.startsWith('SELECT org_id, status FROM organizations')) return { rows: [{ org_id: 'org-a', status: 'approved' }, { org_id: 'org-b', status: 'approved' }] };
       if (sql.startsWith('INSERT INTO org_links')) return { rows: [{ link_id: 'link-1' }], rowCount: 1 };
       if (sql.startsWith('INSERT INTO admin_action_log')) throw new Error('simulated second-side audit failure');
       return { rows: [], rowCount: 1 };
@@ -121,8 +123,8 @@ test('member addition and its audit row roll back together', async () => {
   const client = {
     async query(sql) {
       statements.push(sql);
-      if (sql.startsWith('SELECT status FROM organizations')) return { rows: [{ status: 'approved' }] };
       if (sql.startsWith('SELECT user_id, role FROM org_members')) return { rows: [{ user_id: '@owner', role: 'owner' }] };
+      if (sql.startsWith('SELECT status FROM organizations')) return { rows: [{ status: 'approved' }] };
       if (sql.startsWith('SELECT 1 FROM accounts')) return { rows: [{ '?column?': 1 }], rowCount: 1 };
       if (sql.startsWith('INSERT INTO admin_action_log')) throw new Error('simulated member audit failure');
       return { rows: [], rowCount: 1 };
