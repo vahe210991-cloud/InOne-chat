@@ -299,7 +299,11 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
   }
 
   Future<void> _chooseOrganization() async {
-    if (_organizations.length < 2) {
+    if (_organizations.isEmpty) {
+      _notice('Нет доступных организаций для переключения.');
+      return;
+    }
+    if (_organizations.length == 1) {
       _notice('Доступна одна организация. Переключение не требуется.');
       return;
     }
