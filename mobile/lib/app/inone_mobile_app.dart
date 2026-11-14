@@ -443,7 +443,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
           ],
           activity: const [],
           onSwitchWorkspace: _chooseOrganization,
-          onNotifications: () => unawaited(_loadSystemStatus()),
+          onNotifications: () => _notice('Лента уведомлений пока не подключена к серверному контракту.'),
           onCustomize: () => _notice('Настройка модулей пока недоступна.'),
           onSeeAll: () => _notice('Лента активности пока не предоставляется backend.'),
           onTab: _selectTab,
