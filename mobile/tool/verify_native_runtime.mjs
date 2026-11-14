@@ -3,6 +3,7 @@ import { join } from 'node:path';
 
 const main = readFileSync('lib/main.dart', 'utf8');
 const pubspec = readFileSync('pubspec.yaml', 'utf8');
+const lockfile = readFileSync('pubspec.lock', 'utf8');
 
 if (!main.includes("app/inone_mobile_app.dart") || !main.includes("InOneMobileApp")) {
   throw new Error('The Flutter entry point must launch InOneMobileApp.');
