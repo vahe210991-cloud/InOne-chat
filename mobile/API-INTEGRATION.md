@@ -32,6 +32,7 @@ No production host is hard-coded. Use only a controlled development/staging envi
 | Logout | `POST /logout` | Connected |
 | Current profile | `GET /profile` | Connected; read-only |
 | Current user's rooms | `GET /rooms/mine` | Connected; list metadata only |
+| Current user's organization memberships | `GET /orgs/mine` | Connected; name, status and role only |
 
 Other routes exist in the backend but are not automatically callable from the UI. Their exact screen status, payload requirements and blockers are in [DART-BACKEND-INTEGRATION.md](DART-BACKEND-INTEGRATION.md).
 
