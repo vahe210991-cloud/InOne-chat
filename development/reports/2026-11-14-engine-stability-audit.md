@@ -198,3 +198,16 @@
 2. Проверить реальные PostgreSQL tests конкурентной ротации и транзакционного rollback.
 3. Продолжить аудит account/session revocation, OTP rate limits, object storage recovery/consistency, backup file archive safety и MLS FFI.
 4. Не объявлять engine production-ready без runtime/restore/SMTP/TLS/MLS validation и независимого security review.
+
+## 10. Exact-head follow-up verification — 2026-11-14
+
+Latest branch HEAD after code and test changes: `dff9ebf9c69ac6ae08f6a91f7df3213652c3c87b`.
+
+Static source verification on this exact branch confirmed: PostgreSQL readiness probe exists; production `fileBaseUrl` is passed from `INONE_PUBLIC_URL`; object URL builder uses configured origin; refresh route uses preflight + atomic `rotateSession`; both stores implement rotation; concurrent refresh, rollback, Host-header and restore regression tests are present; `sessions.test.js` is included in `test:db`; P0 workflow no longer contains `contents: write` or auto-push. These are source-presence checks only, not execution results.
+
+Exact-head CI evidence:
+- P0 run #43591433401 (`push`) for SHA `dff9ebf9c69ac6ae08f6a91f7df3213652c3c87b`: failure. All six jobs completed within seconds with empty step arrays; logs are unavailable.
+- Flutter run #43591437303 (`pull_request`) for the same SHA: failure before steps; job step array is empty and logs are unavailable.
+- Therefore neither Node/PostgreSQL/Rust nor Flutter commands produced test results. Do not attribute these failures to source code and do not mark the checks PASS.
+
+Branch compare: 381 ahead of `main`, 0 behind. PR #52 remains Draft/open, base `stage0/identity-engineering-readiness-2026-11-13`. `main` untouched; no merge, retarget or deployment.
