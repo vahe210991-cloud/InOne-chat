@@ -63,7 +63,7 @@
 ### Production secrets и environment template
 
 - `.env.example` исправлен: DATABASE_URL больше не содержит поясняющий текст внутри значения; добавлены SMTP, docs secret, files path, phone/SMS flags и production defaults.
-- Production config теперь отвергает известные placeholder markers в PIN pepper, docs secret и SMTP credentials; example host/address/public URL; placeholder PostgreSQL hostname.
+- Production config теперь отвергает известные placeholder markers в PIN pepper, docs secret, PostgreSQL username/password и SMTP credentials; example host/address/public URL; placeholder PostgreSQL hostname.
 - Добавлена проверка корректного PostgreSQL URL, диапазона request timeout и положительной безопасной file quota.
 - Все значения в `.env.example` остаются placeholders; их нельзя использовать как реальные секреты.
 
