@@ -2810,46 +2810,35 @@ if (req.method === 'POST' && p === '/login') {
 
       if (req.method === 'POST' && p === '/recovery/complete') {
         const { code, pin, newPassword } = body;
-        // Восстановление по почте: адрес вместо идентификатора (без входа идентификатора не знают).
         const userId = body.userId ?? (typeof body.email === 'string' ? await storage.userIdByEmail(normalizeEmail(body.email)) : null);
+        if (!userId || !(await storage.hasAccount(userId))) return send(res, 404, { error: 'no active recovery' });
         if ((await storage.providerLinksOf(userId)).length > 0) return send(res, 409, { error: 'password recovery is disabled for accounts linked to Google or Apple' });
-        const check = await storage.recoveryUpdate(userId, (r) => {
-          const out = checkCode(r, {
-            nowMs: now(),
-            codeOk: typeof code === 'string' && !!r.reqCodeHash && sameHex(recoveryCodeHash(userId, code), r.reqCodeHash),
-          });
-          return { next: out.next, result: out.outcome };
-        });
-        if (check === 'none') return send(res, 404, { error: 'no active recovery' });
-        if (check === 'expired') return send(res, 410, { error: 'recovery expired' });
-        if (check === 'unconfirmed') return send(res, 403, { error: 'confirm the link from the email first' });
-        if (check === 'wrong' || check === 'locked') {
-          if (check === 'locked') await alertDevices(userId, { kind: 'recovery_locked' });
-          return send(res, 403, { error: 'wrong code' });
-        }
-        if (await storage.hasPin(userId)) {
-          // PIN не снимается восстановлением (D1): без него восстановление не проходит.
-          if (typeof pin !== 'string' || pin === '') return send(res, 403, { error: 'PIN required' });
-          const r = await verifyPin(userId, pin);
-          if (!r.ok) return pinError(res, r);
-        }
         if (typeof newPassword !== 'string' || newPassword.length < MIN_PASSWORD_LENGTH) {
           return send(res, 400, { error: `newPassword required (min ${MIN_PASSWORD_LENGTH} chars)` });
         }
-        // Новый пароль сразу (D1). Окно открывается; если уже открыто, не сдвигается (D8).
-        const previousHash = await storage.accountHash(userId);
-        await storage.setPasswordHash(userId, hashPassword(newPassword));
-        const keyResetAt = await storage.recoveryUpdate(userId, (r) => {
-          const next = completeRecovery(r, { nowMs: now(), previousHash });
-          return { next, result: next.windowKeyResetAt };
-        });
-        // Код отмены: для аккаунта без устройств тоже. Действует, пока открыто окно (D8).
+        if (await storage.hasPin(userId)) {
+          if (typeof pin !== 'string' || pin === '') return send(res, 403, { error: 'PIN required' });
+          const checkedPin = await verifyPin(userId, pin);
+          if (!checkedPin.ok) return pinError(res, checkedPin);
+        }
         const cancelCode = String(randomInt(0, 1_000_000)).padStart(6, '0');
-        await storage.recoveryCancelSet(userId, recoveryCancelHash(userId, cancelCode), keyResetAt);
+        const result = await storage.completeRecoveryAtomic(userId, {
+          codeHash: typeof code === 'string' ? recoveryCodeHash(userId, code) : '',
+          nowMs: now(),
+          passwordHash: hashPassword(newPassword),
+          cancelCodeHash: recoveryCancelHash(userId, cancelCode),
+        });
+        if (result.status === 'none') return send(res, 404, { error: 'no active recovery' });
+        if (result.status === 'expired') return send(res, 410, { error: 'recovery expired' });
+        if (result.status === 'unconfirmed') return send(res, 403, { error: 'confirm the link from the email first' });
+        if (result.status === 'wrong' || result.status === 'locked') {
+          if (result.status === 'locked') await alertDevices(userId, { kind: 'recovery_locked' });
+          return send(res, 403, { error: 'wrong code' });
+        }
         await mail(userId, 'Восстановление выполнено',
           `Пароль изменён. Вход с новых устройств откроется через 48 часов. Отменить можно с устройства, существовавшего до запроса, или кодом отмены: ${cancelCode}.`);
-        await alertDevices(userId, { kind: 'recovery_completed', keyResetAt: new Date(keyResetAt).toISOString() });
-        return send(res, 200, { ok: true, keyResetAt: new Date(keyResetAt).toISOString() });
+        await alertDevices(userId, { kind: 'recovery_completed', keyResetAt: new Date(result.keyResetAt).toISOString() });
+        return send(res, 200, { ok: true, keyResetAt: new Date(result.keyResetAt).toISOString() });
       }
 
       return send(res, 404, { error: 'not found' });
