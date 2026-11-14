@@ -37,3 +37,37 @@ test('повторная остановка безопасна', async () => {
   const app = await startServer({ config: CONFIG, logger: createLogger({ level: 'error', write: () => {} }) });
   await Promise.all([app.stop(), app.stop()]);
 });
+test('при отключённых миграциях сервер проверяет доступность PostgreSQL до открытия порта', async () => {
+  const statements = [];
+  let ended = false;
+  const pool = {
+    async query(sql) {
+      statements.push(sql);
+      return { rows: [{ '?column?': 1 }] };
+    },
+    async end() { ended = true; },
+  };
+  const app = await startServer({
+    config: CONFIG,
+    pool,
+    logger: createLogger({ level: 'error', write: () => {} }),
+  });
+  assert.deepEqual(statements, ['SELECT 1']);
+  await app.stop();
+  assert.equal(ended, true);
+});
+
+test('сервер не открывает HTTP-порт, если PostgreSQL недоступен и миграции отключены', async () => {
+  const pool = {
+    async query() { throw new Error('database unavailable'); },
+    async end() {},
+  };
+  await assert.rejects(
+    startServer({
+      config: CONFIG,
+      pool,
+      logger: createLogger({ level: 'error', write: () => {} }),
+    }),
+    /database unavailable/,
+  );
+});
