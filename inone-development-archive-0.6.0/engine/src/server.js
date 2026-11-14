@@ -1451,8 +1451,6 @@ if (req.method === 'POST' && orgLinksRoute) {
   const linkId = randomBytes(12).toString('hex');
   const created = await storage.createOrgLink({ linkId, proposingOrg: orgId, otherOrg: target, proposedBy: d.userId, createdAt: now() });
   if (!created) return send(res, 409, { error: 'a link already exists', code: 'link_exists' });
-  await storage.logAdminAction({ orgId, actor: d.userId, action: 'link_propose', target, detail: linkId, at: now() });
-  await storage.logAdminAction({ orgId: target, actor: d.userId, action: 'link_propose', target: orgId, detail: linkId, at: now() });
   return send(res, 200, { linkId, status: 'proposed' });
 }
 if (req.method === 'POST' && orgLinkActRoute) {
@@ -1472,8 +1470,6 @@ if (req.method === 'POST' && orgLinkActRoute) {
       linkId, fromStatus: 'proposed', status: 'active', decidedBy: d.userId, decidedAt: now(),
     });
     if (!transitioned) return send(res, 409, { error: 'link is not waiting for acceptance' });
-    await storage.logAdminAction({ orgId, actor: d.userId, action: 'link_accept', target: link.proposingOrg, detail: linkId, at: now() });
-    await storage.logAdminAction({ orgId: link.proposingOrg, actor: d.userId, action: 'link_accept', target: orgId, detail: linkId, at: now() });
     return send(res, 200, { status: 'active' });
   }
   if (link.status === 'revoked') return send(res, 409, { error: 'link is already revoked' });
@@ -1482,9 +1478,6 @@ if (req.method === 'POST' && orgLinkActRoute) {
     linkId, fromStatus: link.status, status: 'revoked', decidedBy: d.userId, decidedAt: now(),
   });
   if (!transitioned) return send(res, 409, { error: 'link state changed; reload and retry' });
-  await storage.removeCrossOrgMemberships(orgId, other);
-  await storage.logAdminAction({ orgId, actor: d.userId, action: 'link_revoke', target: other, detail: linkId, at: now() });
-  await storage.logAdminAction({ orgId: other, actor: d.userId, action: 'link_revoke', target: orgId, detail: linkId, at: now() });
   return send(res, 200, { status: 'revoked' });
 }
 // Журнал действий администраторов (шаг 5.7): читают владелец и администратор организации. Содержимое комнат сюда не попадает.
