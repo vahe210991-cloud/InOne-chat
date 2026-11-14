@@ -28,7 +28,7 @@ if [ -n "$files_archive" ]; then
   fi
 fi
 
-pg_restore --no-owner --no-acl --exit-on-error --dbname="$target" "$dump"
+pg_restore --single-transaction --no-owner --no-acl --exit-on-error --dbname="$target" "$dump"
 echo "восстановлено: $target"
 if [ -n "$files_archive" ]; then
   mkdir -p "$files_target"
