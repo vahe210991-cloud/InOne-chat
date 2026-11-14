@@ -111,3 +111,43 @@ test('link revocation and cross-organization membership cleanup roll back with a
   assert.ok(statements.includes('ROLLBACK'));
   assert.equal(statements.includes('COMMIT'), false);
 });
+
+test('member addition and its audit row roll back together', async () => {
+  const statements = [];
+  const client = {
+    async query(sql) {
+      statements.push(sql);
+      if (sql.startsWith('SELECT status FROM organizations')) return { rows: [{ status: 'approved' }] };
+      if (sql.startsWith('SELECT user_id, role FROM org_members')) return { rows: [{ user_id: '@owner', role: 'owner' }] };
+      if (sql.startsWith('SELECT 1 FROM accounts')) return { rows: [{ '?column?': 1 }], rowCount: 1 };
+      if (sql.startsWith('INSERT INTO admin_action_log')) throw new Error('simulated member audit failure');
+      return { rows: [], rowCount: 1 };
+    },
+    release() { statements.push('RELEASE'); },
+  };
+  const store = createStore({ pool: { async connect() { return client; } }, pinPepper: 'a'.repeat(48) });
+  await assert.rejects(store.addOrgMemberWithAudit({ orgId: 'org-1', userId: '@new', role: 'member', actorId: '@owner', at: 1 }), /simulated member audit failure/);
+  assert.ok(statements.includes('BEGIN'));
+  assert.ok(statements.includes('ROLLBACK'));
+  assert.equal(statements.includes('COMMIT'), false);
+});
+
+test('member removal and its audit row roll back together', async () => {
+  const statements = [];
+  const client = {
+    async query(sql) {
+      statements.push(sql);
+      if (sql.startsWith('SELECT org_id FROM organizations')) return { rows: [{ org_id: 'org-1' }], rowCount: 1 };
+      if (sql.startsWith('SELECT user_id, role FROM org_members')) return { rows: [{ user_id: '@owner', role: 'owner' }, { user_id: '@target', role: 'member' }] };
+      if (sql.startsWith('SELECT COUNT(*)::int AS n FROM rooms')) return { rows: [{ n: 0 }] };
+      if (sql.startsWith('INSERT INTO admin_action_log')) throw new Error('simulated member removal audit failure');
+      return { rows: [], rowCount: 1 };
+    },
+    release() { statements.push('RELEASE'); },
+  };
+  const store = createStore({ pool: { async connect() { return client; } }, pinPepper: 'a'.repeat(48) });
+  await assert.rejects(store.removeOrgMemberWithAudit({ orgId: 'org-1', userId: '@target', actorId: '@owner', at: 1 }), /simulated member removal audit failure/);
+  assert.ok(statements.includes('BEGIN'));
+  assert.ok(statements.includes('ROLLBACK'));
+  assert.equal(statements.includes('COMMIT'), false);
+});
