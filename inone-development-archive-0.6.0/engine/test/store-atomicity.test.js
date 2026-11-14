@@ -74,3 +74,40 @@ test('owner role change and admin audit row roll back together', async () => {
   assert.equal(statements.includes('COMMIT'), false);
   assert.equal(statements.at(-1), 'RELEASE');
 });
+
+test('organization link proposal and both audit rows roll back together', async () => {
+  const statements = [];
+  const client = {
+    async query(sql) {
+      statements.push(sql);
+      if (sql.startsWith('INSERT INTO org_links')) return { rows: [{ link_id: 'link-1' }], rowCount: 1 };
+      if (sql.startsWith('INSERT INTO admin_action_log')) throw new Error('simulated second-side audit failure');
+      return { rows: [], rowCount: 1 };
+    },
+    release() { statements.push('RELEASE'); },
+  };
+  const store = createStore({ pool: { async connect() { return client; } }, pinPepper: 'a'.repeat(48) });
+  await assert.rejects(store.createOrgLink({ linkId: 'link-1', proposingOrg: 'org-a', otherOrg: 'org-b', proposedBy: '@owner', createdAt: 1 }), /simulated second-side audit failure/);
+  assert.ok(statements.includes('BEGIN'));
+  assert.ok(statements.includes('ROLLBACK'));
+  assert.equal(statements.includes('COMMIT'), false);
+});
+
+test('link revocation and cross-organization membership cleanup roll back with audit failure', async () => {
+  const statements = [];
+  const client = {
+    async query(sql) {
+      statements.push(sql);
+      if (sql.startsWith('SELECT org_a, org_b, status')) return { rows: [{ org_a: 'org-a', org_b: 'org-b', status: 'active' }] };
+      if (sql.startsWith('UPDATE org_links')) return { rows: [], rowCount: 1 };
+      if (sql.startsWith('INSERT INTO admin_action_log')) throw new Error('simulated link audit failure');
+      return { rows: [], rowCount: 1 };
+    },
+    release() { statements.push('RELEASE'); },
+  };
+  const store = createStore({ pool: { async connect() { return client; } }, pinPepper: 'a'.repeat(48) });
+  await assert.rejects(store.transitionOrgLinkStatus({ linkId: 'link-1', fromStatus: 'active', status: 'revoked', decidedBy: '@owner', decidedAt: 2 }), /simulated link audit failure/);
+  assert.ok(statements.includes('BEGIN'));
+  assert.ok(statements.includes('ROLLBACK'));
+  assert.equal(statements.includes('COMMIT'), false);
+});
