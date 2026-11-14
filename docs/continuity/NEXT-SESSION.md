@@ -342,3 +342,22 @@ Verification status:
 - PR #52 remains Draft/open and targets `stage0/identity-engineering-readiness-2026-11-13`. Do not retarget or merge without owner approval.
 
 Next: diagnose GitHub Actions job provisioning failure, run the exact-head P0 suite, then continue focused audit of account/session revocation, OTP throttling, object-store/backup consistency and Flutter MLS FFI. Do not claim production readiness before runtime validation.
+
+## Engine hardening — exact latest state (2026-11-14)
+
+Latest branch HEAD: `dff9ebf9c69ac6ae08f6a91f7df3213652c3c87b` on `feat/flutter-ui-dart-migration-2026-11-14`.
+
+Code changes now present:
+- P0 Rust format job is read-only and cannot auto-commit/push.
+- Server startup probes PostgreSQL before listen when migrations are disabled.
+- Refresh token rotation and replacement token insertion are atomic in PostgreSQL; device-first row locking and revocation checks are used. Memory adapter mirrors the method.
+- Recovery finalization is performed before token consumption. Concurrent replay regression and rollback-on-insert-failure tests added.
+- `sessions.test.js` included in `test:db`.
+- Production signed file URLs use configured `INONE_PUBLIC_URL`; a raw HTTP Host-header override regression test is included.
+- Restore uses `pg_restore --single-transaction` with a regression assertion.
+
+Exact-head CI: P0 run #43591433401 and Flutter run #43591437303 both failed before steps on SHA `dff9ebf9c69ac6ae08f6a91f7df3213652c3c87b`. P0 has six jobs, each with an empty step array; logs unavailable. No code tests ran or were verified. Local tests NOT RUN.
+
+Branch compare: 381 ahead of main, 0 behind. PR #52 remains Draft/open, base `stage0/identity-engineering-readiness-2026-11-13`. Do not retarget or merge. `main` unchanged.
+
+Next: resolve GitHub Actions runner/job provisioning failure, then run Node/PostgreSQL/Rust/Flutter checks on exact head. Continue focused audit of account/session revocation, OTP rate limiting, object storage/backup file archive safety, and MLS FFI. Production certification remains blocked pending runtime and security validation.
