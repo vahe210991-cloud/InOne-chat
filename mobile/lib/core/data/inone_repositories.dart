@@ -2,7 +2,7 @@ import '../session/inone_session.dart';
 import 'inone_profile.dart';
 import 'inone_room.dart';
 
-/// Typed read repositories shared by approved screens and the test-screen host.
+/// Typed backend repositories used by the native Flutter application.
 class InOneRepositories {
   const InOneRepositories(this.session);
 
