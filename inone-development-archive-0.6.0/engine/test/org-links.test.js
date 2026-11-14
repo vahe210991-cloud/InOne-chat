@@ -218,3 +218,23 @@ test('F-02 PostgreSQL: cross-organization link revocation waits for an in-flight
     await s.stop();
   }
 });
+
+test('concurrent proposals for the same organization pair create one link and one pair of audit events', async () => {
+  const s = await start();
+  try {
+    const [first, second] = await Promise.all([
+      call(s.base, 'POST', `/orgs/${ORG_A}/links`, s.anna.token, { targetOrgId: ORG_B }),
+      call(s.base, 'POST', `/orgs/${ORG_A}/links`, s.boris.token, { targetOrgId: ORG_B }),
+    ]);
+    assert.equal([first.status, second.status].filter((status) => status === 200).length, 1);
+    assert.equal([first.status, second.status].filter((status) => status === 409).length, 1);
+    const links = await s.store.orgLinksFor(ORG_A);
+    assert.equal(links.filter((link) => link.orgA === ORG_A || link.orgB === ORG_A).length, 1);
+    const proposalsA = (await s.store.listAdminActions(ORG_A)).filter((event) => event.action === 'link_propose');
+    const proposalsB = (await s.store.listAdminActions(ORG_B)).filter((event) => event.action === 'link_propose');
+    assert.equal(proposalsA.length, 1);
+    assert.equal(proposalsB.length, 1);
+  } finally {
+    await s.stop();
+  }
+});
