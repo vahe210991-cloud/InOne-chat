@@ -32,7 +32,7 @@ export function loadConfig(env = process.env) {
     smtpUser: env.INONE_SMTP_USER ?? '',
     smtpPassword: env.INONE_SMTP_PASSWORD ?? '',
     smtpFrom: env.INONE_SMTP_FROM ?? '',
-        requirePhone: env.INONE_REQUIRE_PHONE !== 'false',
+        requirePhone: env.INONE_REQUIRE_PHONE === 'true',
         smsEnabled: env.INONE_SMS_ENABLED === 'true',
         phoneBlockedCountries: (env.INONE_PHONE_BLOCKED_COUNTRIES ?? '').split(',').map((c) => c.trim().toUpperCase()).filter(Boolean),
     phoneAllowedCountries: (env.INONE_PHONE_ALLOWED_COUNTRIES ?? DEFAULT_PHONE_COUNTRIES.join(',')).split(',').map((c) => c.trim().toUpperCase()).filter(Boolean),
