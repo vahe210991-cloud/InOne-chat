@@ -40,6 +40,8 @@ jobs:
         run: flutter create --platforms=android,ios --project-name inone_mobile --org com.inone .
       - name: Remove generated template test
         run: rm -f test/widget_test.dart
+      - name: Verify native-only mobile runtime
+        run: node tool/verify_native_runtime.mjs
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test
