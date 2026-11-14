@@ -1,3 +1,5 @@
+> **Важно: этот каталог не является production backend.** Его дублирующий Node server запрещён для production в `src/main.js`. Единственный поддерживаемый Node/PostgreSQL backend находится в `inone-development-archive-0.6.0/engine/`. Этот каталог сохраняется как исторический reference и как источник persistent OpenMLS client в `mobile-mls/mls-client/`; не удалять его целиком и не использовать его `src/server.js` вместо canonical backend.
+
 # InOne — рабочий срез: шифрование, вход, PIN, восстановление, группы
 
 Версия 0.5.0.
