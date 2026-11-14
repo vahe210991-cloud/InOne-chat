@@ -2,6 +2,7 @@
 // прикрепление только готового файла, лимит незавершённых загрузок, очистка брошенных загрузок.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { request as nodeRequest } from 'node:http';
 import { createHash, randomBytes } from 'node:crypto';
 import { createServer } from '../src/server.js';
 import { ChatClient, DEFAULT_PASSWORD as PW } from '../src/client.js';
@@ -206,10 +207,30 @@ test('подписанные ссылки не используют подмен
   const s = await start({ fileBaseUrl: 'https://files.inone.test' });
   try {
     const bytes = randomBytes(128);
-    const created = await http(s.base, 'POST', '/files', {
-      token: s.alice.token,
-      body: jsonBody({ kind: 'file', size: bytes.length, sha256: sha(bytes), roomId: ROOM }),
-      headers: { ...JSON_HEADERS, host: 'attacker.example' },
+    const body = jsonBody({ kind: 'file', size: bytes.length, sha256: sha(bytes), roomId: ROOM });
+    const address = new URL(s.base);
+    const created = await new Promise((resolve, reject) => {
+      const req = nodeRequest({
+        hostname: address.hostname,
+        port: Number(address.port),
+        method: 'POST',
+        path: '/files',
+        headers: {
+          authorization: `Bearer ${s.alice.token}`,
+          'content-type': 'application/json',
+          'content-length': String(Buffer.byteLength(body)),
+          host: 'wrong-host.invalid',
+        },
+      }, (res) => {
+        const chunks = [];
+        res.on('data', (chunk) => chunks.push(chunk));
+        res.on('end', () => {
+          const text = Buffer.concat(chunks).toString('utf8');
+          resolve({ status: res.statusCode, json: text ? JSON.parse(text) : {} });
+        });
+      });
+      req.on('error', reject);
+      req.end(body);
     });
     assert.equal(created.status, 200);
     assert.equal(new URL(created.json.uploadUrl).origin, 'https://files.inone.test');
