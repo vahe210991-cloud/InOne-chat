@@ -198,6 +198,24 @@ export function createStore({ pool, pinPepper }) {
     async createOrganization({ orgId, name, status, createdBy, createdAt }) {
       await pool.query('INSERT INTO organizations (org_id, name, status, created_by, created_at) VALUES ($1, $2, $3, $4, $5)', [orgId, name, status, createdBy ?? null, createdAt]);
     },
+    async addOrgMemberWithAudit({ orgId, userId, role, actorId, at }) {
+      if (!['owner', 'admin', 'member'].includes(role)) return { ok: false, reason: 'invalid_role' };
+      return inTransaction(async (c) => {
+        const { rows: orgRows } = await c.query('SELECT status FROM organizations WHERE org_id = $1 FOR UPDATE', [orgId]);
+        if (!orgRows[0]) return { ok: false, reason: 'not_found' };
+        if (orgRows[0].status !== 'approved') return { ok: false, reason: 'not_approved' };
+        const { rows } = await c.query('SELECT user_id, role FROM org_members WHERE org_id = $1 ORDER BY user_id FOR UPDATE', [orgId]);
+        const actorRole = rows.find((row) => row.user_id === actorId)?.role;
+        if (actorRole !== 'owner' && actorRole !== 'admin') return { ok: false, reason: 'forbidden' };
+        if (actorRole === 'admin' && role !== 'member') return { ok: false, reason: 'forbidden' };
+        if (rows.some((row) => row.user_id === userId)) return { ok: false, reason: 'already_member' };
+        const { rowCount: accountCount } = await c.query('SELECT 1 FROM accounts WHERE user_id = $1', [userId]);
+        if (accountCount !== 1) return { ok: false, reason: 'unknown_user' };
+        await c.query('INSERT INTO org_members (org_id, user_id, role, joined_at) VALUES ($1, $2, $3, $4)', [orgId, userId, role, at]);
+        await c.query("INSERT INTO admin_action_log (org_id, actor, action, target, detail, at) VALUES ($1, $2, 'member_add', $3, $4, $5)", [orgId, actorId, userId, role, at]);
+        return { ok: true };
+      });
+    },
     async addOrgMember(orgId, userId, role, joinedAt) {
       const { rowCount } = await pool.query('INSERT INTO org_members (org_id, user_id, role, joined_at) VALUES ($1, $2, $3, $4) ON CONFLICT (org_id, user_id) DO NOTHING', [orgId, userId, role, joinedAt]);
       return rowCount === 1;
