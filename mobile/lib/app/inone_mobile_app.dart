@@ -153,27 +153,23 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
     }
   }
 
-  Future<void> _recheckWaitingLogin() async {
+  Future<InOneFailure?> _recheckWaitingLogin() async {
     try {
       _loginResponse = await _session.login(email: _loginEmail, password: _loginPassword);
       if (_session.isAuthenticated) {
-        return;
+        return null;
       }
       final status = _loginResponse?['status'];
       if (status == 'waiting_period' && _loginResponse?['activateAt'] is String) {
         _waitingUntil = _loginResponse!['activateAt'] as String;
-        return;
+        return null;
       }
-      throw const ApiException(code: 'device_wait_state_changed', statusCode: 409, retryable: false);
+      return const InOneFailure(
+        InOneScreenState.error,
+        message: 'Состояние входа изменилось. Вернитесь ко входу и повторите попытку.',
+      );
     } catch (error) {
-      if (error is ApiException && error.code == 'device_wait_state_changed') {
-        _loadFailure = const InOneFailure(
-          InOneScreenState.error,
-          message: 'Состояние входа изменилось. Вернитесь ко входу и повторите попытку.',
-        );
-      } else {
-        _loadFailure = _toFailure(error);
-      }
+      return _toFailure(error);
     }
   }
 
@@ -362,9 +358,11 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
         setState(() => _screen = 'messages');
       case InOneTab.profile:
         setState(() => _screen = 'profile');
+        break;
       case InOneTab.feed:
       case InOneTab.calls:
         _notice('Этот раздел пока не входит в подключённый объём Beta 1.0.');
+        break;
     }
   }
 
