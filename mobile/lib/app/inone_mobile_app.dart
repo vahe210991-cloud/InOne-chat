@@ -502,7 +502,6 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
           onSubmit: _startRecovery,
           onBack: () => setState(() => _screen = 'login'),
           onEnterCode: () => setState(() => _screen = 'recoveryPassword'),
-          onNotMe: () => setState(() => _screen = 'notYou'),
         );
       case 'recoveryPassword':
         return InOneNewPasswordScreen(
