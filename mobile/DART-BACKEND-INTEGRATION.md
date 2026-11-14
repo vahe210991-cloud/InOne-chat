@@ -48,8 +48,8 @@ The backend is not modified by this migration. Do not infer routes from screen l
 | `inone_messages_screen.dart` | `GET /rooms/mine` | **Connected for room list** | Real room IDs, names and kinds are mapped. No last-message preview, timestamp or unread count is fabricated. |
 | `inone_chat_thread_screen.dart` | `GET /rooms/:id/events`, MLS commits/welcomes/sync, `POST /mls/groups/:id/messages` | **Blocked pending production native MLS** | The Rust `mls-bridge` is an in-memory POC with no Dart/FRB bridge or platform persistence; its own bridge report records an open plaintext-send defect. `mls-client` has SQLCipher storage but no Flutter bridge or production Keychain/Keystore `KeyStore` adapter. Mobile Android/iOS builds were not run. Neither crate is safe to expose to this screen yet. No plaintext fallback or direct event POST. |
 | `inone_profile_screen.dart` | `GET /profile` | **Connected read-only** | Name, email/handle and verification level are mapped. Task/activity/project counts show `—`; endpoint does not supply them. Profile editing is blocked; no verified update endpoint. |
-| `inone_org_profile_screen.dart` | `GET /orgs/mine` | **Partial / not active** | API provides organization name/status/role, not the members/projects/about/cover fields required by the design model. |
-| `inone_workspace_screen.dart` | No verified Beta 1.0 endpoint for task/project/activity metrics | **Blocked** | Do not fill the model with demo counts. |
+| `inone_org_profile_screen.dart` | `GET /orgs/mine` | **Connected, limited to verified fields** | Displays actual organization name, role and status. Members/projects/teams/about/cover remain unknown (`—`/empty); editing is disabled. |
+| `inone_workspace_screen.dart` | `GET /orgs/mine` | **Connected, limited to verified fields** | Workspace name comes from the selected membership; unavailable metrics remain `—`, and activity is omitted because no matching feed endpoint exists. |
 | `inone_notifications_screen.dart` | `GET /sync` is a delivery/signal queue, not a generic notification feed | **Blocked** | Requires typed event-to-notification mapping and correct ACK semantics. |
 | `inone_empty_states_screen.dart` | Client-only | **UI component** | Use only with state derived from real repository results. |
 | `inone_loading_error_screen.dart` | Client-only | **Connected UI state** | Used for real repository loading failures. |
@@ -94,9 +94,10 @@ The backend is not modified by this migration. Do not infer routes from screen l
 4. Account creation — `POST /register`.
 5. Read current profile — `GET /profile`.
 6. Read current user's rooms — `GET /rooms/mine`.
-7. Logout — `POST /logout`.
+7. Read current user's organization memberships — `GET /orgs/mine`.
+8. Logout — `POST /logout`.
 
-Requests use the existing `InOneSession` / `ApiClient` / `InOneRepositories` boundary. Access and refresh tokens remain in memory; only the stable device ID is stored using platform secure storage.
+Requests use the existing `InOneSession` / `ApiClient` / `InOneRepositories` boundary. Organization memberships are parsed into a typed DTO. Access and refresh tokens remain in memory; only the stable device ID is stored using platform secure storage.
 
 ## 5. Security and release gates
 
