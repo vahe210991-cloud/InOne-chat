@@ -1,5 +1,5 @@
 name: inone_mobile
-description: InOne Beta 1.0 mobile application shell and screen test host
+description: InOne Beta 1.0 native Flutter mobile application
 publish_to: "none"
 version: 1.0.0+1
 environment:
@@ -7,7 +7,6 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  webview_flutter: ^4.10.0
   http: ^1.2.2
   flutter_secure_storage: ^9.2.4
 dev_dependencies:
@@ -16,19 +15,3 @@ dev_dependencies:
   flutter_lints: ^5.0.0
 flutter:
   uses-material-design: true
-  assets:
-    - assets/approved-ui/InOne-approved-cross-platform.html
-    - assets/test-ui/
-    - assets/ui-approval/
-    - assets/ui-approval/screens/admin/
-    - assets/ui-approval/screens/auth/
-    - assets/ui-approval/screens/chat/
-    - assets/ui-approval/screens/menu/
-    - assets/ui-approval/screens/organizations/
-    - assets/ui-approval/screens/profile/
-    - assets/ui-approval/screens/rooms/
-    - assets/ui-approval/screens/search/
-    - assets/ui-approval/screens/settings/
-    - assets/ui-approval/assets/fonts/
-    - assets/ui-approval/assets/icons/
-    - assets/ui-approval/assets/images/
