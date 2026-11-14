@@ -1144,7 +1144,7 @@ export function createStore({ pool, pinPepper }) {
 
     async mlsRecordDeviceRemovals(userId, deviceId, nowMs) {
       await pool.query(
-        "INSERT INTO mls_device_removals (room_id, user_id, device_id, created_at) SELECT g.room_id, $1, $2, $3 FROM mls_groups g JOIN room_members m ON m.room_id = g.room_id WHERE m.user_id = $1 AND g.epoch > 0 ON CONFLICT (room_id, user_id, device_id) DO UPDATE SET created_at = EXCLUDED.created_at, done_at = NULL",
+        "INSERT INTO mls_device_removals (room_id, user_id, device_id, created_at) SELECT g.room_id, $1, $2, $3 FROM mls_groups g JOIN room_members m ON m.room_id = g.room_id WHERE m.user_id = $1 AND g.epoch > 0 ON CONFLICT (room_id, user_id, device_id) DO NOTHING",
         [userId, deviceId, nowMs],
       );
     },
@@ -2030,7 +2030,7 @@ async function revokeDeviceInTransaction(c, deviceKey, device, nowMs) {
     [device.user_id, device.device_id],
   );
   await c.query(
-    "INSERT INTO mls_device_removals (room_id, user_id, device_id, created_at) SELECT g.room_id, $1, $2, $3 FROM mls_groups g JOIN room_members m ON m.room_id = g.room_id WHERE m.user_id = $1 AND g.epoch > 0 ON CONFLICT (room_id, user_id, device_id) DO UPDATE SET created_at = EXCLUDED.created_at, done_at = NULL",
+    "INSERT INTO mls_device_removals (room_id, user_id, device_id, created_at) SELECT g.room_id, $1, $2, $3 FROM mls_groups g JOIN room_members m ON m.room_id = g.room_id WHERE m.user_id = $1 AND g.epoch > 0 ON CONFLICT (room_id, user_id, device_id) DO NOTHING",
     [device.user_id, device.device_id, nowMs],
   );
 }
