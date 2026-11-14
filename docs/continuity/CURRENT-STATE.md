@@ -456,3 +456,6 @@ Additional confirmed gaps:
 The audit and source evidence are recorded in `development/reports/2026-11-14-1701-stage4-flutter-mls-integration-audit.md`. Isolated documentation/audit branch: `task/beta1-stage4-mls-merge-audit-2026-11-14`. No product code was changed and no tests/builds/device runs were executed.
 
 **Blocking environment:** current tools permit GitHub repository-native inspection/writes but not a complete private-repository clone or Rust/Flutter build. Broad multi-file native integration is not safe through individual Contents API writes. Continue only after obtaining a full authorized working copy and executable CI runner. `main`, PR #45 and PR #52 remain untouched/unmerged.
+
+
+Stage 4 source boundary clarification (2026-11-14): the mobile Rust crate in PR #45 links the POC-path `inone-engine-poc-0.6.0/mobile-mls/mls-client`, while the canonical backend engine has a separate `inone-development-archive-0.6.0/engine/mobile-mls/mls-client`. Their source blobs differ; PR #45's workflow tests against the canonical engine but links the POC-path mobile client. Treat this as an explicit source-ownership boundary, not an interchangeable crate. See `development/reports/2026-11-14-1703-stage4-source-boundary-addendum.md`. The full private working copy/build runner prerequisite is BLOCKED; no product code changed.
