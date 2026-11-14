@@ -321,3 +321,24 @@ Next actions:
 3. Continue focused read-only audit of auth/session/OTP, object-store isolation and limits, backup/restore, and Flutter MLS FFI/key lifecycle.
 4. Make only evidence-backed changes and add tests. Do not touch main, merge PR, change its base, deploy, or claim tests passed unless actually verified.
 5. Keep runtime/production certification separate from source-level readiness.
+
+## Engine hardening continuation — 2026-11-14
+
+Latest audited engine code SHA: `133a8c8dc3d28fa3c923288354dbf98821e90afb` on `feat/flutter-ui-dart-migration-2026-11-14`.
+
+Completed source changes:
+- P0 Rust format job is read-only and no longer commits/pushes formatting changes.
+- Startup probes PostgreSQL before HTTP listen when migrations are disabled.
+- Refresh-token rotation and issuance of the replacement pair are one PostgreSQL transaction; device row is locked before refresh row, and the memory adapter mirrors the API.
+- Recovery finalization is run before token consumption; the atomic rotation rechecks revocation.
+- Tests added for DB readiness, concurrent refresh replay, transaction rollback on replacement-token insert failure, Host-header poisoning, and transactional restore command. `sessions.test.js` is now included in `test:db`.
+- Production signed object URLs use configured `INONE_PUBLIC_URL`, not request Host.
+- `restore-db.sh` uses `pg_restore --single-transaction`.
+
+Verification status:
+- P0 run #43591312640 was created for exact SHA `133a8c8dc3d28fa3c923288354dbf98821e90afb`; all six jobs failed before any steps (empty step arrays, logs unavailable). No tests can be considered executed.
+- Local Node/PostgreSQL/Rust/Flutter tests were NOT RUN.
+- Branch was 376 commits ahead of main, 0 behind. `main` unchanged.
+- PR #52 remains Draft/open and targets `stage0/identity-engineering-readiness-2026-11-13`. Do not retarget or merge without owner approval.
+
+Next: diagnose GitHub Actions job provisioning failure, run the exact-head P0 suite, then continue focused audit of account/session revocation, OTP throttling, object-store/backup consistency and Flutter MLS FFI. Do not claim production readiness before runtime validation.
