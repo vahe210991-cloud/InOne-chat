@@ -44,7 +44,7 @@
 
 - Node.js 22 или новее.
 - PostgreSQL 16.
-- Production: HTTPS reverse proxy, постоянный каталог файлов, случайные секреты, SMTP с TLS.
+- Production: HTTPS reverse proxy, постоянный каталог файлов, отдельный постоянный `INONE_OBJECT_SECRET` для подписанных URL, остальные случайные секреты и SMTP с TLS.
 - Секреты хранить только в secret manager / переменных окружения; не коммитить их и не помещать в логи.
 
 ```sh
