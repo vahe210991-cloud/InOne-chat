@@ -110,12 +110,12 @@ The engine's `npm test` suite already includes dedicated suites for:
 The following test files are the primary integration evidence:
 - `inone-engine-poc-0.6.0/test/mls-messages.test.js`
 - `inone-engine-poc-0.6.0/test/mls-offline.test.js`
-- `engine/test/sync-ack.test.js`
-- `engine/test/org-requests.test.js`
-- `engine/test/org-access.test.js`
-- `engine/test/org-isolation-matrix.test.js`
-- `engine/test/room-permissions.test.js`
-- `engine/test/sessions.test.js`
+- `inone-engine-poc-0.6.0/test/sync-ack.test.js`
+- `inone-engine-poc-0.6.0/test/org-requests.test.js`
+- `inone-engine-poc-0.6.0/test/org-access.test.js`
+- `inone-engine-poc-0.6.0/test/org-isolation-matrix.test.js`
+- `inone-engine-poc-0.6.0/test/room-permissions.test.js`
+- `inone-engine-poc-0.6.0/test/sessions.test.js`
 - `mobile/test/core/data/inone_repositories_test.dart`
 - `mobile/test/core/network/api_client_test.dart`
 
