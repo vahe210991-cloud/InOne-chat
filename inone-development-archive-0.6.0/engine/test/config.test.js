@@ -68,6 +68,7 @@ test('production отклоняет placeholder secrets, URLs и SMTP credential
   const smtp = { ...GOOD, INONE_MAIL_TRANSPORT: 'smtp', INONE_SMTP_HOST: 'smtp.provider.test', INONE_SMTP_FROM: 'InOne <noreply@inone.test>' };
   assert.throws(() => loadConfig({ ...smtp, INONE_DOCS_SECRET: 'change-me-this-is-only-a-placeholder-secret' }), /INONE_DOCS_SECRET looks like a test or example value/);
   assert.throws(() => loadConfig({ ...smtp, DATABASE_URL: 'postgresql://inone:change-me@HOST:5432/inone' }), /DATABASE_URL must be a valid PostgreSQL URL, not a placeholder/);
+  assert.throws(() => loadConfig({ ...smtp, DATABASE_URL: 'postgresql://inone:change-me@db.inone.test:5432/inone' }), /DATABASE_URL must be a valid PostgreSQL URL, not a placeholder/);
   assert.throws(() => loadConfig({ ...smtp, INONE_SMTP_PASSWORD: 'replace-with-smtp-password' }), /SMTP credentials still contain placeholder values/);
   assert.throws(() => loadConfig({ ...smtp, INONE_PUBLIC_URL: 'https://inone.example.com' }), /must not use an example domain/);
 });
