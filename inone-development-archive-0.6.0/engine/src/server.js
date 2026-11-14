@@ -1458,7 +1458,12 @@ if (req.method === 'POST' && orgLinksRoute) {
   if ((await storage.orgStatus(orgId)) !== 'approved' || (await storage.orgStatus(target)) !== 'approved') return send(res, 403, { error: 'both organizations must be approved', code: 'org_not_approved' });
   const linkId = randomBytes(12).toString('hex');
   const created = await storage.createOrgLink({ linkId, proposingOrg: orgId, otherOrg: target, proposedBy: d.userId, createdAt: now() });
-  if (!created) return send(res, 409, { error: 'a link already exists', code: 'link_exists' });
+  if (!created.ok) {
+    if (created.reason === 'already_exists') return send(res, 409, { error: 'a link already exists', code: 'link_exists' });
+    if (created.reason === 'not_found') return send(res, 404, { error: 'organization not found' });
+    if (created.reason === 'not_approved') return send(res, 403, { error: 'both organizations must be approved', code: 'org_not_approved' });
+    return send(res, 403, { error: 'only owners and admins propose links', code: 'org_role_required' });
+  }
   return send(res, 200, { linkId, status: 'proposed' });
 }
 if (req.method === 'POST' && orgLinkActRoute) {
