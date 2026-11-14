@@ -33,9 +33,10 @@ export function createFsObjectStore(dir) {
     await mkdir(root, { recursive: true, mode: 0o700 });
     const stat = await lstat(root);
     if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('object store root must be a real directory, not a symlink');
-    await chmod(root, 0o700);
+    if (process.platform !== 'win32') await chmod(root, 0o700);
   };
   const syncRoot = async () => {
+    if (process.platform === 'win32') return;
     const handle = await open(root, 'r');
     try { await handle.sync(); } finally { await handle.close(); }
   };
