@@ -17,6 +17,7 @@ export function loadConfig(env = process.env) {
     trustProxy: env.INONE_TRUST_PROXY === 'true',
     filesDir: env.INONE_FILES_DIR ?? '',
     docsSecret: env.INONE_DOCS_SECRET ?? '',
+    objectSecret: env.INONE_OBJECT_SECRET ?? '',
     testUi: env.INONE_TEST_UI === '1',
     fileQuotaBytes: env.INONE_FILE_QUOTA_BYTES ? Number(env.INONE_FILE_QUOTA_BYTES) : null,
     bodyLimitBytes: Number(env.INONE_BODY_LIMIT_BYTES ?? 4 * 1024 * 1024),
@@ -57,6 +58,8 @@ export function loadConfig(env = process.env) {
     if (config.pinPepper.length < 32) errors.push('INONE_PIN_PEPPER must be at least 32 characters in production');
     if (TEST_SECRET_MARKERS.some((m) => config.pinPepper.toLowerCase().includes(m))) errors.push('INONE_PIN_PEPPER looks like a test or example value');
     if (TEST_SECRET_MARKERS.some((m) => config.docsSecret.toLowerCase().includes(m))) errors.push('INONE_DOCS_SECRET looks like a test or example value');
+    if (config.objectSecret.length < 32) errors.push('INONE_OBJECT_SECRET must be at least 32 characters in production');
+    if (TEST_SECRET_MARKERS.some((m) => config.objectSecret.toLowerCase().includes(m))) errors.push('INONE_OBJECT_SECRET looks like a test or example value');
     if (!config.publicUrl.startsWith('https://')) errors.push('INONE_PUBLIC_URL must start with https:// in production');
     if (config.publicUrl.toLowerCase().includes('example')) errors.push('INONE_PUBLIC_URL must not use an example domain');
     // Production verification codes must use a real SMTP transport; memory mail is test-only.
