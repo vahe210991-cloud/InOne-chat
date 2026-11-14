@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 const main = readFileSync('lib/main.dart', 'utf8');
@@ -33,7 +33,10 @@ for (const path of dartFiles) {
   }
 }
 
-const htmlFiles = walk('.').filter((path) => path.endsWith('.html'));
+const htmlFiles = [
+  ...walk('lib').filter((path) => path.endsWith('.html')),
+  ...(existsSync('assets') ? walk('assets').filter((path) => path.endsWith('.html')) : []),
+];
 if (htmlFiles.length !== 0) {
   throw new Error(`Legacy HTML assets remain inside the mobile package: ${htmlFiles.join(', ')}`);
 }
