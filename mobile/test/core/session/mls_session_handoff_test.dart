@@ -373,6 +373,53 @@ void main() {
     session.dispose();
   });
 
+  test('MLS message sending fails closed when the native bridge is unavailable', () async {
+    final session = InOneSession(
+      baseUrl: 'https://api.inone.test',
+      readDeviceId: () async => 'device-1',
+      writeDeviceId: (_) async {},
+      readMlsUserId: () async => null,
+      writeMlsUserId: (_) async {},
+      deleteMlsUserId: () async {},
+    );
+
+    await expectLater(
+      session.sendMlsText('room-1', 'must-not-be-sent-as-plaintext'),
+      throwsA(isA<ApiException>()),
+    );
+    session.dispose();
+  });
+
+  test('MLS message sending is delegated to the native bridge', () async {
+    final httpClient = MockClient((request) async {
+      if (request.url.path == '/login') {
+        return http.Response(
+          jsonEncode({'token': 'access-1', 'refreshToken': 'refresh-1'}),
+          200,
+        );
+      }
+      if (request.url.path == '/profile') {
+        return http.Response(jsonEncode({'userId': '@alice:inone.test'}), 200);
+      }
+      return http.Response('{}', 404);
+    });
+    final bridge = _FakeMlsSessionBridge();
+    final session = InOneSession(
+      baseUrl: 'https://api.inone.test',
+      httpClient: httpClient,
+      nativeMlsBridge: bridge,
+      readDeviceId: () async => 'device-1',
+      writeDeviceId: (_) async {},
+      readMlsUserId: () async => null,
+      writeMlsUserId: (_) async {},
+      deleteMlsUserId: () async {},
+    );
+
+    await session.login(email: 'alice@example.test', password: 'not-used-in-test');
+    expect(await session.sendMlsText('room-1', 'hello'), 'event-1');
+    session.dispose();
+  });
+
   test('invalid native access-token snapshot rolls back the handoff and clears local ownership', () async {
     var deletedUserId = false;
     final httpClient = MockClient((request) async {
