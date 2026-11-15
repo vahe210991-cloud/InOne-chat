@@ -1,3 +1,5 @@
+> **NEXT EXECUTION — 2026-11-15:** 1) Obtain/verify a complete local clone on the owner's Windows machine; do not overwrite an existing `C:\InOne` or backup. 2) Fix canonical backend file-download revocation with device-bound grants and PostgreSQL/memory regression tests. 3) Reconcile PR #42 against the canonical engine path; do not treat POC server checks as backend acceptance. 4) Selectively integrate Stage 4 Rust/FRB/Keystore/Keychain/session work into current Flutter source; resolve missing generated outputs and stale sample imports. 5) Implement MLS encrypted attachments and verified-phone recovery deep links; run the full local Node/PostgreSQL/Rust/Flutter/Android matrix. No Actions workflow was dispatched in the preceding session. Details: [CTO audit report](../../development/reports/2026-11-15-2257-beta1-cto-audit.md).
+
 # Immediate next steps — 2026-11-14 (engine stabilization)
 
 1. Verify exact current branch HEAD and clean worktree: `feat/flutter-ui-dart-migration-2026-11-14`; expected code/test commit `24ed7477ed308f82d5e61c97bba5aac3f5f2da65`. Do not modify `main`.
