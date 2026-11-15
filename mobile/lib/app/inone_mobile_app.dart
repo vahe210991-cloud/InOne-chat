@@ -283,6 +283,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
   }
 
   Future<InOneFailure?> _completeRecovery(String code, String newPassword, String pin) async {
+    _waitingActivateAt = '';
     try {
       final response = await _session.completeRecovery(
         email: _recoveryEmail.isNotEmpty ? _recoveryEmail : null,
