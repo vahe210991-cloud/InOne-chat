@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'dart:async';
 import 'dart:convert';
 
@@ -417,6 +418,17 @@ void main() {
 
     await session.login(email: 'alice@example.test', password: 'not-used-in-test');
     expect(await session.sendMlsText('room-1', 'hello'), 'event-1');
+    expect(
+      await session.sendMlsAttachment(
+        roomId: 'room-1',
+        name: 'report.txt',
+        mimeType: 'text/plain',
+        plaintext: Uint8List.fromList([1, 2, 3]),
+        clientMessageId: 'test-attachment-1',
+      ),
+      'attachment-event-1',
+    );
+    expect(await session.downloadMlsAttachment('file-1'), [1, 2, 3]);
     session.dispose();
   });
 
@@ -595,6 +607,19 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
 
   @override
   Future<String> sendText(String roomId, String plaintext) async => 'event-1';
+
+  @override
+  Future<String> sendAttachment({
+    required String roomId,
+    required String name,
+    required String mimeType,
+    required Uint8List plaintext,
+    required String clientMessageId,
+  }) async => 'attachment-event-1';
+
+  @override
+  Future<Uint8List> downloadAttachment(String fileId) async =>
+      Uint8List.fromList([1, 2, 3]);
 
   @override
   Future<String> enqueueText(String roomId, String plaintext) async => 'local-1';
