@@ -373,10 +373,22 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
       final messages = await _session.mlsMessagesForRoom(roomId);
       if (!mounted) return;
       setState(() {
-        _threadItems = messages.map((message) => InOneThreadItem(
-          kind: InOneThreadItemKind.text,
-          text: message.text ?? 'Не удалось расшифровать сообщение',
-        )).toList(growable: false);
+        _threadItems = messages.map((message) {
+          if (message.isAttachment) {
+            final size = message.size ?? 0;
+            final sizeLabel = size >= 1024 * 1024
+                ? '${(size / (1024 * 1024)).toStringAsFixed(1)} МБ'
+                : '${(size / 1024).ceil()} КБ';
+            return InOneThreadItem(
+              kind: InOneThreadItemKind.file,
+              fileLabel: '${message.name ?? 'Файл'} · $sizeLabel',
+            );
+          }
+          return InOneThreadItem(
+            kind: InOneThreadItemKind.text,
+            text: message.text ?? 'Не удалось расшифровать сообщение',
+          );
+        }).toList(growable: false);
         _chatLoading = false;
       });
       final acceptedIds = pending
