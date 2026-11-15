@@ -426,6 +426,10 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
       const fileId = decodeURIComponent(url.pathname.slice('/objects/'.length));
       const expires = Number(url.searchParams.get('expires'));
       const sig = url.searchParams.get('sig') ?? '';
+      // Authenticate before looking up the object so anonymous callers cannot
+      // distinguish existing file IDs from missing ones.
+      const downloadSession = req.method === 'GET' ? await authed(req) : null;
+      if (req.method === 'GET' && !downloadSession) return send(res, 401, { error: 'unauthorized' });
       const file = await storage.getFile(fileId);
       if (!file) return send(res, 404, { error: 'not found' });
       if (req.method === 'PUT') {
@@ -457,8 +461,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
       if (req.method === 'GET') {
         // A signed URL alone is not an authorization grant. Re-authenticate the active
         // device and re-check current room membership on every download request.
-        const d = await authed(req);
-        if (!d) return send(res, 401, { error: 'unauthorized' });
+        const d = downloadSession;
         if (!expires || now() > expires || !sameSig(sig, signDownloadFor(fileId, expires, d.userId, d.deviceId))) {
           return send(res, 403, { error: 'download link is invalid, expired, or bound to another device' });
         }
