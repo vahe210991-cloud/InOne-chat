@@ -351,10 +351,6 @@ class InOneSession extends ChangeNotifier {
         refreshToken: _refreshToken!,
       );
       nativeOpened = true;
-      // Rust now owns refresh-token rotation. Clear the Dart copy immediately
-      // after open succeeds, before requesting the access-token snapshot.
-      _mlsBridge = target;
-      _refreshToken = null;
       final snapshot = await target.accessTokenSnapshot();
       if (snapshot.isEmpty) {
         throw const ApiException(
@@ -363,13 +359,37 @@ class InOneSession extends ChangeNotifier {
           retryable: false,
         );
       }
+      // Transfer ownership only after Rust confirms it can return a valid
+      // access-token snapshot. If that check fails, tear down the native copy
+      // rather than leaving two competing refresh-token owners.
+      _mlsBridge = target;
+      _refreshToken = null;
       _userId = userId;
       _savedMlsUserId = userId;
       _accessToken = snapshot;
       _mlsError = null;
       notifyListeners();
     } catch (_) {
-      if (!nativeOpened) {
+      if (nativeOpened) {
+        try {
+          await target.logout();
+        } catch (_) {
+          // Rust logout always attempts local SQLCipher/key cleanup.
+        }
+        try {
+          await target.close();
+        } catch (_) {
+          // Preserve the original handoff error.
+        }
+        _mlsBridge = null;
+        _savedMlsUserId = null;
+        try {
+          await _deleteMlsUserId();
+        } catch (_) {
+          // Do not hide the original handoff failure.
+        }
+        _clearSession();
+      } else {
         try {
           await target.close();
         } catch (_) {
@@ -506,8 +526,10 @@ class InOneSession extends ChangeNotifier {
         result['token'] = null;
         result['refreshToken'] = null;
       }
-    } on ApiException {
-      _clearSession();
+    } on ApiException catch (error) {
+      if (error.statusCode == 401 || error.statusCode == 403) {
+        _clearSession();
+      }
       rethrow;
     }
   }
