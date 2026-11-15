@@ -2033,7 +2033,15 @@ impl Client {
             Some(json!({ "message": body, "kind": "text", "forwarded": false, "clientMessageId": client_message_id })),
         )?;
         let event_id = res["event_id"].as_str().ok_or("сервер не вернул event_id")?.to_string();
-        self.mark_processed(&event_id)?;
+        // Persist the sender's own message in the SQLCipher inbox too. Otherwise
+        // sync skips this event as processed and the sender never sees it in local history.
+        let outgoing = Incoming::Text {
+            room_id: room_id.to_string(),
+            event_id: event_id.clone(),
+            text: plaintext.to_string(),
+        };
+        persist_incoming_record(&mut self.meta, &outgoing)?;
+        self.processed.insert(event_id.clone());
         Ok(event_id)
     }
 
