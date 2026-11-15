@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'dart:io';
 import 'dart:math';
 
@@ -176,6 +177,18 @@ class InOneSession extends ChangeNotifier {
       }
       await _refreshOnce();
       return _client.request(method, path, body: body, authenticated: true);
+    }
+  }
+
+  /// Downloads an authenticated file URL and retries once after session rotation.
+  /// The URL is same-origin and device-bound by the canonical backend.
+  Future<Uint8List> downloadBytes(String signedUrl) async {
+    try {
+      return await _client.getBytes(signedUrl);
+    } on ApiException catch (error) {
+      if (error.statusCode != 401 || _refreshToken == null) rethrow;
+      await _refreshOnce();
+      return _client.getBytes(signedUrl);
     }
   }
 
