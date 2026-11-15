@@ -1,6 +1,6 @@
-import 'dart:typed_data';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:inone_mobile/src/rust/api/session.dart' as rust;
 import 'package:inone_mobile/src/rust/frb_generated.dart';
