@@ -108,6 +108,16 @@ impl Drop for AttachmentManifestV1 {
     }
 }
 
+/// Detect attachment payloads even when the outer event forgot its file reference.
+/// The parsed JSON (which may contain a base64 file key) is zeroized on every path.
+pub fn is_attachment_manifest(payload: &[u8]) -> bool {
+    let Ok(value) = serde_json::from_slice::<Value>(payload) else {
+        return false;
+    };
+    let guarded = ZeroizingJson(value);
+    guarded.0.get("type").and_then(Value::as_str) == Some("inone.attachment")
+}
+
 /// Parse only a supported manifest and bind it to the outer event's file ID
 /// and room. This prevents swapping a valid manifest between file events.
 pub fn parse_manifest(
