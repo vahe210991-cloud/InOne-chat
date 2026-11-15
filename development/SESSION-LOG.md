@@ -1,3 +1,14 @@
+## 2026-11-15 — P0 file-download security implementation and mobile transport
+
+- PR #54 opened as Draft: `fix/backend-revocable-file-downloads-2026-11-15`, head `ecded3e8bcc549a5b5e95e15bad587ecbdd289f2`, base current Flutter branch. Canonical object GET requires live bearer session, HMAC bound to exact user/device, and fresh room-membership/private-owner authorization on every request. Tests added for anonymous/cross-device/revoked-device/removed-member cases. Disk test updated. No tests run.
+- PR #56 opened as Draft stacked on #54: `feat/mobile-authenticated-file-download-transport-v2-2026-11-15`, head `019d1cad8484a140f6c6af5f02fd4abdda5da9cc`. Adds same-origin binary GET with bearer auth/one refresh retry, signed ciphertext PUT without bearer auth, redirect blocking, and tests/docs. This is transport only; no E2EE attachment crypto/manifest/decryption/UI.
+- PR #55 closed as superseded by #56; do not revive.
+- PR #56 automatically triggered workflow #43757799304; exact head matched. Job had no steps, logs returned BlobNotFound; treat as blocked infrastructure, not a confirmed Flutter source failure. No manual workflow dispatch/rerun.
+- Next: implement MLS attachment crypto + encrypted manifest/key persistence in the persistent Rust client; then integrate generated FRB outputs and Dart bridge; implement recovery deep links after app-link domain/SMS provider are configured. PR #42 still targets POC Node server and needs canonical backend reconciliation.
+- No PR merged. Node/PostgreSQL/Rust/Flutter/Android/iOS tests NOT RUN. Full evidence in `development/reports/2026-11-15-2257-beta1-cto-audit.md`.
+
+---
+
 ## 2026-11-15 — final branch comparison
 
 - Before the final report addendum, live compare of PR #53 task branch against current Flutter base: 19 commits ahead / 1 behind; merge-base `eda47ce560cb1468438460147cbd49cd2f4a4747`. All additional commits in this audit session are documentation/handover only.
