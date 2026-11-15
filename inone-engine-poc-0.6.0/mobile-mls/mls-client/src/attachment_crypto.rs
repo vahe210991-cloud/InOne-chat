@@ -115,8 +115,11 @@ pub fn parse_manifest(
     expected_file_id: &str,
     expected_room_id: &str,
 ) -> Result<AttachmentManifestV1, String> {
-    let mut value: Value = serde_json::from_slice(payload)
-        .map_err(|_| "attachment manifest is not valid JSON".to_string())?;
+    let mut guarded_value = ZeroizingJson(
+        serde_json::from_slice(payload)
+            .map_err(|_| "attachment manifest is not valid JSON".to_string())?
+    );
+    let value = &mut guarded_value.0;
     let string = |key: &str| -> Result<String, String> {
         value.get(key).and_then(Value::as_str)
             .map(str::to_string)
@@ -188,13 +191,15 @@ pub fn decrypt(
     let aad = associated_data(&manifest.room_id, manifest.size);
     let cipher = Aes256Gcm::new_from_slice(&manifest.key)
         .map_err(|_| "invalid attachment key")?;
-    let plaintext = cipher
-        .decrypt(Nonce::from_slice(&manifest.nonce), Payload { msg: ciphertext, aad: &aad })
-        .map_err(|_| "attachment authentication failed".to_string())?;
+    let plaintext = Zeroizing::new(
+        cipher
+            .decrypt(Nonce::from_slice(&manifest.nonce), Payload { msg: ciphertext, aad: &aad })
+            .map_err(|_| "attachment authentication failed".to_string())?
+    );
     if plaintext.len() as u64 != manifest.size || sha256_hex(&plaintext) != manifest.sha256 {
         return Err("attachment plaintext integrity check failed".to_string());
     }
-    Ok(plaintext)
+    Ok(plaintext.to_vec())
 }
 
 pub fn sha256_hex(bytes: &[u8]) -> String {
@@ -208,6 +213,14 @@ fn associated_data(room_id: &str, plaintext_size: u64) -> Vec<u8> {
     aad.extend_from_slice(room_id.as_bytes());
     aad.extend_from_slice(&plaintext_size.to_be_bytes());
     aad
+}
+
+struct ZeroizingJson(Value);
+
+impl Drop for ZeroizingJson {
+    fn drop(&mut self) {
+        zeroize_json_value(&mut self.0);
+    }
 }
 
 fn zeroize_json_value(value: &mut Value) {
