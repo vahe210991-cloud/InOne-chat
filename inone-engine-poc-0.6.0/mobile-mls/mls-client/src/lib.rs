@@ -2352,6 +2352,28 @@ impl Client {
         let mut ciphertext: Vec<u8>;
         let mut already_uploaded = false;
 
+        let completed: Option<(String, String, String, Vec<u8>)> = self.meta.query_row(
+            "SELECT room_id, file_id, event_id, manifest FROM client_attachments
+             WHERE client_message_id = ?1 AND direction = 'outgoing'",
+            [client_message_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        ).optional().map_err(text)?;
+        if let Some((stored_room, stored_file_id, event_id, stored_manifest)) = completed {
+            if stored_room != room_id {
+                return Err("clientMessageId is already completed for a different room".to_string());
+            }
+            let stored_manifest = Zeroizing::new(stored_manifest);
+            let manifest = attachment_crypto::parse_manifest(&stored_manifest, &stored_file_id, room_id)?;
+            if manifest.name != name
+                || manifest.mime_type != mime_type
+                || manifest.size != plaintext.len() as u64
+                || manifest.sha256 != attachment_crypto::sha256_hex(plaintext)
+            {
+                return Err("clientMessageId retry payload does not match the completed attachment".to_string());
+            }
+            return Ok(event_id);
+        }
+
         let existing: Option<(String, String, Vec<u8>, String, i64, bool)> = self.meta.query_row(
             "SELECT room_id, file_id, manifest, ciphertext_sha256, ciphertext_size, uploaded
              FROM client_attachment_outbox WHERE client_message_id = ?1",
@@ -2484,12 +2506,13 @@ impl Client {
         insert_incoming_record(&transaction, &incoming)?;
         transaction.execute(
             "INSERT OR IGNORE INTO client_attachments
-             (file_id, room_id, event_id, manifest, direction, created_at)
-             VALUES (?1, ?2, ?3, ?4, 'outgoing', ?5)",
+             (file_id, room_id, event_id, manifest, direction, created_at, client_message_id)
+             VALUES (?1, ?2, ?3, ?4, 'outgoing', ?5, ?6)",
             rusqlite::params![
                 file_id, room_id, event_id, manifest_payload.as_slice(),
                 std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default().as_millis() as i64
+                    .unwrap_or_default().as_millis() as i64,
+                client_message_id
             ],
         ).map_err(text)?;
         let stored: (String, String, Vec<u8>) = transaction.query_row(
