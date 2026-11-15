@@ -49,7 +49,7 @@ The repository now contains the Stage 4 persistent Rust/OpenMLS client, the Flut
 
 Before enabling the flag, run `.	ool\generate_native_mls.ps1` from PowerShell in this directory. It generates the FRB bindings, native-assets hook, Rust build script and lockfile, then configures Android's application context. The generated files are not yet committed in this source revision, so a clean checkout is not yet buildable with the native flag enabled.
 
-The native session path adopts the authenticated session into Rust, keeps the refresh token and MLS private state in Rust, stores the device database in SQLCipher, and stores the SQLCipher key in Android Keystore / protected iOS Keychain. On restart it attempts to resume the Rust-owned session. If native adoption fails, messaging remains disabled; there is no plaintext or Megolm fallback.
+The native session path adopts the authenticated session into Rust, keeps the refresh token and MLS private state in Rust, stores the device database in SQLCipher, and stores the SQLCipher key in Android Keystore / protected iOS Keychain. After adoption and on restart it publishes replenished KeyPackages, accepts pending Welcomes, syncs known MLS rooms and flushes the Rust-owned text outbox. If native adoption fails, messaging remains disabled; there is no plaintext or Megolm fallback.
 
 This source integration is not yet validated: generated FRB outputs, Flutter analysis/tests, Rust bridge tests, Android Keystore runtime checks, and iOS Protected Keychain device/simulator checks must pass on the same final commit before the flag can be enabled for release.
 
