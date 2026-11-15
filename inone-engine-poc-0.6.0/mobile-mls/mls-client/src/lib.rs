@@ -2549,16 +2549,26 @@ impl Client {
             .ok_or_else(|| "attachment manifest is not available in the encrypted local inbox".to_string())?;
         let manifest_bytes = Zeroizing::new(manifest_bytes);
         let manifest = attachment_crypto::parse_manifest(&manifest_bytes, file_id, &room_id)?;
-        let link = self.call(
-            "GET",
-            &format!("/files/{}/url", urlencoding::encode(file_id)),
-            None,
-        )?;
-        let download_url = link.get("downloadUrl").and_then(Value::as_str)
-            .filter(|value| !value.trim().is_empty())
-            .ok_or("file link response did not return downloadUrl")?;
-        let ciphertext = self.download_signed_bytes(download_url, manifest.ciphertext_size)?;
-        attachment_crypto::decrypt(&ciphertext, &manifest)
+        for attempt in 0..2 {
+            let link = self.call(
+                "GET",
+                &format!("/files/{}/url", urlencoding::encode(file_id)),
+                None,
+            )?;
+            let download_url = link.get("downloadUrl").and_then(Value::as_str)
+                .filter(|value| !value.trim().is_empty())
+                .ok_or("file link response did not return downloadUrl")?;
+            match self.download_signed_bytes(download_url, manifest.ciphertext_size) {
+                Ok(ciphertext) => return attachment_crypto::decrypt(&ciphertext, &manifest),
+                Err(error) if attempt == 0 && error.contains("signed download -> 403") => {
+                    // The short-lived URL may have expired between link creation and GET.
+                    // Re-request it once; membership/device revocation still fails closed.
+                    continue;
+                }
+                Err(error) => return Err(error),
+            }
+        }
+        Err("could not obtain a valid signed attachment download".to_string())
     }
 
     /// Входит в группы по приветствиям, которые ждут на сервере, и подтверждает их.
