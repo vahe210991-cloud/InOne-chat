@@ -2279,6 +2279,240 @@ impl Client {
         Ok(event_id)
     }
 
+    /// Encrypts a file with a per-file AES-256-GCM key, uploads ciphertext only,
+    /// then sends the key/nonce manifest inside an MLS application message.
+    pub fn send_attachment(
+        &mut self,
+        room_id: &str,
+        name: &str,
+        mime_type: &str,
+        plaintext: &[u8],
+    ) -> Result<String, String> {
+        let client_message_id = hex_encode(&self.crypto.random_vec(16).map_err(text)?);
+        self.send_attachment_with_id(room_id, name, mime_type, plaintext, &client_message_id)
+    }
+
+    /// Idempotent attachment send. Reuse the same client_message_id when retrying
+    /// after an uncertain network result; its manifest/key remain in SQLCipher.
+    pub fn send_attachment_with_id(
+        &mut self,
+        room_id: &str,
+        name: &str,
+        mime_type: &str,
+        plaintext: &[u8],
+        client_message_id: &str,
+    ) -> Result<String, String> {
+        self.ensure_writable()?;
+        if client_message_id.is_empty()
+            || client_message_id.len() > 64
+            || !client_message_id.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
+        {
+            return Err("clientMessageId must contain 1-64 letters, digits, _ or -".to_string());
+        }
+        if name.is_empty() || name.len() > 255 || name.chars().any(char::is_control)
+            || name.contains('/') || name.contains('\\')
+        {
+            return Err("invalid attachment display name".to_string());
+        }
+        if mime_type.is_empty() || mime_type.len() > 127 || mime_type.chars().any(char::is_control) {
+            return Err("invalid attachment MIME type".to_string());
+        }
+        if plaintext.is_empty() || plaintext.len() as u64 > 250 * 1024 * 1024 - 16 {
+            return Err("attachment size must be between 1 byte and 250 MiB minus the GCM tag".to_string());
+        }
+        if let Some(reason) = self.desync_reason(room_id)? {
+            return Err(format!("комната рассинхронизирована и требует восстановления: {reason}"));
+        }
+
+        let mut file_id: String;
+        let mut upload_url: Option<String> = None;
+        let mut manifest_payload: Zeroizing<Vec<u8>>;
+        let mut ciphertext: Vec<u8>;
+        let mut already_uploaded = false;
+
+        let existing: Option<(String, String, Vec<u8>, String, i64, bool)> = self.meta.query_row(
+            "SELECT room_id, file_id, manifest, ciphertext_sha256, ciphertext_size, uploaded
+             FROM client_attachment_outbox WHERE client_message_id = ?1",
+            [client_message_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?)),
+        ).optional().map_err(text)?;
+
+        if let Some((stored_room, stored_file_id, stored_manifest, stored_cipher_hash, stored_cipher_size, uploaded)) = existing {
+            if stored_room != room_id {
+                return Err("clientMessageId is already reserved for a different room".to_string());
+            }
+            let stored_manifest = Zeroizing::new(stored_manifest);
+            let parsed = attachment_crypto::parse_manifest(&stored_manifest, &stored_file_id, room_id)?;
+            if parsed.name != name
+                || parsed.mime_type != mime_type
+                || parsed.size != plaintext.len() as u64
+                || parsed.sha256 != attachment_crypto::sha256_hex(plaintext)
+            {
+                return Err("clientMessageId retry payload does not match the persisted attachment".to_string());
+            }
+            ciphertext = attachment_crypto::encrypt(plaintext, &parsed.key, &parsed.nonce, room_id)?;
+            let ciphertext_hash = attachment_crypto::sha256_hex(&ciphertext);
+            if ciphertext_hash != stored_cipher_hash || ciphertext.len() as i64 != stored_cipher_size {
+                return Err("persisted attachment retry ciphertext does not match its SQLCipher journal".to_string());
+            }
+            if uploaded {
+                file_id = stored_file_id;
+                manifest_payload = Zeroizing::new(stored_manifest.to_vec());
+                already_uploaded = true;
+            } else {
+                // The previous upload capability may have expired or been consumed.
+                // Reserve a fresh object while reusing the same per-file key/nonce.
+                let (new_file_id, new_upload_url) = self.reserve_attachment_upload(room_id, &ciphertext)?;
+                let new_manifest = Zeroizing::new(attachment_crypto::build_manifest(
+                    &new_file_id, room_id, name, mime_type, plaintext, &ciphertext,
+                    &parsed.key, &parsed.nonce,
+                )?);
+                let changed = self.meta.execute(
+                    "UPDATE client_attachment_outbox
+                     SET file_id = ?2, manifest = ?3, ciphertext_sha256 = ?4, ciphertext_size = ?5, uploaded = 0
+                     WHERE client_message_id = ?1 AND room_id = ?6",
+                    rusqlite::params![
+                        client_message_id, new_file_id, new_manifest.as_slice(),
+                        ciphertext_hash, ciphertext.len() as i64, room_id
+                    ],
+                ).map_err(text)?;
+                if changed != 1 {
+                    return Err("attachment retry journal changed during upload reservation".to_string());
+                }
+                file_id = new_file_id;
+                upload_url = Some(new_upload_url);
+                manifest_payload = new_manifest;
+            }
+        } else {
+            let key = Zeroizing::new(self.crypto.random_array::<32>().map_err(text)?);
+            let nonce = Zeroizing::new(self.crypto.random_array::<12>().map_err(text)?);
+            ciphertext = attachment_crypto::encrypt(plaintext, &key, &nonce, room_id)?;
+            let ciphertext_hash = attachment_crypto::sha256_hex(&ciphertext);
+            let (reserved_file_id, reserved_upload_url) = self.reserve_attachment_upload(room_id, &ciphertext)?;
+            let manifest = Zeroizing::new(attachment_crypto::build_manifest(
+                &reserved_file_id, room_id, name, mime_type, plaintext, &ciphertext, &key, &nonce,
+            )?);
+            self.meta.execute(
+                "INSERT INTO client_attachment_outbox
+                 (client_message_id, room_id, file_id, manifest, ciphertext_sha256, ciphertext_size, uploaded)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0)",
+                rusqlite::params![
+                    client_message_id, room_id, reserved_file_id, manifest.as_slice(),
+                    ciphertext_hash, ciphertext.len() as i64
+                ],
+            ).map_err(text)?;
+            file_id = reserved_file_id;
+            upload_url = Some(reserved_upload_url);
+            manifest_payload = manifest;
+        }
+
+        if !already_uploaded {
+            let signed_upload_url = upload_url.as_deref()
+                .ok_or("attachment upload URL is missing for an unuploaded outbox item")?;
+            self.upload_signed_bytes(signed_upload_url, &ciphertext)?;
+            self.call(
+                "POST",
+                &format!("/files/{}/complete", urlencoding::encode(&file_id)),
+                Some(json!({})),
+            )?;
+            let changed = self.meta.execute(
+                "UPDATE client_attachment_outbox SET uploaded = 1 WHERE client_message_id = ?1 AND file_id = ?2",
+                rusqlite::params![client_message_id, file_id],
+            ).map_err(text)?;
+            if changed != 1 {
+                return Err("attachment outbox disappeared after successful upload".to_string());
+            }
+        }
+
+        let server_epoch = self.server_epoch(room_id)?;
+        let provider = self.provider();
+        let encrypted_manifest = {
+            let group = self.groups.get_mut(room_id).ok_or("комната не создана на этом устройстве")?;
+            let local_epoch = group.mls.epoch().as_u64();
+            if local_epoch != server_epoch {
+                return Err(format!("устройство на эпохе {local_epoch}, сервер на {server_epoch}: сначала синхронизация"));
+            }
+            let message = group.mls.create_message(&provider, &self.signer, manifest_payload.as_slice()).map_err(text)?;
+            B64.encode(message.tls_serialize_detached().map_err(text)?)
+        };
+        let response = self.call(
+            "POST",
+            &format!("/mls/groups/{}/messages", urlencoding::encode(room_id)),
+            Some(json!({
+                "message": encrypted_manifest,
+                "kind": "text",
+                "forwarded": false,
+                "clientMessageId": client_message_id,
+                "fileId": file_id,
+            })),
+        )?;
+        let event_id = response.get("event_id").and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .ok_or("сервер не вернул event_id для вложения")?.to_string();
+
+        let incoming = Incoming::Attachment {
+            room_id: room_id.to_string(),
+            event_id: event_id.clone(),
+            file_id: file_id.clone(),
+            name: name.to_string(),
+            mime_type: mime_type.to_string(),
+            size: plaintext.len() as u64,
+        };
+        let transaction = self.meta.transaction().map_err(text)?;
+        insert_incoming_record(&transaction, &incoming)?;
+        transaction.execute(
+            "INSERT OR IGNORE INTO client_attachments
+             (file_id, room_id, event_id, manifest, direction, created_at)
+             VALUES (?1, ?2, ?3, ?4, 'outgoing', ?5)",
+            rusqlite::params![
+                file_id, room_id, event_id, manifest_payload.as_slice(),
+                std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default().as_millis() as i64
+            ],
+        ).map_err(text)?;
+        let stored: (String, String, Vec<u8>) = transaction.query_row(
+            "SELECT room_id, event_id, manifest FROM client_attachments WHERE file_id = ?1",
+            [&file_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        ).map_err(text)?;
+        if stored.0 != room_id || stored.1 != event_id || stored.2.as_slice() != manifest_payload.as_slice() {
+            return Err("attachment fileId is already bound to a different local event".to_string());
+        }
+        transaction.execute(
+            "DELETE FROM client_attachment_outbox WHERE client_message_id = ?1",
+            [client_message_id],
+        ).map_err(text)?;
+        transaction.commit().map_err(text)?;
+        self.processed.insert(event_id.clone());
+        Ok(event_id)
+    }
+
+    /// Downloads ciphertext using the authenticated device-bound capability and
+    /// decrypts it only after manifest, room, size, hash and AEAD checks succeed.
+    pub fn download_attachment(&self, file_id: &str) -> Result<Vec<u8>, String> {
+        if file_id.trim().is_empty() || file_id.len() > 128 {
+            return Err("invalid attachment fileId".to_string());
+        }
+        let (room_id, manifest_bytes): (String, Vec<u8>) = self.meta.query_row(
+            "SELECT room_id, manifest FROM client_attachments WHERE file_id = ?1",
+            [file_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        ).optional().map_err(text)?
+            .ok_or_else(|| "attachment manifest is not available in the encrypted local inbox".to_string())?;
+        let manifest_bytes = Zeroizing::new(manifest_bytes);
+        let manifest = attachment_crypto::parse_manifest(&manifest_bytes, file_id, &room_id)?;
+        let link = self.call(
+            "GET",
+            &format!("/files/{}/url", urlencoding::encode(file_id)),
+            None,
+        )?;
+        let download_url = link.get("downloadUrl").and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .ok_or("file link response did not return downloadUrl")?;
+        let ciphertext = self.download_signed_bytes(download_url, manifest.ciphertext_size)?;
+        attachment_crypto::decrypt(&ciphertext, &manifest)
+    }
+
     /// Входит в группы по приветствиям, которые ждут на сервере, и подтверждает их.
     fn join_welcomes(&mut self) -> Result<(), String> {
         self.retry_pending_welcome_acks()?;
