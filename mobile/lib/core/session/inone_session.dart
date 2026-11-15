@@ -559,49 +559,54 @@ class InOneSession extends ChangeNotifier {
     return bridge;
   }
 
-  Future<void> ensureMlsKeyPackages(int target) =>
-      _requireMlsBridge().ensureKeyPackages(target);
+  Future<void> ensureMlsKeyPackages(int target) async {
+    await _requireMlsBridge().ensureKeyPackages(target);
+  }
 
-  Future<void> createMlsRoom(String roomId) =>
-      _requireMlsBridge().createRoom(roomId);
+  Future<void> createMlsRoom(String roomId) async {
+    await _requireMlsBridge().createRoom(roomId);
+  }
 
-  Future<void> inviteMlsUser(String roomId, String userId) =>
-      _requireMlsBridge().invite(roomId, userId);
+  Future<void> inviteMlsUser(String roomId, String userId) async {
+    await _requireMlsBridge().invite(roomId, userId);
+  }
 
   /// Encrypts and sends through OpenMLS. There is deliberately no HTTP/plaintext fallback.
-  Future<String> sendMlsText(String roomId, String plaintext) =>
+  Future<String> sendMlsText(String roomId, String plaintext) async =>
       _requireMlsBridge().sendText(roomId, plaintext);
 
   /// Persists an encrypted MLS message in the Rust-owned offline outbox.
-  Future<String> enqueueMlsText(String roomId, String plaintext) =>
+  Future<String> enqueueMlsText(String roomId, String plaintext) async =>
       _requireMlsBridge().enqueueText(roomId, plaintext);
 
-  Future<List<MlsIncomingMessage>> syncMlsMessages() =>
+  Future<List<MlsIncomingMessage>> syncMlsMessages() async =>
       _requireMlsBridge().sync();
 
-  Future<List<MlsIncomingMessage>> pendingMlsMessages() =>
+  Future<List<MlsIncomingMessage>> pendingMlsMessages() async =>
       _requireMlsBridge().pendingIncoming();
 
-  Future<List<MlsIncomingMessage>> mlsMessagesForRoom(String roomId) =>
+  Future<List<MlsIncomingMessage>> mlsMessagesForRoom(String roomId) async =>
       _requireMlsBridge().messagesForRoom(roomId);
 
-  Future<void> acknowledgeMlsMessages(List<String> eventIds) =>
-      _requireMlsBridge().acknowledgeIncoming(eventIds);
+  Future<void> acknowledgeMlsMessages(List<String> eventIds) async {
+    await _requireMlsBridge().acknowledgeIncoming(eventIds);
+  }
 
-  Future<int> flushMlsOutbox() => _requireMlsBridge().flushOutbox();
+  Future<int> flushMlsOutbox() async => _requireMlsBridge().flushOutbox();
 
-  Future<int> mlsOutboxLength() => _requireMlsBridge().outboxLength();
+  Future<int> mlsOutboxLength() async => _requireMlsBridge().outboxLength();
 
-  Future<int?> mlsLocalEpoch(String roomId) =>
+  Future<int?> mlsLocalEpoch(String roomId) async =>
       _requireMlsBridge().localEpoch(roomId);
 
-  Future<List<String>> mlsMembersOf(String roomId) =>
+  Future<List<String>> mlsMembersOf(String roomId) async =>
       _requireMlsBridge().membersOf(roomId);
 
-  Future<void> revokeMlsDevice(String deviceId) =>
-      _requireMlsBridge().revokeDevice(deviceId);
+  Future<void> revokeMlsDevice(String deviceId) async {
+    await _requireMlsBridge().revokeDevice(deviceId);
+  }
 
-  Future<int> removeRevokedMlsDevices() =>
+  Future<int> removeRevokedMlsDevices() async =>
       _requireMlsBridge().removeRevokedDevices();
 
   /// Returns the durable room recovery state reported by the native MLS client.
