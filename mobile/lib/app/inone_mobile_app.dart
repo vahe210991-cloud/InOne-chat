@@ -692,7 +692,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
               items: _threadItems,
               onSend: (text) => unawaited(_sendChatMessage(text)),
               onBack: () => setState(() => _screen = 'messages'),
-              onAttach: () => _notice('Зашифрованная отправка файлов ещё не подключена.'),
+              onAttach: () => _notice('Выбор файла пока не подключён. Нативный MLS API шифрования и передачи готов в коде, но ещё не прошёл тесты на устройстве.'),
             ),
             if (_chatLoading)
               const Positioned(
