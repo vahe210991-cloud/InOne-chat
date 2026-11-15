@@ -15,6 +15,12 @@ This branch ports the Stage 4 persistent OpenMLS client into the active native F
 
 The Rust client now has an end-to-end attachment path: per-file AES-256-GCM, ciphertext-only upload, MLS-encrypted versioned manifest, SQLCipher persistence and authenticated download/decryption. The Rust integration test exercises two devices, restart persistence and idempotent retries. These changes are still uncompiled/unrun in this environment. The retry journal does not persist plaintext/ciphertext file bytes; a caller-driven retry must resubmit the same clientMessageId and identical plaintext/name/MIME/room. Automatic background resume after process death still requires the file-picker workflow to persist the operation ID and reselect/re-provide the source file.
 
+## Recovery confirmation deep links
+
+The recovery flow uses the `app_links` plugin for cold-start and warm custom-scheme links. The recovery email landing page offers `inone://recovery/confirm?user=...&token=...`; opening the link only opens SC-08, and the user must tap Continue before the app sends `POST /recovery/confirm`. The app then routes to SC-09 for the SMS/email code, new password and optional PIN. The backend GET preview remains non-mutating and keeps its browser form fallback.
+
+`mobile/tool/prepare_recovery_links.mjs` registers the custom scheme in the generated Android manifest and iOS Info.plist. Verified HTTPS App Links / Universal Links are not complete: the owner must provide the production recovery-link domain, Android package/signing association and Apple Team ID so `assetlinks.json`, apple-app-site-association and native entitlements can be configured. `INONE_RECOVERY_LINK_HOST` is the compile-time host allowlist for HTTPS links when that domain is ready. Until then the custom scheme is a Beta handoff, not a verified universal link.
+
 ## Generate Flutter Rust Bridge files on Windows
 
 Requirements:
