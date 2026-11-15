@@ -10,7 +10,7 @@ use aes_gcm::{
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 const MANIFEST_VERSION: u64 = 1;
 const GCM_NONCE_LEN: usize = 12;
@@ -57,13 +57,18 @@ pub fn build_manifest(
     if ciphertext.len() != plaintext.len() + GCM_TAG_LEN {
         return Err("ciphertext length does not match AES-GCM payload".to_string());
     }
-    if name.is_empty() || name.len() > 255 || name.chars().any(char::is_control) {
+    if name.is_empty() || name.len() > 255 || name.chars().any(char::is_control)
+        || name.contains('/') || name.contains('\\')
+    {
         return Err("invalid attachment display name".to_string());
     }
     if mime_type.is_empty() || mime_type.len() > 127 || mime_type.chars().any(char::is_control) {
         return Err("invalid attachment MIME type".to_string());
     }
-    let payload = json!({
+    if encrypt(plaintext, key, nonce, room_id)? != ciphertext {
+        return Err("ciphertext does not match the supplied plaintext/key/nonce".to_string());
+    }
+    let mut payload = json!({
         "type": "inone.attachment",
         "version": MANIFEST_VERSION,
         "fileId": file_id,
@@ -77,7 +82,9 @@ pub fn build_manifest(
         "key": B64.encode(key),
         "nonce": B64.encode(nonce),
     });
-    serde_json::to_vec(&payload).map_err(|error| error.to_string())
+    let encoded = serde_json::to_vec(&payload).map_err(|error| error.to_string());
+    zeroize_json_value(&mut payload);
+    encoded
 }
 
 /// A validated manifest. Key material is zeroized when this value is dropped.
@@ -90,8 +97,8 @@ pub struct AttachmentManifestV1 {
     pub ciphertext_size: u64,
     pub sha256: String,
     pub ciphertext_sha256: String,
-    pub key: [u8; AES256_KEY_LEN],
-    pub nonce: [u8; GCM_NONCE_LEN],
+    pub(super) key: [u8; AES256_KEY_LEN],
+    pub(super) nonce: [u8; GCM_NONCE_LEN],
 }
 
 impl Drop for AttachmentManifestV1 {
@@ -108,7 +115,7 @@ pub fn parse_manifest(
     expected_file_id: &str,
     expected_room_id: &str,
 ) -> Result<AttachmentManifestV1, String> {
-    let value: Value = serde_json::from_slice(payload)
+    let mut value: Value = serde_json::from_slice(payload)
         .map_err(|_| "attachment manifest is not valid JSON".to_string())?;
     let string = |key: &str| -> Result<String, String> {
         value.get(key).and_then(Value::as_str)
@@ -129,7 +136,9 @@ pub fn parse_manifest(
     }
     let name = string("name")?;
     let mime_type = string("mimeType")?;
-    if name.is_empty() || name.len() > 255 || name.chars().any(char::is_control) {
+    if name.is_empty() || name.len() > 255 || name.chars().any(char::is_control)
+        || name.contains('/') || name.contains('\\')
+    {
         return Err("invalid attachment display name".to_string());
     }
     if mime_type.is_empty() || mime_type.len() > 127 || mime_type.chars().any(char::is_control) {
@@ -145,12 +154,20 @@ pub fn parse_manifest(
     let ciphertext_sha256 = string("ciphertextSha256")?;
     validate_hash(&sha256)?;
     validate_hash(&ciphertext_sha256)?;
-    let key_bytes = B64.decode(string("key")?).map_err(|_| "invalid attachment key encoding")?;
-    let nonce_bytes = B64.decode(string("nonce")?).map_err(|_| "invalid attachment nonce encoding")?;
-    let key: [u8; AES256_KEY_LEN] = key_bytes.try_into()
+    let encoded_key = Zeroizing::new(string("key")?);
+    let key_bytes = Zeroizing::new(
+        B64.decode(encoded_key.as_bytes()).map_err(|_| "invalid attachment key encoding")?
+    );
+    let nonce_bytes = Zeroizing::new(
+        B64.decode(string("nonce")?).map_err(|_| "invalid attachment nonce encoding")?
+    );
+    let key: [u8; AES256_KEY_LEN] = key_bytes.as_slice().try_into()
         .map_err(|_| "attachment key must be exactly 32 bytes")?;
-    let nonce: [u8; GCM_NONCE_LEN] = nonce_bytes.try_into()
+    let nonce: [u8; GCM_NONCE_LEN] = nonce_bytes.as_slice().try_into()
         .map_err(|_| "attachment nonce must be exactly 12 bytes")?;
+    if let Some(Value::String(encoded)) = value.get_mut("key") {
+        encoded.zeroize();
+    }
     Ok(AttachmentManifestV1 {
         file_id, room_id, name, mime_type, size, ciphertext_size,
         sha256, ciphertext_sha256, key, nonce,
@@ -191,6 +208,19 @@ fn associated_data(room_id: &str, plaintext_size: u64) -> Vec<u8> {
     aad.extend_from_slice(room_id.as_bytes());
     aad.extend_from_slice(&plaintext_size.to_be_bytes());
     aad
+}
+
+fn zeroize_json_value(value: &mut Value) {
+    match value {
+        Value::String(value) => value.zeroize(),
+        Value::Array(values) => {
+            for value in values { zeroize_json_value(value); }
+        }
+        Value::Object(values) => {
+            for value in values.values_mut() { zeroize_json_value(value); }
+        }
+        _ => {}
+    }
 }
 
 fn validate_identity(value: &str, field: &str) -> Result<(), String> {
