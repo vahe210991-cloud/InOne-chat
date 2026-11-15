@@ -2317,7 +2317,7 @@ impl Client {
         mime_type: &str,
         plaintext: &[u8],
     ) -> Result<String, String> {
-        let client_message_id = hex_encode(&self.crypto.random_vec(16).map_err(text)?);
+        let client_message_id = hex_encode(&self.crypto.random_array::<16>().map_err(text)?);
         self.send_attachment_with_id(room_id, name, mime_type, plaintext, &client_message_id)
     }
 
