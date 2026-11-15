@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'dart:convert';
 import 'dart:io';
 
@@ -150,6 +151,26 @@ class RustMlsSessionBridge implements MlsSessionBridge {
       _requireSession().enqueueText(roomId: roomId, plaintext: plaintext);
 
   @override
+  Future<String> sendAttachment({
+    required String roomId,
+    required String name,
+    required String mimeType,
+    required Uint8List plaintext,
+    required String clientMessageId,
+  }) =>
+      _requireSession().sendAttachment(
+        roomId: roomId,
+        name: name,
+        mimeType: mimeType,
+        plaintext: plaintext,
+        clientMessageId: clientMessageId,
+      );
+
+  @override
+  Future<Uint8List> downloadAttachment(String fileId) =>
+      _requireSession().downloadAttachment(fileId: fileId);
+
+  @override
   Future<List<MlsIncomingMessage>> sync() async =>
       _decodeIncoming(await _requireSession().syncJson());
 
@@ -190,6 +211,23 @@ class RustMlsSessionBridge implements MlsSessionBridge {
           roomId: roomId,
           eventId: eventId,
           text: text,
+        );
+      }
+      if (kind == 'attachment') {
+        final fileId = value['file_id'];
+        final name = value['name'];
+        final mimeType = value['mime_type'];
+        final size = value['size'];
+        if (fileId is! String || name is! String || mimeType is! String || size is! num) {
+          throw const FormatException('Native MLS attachment message has invalid metadata');
+        }
+        return MlsIncomingMessage(
+          roomId: roomId,
+          eventId: eventId,
+          fileId: fileId,
+          name: name,
+          mimeType: mimeType,
+          size: size.toInt(),
         );
       }
       if (kind == 'unreadable') {
