@@ -91,6 +91,10 @@ Important verified route groups include:
 
 The presence of a backend route does not mean the Flutter screen is integrated. Request/response schemas, auth, role checks, binary file behavior, retries and local persistence must be implemented and tested before a route is exposed.
 
+## Authenticated binary file downloads
+
+The canonical backend's device-bound `GET /objects/:id` contract requires the same active device access token that requested `GET /files/:id/url`. The native `ApiClient.getBytes` transport accepts only an absolute same-origin URL, sends the current bearer token, and disables redirects so credentials cannot be forwarded to another host. `InOneSession.downloadBytes` retries once after the existing refresh-token rotation. This is transport support only; the attachment UI and MLS attachment encryption/decryption remain blocked until the native MLS attachment API is integrated.
+
 ## Security invariants
 
 - Stable user, organization and room IDs are opaque strings.
