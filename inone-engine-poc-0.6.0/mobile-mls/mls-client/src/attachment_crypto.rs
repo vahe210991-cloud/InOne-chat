@@ -16,7 +16,7 @@ const MANIFEST_VERSION: u64 = 1;
 const GCM_NONCE_LEN: usize = 12;
 const AES256_KEY_LEN: usize = 32;
 const GCM_TAG_LEN: usize = 16;
-const MAX_FILE_SIZE: u64 = 250 * 1024 * 1024;
+const MAX_FILE_SIZE: u64 = 250 * 1024 * 1024 - GCM_TAG_LEN as u64;
 
 /// Encrypt bytes with a fresh per-file AES-256-GCM key and nonce supplied by
 /// the caller's CSPRNG (the MLS provider's random source).
