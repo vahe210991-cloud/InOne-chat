@@ -275,18 +275,38 @@ class InOneSession extends ChangeNotifier {
   Future<Map<String, dynamic>> startRecovery(String email) =>
       _client.post('/recovery/start', authenticated: false, body: {'email': email.trim()});
 
+  Future<Map<String, dynamic>> confirmRecoveryLink({
+    required String userId,
+    required String token,
+  }) =>
+      _client.post('/recovery/confirm', authenticated: false, body: {
+        'user': userId.trim(),
+        'token': token.trim(),
+      });
+
   Future<Map<String, dynamic>> completeRecovery({
-    required String email,
+    String? email,
+    String? userId,
     required String code,
     required String newPassword,
     String pin = '',
-  }) =>
-      _client.post('/recovery/complete', authenticated: false, body: {
-        'email': email.trim(),
-        'code': code.trim(),
-        'newPassword': newPassword,
-        if (pin.isNotEmpty) 'pin': pin,
-      });
+  }) {
+    final accountId = userId?.trim();
+    final address = email?.trim();
+    if ((accountId == null || accountId.isEmpty) &&
+        (address == null || address.isEmpty)) {
+      throw ArgumentError('email or userId is required for recovery');
+    }
+    return _client.post('/recovery/complete', authenticated: false, body: {
+      if (accountId != null && accountId.isNotEmpty)
+        'userId': accountId
+      else
+        'email': address,
+      'code': code.trim(),
+      'newPassword': newPassword,
+      if (pin.isNotEmpty) 'pin': pin,
+    });
+  }
 
   Future<Map<String, dynamic>> cancelRecoveryByCode({
     required String email,
