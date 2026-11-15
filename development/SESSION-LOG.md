@@ -1,3 +1,18 @@
+## 2026-11-15 — CTO intake, backend security and PR topology audit
+
+- Continued from PR #53 task branch `task/beta1-stage4-mls-merge-audit-2026-11-14`; starting HEAD `78ff06171f1c66af5043b621d294a22b210263a5`; current PR #53 head after audit files: `57ccbdb9398c41bc7daa552c698f8a76f35ee976`.
+- Current `main` observed at `1df19a001acb5f8c4892471ca4eaa0696e02c54d`; current Flutter branch #52 head observed at `9fac7114324edba4c9ebcda74a57a7788bf67c5f`.
+- Restored missing `development/AI-AGENT-MANDATE.md` from Stage 4 branch blob `aa0a8c8455d9146169ab9f801654995e80224c4e`; exact remote read-back verified.
+- Preserved owner upload `Вставленный текст(5).txt` as `development/handover/2026-11-15-INONE-CTO-HANDOFF.txt`; uploaded source SHA-256 `ba9bf5902051a154489c3f919317e62e67a36deff187c21d7920b7ac171147e1`, 32,987 bytes / 600 lines. Exact GitHub read-back equals the uploaded text. Manifest: `development/handover/2026-11-15-INONE-CTO-HANDOFF.manifest.md`.
+- Added report `development/reports/2026-11-15-2257-beta1-cto-audit.md` (report commit `57ccbdb9398c41bc7daa552c698f8a76f35ee976`).
+- Confirmed canonical backend ownership: `inone-development-archive-0.6.0/engine/`; POC Node server is not production. Found a source-level file URL revocation gap: download URLs are five-minute bearer capabilities not bound to device/session and are not invalidated by device revocation or membership removal. Regression test and implementation remain pending.
+- Confirmed E2EE attachments and verified-phone deep-link flow are not implemented end-to-end. PR #42's PostgreSQL check fails before its test due module resolution from repo root and targets the POC server, not canonical backend. PR #40's FRB run generated code but Flutter analyze failed on missing `simple.dart` and undefined `greet`.
+- Current PR #52 Flutter run #43620192889 failed before steps; no test command is evidenced as started. Historical runs only; no Actions workflow dispatched in this session.
+- Local Windows `C:\InOne` and backups cannot be inspected from this chat; no PowerShell/local terminal, full clone, or local SDK runner is exposed. No product source changes; no Node/PostgreSQL/Rust/Flutter/Android/iOS tests run. WBS v1.1 unchanged: Beta 1.0 42% / 31%; Beta 2.0 2% / 0%; historical InOne 25%.
+- No merge, retarget, force push, branch deletion, deployment, server start or production action.
+
+---
+
 ## 2026-11-14 17:03 — Stage 4 MLS source-boundary clarification
 
 - Follow-up static check confirmed `mobile/rust/Cargo.toml` in PR #45 links `../../inone-engine-poc-0.6.0/mobile-mls/mls-client`, not the canonical engine client at `inone-development-archive-0.6.0/engine/mobile-mls/mls-client`.
