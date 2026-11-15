@@ -49,7 +49,15 @@ void main() {
       );
       expect(
         parseRecoveryDeepLink(
-          Uri.parse('inone://recovery/confirm?user=${'a' * 257}&token=t'),
+          Uri(
+            scheme: 'inone',
+            host: 'recovery',
+            path: '/confirm',
+            queryParameters: {
+              'user': List.filled(257, 'a').join(),
+              'token': 't',
+            },
+          ),
         ),
         isNull,
       );
