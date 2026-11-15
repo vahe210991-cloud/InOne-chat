@@ -37,6 +37,9 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
   String _waitingActivateAt = '';
   InOneProfile? _profile;
   List<InOneRoom> _rooms = const [];
+  InOneChatPreview? _selectedChat;
+  List<InOneThreadItem> _threadItems = const [];
+  bool _chatLoading = false;
   List<InOneOrganization> _organizations = const [];
   InOneOrganization? _selectedOrganization;
   InOneSystemStatus? _systemStatus;
@@ -349,6 +352,61 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
     _messengerKey.currentState?.showSnackBar(SnackBar(content: Text(message)));
   }
 
+  Future<void> _openChat(InOneChatPreview chat) async {
+    if (!_session.hasNativeMlsSession) {
+      _notice('Нативный MLS-клиент не активен. Сообщение не отправлено; открытие чата без шифрования запрещено.');
+      return;
+    }
+    setState(() {
+      _selectedChat = chat;
+      _threadItems = const [];
+      _chatLoading = true;
+      _screen = 'chatThread';
+    });
+    await _refreshChat(chat.id);
+  }
+
+  Future<void> _refreshChat(String roomId) async {
+    try {
+      await _session.syncMlsMessages();
+      final pending = await _session.pendingMlsMessages();
+      final messages = await _session.mlsMessagesForRoom(roomId);
+      if (!mounted) return;
+      setState(() {
+        _threadItems = messages.map((message) => InOneThreadItem(
+          kind: InOneThreadItemKind.text,
+          text: message.text ?? 'Не удалось расшифровать сообщение',
+        )).toList(growable: false);
+        _chatLoading = false;
+      });
+      final acceptedIds = pending
+          .where((message) => message.roomId == roomId)
+          .map((message) => message.eventId)
+          .toList(growable: false);
+      if (acceptedIds.isNotEmpty) {
+        await _session.acknowledgeMlsMessages(acceptedIds);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _chatLoading = false);
+      _notice('Не удалось синхронизировать зашифрованную переписку.');
+    }
+  }
+
+  Future<void> _sendChatMessage(String text) async {
+    final chat = _selectedChat;
+    if (chat == null || !_session.hasNativeMlsSession) {
+      _notice('MLS-сессия недоступна. Сообщение не отправлено.');
+      return;
+    }
+    try {
+      await _session.sendMlsText(chat.id, text);
+      await _refreshChat(chat.id);
+    } catch (_) {
+      _notice('Не удалось отправить зашифрованное сообщение. Повторите попытку.');
+    }
+  }
+
   List<InOneChatPreview> get _chatPreviews => _rooms.map((room) {
         final isDirect = room.kind == 'direct';
         return InOneChatPreview(
@@ -600,13 +658,38 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
         return InOneMessagesScreen(
           chats: _chatPreviews,
           unreadCountsAvailable: false,
-          onOpenChat: (_) => _notice(
-            'История и отправка сообщений заблокированы до подключения нативного MLS-клиента и зашифрованного локального хранилища. Сообщение не отправлено.',
-          ),
+          onOpenChat: (chat) => unawaited(_openChat(chat)),
           onSearch: () => _notice('Поиск по содержимому сообщений пока не реализован.'),
           onFilter: () => _notice('Дополнительные фильтры пока недоступны.'),
           onTab: _selectTab,
           onAdd: () => _notice('Создание публикаций не входит в Beta 1.0.'),
+        );
+      case 'chatThread':
+        final chat = _selectedChat;
+        if (chat == null) {
+          return InOneLoadingErrorScreen(onRetry: () => setState(() => _screen = 'messages'));
+        }
+        return Stack(
+          children: [
+            InOneChatThreadScreen(
+              header: InOneThreadHeader(
+                name: chat.name,
+                statusLabel: _session.hasNativeMlsSession ? 'MLS · зашифровано' : 'MLS недоступен',
+                online: false,
+              ),
+              items: _threadItems,
+              onSend: (text) => unawaited(_sendChatMessage(text)),
+              onBack: () => setState(() => _screen = 'messages'),
+              onAttach: () => _notice('Зашифрованная отправка файлов ещё не подключена.'),
+            ),
+            if (_chatLoading)
+              const Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: LinearProgressIndicator(minHeight: 2),
+              ),
+          ],
         );
       case 'profile':
         if (_profile == null) {
