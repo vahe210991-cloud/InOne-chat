@@ -168,9 +168,6 @@ pub fn parse_manifest(
         .map_err(|_| "attachment key must be exactly 32 bytes")?;
     let nonce: [u8; GCM_NONCE_LEN] = nonce_bytes.as_slice().try_into()
         .map_err(|_| "attachment nonce must be exactly 12 bytes")?;
-    if let Some(Value::String(encoded)) = value.get_mut("key") {
-        encoded.zeroize();
-    }
     Ok(AttachmentManifestV1 {
         file_id, room_id, name, mime_type, size, ciphertext_size,
         sha256, ciphertext_sha256, key, nonce,
