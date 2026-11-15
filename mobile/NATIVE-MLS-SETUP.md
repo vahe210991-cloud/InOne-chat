@@ -9,6 +9,7 @@ This branch ports the Stage 4 persistent OpenMLS client into the active native F
 - PlatformKeyStore stores the 32-byte SQLCipher key in Android Keystore or protected iOS Keychain. The key is never returned to Dart.
 - Flutter receives only a short-lived access-token snapshot.
 - A saved user/device identity resumes the Rust session after app restart.
+- After adoption/resume, the app publishes KeyPackages, processes pending Welcomes, syncs known rooms and flushes the Rust-owned text outbox.
 - Logout attempts server logout and always removes local SQLCipher files/sidecars and the platform key.
 - Native MLS is opt-in through INONE_MLS_NATIVE_ENABLED=true; the default remains disabled.
 
