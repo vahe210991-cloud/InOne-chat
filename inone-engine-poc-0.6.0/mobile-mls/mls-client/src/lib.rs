@@ -45,6 +45,14 @@ fn classify_process_error<S>(error: &openmls::prelude::ProcessMessageError<S>) -
 #[derive(Debug, Clone, PartialEq)]
 pub enum Incoming {
     Text { room_id: String, event_id: String, text: String },
+    Attachment {
+        room_id: String,
+        event_id: String,
+        file_id: String,
+        name: String,
+        mime_type: String,
+        size: u64,
+    },
     Unreadable { room_id: String, event_id: String },
 }
 
@@ -403,15 +411,30 @@ fn open_db(path: &str, key: &[u8; 32]) -> Result<Connection, String> {
 }
 
 fn insert_incoming_record(meta: &Connection, incoming: &Incoming) -> Result<(), String> {
-    let (event_id, room_id, kind, body): (&str, &str, &str, Option<&str>) = match incoming {
-        Incoming::Text { room_id, event_id, text } => (event_id, room_id, "text", Some(text)),
-        Incoming::Unreadable { room_id, event_id } => (event_id, room_id, "unreadable", None),
+    let (event_id, room_id, kind, body) = match incoming {
+        Incoming::Text { room_id, event_id, text } => (
+            event_id.as_str(), room_id.as_str(), "text", Some(text.clone())
+        ),
+        Incoming::Attachment { room_id, event_id, file_id, name, mime_type, size } => (
+            event_id.as_str(),
+            room_id.as_str(),
+            "attachment",
+            Some(serde_json::to_string(&json!({
+                "fileId": file_id,
+                "name": name,
+                "mimeType": mime_type,
+                "size": size,
+            })).map_err(text)?),
+        ),
+        Incoming::Unreadable { room_id, event_id } => (
+            event_id.as_str(), room_id.as_str(), "unreadable", None
+        ),
     };
     // Event IDs are idempotency keys. Replays must never reset an already
     // acknowledged inbox row or replace its previously persisted plaintext.
     meta.execute(
         "INSERT OR IGNORE INTO client_inbox (event_id, room_id, kind, body, acknowledged) VALUES (?1, ?2, ?3, ?4, 0)",
-        (event_id, room_id, kind, body),
+        rusqlite::params![event_id, room_id, kind, body],
     ).map_err(text)?;
     meta.execute(
         "INSERT OR IGNORE INTO client_processed (event_id) VALUES (?1)",
