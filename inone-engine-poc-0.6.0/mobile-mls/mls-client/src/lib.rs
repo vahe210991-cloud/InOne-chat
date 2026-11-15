@@ -2664,7 +2664,7 @@ impl Client {
         let event_rows = events["events"].as_array()
             .ok_or_else(|| "ошибка контракта ответа: events отсутствует или не массив".to_string())?
             .clone();
-        let mut pending: Vec<(u64, String, Vec<u8>)> = Vec::new();
+        let mut pending: Vec<(u64, String, Vec<u8>, Option<String>)> = Vec::new();
         for ev in event_rows {
             let event_id = match event_id_from_event(&ev) {
                 Ok(event_id) => event_id,
@@ -2677,6 +2677,11 @@ impl Client {
             let Some(mls_value) = content.get("mls") else { continue };
             let mls_b64 = mls_value.as_str()
                 .ok_or_else(|| "ошибка контракта ответа: event content.mls не строка".to_string())?;
+            let outer_file_id = match content.get("file") {
+                Some(Value::String(file_id)) if !file_id.trim().is_empty() => Some(file_id.clone()),
+                Some(_) => return Err("ошибка контракта ответа: event content.file не строка или пустой".to_string()),
+                None => None,
+            };
             if self.processed.contains(&event_id) {
                 continue;
             }
@@ -2707,7 +2712,7 @@ impl Client {
                     continue;
                 }
             };
-            pending.push((protocol.epoch().as_u64(), event_id, bytes));
+            pending.push((protocol.epoch().as_u64(), event_id, bytes, outer_file_id));
         }
         let current = self.groups.get(room_id).ok_or("комната не создана на этом устройстве")?.mls.epoch().as_u64();
         let commits = self.call(
@@ -2744,7 +2749,7 @@ impl Client {
         let commits = parsed_commits;
 
         let join_epoch = self.groups[room_id].join_epoch;
-        let before_join: Vec<String> = pending.iter().filter(|(e, _, _)| *e < join_epoch).map(|(_, id, _)| id.clone()).collect();
+        let before_join: Vec<String> = pending.iter().filter(|(e, _, _, _)| *e < join_epoch).map(|(_, id, _, _)| id.clone()).collect();
         for event_id in before_join {
             self.mark_processed(&event_id)?;
         }
@@ -2755,8 +2760,8 @@ impl Client {
                 .filter(|(e, id, _)| *e == epoch && !self.processed.contains(id))
                 .map(|(_, id, b)| (id.clone(), b.clone()))
                 .collect();
-            for (event_id, bytes) in ready {
-                let incoming = self.process_and_persist_incoming(room_id, &event_id, &bytes)?;
+            for (event_id, bytes, file_id) in ready {
+                let incoming = self.process_and_persist_incoming(room_id, &event_id, &bytes, file_id.as_deref())?;
                 out.push(incoming);
             }
             let Some((commit_epoch, commit, metadata)) = commits.iter().find(|(e, _, _)| *e == epoch + 1) else { break };
@@ -2770,11 +2775,11 @@ impl Client {
         // Late events within the retained epoch window remain decryptable; older ones
         // are durably recorded as unreadable instead of silently discarded.
         let final_epoch = self.groups[room_id].mls.epoch().as_u64();
-        let late: Vec<(String, Vec<u8>, u64)> = pending.iter()
-            .filter(|(epoch, event_id, _)| *epoch < final_epoch && !self.processed.contains(event_id))
-            .map(|(epoch, event_id, bytes)| (event_id.clone(), bytes.clone(), *epoch))
+        let late: Vec<(String, Vec<u8>, u64, Option<String>)> = pending.iter()
+            .filter(|(epoch, event_id, _, _)| *epoch < final_epoch && !self.processed.contains(event_id))
+            .map(|(epoch, event_id, bytes, file_id)| (event_id.clone(), bytes.clone(), *epoch, file_id.clone()))
             .collect();
-        for (event_id, bytes, epoch) in late {
+        for (event_id, bytes, epoch, file_id) in late {
             if final_epoch.saturating_sub(epoch) > MAX_PAST_EPOCHS as u64 {
                 let incoming = self.persist_unreadable(
                     room_id,
@@ -2783,14 +2788,14 @@ impl Client {
                 )?;
                 out.push(incoming);
             } else {
-                let incoming = self.process_and_persist_incoming(room_id, &event_id, &bytes)?;
+                let incoming = self.process_and_persist_incoming(room_id, &event_id, &bytes, file_id.as_deref())?;
                 out.push(incoming);
             }
         }
 
         let future_event_ids: Vec<String> = pending.iter()
-            .filter(|(epoch, event_id, _)| *epoch > final_epoch && !self.processed.contains(event_id))
-            .map(|(_, event_id, _)| event_id.clone())
+            .filter(|(epoch, event_id, _, _)| *epoch > final_epoch && !self.processed.contains(event_id))
+            .map(|(_, event_id, _, _)| event_id.clone())
             .collect();
         if !future_event_ids.is_empty() {
             self.set_waiting_for_commit(room_id, final_epoch.saturating_add(1), &future_event_ids)?;
