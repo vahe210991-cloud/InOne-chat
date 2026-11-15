@@ -469,7 +469,7 @@ fn incoming_from_row(
                 .filter(|value| !value.trim().is_empty())
                 .ok_or("в метаданных вложения отсутствует MIME type")?.to_string();
             let size = value.get("size").and_then(Value::as_u64)
-                .filter(|size| *size > 0 && *size <= 250 * 1024 * 1024)
+                .filter(|size| *size > 0 && *size <= 250 * 1024 * 1024 - 16)
                 .ok_or("в метаданных вложения некорректный размер")?;
             Ok(Incoming::Attachment { room_id, event_id, file_id, name, mime_type, size })
         }
