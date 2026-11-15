@@ -112,8 +112,8 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
     final token = (uri.queryParameters['token'] ?? '').trim();
     if (userId.isEmpty || userId.length > 256 ||
         token.isEmpty || token.length > 128 ||
-        userId.contains(RegExp(r'[\\r\\n]')) ||
-        token.contains(RegExp(r'[\\r\\n]'))) {
+        userId.contains('\n') || userId.contains('\r') ||
+        token.contains('\n') || token.contains('\r')) {
       _notice('Ссылка восстановления повреждена. Запросите восстановление заново.');
       return;
     }
