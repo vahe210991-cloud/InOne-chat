@@ -1677,11 +1677,18 @@ impl Client {
                         self.reload_group(room_id)?;
                         return Err(text(error));
                     }
-                    let stored: (String, String, Vec<u8>) = transaction.query_row(
+                    let stored: (String, String, Vec<u8>) = match transaction.query_row(
                         "SELECT room_id, event_id, manifest FROM client_attachments WHERE file_id = ?1",
                         [file_id],
                         |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-                    ).map_err(text)?;
+                    ) {
+                        Ok(stored) => stored,
+                        Err(error) => {
+                            drop(transaction);
+                            self.reload_group(room_id)?;
+                            return Err(text(error));
+                        }
+                    };
                     if stored.0 != room_id || stored.1 != event_id || stored.2.as_slice() != manifest.as_slice() {
                         drop(transaction);
                         self.reload_group(room_id)?;
