@@ -82,11 +82,43 @@ test('полный путь: загрузка по подписанному ад
     const link = (await http(s.base, 'GET', `/files/${enc(created.fileId)}/url`, { token: s.bob.token })).json;
     assert.ok(link, 'участник получил ссылку');
     const u = new URL(link.downloadUrl);
-    const got = await http(u.origin, 'GET', u.pathname + u.search);
+    const got = await http(u.origin, 'GET', u.pathname + u.search, { token: s.bob.token });
     assert.equal(got.status, 200);
     assert.ok(got.buffer.equals(bytes), 'байты совпадают');
     assert.equal(got.headers.get('content-disposition'), 'attachment', 'файл не открывается в браузере');
     assert.equal(got.headers.get('x-content-type-options'), 'nosniff');
+  } finally {
+    await s.stop();
+  }
+});
+
+test('ссылка скачивания привязана к активному устройству и текущему членству в комнате', async () => {
+  const s = await start();
+  try {
+    const fileId = await uploadReady(s, s.alice.token, randomBytes(400));
+
+    const bobOld = await ChatClient.loginFromNewDevice(s.base, BOB, PW, 'B_OLD', s.bob);
+    const oldDeviceLink = (await http(s.base, 'GET', `/files/${enc(fileId)}/url`, { token: bobOld.token })).json;
+    const oldDeviceUrl = new URL(oldDeviceLink.downloadUrl);
+
+    assert.equal((await http(oldDeviceUrl.origin, 'GET', oldDeviceUrl.pathname + oldDeviceUrl.search)).status, 401,
+      'подписанная ссылка без действующей сессии не даёт доступ');
+    assert.equal((await http(oldDeviceUrl.origin, 'GET', oldDeviceUrl.pathname + oldDeviceUrl.search, { token: s.bob.token })).status, 403,
+      'ссылка не работает с токеном другого устройства');
+    assert.equal((await http(oldDeviceUrl.origin, 'GET', oldDeviceUrl.pathname + oldDeviceUrl.search, { token: bobOld.token })).status, 200,
+      'ссылка работает с токеном выдавшего её устройства');
+
+    await s.bob.raw('DELETE', `/devices/${enc('B_OLD')}`);
+    assert.equal((await http(oldDeviceUrl.origin, 'GET', oldDeviceUrl.pathname + oldDeviceUrl.search, { token: bobOld.token })).status, 401,
+      'отзыв устройства немедленно блокирует ранее выданную ссылку');
+
+    const currentDeviceLink = (await http(s.base, 'GET', `/files/${enc(fileId)}/url`, { token: s.bob.token })).json;
+    const currentDeviceUrl = new URL(currentDeviceLink.downloadUrl);
+    assert.equal((await http(currentDeviceUrl.origin, 'GET', currentDeviceUrl.pathname + currentDeviceUrl.search, { token: s.bob.token })).status, 200);
+
+    await s.alice.raw('DELETE', `/rooms/${enc(ROOM)}/members/${enc(BOB)}`);
+    assert.equal((await http(currentDeviceUrl.origin, 'GET', currentDeviceUrl.pathname + currentDeviceUrl.search, { token: s.bob.token })).status, 403,
+      'удаление участника немедленно блокирует ранее выданную ссылку');
   } finally {
     await s.stop();
   }
