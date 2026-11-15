@@ -72,7 +72,7 @@ test('файл из комнаты сохраняется на диске и о�
     assert.ok(readFileSync(path.join(dir, created.fileId)).equals(bytes), 'байты на диске те же');
     const link = (await http(s.base, 'GET', `/files/${enc(created.fileId)}/url`, { token: s.bob.token })).json;
     const g = new URL(link.downloadUrl);
-    const got = await http(g.origin, 'GET', g.pathname + g.search);
+    const got = await http(g.origin, 'GET', g.pathname + g.search, { token: s.bob.token });
     assert.equal(got.status, 200);
     assert.ok(got.buffer.equals(bytes), 'участник получает те же байты');
   } finally {
