@@ -168,6 +168,9 @@ void main() {
     expect(session.isAuthenticated, isTrue);
     expect(session.hasNativeMlsSession, isTrue);
     expect(session.mlsError, isNull);
+    expect(bridge.ensureKeyPackageCalls, 1);
+    expect(bridge.syncCalls, 1);
+    expect(bridge.flushOutboxCalls, 1);
     expect(bridge.openArguments?['refreshToken'], 'refresh-1');
     session.dispose();
   });
@@ -586,7 +589,9 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
   }
 
   @override
-  Future<void> ensureKeyPackages(int target) async {}
+  Future<void> ensureKeyPackages(int target) async {
+    ensureKeyPackageCalls++;
+  }
 
   @override
   Future<void> createRoom(String roomId) async {}
@@ -625,7 +630,10 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
   Future<String> enqueueText(String roomId, String plaintext) async => 'local-1';
 
   @override
-  Future<List<MlsIncomingMessage>> sync() async => const [];
+  Future<List<MlsIncomingMessage>> sync() async {
+    syncCalls++;
+    return const [];
+  }
 
   @override
   Future<List<MlsIncomingMessage>> pendingIncoming() async => const [];
@@ -637,7 +645,10 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
   Future<void> acknowledgeIncoming(List<String> eventIds) async {}
 
   @override
-  Future<int> flushOutbox() async => 0;
+  Future<int> flushOutbox() async {
+    flushOutboxCalls++;
+    return 0;
+  }
 
   @override
   Future<int> outboxLength() async => 0;
