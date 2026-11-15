@@ -2355,8 +2355,8 @@ impl Client {
 
         let completed: Option<(String, String, String, Vec<u8>)> = self.meta.query_row(
             "SELECT room_id, file_id, event_id, manifest FROM client_attachments
-             WHERE operation_id = ?1 AND direction = 'outgoing'",
-            [operation_id],
+             WHERE client_message_id = ?1 AND direction = 'outgoing'",
+            [operation_id.as_str()],
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
         ).optional().map_err(text)?;
         if let Some((stored_room, stored_file_id, event_id, stored_manifest)) = completed {
@@ -2377,8 +2377,8 @@ impl Client {
 
         let existing: Option<(String, String, Vec<u8>, String, i64, bool)> = self.meta.query_row(
             "SELECT room_id, file_id, manifest, ciphertext_sha256, ciphertext_size, uploaded
-             FROM client_attachment_outbox WHERE operation_id = ?1",
-            [operation_id],
+             FROM client_attachment_outbox WHERE client_message_id = ?1",
+            [operation_id.as_str()],
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?)),
         ).optional().map_err(text)?;
 
@@ -2415,9 +2415,9 @@ impl Client {
                 let changed = self.meta.execute(
                     "UPDATE client_attachment_outbox
                      SET file_id = ?2, manifest = ?3, ciphertext_sha256 = ?4, ciphertext_size = ?5, uploaded = 0
-                     WHERE operation_id = ?1 AND room_id = ?6",
+                     WHERE client_message_id = ?1 AND room_id = ?6",
                     rusqlite::params![
-                        operation_id, new_file_id, new_manifest.as_slice(),
+                        operation_id.as_str(), new_file_id, new_manifest.as_slice(),
                         ciphertext_hash, ciphertext.len() as i64, room_id
                     ],
                 ).map_err(text)?;
@@ -2439,10 +2439,10 @@ impl Client {
             )?);
             self.meta.execute(
                 "INSERT INTO client_attachment_outbox
-                 (operation_id, room_id, file_id, manifest, ciphertext_sha256, ciphertext_size, uploaded)
+                 (client_message_id, room_id, file_id, manifest, ciphertext_sha256, ciphertext_size, uploaded)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0)",
                 rusqlite::params![
-                    operation_id, room_id, reserved_file_id, manifest.as_slice(),
+                    operation_id.as_str(), room_id, reserved_file_id, manifest.as_slice(),
                     ciphertext_hash, ciphertext.len() as i64
                 ],
             ).map_err(text)?;
@@ -2461,8 +2461,8 @@ impl Client {
                 Some(json!({})),
             )?;
             let changed = self.meta.execute(
-                "UPDATE client_attachment_outbox SET uploaded = 1 WHERE operation_id = ?1 AND file_id = ?2",
-                rusqlite::params![operation_id, file_id],
+                "UPDATE client_attachment_outbox SET uploaded = 1 WHERE client_message_id = ?1 AND file_id = ?2",
+                rusqlite::params![operation_id.as_str(), file_id],
             ).map_err(text)?;
             if changed != 1 {
                 return Err("attachment outbox disappeared after successful upload".to_string());
@@ -2487,7 +2487,7 @@ impl Client {
                 "message": encrypted_manifest,
                 "kind": "text",
                 "forwarded": false,
-                "clientMessageId": operation_id,
+                "clientMessageId": operation_id.as_str(),
                 "fileId": file_id,
             })),
         )?;
@@ -2507,13 +2507,13 @@ impl Client {
         insert_incoming_record(&transaction, &incoming)?;
         transaction.execute(
             "INSERT OR IGNORE INTO client_attachments
-             (file_id, room_id, event_id, manifest, direction, created_at, operation_id)
+             (file_id, room_id, event_id, manifest, direction, created_at, client_message_id)
              VALUES (?1, ?2, ?3, ?4, 'outgoing', ?5, ?6)",
             rusqlite::params![
                 file_id, room_id, event_id, manifest_payload.as_slice(),
                 std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default().as_millis() as i64,
-                operation_id
+                operation_id.as_str()
             ],
         ).map_err(text)?;
         let stored: (String, String, Vec<u8>) = transaction.query_row(
@@ -2525,8 +2525,8 @@ impl Client {
             return Err("attachment fileId is already bound to a different local event".to_string());
         }
         transaction.execute(
-            "DELETE FROM client_attachment_outbox WHERE operation_id = ?1",
-            [operation_id],
+            "DELETE FROM client_attachment_outbox WHERE client_message_id = ?1",
+            [operation_id.as_str()],
         ).map_err(text)?;
         transaction.commit().map_err(text)?;
         self.processed.insert(event_id.clone());
