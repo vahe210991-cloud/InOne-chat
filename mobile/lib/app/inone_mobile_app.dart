@@ -10,9 +10,11 @@ import '../core/data/inone_room.dart';
 import '../core/network/api_environment.dart';
 import '../core/network/api_exception.dart';
 import '../core/session/inone_session.dart';
+import '../core/mls/rust_mls_session_bridge.dart';
 import '../ui_dart_source/inone.dart';
 
 const _configuredApiBaseUrl = String.fromEnvironment('INONE_API_BASE_URL');
+const _nativeMlsEnabled = bool.fromEnvironment('INONE_MLS_NATIVE_ENABLED', defaultValue: false);
 
 class InOneMobileApp extends StatefulWidget {
   const InOneMobileApp({super.key});
@@ -48,7 +50,10 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
       configured: _configuredApiBaseUrl,
       isAndroid: Platform.isAndroid,
     );
-    _session = InOneSession(baseUrl: baseUrl);
+    _session = InOneSession(
+      baseUrl: baseUrl,
+      nativeMlsBridge: _nativeMlsEnabled ? RustMlsSessionBridge() : null,
+    );
     _repositories = InOneRepositories(_session);
     unawaited(_initialize());
   }
