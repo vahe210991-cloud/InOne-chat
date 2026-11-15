@@ -443,6 +443,40 @@ fn insert_incoming_record(meta: &Connection, incoming: &Incoming) -> Result<(), 
     Ok(())
 }
 
+fn incoming_from_row(
+    event_id: String,
+    room_id: String,
+    kind: String,
+    body: Option<String>,
+) -> Result<Incoming, String> {
+    match kind.as_str() {
+        "text" => Ok(Incoming::Text {
+            room_id,
+            event_id,
+            text: body.ok_or("в сохранённом сообщении отсутствует текст")?,
+        }),
+        "attachment" => {
+            let body = body.ok_or("в сохранённом вложении отсутствуют метаданные")?;
+            let value: Value = serde_json::from_str(&body).map_err(text)?;
+            let file_id = value.get("fileId").and_then(Value::as_str)
+                .filter(|value| !value.trim().is_empty())
+                .ok_or("в метаданных вложения отсутствует fileId")?.to_string();
+            let name = value.get("name").and_then(Value::as_str)
+                .filter(|value| !value.trim().is_empty())
+                .ok_or("в метаданных вложения отсутствует имя")?.to_string();
+            let mime_type = value.get("mimeType").and_then(Value::as_str)
+                .filter(|value| !value.trim().is_empty())
+                .ok_or("в метаданных вложения отсутствует MIME type")?.to_string();
+            let size = value.get("size").and_then(Value::as_u64)
+                .filter(|size| *size > 0 && *size <= 250 * 1024 * 1024)
+                .ok_or("в метаданных вложения некорректный размер")?;
+            Ok(Incoming::Attachment { room_id, event_id, file_id, name, mime_type, size })
+        }
+        "unreadable" => Ok(Incoming::Unreadable { room_id, event_id }),
+        _ => Err(format!("неизвестный тип локального сообщения: {kind}")),
+    }
+}
+
 fn persist_incoming_record(meta: &mut Connection, incoming: &Incoming) -> Result<(), String> {
     let tx = meta.transaction().map_err(text)?;
     insert_incoming_record(&tx, incoming)?;
@@ -2917,16 +2951,7 @@ impl Client {
         let mut incoming = Vec::new();
         for row in rows {
             let (event_id, room_id, kind, body) = row.map_err(text)?;
-            let item = match kind.as_str() {
-                "text" => Incoming::Text {
-                    room_id,
-                    event_id,
-                    text: body.ok_or("в сохранённом сообщении отсутствует текст")?,
-                },
-                "unreadable" => Incoming::Unreadable { room_id, event_id },
-                _ => return Err(format!("неизвестный тип локального сообщения: {kind}")),
-            };
-            incoming.push(item);
+            incoming.push(incoming_from_row(event_id, room_id, kind, body)?);
         }
         Ok(incoming)
     }
@@ -2947,16 +2972,7 @@ impl Client {
         let mut incoming = Vec::new();
         for row in rows {
             let (event_id, room_id, kind, body) = row.map_err(text)?;
-            let item = match kind.as_str() {
-                "text" => Incoming::Text {
-                    room_id,
-                    event_id,
-                    text: body.ok_or("в сохранённом сообщении отсутствует текст")?,
-                },
-                "unreadable" => Incoming::Unreadable { room_id, event_id },
-                _ => return Err(format!("неизвестный тип локального сообщения: {kind}")),
-            };
-            incoming.push(item);
+            incoming.push(incoming_from_row(event_id, room_id, kind, body)?);
         }
         Ok(incoming)
     }
