@@ -65,7 +65,8 @@ pub fn build_manifest(
     if mime_type.is_empty() || mime_type.len() > 127 || mime_type.chars().any(char::is_control) {
         return Err("invalid attachment MIME type".to_string());
     }
-    if encrypt(plaintext, key, nonce, room_id)? != ciphertext {
+    let verified_ciphertext = encrypt(plaintext, key, nonce, room_id)?;
+    if verified_ciphertext.as_slice() != ciphertext {
         return Err("ciphertext does not match the supplied plaintext/key/nonce".to_string());
     }
     let mut payload = json!({
