@@ -131,6 +131,7 @@ class InOneSession extends ChangeNotifier {
           _accessToken = snapshot;
           _mlsBridge = bridge;
           _mlsError = null;
+          await _primeNativeMls(bridge);
         } catch (error) {
           _mlsError = 'Saved MLS session could not be restored: $error';
           try {
@@ -141,6 +142,30 @@ class InOneSession extends ChangeNotifier {
         }
       }
     }
+    notifyListeners();
+  }
+
+  /// Publishes key packages, accepts pending welcomes, syncs encrypted rooms,
+  /// and flushes the Rust-owned text outbox. Failures are surfaced as diagnostics
+  /// without rolling back an otherwise successful session handoff.
+  Future<void> _primeNativeMls(MlsSessionBridge bridge) async {
+    String? failure;
+    try {
+      await bridge.ensureKeyPackages(10);
+    } catch (error) {
+      failure = 'MLS key-package publication is pending: $error';
+    }
+    try {
+      await bridge.sync();
+    } catch (error) {
+      failure = 'MLS room synchronization is pending: $error';
+    }
+    try {
+      await bridge.flushOutbox();
+    } catch (error) {
+      failure = 'MLS offline outbox flush is pending: $error';
+    }
+    _mlsError = failure;
     notifyListeners();
   }
 
@@ -369,6 +394,7 @@ class InOneSession extends ChangeNotifier {
       _accessToken = snapshot;
       _mlsError = null;
       notifyListeners();
+      await _primeNativeMls(target);
     } catch (_) {
       if (nativeOpened) {
         try {
