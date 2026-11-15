@@ -62,6 +62,9 @@ try {
     node tool/prepare_android_mls.mjs
     if ($LASTEXITCODE -ne 0) { throw "Android MLS context preparation failed with exit code $LASTEXITCODE" }
 
+    node tool/prepare_recovery_links.mjs
+    if ($LASTEXITCODE -ne 0) { throw "Recovery deep-link platform configuration failed with exit code $LASTEXITCODE" }
+
     flutter pub get
     if ($LASTEXITCODE -ne 0) { throw "flutter pub get failed with exit code $LASTEXITCODE" }
 
