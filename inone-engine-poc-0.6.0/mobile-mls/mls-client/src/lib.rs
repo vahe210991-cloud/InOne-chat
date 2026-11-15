@@ -3163,10 +3163,10 @@ impl Client {
         }
         loop {
             let epoch = self.groups[room_id].mls.epoch().as_u64();
-            let ready: Vec<(String, Vec<u8>)> = pending
+            let ready: Vec<(String, Vec<u8>, Option<String>)> = pending
                 .iter()
-                .filter(|(e, id, _)| *e == epoch && !self.processed.contains(id))
-                .map(|(_, id, b)| (id.clone(), b.clone()))
+                .filter(|(e, id, _, _)| *e == epoch && !self.processed.contains(id))
+                .map(|(_, id, b, file_id)| (id.clone(), b.clone(), file_id.clone()))
                 .collect();
             for (event_id, bytes, file_id) in ready {
                 let incoming = self.process_and_persist_incoming(room_id, &event_id, &bytes, file_id.as_deref())?;
