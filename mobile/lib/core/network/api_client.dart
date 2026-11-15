@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
@@ -39,6 +40,126 @@ class ApiClient {
     bool authenticated = true,
   }) =>
       request('POST', path, body: body, authenticated: authenticated);
+
+  /// Downloads a binary response from a same-origin signed URL.
+  ///
+  /// The bearer token is deliberately never sent to a different origin. Redirects
+  /// are disabled so a file host cannot forward session credentials elsewhere.
+  Future<Uint8List> getBytes(String signedUrl) async {
+    final uri = _resolveDownload(signedUrl);
+    final token = await _accessTokenProvider();
+    if (token == null || token.isEmpty) {
+      throw const ApiException(
+        code: 'unauthenticated',
+        statusCode: 401,
+        retryable: false,
+      );
+    }
+
+    final request = http.Request('GET', uri)
+      ..followRedirects = false
+      ..headers.addAll({
+        'accept': 'application/octet-stream',
+        'authorization': 'Bearer $token',
+      });
+
+    try {
+      final streamed = await _http.send(request).timeout(timeout);
+      final response = await http.Response.fromStream(streamed).timeout(timeout);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        Object? payload;
+        try {
+          payload = _decodePayload(utf8.decode(response.bodyBytes));
+        } on FormatException {
+          payload = null;
+        }
+        throw ApiException(
+          code: _errorCode(payload, response.statusCode),
+          statusCode: response.statusCode,
+          retryable: _isRetryable(response.statusCode),
+        );
+      }
+      return response.bodyBytes;
+    } on ApiException {
+      rethrow;
+    } on TimeoutException {
+      throw const ApiException(
+        code: 'request_timeout',
+        retryable: true,
+      );
+    } on SocketException {
+      throw const ApiException(
+        code: 'network_unavailable',
+        retryable: true,
+      );
+    } on http.ClientException {
+      throw const ApiException(
+        code: 'network_unavailable',
+        retryable: true,
+      );
+    }
+  }
+
+  /// Uploads already-encrypted bytes to a same-origin, HMAC-signed object URL.
+  /// The URL is the authorization capability; no session token is sent to this PUT.
+  Future<void> putBytes(String signedUrl, Uint8List bytes) async {
+    final uri = _resolveDownload(signedUrl);
+    final request = http.Request('PUT', uri)
+      ..followRedirects = false
+      ..headers['content-type'] = 'application/octet-stream'
+      ..bodyBytes = bytes;
+
+    try {
+      final streamed = await _http.send(request).timeout(timeout);
+      final response = await http.Response.fromStream(streamed).timeout(timeout);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        Object? payload;
+        try {
+          payload = _decodePayload(utf8.decode(response.bodyBytes));
+        } on FormatException {
+          payload = null;
+        }
+        throw ApiException(
+          code: _errorCode(payload, response.statusCode),
+          statusCode: response.statusCode,
+          retryable: _isRetryable(response.statusCode),
+        );
+      }
+    } on ApiException {
+      rethrow;
+    } on TimeoutException {
+      throw const ApiException(
+        code: 'request_timeout',
+        retryable: true,
+      );
+    } on SocketException {
+      throw const ApiException(
+        code: 'network_unavailable',
+        retryable: true,
+      );
+    } on http.ClientException {
+      throw const ApiException(
+        code: 'network_unavailable',
+        retryable: true,
+      );
+    }
+  }
+
+  Uri _resolveDownload(String signedUrl) {
+    final uri = Uri.parse(signedUrl);
+    if (!uri.hasScheme ||
+        !uri.hasAuthority ||
+        uri.userInfo.isNotEmpty ||
+        uri.fragment.isNotEmpty ||
+        uri.origin != _baseUri.origin) {
+      throw ArgumentError.value(
+        signedUrl,
+        'signedUrl',
+        'File download URL must be absolute and same-origin with the API',
+      );
+    }
+    return uri;
+  }
 
   Future<Map<String, dynamic>> request(
     String method,
