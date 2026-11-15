@@ -575,6 +575,28 @@ class InOneSession extends ChangeNotifier {
   Future<String> sendMlsText(String roomId, String plaintext) async =>
       _requireMlsBridge().sendText(roomId, plaintext);
 
+  /// Encrypts and uploads an attachment through the native Rust MLS client.
+  /// The manifest key/nonce never cross this Dart boundary.
+  Future<String> sendMlsAttachment({
+    required String roomId,
+    required String name,
+    required String mimeType,
+    required Uint8List plaintext,
+    required String clientMessageId,
+  }) async {
+    return _requireMlsBridge().sendAttachment(
+      roomId: roomId,
+      name: name,
+      mimeType: mimeType,
+      plaintext: plaintext,
+      clientMessageId: clientMessageId,
+    );
+  }
+
+  /// Downloads and decrypts an attachment in Rust; only verified plaintext bytes return to Dart.
+  Future<Uint8List> downloadMlsAttachment(String fileId) async =>
+      _requireMlsBridge().downloadAttachment(fileId);
+
   /// Persists an encrypted MLS message in the Rust-owned offline outbox.
   Future<String> enqueueMlsText(String roomId, String plaintext) async =>
       _requireMlsBridge().enqueueText(roomId, plaintext);
