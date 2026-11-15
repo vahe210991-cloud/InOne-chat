@@ -1409,6 +1409,7 @@ impl Client {
         room_id: &str,
         event_id: &str,
         bytes: &[u8],
+        outer_file_id: Option<&str>,
     ) -> Result<Incoming, String> {
         let protocol = match MlsMessageIn::tls_deserialize_exact(bytes)
             .map_err(text)
@@ -1430,24 +1431,68 @@ impl Client {
             let group = self.groups.get_mut(room_id).ok_or("комната не создана на этом устройстве")?;
             match group.mls.process_message(&provider, protocol) {
                 Ok(processed) => {
-                    let (incoming, unreadable_reason) = match processed.into_content() {
+                    let (incoming, unreadable_reason, manifest_payload) = match processed.into_content() {
                         ProcessedMessageContent::ApplicationMessage(app) => {
-                            match String::from_utf8(app.into_bytes()) {
-                                Ok(text) => (
-                                    Incoming::Text {
-                                        room_id: room_id.to_string(),
-                                        event_id: event_id.to_string(),
-                                        text,
-                                    },
-                                    None,
-                                ),
-                                Err(_) => (
-                                    Incoming::Unreadable {
-                                        room_id: room_id.to_string(),
-                                        event_id: event_id.to_string(),
-                                    },
-                                    Some("application payload is not valid UTF-8"),
-                                ),
+                            let app_bytes = Zeroizing::new(app.into_bytes());
+                            if let Some(file_id) = outer_file_id {
+                                match attachment_crypto::parse_manifest(&app_bytes, file_id, room_id) {
+                                    Ok(manifest) => (
+                                        Incoming::Attachment {
+                                            room_id: room_id.to_string(),
+                                            event_id: event_id.to_string(),
+                                            file_id: manifest.file_id.clone(),
+                                            name: manifest.name.clone(),
+                                            mime_type: manifest.mime_type.clone(),
+                                            size: manifest.size,
+                                        },
+                                        None,
+                                        Some(Zeroizing::new(app_bytes.to_vec())),
+                                    ),
+                                    Err(error) => (
+                                        Incoming::Unreadable {
+                                            room_id: room_id.to_string(),
+                                            event_id: event_id.to_string(),
+                                        },
+                                        Some(format!("invalid MLS attachment manifest: {error}")),
+                                        None,
+                                    ),
+                                }
+                            } else {
+                                let mut marker: Value =
+                                    serde_json::from_slice(&app_bytes).unwrap_or(Value::Null);
+                                let is_attachment_manifest = marker.get("type").and_then(Value::as_str)
+                                    == Some("inone.attachment");
+                                zeroize_json_value(&mut marker);
+                                if is_attachment_manifest {
+                                    (
+                                        Incoming::Unreadable {
+                                            room_id: room_id.to_string(),
+                                            event_id: event_id.to_string(),
+                                        },
+                                        Some("MLS attachment manifest is missing the outer file reference".to_string()),
+                                        None,
+                                    )
+                                } else {
+                                    match String::from_utf8(app_bytes.to_vec()) {
+                                        Ok(text) => (
+                                            Incoming::Text {
+                                                room_id: room_id.to_string(),
+                                                event_id: event_id.to_string(),
+                                                text,
+                                            },
+                                            None,
+                                            None,
+                                        ),
+                                        Err(_) => (
+                                            Incoming::Unreadable {
+                                                room_id: room_id.to_string(),
+                                                event_id: event_id.to_string(),
+                                            },
+                                            Some("application payload is not valid UTF-8"),
+                                            None,
+                                        ),
+                                    }
+                                }
                             }
                         }
                         _ => (
@@ -1456,20 +1501,49 @@ impl Client {
                                 event_id: event_id.to_string(),
                             },
                             Some("MLS message is not an application message"),
+                            None,
                         ),
                     };
-                    Ok((incoming, unreadable_reason))
+                    Ok((incoming, unreadable_reason, manifest_payload))
                 }
                 Err(error) => Err(classify_process_error(&error)),
             }
         };
 
         match incoming_result {
-            Ok((incoming, unreadable_reason)) => {
+            Ok((incoming, unreadable_reason, manifest_payload)) => {
                 if let Err(error) = insert_incoming_record(&transaction, &incoming) {
                     drop(transaction);
                     self.reload_group(room_id)?;
                     return Err(error);
+                }
+                if let (Incoming::Attachment { file_id, .. }, Some(manifest)) =
+                    (&incoming, manifest_payload.as_ref())
+                {
+                    let created_at = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis() as i64;
+                    if let Err(error) = transaction.execute(
+                        "INSERT OR IGNORE INTO client_attachments
+                         (file_id, room_id, event_id, manifest, direction, created_at)
+                         VALUES (?1, ?2, ?3, ?4, 'incoming', ?5)",
+                        rusqlite::params![file_id, room_id, event_id, manifest.as_slice(), created_at],
+                    ) {
+                        drop(transaction);
+                        self.reload_group(room_id)?;
+                        return Err(text(error));
+                    }
+                    let stored: (String, String, Vec<u8>) = transaction.query_row(
+                        "SELECT room_id, event_id, manifest FROM client_attachments WHERE file_id = ?1",
+                        [file_id],
+                        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                    ).map_err(text)?;
+                    if stored.0 != room_id || stored.1 != event_id || stored.2.as_slice() != manifest.as_slice() {
+                        drop(transaction);
+                        self.reload_group(room_id)?;
+                        return Err("attachment fileId is already bound to a different room/event/manifest".to_string());
+                    }
                 }
                 if let Some(reason) = unreadable_reason {
                     let created_at = std::time::SystemTime::now()
@@ -1505,7 +1579,6 @@ impl Client {
             }
         }
     }
-
 
     /// Публикует ключевые пакеты этого устройства (не больше 50 за раз).
     pub fn upload_key_packages(&mut self, count: usize) -> Result<(), String> {
