@@ -67,6 +67,30 @@ void main() {
     client.close();
   });
 
+  test('uploads ciphertext to the signed URL without forwarding a bearer token', () async {
+    final expected = <int>[0, 4, 8, 127, 128, 255];
+    final mock = MockClient((request) async {
+      expect(request.method, 'PUT');
+      expect(request.url.path, '/objects/file-1');
+      expect(request.headers['content-type'], 'application/octet-stream');
+      expect(request.headers.containsKey('authorization'), isFalse);
+      expect(request.followRedirects, isFalse);
+      expect(request.bodyBytes, expected);
+      return http.Response('{"uploaded":true}', 200);
+    });
+    final client = ApiClient(
+      baseUrl: 'https://api.inone.test',
+      accessTokenProvider: () => 'must-not-be-sent',
+      httpClient: mock,
+    );
+
+    await client.putBytes(
+      'https://api.inone.test/objects/file-1?expires=123&sig=upload',
+      expected,
+    );
+    client.close();
+  });
+
   test('never sends bearer credentials to a different download origin', () async {
     var sent = false;
     final mock = MockClient((request) async {
