@@ -43,13 +43,24 @@ flutter run --dart-define=INONE_API_BASE_URL=http://192.168.1.20:8080
 
 The LAN address is an example only. Use a controlled development/staging backend; do not expose the development engine publicly.
 
+## Native MLS integration status
+
+The repository now contains the Stage 4 persistent Rust/OpenMLS client, the Flutter Rust Bridge crate, platform-protected SQLCipher key storage, the typed Dart session adapter, and a session-handoff path. The app constructs the adapter only when `INONE_MLS_NATIVE_ENABLED=true` is supplied at build time; the flag defaults to `false`.
+
+Before enabling the flag, run `.	ool\generate_native_mls.ps1` from PowerShell in this directory. It generates the FRB bindings, native-assets hook, Rust build script and lockfile, then configures Android's application context. The generated files are not yet committed in this source revision, so a clean checkout is not yet buildable with the native flag enabled.
+
+The native session path adopts the authenticated session into Rust, keeps the refresh token and MLS private state in Rust, stores the device database in SQLCipher, and stores the SQLCipher key in Android Keystore / protected iOS Keychain. On restart it attempts to resume the Rust-owned session. If native adoption fails, messaging remains disabled; there is no plaintext or Megolm fallback.
+
+This source integration is not yet validated: generated FRB outputs, Flutter analysis/tests, Rust bridge tests, Android Keystore runtime checks, and iOS Protected Keychain device/simulator checks must pass on the same final commit before the flag can be enabled for release.
+
 ## Security and known boundaries
 
-- Access/refresh tokens remain in memory; the stable device identifier is stored using platform secure storage.
+- Before native MLS adoption, the login session remains in Flutter memory. After successful adoption, Rust owns refresh-token rotation; Dart retains only a short-lived access-token snapshot.
 - Profile is read-only until a verified update endpoint exists.
-- Room list metadata is connected, but message history and sending remain blocked until native MLS processing and durable encrypted local persistence are integrated.
+- Room list metadata is connected, but message history and sending remain blocked until the native MLS runtime is generated, built and accepted on devices.
 - Never send plaintext messages or use `POST /rooms/:id/events` as a fallback.
-- Provider login, recovery deep links, device-approval flows, file upload/download, APNs/FCM registration and notification-feed mapping are not yet enabled.
+- Recovery deep links, device-approval flows, APNs/FCM registration and notification-feed mapping are not yet enabled.
+- Binary file transport exists, and the Rust AEAD attachment crypto core is in a separate draft PR; attachment upload/encrypted-manifest delivery/SQLCipher key persistence/decryption are not yet connected end-to-end.
 - Leads, Kanban and deal detail remain Beta 2.0 placeholders.
 - RQ/PS scope differs between the screen handoff and API contract documents; these screens are not in active Beta 1.0 navigation pending owner resolution.
 - Demo data and gallery callbacks are not production data sources.
