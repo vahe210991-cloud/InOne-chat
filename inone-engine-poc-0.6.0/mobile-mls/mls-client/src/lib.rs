@@ -1194,7 +1194,7 @@ impl Client {
     }
 
     /// Download capability URLs are bound to this device and require its active bearer token.
-    fn download_signed_bytes(&self, raw_url: &str) -> Result<Vec<u8>, String> {
+    fn download_signed_bytes(&self, raw_url: &str, max_bytes: u64) -> Result<Vec<u8>, String> {
         let url = self.same_origin_url(raw_url)?;
         for attempt in 0..2 {
             let token = Zeroizing::new(self.tokens.lock().map_err(text)?.0.clone());
@@ -1205,7 +1205,13 @@ impl Client {
             match response {
                 Ok(response) => {
                     let mut bytes = Vec::new();
-                    response.into_reader().read_to_end(&mut bytes).map_err(text)?;
+                    response.into_reader()
+                        .take(max_bytes.saturating_add(1))
+                        .read_to_end(&mut bytes)
+                        .map_err(text)?;
+                    if bytes.len() as u64 > max_bytes {
+                        return Err("signed file download exceeded the manifest ciphertext size".to_string());
+                    }
                     return Ok(bytes);
                 }
                 Err(ureq::Error::Status(401, response)) if attempt == 0 => {
