@@ -15,6 +15,7 @@ use openmls_sqlite_storage::{Codec, Connection, SqliteStorageProvider};
 use serde_json::{json, Value};
 
 pub mod remote_config;
+pub mod attachment_crypto;
 
 const CIPHERSUITE: Ciphersuite = Ciphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519;
 /// Сколько прошлых эпох хранит группа (см. mls-bridge: по умолчанию OpenMLS не хранит ни одной).
