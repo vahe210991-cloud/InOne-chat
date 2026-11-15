@@ -361,3 +361,12 @@ Exact-head CI: P0 run #43591433401 and Flutter run #43591437303 both failed befo
 Branch compare: 381 ahead of main, 0 behind. PR #52 remains Draft/open, base `stage0/identity-engineering-readiness-2026-11-13`. Do not retarget or merge. `main` unchanged.
 
 Next: resolve GitHub Actions runner/job provisioning failure, then run Node/PostgreSQL/Rust/Flutter checks on exact head. Continue focused audit of account/session revocation, OTP rate limiting, object storage/backup file archive safety, and MLS FFI. Production certification remains blocked pending runtime and security validation.
+
+## Next actions — updated 2026-11-15
+
+1. Finish encrypted attachment flow in the persistent Rust client: reserve a file, encrypt bytes with per-file AES-256-GCM, upload ciphertext only, send the key/nonce/metadata only inside an MLS-encrypted versioned manifest, verify outer fileId/roomId binding on sync, persist manifest/key in SQLCipher in the same durable inbox transaction, and expose Rust download/decrypt with hash/tag/size verification. Add two-device, restart, tamper, wrong-room, revoked-device and membership-removal tests.
+2. Generate FRB bindings on a real Windows development machine using mobile/tool/generate_native_mls.ps1; commit generated Dart/Rust outputs and lockfiles. Then run cargo fmt/test, cargo test for mls-client, flutter analyze/test, Android build + Keystore runtime smoke, and iOS device/simulator + protected Keychain validation. Record exact SHA and actual results; do not enable INONE_MLS_NATIVE_ENABLED until all gates pass.
+3. Verify the Rust-owned text send/sync flow through the actual chat screen on two devices. Confirm offline outbox, inbox acknowledgement, restart persistence, epoch changes and device revocation. Do not introduce plaintext fallback.
+4. Implement and verify recovery confirmation deep links for accounts with a confirmed phone. First confirm the canonical backend token/code and redirect contract, SMS provider, app-link domain and Android/iOS association requirements; do not invent a production domain or mark the flow complete without a real association test.
+5. Reconcile PR #42: it targets the POC Node server rather than canonical inone-development-archive-0.6.0/engine. Keep it separate until the owner approves a target/rebase.
+6. Keep PR #54 and #56 merged in the active feature branch only; main is untouched and no deployment has occurred. PR #57 and #58 remain Draft/open and stacked; tests remain NOT RUN.
