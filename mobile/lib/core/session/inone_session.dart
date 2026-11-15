@@ -180,6 +180,11 @@ class InOneSession extends ChangeNotifier {
     }
   }
 
+  /// Uploads ciphertext bytes using the backend's short-lived signed PUT URL.
+  /// Encryption must happen in the native MLS layer before this method is called.
+  Future<void> uploadCiphertext(String signedUrl, Uint8List ciphertext) =>
+      _client.putBytes(signedUrl, ciphertext);
+
   /// Downloads an authenticated file URL and retries once after session rotation.
   /// The URL is same-origin and device-bound by the canonical backend.
   Future<Uint8List> downloadBytes(String signedUrl) async {
