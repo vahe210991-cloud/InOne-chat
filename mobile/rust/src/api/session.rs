@@ -145,6 +145,7 @@ impl MlsSession {
         plaintext: Vec<u8>,
         client_message_id: String,
     ) -> Result<String, String> {
+        let plaintext = Zeroizing::new(plaintext);
         self.with_client(|client| {
             client.send_attachment_with_id(
                 &room_id,
