@@ -349,3 +349,13 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Generated FRB outputs are absent. mobile/tool/generate_native_mls.ps1 generates them on a machine with Flutter 3.47+, Rust 1.91+, Cargo and Node.js. Flutter analyze/tests, Rust tests, Android Keystore runtime tests and iOS Protected Keychain checks are NOT RUN. No Actions workflow was manually dispatched.
 - PR #54/#56 are merged only into the active feature branch, not main. No deployment occurred.
 - Remaining priority: complete attachment send/upload/MLS-manifest/SQLCipher persistence/download/decrypt on top of the persistent client; generate FRB outputs and validate the exact SHA; then complete recovery deep links for confirmed-phone accounts and reconcile PR #42's POC/canonical-backend target.
+
+## 2026-11-15 — PR #59 encrypted attachment pipeline
+
+- Opened Draft PR #59, feat/mls-encrypted-attachment-flow-2026-11-15, stacked on PR #58.
+- Added a Rust end-to-end attachment send/receive path: per-file AES-256-GCM key/nonce, ciphertext-only signed upload, upload completion, MLS-encrypted manifest, outer fileId/roomId validation, SQLCipher manifest persistence, authenticated same-origin download, and verified Rust-side decryption.
+- Added SQLCipher attachment retry journal. A retry reuses key/nonce only when the original plaintext/name/MIME/room match; an uploaded object is reused; an incomplete/expired upload is re-reserved; completed clientMessageIds are idempotent and mismatched payload reuse is rejected.
+- Added incoming/outgoing attachment metadata to the durable Rust inbox, exposed send/download through FRB/Dart session APIs, and rendered attachment metadata in the chat thread. File-picker UX and user-triggered download interaction remain disabled/not connected.
+- Added Rust two-device/restart/idempotency integration test at mls-client/tests/attachments.rs and extended Dart session bridge tests. All tests remain NOT RUN; generated FRB outputs are absent.
+- Canonical backend integration test command must set INONE_ENGINE_DIR to inone-development-archive-0.6.0/engine (not the POC Node server). Run npm ci in that canonical engine before cargo test.
+- No Actions workflow was manually dispatched. No deployment occurred. PR #54/#56 remain merged only into the active feature branch; PR #57/#58/#59 remain Draft/open.
