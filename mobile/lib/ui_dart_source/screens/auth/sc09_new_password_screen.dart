@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../state/inone_state.dart';
 import '../../widgets/inone_widgets.dart';
 
-/// SC-09 · Նոր գաղտնաբառ: SMS/email recovery code, new password and optional PIN.
+/// SC-09 · Նոր գաղտնաբառ: confirmed-phone SMS code, new password and optional PIN.
 ///
 /// Блок-предупреждение о сбросе ключей шифрования — ЗАГЛУШКА дизайна:
 /// текст ждёт утверждения владельца (D8). Показ обязателен: после
@@ -77,7 +77,7 @@ class _InOneNewPasswordScreenState extends State<InOneNewPasswordScreen>
               InOneField(
                 form: _form,
                 name: 'code',
-                label: 'Կոդ հաստատման SMS-ից կամ էլ. փոստից',
+                label: 'Կод из SMS',
                 autofillHints: const [AutofillHints.oneTimeCode],
                 textInputAction: TextInputAction.next,
               ),
