@@ -449,3 +449,11 @@ PR #57 (Draft) adds the AES-256-GCM attachment crypto core and a versioned MLS m
 PR #58 (Draft, stacked on #57) ports the persistent Stage 4 Rust/OpenMLS client and Flutter Rust Bridge integration into the active native Flutter branch. Rust owns MLS state and refresh-token rotation after handoff; SQLCipher key material is stored in Android Keystore / protected iOS Keychain; app restart can resume the Rust session. The Flutter chat thread now has a native-MLS-only text send/sync path. The build flag remains disabled by default.
 
 Generated FRB outputs are still absent. Run mobile/tool/generate_native_mls.ps1 to generate bindings and build files. No Rust/Flutter tests or Android/iOS runtime checks were run. Keep native MLS disabled until generation and same-SHA validation pass. Recovery deep links remain unfinished.
+
+## Encrypted attachment pipeline update — 2026-11-15
+
+Draft PR #59 (stacked on #58) adds the source implementation for end-to-end encrypted attachments. Rust encrypts each file with a per-file AES-256-GCM key/nonce, uploads ciphertext only through a signed same-origin URL without bearer credentials, sends the manifest inside an MLS-encrypted application message, binds the manifest's fileId and roomId to the outer event, persists manifests and retry state in SQLCipher, and performs authenticated download plus hash/tag/size verification before returning plaintext from Rust.
+
+Attachment manifests/keys are not exposed to Dart. Dart receives only attachment metadata and verified plaintext bytes from the download API. The chat thread renders file metadata, but the file-picker/send interaction and user-triggered download UI remain unfinished.
+
+A two-device, restart, idempotent retry and mismatched-retry integration test was added. It has NOT BEEN RUN. Generated Flutter Rust Bridge outputs remain absent, and no Rust/Flutter/Android/iOS validation has occurred. For Rust integration tests, set INONE_ENGINE_DIR to the canonical inone-development-archive-0.6.0/engine; do not rely on the POC server for production acceptance.
