@@ -547,6 +547,63 @@ class InOneSession extends ChangeNotifier {
     }
   }
 
+  MlsSessionBridge _requireMlsBridge() {
+    final bridge = _mlsBridge;
+    if (bridge == null) {
+      throw const ApiException(
+        code: 'native_mls_unavailable',
+        statusCode: 503,
+        retryable: false,
+      );
+    }
+    return bridge;
+  }
+
+  Future<void> ensureMlsKeyPackages(int target) =>
+      _requireMlsBridge().ensureKeyPackages(target);
+
+  Future<void> createMlsRoom(String roomId) =>
+      _requireMlsBridge().createRoom(roomId);
+
+  Future<void> inviteMlsUser(String roomId, String userId) =>
+      _requireMlsBridge().invite(roomId, userId);
+
+  /// Encrypts and sends through OpenMLS. There is deliberately no HTTP/plaintext fallback.
+  Future<String> sendMlsText(String roomId, String plaintext) =>
+      _requireMlsBridge().sendText(roomId, plaintext);
+
+  /// Persists an encrypted MLS message in the Rust-owned offline outbox.
+  Future<String> enqueueMlsText(String roomId, String plaintext) =>
+      _requireMlsBridge().enqueueText(roomId, plaintext);
+
+  Future<List<MlsIncomingMessage>> syncMlsMessages() =>
+      _requireMlsBridge().sync();
+
+  Future<List<MlsIncomingMessage>> pendingMlsMessages() =>
+      _requireMlsBridge().pendingIncoming();
+
+  Future<List<MlsIncomingMessage>> mlsMessagesForRoom(String roomId) =>
+      _requireMlsBridge().messagesForRoom(roomId);
+
+  Future<void> acknowledgeMlsMessages(List<String> eventIds) =>
+      _requireMlsBridge().acknowledgeIncoming(eventIds);
+
+  Future<int> flushMlsOutbox() => _requireMlsBridge().flushOutbox();
+
+  Future<int> mlsOutboxLength() => _requireMlsBridge().outboxLength();
+
+  Future<int?> mlsLocalEpoch(String roomId) =>
+      _requireMlsBridge().localEpoch(roomId);
+
+  Future<List<String>> mlsMembersOf(String roomId) =>
+      _requireMlsBridge().membersOf(roomId);
+
+  Future<void> revokeMlsDevice(String deviceId) =>
+      _requireMlsBridge().revokeDevice(deviceId);
+
+  Future<int> removeRevokedMlsDevices() =>
+      _requireMlsBridge().removeRevokedDevices();
+
   /// Returns the durable room recovery state reported by the native MLS client.
   Future<String?> mlsRoomRecoveryStatus(String roomId) async {
     final bridge = _mlsBridge;
