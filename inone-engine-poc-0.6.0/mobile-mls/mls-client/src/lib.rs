@@ -1020,6 +1020,23 @@ fn build_client(agent: ureq::Agent, base: &str, tokens: SessionTokens, user_id: 
          CREATE TABLE IF NOT EXISTS client_processed (event_id TEXT PRIMARY KEY);
          CREATE TABLE IF NOT EXISTS client_inbox (seq INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL UNIQUE, room_id TEXT NOT NULL, kind TEXT NOT NULL, body TEXT, acknowledged INTEGER NOT NULL DEFAULT 0);
          CREATE TABLE IF NOT EXISTS client_outbox (local_id TEXT PRIMARY KEY, room_id TEXT NOT NULL, body TEXT NOT NULL, seq INTEGER NOT NULL);
+          CREATE TABLE IF NOT EXISTS client_attachments (
+            file_id TEXT PRIMARY KEY,
+            room_id TEXT NOT NULL,
+            event_id TEXT NOT NULL UNIQUE,
+            manifest BLOB NOT NULL,
+            direction TEXT NOT NULL CHECK (direction IN ('incoming', 'outgoing')),
+            created_at INTEGER NOT NULL
+          );
+          CREATE TABLE IF NOT EXISTS client_attachment_outbox (
+            client_message_id TEXT PRIMARY KEY,
+            room_id TEXT NOT NULL,
+            file_id TEXT NOT NULL,
+            manifest BLOB NOT NULL,
+            ciphertext_sha256 TEXT NOT NULL,
+            ciphertext_size INTEGER NOT NULL,
+            uploaded INTEGER NOT NULL DEFAULT 0
+          );
          CREATE TABLE IF NOT EXISTS client_remote_config (id INTEGER PRIMARY KEY CHECK (id = 1), etag TEXT NOT NULL, body TEXT NOT NULL, fetched_at INTEGER NOT NULL);",
     )
     .map_err(text)?;
