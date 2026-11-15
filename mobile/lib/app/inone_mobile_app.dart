@@ -686,7 +686,11 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
             InOneChatThreadScreen(
               header: InOneThreadHeader(
                 name: chat.name,
-                statusLabel: _session.hasNativeMlsSession ? 'MLS · зашифровано' : 'MLS недоступен',
+                statusLabel: !_session.hasNativeMlsSession
+                    ? 'MLS недоступен'
+                    : _session.mlsError == null
+                        ? 'MLS · зашифровано'
+                        : 'MLS · требуется синхронизация',
                 online: false,
               ),
               items: _threadItems,
