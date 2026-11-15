@@ -12,7 +12,7 @@ This branch ports the Stage 4 persistent OpenMLS client into the active native F
 - Logout attempts server logout and always removes local SQLCipher files/sidecars and the platform key.
 - Native MLS is opt-in through INONE_MLS_NATIVE_ENABLED=true; the default remains disabled.
 
-The Rust client also contains the isolated AES-256-GCM attachment crypto core from PR #57. The file-key/nonce manifest is not yet connected to file upload, MLS inbox persistence or download/decryption.
+The Rust client now has an end-to-end attachment path: per-file AES-256-GCM, ciphertext-only upload, MLS-encrypted versioned manifest, SQLCipher persistence and authenticated download/decryption. The Rust integration test exercises two devices, restart persistence and idempotent retries. These changes are still uncompiled/unrun in this environment.
 
 ## Generate Flutter Rust Bridge files on Windows
 
@@ -49,6 +49,7 @@ After generation, run:
 flutter analyze
 flutter test
 cargo test --locked --manifest-path rust/Cargo.toml
+$env:INONE_ENGINE_DIR = (Resolve-Path ..\inone-development-archive-0.6.0\engine).Path
 cargo test --locked --manifest-path ..\inone-engine-poc-0.6.0\mobile-mls\mls-client\Cargo.toml -- --test-threads=1
 flutter build apk --debug
 ```
