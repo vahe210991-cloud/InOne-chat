@@ -36,6 +36,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
   String _recoveryEmail = '';
   String _recoveryUserId = '';
   String _recoveryLinkToken = '';
+  bool _recoveryLinkActive = false;
   String? _lastRecoveryLink;
   late final AppLinks _appLinks;
   StreamSubscription<Uri>? _appLinkSubscription;
@@ -109,6 +110,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
     setState(() {
       _recoveryUserId = recoveryLink.userId;
       _recoveryLinkToken = recoveryLink.token;
+      _recoveryLinkActive = true;
       _recoveryEmail = '';
       _screen = 'recoveryConfirm';
     });
@@ -256,6 +258,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
     _recoveryEmail = email.trim();
     _recoveryUserId = '';
     _recoveryLinkToken = '';
+    _recoveryLinkActive = false;
     try {
       await _session.startRecovery(_recoveryEmail);
       return null;
@@ -317,6 +320,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
       _recoveryEmail = '';
       _recoveryUserId = '';
       _recoveryLinkToken = '';
+      _recoveryLinkActive = false;
       _screen = 'login';
     });
     _notice(
@@ -337,10 +341,10 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
 
   Future<void> _loadAuthenticatedData() async {
     if (!_session.isAuthenticated) {
-      setState(() => _screen = 'login');
+      if (!_recoveryLinkActive) setState(() => _screen = 'login');
       return;
     }
-    setState(() => _screen = 'loading');
+    if (!_recoveryLinkActive) setState(() => _screen = 'loading');
     try {
       final profile = await _repositories.profile();
       final rooms = await _repositories.myRooms();
@@ -351,10 +355,10 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
         _rooms = rooms;
         _organizations = organizations;
         _selectedOrganization = organizations.isEmpty ? null : organizations.first;
-        _screen = 'messages';
+        if (!_recoveryLinkActive) _screen = 'messages';
       });
     } catch (_) {
-      if (mounted) setState(() => _screen = 'loadError');
+      if (mounted && !_recoveryLinkActive) setState(() => _screen = 'loadError');
     }
   }
 
