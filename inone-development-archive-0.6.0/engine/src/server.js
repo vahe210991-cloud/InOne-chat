@@ -2752,9 +2752,12 @@ if (req.method === 'POST' && p === '/login') {
         const userId = url.searchParams.get('user') ?? '';
         const token = url.searchParams.get('token') ?? '';
         if (!token) return send(res, 400, { error: 'token required' });
+        const appLink = `inone://recovery/confirm?user=${encodeURIComponent(userId)}&token=${encodeURIComponent(token)}`;
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
         return res.end(htmlPage('Подтверждение восстановления', `
 <p>Нажмите кнопку, чтобы подтвердить, что восстановление запросили вы. Код из SMS вводится в приложении.</p>
+<p><a href="${escapeHtml(appLink)}">Открыть подтверждение в приложении InOne</a></p>
+<p>Если приложение не открылось, подтвердите восстановление в этой странице:</p>
 <form method="post" action="/recovery/confirm">
 <input type="hidden" name="user" value="${escapeHtml(userId)}">
 <input type="hidden" name="token" value="${escapeHtml(token)}">
