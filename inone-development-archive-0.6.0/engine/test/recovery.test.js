@@ -406,7 +406,9 @@ test('открытие ссылки из письма не подтвержда�
     const token = linkTokenFrom(srv, ALICE);
     const page = await fetch(`${base}/recovery/confirm?user=${encodeURIComponent(ALICE)}&token=${token}`);
     assert.equal(page.status, 200);
-    assert.match(await page.text(), /<form[^>]*method="post"/, 'страница с кнопкой подтверждения');
+    const html = await page.text();
+    assert.match(html, /<form[^>]*method="post"/, 'страница с кнопкой подтверждения');
+    assert.ok(html.includes('inone://recovery/confirm'), 'страница предлагает открыть подтверждение в приложении InOne');
     const code = smsCodeFrom(srv, PHONE_A);
     await assert.rejects(post(base, '/recovery/complete', { userId: ALICE, code, newPassword: NEW_PW }), (e) => e.status === 403, 'после открытия ссылки без кнопки восстановление не проходит');
     await post(base, '/recovery/confirm', { user: ALICE, token });
