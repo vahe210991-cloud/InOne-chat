@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:inone_mobile/core/mls/mls_session_bridge.dart';
+import 'package:inone_mobile/core/network/api_exception.dart';
 import 'package:inone_mobile/core/session/inone_session.dart';
 
 void main() {
@@ -386,7 +387,7 @@ void main() {
       }
       return http.Response('{}', 404);
     });
-    final bridge = _FakeMlsSessionBridge()..accessToken = '';
+    final bridge = _FakeMlsSessionBridge()..forceEmptySnapshot = true;
     final session = InOneSession(
       baseUrl: 'https://api.inone.test',
       httpClient: httpClient,
@@ -468,6 +469,7 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
   String accessToken = 'access-1';
   bool failOpen = false;
   bool failResume = false;
+  bool forceEmptySnapshot = false;
   Map<String, String>? purgeArguments;
   int refreshCalls = 0;
   int logoutCalls = 0;
@@ -581,7 +583,7 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
   Future<int> removeRevokedDevices() async => 0;
 
   @override
-  Future<String> accessTokenSnapshot() async => accessToken;
+  Future<String> accessTokenSnapshot() async => forceEmptySnapshot ? '' : accessToken;
 
   @override
   Future<String> refreshSession() async {
