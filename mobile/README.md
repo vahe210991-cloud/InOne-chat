@@ -45,7 +45,7 @@ The LAN address is an example only. Use a controlled development/staging backend
 
 ## Native MLS integration status
 
-The repository now contains the Stage 4 persistent Rust/OpenMLS client, the Flutter Rust Bridge crate, platform-protected SQLCipher key storage, the typed Dart session adapter, and a session-handoff path. The app constructs the adapter only when `INONE_MLS_NATIVE_ENABLED=true` is supplied at build time; the flag defaults to `false`.
+The repository now contains the Stage 4 persistent Rust/OpenMLS client, the Flutter Rust Bridge crate, platform-protected SQLCipher key storage, the typed Dart session adapter, and a session-handoff path. See [Native MLS setup and acceptance](NATIVE-MLS-SETUP.md) for the pinned generation and validation procedure. The app constructs the adapter only when `INONE_MLS_NATIVE_ENABLED=true` is supplied at build time; the flag defaults to `false`.
 
 Before enabling the flag, run `.	ool\generate_native_mls.ps1` from PowerShell in this directory. It generates the FRB bindings, native-assets hook, Rust build script and lockfile, then configures Android's application context. The generated files are not yet committed in this source revision, so a clean checkout is not yet buildable with the native flag enabled.
 
