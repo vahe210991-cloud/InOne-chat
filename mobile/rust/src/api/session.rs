@@ -31,6 +31,14 @@ pub enum IncomingMessage {
         event_id: String,
         text: String,
     },
+    Attachment {
+        room_id: String,
+        event_id: String,
+        file_id: String,
+        name: String,
+        mime_type: String,
+        size: u64,
+    },
     Unreadable {
         room_id: String,
         event_id: String,
@@ -50,6 +58,9 @@ fn map_incoming(items: Vec<Incoming>) -> Vec<IncomingMessage> {
                 event_id,
                 text,
             },
+            Incoming::Attachment { room_id, event_id, file_id, name, mime_type, size } => {
+                IncomingMessage::Attachment { room_id, event_id, file_id, name, mime_type, size }
+            }
             Incoming::Unreadable { room_id, event_id } => {
                 IncomingMessage::Unreadable { room_id, event_id }
             }
@@ -124,6 +135,29 @@ impl MlsSession {
 
     pub fn send_text(&self, room_id: String, plaintext: String) -> Result<String, String> {
         self.with_client(|client| client.send_text(&room_id, &plaintext))
+    }
+
+    pub fn send_attachment(
+        &self,
+        room_id: String,
+        name: String,
+        mime_type: String,
+        plaintext: Vec<u8>,
+        client_message_id: String,
+    ) -> Result<String, String> {
+        self.with_client(|client| {
+            client.send_attachment_with_id(
+                &room_id,
+                &name,
+                &mime_type,
+                &plaintext,
+                &client_message_id,
+            )
+        })
+    }
+
+    pub fn download_attachment(&self, file_id: String) -> Result<Vec<u8>, String> {
+        self.with_client(|client| client.download_attachment(&file_id))
     }
 
     pub fn enqueue_text(&self, room_id: String, plaintext: String) -> Result<String, String> {
