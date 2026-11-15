@@ -47,6 +47,18 @@ try {
     flutter_rust_bridge_codegen generate
     if ($LASTEXITCODE -ne 0) { throw "flutter_rust_bridge_codegen generate failed with exit code $LASTEXITCODE" }
 
+    $requiredGenerated = @(
+        "hook/build.dart",
+        "lib/src/rust/frb_generated.dart",
+        "rust/build.rs",
+        "rust/src/frb_generated.rs"
+    )
+    foreach ($relative in $requiredGenerated) {
+        if (-not (Test-Path -LiteralPath (Join-Path $MobileRoot $relative))) {
+            throw "Required generated Flutter Rust Bridge file is missing: $relative"
+        }
+    }
+
     node tool/prepare_android_mls.mjs
     if ($LASTEXITCODE -ne 0) { throw "Android MLS context preparation failed with exit code $LASTEXITCODE" }
 
