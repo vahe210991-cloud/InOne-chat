@@ -49,6 +49,9 @@ After generation, run:
 flutter analyze
 flutter test
 cargo test --locked --manifest-path rust/Cargo.toml
+Push-Location ..\inone-development-archive-0.6.0\engine
+npm ci
+Pop-Location
 $env:INONE_ENGINE_DIR = (Resolve-Path ..\inone-development-archive-0.6.0\engine).Path
 cargo test --locked --manifest-path ..\inone-engine-poc-0.6.0\mobile-mls\mls-client\Cargo.toml -- --test-threads=1
 flutter build apk --debug
