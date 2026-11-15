@@ -1601,12 +1601,7 @@ impl Client {
                                     ),
                                 }
                             } else {
-                                let mut marker: Value =
-                                    serde_json::from_slice(&app_bytes).unwrap_or(Value::Null);
-                                let is_attachment_manifest = marker.get("type").and_then(Value::as_str)
-                                    == Some("inone.attachment");
-                                zeroize_json_value(&mut marker);
-                                if is_attachment_manifest {
+                                if attachment_crypto::is_attachment_manifest(&app_bytes) {
                                     (
                                         Incoming::Unreadable {
                                             room_id: room_id.to_string(),
