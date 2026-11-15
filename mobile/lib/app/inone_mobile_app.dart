@@ -95,32 +95,20 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
   }
 
   void _handleIncomingLink(Uri uri) {
-    final customScheme = uri.scheme == 'inone' &&
-        uri.host == 'recovery' &&
-        uri.path == '/confirm';
-    final verifiedHttps = _recoveryLinkHost.isNotEmpty &&
-        uri.scheme == 'https' &&
-        uri.host.toLowerCase() == _recoveryLinkHost.toLowerCase() &&
-        uri.path == '/recovery/confirm';
-    if (!customScheme && !verifiedHttps) return;
+    final recoveryLink = parseRecoveryDeepLink(
+      uri,
+      verifiedHttpsHost: _recoveryLinkHost,
+    );
+    if (recoveryLink == null) return;
 
     final canonical = uri.toString();
     if (_lastRecoveryLink == canonical) return;
     _lastRecoveryLink = canonical;
 
-    final userId = (uri.queryParameters['user'] ?? uri.queryParameters['userId'] ?? '').trim();
-    final token = (uri.queryParameters['token'] ?? '').trim();
-    if (userId.isEmpty || userId.length > 256 ||
-        token.isEmpty || token.length > 128 ||
-        userId.contains('\n') || userId.contains('\r') ||
-        token.contains('\n') || token.contains('\r')) {
-      _notice('Ссылка восстановления повреждена. Запросите восстановление заново.');
-      return;
-    }
     if (!mounted) return;
     setState(() {
-      _recoveryUserId = userId;
-      _recoveryLinkToken = token;
+      _recoveryUserId = recoveryLink.userId;
+      _recoveryLinkToken = recoveryLink.token;
       _recoveryEmail = '';
       _screen = 'recoveryConfirm';
     });
