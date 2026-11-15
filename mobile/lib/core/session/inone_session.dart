@@ -301,7 +301,7 @@ class InOneSession extends ChangeNotifier {
       if (accountId != null && accountId.isNotEmpty)
         'userId': accountId
       else
-        'email': address,
+        'email': address!,
       'code': code.trim(),
       'newPassword': newPassword,
       if (pin.isNotEmpty) 'pin': pin,
