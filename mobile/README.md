@@ -60,7 +60,7 @@ This source integration is not yet validated: generated FRB outputs, Flutter ana
 - Room list metadata is connected, but message history and sending remain blocked until the native MLS runtime is generated, built and accepted on devices.
 - Never send plaintext messages or use `POST /rooms/:id/events` as a fallback.
 - Recovery deep links, device-approval flows, APNs/FCM registration and notification-feed mapping are not yet enabled.
-- Binary file transport exists, and the Rust AEAD attachment crypto core is in a separate draft PR; attachment upload/encrypted-manifest delivery/SQLCipher key persistence/decryption are not yet connected end-to-end.
+- The Rust attachment pipeline now reserves and uploads ciphertext only, sends the versioned file-key manifest inside MLS, persists the manifest in SQLCipher, and downloads/decrypts only after room/file binding, ciphertext hash, AEAD tag, plaintext size and hash checks. The Dart/Rust API is present, but the chat UI file-picker action is still disabled; Rust attachment integration tests are added but have NOT BEEN RUN.
 - Leads, Kanban and deal detail remain Beta 2.0 placeholders.
 - RQ/PS scope differs between the screen handoff and API contract documents; these screens are not in active Beta 1.0 navigation pending owner resolution.
 - Demo data and gallery callbacks are not production data sources.
