@@ -371,6 +371,95 @@ void main() {
     expect(bridge.closeCalls, 0);
     session.dispose();
   });
+
+  test('invalid native access-token snapshot rolls back the handoff and clears local ownership', () async {
+    var deletedUserId = false;
+    final httpClient = MockClient((request) async {
+      if (request.url.path == '/login') {
+        return http.Response(
+          jsonEncode({'token': 'access-1', 'refreshToken': 'refresh-1'}),
+          200,
+        );
+      }
+      if (request.url.path == '/profile') {
+        return http.Response(jsonEncode({'userId': '@alice:inone.test'}), 200);
+      }
+      return http.Response('{}', 404);
+    });
+    final bridge = _FakeMlsSessionBridge()..accessToken = '';
+    final session = InOneSession(
+      baseUrl: 'https://api.inone.test',
+      httpClient: httpClient,
+      nativeMlsBridge: bridge,
+      readDeviceId: () async => 'device-1',
+      writeDeviceId: (_) async {},
+      readMlsUserId: () async => null,
+      writeMlsUserId: (_) async {},
+      deleteMlsUserId: () async { deletedUserId = true; },
+    );
+
+    await session.login(email: 'alice@example.test', password: 'not-used-in-test');
+
+    expect(session.isAuthenticated, isFalse);
+    expect(session.hasNativeMlsSession, isFalse);
+    expect(bridge.logoutCalls, 1);
+    expect(bridge.closeCalls, 1);
+    expect(deletedUserId, isTrue);
+    session.dispose();
+  });
+
+  test('transient refresh failure does not discard the Flutter refresh token', () async {
+    var refreshCalls = 0;
+    final httpClient = MockClient((request) async {
+      if (request.url.path == '/login') {
+        return http.Response(
+          jsonEncode({'token': 'access-1', 'refreshToken': 'refresh-1'}),
+          200,
+        );
+      }
+      if (request.url.path == '/protected') {
+        if (request.headers['authorization'] == 'Bearer access-1') {
+          return http.Response('{"error":"token_expired"}', 401);
+        }
+        expect(request.headers['authorization'], 'Bearer access-2');
+        return http.Response('{"status":"ok"}', 200);
+      }
+      if (request.url.path == '/token/refresh') {
+        refreshCalls++;
+        if (refreshCalls == 1) {
+          return http.Response('{"error":"temporarily_unavailable"}', 503);
+        }
+        expect(jsonDecode(request.body)['refreshToken'], 'refresh-1');
+        return http.Response(
+          jsonEncode({'token': 'access-2', 'refreshToken': 'refresh-2'}),
+          200,
+        );
+      }
+      return http.Response('{}', 404);
+    });
+    final session = InOneSession(
+      baseUrl: 'https://api.inone.test',
+      httpClient: httpClient,
+      readDeviceId: () async => 'device-1',
+      writeDeviceId: (_) async {},
+      readMlsUserId: () async => null,
+      writeMlsUserId: (_) async {},
+      deleteMlsUserId: () async {},
+    );
+
+    await session.login(email: 'alice@example.test', password: 'not-used-in-test');
+    await expectLater(
+      session.request('GET', '/protected'),
+      throwsA(isA<ApiException>()),
+    );
+    expect(session.isAuthenticated, isTrue);
+
+    final response = await session.request('GET', '/protected');
+    expect(response['status'], 'ok');
+    expect(refreshCalls, 2);
+    session.dispose();
+  });
+
 }
 
 class _FakeMlsSessionBridge implements MlsSessionBridge {
