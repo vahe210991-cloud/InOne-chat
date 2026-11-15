@@ -1120,7 +1120,6 @@ dependencies = [
 name = "mls-client"
 version = "0.1.0"
 dependencies = [
- "sha2",
  "aes-gcm",
  "base64",
  "openmls",
@@ -1131,6 +1130,7 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
+ "sha2",
  "ureq",
  "url",
  "urlencoding",
