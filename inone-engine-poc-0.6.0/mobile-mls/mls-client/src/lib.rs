@@ -2348,6 +2348,15 @@ impl Client {
         if let Some(reason) = self.desync_reason(room_id)? {
             return Err(format!("комната рассинхронизирована и требует восстановления: {reason}"));
         }
+        let initial_server_epoch = self.server_epoch(room_id)?;
+        let initial_local_epoch = self.groups.get(room_id)
+            .ok_or("комната не создана на этом устройстве")?
+            .mls.epoch().as_u64();
+        if initial_local_epoch != initial_server_epoch {
+            return Err(format!(
+                "устройство на эпохе {initial_local_epoch}, сервер на {initial_server_epoch}: сначала синхронизация"
+            ));
+        }
 
         let mut file_id: String;
         let mut upload_url: Option<String> = None;
