@@ -168,5 +168,6 @@ fn repeated_send_with_the_same_identifier_is_stored_once() {
     let first = alice.send_text_with_id(ROOM, "раз", "send-0001").unwrap();
     let again = alice.send_text_with_id(ROOM, "раз", "send-0001").unwrap();
     assert_eq!(first, again, "повтор вернул первое сообщение");
+    assert_eq!(texts(&alice.messages_for_room(ROOM).unwrap()), vec!["раз"], "отправитель видит своё сообщение в SQLCipher истории");
     assert_eq!(texts(&bob.sync().unwrap()), vec!["раз"]);
 }
