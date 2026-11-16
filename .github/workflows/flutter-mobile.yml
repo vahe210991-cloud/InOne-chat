@@ -65,7 +65,10 @@ jobs:
             --rust-crate-name inone_mls_frb \
             --integration-backend native-assets \
             --platforms android,ios \
-            --skip-fvm-install
+            --skip-fvm-install \
+            --no-dart-fix \
+            --no-dart-format \
+            --no-integration-test
           cp "$RUNNER_TEMP/inone-main.dart" lib/main.dart
           cp "$RUNNER_TEMP/inone-api-mod.rs" rust/src/api/mod.rs
           rm -f rust/src/api/simple.rs lib/src/rust/api/simple.dart
