@@ -1107,7 +1107,13 @@ mlsPendingRemovalsFor(userId) {
       const p = profiles.get(userId);
       return p ? structuredClone(p) : null;
     },
-    profileLocaleSet(userId, locale) {\n      const profile = profiles.get(userId);\n      if (!profile) return false;\n      profile.locale = locale;\n      return true;\n    },\n    userIdByEmail(email) {
+    profileLocaleSet(userId, locale) {
+      const profile = profiles.get(userId);
+      if (!profile) return false;
+      profile.locale = locale;
+      return true;
+    },
+    userIdByEmail(email) {
       for (const [userId, p] of profiles) if (p.emailVerified && p.email === email) return userId;
       return null;
     },
@@ -1141,10 +1147,10 @@ mlsPendingRemovalsFor(userId) {
       return result;
     },
 
-    async emailCodeUpdateWithOutbox(email, change, enqueue) {
+    async emailCodeUpdateWithOutbox(email, change, enqueue, locale = 'hy') {
       const cur = emailCodes.get(email);
       const { next, result } = change(cur ? structuredClone(cur) : freshEmailCode());
-      emailCodes.set(email, structuredClone(next));
+      emailCodes.set(email, structuredClone({ ...next, locale }));
       try {
         if (enqueue) await enqueue(null, result);
       } catch (error) {
