@@ -70,6 +70,7 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
   ProfileLoadStatus? _profileLoadStatus;
   int _profileRequestId = 0;
   bool _lastProfileAuthentication = false;
+  String _lastSelectedLocale = 'hy';
 
   bool get _isApproved => _selectedKey.startsWith('approved:');
   bool get _isHandoff => _selectedKey.startsWith('handoff:');
@@ -355,6 +356,11 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
   }
 
   void _onSessionChanged() {
+    final locale = _session.locale;
+    if (locale != _lastSelectedLocale) {
+      _lastSelectedLocale = locale;
+      if (mounted) setState(() {});
+    }
     final authenticated = _session.isAuthenticated;
     if (authenticated == _lastProfileAuthentication) return;
     _lastProfileAuthentication = authenticated;
