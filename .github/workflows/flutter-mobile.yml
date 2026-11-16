@@ -12,7 +12,7 @@ on:
       - '.github/workflows/flutter-mobile.yml'
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: flutter-mobile-${{ github.event.pull_request.number || github.ref }}
@@ -28,7 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # PR validation must run on the writable head branch, not GitHub's synthetic merge ref.
+          # Validate the exact pull-request head commit without granting write access.
           ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
       - uses: subosito/flutter-action@v2
         with:
@@ -85,13 +85,8 @@ jobs:
             find mobile/assets/ui-approval -type f -name '*.woff2' -print
             exit 1
           fi
-          git add mobile/assets/ui-approval
-          if ! git diff --cached --quiet; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git commit -m "feat(ui): import owner-approved UI source assets"
-            git push origin HEAD:task/ui-archive-import-2026-11-09
-          fi
+          # Imported UI assets are consumed by this validation job only.
+          # CI must never commit or push changes from an untrusted pull request.
       - name: Verify original 73-screen test gallery
         run: node tool/verify_test_gallery.mjs
       - run: flutter pub get
