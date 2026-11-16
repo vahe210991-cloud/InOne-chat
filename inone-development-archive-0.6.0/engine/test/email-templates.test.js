@@ -66,7 +66,7 @@ test('HTML templates escape untrusted variables and only render HTTPS recovery a
   assert.ok(injected.html.includes('&lt;img src=x onerror=alert(1)&gt;'));
   assert.ok(injected.html.includes('Google կամ Apple հաշվի անջատում'));
   assert.throws(() => renderEmailTemplate('recovery_confirmation_link', { url: 'javascript:alert(1)' }, 'hy'), /safe HTTPS URL/);
-  assert.throws(() => renderEmailTemplate('recovery_confirmation_link', { url: 'https://example.test/\\nmalicious' }, 'hy'), /unsafe email template variable|safe HTTPS URL/);
+  assert.throws(() => renderEmailTemplate('recovery_confirmation_link', { url: 'https://example.test/\nmalicious' }, 'hy'), /unsafe email template variable|safe HTTPS URL/);
   const safeUrl = renderEmailTemplate('recovery_confirmation_link', { url: 'https://inone.example/confirm?token=a%26b' }, 'hy');
   assert.ok(safeUrl.html.includes('href="https://inone.example/confirm?token=a%26b"'));
   assert.ok(safeUrl.html.includes('Հաստատել հաշվի վերականգնումը'));
