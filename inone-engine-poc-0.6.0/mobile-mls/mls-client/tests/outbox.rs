@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use mls_client::{connect, is_retryable, Incoming, MemoryKeyStore};
+use mls_client::{connect, is_retryable, Incoming, KeyStore, MemoryKeyStore};
 
 const PW: &str = "пароль-проверки-1";
 const ROOM: &str = "!room-outbox:inone.test";
@@ -101,6 +101,19 @@ fn db(name: &str) -> String {
     path.to_string_lossy().to_string()
 }
 
+
+fn open_encrypted_db(path: &str, key: &[u8; 32]) -> rusqlite::Connection {
+    let connection = rusqlite::Connection::open(path).expect("open SQLCipher database");
+    let key_hex = key.iter().map(|byte| format!("{byte:02x}")).collect::<String>();
+    connection
+        .pragma_update(None, "key", format!("x'{key_hex}'"))
+        .expect("unlock SQLCipher database");
+    connection
+        .query_row("SELECT count(*) FROM sqlite_master", [], |row| row.get::<_, i64>(0))
+        .expect("verify SQLCipher key");
+    connection
+}
+
 fn texts(items: &[Incoming]) -> Vec<String> {
     items
         .iter()
@@ -109,6 +122,62 @@ fn texts(items: &[Incoming]) -> Vec<String> {
             _ => None,
         })
         .collect()
+}
+
+
+#[test]
+fn uncertain_text_send_reuses_the_same_mls_ciphertext_until_local_commit_succeeds() {
+    let engine = start_engine();
+    let keys = MemoryKeyStore::default();
+    let alice_db = db("alice-uncertain-send");
+    let bob_db = db("bob-uncertain-send");
+    let mut alice = connect(&engine.base, ALICE, PW, "A_PHONE", &alice_db, &keys).unwrap();
+    let mut bob = connect(&engine.base, BOB, PW, "B_PHONE", &bob_db, &keys).unwrap();
+    bob.ensure_key_packages(1).unwrap();
+    alice.create_room(ROOM).unwrap();
+    alice.invite(ROOM, BOB).unwrap();
+    assert!(bob.sync().unwrap().is_empty());
+
+    let client_message_id = "send-uncertain-0001";
+    let database_key = keys
+        .existing_database_key(&format!("{ALICE}/A_PHONE"))
+        .unwrap()
+        .expect("sender SQLCipher key");
+    let connection = open_encrypted_db(&alice_db, &database_key);
+    connection.execute_batch(
+        "CREATE TRIGGER fail_text_inbox_insert
+         BEFORE INSERT ON client_inbox
+         WHEN NEW.kind = 'text'
+         BEGIN
+           SELECT RAISE(ABORT, 'simulated local inbox failure');
+         END;",
+    ).unwrap();
+    drop(connection);
+
+    assert!(alice.send_text_with_id(ROOM, "retry this text", client_message_id).is_err());
+    let read_persisted_message = || {
+        let connection = open_encrypted_db(&alice_db, &database_key);
+        connection.query_row(
+            "SELECT mls_message FROM client_outbox WHERE local_id = ?1",
+            [client_message_id],
+            |row| row.get::<_, Vec<u8>>(0),
+        ).expect("persisted MLS message")
+    };
+    let first_message = read_persisted_message();
+    assert!(!first_message.is_empty());
+
+    assert!(alice.send_text_with_id(ROOM, "retry this text", client_message_id).is_err());
+    assert_eq!(first_message, read_persisted_message());
+
+    let connection = open_encrypted_db(&alice_db, &database_key);
+    connection.execute_batch("DROP TRIGGER fail_text_inbox_insert;").unwrap();
+    drop(connection);
+
+    let event_id = alice.send_text_with_id(ROOM, "retry this text", client_message_id).unwrap();
+    assert_eq!(alice.send_text_with_id(ROOM, "retry this text", client_message_id).unwrap(), event_id);
+    assert_eq!(alice.outbox_len().unwrap(), 0);
+    assert_eq!(texts(&alice.messages_for_room(ROOM).unwrap()), vec!["retry this text"]);
+    assert_eq!(texts(&bob.sync().unwrap()), vec!["retry this text"]);
 }
 
 #[test]
