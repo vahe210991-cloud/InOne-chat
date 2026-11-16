@@ -254,3 +254,13 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Report: `development/reports/2026-11-16-bots-stickers-architecture-proposal.md`.
 - Base `main` SHA: `1df19a001acb5f8c4892471ca4eaa0696e02c54d`; initial architecture commit `35fb0e8b782a43cd84ca556455a9645a194f522c`; report commit `cb7a736852a4b37d4f51b675b48fe0dbe8c5ce39`.
 - Product tests/builds: NOT RUN (documentation-only). No merge or deployment.
+
+
+## Owner decision — protected InOne/Propo naming policy (2026-11-16)
+
+- Reserved official names: **InOne Hub**, **InOne Developer**, **InOne Development**.
+- `InOne` and `Propo` are protected brand terms across public usernames, group/room/community names, bots, apps, integrations, organizations and other user-created named entities.
+- Only official administration-owned entities may use the protected terms, and only after the complete applicable administrative approval chain and explicit final owner approval. Admin privileges never grant unilateral naming/exception authority; administrators may only initiate a proposal.
+- Backend enforcement must normalize Unicode and reject case/separator/confusable bypasses, validate both creation and rename, atomically reserve names, and audit every decision.
+- Existing conflicts must be inventoried and escalated; do not silently rename/delete existing users or groups. The three reserved names are not evidence that corresponding services are implemented.
+- Architecture and proposal report updated. This remains a documented owner requirement, not implemented enforcement.
