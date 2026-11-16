@@ -12,13 +12,16 @@ const PASS = 'MAIL-SECRET-PASSWORD-1';
 const FROM = 'InOne <noreply@inone.example>';
 
 
-/** Тело письма: если оно закодировано в base64 (так кодируется русский текст), декодируем его. */
-function messageBody(raw) {
-  const cut = raw.indexOf('\r\n\r\n');
-  const headers = raw.slice(0, cut);
-  const body = raw.slice(cut + 4);
-  if (/Content-Transfer-Encoding: base64/i.test(headers)) return Buffer.from(body.replace(/\s+/g, ''), 'base64').toString('utf8');
-  return body;
+/** Decode text MIME alternatives from Nodemailer test capture. */
+function decodedMimeBodies(raw) {
+  return raw.split(/\\r\\n--[^\\r\\n]+(?:--)?\\r\\n/g).map((part) => {
+    const separator = part.indexOf('\\r\\n\\r\\n');
+    if (separator < 0) return '';
+    const headers = part.slice(0, separator);
+    const body = part.slice(separator + 4).trim();
+    if (/Content-Transfer-Encoding: base64/i.test(headers)) return Buffer.from(body.replace(/\\s+/g, ''), 'base64').toString('utf8');
+    return body;
+  }).join('\\n');
 }
 
 function startSmtp() {
@@ -52,7 +55,10 @@ test('письмо с кодом уходит через SMTP и содержи�
     assert.equal(smtp.received.length, 1);
     assert.deepEqual(smtp.received[0].envelope.rcptTo.map((r) => r.address), ['anna@example.test']);
     assert.match(smtp.received[0].raw, /text\/html/i);
-    assert.match(messageBody(smtp.received[0].raw), /482913/);
+    const decoded = decodedMimeBodies(smtp.received[0].raw);
+    assert.match(decoded, /482913/);
+    assert.match(decoded, /Ձեր կոդը/);
+    assert.match(smtp.received[0].raw, /multipart\\/alternative/i);
     mailer.close();
   } finally {
     await smtp.stop();
