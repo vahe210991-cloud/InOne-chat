@@ -513,6 +513,45 @@ export function createMemoryStore({ pinPepper }) {
       if (enqueue) await enqueue(null, result);
       return result;
     },
+    async recoveryCancelWithOutbox(userId, passwordHash, change, enqueue) {
+      if (!accounts.has(userId)) return change(freshRecovery()).result;
+      const oldPassword = accounts.get(userId);
+      const oldRecovery = recovery.get(userId);
+      const oldCancel = recoveryCancels.get(userId);
+      const { next, result } = change(oldRecovery ? structuredClone(oldRecovery) : freshRecovery());
+      if (passwordHash) accounts.set(userId, passwordHash);
+      recovery.set(userId, structuredClone(next));
+      recoveryCancels.delete(userId);
+      try {
+        if (enqueue) await enqueue(null, result);
+      } catch (error) {
+        accounts.set(userId, oldPassword);
+        if (oldRecovery) recovery.set(userId, oldRecovery); else recovery.delete(userId);
+        if (oldCancel) recoveryCancels.set(userId, oldCancel);
+        throw error;
+      }
+      return result;
+    },
+    async recoveryCompleteWithOutbox(userId, passwordHash, change, cancelCodeHash, expiresAt, enqueue) {
+      if (!accounts.has(userId)) throw new Error('recovery account not found');
+      const oldPassword = accounts.get(userId);
+      const oldRecovery = recovery.get(userId);
+      const oldCancel = recoveryCancels.get(userId);
+      const { next, result } = change(oldRecovery ? structuredClone(oldRecovery) : freshRecovery());
+      accounts.set(userId, passwordHash);
+      recovery.set(userId, structuredClone(next));
+      recoveryCancels.set(userId, { codeHash: cancelCodeHash, expiresAt });
+      try {
+        if (enqueue) await enqueue(null, result);
+      } catch (error) {
+        accounts.set(userId, oldPassword);
+        if (oldRecovery) recovery.set(userId, oldRecovery); else recovery.delete(userId);
+        if (oldCancel) recoveryCancels.set(userId, oldCancel); else recoveryCancels.delete(userId);
+        throw error;
+      }
+      return result;
+    },
+
     recoveryHashes() {
       return Object.fromEntries([...recovery]
         .filter(([, r]) => r.reqCodeHash)
@@ -1170,8 +1209,8 @@ mlsPendingRemovalsFor(userId) {
 
     async backupEmailSaveWithOutbox(userId, email, nowMs, enqueue) {
       for (const [uid, b] of backupEmails) if (uid !== userId && b.email === email) return 'taken';
-      backupEmails.set(userId, { email, createdAt: nowMs });
       if (enqueue) await enqueue(null);
+      backupEmails.set(userId, { email, createdAt: nowMs });
       return 'ok';
     },
     backupEmailRemove(userId) {
