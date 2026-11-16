@@ -47,9 +47,9 @@ function decryptPayload(row, payloadKey) {
   return payload;
 }
 
-function retryDelay(attempt) {
-  const ceiling = Math.min(MAX_RETRY_MS, BASE_RETRY_MS * (2 ** Math.min(attempt - 1, 16)));
-  return Math.max(1_000, randomInt(Math.max(2_000, Math.floor(ceiling / 2)), ceiling + 1));
+function retryDelay(attempt, baseMs, maxMs) {
+  const ceiling = Math.min(maxMs, baseMs * (2 ** Math.min(attempt - 1, 16)));
+  return randomInt(Math.max(1, Math.floor(ceiling / 2)), ceiling + 1);
 }
 
 function errorClass(error) {
@@ -61,7 +61,7 @@ function errorClass(error) {
 
 export function createEmailDelivery({
   pool, smtpMailer, encryptionKey, logger = null, workerId = randomBytes(12).toString('hex'),
-  pollIntervalMs = 1_000, batchSize = 10, maxAttempts = 8,
+  pollIntervalMs = 1_000, batchSize = 10, maxAttempts = 8, retryBaseMs = BASE_RETRY_MS, retryMaxMs = MAX_RETRY_MS,
 } = {}) {
   if (!pool || typeof pool.connect !== 'function') throw new Error('email delivery requires a PostgreSQL pool');
   if (!smtpMailer || typeof smtpMailer.send !== 'function') throw new Error('email delivery requires an SMTP sender');
@@ -72,6 +72,8 @@ export function createEmailDelivery({
   if (!Number.isInteger(batchSize) || batchSize < 1 || batchSize > 100) throw new Error('email batchSize must be 1..100');
   if (!Number.isInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > 20) throw new Error('email maxAttempts must be 1..20');
   if (!Number.isInteger(pollIntervalMs) || pollIntervalMs < 250 || pollIntervalMs > 60_000) throw new Error('email pollIntervalMs must be 250..60000');
+  if (!Number.isInteger(retryBaseMs) || retryBaseMs < 100 || retryBaseMs > 60_000) throw new Error('email retryBaseMs must be 100..60000');
+  if (!Number.isInteger(retryMaxMs) || retryMaxMs < retryBaseMs || retryMaxMs > 24 * 60 * 60_000) throw new Error('email retryMaxMs must be >= retryBaseMs and <= 24h');
 
   let timer = null;
   let activeTick = null;
@@ -134,7 +136,7 @@ export function createEmailDelivery({
       logger?.error('email delivery dead-lettered', { deliveryId: row.id, reason: safeCode, attempts: row.attempts });
       return;
     }
-    const delay = retryDelay(row.attempts);
+    const delay = retryDelay(row.attempts, retryBaseMs, retryMaxMs);
     await pool.query(
       `UPDATE email_deliveries
        SET status = 'queued', available_at = now() + ($2::double precision * interval '1 millisecond'),
