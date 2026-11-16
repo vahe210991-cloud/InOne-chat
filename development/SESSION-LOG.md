@@ -244,12 +244,12 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 
 
 
-## 2026-11-16 — Bot Platform and Sticker Bot architecture proposal
+## 2026-11-16 — Bot Platform and StickyBot architecture proposal
 
 - Created `development/architecture/INONE-BOTS-AND-STICKERS.md` on task branch `docs/bots-stickers-platform-2026-11-16`.
-- Specified administration-owned InOne Bot Manager, user/system bot ownership, Bot ID and lifecycle, one-time API token issuance, token hashing/revocation/rotation, least-privilege scopes, REST API, Webhooks, external builder integration, consent-based installation and audit/moderation.
+- Specified administration-owned OneBot, user/system bot ownership, Bot ID and lifecycle, one-time API token issuance, token hashing/revocation/rotation, least-privilege scopes, REST API, Webhooks, external builder integration, consent-based installation and audit/moderation.
 - Specified MLS/E2EE boundary: bots must be explicit MLS participants; no hidden plaintext access or fallback.
-- Specified administration-owned Sticker Bot, photo-to-sticker flow, user collections, versioned sticker packs and hard backend limit of 50 stickers per pack.
+- Specified administration-owned StickyBot, photo-to-sticker flow, user collections, versioned sticker packs and hard backend limit of 50 stickers per pack.
 - This is a proposal only. Beta 1.0 WBS v1.1 is unchanged; no implementation, schema, endpoint or release scope was approved by this documentation change.
 - Report: `development/reports/2026-11-16-bots-stickers-architecture-proposal.md`.
 - Base `main` SHA: `1df19a001acb5f8c4892471ca4eaa0696e02c54d`; initial architecture commit `35fb0e8b782a43cd84ca556455a9645a194f522c`; report commit `cb7a736852a4b37d4f51b675b48fe0dbe8c5ce39`.
@@ -264,3 +264,13 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Backend enforcement must normalize Unicode and reject case/separator/confusable bypasses, validate both creation and rename, atomically reserve names, and audit every decision.
 - Existing conflicts must be inventoried and escalated; do not silently rename/delete existing users or groups. The three reserved names are not evidence that corresponding services are implemented.
 - Architecture and proposal report updated. This remains a documented owner requirement, not implemented enforcement.
+
+
+## Owner-approved official bot names — 2026-11-16
+
+- **OneBot** is the approved canonical English name of the administration-owned official bot used to register and manage other bots. Replace the former working label “InOne Bot Manager” / “Bot Manager” with **OneBot** when referring to this named system bot.
+- **StickyBot** is the approved canonical English name of the administration-owned sticker-creation bot.
+- **The Bot** is not selected and must not be used as an alternative name.
+- Bot names and public bot-facing names are international English names only. Do not create Russian names, localized aliases or transliterations for these bots. The surrounding interface may be localized, but the canonical bot names remain unchanged.
+- These names are owner-approved design decisions, not proof that either bot, username, API or service has been implemented, registered or launched. Username availability and collision checks remain implementation-time validation.
+- The protected InOne / Propo naming and owner-approval policy remains unchanged. OneBot and StickyBot do not grant permission to use protected brand terms in other entities.
