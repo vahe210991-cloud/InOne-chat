@@ -315,6 +315,75 @@ test('длительная SMTP-отправка продлевает lease и �
   }
 });
 
+test('ошибка продления lease не позволяет отметить SMTP-доставку как подтверждённую', async () => {
+  const db = await testDatabase();
+  let smtpStarted = false;
+  let finishSmtp;
+  let failNextRenewal = false;
+  const pool = {
+    connect: (...args) => db.pool.connect(...args),
+    query: (sql, params) => {
+      if (failNextRenewal && typeof sql === 'string' && sql.includes('SET locked_at = now()')) {
+        failNextRenewal = false;
+        return Promise.reject(Object.assign(new Error('temporary database outage'), { code: '08006' }));
+      }
+      return db.pool.query(sql, params);
+    },
+  };
+  const firstSmtp = {
+    send() {
+      smtpStarted = true;
+      return new Promise((resolve) => { finishSmtp = resolve; });
+    },
+    close() {},
+  };
+  const first = createEmailDelivery({
+    pool, smtpMailer: firstSmtp, encryptionKey: randomBytes(32),
+    workerId: 'lease-error-owner', pollIntervalMs: 250, batchSize: 1,
+    leaseMs: 600, leaseRenewIntervalMs: 100,
+  });
+  const secondSmtp = fakeSmtp();
+  const second = createEmailDelivery({
+    pool: db.pool, smtpMailer: secondSmtp, encryptionKey: randomBytes(32),
+    workerId: 'lease-error-retry', pollIntervalMs: 250, batchSize: 1,
+    leaseMs: 600, leaseRenewIntervalMs: 100,
+  });
+  try {
+    const queued = await first.send({
+      to: 'lease-error@example.test', templateId: 'registration_code',
+      variables: { code: 'LEASE-ERROR' }, locale: 'hy',
+      idempotencyKey: 'lease-renewal-error-001',
+    });
+    first.start();
+    await waitFor(() => smtpStarted);
+    second.start();
+    failNextRenewal = true;
+    await waitFor(() => !failNextRenewal);
+    finishSmtp({ messageId: 'smtp-accepted-but-lease-uncertain' });
+
+    const afterUncertainSend = (await db.pool.query(
+      'SELECT status, locked_by FROM email_deliveries WHERE id = $1',
+      [queued.deliveryId],
+    )).rows[0];
+    assert.equal(afterUncertainSend.status, 'processing');
+    assert.equal(afterUncertainSend.locked_by, 'lease-error-owner');
+    assert.equal(secondSmtp.sent.length, 0);
+
+    // The expired lease is retried by another worker; the first worker must not
+    // overwrite the second worker's state after it lost proof of ownership.
+    await waitFor(async () => (await db.pool.query(
+      'SELECT status FROM email_deliveries WHERE id = $1',
+      [queued.deliveryId],
+    )).rows[0].status === 'sent', 5000);
+    assert.equal(secondSmtp.sent.length, 1);
+  } finally {
+    finishSmtp?.({ messageId: 'cleanup-message-id' });
+    await first.stop();
+    await second.stop();
+    await db.close();
+  }
+});
+
 test('graceful shutdown закрывает SMTP и освобождает незавершённые leases', async () => {
   const db = await testDatabase();
   let rejectActive;
