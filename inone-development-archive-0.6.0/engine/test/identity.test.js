@@ -223,7 +223,12 @@ test('I10: login locale is persisted before identity-check security email is que
     nickname: 'LoginLocale', nowMs: Date.now(), locale: 'hy',
   });
   store.recoveryUpdate('@login-locale', (current) => ({
-    next: { ...current, identityCheck: true },
+    next: {
+      ...current,
+      identityCheck: true,
+      windowStartedAt: Date.now() - 49 * HOUR,
+      windowKeyResetAt: Date.now() - 1,
+    },
     result: null,
   }));
   const { srv, base, stop } = await start({ store });
@@ -233,9 +238,9 @@ test('I10: login locale is persisted before identity-check security email is que
     });
     assert.equal(login.status, 202);
     assert.equal(login.body.status, 'identity_check_required');
-    const message = srv.mailbox('login-locale@example.test').at(-1);
-    assert.ok(message);
-    assert.match(message.html, /<html lang="ru">/);
+    const messages = srv.mailbox('login-locale@example.test');
+    assert.equal(messages.length, 2, 'expired recovery window and identity check each queue a security email');
+    assert.ok(messages.every((message) => message.html.includes('<html lang="ru">')));
     assert.equal(store.profileGet('@login-locale').locale, 'ru');
   } finally {
     await stop();
