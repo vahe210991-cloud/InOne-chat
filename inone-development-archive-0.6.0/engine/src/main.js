@@ -27,9 +27,20 @@ export async function startServer({ config, logger = createLogger({ level: confi
       from: config.smtpFrom,
       logger,
     })
+    : null;
+  if (smtpMailer && !pool) throw new Error('SMTP email delivery requires PostgreSQL');
+  const mailer = smtpMailer
+    ? createEmailDelivery({
+      pool,
+      smtpMailer,
+      encryptionKey: parseEmailEncryptionKey(config.emailEncryptionKey),
+      logger,
+      pollIntervalMs: config.emailWorkerPollMs,
+      maxAttempts: config.emailMaxAttempts,
+    })
     : config.testUi
-    ? { send: async (m) => { process.stdout.write(`[тестовое письмо] ${m.to} | ${m.subject} | ${m.text}\n`); } }
-    : undefined;
+      ? { send: async () => { logger.info('test email captured'); } }
+      : undefined;
   const app = createServer({
     pinPepper: config.pinPepper,
     docsSecret: config.docsSecret || null,
