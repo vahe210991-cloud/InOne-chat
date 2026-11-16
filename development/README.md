@@ -72,3 +72,13 @@ Read [PROGRESS-BASELINE.md](PROGRESS-BASELINE.md) in full before every implement
 
 - [InOne Bots & Stickers architecture proposal](architecture/INONE-BOTS-AND-STICKERS.md) — administration-owned Bot Manager, external builder REST/Webhook integration, token/scopes/security, MLS consent boundary, Sticker Bot and sticker packs (maximum 50 stickers per pack).
 - [Proposal report](reports/2026-11-16-bots-stickers-architecture-proposal.md) — scope boundary, verification status and next decisions.
+
+
+## Owner decision — protected InOne/Propo naming policy (2026-11-16)
+
+- Reserved official names: **InOne Hub**, **InOne Developer**, **InOne Development**.
+- `InOne` and `Propo` are protected brand terms across public usernames, group/room/community names, bots, apps, integrations, organizations and other user-created named entities.
+- Only official administration-owned entities may use the protected terms, and only after the complete applicable administrative approval chain and explicit final owner approval. Admin privileges never grant unilateral naming/exception authority; administrators may only initiate a proposal.
+- Backend enforcement must normalize Unicode and reject case/separator/confusable bypasses, validate both creation and rename, atomically reserve names, and audit every decision.
+- Existing conflicts must be inventoried and escalated; do not silently rename/delete existing users or groups. The three reserved names are not evidence that corresponding services are implemented.
+- Architecture and proposal report updated. This remains a documented owner requirement, not implemented enforcement.
