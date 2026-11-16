@@ -3,6 +3,7 @@ import { renderEmailTemplate } from './email-templates.js';
 
 const MAX_PAYLOAD_BYTES = 256 * 1024;
 const LEASE_MS = 60_000;
+const SEND_GUARD_MS = 15_000;
 const BASE_RETRY_MS = 5_000;
 const MAX_RETRY_MS = 60 * 60_000;
 
@@ -87,8 +88,8 @@ export function createEmailDelivery({
       const { rows } = await client.query(
         `WITH candidates AS (
            SELECT id FROM email_deliveries
-           WHERE (status = 'queued' AND available_at <= now() AND expires_at > now())
-              OR (status = 'processing' AND locked_at < now() - ($2::double precision * interval '1 millisecond') AND expires_at > now())
+           WHERE (status = 'queued' AND available_at <= now() AND expires_at > now() + ($4::double precision * interval '1 millisecond'))
+              OR (status = 'processing' AND locked_at < now() - ($2::double precision * interval '1 millisecond') AND expires_at > now() + ($4::double precision * interval '1 millisecond'))
            ORDER BY available_at, id
            LIMIT $1
            FOR UPDATE SKIP LOCKED
@@ -99,7 +100,7 @@ export function createEmailDelivery({
          FROM candidates
          WHERE e.id = candidates.id
          RETURNING e.id, e.idempotency_key, e.payload_ciphertext, e.payload_iv, e.payload_tag, e.attempts, e.expires_at`,
-        [batchSize, LEASE_MS, workerId],
+        [batchSize, LEASE_MS, workerId, SEND_GUARD_MS],
       );
       await client.query('COMMIT');
       return rows;
@@ -159,8 +160,8 @@ export function createEmailDelivery({
   async function tick() {
     if (stopping) return;
     if (Date.now() - lastCleanupAt > 60 * 60_000) {
-      await pool.query("UPDATE email_deliveries SET status = 'dead', last_error_code = 'expired', updated_at = now() WHERE status = 'queued' AND expires_at <= now()");
-      await pool.query("UPDATE email_deliveries SET status = 'dead', locked_at = NULL, locked_by = NULL, last_error_code = 'expired', updated_at = now() WHERE status = 'processing' AND expires_at <= now() AND locked_at < now() - interval '60 seconds'");
+      await pool.query("UPDATE email_deliveries SET status = 'dead', last_error_code = 'expired', updated_at = now() WHERE status = 'queued' AND expires_at <= now() + interval '15 seconds'");
+      await pool.query("UPDATE email_deliveries SET status = 'dead', locked_at = NULL, locked_by = NULL, last_error_code = 'expired', updated_at = now() WHERE status = 'processing' AND expires_at <= now() + interval '15 seconds' AND locked_at < now() - interval '60 seconds'");
       await pool.query("DELETE FROM email_deliveries WHERE status IN ('sent', 'dead') AND updated_at < now() - interval '30 days'");
       lastCleanupAt = Date.now();
     }
@@ -171,7 +172,7 @@ export function createEmailDelivery({
         continue;
       }
       try {
-        if (new Date(row.expires_at).getTime() <= Date.now()) {
+        if (new Date(row.expires_at).getTime() <= Date.now() + SEND_GUARD_MS) {
           await pool.query("UPDATE email_deliveries SET status = 'dead', locked_at = NULL, locked_by = NULL, last_error_code = 'expired', updated_at = now() WHERE id = $1 AND status = 'processing' AND locked_by = $2", [row.id, workerId]);
           continue;
         }
