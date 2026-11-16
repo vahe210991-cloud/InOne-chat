@@ -50,6 +50,10 @@ These are values visibly present in the curated reference; this list is limited 
 
 Open the branch in GitHub Codespaces, start a terminal at the repository root and run `python3 -m http.server 8000`. Open the forwarded port 8000 and navigate to `/development/design/email-delivery-preview.html`. The gallery imports the actual backend template renderer and lets the owner switch all 13 template IDs between Armenian, Russian and English. This preview does not require a local clone.
 
+## Language selection and delivery
+
+Email language follows the user's selected in-app language, not the operating-system locale and not a global Armenian default. The supported initial locales are Eastern Armenian (`hy`), Russian (`ru`) and English (`en`). Verified registration sends the selected locale with the registration-code request; the backend stores it alongside the pending email-code state and copies it to the account profile when registration completes. Authenticated users can change it through `PATCH /profile/locale`; the mobile host persists the same choice locally for startup and synchronizes it with the account. All account-security messages, including backup-recipient copies, use the profile locale captured when the business event is queued. The encrypted queued payload keeps that language stable if the user changes their preference before delivery. Armenian is the fallback only for legacy clients/accounts without a saved locale; unsupported locale values are rejected rather than silently rendered in the wrong language.
+
 ## Approval gate
 
 The palette and typography are based on the approved reference, but the composition of the email shell is a new application of those foundations. Owner approval is required for:
