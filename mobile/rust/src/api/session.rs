@@ -593,5 +593,4 @@ mod tests {
             "a failed platform-store initialization cannot claim key deletion"
         );
     }
-
 }
