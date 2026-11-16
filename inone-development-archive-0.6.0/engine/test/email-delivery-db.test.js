@@ -354,7 +354,7 @@ test('ошибка продления lease не позволяет отмети
   const second = createEmailDelivery({
     pool: db.pool, smtpMailer: secondSmtp, encryptionKey: Buffer.from(key),
     workerId: 'lease-error-retry', pollIntervalMs: 250, batchSize: 1,
-    leaseMs: 300, leaseRenewIntervalMs: 100,
+    leaseMs: 600, leaseRenewIntervalMs: 100,
     logger: {
       info: (message, fields) => secondEvents.push({ level: 'info', message, fields }),
       warn: (message, fields) => secondEvents.push({ level: 'warn', message, fields }),
