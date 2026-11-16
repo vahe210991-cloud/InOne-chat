@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes, randomInt } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import { renderEmailTemplate } from './email-templates.js';
 
 const MAX_PAYLOAD_BYTES = 256 * 1024;
@@ -74,7 +74,7 @@ export function createEmailDelivery({
         `WITH candidates AS (
            SELECT id FROM email_deliveries
            WHERE (status = 'queued' AND available_at <= now() AND expires_at > now())
-              OR (status = 'processing' AND locked_at < now() - ($2::double precision * interval '1 millisecond'))
+              OR (status = 'processing' AND locked_at < now() - ($2::double precision * interval '1 millisecond') AND expires_at > now())
            ORDER BY available_at, id
            FOR UPDATE SKIP LOCKED
            LIMIT $1
@@ -84,7 +84,7 @@ export function createEmailDelivery({
              locked_at = now(), locked_by = $3, updated_at = now()
          FROM candidates
          WHERE e.id = candidates.id
-         RETURNING e.id, e.idempotency_key, e.payload_ciphertext, e.payload_iv, e.payload_tag, e.attempts`,
+         RETURNING e.id, e.idempotency_key, e.payload_ciphertext, e.payload_iv, e.payload_tag, e.attempts, e.expires_at`,
         [batchSize, LEASE_MS, workerId],
       );
       await client.query('COMMIT');
@@ -137,12 +137,17 @@ export function createEmailDelivery({
     if (stopping) return;
     if (Date.now() - lastCleanupAt > 60 * 60_000) {
       await pool.query("UPDATE email_deliveries SET status = 'dead', last_error_code = 'expired', updated_at = now() WHERE status = 'queued' AND expires_at <= now()");
+      await pool.query("UPDATE email_deliveries SET status = 'dead', locked_at = NULL, locked_by = NULL, last_error_code = 'expired', updated_at = now() WHERE status = 'processing' AND expires_at <= now() AND locked_at < now() - interval '60 seconds'");
       await pool.query("DELETE FROM email_deliveries WHERE status IN ('sent', 'dead') AND updated_at < now() - interval '30 days'");
       lastCleanupAt = Date.now();
     }
     const rows = await claimBatch();
     for (const row of rows) {
       try {
+        if (new Date(row.expires_at).getTime() <= Date.now()) {
+          await pool.query("UPDATE email_deliveries SET status = 'dead', locked_at = NULL, locked_by = NULL, last_error_code = 'expired', updated_at = now() WHERE id = $1 AND status = 'processing' AND locked_by = $2", [row.id, workerId]);
+          continue;
+        }
         const message = decryptPayload(row, key);
         const result = await smtpMailer.send(message);
         await updateSent(row, result?.messageId ?? null);
@@ -183,21 +188,26 @@ export function createEmailDelivery({
       const expiryMs = expiresAt === undefined ? nowMs + rendered.ttlMs : Number(expiresAt);
       if (!Number.isFinite(expiryMs) || expiryMs <= nowMs || expiryMs > nowMs + 30 * 24 * 60 * 60_000) throw new Error('invalid email expiry');
       const idempotencyHash = createHash('sha256').update(idempotencyKey).digest('hex');
-      const encrypted = encryptPayload({
+      const payload = {
         to, subject: rendered.subject, text: rendered.text,
         templateId: templateId ?? 'legacy', templateVersion: rendered.templateVersion ?? 1, locale: rendered.locale ?? locale,
-      }, key, idempotencyHash);
+      };
+      const fingerprint = createHmac('sha256', key).update(JSON.stringify(payload)).digest('hex');
+      const encrypted = encryptPayload(payload, key, idempotencyHash);
       const { rows } = await pool.query(
         `INSERT INTO email_deliveries
-           (idempotency_key, payload_ciphertext, payload_iv, payload_tag, expires_at)
-         VALUES ($1, $2, $3, $4, to_timestamp($5 / 1000.0))
+           (idempotency_key, payload_fingerprint, payload_ciphertext, payload_iv, payload_tag, expires_at)
+         VALUES ($1, $2, $3, $4, $5, to_timestamp($6 / 1000.0))
          ON CONFLICT (idempotency_key) DO NOTHING
          RETURNING id, status`,
-        [idempotencyHash, encrypted.ciphertext, encrypted.iv, encrypted.tag, expiryMs],
+        [idempotencyHash, fingerprint, encrypted.ciphertext, encrypted.iv, encrypted.tag, expiryMs],
       );
       if (rows[0]) return { queued: true, duplicate: false, deliveryId: rows[0].id };
-      const existing = await pool.query('SELECT id, status FROM email_deliveries WHERE idempotency_key = $1', [idempotencyHash]);
+      const existing = await pool.query('SELECT id, status, payload_fingerprint FROM email_deliveries WHERE idempotency_key = $1', [idempotencyHash]);
       if (!existing.rows[0]) throw new Error('email idempotency conflict could not be resolved');
+      const expected = Buffer.from(existing.rows[0].payload_fingerprint, 'hex');
+      const actual = Buffer.from(fingerprint, 'hex');
+      if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) throw new Error('email idempotency key was reused with a different payload');
       return { queued: existing.rows[0].status !== 'dead', duplicate: true, deliveryId: existing.rows[0].id, status: existing.rows[0].status };
     },
     start() {
