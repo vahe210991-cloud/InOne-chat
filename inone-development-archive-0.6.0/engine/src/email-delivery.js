@@ -219,7 +219,8 @@ export function createEmailDelivery({
   async function enqueue(queryable, { to, subject, text, idempotencyKey, templateId, variables, locale = 'ru', expiresAt }) {
     if (stopping) throw new Error('email delivery is stopping');
     if (typeof to !== 'string' || to.length < 3 || to.length > 320 || /[\r\n]/.test(to)) throw new Error('invalid email recipient');
-    const rendered = templateId ? renderEmailTemplate(templateId, variables ?? {}, locale) : { subject, text, ttlMs: 24 * 60 * 60_000 };
+    if (typeof templateId !== 'string' || templateId.length === 0) throw new Error('email templateId is required');
+    const rendered = renderEmailTemplate(templateId, variables ?? {}, locale);
     if (typeof rendered.subject !== 'string' || rendered.subject.length < 1 || rendered.subject.length > 998 || /[\r\n]/.test(rendered.subject)) throw new Error('invalid email subject');
     if (typeof rendered.text !== 'string' || rendered.text.length > MAX_PAYLOAD_BYTES) throw new Error('invalid email body');
     if (typeof idempotencyKey !== 'string' || idempotencyKey.length < 8 || idempotencyKey.length > 256) throw new Error('email idempotencyKey is required');
