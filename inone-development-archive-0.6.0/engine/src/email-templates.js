@@ -1,3 +1,5 @@
+const SUPPORTED_EMAIL_LOCALES = new Set(['hy', 'ru', 'en']);
+
 const CATALOG = {
   registration_code: {
     hy: ['InOne հաշվի հաստատման կոդը', ({ code }) => `Ձեր հաստատման կոդն է՝ ${code}։ Կոդը վավեր է 10 րոպե։ Եթե դուք չեք սկսել գրանցումը, կարող եք անտեսել այս նամակը։`],
@@ -163,7 +165,8 @@ function renderHtml({ subject, text, locale, templateId, variables }) {
 export function renderEmailTemplate(templateId, variables = {}, locale = 'hy') {
   const template = CATALOG[templateId];
   if (!template) throw new Error('unknown email template');
-  const language = ['hy', 'ru', 'en'].includes(locale) ? locale : 'hy';
+  if (!SUPPORTED_EMAIL_LOCALES.has(locale)) throw new Error('unsupported email locale');
+  const language = locale;
   const [subject, render] = template[language];
   const values = safeVariables(variables);
   for (const key of REQUIRED_VARIABLES[templateId] ?? []) if (!(key in values)) throw new Error('missing email template variable: ' + key);
