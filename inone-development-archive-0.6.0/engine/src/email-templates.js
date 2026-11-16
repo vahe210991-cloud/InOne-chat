@@ -167,7 +167,8 @@ export function renderEmailTemplate(templateId, variables = {}, locale = 'hy') {
   if (!template) throw new Error('unknown email template');
   if (!SUPPORTED_EMAIL_LOCALES.has(locale)) throw new Error('unsupported email locale');
   const language = locale;
-  const [subject, render] = template[language] ?? template.hy;
+  const resolvedLocale = template[language] ? language : 'hy';
+  const [subject, render] = template[resolvedLocale];
   const values = safeVariables(variables);
   for (const key of REQUIRED_VARIABLES[templateId] ?? []) if (!(key in values)) throw new Error('missing email template variable: ' + key);
   if (templateId === 'backup_email_changed' && !['added', 'changed'].includes(values.action)) throw new Error('invalid email action');
@@ -178,14 +179,14 @@ export function renderEmailTemplate(templateId, variables = {}, locale = 'hy') {
     if (parsed.protocol !== 'https:' || !parsed.hostname || parsed.username || parsed.password || /[\r\n]/.test(values.url)) throw new Error('recovery URL must be a safe HTTPS URL');
   }
   if (templateId === 'recovery_cancelled' && !['code', 'device'].includes(values.method)) throw new Error('invalid recovery cancellation method');
-  const renderValues = templateId === 'stepup_code' ? { ...values, action: STEPUP_ACTION_LABELS[language][values.action] } : values;
+  const renderValues = templateId === 'stepup_code' ? { ...values, action: STEPUP_ACTION_LABELS[resolvedLocale][values.action] } : values;
   const text = render(renderValues);
   const ttlMs = ['registration_code', 'backup_email_verification', 'stepup_code'].includes(templateId)
     ? 10 * 60_000
     : ['recovery_login_code', 'recovery_code', 'recovery_confirmation_link'].includes(templateId)
       ? 60 * 60_000
       : ['new_device_wait', 'recovery_completed'].includes(templateId) ? 48 * 60 * 60_000 : 7 * 24 * 60 * 60_000;
-  const result = { subject, text, html: renderHtml({ subject, text, locale: language, templateId, variables: renderValues }), locale: language, templateId, templateVersion: 2, ttlMs };
+  const result = { subject, text, html: renderHtml({ subject, text, locale: resolvedLocale, templateId, variables: renderValues }), locale: resolvedLocale, templateId, templateVersion: 2, ttlMs };
   if (result.html.length > 128 * 1024) throw new Error('email HTML exceeds size limit');
   return result;
 }
