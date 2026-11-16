@@ -9,6 +9,35 @@ import 'package:inone_mobile/core/network/api_exception.dart';
 import 'package:inone_mobile/core/session/inone_session.dart';
 
 void main() {
+  test('login forwards an identity verification code to the backend', () async {
+    final httpClient = MockClient((request) async {
+      expect(request.method, 'POST');
+      expect(request.url.path, '/login');
+      final body = jsonDecode(request.body) as Map<String, dynamic>;
+      expect(body['identityCode'], '123456');
+      return http.Response(
+        jsonEncode({'status': 'identity_check_required'}),
+        202,
+        headers: {'content-type': 'application/json'},
+      );
+    });
+    final session = InOneSession(
+      baseUrl: 'https://api.inone.test',
+      httpClient: httpClient,
+      readDeviceId: () async => 'device-1',
+      writeDeviceId: (_) async {},
+    );
+
+    final result = await session.login(
+      email: 'alice@example.test',
+      password: 'not-used-in-test',
+      identityCode: ' 123456 ',
+    );
+
+    expect(result['status'], 'identity_check_required');
+    session.dispose();
+  });
+
   test('concurrent initialize calls share one device identity creation', () async {
     final readGate = Completer<String?>();
     var readCalls = 0;
