@@ -716,6 +716,27 @@ export function createStore({ pool, pinPepper }) {
       });
     },
 
+    async recoveryUpdateWithOutbox(userId, change, enqueue) {
+      return inTransaction(async (c) => {
+        const acc = await c.query('SELECT 1 FROM accounts WHERE user_id = $1', [userId]);
+        if (acc.rows.length === 0) return change(freshRecovery()).result;
+        await c.query('INSERT INTO recovery (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING', [userId]);
+        const { rows } = await c.query('SELECT * FROM recovery WHERE user_id = $1 FOR UPDATE', [userId]);
+        const { next, result } = change(fromRecoveryRow(rows[0]));
+        await c.query(
+          `UPDATE recovery SET req_status = $2, req_started_at = $3, req_expires_at = $4, req_code_hash = $5,
+             req_attempts = $6, window_started_at = $7, window_key_reset_at = $8, window_previous_hash = $9,
+             identity_check = $10, identity_code_hash = $11, identity_attempts = $12, locked_until = $13, starts = $14, req_link_hash = $15, req_link_confirmed = $16
+           WHERE user_id = $1`,
+          [userId, next.reqStatus, next.reqStartedAt, next.reqExpiresAt, next.reqCodeHash, next.reqAttempts,
+           next.windowStartedAt, next.windowKeyResetAt, next.windowPreviousHash, next.identityCheck,
+           next.identityCodeHash, next.identityAttempts, next.lockedUntil, JSON.stringify(next.starts), next.reqLinkHash, next.reqLinkConfirmed],
+        );
+        if (enqueue) await enqueue(c, result);
+        return result;
+      });
+    },
+
     /** Только хэши кодов и статусы: для снимка состояния в тестах. */
     async recoveryHashes() {
       const { rows } = await pool.query('SELECT user_id, req_status, req_code_hash FROM recovery WHERE req_code_hash IS NOT NULL');
@@ -1522,6 +1543,26 @@ async mlsPendingRemovalsFor(userId) {
            WHERE email = $1`,
           [email, next.codeHash, next.codeAttempts, next.codeExpiresAt, next.tokenHash, next.tokenExpiresAt],
         );
+        return result;
+      });
+    },
+
+    async emailCodeUpdateWithOutbox(email, change, enqueue) {
+      return inTransaction(async (c) => {
+        await c.query('INSERT INTO email_codes (email) VALUES ($1) ON CONFLICT (email) DO NOTHING', [email]);
+        const { rows } = await c.query('SELECT * FROM email_codes WHERE email = $1 FOR UPDATE', [email]);
+        const r = rows[0];
+        const current = {
+          codeHash: r.code_hash, codeAttempts: r.code_attempts, codeExpiresAt: Number(r.code_expires_at),
+          tokenHash: r.token_hash, tokenExpiresAt: Number(r.token_expires_at),
+        };
+        const { next, result } = change(current);
+        await c.query(
+          `UPDATE email_codes SET code_hash = $2, code_attempts = $3, code_expires_at = $4, token_hash = $5, token_expires_at = $6
+           WHERE email = $1`,
+          [email, next.codeHash, next.codeAttempts, next.codeExpiresAt, next.tokenHash, next.tokenExpiresAt],
+        );
+        if (enqueue) await enqueue(c, result);
         return result;
       });
     },
