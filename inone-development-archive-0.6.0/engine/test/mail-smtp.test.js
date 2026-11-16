@@ -19,7 +19,7 @@ function decodedMimeBodies(raw) {
     if (separator < 0) return '';
     const headers = part.slice(0, separator);
     const body = part.slice(separator + 4).trim();
-    if (/Content-Transfer-Encoding: base64/i.test(headers)) return Buffer.from(body.replace(/\\s+/g, ''), 'base64').toString('utf8');
+    if (/Content-Transfer-Encoding: base64/i.test(headers)) return Buffer.from(body.replace(/\s+/g, ''), 'base64').toString('utf8');
     return body;
   }).join('\n');
 }
@@ -58,7 +58,7 @@ test('письмо с кодом уходит через SMTP и содержи�
     const decoded = decodedMimeBodies(smtp.received[0].raw);
     assert.match(decoded, /482913/);
     assert.match(decoded, /Ձեր կոդը/);
-    assert.match(smtp.received[0].raw, /multipart\\/alternative/i);
+    assert.match(smtp.received[0].raw, /multipart\/alternative/i);
     mailer.close();
   } finally {
     await smtp.stop();
