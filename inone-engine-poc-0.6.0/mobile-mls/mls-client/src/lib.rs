@@ -996,11 +996,38 @@ fn build_client(agent: ureq::Agent, base: &str, tokens: SessionTokens, user_id: 
            UNIQUE (room_id, target_user_id)
          );
          CREATE TABLE IF NOT EXISTS client_processed (event_id TEXT PRIMARY KEY);
-         CREATE TABLE IF NOT EXISTS client_inbox (seq INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL UNIQUE, room_id TEXT NOT NULL, kind TEXT NOT NULL, body TEXT, acknowledged INTEGER NOT NULL DEFAULT 0);
-         CREATE TABLE IF NOT EXISTS client_outbox (local_id TEXT PRIMARY KEY, room_id TEXT NOT NULL, body TEXT NOT NULL, seq INTEGER NOT NULL);
+         CREATE TABLE IF NOT EXISTS client_inbox (seq INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL UNIQUE, room_id TEXT NOT NULL, kind TEXT NOT NULL, body TEXT, acknowledged INTEGER NOT NULL DEFAULT 0, client_message_id TEXT);
+         CREATE TABLE IF NOT EXISTS client_outbox (local_id TEXT PRIMARY KEY, room_id TEXT NOT NULL, body TEXT NOT NULL, seq INTEGER NOT NULL, mls_message BLOB, mls_epoch INTEGER);
          CREATE TABLE IF NOT EXISTS client_remote_config (id INTEGER PRIMARY KEY CHECK (id = 1), etag TEXT NOT NULL, body TEXT NOT NULL, fetched_at INTEGER NOT NULL);",
     )
     .map_err(text)?;
+    let inbox_columns = {
+        let mut statement = meta.prepare("PRAGMA table_info(client_inbox)").map_err(text)?;
+        let rows = statement.query_map([], |row| row.get::<_, String>(1)).map_err(text)?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(text)?
+    };
+    if !inbox_columns.iter().any(|column| column == "client_message_id") {
+        meta.execute("ALTER TABLE client_inbox ADD COLUMN client_message_id TEXT", [])
+            .map_err(text)?;
+    }
+    meta.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS client_inbox_client_message_id
+         ON client_inbox (client_message_id) WHERE client_message_id IS NOT NULL",
+        [],
+    ).map_err(text)?;
+    let outbox_columns = {
+        let mut statement = meta.prepare("PRAGMA table_info(client_outbox)").map_err(text)?;
+        let rows = statement.query_map([], |row| row.get::<_, String>(1)).map_err(text)?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(text)?
+    };
+    if !outbox_columns.iter().any(|column| column == "mls_message") {
+        meta.execute("ALTER TABLE client_outbox ADD COLUMN mls_message BLOB", [])
+            .map_err(text)?;
+    }
+    if !outbox_columns.iter().any(|column| column == "mls_epoch") {
+        meta.execute("ALTER TABLE client_outbox ADD COLUMN mls_epoch INTEGER", [])
+            .map_err(text)?;
+    }
     let serialized_tokens = Zeroizing::new(
         serde_json::to_vec(&(&tokens.0, &tokens.1)).map_err(text)?,
     );
