@@ -14,14 +14,14 @@ const FROM = 'InOne <noreply@inone.example>';
 
 /** Decode text MIME alternatives from Nodemailer test capture. */
 function decodedMimeBodies(raw) {
-  return raw.split(/\\r\\n--[^\\r\\n]+(?:--)?\\r\\n/g).map((part) => {
-    const separator = part.indexOf('\\r\\n\\r\\n');
+  return raw.split(/\r\n--[^\r\n]+(?:--)?\r\n/g).map((part) => {
+    const separator = part.indexOf('\r\n\r\n');
     if (separator < 0) return '';
     const headers = part.slice(0, separator);
     const body = part.slice(separator + 4).trim();
     if (/Content-Transfer-Encoding: base64/i.test(headers)) return Buffer.from(body.replace(/\\s+/g, ''), 'base64').toString('utf8');
     return body;
-  }).join('\\n');
+  }).join('\n');
 }
 
 function startSmtp() {
