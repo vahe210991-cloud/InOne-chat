@@ -25,6 +25,8 @@ class InOneSession extends ChangeNotifier {
     Future<void> Function()? deleteMlsUserId,
     Future<String?> Function()? readLocale,
     Future<void> Function(String)? writeLocale,
+    Future<String?> Function()? readLocaleSyncPending,
+    Future<void> Function(bool)? writeLocaleSyncPending,
   })  : _httpClient = httpClient,
         _nativeMlsBridge = nativeMlsBridge,
         _readDeviceId = readDeviceId ?? (() => _storage.read(key: _deviceIdKey)),
@@ -37,11 +39,16 @@ class InOneSession extends ChangeNotifier {
             (() => _storage.delete(key: _mlsUserIdKey)),
         _readLocale = readLocale ?? (() => _storage.read(key: _localeKey)),
         _writeLocale = writeLocale ??
-            ((value) => _storage.write(key: _localeKey, value: value));
+            ((value) => _storage.write(key: _localeKey, value: value)),
+        _readLocaleSyncPending = readLocaleSyncPending ??
+            (() => _storage.read(key: _localePendingKey)),
+        _writeLocaleSyncPending = writeLocaleSyncPending ??
+            ((value) => _storage.write(key: _localePendingKey, value: value ? 'true' : 'false'));
 
   static const _deviceIdKey = 'inone.device_id';
   static const _mlsUserIdKey = 'inone.mls_user_id';
   static const _localeKey = 'inone.app_locale';
+  static const _localePendingKey = 'inone.app_locale_pending';
   static const _storage = FlutterSecureStorage();
   static final _secureRandom = Random.secure();
 
@@ -55,6 +62,8 @@ class InOneSession extends ChangeNotifier {
   final Future<void> Function() _deleteMlsUserId;
   final Future<String?> Function() _readLocale;
   final Future<void> Function(String) _writeLocale;
+  final Future<String?> Function() _readLocaleSyncPending;
+  final Future<void> Function(bool) _writeLocaleSyncPending;
 
   String? _accessToken;
   String? _refreshToken;
@@ -63,7 +72,7 @@ class InOneSession extends ChangeNotifier {
   String? _savedMlsUserId;
   String? _registrationToken;
   String _locale = 'hy';
-  bool _localeWasExplicitlySelected = false;
+  bool _localeSyncPending = false;
   bool _localeSyncInFlight = false;
   Future<void>? _initializing;
   Future<void>? _adoptionInFlight;
@@ -118,9 +127,10 @@ class InOneSession extends ChangeNotifier {
     }
     _deviceId = id;
     final savedLocale = await _readLocale();
+    final pendingLocaleSync = await _readLocaleSyncPending();
+    _localeSyncPending = pendingLocaleSync == 'true';
     if (savedLocale != null && const ['hy', 'ru', 'en'].contains(savedLocale)) {
       _locale = savedLocale;
-      _localeWasExplicitlySelected = true;
     }
 
     final savedUserId = await _readMlsUserId();
@@ -248,10 +258,15 @@ class InOneSession extends ChangeNotifier {
       if (result['locale'] != locale) {
         throw const ApiException(code: 'locale_update_failed', statusCode: 502, retryable: true);
       }
+      await _writeLocale(locale);
+      await _writeLocaleSyncPending(false);
+      _localeSyncPending = false;
+    } else {
+      await _writeLocale(locale);
+      await _writeLocaleSyncPending(true);
+      _localeSyncPending = true;
     }
-    await _writeLocale(locale);
     _locale = locale;
-    _localeWasExplicitlySelected = true;
     notifyListeners();
   }
 
@@ -259,8 +274,10 @@ class InOneSession extends ChangeNotifier {
     if (!isAuthenticated || _localeSyncInFlight) return;
     _localeSyncInFlight = true;
     try {
-      if (_localeWasExplicitlySelected) {
+      if (_localeSyncPending) {
         await request('PATCH', '/profile/locale', body: {'locale': _locale});
+        await _writeLocaleSyncPending(false);
+        _localeSyncPending = false;
       } else {
         final profile = await request('GET', '/profile');
         final saved = profile['locale'];
@@ -271,7 +288,7 @@ class InOneSession extends ChangeNotifier {
         }
       }
     } catch (_) {
-      // Authentication remains usable; the next explicit locale change retries synchronization.
+      // Authentication remains usable; a pending local choice is retried on the next authenticated session sync.
     } finally {
       _localeSyncInFlight = false;
     }
