@@ -46,6 +46,7 @@ test('все почтовые шаблоны имеют HY/RU/EN вариант�
 
 test('неизвестный шаблон и недостающие переменные отклоняются', () => {
   assert.throws(() => renderEmailTemplate('unknown', {}), /unknown email template/);
+  assert.throws(() => renderEmailTemplate('registration_code', fixtures.registration_code, 'de'), /unsupported email locale/);
   assert.throws(() => renderEmailTemplate('registration_code', {}), /missing email template variable/);
 });
 
