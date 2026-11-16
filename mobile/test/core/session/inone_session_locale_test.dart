@@ -22,7 +22,7 @@ void main() {
       writeMlsUserId: (_) async {},
       deleteMlsUserId: () async {},
       readLocale: () async => savedLocale,
-      writeLocale: (value) async => savedLocale = value,
+      writeLocale: (value) async { savedLocale = value; },
     );
     try {
       await session.setLocale('ru');
