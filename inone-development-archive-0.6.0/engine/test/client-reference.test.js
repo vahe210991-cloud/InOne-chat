@@ -43,7 +43,7 @@ async function call(base, method, path, { body, token } = {}) {
 }
 
 async function registerByEmail(base, srv, email, nickname) {
-  await call(base, 'POST', '/register/email', { body: { email } });
+  await call(base, 'POST', '/register/email', { body: { email, locale: 'ru' } });
   const code = srv.mailbox(email).filter((m) => m.subject === 'Код подтверждения InOne').at(-1).text.match(/Код: (\d{6})/)[1];
   const confirmed = await call(base, 'POST', '/register/email/confirm', { body: { email, code } });
   return call(base, 'POST', '/register', { body: { email, registrationToken: confirmed.body.registrationToken, password: PW, nickname } });
@@ -119,7 +119,7 @@ test('C3: аккаунт с привязкой включает биометри
     const nonce = (await call(base, 'POST', '/auth/nonce')).body.nonce;
     const claims = { iss: 'https://accounts.google.com', aud: 'g-client.apps.googleusercontent.com', sub: 'google-sub-anna', email: 'anna@gmail.test', email_verified: true, nonce, iat: nowSec(), exp: nowSec() + 600 };
     const v = await call(base, 'POST', '/auth/provider/verify', { body: { provider: 'google', idToken: signToken(claims), nonce } });
-    const anna = (await call(base, 'POST', '/register/provider', { body: { ticket: v.body.ticket, nickname: 'Anna.G' } })).body;
+    const anna = (await call(base, 'POST', '/register/provider', { body: { ticket: v.body.ticket, nickname: 'Anna.G', locale: 'ru' } })).body;
     const token = (await call(base, 'POST', '/login', { body: { userId: anna.userId, proof: anna.proof, deviceId: 'ANNA_PHONE' } })).body.token;
     const client = new BiometricClient({ baseUrl: base, token, deviceId: 'ANNA_PHONE', userId: anna.userId });
     assert.equal(client.shouldOffer((await call(base, 'GET', '/profile', { token })).body), true, 'при первом входе через провайдера предлагаем включить');
