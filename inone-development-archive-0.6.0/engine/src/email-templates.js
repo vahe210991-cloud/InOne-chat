@@ -82,6 +82,33 @@ const REQUIRED_VARIABLES = {
   recovery_completed: ['cancelCode'],
 };
 
+const STEPUP_ACTION_LABELS = {
+  hy: {
+    'link-provider': 'Google կամ Apple հաշվի միացում',
+    'remove-provider': 'Google կամ Apple հաշվի անջատում',
+    'set-backup-email': 'պահուստային էլ․ փոստի ավելացում կամ փոփոխություն',
+    'remove-backup-email': 'պահուստային էլ․ փոստի հեռացում',
+    'enable-biometric': 'Face ID կամ Touch ID հաստատման միացում',
+    'disable-biometric': 'Face ID կամ Touch ID հաստատման անջատում',
+  },
+  ru: {
+    'link-provider': 'подключение аккаунта Google или Apple',
+    'remove-provider': 'отключение аккаунта Google или Apple',
+    'set-backup-email': 'добавление или изменение резервной почты',
+    'remove-backup-email': 'удаление резервной почты',
+    'enable-biometric': 'включение подтверждения Face ID или Touch ID',
+    'disable-biometric': 'отключение подтверждения Face ID или Touch ID',
+  },
+  en: {
+    'link-provider': 'linking a Google or Apple account',
+    'remove-provider': 'unlinking a Google or Apple account',
+    'set-backup-email': 'adding or changing the backup email',
+    'remove-backup-email': 'removing the backup email',
+    'enable-biometric': 'enabling Face ID or Touch ID confirmation',
+    'disable-biometric': 'disabling Face ID or Touch ID confirmation',
+  },
+};
+
 const COPY = {
   hy: { preheader: 'Անվտանգության ծանուցում ձեր InOne հաշվից', brand: 'Ձեր թվային տարածքը', footer: 'Այս նամակն ուղարկվել է ավտոմատ կերպով։ Խնդրում ենք չպատասխանել դրան։', security: 'Անվտանգության ծանուցում', action: 'Հաստատել հաշվի վերականգնումը', codeLabel: 'Հաստատման կոդ', expiry: 'Մի՛ փոխանցեք այս կոդը որևէ մեկին։', ignore: 'Եթե այս գործողությունը դուք չեք նախաձեռնել, կարող եք անտեսել այս նամակը։' },
   ru: { preheader: 'Уведомление безопасности вашего аккаунта InOne', brand: 'Ваше цифровое пространство', footer: 'Это автоматическое письмо. Пожалуйста, не отвечайте на него.', security: 'Уведомление безопасности', action: 'Подтвердить восстановление', codeLabel: 'Код подтверждения', expiry: 'Никому не сообщайте этот код.', ignore: 'Если вы не инициировали это действие, проигнорируйте письмо.' },
@@ -141,14 +168,16 @@ export function renderEmailTemplate(templateId, variables = {}, locale = 'hy') {
   const values = safeVariables(variables);
   for (const key of REQUIRED_VARIABLES[templateId] ?? []) if (!(key in values)) throw new Error('missing email template variable: ' + key);
   if (templateId === 'backup_email_changed' && !['added', 'changed'].includes(values.action)) throw new Error('invalid email action');
+  if (templateId === 'stepup_code' && !Object.hasOwn(STEPUP_ACTION_LABELS.hy, values.action)) throw new Error('invalid step-up action');
   if (templateId === 'recovery_cancelled' && !['code', 'device'].includes(values.method)) throw new Error('invalid recovery cancellation method');
-  const text = render(values);
+  const renderValues = templateId === 'stepup_code' ? { ...values, action: STEPUP_ACTION_LABELS[language][values.action] } : values;
+  const text = render(renderValues);
   const ttlMs = ['registration_code', 'backup_email_verification', 'stepup_code'].includes(templateId)
     ? 10 * 60_000
     : ['recovery_login_code', 'recovery_code', 'recovery_confirmation_link'].includes(templateId)
       ? 60 * 60_000
       : ['new_device_wait', 'recovery_completed'].includes(templateId) ? 48 * 60 * 60_000 : 7 * 24 * 60 * 60_000;
-  const result = { subject, text, html: renderHtml({ subject, text, locale: language, templateId, variables: values }), locale: language, templateId, templateVersion: 2, ttlMs };
+  const result = { subject, text, html: renderHtml({ subject, text, locale: language, templateId, variables: renderValues }), locale: language, templateId, templateVersion: 2, ttlMs };
   if (result.html.length > 128 * 1024) throw new Error('email HTML exceeds size limit');
   return result;
 }
