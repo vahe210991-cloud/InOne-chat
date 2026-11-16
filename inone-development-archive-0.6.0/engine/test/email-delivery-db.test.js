@@ -316,3 +316,25 @@ test('повреждённый AES-GCM payload переводится в dead le
     await db.close();
   }
 });
+
+test('profile locale and pending registration locale persist in PostgreSQL', async () => {
+  const db = await testDatabase();
+  const store = createStore({ pool: db.pool, pinPepper: 'email-locale-store-test-pepper-0123456789' });
+  try {
+    const created = await store.createVerifiedAccount({
+      userId: '@email-locale-db', passwordHash: 'password-hash', email: 'locale-db@example.test',
+      nickname: 'LocaleDb', nowMs: Date.now(), locale: 'ru',
+    });
+    assert.equal(created, 'ok');
+    assert.equal((await store.profileGet('@email-locale-db')).locale, 'ru');
+    assert.equal(await store.profileLocaleSet('@email-locale-db', 'en'), true);
+    assert.equal((await store.profileGet('@email-locale-db')).locale, 'en');
+    await store.emailCodeUpdateWithOutbox('pending-locale@example.test', () => ({
+      next: { codeHash: 'locale-code-hash', codeAttempts: 0, codeExpiresAt: Date.now() + 600_000, tokenHash: null, tokenExpiresAt: 0 },
+      result: null,
+    }), null, 'hy');
+    assert.equal((await db.pool.query("SELECT locale FROM email_codes WHERE email = 'pending-locale@example.test'")).rows[0].locale, 'hy');
+  } finally {
+    await db.close();
+  }
+});
