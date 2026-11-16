@@ -53,6 +53,22 @@ const CATALOG = {
   },
 };
 
+const REQUIRED_VARIABLES = {
+  registration_code: ['code'],
+  backup_email_verification: ['code'],
+  backup_email_changed: ['action'],
+  backup_email_removed: [],
+  stepup_code: ['code', 'action'],
+  old_devices_revoked: [],
+  recovery_login_code: ['code'],
+  new_device_wait: ['activateAt', 'code'],
+  recovery_code: ['code'],
+  recovery_requested: [],
+  recovery_confirmation_link: ['url'],
+  recovery_cancelled: ['method'],
+  recovery_completed: ['cancelCode'],
+};
+
 function safeVariables(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('email template variables must be an object');
   const result = {};
