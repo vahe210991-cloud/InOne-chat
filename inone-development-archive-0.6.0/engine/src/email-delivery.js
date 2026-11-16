@@ -27,7 +27,7 @@ function deriveSubkey(masterKey, purpose) {
 
 function encryptPayload(payload, payloadKey, idempotencyHash) {
   const iv = randomBytes(12);
-  const cipher = createCipheriv('aes-256-gcm', key, iv);
+  const cipher = createCipheriv('aes-256-gcm', payloadKey, iv);
   cipher.setAAD(Buffer.from(idempotencyHash, 'hex'));
   const plain = Buffer.from(JSON.stringify(payload), 'utf8');
   if (plain.length > MAX_PAYLOAD_BYTES) throw new Error('email payload exceeds size limit');
@@ -36,7 +36,7 @@ function encryptPayload(payload, payloadKey, idempotencyHash) {
 }
 
 function decryptPayload(row, payloadKey) {
-  const decipher = createDecipheriv('aes-256-gcm', key, row.payload_iv);
+  const decipher = createDecipheriv('aes-256-gcm', payloadKey, row.payload_iv);
   decipher.setAAD(Buffer.from(row.idempotency_key, 'hex'));
   decipher.setAuthTag(row.payload_tag);
   const plain = Buffer.concat([decipher.update(row.payload_ciphertext), decipher.final()]);
@@ -214,9 +214,9 @@ export function createEmailDelivery({
 
   async function enqueue(queryable, { to, subject, text, idempotencyKey, templateId, variables, locale = 'ru', expiresAt }) {
     if (stopping) throw new Error('email delivery is stopping');
-    if (typeof to !== 'string' || to.length < 3 || to.length > 320 || /[\\r\\n]/.test(to)) throw new Error('invalid email recipient');
+    if (typeof to !== 'string' || to.length < 3 || to.length > 320 || /[\r\n]/.test(to)) throw new Error('invalid email recipient');
     const rendered = templateId ? renderEmailTemplate(templateId, variables ?? {}, locale) : { subject, text, ttlMs: 24 * 60 * 60_000 };
-    if (typeof rendered.subject !== 'string' || rendered.subject.length < 1 || rendered.subject.length > 998 || /[\\r\\n]/.test(rendered.subject)) throw new Error('invalid email subject');
+    if (typeof rendered.subject !== 'string' || rendered.subject.length < 1 || rendered.subject.length > 998 || /[\r\n]/.test(rendered.subject)) throw new Error('invalid email subject');
     if (typeof rendered.text !== 'string' || rendered.text.length > MAX_PAYLOAD_BYTES) throw new Error('invalid email body');
     if (typeof idempotencyKey !== 'string' || idempotencyKey.length < 8 || idempotencyKey.length > 256) throw new Error('email idempotencyKey is required');
     const nowMs = Date.now();
