@@ -27,7 +27,7 @@ function fakeSmtp({ failReason = null } = {}) {
         error.reason = failReason;
         throw error;
       }
-      sent.push({ to: message.to, subject: message.subject, text: message.text });
+      sent.push({ to: message.to, subject: message.subject, text: message.text, html: message.html });
       return { messageId: 'test-message-id' };
     },
     close() { closed = true; },
@@ -53,7 +53,7 @@ test('очередь шифрует получателя и тело, дедуп
     const raw = (await db.pool.query('SELECT * FROM email_deliveries WHERE id = $1', [queued.deliveryId])).rows[0];
     const stored = JSON.stringify(raw);
     assert.ok(!stored.includes(payload.to));
-    assert.ok(!stored.includes('Код подтверждения InOne'));
+    assert.ok(!stored.includes('InOne հաշվի հաստատման կոդը'));
     assert.ok(!stored.includes(payload.variables.code));
     assert.notEqual(raw.idempotency_key.trim(), createHash('sha256').update('recovery-event-001').digest('hex'));
     const duplicate = await first.send({ ...payload, idempotencyKey: 'recovery-event-001' });
@@ -72,6 +72,8 @@ test('очередь шифрует получателя и тело, дедуп
     assert.equal(smtp2.sent.length, 1);
     assert.equal(smtp2.sent[0].to, payload.to);
     assert.match(smtp2.sent[0].text, /SECRET-CODE-771155/);
+    assert.match(smtp2.sent[0].html, /Noto Sans Armenian/);
+    assert.match(smtp2.sent[0].html, /SECRET-CODE-771155/);
     await recovered.stop();
     assert.equal(smtp2.closed, true);
   } finally {
