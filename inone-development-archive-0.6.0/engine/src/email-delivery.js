@@ -262,6 +262,13 @@ export function createEmailDelivery({
       } finally {
         clearInterval(leaseTimer);
         if (renewalInFlight) await renewalInFlight;
+        if (message) {
+          message.to = '';
+          message.subject = '';
+          message.text = '';
+          message.html = '';
+          message = null;
+        }
       }
     }
   }
