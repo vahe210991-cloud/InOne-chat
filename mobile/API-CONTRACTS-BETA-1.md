@@ -65,7 +65,7 @@ The v0.8 approval manifest contains 24 screen IDs (SC/RQ/PS/SR/ST). The Flutter 
 - Flutter persists the selected `hy`, `ru`, or `en` locale locally and sends it with `POST /register/email`.
 - The backend stores the pending registration locale with the email-code record, then copies it into the new profile when the one-time registration token is consumed.
 - `GET /profile` returns the saved locale. `PATCH /profile/locale` changes it for the authenticated account.
-- All account security emails use the profile locale at event creation; every recipient, including a backup address, receives the same account locale. The locale is frozen in the encrypted queue payload so later preference changes do not rewrite already queued mail.
+- Account-security emails for authenticated actions use the saved profile locale at event creation; every recipient, including a backup address, receives the same account locale. A successful password/provider login may include a pending local UI locale, which the backend persists after authentication and before queuing login-security email. Pre-auth recovery actions (`/recovery/start`, `/recovery/cancel-by-code`, `/recovery/complete`) carry the currently selected UI locale per event; this does not mutate the account preference. If those legacy clients omit locale, the saved profile locale is used. The locale is frozen in the encrypted queue payload so later preference changes do not rewrite already queued mail.
 
 ## 3. Authentication and authorization boundaries
 
