@@ -14,6 +14,8 @@ class InOneRepositories {
       session.request('GET', '/readyz', authenticated: false);
   Future<InOneProfile> profile() async =>
       InOneProfile.fromJson(await session.request('GET', '/profile'));
+  Future<Map<String, dynamic>> updateLocale(String locale) =>
+      session.request('PATCH', '/profile/locale', body: {'locale': locale});
   Future<List<InOneRoom>> myRooms() async =>
       InOneRoomList.fromJson(await session.request('GET', '/rooms/mine')).rooms;
   Future<Map<String, dynamic>> myOrganizations() =>
