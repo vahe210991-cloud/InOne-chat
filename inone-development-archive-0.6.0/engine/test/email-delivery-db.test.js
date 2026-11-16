@@ -322,14 +322,20 @@ test('ошибка продления lease не позволяет отмети
   let failNextRenewal = false;
   const key = randomBytes(32);
   const pool = {
-    connect: (...args) => db.pool.connect(...args),
-    query: (sql, params) => {
-      if (failNextRenewal && typeof sql === 'string' && sql.includes('SET locked_at = now()')) {
-        failNextRenewal = false;
-        return Promise.reject(Object.assign(new Error('temporary database outage'), { code: '08006' }));
-      }
-      return db.pool.query(sql, params);
+    async connect(...args) {
+      const client = await db.pool.connect(...args);
+      return {
+        query(sql, params) {
+          if (failNextRenewal && typeof sql === 'string' && sql.includes('SET locked_at = now()')) {
+            failNextRenewal = false;
+            return Promise.reject(Object.assign(new Error('temporary database outage'), { code: '08006' }));
+          }
+          return client.query(sql, params);
+        },
+        release: (...args) => client.release(...args),
+      };
     },
+    query: (sql, params) => db.pool.query(sql, params),
   };
   const firstSmtp = {
     send() {
