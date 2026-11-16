@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'mobile/**'
+      - 'inone-development-archive-0.6.0/engine/**'
       - '.github/workflows/flutter-mobile.yml'
   push:
     branches: [main, feature/stage-4-native-mls-runtime-2026-11-11]
