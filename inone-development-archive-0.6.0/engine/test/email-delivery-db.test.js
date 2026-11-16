@@ -350,10 +350,16 @@ test('ошибка продления lease не позволяет отмети
     leaseMs: 600, leaseRenewIntervalMs: 100,
   });
   const secondSmtp = fakeSmtp();
+  const secondEvents = [];
   const second = createEmailDelivery({
     pool: db.pool, smtpMailer: secondSmtp, encryptionKey: Buffer.from(key),
     workerId: 'lease-error-retry', pollIntervalMs: 250, batchSize: 1,
-    leaseMs: 600, leaseRenewIntervalMs: 100,
+    leaseMs: 300, leaseRenewIntervalMs: 100,
+    logger: {
+      info: (message, fields) => secondEvents.push({ level: 'info', message, fields }),
+      warn: (message, fields) => secondEvents.push({ level: 'warn', message, fields }),
+      error: (message, fields) => secondEvents.push({ level: 'error', message, fields }),
+    },
   });
   try {
     const queued = await first.send({
@@ -363,7 +369,6 @@ test('ошибка продления lease не позволяет отмети
     });
     first.start();
     await waitFor(() => smtpStarted);
-    second.start();
     failNextRenewal = true;
     await waitFor(() => !failNextRenewal);
     finishSmtp({ messageId: 'smtp-accepted-but-lease-uncertain' });
@@ -378,10 +383,19 @@ test('ошибка продления lease не позволяет отмети
 
     // Stop the first worker so it cannot reclaim its own uncertain lease.
     await first.stop();
-    await waitFor(async () => (await db.pool.query(
-      'SELECT status FROM email_deliveries WHERE id = $1',
-      [queued.deliveryId],
-    )).rows[0].status === 'sent', 5000);
+    second.start();
+    try {
+      await waitFor(async () => (await db.pool.query(
+        'SELECT status FROM email_deliveries WHERE id = $1',
+        [queued.deliveryId],
+      )).rows[0].status === 'sent', 5000);
+    } catch (error) {
+      const finalRow = (await db.pool.query(
+        'SELECT status, locked_by, last_error_code, attempts FROM email_deliveries WHERE id = $1',
+        [queued.deliveryId],
+      )).rows[0];
+      assert.fail(`retry worker did not complete delivery: ${JSON.stringify({ finalRow, secondEvents })}; ${error.message}`);
+    }
     assert.equal(secondSmtp.sent.length, 1);
   } finally {
     finishSmtp?.({ messageId: 'cleanup-message-id' });
