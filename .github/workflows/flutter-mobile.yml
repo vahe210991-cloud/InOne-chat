@@ -54,7 +54,8 @@ jobs:
       - name: Install Flutter Rust Bridge code generator
         run: cargo install --locked --version 2.13.0 flutter_rust_bridge_codegen
 
-      - name: Integrate and generate typed Dart bindings
+      - name: Integrate Native Assets for Flutter Rust bridge
+        timeout-minutes: 15
         env:
           RUST_LOG: debug
         run: |
@@ -72,7 +73,12 @@ jobs:
           cp "$RUNNER_TEMP/inone-main.dart" lib/main.dart
           cp "$RUNNER_TEMP/inone-api-mod.rs" rust/src/api/mod.rs
           rm -f rust/src/api/simple.rs lib/src/rust/api/simple.dart
-          flutter_rust_bridge_codegen generate --skip-fvm-install
+
+      - name: Generate typed Dart bindings
+        timeout-minutes: 15
+        env:
+          RUST_LOG: debug
+        run: flutter_rust_bridge_codegen generate --skip-fvm-install
 
       - name: Prepare Android NDK context for native secure storage
         run: node tool/prepare_android_mls.mjs
