@@ -200,6 +200,7 @@ test('I9: registration and security emails follow the persisted in-app language'
       assert.equal(changed.body.locale, changedLocale);
       assert.equal((await call(base, 'GET', '/profile', { token })).body.locale, changedLocale);
       assert.equal((await call(base, 'PATCH', '/profile/locale', { token, body: { locale: 'de' } })).status, 400);
+      assert.equal((await call(base, 'PATCH', '/profile/locale', { token, body: {} })).status, 400);
       await call(base, 'POST', '/recovery/start', { body: { email } });
       const recoveryMessages = srv.mailbox(email).slice(-2);
       assert.equal(recoveryMessages.length, 2);
