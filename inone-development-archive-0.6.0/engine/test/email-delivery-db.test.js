@@ -279,8 +279,8 @@ test('graceful shutdown закрывает SMTP и освобождает нез
     pollIntervalMs: 250, batchSize: 2, retryBaseMs: 100, retryMaxMs: 500,
   });
   try {
-    const first = await queue.send({ to: 'first@example.test', templateId: 'registration_code', variables: { code: 'ONE' }, idempotencyKey: 'shutdown-first-001' });
-    const second = await queue.send({ to: 'second@example.test', templateId: 'registration_code', variables: { code: 'TWO' }, idempotencyKey: 'shutdown-second-001' });
+    const first = await queue.send({ to: 'first@example.test', templateId: 'registration_code', variables: { code: 'ONE' }, locale: 'hy', idempotencyKey: 'shutdown-first-001' });
+    const second = await queue.send({ to: 'second@example.test', templateId: 'registration_code', variables: { code: 'TWO' }, locale: 'hy', idempotencyKey: 'shutdown-second-001' });
     queue.start();
     await waitFor(() => started);
     await queue.stop();
