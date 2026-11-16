@@ -33,9 +33,9 @@ export function createSmtpMailer({ host, port = 587, secure = false, requireTls 
     tls: { minVersion: 'TLSv1.2' },
   });
   return {
-    async send({ to, subject, text }) {
+    async send({ to, subject, text, html }) {
       try {
-        const info = await transport.sendMail({ from, to, subject, text });
+        const info = await transport.sendMail({ from, to, subject, text, html });
         logger?.info('mail sent', { messageId: info.messageId ?? null });
         return { messageId: info.messageId ?? null };
       } catch (error) {
