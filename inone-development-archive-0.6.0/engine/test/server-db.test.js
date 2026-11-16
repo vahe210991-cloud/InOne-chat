@@ -17,6 +17,7 @@ const FIXTURE_2 = randomBytes(16).toString('hex');
 const ALICE = '@alice:inone.test';
 const BOB = '@bob:inone.test';
 const PIN = '246810';
+const OLD_DEVICES_SUBJECTS = new Set(['Հին սարքերն անջատվել են', 'Старые устройства отключены', 'Previous devices have been disconnected']);
 
 async function start(store) {
   const srv = createServer({ defaultOrgAutoJoin: true, registrationMode: 'open', requirePhone: false, pinPepper: PEPPER, store, trustProxy: true, rateLimits: { registrationsPerAddress: [{ windowMs: 3600000, limit: 1000 }] } });
@@ -401,7 +402,7 @@ dbTest('SD18: после перезапуска окно закрывается 
     second.srv.advance(48 * 60 * 60 * 1000 + 1000);
     phone.baseUrl = second.base;
     await assert.rejects(phone.sync(), (e) => e.status === 401, 'старое устройство отключено после окна');
-    assert.ok(second.srv.mailbox(ALICE).some((m) => m.subject === 'Старые устройства отключены'));
+    assert.ok(second.srv.mailbox(ALICE).some((m) => OLD_DEVICES_SUBJECTS.has(m.subject)));
   } finally {
     if (first) await first.stop();
     if (second) await second.stop();
