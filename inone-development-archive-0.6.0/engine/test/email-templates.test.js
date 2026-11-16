@@ -35,6 +35,7 @@ test('все почтовые шаблоны имеют RU/EN варианты �
   assert.equal(renderEmailTemplate('registration_code', fixtures.registration_code).ttlMs, 10 * 60_000);
   assert.equal(renderEmailTemplate('recovery_code', fixtures.recovery_code).ttlMs, 60 * 60_000);
   assert.equal(renderEmailTemplate('new_device_wait', fixtures.new_device_wait).ttlMs, 48 * 60 * 60_000);
+  assert.equal(renderEmailTemplate('recovery_completed', fixtures.recovery_completed).ttlMs, 48 * 60 * 60_000);
 });
 
 test('неизвестный шаблон и недостающие переменные отклоняются', () => {
