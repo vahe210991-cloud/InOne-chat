@@ -24,5 +24,5 @@ const vectors = {
     { name: 'другой nonce: подпись не подходит', input: { ...input, nonce: 'Другой-nonce' }, signature },
   ],
 };
-writeFileSync(new URL('./vectors/biometric-vectors.json', import.meta.url), JSON.stringify(vectors, null, 2) + '\n');
+writeFileSync(new URL('./vectors/biometric-vectors.json', import.meta.url), JSON.stringify(vectors, null, 2) + String.fromCharCode(10));
 console.log('vectors written (public key and signatures only)');
