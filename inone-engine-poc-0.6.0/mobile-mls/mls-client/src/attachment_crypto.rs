@@ -115,6 +115,9 @@ pub fn parse_manifest(
     expected_file_id: &str,
     expected_room_id: &str,
 ) -> Result<AttachmentManifestV1, String> {
+    if payload.is_empty() || payload.len() > MAX_MANIFEST_SIZE {
+        return Err("attachment manifest exceeds the 4 KiB size limit".to_string());
+    }
     let mut guarded_value = ZeroizingJson(
         serde_json::from_slice(payload)
             .map_err(|_| "attachment manifest is not valid JSON".to_string())?
@@ -161,8 +164,9 @@ pub fn parse_manifest(
     let key_bytes = Zeroizing::new(
         B64.decode(encoded_key.as_bytes()).map_err(|_| "invalid attachment key encoding")?
     );
+    let encoded_nonce = Zeroizing::new(string("nonce")?);
     let nonce_bytes = Zeroizing::new(
-        B64.decode(string("nonce")?).map_err(|_| "invalid attachment nonce encoding")?
+        B64.decode(encoded_nonce.as_bytes()).map_err(|_| "invalid attachment nonce encoding")?
     );
     let key: [u8; AES256_KEY_LEN] = key_bytes.as_slice().try_into()
         .map_err(|_| "attachment key must be exactly 32 bytes")?;
@@ -279,6 +283,13 @@ mod tests {
         ).unwrap();
         assert!(parse_manifest(&payload, "file-2", "room-1").is_err());
         assert!(parse_manifest(&payload, "file-1", "room-2").is_err());
+    }
+
+    #[test]
+    fn oversized_manifest_is_rejected_before_json_parsing() {
+        let payload = vec![b' '; MAX_MANIFEST_SIZE + 1];
+        assert!(parse_manifest(&payload, "file-1", "room-1").is_err());
+        assert!(!is_attachment_manifest(&payload));
     }
 
     #[test]
