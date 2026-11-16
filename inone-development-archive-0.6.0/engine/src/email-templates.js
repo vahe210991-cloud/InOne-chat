@@ -162,7 +162,6 @@ function renderHtml({ subject, text, locale, templateId, variables }) {
   if (templateId === 'recovery_confirmation_link') {
     const safeUrl = safeRecoveryUrl(variables.url);
     if (safeUrl) {
-    if (safeUrl) {
       content += `<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:24px 0 8px;"><tr><td bgcolor="#C9F53F" style="border-radius:12px;"><a href="${escapeHtml(safeUrl)}" style="display:inline-block;padding:14px 22px;color:#171A14;text-decoration:none;font-family:'Noto Sans Armenian','Noto Sans',Arial,sans-serif;font-size:14px;font-weight:700;border-radius:12px;">${escapeHtml(copy.action)}</a></td></tr></table>`;
     }
   }
