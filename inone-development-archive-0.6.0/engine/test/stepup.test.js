@@ -68,7 +68,7 @@ const loginByEmail = async (base, email, deviceId) =>
 /** Аккаунт, созданный через Google: регистрация и данные для входа подтверждением провайдера. */
 async function newGoogleAccount(base) {
   const v = await providerSignIn(base, 'google', (n) => googleClaims(n));
-  return (await call(base, 'POST', '/register/provider', { body: { ticket: v.body.ticket, nickname: 'Anna.G' } })).body;
+  return (await call(base, 'POST', '/register/provider', { body: { ticket: v.body.ticket, nickname: 'Anna.G' , locale: 'ru'} })).body;
 }
 
 /** Сессия такого аккаунта: вход подтверждением провайдера. */
