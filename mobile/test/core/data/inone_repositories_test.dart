@@ -29,7 +29,7 @@ void main() {
   });
 
 
-  test('updates the authenticated profile locale', () async {
+  test('updates the authenticated profile locale through session persistence', () async {
     final session = _ProfileSession({'locale': 'en'});
     final result = await InOneRepositories(session).updateLocale('en');
 
@@ -37,6 +37,7 @@ void main() {
     expect(session.path, '/profile/locale');
     expect(session.authenticated, isTrue);
     expect(session.body, {'locale': 'en'});
+    expect(session.locale, 'en');
     expect(result['locale'], 'en');
     session.dispose();
   });
@@ -116,6 +117,20 @@ class _ProfileSession extends InOneSession {
   String? path;
   bool? authenticated;
   Object? body;
+  String _selectedLocale = 'hy';
+
+  @override
+  String get locale => _selectedLocale;
+
+  @override
+  Future<void> setLocale(String locale) async {
+    method = 'PATCH';
+    path = '/profile/locale';
+    authenticated = true;
+    body = {'locale': locale};
+    if (error != null) throw error!;
+    _selectedLocale = locale;
+  }
 
   @override
   Future<Map<String, dynamic>> request(
@@ -128,7 +143,7 @@ class _ProfileSession extends InOneSession {
     this.path = path;
     this.authenticated = authenticated;
     this.body = body;
-    if (error != null) throw error!
+    if (error != null) throw error!;
     return response;
   }
 }
