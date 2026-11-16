@@ -7,6 +7,13 @@ if (!fs.existsSync(infoPlist)) {
 }
 
 let source = fs.readFileSync(infoPlist, 'utf8');
+if (!source.includes('<key>FlutterDeepLinkingEnabled</key>')) {
+  const rootClose = source.lastIndexOf('</dict>');
+  if (rootClose < 0) throw new Error('Info.plist root dictionary is malformed');
+  source = source.slice(0, rootClose)
+    + '  <key>FlutterDeepLinkingEnabled</key>\\n  <true/>\\n'
+    + source.slice(rootClose);
+}
 if (!source.includes('<key>CFBundleURLTypes</key>')) {
   const rootClose = source.lastIndexOf('</dict>');
   if (rootClose < 0) throw new Error('Info.plist root dictionary is malformed');
