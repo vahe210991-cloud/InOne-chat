@@ -1,4 +1,5 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomInt } from 'node:crypto';
+import { renderEmailTemplate } from './email-templates.js';
 
 const MAX_PAYLOAD_BYTES = 256 * 1024;
 const LEASE_MS = 60_000;
@@ -166,7 +167,7 @@ export function createEmailDelivery({
   }
 
   return {
-    async send({ to, subject, text, idempotencyKey }) {
+    async send({ to, subject, text, idempotencyKey, templateId, variables, locale = 'ru' }) {
       if (stopping) throw new Error('email delivery is stopping');
       if (typeof to !== 'string' || to.length < 3 || to.length > 320 || /[\r\n]/.test(to)) throw new Error('invalid email recipient');
       if (typeof subject !== 'string' || subject.length < 1 || subject.length > 998 || /[\r\n]/.test(subject)) throw new Error('invalid email subject');
