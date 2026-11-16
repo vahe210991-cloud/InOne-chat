@@ -7,7 +7,7 @@
 **Repository:** `vahe210991-cloud/InOne-chat`  
 **Related architecture PR:** [#60](https://github.com/vahe210991-cloud/InOne-chat/pull/60)  
 **Backend source branch:** PR #61 head, stacked on PR #48  
-**Status:** audit completed; implementation BLOCKED pending owner-approved API contract and full working-copy/test capability.
+**Status:** source audit completed; owner approved API contract v1 on 2026-11-16; implementation workspace provisioning is currently blocked.
 
 ## 1. Audit scope and source selection
 
@@ -126,3 +126,13 @@ No server was started, no database was exposed, no deployment or merge was perfo
 - Database migrations: **NOT CREATED**.
 - API routes: **NOT CREATED**.
 - PR merge / deployment: **NOT PERFORMED**.
+
+
+## 7. Owner approval and implementation handoff — 2026-11-16
+
+- The owner approved API contract v1 as the implementation baseline. The contract document now records that approval and is no longer a draft requiring approval.
+- Explicitly unresolved operational values remain configuration/fail-closed gates; production quotas, retention values, image-provider selection and moderation authority must not be invented.
+- A dedicated Vercel Sandbox workspace was attempted in the connected Vercel team/project, but the Vercel API rejected both v4 and v3 sandbox creation with HTTP 400 `bad_request`. The repository is private, and the sandbox source API only accepts public Git sources or a pre-created private snapshot.
+- The available GitHub connector can read/write repository files and PR metadata but does not provide a full private-repository clone/archive transfer into an executable workspace. Partial GitHub file edits are not an acceptable substitute for the required full working copy for multi-file backend, store, schema and test changes.
+- No production source, migration or test code has been changed; no test execution or readiness claim is made.
+- Next required action: provision an authorized GitHub Codespace or another full working environment with access to the private repository at PR #61 head. Then create a feature branch, implement the control plane and sticker subsystem, and run the full Node/PostgreSQL/security suite on one exact SHA.
