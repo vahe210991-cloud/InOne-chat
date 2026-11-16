@@ -84,6 +84,10 @@ The API panel provides:
 
 Only the stable device identifier is persisted, using platform secure storage. Access and refresh tokens remain in memory and are never passed into WebView JavaScript.
 
+### In-app language and email locale
+
+The host provides an Armenian / Russian / English language selector. The selected locale is persisted in platform secure storage, sent with verified email registration, and synchronized to the authenticated profile through `PATCH /profile/locale`. On a fresh device, the stored profile locale is loaded after authentication. The backend uses this same locale for registration and all subsequent account-security emails; it does not derive mail language from the operating system.
+
 ### Personal profile API integration
 
 Selecting either approved personal-profile variant performs an authenticated `GET /profile` through the existing `InOneSession` and `InOneRepositories` path. The returned nickname, email, and verification level update the matching identity fields in the bundled original profile screen. The existing session remains the sole owner of access/refresh tokens and handles one refresh retry after a 401.
