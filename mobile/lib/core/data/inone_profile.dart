@@ -86,6 +86,7 @@ class InOneProfile {
       providers: List<String>.unmodifiable(providers.cast<String>()),
       backupEmail: parsedBackupEmail,
       securityHints: List<String>.unmodifiable(securityHints.cast<String>()),
+      locale: locale,
     );
   }
 }
