@@ -379,10 +379,10 @@ void main() {
     expect(logoutCalls, 1);
     expect(refreshCalls, 0);
     expect(bridge.closeCalls, 1);
-    expect(bridge.purgeCalls, 0, 'a failed open must not destroy an existing encrypted database');
+    expect(bridge.purgeCalls, 0, reason: 'a failed open must not destroy an existing encrypted database');
     expect(deletedUserId, isTrue);
     await expectLater(session.request('GET', '/protected'), throwsA(anything));
-    expect(refreshCalls, 0, 'Dart must never rotate the refresh token after failed MLS handoff');
+    expect(refreshCalls, 0, reason: 'Dart must never rotate the refresh token after failed MLS handoff');
     session.dispose();
   });
 }
