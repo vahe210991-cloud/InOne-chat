@@ -330,32 +330,36 @@ class InOneSession extends ChangeNotifier {
   Future<Map<String, dynamic>> cancelRecoveryByCode({
     required String email,
     required String code,
-  }) =>
-      request(
-        'POST',
-        '/recovery/cancel-by-code',
-        authenticated: false,
-        body: {'email': email.trim(), 'code': code.trim(), 'locale': _locale},
-      );
+  }) async {
+    await initialize();
+    return request(
+      'POST',
+      '/recovery/cancel-by-code',
+      authenticated: false,
+      body: {'email': email.trim(), 'code': code.trim(), 'locale': _locale},
+    );
+  }
 
   Future<Map<String, dynamic>> completeRecovery({
     required String email,
     required String code,
     required String newPassword,
     String? pin,
-  }) =>
-      request(
-        'POST',
-        '/recovery/complete',
-        authenticated: false,
-        body: {
-          'email': email.trim(),
-          'code': code.trim(),
-          'newPassword': newPassword,
-          if (pin != null && pin.isNotEmpty) 'pin': pin,
-          'locale': _locale,
-        },
-      );
+  }) async {
+    await initialize();
+    return request(
+      'POST',
+      '/recovery/complete',
+      authenticated: false,
+      body: {
+        'email': email.trim(),
+        'code': code.trim(),
+        'newPassword': newPassword,
+        if (pin != null && pin.isNotEmpty) 'pin': pin,
+        'locale': _locale,
+      },
+    );
+  }
 
   Future<Map<String, dynamic>> confirmEmailRegistration({
     required String email,
