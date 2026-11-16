@@ -2,7 +2,6 @@ name: Validate recovered InOne P0 source
 
 on:
   pull_request:
-    branches: [main]
     paths:
       - "inone-development-archive-0.6.0/engine/**"
       - ".github/workflows/validate-published-p0.yml"
