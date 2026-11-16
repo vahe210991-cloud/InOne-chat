@@ -11,8 +11,9 @@ on:
       - 'mobile/**'
       - '.github/workflows/flutter-mobile.yml'
 
+# Pull request code is untrusted; this workflow only validates generated assets.
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: flutter-mobile-${{ github.event.pull_request.number || github.ref }}
@@ -36,10 +37,39 @@ jobs:
           channel: stable
           cache: true
       - run: flutter --version
+      - name: Verify original 73-screen test gallery before code generation
+        run: node tool/verify_test_gallery.mjs
       - name: Generate Android and iOS platform projects
         run: flutter create --platforms=android,ios --project-name inone_mobile --org com.inone .
       - name: Remove generated template test
         run: rm -f test/widget_test.dart
+
+      - name: Install Rust toolchain and Android targets
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.91.0"
+          components: rustfmt
+          targets: "aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android"
+
+      - name: Install Flutter Rust Bridge code generator
+        run: cargo install --locked --version 2.13.0 flutter_rust_bridge_codegen
+
+      - name: Integrate and generate typed Dart bindings
+        run: |
+          cp lib/main.dart "$RUNNER_TEMP/inone-main.dart"
+          cp rust/src/api/mod.rs "$RUNNER_TEMP/inone-api-mod.rs"
+          flutter_rust_bridge_codegen integrate \
+            --rust-crate-dir rust \
+            --rust-crate-name inone_mls_frb \
+            --integration-backend native-assets \
+            --platforms android,ios
+          cp "$RUNNER_TEMP/inone-main.dart" lib/main.dart
+          cp "$RUNNER_TEMP/inone-api-mod.rs" rust/src/api/mod.rs
+          rm -f rust/src/api/simple.rs lib/src/rust/api/simple.dart
+          flutter_rust_bridge_codegen generate
+
+      - name: Prepare Android NDK context for native secure storage
+        run: node tool/prepare_android_mls.mjs
       - name: Verify approved cross-platform screen geometry
         run: node tool/verify_approved_html.mjs
       - name: Fetch and verify owner UI archive
@@ -85,16 +115,12 @@ jobs:
             find mobile/assets/ui-approval -type f -name '*.woff2' -print
             exit 1
           fi
-          git add mobile/assets/ui-approval
-          if ! git diff --cached --quiet; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git commit -m "feat(ui): import owner-approved UI source assets"
-            git push origin HEAD:task/ui-archive-import-2026-11-09
-          fi
-      - name: Verify original 73-screen test gallery
-        run: node tool/verify_test_gallery.mjs
+          # Generated UI assets stay in this ephemeral runner workspace; never push from pull_request.
       - run: flutter pub get
+      - name: Generate Rust lockfile and validate native bridge
+        run: |
+          cargo generate-lockfile --manifest-path rust/Cargo.toml
+          cargo test --locked --manifest-path rust/Cargo.toml
       - run: flutter analyze
       - run: flutter test
       - name: Build Android preview APK
