@@ -242,6 +242,7 @@ class InOneSession extends ChangeNotifier {
     if (!const ['hy', 'ru', 'en'].contains(locale)) {
       throw ArgumentError.value(locale, 'locale', 'Supported locales: hy, ru, en');
     }
+    await initialize();
     if (isAuthenticated) {
       final result = await request('PATCH', '/profile/locale', body: {'locale': locale});
       if (result['locale'] != locale) {
