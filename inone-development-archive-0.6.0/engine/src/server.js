@@ -250,14 +250,6 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
   // Подтверждение действий над провайдерами (этап 2, решения владельца): пока пароль активен — пароль;
   // после привязки Google или Apple пароль отключён полностью — подтверждение кодом с почты, привязанным к действию.
   const STEPUP_ACTIONS = ['link-provider', 'remove-provider', 'set-backup-email', 'remove-backup-email', 'enable-biometric', 'disable-biometric'];
-  const stepupActionText = {
-    'link-provider': 'привязка аккаунта Google или Apple',
-    'remove-provider': 'отвязка аккаунта Google или Apple',
-    'set-backup-email': 'добавление или смена запасной почты',
-    'remove-backup-email': 'удаление запасной почты',
-    'enable-biometric': 'включение подтверждения Face ID или Touch ID',
-    'disable-biometric': 'отключение подтверждения Face ID или Touch ID',
-  };
   const stepupKey = (userId) => `stepup|${userId}`;
   const stepupCodeHash = (userId, action, code) => keyedHash(pinPepper, `stepup-code:${userId}:${action}`, code);
   const stepupTokenHash = (userId, action, token) => keyedHash(pinPepper, `stepup-token:${userId}:${action}`, token);
@@ -830,7 +822,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         await storage.emailCodeUpdateWithOutbox(stepupKey(d.userId), (e) => ({
           next: requestEmailCode(e, { nowMs: now(), codeHash: stepupCodeHash(d.userId, action, code) }),
           result: null,
-        }), (tx) => mailTo(recipient, 'Подтверждение действия в InOne', '', null, 'stepup_code', { code, action: stepupActionText[action] }, 'hy', tx));
+        }), (tx) => mailTo(recipient, 'Подтверждение действия в InOne', '', null, 'stepup_code', { code, action }, 'hy', tx));
         return send(res, 202, { ok: true });
       }
 
