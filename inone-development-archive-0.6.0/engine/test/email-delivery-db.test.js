@@ -47,6 +47,7 @@ test('очередь шифрует получателя и тело, дедуп
   const payload = { to: 'private-recipient@example.test', templateId: 'registration_code', variables: { code: 'SECRET-CODE-771155' }, locale: 'ru' };
   try {
     await assert.rejects(first.send({ to: payload.to, subject: 'Raw', text: 'body', idempotencyKey: 'raw-message-001' }), /templateId is required/);
+    await assert.rejects(first.send({ to: payload.to, templateId: 'registration_code', variables: { code: '123456' }, idempotencyKey: 'missing-locale-001' }), /email locale is required/);
     const queued = await first.send({ ...payload, idempotencyKey: 'recovery-event-001' });
     assert.equal(queued.queued, true);
     assert.equal(queued.duplicate, false);
