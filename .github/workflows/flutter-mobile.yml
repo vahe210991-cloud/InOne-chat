@@ -32,6 +32,53 @@ jobs:
         with:
           # Validate the complete stacked PR result, including its current base branch.
           ref: ${{ github.sha }}
+      - name: Verify original 73-screen test gallery
+        run: node tool/verify_test_gallery.mjs
+      - name: Verify owner-approved HTML baseline
+        run: node tool/verify_approved_html.mjs
+      - name: Fetch and verify owner UI archive
+        working-directory: .
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git show origin/main:Ui.zip > "${RUNNER_TEMP}/Ui.zip"
+          actual="$(sha256sum "${RUNNER_TEMP}/Ui.zip" | cut -d' ' -f1)"
+          expected="cdff61b36673d45332f4809c5a42f1978e715adb3e4dcf280c96d92f3aa758bb"
+          echo "Ui.zip SHA-256: $actual"
+          test "$actual" = "$expected" || { echo "::error::Ui.zip SHA-256 mismatch"; exit 1; }
+          unzip -t "${RUNNER_TEMP}/Ui.zip"
+      - name: Extract nested UI package and import Flutter assets
+        working-directory: .
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/ui-outer" "${RUNNER_TEMP}/ui-inner"
+          unzip -q "${RUNNER_TEMP}/Ui.zip" -d "${RUNNER_TEMP}/ui-outer"
+          inner="$(find "${RUNNER_TEMP}/ui-outer" -type f -name 'ui-approval.zip' -print -quit)"
+          test -n "$inner" || { echo "::error::Nested ui-approval.zip not found"; exit 1; }
+          unzip -t "$inner"
+          unzip -q "$inner" -d "${RUNNER_TEMP}/ui-inner"
+          manifest="$(find "${RUNNER_TEMP}/ui-inner" -type f -name 'screen-manifest.json' -print -quit)"
+          test -n "$manifest" || { echo "::error::screen-manifest.json not found"; exit 1; }
+          node mobile/tool/import_ui_approval.mjs "$(dirname "$manifest")"
+          screen_count="$(find mobile/assets/ui-approval/screens -type f -name '*.html' | wc -l | tr -d ' ')"
+          html_count="$(find mobile/assets/ui-approval -type f -name '*.html' | wc -l | tr -d ' ')"
+          font_count="$(find mobile/assets/ui-approval -type f -name '*.woff2' | wc -l | tr -d ' ')"
+          echo "Imported screen HTML files: $screen_count (expected 31)"
+          echo "Total HTML files including package index: $html_count (expected 32)"
+          echo "Imported WOFF2 fonts: $font_count (expected 5)"
+          if [ "$screen_count" -ne 31 ] || [ "$html_count" -ne 32 ]; then
+            echo "::error::Unexpected HTML file count (screens=$screen_count, total=$html_count)"
+            find mobile/assets/ui-approval -type f -name '*.html' -print
+            exit 1
+          fi
+          if [ "$font_count" -ne 5 ]; then
+            echo "::error::Expected exactly 5 WOFF2 fonts, found $font_count"
+            find mobile/assets/ui-approval -type f -name '*.woff2' -print
+            exit 1
+          fi
+          # Generated UI assets stay in this ephemeral runner workspace; never push from pull_request.
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.47.9'
