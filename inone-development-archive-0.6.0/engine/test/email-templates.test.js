@@ -61,7 +61,7 @@ test('step-up action names are localized from stable action identifiers', () => 
   assert.throws(() => renderEmailTemplate('stepup_code', { code: '482913', action: 'untrusted text' }, 'hy'), /invalid step-up action/);
 });
 
-test('HTML templates escape untrusted variables and only render HTTPS recovery actions', () => {
+test('HTML templates escape untrusted variables and allow HTTPS or loopback-only recovery actions', () => {
   const injected = renderEmailTemplate('stepup_code', { code: '<img src=x onerror=alert(1)>', action: 'remove-provider' }, 'hy');
   assert.ok(!injected.html.includes('<img src=x'));
   assert.ok(injected.html.includes('&lt;img src=x onerror=alert(1)&gt;'));
@@ -72,4 +72,7 @@ test('HTML templates escape untrusted variables and only render HTTPS recovery a
   const safeUrl = renderEmailTemplate('recovery_confirmation_link', { url: 'https://inone.example/confirm?token=a%26b' }, 'hy');
   assert.ok(safeUrl.html.includes('href="https://inone.example/confirm?token=a%26b"'));
   assert.ok(safeUrl.html.includes('Հաստատել հաշվի վերականգնումը'));
+  const localUrl = renderEmailTemplate('recovery_confirmation_link', { url: 'http://localhost:8080/recovery/confirm?token=local' }, 'ru');
+  assert.ok(localUrl.html.includes('href="http://localhost:8080/recovery/confirm?token=local"'));
+  assert.throws(() => renderEmailTemplate('recovery_confirmation_link', { url: 'http://external.example/recovery' }, 'hy'), /safe HTTPS URL/);
 });
