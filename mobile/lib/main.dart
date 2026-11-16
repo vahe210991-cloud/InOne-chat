@@ -355,6 +355,17 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
     ''');
   }
 
+  Future<void> _persistLocale(String locale) async {
+    try {
+      await _session.setLocale(locale);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось сохранить язык интерфейса')),
+      );
+    }
+  }
+
   void _onSessionChanged() {
     final locale = _session.locale;
     if (locale != _lastSelectedLocale) {
@@ -651,11 +662,7 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
             PopupMenuButton<String>(
               tooltip: 'Язык интерфейса',
               initialValue: _session.locale,
-              onSelected: (locale) => unawaited(_session.setLocale(locale).catchError((Object error) {
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Не удалось сохранить язык интерфейса')),
-                );
-              })),
+              onSelected: (locale) => unawaited(_persistLocale(locale)),
               itemBuilder: (_) => const [
                 PopupMenuItem(value: 'hy', child: Text('Հայերեն')),
                 PopupMenuItem(value: 'ru', child: Text('Русский')),
