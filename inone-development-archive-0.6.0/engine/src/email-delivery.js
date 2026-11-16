@@ -10,7 +10,13 @@ export function parseEmailEncryptionKey(value) {
   if (typeof value !== 'string' || value.length === 0) throw new Error('INONE_EMAIL_ENCRYPTION_KEY is required');
   let key;
   if (/^[a-f0-9]{64}$/i.test(value)) key = Buffer.from(value, 'hex');
-  else key = Buffer.from(value, 'base64');
+  else {
+    const decoded = Buffer.from(value, 'base64');
+    if (!/^[A-Za-z0-9+/]+={0,2}$/.test(value) || decoded.toString('base64').replace(/=+$/, '') !== value.replace(/=+$/, '')) {
+      throw new Error('INONE_EMAIL_ENCRYPTION_KEY must be valid base64');
+    }
+    key = decoded;
+  }
   if (key.length !== 32) throw new Error('INONE_EMAIL_ENCRYPTION_KEY must decode to exactly 32 bytes');
   return key;
 }
@@ -76,8 +82,8 @@ export function createEmailDelivery({
            WHERE (status = 'queued' AND available_at <= now() AND expires_at > now())
               OR (status = 'processing' AND locked_at < now() - ($2::double precision * interval '1 millisecond') AND expires_at > now())
            ORDER BY available_at, id
-           FOR UPDATE SKIP LOCKED
            LIMIT $1
+           FOR UPDATE SKIP LOCKED
          )
          UPDATE email_deliveries AS e
          SET status = 'processing', attempts = e.attempts + 1,
