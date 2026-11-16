@@ -4,6 +4,8 @@ import { randomBytes } from 'node:crypto';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from '../src/server.js';
+import { createMemoryStore } from '../src/store-memory.js';
+import { hashPassword } from '../src/account-rules.js';
 import { freshEmailCode, requestEmailCode, checkEmailCode, useEmailToken } from '../src/email-code-rules.js';
 
 const PEPPER = randomBytes(24).toString('hex');
@@ -208,6 +210,78 @@ test('I9: registration and security emails follow the persisted in-app language'
     }
     assert.equal((await call(base, 'POST', '/register/email', { body: { email: 'invalid-locale@example.test', locale: 'de' } })).status, 400);
     assert.equal((await call(base, 'PATCH', '/profile/locale', { body: { locale: 'de' } })).status, 401);
+  } finally {
+    await stop();
+  }
+});
+
+
+test('I10: login locale is persisted before identity-check security email is queued', async () => {
+  const store = createMemoryStore({ pinPepper: PEPPER });
+  store.createVerifiedAccount({
+    userId: '@login-locale', passwordHash: hashPassword(PW), email: 'login-locale@example.test',
+    nickname: 'LoginLocale', nowMs: Date.now(), locale: 'hy',
+  });
+  store.recoveryUpdate('@login-locale', (current) => ({
+    next: { ...current, identityCheck: true },
+    result: null,
+  }));
+  const { srv, base, stop } = await start({ store });
+  try {
+    const login = await call(base, 'POST', '/login', {
+      body: { email: 'login-locale@example.test', password: PW, deviceId: 'LOGIN_LOCALE_DEVICE', locale: 'ru' },
+    });
+    assert.equal(login.status, 202);
+    assert.equal(login.body.status, 'identity_check_required');
+    const message = srv.mailbox('login-locale@example.test').at(-1);
+    assert.ok(message);
+    assert.match(message.html, /<html lang="ru">/);
+    assert.equal(store.profileGet('@login-locale').locale, 'ru');
+  } finally {
+    await stop();
+  }
+});
+
+test('I11: unauthenticated recovery emails follow the active UI locale without changing profile preference', async () => {
+  const store = createMemoryStore({ pinPepper: PEPPER });
+  store.createVerifiedAccount({
+    userId: '@recovery-locale', passwordHash: hashPassword(PW), email: 'recovery-locale@example.test',
+    nickname: 'RecoveryLocale', nowMs: Date.now(), locale: 'hy',
+  });
+  const { srv, base, stop } = await start({ store });
+  try {
+    const started = await call(base, 'POST', '/recovery/start', {
+      body: { email: 'recovery-locale@example.test', locale: 'ru' },
+    });
+    assert.equal(started.status, 202);
+    const startMessages = srv.mailbox('recovery-locale@example.test');
+    assert.equal(startMessages.length, 2);
+    assert.ok(startMessages.every((message) => message.html.includes('<html lang="ru">')));
+    assert.equal(store.profileGet('@recovery-locale').locale, 'hy');
+
+    const recoveryCode = startMessages[0].text.match(/\b\d{6}\b/)?.[0];
+    assert.ok(recoveryCode, 'recovery code is present in the localized email');
+    const completed = await call(base, 'POST', '/recovery/complete', {
+      body: {
+        email: 'recovery-locale@example.test',
+        code: recoveryCode,
+        newPassword: 'новый-длинный-пароль-2',
+        locale: 'en',
+      },
+    });
+    assert.equal(completed.status, 200);
+    const completionMail = srv.mailbox('recovery-locale@example.test').at(-1);
+    assert.match(completionMail.html, /<html lang="en">/);
+
+    const cancelCode = completionMail.text.match(/\b\d{6}\b/g)?.at(-1);
+    assert.ok(cancelCode, 'recovery cancellation code is present in the completion email');
+    const cancelled = await call(base, 'POST', '/recovery/cancel-by-code', {
+      body: { email: 'recovery-locale@example.test', code: cancelCode, locale: 'ru' },
+    });
+    assert.equal(cancelled.status, 200);
+    const cancellationMail = srv.mailbox('recovery-locale@example.test').at(-1);
+    assert.match(cancellationMail.html, /<html lang="ru">/);
+    assert.equal(store.profileGet('@recovery-locale').locale, 'hy');
   } finally {
     await stop();
   }
