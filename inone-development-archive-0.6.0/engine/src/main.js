@@ -62,13 +62,16 @@ export async function startServer({ config, logger = createLogger({ level: confi
   });
   app.server.requestTimeout = config.requestTimeoutMs;
   app.server.headersTimeout = Math.min(config.requestTimeoutMs, 60000);
+  let cleanupTimer = null;
   await new Promise((resolve, reject) => {
     app.server.once('error', reject);
-    app.server.listen(config.port, config.host, resolve);
-    const cleanupTimer = setInterval(() => {
-      app.sweepExpired().catch(() => {});
-    }, 10 * 60_000);
-    cleanupTimer.unref();
+    app.server.listen(config.port, config.host, () => {
+      cleanupTimer = setInterval(() => {
+        app.sweepExpired().catch(() => {});
+      }, 10 * 60_000);
+      cleanupTimer.unref();
+      resolve();
+    });
   });
   const port = app.server.address().port;
   mailer?.start?.();
@@ -78,6 +81,8 @@ export async function startServer({ config, logger = createLogger({ level: confi
   const stop = () => {
     stopping ??= (async () => {
       logger.info('shutting down');
+      if (cleanupTimer) clearInterval(cleanupTimer);
+      cleanupTimer = null;
       await new Promise((resolve) => app.server.close(resolve));
       await mailer?.stop?.();
       if (pool) await pool.end();
