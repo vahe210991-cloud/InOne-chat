@@ -21,7 +21,7 @@ SMTP host/user/password/from и encryption key доступны только с�
 Production использует PostgreSQL queue. In-memory mailbox разрешён только в тестах и локальной разработке; production должен fail closed, если SMTP или encryption key не настроены.
 
 ## 7. Шифрование payload at rest
-Recipient, subject и body хранятся только в AES-256-GCM encrypted payload. Nonce уникален на каждую запись; authentication tag обязателен; AAD связывает payload с idempotency hash. Ключ — 32 случайных байта из secret manager, с документированной процедурой ротации.
+Recipient, subject и body хранятся только в AES-256-GCM encrypted payload. Nonce уникален на каждую запись; authentication tag обязателен; AAD связывает payload с idempotency hash. Ключ — 32 случайных байта из secret manager; HKDF-SHA256 выводит независимые subkeys для AES-GCM и HMAC. Текущая процедура ротации drain-and-purge описана в `EMAIL-DELIVERY-OPERATIONS.md`; замена ключа при наличии pending rows запрещена.
 
 ## 8. Идемпотентность обязательна
 Каждая delivery получает idempotency key, связанный с конкретным событием и получателем. Повтор того же ключа с тем же payload возвращает существующую запись. Повтор того же ключа с другим payload отклоняется. Сырые ключи не сохраняются.
@@ -48,7 +48,7 @@ Recipient, subject и body хранятся только в AES-256-GCM encrypte
 Email Delivery не становится обязательным посредником для SMS, push или иных каналов. Новый transport (например Email API) добавляется как адаптер того же интерфейса и только после отдельной оценки необходимости.
 
 ## 16. Transactional consistency
-Для критических бизнес-событий enqueue должен быть атомарен с изменением бизнес-состояния через общий PostgreSQL transaction/outbox boundary. Если текущий store API не позволяет общей транзакции, это явно обозначается как residual risk; нельзя заявлять atomic outbox только на основании durable queue. Перед production acceptance регистрационные и recovery code issuance paths должны быть проверены на crash windows и доведены до согласованной транзакционной модели.
+Для критических бизнес-событий enqueue атомарен с изменением бизнес-состояния через PostgreSQL transaction/outbox boundary. Использовать transactional hooks store для registration/backup-email/step-up/recovery/new-device flows; запрещено заменять их последовательными независимыми запросами. Любой новый critical mail use case должен добавить store-level transaction hook и rollback test до подключения route.
 
 ## 17. Retention и удаление
 Отправленные и dead-letter записи очищаются по ограниченной retention policy. Payload не копируется в application logs, analytics или внешние telemetry tags. Rotation/deletion процедуры для encryption key и backups должны учитывать возможность восстановления очереди.
