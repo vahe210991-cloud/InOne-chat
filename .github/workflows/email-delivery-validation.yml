@@ -1,0 +1,69 @@
+name: Email delivery and PostgreSQL validation
+
+on:
+  push:
+    branches:
+      - feature/email-delivery-service-2026-11-16-b1
+    paths:
+      - "inone-development-archive-0.6.0/engine/**"
+      - ".github/workflows/email-delivery-validation.yml"
+  pull_request:
+    paths:
+      - "inone-development-archive-0.6.0/engine/**"
+      - ".github/workflows/email-delivery-validation.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: email-delivery-${{ github.event.pull_request.number || github.ref }}-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  engine:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: inone_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d inone_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/inone_test
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: inone-development-archive-0.6.0/engine/package-lock.json
+      - name: Install locked engine dependencies
+        run: npm ci
+        working-directory: inone-development-archive-0.6.0/engine
+      - name: Check JavaScript syntax
+        shell: bash
+        working-directory: inone-development-archive-0.6.0/engine
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' file; do node --check "$file"; done < <(find src test -type f -name '*.js' -print0)
+      - name: Run complete Node engine suite
+        run: npm test
+        working-directory: inone-development-archive-0.6.0/engine
+      - name: Run PostgreSQL migration and durable email queue suite
+        run: npm run test:db
+        working-directory: inone-development-archive-0.6.0/engine
+      - name: Audit production dependency vulnerabilities
+        run: npm audit --omit=dev --audit-level=high
+        working-directory: inone-development-archive-0.6.0/engine
