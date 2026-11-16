@@ -82,7 +82,7 @@ The API panel provides:
 - Read-only GET probes for routes that are present in the current main-branch backend, including `/healthz` and `/readyz` connectivity checks.
 - JSON response/error output for QA.
 
-Only the stable device identifier is persisted, using platform secure storage. Access and refresh tokens remain in memory and are never passed into WebView JavaScript.
+Only the stable device identifier and selected app locale are persisted, using platform secure storage. Access and refresh tokens remain in memory and are never passed into WebView JavaScript.
 
 ### In-app language and email locale
 
