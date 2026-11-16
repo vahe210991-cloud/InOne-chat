@@ -242,3 +242,15 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - No application code, UI, API, backend, database, CI workflow, PR state, or branch topology changed. No Actions were started and no PR was merged.
 - Next: inventory and classify existing screens, routes, repositories, APIs, and navigation into InOne, InOne Business, shared platform, or unresolved; prepare an impact map for owner review before code changes.
 
+
+
+## 2026-11-16 — Bot Platform and Sticker Bot architecture proposal
+
+- Created `development/architecture/INONE-BOTS-AND-STICKERS.md` on task branch `docs/bots-stickers-platform-2026-11-16`.
+- Specified administration-owned InOne Bot Manager, user/system bot ownership, Bot ID and lifecycle, one-time API token issuance, token hashing/revocation/rotation, least-privilege scopes, REST API, Webhooks, external builder integration, consent-based installation and audit/moderation.
+- Specified MLS/E2EE boundary: bots must be explicit MLS participants; no hidden plaintext access or fallback.
+- Specified administration-owned Sticker Bot, photo-to-sticker flow, user collections, versioned sticker packs and hard backend limit of 50 stickers per pack.
+- This is a proposal only. Beta 1.0 WBS v1.1 is unchanged; no implementation, schema, endpoint or release scope was approved by this documentation change.
+- Report: `development/reports/2026-11-16-bots-stickers-architecture-proposal.md`.
+- Base `main` SHA: `1df19a001acb5f8c4892471ca4eaa0696e02c54d`; initial architecture commit `35fb0e8b782a43cd84ca556455a9645a194f522c`; report commit `cb7a736852a4b37d4f51b675b48fe0dbe8c5ce39`.
+- Product tests/builds: NOT RUN (documentation-only). No merge or deployment.
