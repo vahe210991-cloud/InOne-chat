@@ -10,18 +10,18 @@
 ## Result
 
 Added a detailed architecture proposal for:
-- administration-owned InOne Bot Manager as the sole user-facing bot registration/management entrypoint;
+- administration-owned OneBot as the sole user-facing bot registration/management entrypoint;
 - Bot ID, owner, lifecycle states, one-time API token issuance, hashed token storage, revocation/rotation and least-privilege scopes;
 - REST API, Webhooks, OpenAPI versioning, HMAC signatures, replay protection, retries, idempotency, rate limits and SSRF protection for external bot builders;
 - explicit bot installation/consent in personal and group conversations;
 - strict MLS/E2EE boundary: a bot must be an explicit MLS participant; no hidden server-side plaintext access or fallback;
-- administration-owned Sticker Bot, photo processing and preview;
+- administration-owned StickyBot, photo processing and preview;
 - personal sticker collections and versioned sticker packs with a backend-enforced maximum of 50 stickers per pack;
 - conceptual data entities, moderation/admin controls, implementation phases and acceptance criteria.
 
 ## Product/release boundary
 
-This is a proposal, not a declaration that these features exist. The approved Beta 1.0 WBS v1.1 and its percentages remain unchanged. Permissioned bots are already listed as a Beta 2.0 group-collaboration candidate; the broader Bot Platform and Sticker Bot require separate owner scope/release approval. No implementation, migration, endpoint or release commitment is created by this document.
+This is a proposal, not a declaration that these features exist. The approved Beta 1.0 WBS v1.1 and its percentages remain unchanged. Permissioned bots are already listed as a Beta 2.0 group-collaboration candidate; the broader Bot Platform and StickyBot require separate owner scope/release approval. No implementation, migration, endpoint or release commitment is created by this document.
 
 ## Verification
 
@@ -43,7 +43,7 @@ This is a proposal, not a declaration that these features exist. The approved Be
 
 ### Five next tasks
 
-1. Owner reviews Bot Platform and Sticker Bot scope, especially Beta 2.0+ placement.
+1. Owner reviews Bot Platform and StickyBot scope, especially Beta 2.0+ placement.
 2. Approve bot creation eligibility, quotas, username policy and which scopes require moderation.
 3. Approve MLS bot-participant protocol and consent UX before any chat event delivery is implemented.
 4. Define versioned OpenAPI/Webhook contracts, event payloads, rate limits, token rotation and audit policy.
@@ -67,3 +67,13 @@ This is a proposal, not a declaration that these features exist. The approved Be
 Правило должно обеспечиваться централизованно на backend с Unicode-нормализацией, защитой от обхода через регистр/разделители/визуально сходные символы, атомарным резервированием и проверками при регистрации и переименовании. Существующие совпадения сначала инвентаризируются; автоматическое переименование без отдельного решения владельца запрещено.
 
 Резервирование названий не означает, что боты или сервисы с такими именами уже реализованы. Их создание и публичный запуск остаются отдельным решением.
+
+
+## Owner-approved official bot names — 2026-11-16
+
+- **OneBot** is the approved canonical English name of the administration-owned official bot used to register and manage other bots. Replace the former working label “InOne Bot Manager” / “Bot Manager” with **OneBot** when referring to this named system bot.
+- **StickyBot** is the approved canonical English name of the administration-owned sticker-creation bot.
+- **The Bot** is not selected and must not be used as an alternative name.
+- Bot names and public bot-facing names are international English names only. Do not create Russian names, localized aliases or transliterations for these bots. The surrounding interface may be localized, but the canonical bot names remain unchanged.
+- These names are owner-approved design decisions, not proof that either bot, username, API or service has been implemented, registered or launched. Username availability and collision checks remain implementation-time validation.
+- The protected InOne / Propo naming and owner-approval policy remains unchanged. OneBot and StickyBot do not grant permission to use protected brand terms in other entities.
