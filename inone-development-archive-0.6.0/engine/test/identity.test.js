@@ -181,8 +181,8 @@ test('I9: registration and security emails follow the persisted in-app language'
       assert.equal(requested.status, 202);
       const registrationMail = srv.mailbox(email).at(-1);
       assert.match(registrationMail.html, new RegExp(`<html lang="${locale}"`));
-      assert.match(registrationMail.text, /\\d{6}/);
-      const code = registrationMail.text.match(/\\d{6}/)[0];
+      assert.match(registrationMail.text, /\d{6}/);
+      const code = registrationMail.text.match(/\d{6}/)[0];
       const confirmed = await call(base, 'POST', '/register/email/confirm', { body: { email, code } });
       assert.equal(confirmed.status, 200);
       const registered = await call(base, 'POST', '/register', {
@@ -199,7 +199,7 @@ test('I9: registration and security emails follow the persisted in-app language'
       assert.equal(changed.status, 200);
       assert.equal(changed.body.locale, changedLocale);
       assert.equal((await call(base, 'GET', '/profile', { token })).body.locale, changedLocale);
-      await call(base, 'POST', '/recovery/request', { body: { email } });
+      await call(base, 'POST', '/recovery/start', { body: { email } });
       const recoveryMessages = srv.mailbox(email).slice(-2);
       assert.equal(recoveryMessages.length, 2);
       assert.ok(recoveryMessages.every((message) => message.html.includes(`<html lang="${changedLocale}"`)));
