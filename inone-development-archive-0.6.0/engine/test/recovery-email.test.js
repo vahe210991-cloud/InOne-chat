@@ -146,7 +146,7 @@ test('R-E6: аккаунт с привязкой Google — кода восст�
   try {
     const nonce = (await call(base, 'POST', '/auth/nonce')).body.nonce;
     const v = await call(base, 'POST', '/auth/provider/verify', { body: { provider: 'google', idToken: signToken(googleClaims(nonce)), nonce } });
-    const anna = (await call(base, 'POST', '/register/provider', { body: { ticket: v.body.ticket, nickname: 'Anna.G' } })).body;
+    const anna = (await call(base, 'POST', '/register/provider', { body: { ticket: v.body.ticket, nickname: 'Anna.G' , locale: 'ru'} })).body;
     assert.equal((await call(base, 'POST', '/recovery/start', { body: { email: 'anna@gmail.test' } })).status, 202);
     assert.equal(srv.mailbox('anna@gmail.test').filter((m) => m.subject === SUBJECT_RECOVERY).length, 0, 'кода для аккаунта с Google нет');
     const r = await call(base, 'POST', '/recovery/complete', { body: { userId: anna.userId, code: '000000', newPassword: NEW_PW } });
