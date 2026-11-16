@@ -38,7 +38,7 @@ SMTP-адаптер уже существовал. Его недостаточн
 - Только TLS 1.2+ для SMTP; production не запускается с memory transport.
 - Содержимое, адрес, коды, токены, URL восстановления, пароли и SMTP credentials не попадают в логи.
 - Master key через HKDF-SHA256 выводит независимые subkeys для AES-256-GCM и HMAC fingerprint. Payload шифруется AES-256-GCM с уникальным nonce и AAD, привязанным к хэшу idempotency key.
-- Idempotency key хранится как SHA-256; fingerprint payload защищён HMAC с ключом шифрования, чтобы не создавать офлайн-оракул для перебора коротких кодов.
+- Idempotency key и payload fingerprint хранятся как HMAC-SHA256 с разными HKDF subkeys, чтобы не создавать офлайн-оракул для перебора коротких кодов.
 - Повторные попытки ограничены, используют exponential backoff с jitter; постоянные ошибки переходят в dead-letter.
 - Одноразовые сообщения имеют TTL и не должны отправляться после истечения срока действия.
 - Terminal queue records удаляются по retention policy.
