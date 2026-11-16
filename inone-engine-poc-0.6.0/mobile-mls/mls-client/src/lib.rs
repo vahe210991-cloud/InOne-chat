@@ -514,13 +514,25 @@ impl Client {
         })();
 
         if result.is_err() {
-            // A committed claim cannot be released; the server rejects that release.
-            // For failures before commit, release returns the reserved packages safely.
-            let _ = self.call(
+            // A successful release proves the server did not commit this operation:
+            // discard the staged local commit. A committed claim proves the opposite.
+            match self.call(
                 "DELETE",
                 &format!("/mls/key-packages/claims/{}", urlencoding::encode(&claim_id)),
                 None,
-            );
+            ) {
+                Ok(release) if release["released"].as_bool() == Some(true) => {
+                    if let Some(group) = self.groups.get_mut(room_id) {
+                        let _ = group.mls.clear_pending_commit(self.provider.storage());
+                    }
+                }
+                Err(error) if error.contains("claim_committed") => {
+                    if let Some(group) = self.groups.get_mut(room_id) {
+                        let _ = group.mls.merge_pending_commit(&self.provider);
+                    }
+                }
+                _ => {}
+            }
         }
         result
     }
