@@ -320,6 +320,7 @@ test('ошибка продления lease не позволяет отмети
   let smtpStarted = false;
   let finishSmtp;
   let failNextRenewal = false;
+  const key = randomBytes(32);
   const pool = {
     connect: (...args) => db.pool.connect(...args),
     query: (sql, params) => {
@@ -338,13 +339,13 @@ test('ошибка продления lease не позволяет отмети
     close() {},
   };
   const first = createEmailDelivery({
-    pool, smtpMailer: firstSmtp, encryptionKey: randomBytes(32),
+    pool, smtpMailer: firstSmtp, encryptionKey: Buffer.from(key),
     workerId: 'lease-error-owner', pollIntervalMs: 250, batchSize: 1,
     leaseMs: 600, leaseRenewIntervalMs: 100,
   });
   const secondSmtp = fakeSmtp();
   const second = createEmailDelivery({
-    pool: db.pool, smtpMailer: secondSmtp, encryptionKey: randomBytes(32),
+    pool: db.pool, smtpMailer: secondSmtp, encryptionKey: Buffer.from(key),
     workerId: 'lease-error-retry', pollIntervalMs: 250, batchSize: 1,
     leaseMs: 600, leaseRenewIntervalMs: 100,
   });
