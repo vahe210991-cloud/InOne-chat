@@ -55,6 +55,8 @@ jobs:
         run: cargo install --locked --version 2.13.0 flutter_rust_bridge_codegen
 
       - name: Integrate and generate typed Dart bindings
+        env:
+          RUST_LOG: debug
         run: |
           cp lib/main.dart "$RUNNER_TEMP/inone-main.dart"
           cp rust/src/api/mod.rs "$RUNNER_TEMP/inone-api-mod.rs"
@@ -62,11 +64,12 @@ jobs:
             --rust-crate-dir rust \
             --rust-crate-name inone_mls_frb \
             --integration-backend native-assets \
-            --platforms android,ios
+            --platforms android,ios \
+            --skip-fvm-install
           cp "$RUNNER_TEMP/inone-main.dart" lib/main.dart
           cp "$RUNNER_TEMP/inone-api-mod.rs" rust/src/api/mod.rs
           rm -f rust/src/api/simple.rs lib/src/rust/api/simple.dart
-          flutter_rust_bridge_codegen generate
+          flutter_rust_bridge_codegen generate --skip-fvm-install
 
       - name: Prepare Android NDK context for native secure storage
         run: node tool/prepare_android_mls.mjs
