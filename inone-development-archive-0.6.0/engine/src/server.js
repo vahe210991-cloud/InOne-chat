@@ -2773,6 +2773,11 @@ if (req.method === 'POST' && p === '/login') {
           },
         }[requestedLocale];
         const appUrl = `inone://recovery/confirm?user=${encodeURIComponent(userId)}&token=${encodeURIComponent(token)}&locale=${requestedLocale}`;
+        // Unverified custom schemes can be claimed by another app; expose this beta-only
+        // handoff in development/test. Production must use verified App Links/Universal Links.
+        const appLinkHtml = process.env.NODE_ENV === 'production'
+          ? ''
+          : `<p><a href="${escapeHtml(appUrl)}">${escapeHtml(copy.open)}</a></p>`;
         res.writeHead(200, {
           'content-type': 'text/html; charset=utf-8',
           'cache-control': 'no-store, private',
@@ -2784,7 +2789,7 @@ if (req.method === 'POST' && p === '/login') {
         });
         return res.end(htmlPage(copy.title, `
 <p>${escapeHtml(copy.prompt)}</p>
-<p><a href="${escapeHtml(appUrl)}">${escapeHtml(copy.open)}</a></p>
+${appLinkHtml}
 <form method="post" action="/recovery/confirm">
 <input type="hidden" name="user" value="${escapeHtml(userId)}">
 <input type="hidden" name="token" value="${escapeHtml(token)}">
