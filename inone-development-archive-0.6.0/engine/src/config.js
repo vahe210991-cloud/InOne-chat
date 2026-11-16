@@ -68,8 +68,8 @@ export function loadConfig(env = process.env) {
     if (!/^\d{6}$/.test(config.devEmailCode)) errors.push('INONE_DEV_EMAIL_CODE must be 6 digits');
   }
   if (config.mailTransport === 'smtp') {
-    if (!config.smtpHost || /\\s/.test(config.smtpHost)) errors.push('INONE_SMTP_HOST is required and must not contain whitespace');
-    if (!config.smtpFrom || /[\\r\\n]/.test(config.smtpFrom) || config.smtpFrom.length > 320) errors.push('INONE_SMTP_FROM is required and must be a valid single-line address');
+    if (!config.smtpHost || [...config.smtpHost].some((ch) => ch <= ' ')) errors.push('INONE_SMTP_HOST is required and must not contain whitespace');
+    if (!config.smtpFrom || config.smtpFrom.includes('\r') || config.smtpFrom.includes('\n') || config.smtpFrom.length > 320) errors.push('INONE_SMTP_FROM is required and must be a valid single-line address');
     if (!Number.isInteger(config.smtpPort) || config.smtpPort < 1 || config.smtpPort > 65535) errors.push('INONE_SMTP_PORT must be a port number');
     if (config.smtpSecure && config.smtpPort !== 465) errors.push('INONE_SMTP_SECURE=true requires port 465');
     if (!config.smtpSecure && config.smtpPort === 465) errors.push('port 465 requires INONE_SMTP_SECURE=true');
