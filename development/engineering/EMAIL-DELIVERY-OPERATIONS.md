@@ -12,7 +12,7 @@ Production требует:
 - `INONE_EMAIL_WORKER_POLL_MS` (250–60000, default 1000);
 - `INONE_EMAIL_MAX_ATTEMPTS` (1–20, default 8).
 
-Генерировать master key можно, например, командой `openssl rand -hex 32`. Ключ хранится только в secret manager. Не использовать `PIN_PEPPER`, пароль SMTP или другой ключ приложения. Из master key через HKDF-SHA256 выводятся независимые subkeys для AES-256-GCM payload encryption и HMAC payload fingerprint.
+Генерировать master key можно, например, командой `openssl rand -hex 32`. Ключ хранится только в secret manager. Не использовать `PIN_PEPPER`, пароль SMTP или другой ключ приложения. Из master key через HKDF-SHA256 выводятся независимые subkeys для AES-256-GCM payload encryption, HMAC payload fingerprint и HMAC idempotency key.
 
 Локальная разработка по умолчанию использует `INONE_MAIL_TRANSPORT=memory`. Этот transport запрещён в production.
 
