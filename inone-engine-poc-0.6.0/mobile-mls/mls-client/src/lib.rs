@@ -786,11 +786,11 @@ pub fn resume_with_session(
         if !has_meta {
             return Err("в базе нет сохранённой MLS-сессии".to_string());
         }
-        let serialized = Zeroizing::new(
+        let serialized: Zeroizing<Vec<u8>> = Zeroizing::new(
             meta.query_row(
                 "SELECT value FROM client_meta WHERE key = 'session_tokens'",
                 [],
-                |row| row.get(0),
+                |row| row.get::<_, Vec<u8>>(0),
             )
             .map_err(|_| "в базе нет сохранённой MLS-сессии; выполните вход заново".to_string())?,
         );
@@ -895,7 +895,8 @@ pub fn connect_with_approval(
                 Some(json!({ "pollSecret": poll.as_str() })),
             )?;
 
-            match claim["status"].as_str() {
+            let status = claim["status"].as_str().map(str::to_owned);
+            match status.as_deref() {
                 Some("approved") => {
                     let pair = (
                         claim["token"]
@@ -1724,7 +1725,9 @@ impl Client {
         if self.flush_pending_membership_commits()? > 0 {
             let mut incoming = Vec::new();
             self.sync_room(room_id, &mut incoming)?;
-            self.inbox.extend(incoming);
+            // sync_room уже записал расшифрованные события в зашифрованный SQLCipher inbox.
+            // UI читает их через pending_inbox(); дополнительная in-memory очередь не нужна.
+            drop(incoming);
             return Ok(false);
         }
         Ok(true)
@@ -2016,7 +2019,7 @@ impl Client {
             return Err(format!("комната рассинхронизирована и требует восстановления: {reason}"));
         }
         let server = self.server_epoch(room_id)?;
-        let provider = self.provider();
+        let provider = DeviceProvider::new(&self.crypto, &self.meta);
         let body = {
             let group = self.groups.get_mut(room_id).ok_or("комната не создана на этом устройстве")?;
             let local = group.mls.epoch().as_u64();
@@ -2152,7 +2155,7 @@ impl Client {
                 }
             };
 
-            enum JoinFailure { Duplicate, Indeterminate, Permanent(String), Mismatch(String) }
+            enum JoinFailure { Duplicate, Indeterminate(String), Permanent(String), Mismatch(String) }
             let join_config = MlsGroupJoinConfig::builder()
                 .use_ratchet_tree_extension(true)
                 .max_past_epochs(MAX_PAST_EPOCHS)
@@ -2167,12 +2170,12 @@ impl Client {
                     let staged = StagedWelcome::new_from_welcome(&provider, &join_config, welcome, None)
                         .map_err(|error| match error {
                             WelcomeError::GroupAlreadyExists => JoinFailure::Duplicate,
-                            WelcomeError::LibraryError(_) | WelcomeError::StorageError(_) => JoinFailure::Indeterminate,
+                            WelcomeError::LibraryError(_) | WelcomeError::StorageError(_) => JoinFailure::Indeterminate("transient OpenMLS Welcome error".to_string()),
                             other => JoinFailure::Permanent(format!("Permanent Welcome error: {other:?}")),
                         })?;
                     let mls = staged.into_group(&provider).map_err(|error| match error {
                         WelcomeError::GroupAlreadyExists => JoinFailure::Duplicate,
-                        WelcomeError::LibraryError(_) | WelcomeError::StorageError(_) => JoinFailure::Indeterminate,
+                        WelcomeError::LibraryError(_) | WelcomeError::StorageError(_) => JoinFailure::Indeterminate("transient OpenMLS Welcome materialization error".to_string()),
                         other => JoinFailure::Permanent(format!("Permanent Welcome materialization error: {other:?}")),
                     })?;
                     let actual_room = String::from_utf8_lossy(mls.group_id().as_slice()).to_string();
@@ -2221,7 +2224,7 @@ impl Client {
                 Err(JoinFailure::Duplicate) => {
                     self.record_desync(room_id, "GroupAlreadyExists while replaying Welcome; retain Welcome without ACK for explicit recovery")?;
                 }
-                Err(JoinFailure::Indeterminate) => {}
+                Err(JoinFailure::Indeterminate(_reason)) => {}
                 Err(JoinFailure::Permanent(reason)) => {
                     if self.persist_welcome_receipt(welcome_id, room_id, &bytes, "quarantined", Some(&reason)).is_ok() {
                         let _ = self.ack_welcome(welcome_id);
