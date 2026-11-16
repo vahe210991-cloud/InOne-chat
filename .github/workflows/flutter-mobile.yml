@@ -5,6 +5,9 @@ on:
     branches:
       - feat/flutter-ui-dart-migration-2026-11-14
       - main
+      - feat/mls-attachment-aead-core-2026-11-15
+      - feat/native-mls-persistent-ffi-2026-11-15
+      - feat/mls-encrypted-attachment-flow-2026-11-15
     paths:
       - 'mobile/**'
       - '.github/workflows/flutter-mobile.yml'
