@@ -250,3 +250,13 @@ Next actions, only after owner review:
 5. Decide image-processing provider, privacy disclosure, photo retention, output limits, moderation and sticker-pack version/deletion semantics.
 
 No bot or sticker implementation is authorized by the proposal document alone.
+
+
+## Owner decision — protected InOne/Propo naming policy (2026-11-16)
+
+- Reserved official names: **InOne Hub**, **InOne Developer**, **InOne Development**.
+- `InOne` and `Propo` are protected brand terms across public usernames, group/room/community names, bots, apps, integrations, organizations and other user-created named entities.
+- Only official administration-owned entities may use the protected terms, and only after the complete applicable administrative approval chain and explicit final owner approval. Admin privileges never grant unilateral naming/exception authority; administrators may only initiate a proposal.
+- Backend enforcement must normalize Unicode and reject case/separator/confusable bypasses, validate both creation and rename, atomically reserve names, and audit every decision.
+- Existing conflicts must be inventoried and escalated; do not silently rename/delete existing users or groups. The three reserved names are not evidence that corresponding services are implemented.
+- Architecture and proposal report updated. This remains a documented owner requirement, not implemented enforcement.
