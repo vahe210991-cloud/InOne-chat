@@ -2954,7 +2954,7 @@ impl Client {
         for (local_id, room_id, body) in items {
             match self.send_text_with_id(&room_id, &body, &local_id) {
                 Ok(_) => {
-                    self.meta.execute("DELETE FROM client_outbox WHERE local_id = ?1", [&local_id]).map_err(text)?;
+                    // send_text_with_id commits history and removes the outbox row atomically.
                     sent += 1;
                 }
                 Err(e) if e.contains("комната рассинхронизирована") => continue,
