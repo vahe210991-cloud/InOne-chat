@@ -63,3 +63,47 @@ Multi-key decryption/key-ring пока не реализован. Поэтому
 - отдельная SMTP smoke test на контролируемом адресе;
 - проверить DNS SPF, DKIM, DMARC, bounce handling и provider limits;
 - проверить shutdown, queue restart, retries, expired messages и секреты в логах на exact commit SHA.
+
+## Проверка в GitHub Codespaces
+
+Тестирование выполняется из актуального checkout PR #61; локальный клон на рабочем компьютере не требуется. Перед запуском убедиться, что Codespaces открыт на ветке `feature/email-delivery-service-2026-11-16-b1` и SHA совпадает с SHA в PR.
+
+### Backend / Node
+
+Из корня репозитория:
+
+```bash
+cd inone-development-archive-0.6.0/engine
+node --version
+npm ci
+npm test
+```
+
+Требуется Node.js 22 или новее. `npm test` использует memory/test transports и не отправляет реальные письма.
+
+### PostgreSQL integration
+
+Нужен доступный PostgreSQL 16. Перед запуском задать `DATABASE_URL` для отдельной тестовой базы; пользователь БД должен иметь право создавать и удалять схемы. Тесты создают уникальную схему на каждый test case и удаляют её после завершения.
+
+```bash
+export DATABASE_URL='postgresql://USER:PASSWORD@HOST:5432/TEST_DATABASE'
+npm run test:db
+```
+
+Не использовать production database. Не записывать credentials в файлы репозитория, shell history общего Codespace или PR.
+
+### Flutter / mobile
+
+Из корня репозитория:
+
+```bash
+cd mobile
+flutter --version
+flutter pub get
+flutter analyze
+flutter test
+```
+
+Валидация Email Delivery считается полной только после PASS всех трёх групп: Node, PostgreSQL integration и Flutter. Зафиксировать точный commit SHA и полный итоговый счётчик passed/failed/skipped. Любой FAIL исправить в этой же PR-ветке и повторить затронутые группы на новом SHA.
+
+SMTP smoke test и SPF/DKIM/DMARC выполняются отдельно после выбора владельцем домена и SMTP-провайдера; они не являются блокирующим условием для начала автоматизированных тестов.
