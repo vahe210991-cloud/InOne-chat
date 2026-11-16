@@ -1071,7 +1071,9 @@ fn build_client(agent: ureq::Agent, base: &str, tokens: SessionTokens, user_id: 
             manifest BLOB NOT NULL,
             ciphertext_sha256 TEXT NOT NULL,
             ciphertext_size INTEGER NOT NULL,
-            uploaded INTEGER NOT NULL DEFAULT 0
+            uploaded INTEGER NOT NULL DEFAULT 0,
+            mls_message BLOB,
+            mls_epoch INTEGER
           );
          CREATE TABLE IF NOT EXISTS client_remote_config (id INTEGER PRIMARY KEY CHECK (id = 1), etag TEXT NOT NULL, body TEXT NOT NULL, fetched_at INTEGER NOT NULL);",
     )
@@ -1084,6 +1086,19 @@ fn build_client(agent: ureq::Agent, base: &str, tokens: SessionTokens, user_id: 
      };
      if !has_client_message_id {
          meta.execute("ALTER TABLE client_attachments ADD COLUMN client_message_id TEXT", [])
+             .map_err(text)?;
+     }
+     let outbox_columns = {
+         let mut statement = meta.prepare("PRAGMA table_info(client_attachment_outbox)").map_err(text)?;
+         let columns = statement.query_map([], |row| row.get::<_, String>(1)).map_err(text)?;
+         columns.collect::<Result<Vec<_>, _>>().map_err(text)?
+     };
+     if !outbox_columns.iter().any(|column| column == "mls_message") {
+         meta.execute("ALTER TABLE client_attachment_outbox ADD COLUMN mls_message BLOB", [])
+             .map_err(text)?;
+     }
+     if !outbox_columns.iter().any(|column| column == "mls_epoch") {
+         meta.execute("ALTER TABLE client_attachment_outbox ADD COLUMN mls_epoch INTEGER", [])
              .map_err(text)?;
      }
      meta.execute(
@@ -2303,6 +2318,70 @@ impl Client {
         Ok(event_id)
     }
 
+    /// Creates the MLS application message and commits its sender ratchet state
+    /// together with the exact serialized message in the SQLCipher outbox. A retry
+    /// after a lost HTTP response must resend these exact bytes, not consume another
+    /// sender generation for an event the server has already accepted.
+    fn create_and_persist_attachment_mls_message(
+        &mut self,
+        room_id: &str,
+        operation_id: &str,
+        file_id: &str,
+        manifest_payload: &[u8],
+        expected_epoch: u64,
+    ) -> Result<Vec<u8>, String> {
+        let transaction = self.meta.transaction().map_err(text)?;
+        let message_result = {
+            let provider = DeviceProvider::new(&self.crypto, TransactionConnection(&transaction));
+            let group = self.groups.get_mut(room_id)
+                .ok_or("комната не создана на этом устройстве")?;
+            let local_epoch = group.mls.epoch().as_u64();
+            if local_epoch != expected_epoch {
+                Err(format!(
+                    "устройство на эпохе {local_epoch}, сервер на {expected_epoch}: сначала синхронизация"
+                ))
+            } else {
+                group.mls
+                    .create_message(&provider, &self.signer, manifest_payload)
+                    .map_err(text)
+                    .and_then(|message| message.tls_serialize_detached().map_err(text))
+            }
+        };
+        let message_bytes = match message_result {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                drop(transaction);
+                self.reload_group(room_id)?;
+                return Err(error);
+            }
+        };
+        let epoch = i64::try_from(expected_epoch)
+            .map_err(|_| "MLS epoch exceeds the persistent attachment journal range".to_string())?;
+        let changed = match transaction.execute(
+            "UPDATE client_attachment_outbox
+             SET mls_message = ?4, mls_epoch = ?5
+             WHERE client_message_id = ?1 AND room_id = ?2 AND file_id = ?3",
+            rusqlite::params![operation_id, room_id, file_id, message_bytes, epoch],
+        ) {
+            Ok(changed) => changed,
+            Err(error) => {
+                drop(transaction);
+                self.reload_group(room_id)?;
+                return Err(text(error));
+            }
+        };
+        if changed != 1 {
+            drop(transaction);
+            self.reload_group(room_id)?;
+            return Err("attachment outbox changed before MLS message persistence".to_string());
+        }
+        if let Err(error) = transaction.commit() {
+            self.reload_group(room_id)?;
+            return Err(text(error));
+        }
+        Ok(message_bytes)
+    }
+
     /// Encrypts a file with a per-file AES-256-GCM key, uploads ciphertext only,
     /// then sends the key/nonce manifest inside an MLS application message.
     pub fn send_attachment(
@@ -2425,7 +2504,8 @@ impl Client {
                 )?);
                 let changed = self.meta.execute(
                     "UPDATE client_attachment_outbox
-                     SET file_id = ?2, manifest = ?3, ciphertext_sha256 = ?4, ciphertext_size = ?5, uploaded = 0
+                     SET file_id = ?2, manifest = ?3, ciphertext_sha256 = ?4, ciphertext_size = ?5,
+                         uploaded = 0, mls_message = NULL, mls_epoch = NULL
                      WHERE client_message_id = ?1 AND room_id = ?6",
                     rusqlite::params![
                         operation_id.as_str(), new_file_id, new_manifest.as_slice(),
@@ -2482,15 +2562,26 @@ impl Client {
 
         let server_epoch = self.server_epoch(room_id)?;
         let provider = self.provider();
-        let encrypted_manifest = {
-            let group = self.groups.get_mut(room_id).ok_or("комната не создана на этом устройстве")?;
-            let local_epoch = group.mls.epoch().as_u64();
-            if local_epoch != server_epoch {
-                return Err(format!("устройство на эпохе {local_epoch}, сервер на {server_epoch}: сначала синхронизация"));
-            }
-            let message = group.mls.create_message(&provider, &self.signer, manifest_payload.as_slice()).map_err(text)?;
-            B64.encode(message.tls_serialize_detached().map_err(text)?)
+        let expected_epoch = i64::try_from(server_epoch)
+            .map_err(|_| "MLS epoch exceeds the persistent attachment journal range".to_string())?;
+        let persisted_message: Option<(Option<Vec<u8>>, Option<i64>)> = self.meta.query_row(
+            "SELECT mls_message, mls_epoch FROM client_attachment_outbox
+             WHERE client_message_id = ?1 AND room_id = ?2 AND file_id = ?3",
+            rusqlite::params![operation_id.as_str(), room_id, file_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        ).optional().map_err(text)?
+            .ok_or_else(|| "attachment outbox disappeared before MLS message persistence".to_string())?;
+        let mls_message = match persisted_message {
+            (Some(bytes), Some(epoch)) if epoch == expected_epoch => Zeroizing::new(bytes),
+            _ => Zeroizing::new(self.create_and_persist_attachment_mls_message(
+                room_id,
+                operation_id.as_str(),
+                &file_id,
+                manifest_payload.as_slice(),
+                server_epoch,
+            )?),
         };
+        let encrypted_manifest = B64.encode(mls_message.as_slice());
         let response = self.call(
             "POST",
             &format!("/mls/groups/{}/messages", urlencoding::encode(room_id)),
