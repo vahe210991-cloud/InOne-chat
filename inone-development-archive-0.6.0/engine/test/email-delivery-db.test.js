@@ -92,7 +92,7 @@ test('постоянная SMTP-ошибка переводит доставку
   const queue = createEmailDelivery({ pool: db.pool, smtpMailer: smtp, encryptionKey: randomBytes(32), logger, pollIntervalMs: 250 });
   try {
     const result = await queue.send({
-      to: 'private-recipient@example.test', templateId: 'registration_code', variables: { code: 'SECRET-CODE-998811' },
+      to: 'private-recipient@example.test', templateId: 'registration_code', variables: { code: 'SECRET-CODE-998811' }, locale: 'hy',
       idempotencyKey: 'auth-failure-001',
     });
     queue.start();
