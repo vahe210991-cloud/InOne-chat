@@ -1586,10 +1586,18 @@ if (req.method === 'POST' && p === '/login') {
           if (!waiting) {
             const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
             const activateAt = now() + DEVICE_WAIT_MS;
-            await storage.deviceWaitCreate({ userId, deviceId, label: label ?? null, platform: platform ?? null,
-              activateAt, cancelHash: deviceWaitCodeHash(userId, deviceId, code), createdAt: now() });
-            await mail(userId, 'Вход с нового устройства: ожидание 48 часов', '', 'new_device_wait', { activateAt: new Date(activateAt).toISOString(), code });
-            return send(res, 202, { status: 'waiting_period', activateAt: new Date(activateAt).toISOString() });
+            const primaryEmail = (await storage.profileGet(userId))?.email ?? userId;
+            const backup = await storage.backupEmailGet(userId);
+            const recipients = [primaryEmail, backup?.email];
+            const created = await storage.deviceWaitCreateWithOutbox({
+              userId, deviceId, label: label ?? null, platform: platform ?? null,
+              activateAt, cancelHash: deviceWaitCodeHash(userId, deviceId, code), createdAt: now(),
+            }, (tx) => mailToRecipients(recipients, 'Вход с нового устройства: ожидание 48 часов', '', 'new_device_wait', {
+              activateAt: new Date(activateAt).toISOString(), code,
+            }, tx));
+            if (created === 'ok') return send(res, 202, { status: 'waiting_period', activateAt: new Date(activateAt).toISOString() });
+            const existingWait = await storage.deviceWaitGet(userId, deviceId);
+            return send(res, 202, { status: 'waiting_period', activateAt: new Date(existingWait?.activateAt ?? activateAt).toISOString() });
           }
           if (waiting.activateAt > now()) {
             return send(res, 202, { status: 'waiting_period', activateAt: new Date(waiting.activateAt).toISOString() });
