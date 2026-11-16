@@ -38,7 +38,6 @@ jobs:
           --health-timeout 5s
           --health-retries 20
     env:
-      DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/inone_test
       NODE_ENV: test
     steps:
       - uses: actions/checkout@v4
@@ -64,6 +63,8 @@ jobs:
       - name: Run PostgreSQL migration and durable email queue suite
         run: npm run test:db
         working-directory: inone-development-archive-0.6.0/engine
+        env:
+          DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/inone_test
       - name: Audit production dependency vulnerabilities
         run: npm audit --omit=dev --audit-level=high
         working-directory: inone-development-archive-0.6.0/engine
