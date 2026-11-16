@@ -207,21 +207,25 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
   };
   // SMTP/queue подключается снаружи. Тестовый транспорт хранит письма только в памяти.
   const mailer = externalMailer ?? { send: async ({ to, subject, text, html }) => { outbox.push({ to, subject, text, html }); } };
-  const mailTo = (to, subject, text, idempotencyKey = null, templateId = null, variables = {}, locale = 'hy', transactionClient = null) => {
+  const mailTo = (to, subject, text, idempotencyKey = null, templateId = null, variables = {}, locale, transactionClient = null) => {
     if (!templateId) throw new Error('email templateId is required');
-    const rendered = renderEmailTemplate(templateId, variables, locale);
+    const resolvedLocale = resolveEmailLocale(locale);
+    if (!resolvedLocale) throw new Error('email locale must be hy, ru or en');
+    const rendered = renderEmailTemplate(templateId, variables, resolvedLocale);
     const key = idempotencyKey ?? createHash('sha256')
       .update(`${to}\\0${rendered.subject}\\0${rendered.text}\\0${rendered.html}\\0${rendered.templateVersion}\\0${Math.floor(now() / 300_000)}`)
       .digest('hex');
-    const message = { to, subject: rendered.subject, text: rendered.text, html: rendered.html, idempotencyKey: key, templateId, variables, locale };
+    const message = { to, subject: rendered.subject, text: rendered.text, html: rendered.html, idempotencyKey: key, templateId, variables, locale: resolvedLocale };
     if (transactionClient && typeof mailer.sendInTransaction === 'function') return mailer.sendInTransaction(transactionClient, message);
     return mailer.send(message);
   };
   // Каждый адрес — отдельная delivery. В transaction callback получатели передаются заранее,
   // чтобы не занимать дополнительные pool connections поверх открытой транзакции.
-  const mailToRecipients = async (recipients, subject, text, templateId = null, variables = {}, transactionClient = null, locale = 'hy') => {
+  const mailToRecipients = async (recipients, subject, text, templateId = null, variables = {}, transactionClient = null, locale) => {
+    const resolvedLocale = resolveEmailLocale(locale);
+    if (!resolvedLocale) throw new Error('email locale must be hy, ru or en');
     const uniqueRecipients = [...new Set(recipients.filter(Boolean))];
-    const results = await Promise.allSettled(uniqueRecipients.map((recipient) => mailTo(recipient, subject, text, null, templateId, variables, locale, transactionClient)));
+    const results = await Promise.allSettled(uniqueRecipients.map((recipient) => mailTo(recipient, subject, text, null, templateId, variables, resolvedLocale, transactionClient)));
     const failures = results.filter((result) => result.status === 'rejected');
     if (failures.length) {
       const error = new AggregateError(failures.map((result) => result.reason), 'one or more email deliveries could not be queued');
@@ -1530,6 +1534,8 @@ if (req.method === 'POST' && p === '/login') {
         const loginEmail = normalizeEmail(body.email);
         const userId = body.userId ?? ((loginEmail && (await storage.userIdByEmail(loginEmail))) || loginEmail);
         const { password, deviceId, label, platform, identityCode, proof: providerProof } = body;
+        const requestedLocale = body.locale === undefined ? null : resolveEmailLocale(body.locale);
+        if (body.locale !== undefined && !requestedLocale) return send(res, 400, { error: 'locale must be hy, ru or en' });
         const stored = await storage.accountHash(userId);
         // Вход через Google или Apple: одноразовое подтверждение провайдера вместо пароля (этап 2).
         let providerOk = null;
@@ -1565,6 +1571,8 @@ if (req.method === 'POST' && p === '/login') {
         const dk = key(userId, deviceId);
         const existing = await storage.deviceRecord(dk);
         if (existing?.revoked) return send(res, 403, { error: 'device revoked; log in with a new device id' });
+        // The authenticated login choice is persisted before any login-security email is queued.
+        if (requestedLocale) await storage.profileLocaleSet(userId, requestedLocale);
 
         // Новое устройство в аккаунте с уже активными устройствами: нужен код с одного из них.
         // Окно восстановления и первый вход после него (D1, D5, D8).
@@ -2678,6 +2686,8 @@ if (req.method === 'POST' && p === '/login') {
 
       // ---------- восстановление после кражи ----------
       if (req.method === 'POST' && p === '/recovery/start') {
+        const requestedLocale = body.locale === undefined ? null : resolveEmailLocale(body.locale);
+        if (body.locale !== undefined && !requestedLocale) return send(res, 400, { error: 'locale must be hy, ru or en' });
         // Один и тот же ответ, есть такой аккаунт или нет: не раскрываем, кто зарегистрирован.
         const startEmail = normalizeEmail(body.email);
         const userId = body.userId ?? (startEmail ? await storage.userIdByEmail(startEmail) : null);
@@ -2692,7 +2702,7 @@ if (req.method === 'POST' && p === '/login') {
             const emailCode = String(randomInt(0, 1_000_000)).padStart(6, '0');
             const profile = await storage.profileGet(userId);
             const primaryEmail = profile?.email ?? userId;
-            const locale = profile?.locale ?? 'hy';
+            const locale = requestedLocale ?? profile?.locale ?? 'hy';
             const backup = await storage.backupEmailGet(userId);
             const recoveryEmail = backup?.email ?? primaryEmail;
             const notificationRecipients = [primaryEmail, backup?.email];
@@ -2714,7 +2724,7 @@ if (req.method === 'POST' && p === '/login') {
             const token = randomBytes(24).toString('base64url');
             const profile = await storage.profileGet(userId);
             const primaryEmail = profile?.email ?? userId;
-            const locale = profile?.locale ?? 'hy';
+            const locale = requestedLocale ?? profile?.locale ?? 'hy';
             const backup = await storage.backupEmailGet(userId);
             const notificationRecipients = [primaryEmail, backup?.email];
             const issued = await storage.recoveryUpdateWithOutbox(userId, (r) => {
@@ -2772,6 +2782,8 @@ if (req.method === 'POST' && p === '/login') {
       }
 
       if (req.method === 'POST' && p === '/recovery/cancel-by-code') {
+        const requestedLocale = body.locale === undefined ? null : resolveEmailLocale(body.locale);
+        if (body.locale !== undefined && !requestedLocale) return send(res, 400, { error: 'locale must be hy, ru or en' });
         // Отмена восстановления кодом из письма: нужна, если устройств для отмены нет (решение владельца).
         const email = normalizeEmail(body.email);
         const perEmail = await checkRate('recoveryCancelPerEmail', email);
@@ -2789,8 +2801,9 @@ if (req.method === 'POST' && p === '/login') {
         const profile = await storage.profileGet(userId);
         const primaryEmail = profile?.email ?? userId;
         const backup = await storage.backupEmailGet(userId);
+        const locale = requestedLocale ?? profile?.locale ?? 'hy';
         await storage.recoveryCancelWithOutbox(userId, r.windowPreviousHash, (cur) => ({ next: cancelWindow(cur), result: null }),
-          (tx) => mailToRecipients([primaryEmail, backup?.email], '', '', 'recovery_cancelled', { method: 'code' }, tx, profile?.locale ?? 'hy'));
+          (tx) => mailToRecipients([primaryEmail, backup?.email], '', '', 'recovery_cancelled', { method: 'code' }, tx, locale));
         await alertDevices(userId, { kind: 'recovery_cancelled' });
         return send(res, 200, { ok: true });
       }
@@ -2815,6 +2828,8 @@ if (req.method === 'POST' && p === '/login') {
       }
 
       if (req.method === 'POST' && p === '/recovery/complete') {
+        const requestedLocale = body.locale === undefined ? null : resolveEmailLocale(body.locale);
+        if (body.locale !== undefined && !requestedLocale) return send(res, 400, { error: 'locale must be hy, ru or en' });
         const { code, pin, newPassword } = body;
         // Восстановление по почте: адрес вместо идентификатора (без входа идентификатора не знают).
         const userId = body.userId ?? (typeof body.email === 'string' ? await storage.userIdByEmail(normalizeEmail(body.email)) : null);
@@ -2849,6 +2864,7 @@ if (req.method === 'POST' && p === '/login') {
         const profile = await storage.profileGet(userId);
         const primaryEmail = profile?.email ?? userId;
         const backup = await storage.backupEmailGet(userId);
+        const locale = requestedLocale ?? profile?.locale ?? 'hy';
         const keyResetAt = await storage.recoveryCompleteWithOutbox(
           userId, newPasswordHash,
           (r) => {
@@ -2856,7 +2872,7 @@ if (req.method === 'POST' && p === '/login') {
             return { next, result: next.windowKeyResetAt };
           },
           recoveryCancelHash(userId, cancelCode),
-          (tx) => mailToRecipients([primaryEmail, backup?.email], '', '', 'recovery_completed', { cancelCode }, tx, profile?.locale ?? 'hy'),
+          (tx) => mailToRecipients([primaryEmail, backup?.email], '', '', 'recovery_completed', { cancelCode }, tx, locale),
         );
         await alertDevices(userId, { kind: 'recovery_completed', keyResetAt: new Date(keyResetAt).toISOString() });
         return send(res, 200, { ok: true, keyResetAt: new Date(keyResetAt).toISOString() });
