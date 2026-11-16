@@ -186,3 +186,42 @@ test('recovery state and new-device wait are committed with their email outbox r
     await db.close();
   }
 });
+
+test('временная SMTP-ошибка повторяется с backoff и затем доставляется', async () => {
+  const db = await testDatabase();
+  let attempts = 0;
+  const sent = [];
+  const smtp = {
+    async send(message) {
+      attempts += 1;
+      if (attempts === 1) {
+        const error = new Error('temporary connection failure');
+        error.reason = 'connection';
+        throw error;
+      }
+      sent.push({ to: message.to, subject: message.subject, text: message.text });
+      return { messageId: 'retried-message-id' };
+    },
+    close() {},
+  };
+  const queue = createEmailDelivery({
+    pool: db.pool, smtpMailer: smtp, encryptionKey: randomBytes(32),
+    pollIntervalMs: 250, retryBaseMs: 100, retryMaxMs: 500,
+  });
+  try {
+    const result = await queue.send({
+      to: 'retry@example.test', subject: 'Retry', text: 'RETRY-BODY',
+      idempotencyKey: 'transient-retry-001',
+    });
+    queue.start();
+    await waitFor(async () => (await db.pool.query('SELECT status FROM email_deliveries WHERE id = $1', [result.deliveryId])).rows[0].status === 'sent');
+    const row = (await db.pool.query('SELECT attempts, last_error_code FROM email_deliveries WHERE id = $1', [result.deliveryId])).rows[0];
+    assert.equal(row.attempts, 2);
+    assert.equal(row.last_error_code, null);
+    assert.equal(attempts, 2);
+    assert.deepEqual(sent, [{ to: 'retry@example.test', subject: 'Retry', text: 'RETRY-BODY' }]);
+  } finally {
+    await queue.stop();
+    await db.close();
+  }
+});
