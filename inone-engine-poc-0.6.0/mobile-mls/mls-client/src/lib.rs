@@ -419,36 +419,110 @@ impl Client {
         r["epoch"].as_u64().ok_or_else(|| "сервер не вернул эпоху".to_string())
     }
 
-    /// Приглашает пользователя: забирает его ключевые пакеты (все устройства), делает коммит и приветствия.
+    /// Приглашает пользователя через room-bound KeyPackage claim и idempotent MLS commit.
+    /// The group state is merged only after the server confirms the commit.
     pub fn invite(&mut self, room_id: &str, user_id: &str) -> Result<(), String> {
         self.ensure_writable()?;
-        let claimed = self.call("GET", &format!("/mls/key-packages/{}", urlencoding::encode(user_id)), None)?;
+        let claim_id = hex_encode(&self.provider.rand().random_vec(16).map_err(text)?);
+        let claimed = self.call(
+            "POST",
+            &format!("/mls/key-packages/{}/claims", urlencoding::encode(user_id)),
+            Some(json!({ "claimId": claim_id, "roomId": room_id })),
+        )?;
         let packages = claimed["packages"].as_array().ok_or("нет поля packages")?.clone();
         if packages.is_empty() {
+            let _ = self.call(
+                "DELETE",
+                &format!("/mls/key-packages/claims/{}", urlencoding::encode(&claim_id)),
+                None,
+            );
             return Err(format!("у {user_id} нет ключевых пакетов"));
         }
-        let mut key_packages = Vec::with_capacity(packages.len());
-        let mut devices = Vec::with_capacity(packages.len());
-        for p in &packages {
-            let bytes = B64.decode(p["package"].as_str().ok_or("пакет не строка")?).map_err(text)?;
-            let kp = KeyPackageIn::tls_deserialize_exact(&bytes).map_err(text)?.validate(self.provider.crypto(), ProtocolVersion::Mls10).map_err(text)?;
-            key_packages.push(kp);
-            devices.push(p["deviceId"].as_str().ok_or("нет deviceId")?.to_string());
-        }
-        let (epoch_before, commit_b64, welcome_b64) = {
+
+        let result = (|| -> Result<(), String> {
+            let mut key_packages = Vec::with_capacity(packages.len());
+            let mut devices = Vec::with_capacity(packages.len());
+            for package in &packages {
+                let encoded = package["package"].as_str().ok_or("пакет не строка")?;
+                let bytes = B64.decode(encoded).map_err(text)?;
+                let key_package = KeyPackageIn::tls_deserialize_exact(&bytes)
+                    .map_err(text)?
+                    .validate(self.provider.crypto(), ProtocolVersion::Mls10)
+                    .map_err(text)?;
+                key_packages.push(key_package);
+                devices.push(package["deviceId"].as_str().ok_or("нет deviceId")?.to_string());
+            }
+            devices.sort();
+            devices.dedup();
+
+            let (base_epoch, commit_b64, welcome_b64) = {
+                let group = self.groups.get_mut(room_id).ok_or("комната не создана на этом устройстве")?;
+                let base_epoch = group.mls.epoch().as_u64();
+                let (commit, welcome, _) = group.mls
+                    .add_members(&self.provider, &self.signer, &key_packages)
+                    .map_err(text)?;
+                (
+                    base_epoch,
+                    B64.encode(commit.tls_serialize_detached().map_err(text)?),
+                    B64.encode(welcome.tls_serialize_detached().map_err(text)?),
+                )
+            };
+            let welcomes: Vec<Value> = devices.iter()
+                .map(|device| json!({ "userId": user_id, "deviceId": device, "welcome": welcome_b64 }))
+                .collect();
+            let payload = json!({
+                "epoch": base_epoch,
+                "commit": commit_b64,
+                "changes": { "adds": [user_id], "removes": [], "removeDevices": [] },
+                "welcomes": welcomes,
+                "clientOperationId": claim_id,
+                "keyPackageClaimId": claim_id
+            });
+
+            let mut accepted = false;
+            let mut last_error = None;
+            for _attempt in 0..2 {
+                match self.call(
+                    "POST",
+                    &format!("/mls/groups/{}/commits", urlencoding::encode(room_id)),
+                    Some(payload.clone()),
+                ) {
+                    Ok(_) => {
+                        accepted = true;
+                        break;
+                    }
+                    Err(error) => last_error = Some(error),
+                }
+            }
+            if !accepted {
+                let error = last_error.unwrap_or_else(|| "MLS membership commit was not acknowledged".to_string());
+                if error.contains("epoch_outdated") {
+                    let group = self.groups.get_mut(room_id).ok_or("комната не создана на этом устройстве")?;
+                    group.mls.clear_pending_commit(self.provider.storage()).map_err(text)?;
+                    let _ = self.call(
+                        "DELETE",
+                        &format!("/mls/key-packages/claims/{}", urlencoding::encode(&claim_id)),
+                        None,
+                    );
+                }
+                return Err(error);
+            }
+
             let group = self.groups.get_mut(room_id).ok_or("комната не создана на этом устройстве")?;
-            let epoch_before = group.mls.epoch().as_u64();
-            let (commit, welcome, _) = group.mls.add_members(&self.provider, &self.signer, &key_packages).map_err(text)?;
             group.mls.merge_pending_commit(&self.provider).map_err(text)?;
-            (epoch_before, B64.encode(commit.tls_serialize_detached().map_err(text)?), B64.encode(welcome.tls_serialize_detached().map_err(text)?))
-        };
-        let welcomes: Vec<Value> = devices.iter().map(|d| json!({ "userId": user_id, "deviceId": d, "welcome": welcome_b64 })).collect();
-        self.call(
-            "POST",
-            &format!("/mls/groups/{}/commits", urlencoding::encode(room_id)),
-            Some(json!({ "epoch": epoch_before, "commit": commit_b64, "changes": { "adds": [user_id], "removes": [] }, "welcomes": welcomes })),
-        )?;
-        Ok(())
+            Ok(())
+        })();
+
+        if result.is_err() {
+            // A committed claim cannot be released; the server rejects that release.
+            // For failures before commit, release returns the reserved packages safely.
+            let _ = self.call(
+                "DELETE",
+                &format!("/mls/key-packages/claims/{}", urlencoding::encode(&claim_id)),
+                None,
+            );
+        }
+        result
     }
 
     /// Отправляет текст в комнату. Устройство должно быть на эпохе сервера: иначе сначала синхронизация.
