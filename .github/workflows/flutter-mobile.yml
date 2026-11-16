@@ -6,7 +6,7 @@ on:
       - 'mobile/**'
       - '.github/workflows/flutter-mobile.yml'
   push:
-    branches: [main, feature/stage-4-native-mls-runtime-2026-11-11]
+    branches: [main, feature/stage-4-native-mls-runtime-2026-11-11, feature/email-delivery-service-2026-11-16-b1]
     paths:
       - 'mobile/**'
       - '.github/workflows/flutter-mobile.yml'
