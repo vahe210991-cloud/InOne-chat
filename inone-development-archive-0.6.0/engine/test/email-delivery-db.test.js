@@ -62,7 +62,6 @@ test('очередь шифрует получателя и тело, дедуп
     await first.stop();
 
     const smtp2 = fakeSmtp();
-    const restarted = createEmailDelivery({ pool: db.pool, smtpMailer: smtp2, encryptionKey: randomBytes(32).fill(0), pollIntervalMs: 250 });
     // The same encryption key is required to decrypt queued payloads.
     const recovered = createEmailDelivery({ pool: db.pool, smtpMailer: smtp2, encryptionKey: Buffer.from(masterKey), pollIntervalMs: 250 });
     recovered.start();
