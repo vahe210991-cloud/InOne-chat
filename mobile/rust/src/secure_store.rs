@@ -5,9 +5,8 @@ use zeroize::Zeroize;
 use keyring_core::{Entry, Error as KeyringError};
 use mls_client::KeyStore;
 
-/// Production database-key storage. The key is read and written entirely
-/// inside Rust through Android Keystore-backed storage or Apple's protected
-/// Keychain store; it is never passed to Dart.
+/// Serialize reads, creation and deletion so a concurrent logout cannot race
+/// a session open and replace the SQLCipher key underneath an existing DB.
 static KEY_STORE_LOCK: Mutex<()> = Mutex::new(());
 
 pub struct PlatformKeyStore {
@@ -20,12 +19,14 @@ impl PlatformKeyStore {
         initialize_native_store()?;
         Ok(Self { _private: () })
     }
-}
 
-impl KeyStore for PlatformKeyStore {
-    fn has_database_key(&self, scope: &str) -> Result<bool, String> {
-        let entry = Entry::new("com.inone.mls.sqlcipher-key", scope)
-            .map_err(|error| format!("создание записи защищённого хранилища: {error}"))?;
+    fn entry(scope: &str) -> Result<Entry, String> {
+        Entry::new("com.inone.mls.sqlcipher-key", scope)
+            .map_err(|error| format!("создание записи защищённого хранилища: {error}"))
+    }
+
+    fn has_database_key_unlocked(&self, scope: &str) -> Result<bool, String> {
+        let entry = Self::entry(scope)?;
         match entry.get_secret() {
             Ok(mut secret) => {
                 secret.zeroize();
@@ -36,9 +37,8 @@ impl KeyStore for PlatformKeyStore {
         }
     }
 
-    fn existing_database_key(&self, scope: &str) -> Result<Option<[u8; 32]>, String> {
-        let entry = Entry::new("com.inone.mls.sqlcipher-key", scope)
-            .map_err(|error| format!("создание записи защищённого хранилища: {error}"))?;
+    fn existing_database_key_unlocked(&self, scope: &str) -> Result<Option<[u8; 32]>, String> {
+        let entry = Self::entry(scope)?;
         match entry.get_secret() {
             Ok(mut secret) => {
                 let key = secret.as_slice().try_into().map(Some).map_err(|_| {
@@ -51,17 +51,32 @@ impl KeyStore for PlatformKeyStore {
             Err(error) => Err(format!("чтение ключа SQLCipher: {error}")),
         }
     }
+}
+
+impl KeyStore for PlatformKeyStore {
+    fn has_database_key(&self, scope: &str) -> Result<bool, String> {
+        let _guard = KEY_STORE_LOCK
+            .lock()
+            .map_err(|error| format!("блокировка ключа SQLCipher: {error}"))?;
+        self.has_database_key_unlocked(scope)
+    }
+
+    fn existing_database_key(&self, scope: &str) -> Result<Option<[u8; 32]>, String> {
+        let _guard = KEY_STORE_LOCK
+            .lock()
+            .map_err(|error| format!("блокировка ключа SQLCipher: {error}"))?;
+        self.existing_database_key_unlocked(scope)
+    }
 
     fn database_key(&self, scope: &str) -> Result<[u8; 32], String> {
         let _guard = KEY_STORE_LOCK
             .lock()
             .map_err(|error| format!("блокировка ключа SQLCipher: {error}"))?;
-        if let Some(key) = self.existing_database_key(scope)? {
+        if let Some(key) = self.existing_database_key_unlocked(scope)? {
             return Ok(key);
         }
 
-        let entry = Entry::new("com.inone.mls.sqlcipher-key", scope)
-            .map_err(|error| format!("создание записи защищённого хранилища: {error}"))?;
+        let entry = Self::entry(scope)?;
         let mut key = [0u8; 32];
         if let Err(error) = getrandom::fill(&mut key) {
             key.zeroize();
@@ -78,8 +93,7 @@ impl KeyStore for PlatformKeyStore {
         let _guard = KEY_STORE_LOCK
             .lock()
             .map_err(|error| format!("блокировка ключа SQLCipher: {error}"))?;
-        let entry = Entry::new("com.inone.mls.sqlcipher-key", scope)
-            .map_err(|error| format!("создание записи защищённого хранилища: {error}"))?;
+        let entry = Self::entry(scope)?;
         match entry.delete_credential() {
             Ok(()) | Err(KeyringError::NoEntry) => Ok(()),
             Err(error) => Err(format!(
@@ -93,7 +107,7 @@ fn initialize_native_store() -> Result<(), String> {
     // Do not cache initialization errors: a transient platform-store failure
     // must not permanently poison every later MLS open/resume attempt.
     static INITIALIZED: OnceLock<Mutex<bool>> = OnceLock::new();
-    let mut initialized = INITIALIZED
+    let initialized = INITIALIZED
         .get_or_init(|| Mutex::new(false))
         .lock()
         .map_err(|error| format!("блокировка инициализации защищённого хранилища: {error}"))?;
@@ -115,11 +129,16 @@ fn initialize_native_store() -> Result<(), String> {
         keyring_core::set_default_store(store);
     }
 
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    #[cfg(any(target_os = "android", target_os = "ios"))]
     {
-        return Err("защищённое хранилище MLS доступно только на Android и iOS".to_string());
+        let mut initialized = initialized;
+        *initialized = true;
+        Ok(())
     }
 
-    *initialized = true;
-    Ok(())
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        let _ = initialized;
+        Err("защищённое хранилище MLS доступно только на Android и iOS".to_string())
+    }
 }
