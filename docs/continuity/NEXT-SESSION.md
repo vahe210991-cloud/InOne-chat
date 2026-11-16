@@ -236,3 +236,17 @@ Required next work:
 
 Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone-and-inone-business--2026-11-13).
 
+
+
+## New proposal — InOne Bot Platform and Sticker Bot (2026-11-16)
+
+Review [development/architecture/INONE-BOTS-AND-STICKERS.md](../../development/architecture/INONE-BOTS-AND-STICKERS.md) and [the proposal report](../../development/reports/2026-11-16-bots-stickers-architecture-proposal.md).
+
+Next actions, only after owner review:
+1. Decide release placement and whether the full Bot Platform/Sticker Bot is approved for Beta 2.0 or a later release. Do not change WBS v1.1 without explicit approval.
+2. Approve bot creation eligibility, quotas, username policy, scopes and moderation gates.
+3. Design/approve MLS bot-participant and user-consent protocol before exposing chat contents to any bot.
+4. Define OpenAPI/Webhook event contracts, authentication, token rotation, replay/idempotency, rate limits and audit requirements.
+5. Decide image-processing provider, privacy disclosure, photo retention, output limits, moderation and sticker-pack version/deletion semantics.
+
+No bot or sticker implementation is authorized by the proposal document alone.
