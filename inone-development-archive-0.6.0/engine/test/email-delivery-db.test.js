@@ -168,10 +168,10 @@ test('recovery state and new-device wait are committed with their email outbox r
     assert.equal((await store.deviceWaitGet('@recovery-outbox', 'new-device')).activateAt > Date.now(), true);
 
     await store.backupEmailSaveWithOutbox('@recovery-outbox', 'backup@example.test', Date.now(), (tx) =>
-      queue.sendInTransaction(tx, { to: 'primary@example.test', templateId: 'backup_email_changed', variables: { action: 'added' }, idempotencyKey: 'backup-save-transaction-001' }));
+      queue.sendInTransaction(tx, { to: 'primary@example.test', templateId: 'backup_email_changed', variables: { action: 'added' }, locale: 'hy', idempotencyKey: 'backup-save-transaction-001' }));
     assert.equal((await store.backupEmailGet('@recovery-outbox')).email, 'backup@example.test');
     await store.backupEmailRemoveWithOutbox('@recovery-outbox', (tx) =>
-      queue.sendInTransaction(tx, { to: 'primary@example.test', templateId: 'backup_email_removed', variables: {}, idempotencyKey: 'backup-remove-transaction-001' }));
+      queue.sendInTransaction(tx, { to: 'primary@example.test', templateId: 'backup_email_removed', variables: {}, locale: 'hy', idempotencyKey: 'backup-remove-transaction-001' }));
     assert.equal(await store.backupEmailGet('@recovery-outbox'), null);
 
     await store.recoveryCancelSet('@recovery-outbox', 'old-cancel-hash', Date.now() + 60_000);
