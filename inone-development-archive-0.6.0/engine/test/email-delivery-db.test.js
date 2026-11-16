@@ -301,7 +301,7 @@ test('повреждённый AES-GCM payload переводится в dead le
   const queue = createEmailDelivery({ pool: db.pool, smtpMailer: smtp, encryptionKey: randomBytes(32), pollIntervalMs: 250 });
   try {
     const result = await queue.send({
-      to: 'tampered@example.test', templateId: 'registration_code', variables: { code: 'DO-NOT-SEND' },
+      to: 'tampered@example.test', templateId: 'registration_code', variables: { code: 'DO-NOT-SEND' }, locale: 'hy',
       idempotencyKey: 'payload-tamper-001',
     });
     await db.pool.query(
