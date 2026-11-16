@@ -702,11 +702,10 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         const perAccount = await checkRate('backupEmailPerAccount', d.userId);
         if (!perAccount.allowed) return send(res, 429, { error: 'too many requests, try later' });
         const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
-        await storage.emailCodeUpdate(backupKey(d.userId, email), (e) => ({
+        await storage.emailCodeUpdateWithOutbox(backupKey(d.userId, email), (e) => ({
           next: requestEmailCode(e, { nowMs: now(), codeHash: backupCodeHash(d.userId, email, code) }),
           result: null,
-        }));
-        await mailTo(email, 'Подтверждение запасной почты InOne', '', null, 'backup_email_verification', { code });
+        }), (tx) => mailTo(email, 'Подтверждение запасной почты InOne', '', null, 'backup_email_verification', { code }, 'ru', tx));
         return send(res, 202, { ok: true });
       }
 
@@ -818,11 +817,11 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         const perAccount = await checkRate('stepupPerAccount', d.userId);
         if (!perAccount.allowed) return send(res, 429, { error: 'too many confirmation requests, try later' });
         const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
-        await storage.emailCodeUpdate(stepupKey(d.userId), (e) => ({
+        const recipient = await confirmationEmail(d.userId);
+        await storage.emailCodeUpdateWithOutbox(stepupKey(d.userId), (e) => ({
           next: requestEmailCode(e, { nowMs: now(), codeHash: stepupCodeHash(d.userId, action, code) }),
           result: null,
-        }));
-        await mailTo(await confirmationEmail(d.userId), 'Подтверждение действия в InOne', '', null, 'stepup_code', { code, action: stepupActionText[action] });
+        }), (tx) => mailTo(recipient, 'Подтверждение действия в InOne', '', null, 'stepup_code', { code, action: stepupActionText[action] }, 'ru', tx));
         return send(res, 202, { ok: true });
       }
 
@@ -894,11 +893,10 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         if (!perAddress.allowed || !perEmail.allowed) return send(res, 429, { error: 'too many codes, try later' });
         if (!(await storage.userIdByEmail(email))) {
           const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
-          await storage.emailCodeUpdate(email, (e) => ({
+          await storage.emailCodeUpdateWithOutbox(email, (e) => ({
             next: requestEmailCode(e, { nowMs: now(), codeHash: emailCodeHash(email, code) }),
             result: null,
-          }));
-          await mailTo(email, 'Код подтверждения InOne', '', null, 'registration_code', { code });
+          }), (tx) => mailTo(email, 'Код подтверждения InOne', '', null, 'registration_code', { code }, 'ru', tx));
         }
         return send(res, 202, { ok: true });
       }
