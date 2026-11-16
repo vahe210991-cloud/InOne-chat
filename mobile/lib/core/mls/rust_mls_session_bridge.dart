@@ -42,6 +42,20 @@ class RustMlsSessionBridge implements MlsSessionBridge {
     return directory.path;
   }
 
+  BigInt _toRustU64(int value, String name) {
+    if (value < 0) {
+      throw RangeError.value(value, name, 'must be non-negative');
+    }
+    return BigInt.from(value);
+  }
+
+  int _fromRustU64(BigInt value, String name) {
+    if (value < BigInt.zero || value > BigInt.from(0x7fffffffffffffff)) {
+      throw ArgumentError.value(value, name, 'does not fit in a Dart int');
+    }
+    return value.toInt();
+  }
+
   rust.MlsSession _requireSession() {
     final session = _session;
     if (session == null) {
@@ -100,7 +114,7 @@ class RustMlsSessionBridge implements MlsSessionBridge {
 
   @override
   Future<void> ensureKeyPackages(int target) =>
-      _requireSession().ensureKeyPackages(target: target);
+      _requireSession().ensureKeyPackages(target: _toRustU64(target, 'target'));
 
   @override
   Future<void> createRoom(String roomId) =>
@@ -139,7 +153,10 @@ class RustMlsSessionBridge implements MlsSessionBridge {
 
   @override
   Future<String?> quarantinedCommitReason(String roomId, int epoch) =>
-      _requireSession().quarantinedCommitReason(roomId: roomId, epoch: epoch);
+      _requireSession().quarantinedCommitReason(
+        roomId: roomId,
+        epoch: _toRustU64(epoch, 'epoch'),
+      );
 
   @override
   Future<String> sendText(String roomId, String plaintext) =>
@@ -200,14 +217,18 @@ class RustMlsSessionBridge implements MlsSessionBridge {
   }
 
   @override
-  Future<int> flushOutbox() => _requireSession().flushOutbox();
+  Future<int> flushOutbox() async =>
+      _fromRustU64(await _requireSession().flushOutbox(), 'flushOutbox');
 
   @override
-  Future<int> outboxLength() => _requireSession().outboxLen();
+  Future<int> outboxLength() async =>
+      _fromRustU64(await _requireSession().outboxLen(), 'outboxLength');
 
   @override
-  Future<int?> localEpoch(String roomId) =>
-      _requireSession().localEpoch(roomId: roomId);
+  Future<int?> localEpoch(String roomId) async {
+    final epoch = await _requireSession().localEpoch(roomId: roomId);
+    return epoch == null ? null : _fromRustU64(epoch, 'localEpoch');
+  }
 
   @override
   Future<List<String>> membersOf(String roomId) =>
@@ -218,8 +239,8 @@ class RustMlsSessionBridge implements MlsSessionBridge {
       _requireSession().revokeDevice(deviceId: deviceId);
 
   @override
-  Future<int> removeRevokedDevices() =>
-      _requireSession().removeRevokedDevices();
+  Future<int> removeRevokedDevices() async =>
+      _fromRustU64(await _requireSession().removeRevokedDevices(), 'removeRevokedDevices');
 
   @override
   Future<void> purgeLocalSession({
