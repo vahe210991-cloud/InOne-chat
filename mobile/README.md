@@ -1,6 +1,6 @@
 # InOne Beta 1.0 — unified screen and API test host
 
-The Flutter host now exposes the 22 owner-approved visual variants and the complete 73-entry test-screen catalogue in one searchable picker (95 selectable entries total).
+The current QA host exposes the 22 owner-approved visual variants and the 73-entry test-screen catalogue in one searchable picker (95 selectable entries total). It is still a WebView-based HTML test host, not the final native Dart production UI.
 
 ## Screen catalogue
 
@@ -20,7 +20,7 @@ The Flutter host now exposes the 22 owner-approved visual variants and the compl
 
 ## Native Rust / Flutter bridge generation
 
-The Stage 4 branch uses `flutter_rust_bridge` with the Native Assets backend. At the current source revision, generated bridge files are not yet committed: `lib/src/rust/`, `hook/build.dart`, `rust/src/frb_generated.rs` and `rust/Cargo.lock` are produced by the generation workflow. Therefore a clean checkout cannot use only `flutter pub get` / `flutter run` until generation has completed.
+The Stage 4 branch uses `flutter_rust_bridge` with the Native Assets backend. Generated bridge files are produced in the validation workspace and uploaded as an artifact; they are not committed automatically. CI workflows have read-only repository permissions and never push generated code or formatting changes. A clean checkout must run the pinned generation sequence locally before `flutter run`.
 
 To reproduce the generation locally, use the same pinned sequence as `.github/workflows/openmls-frb-codegen.yml`:
 
@@ -41,6 +41,7 @@ cp /tmp/inone-api-mod.rs rust/src/api/mod.rs
 rm -f rust/src/api/simple.rs lib/src/rust/api/simple.dart
 flutter_rust_bridge_codegen generate
 node tool/prepare_android_mls.mjs
+node tool/prepare_ios_deep_links.mjs
 flutter pub get
 cargo generate-lockfile --manifest-path rust/Cargo.toml
 flutter analyze
@@ -48,7 +49,7 @@ flutter test
 flutter build apk --debug
 ```
 
-This command sequence has not been executed in the current development environment. Its successful completion must be recorded against an exact source SHA before the bridge is accepted. The CI generation job is intended to commit generated bindings, build-hook files and lockfiles back to the Stage 4 branch.
+This command sequence has not been executed in the current development environment. Its successful completion must be recorded against an exact source SHA before the bridge is accepted. The CI generation job uploads generated bindings, build hooks and lockfiles as artifacts only. A developer must review and commit generated files explicitly; CI does not modify any branch.
 
 ## Backend connection
 
@@ -105,7 +106,16 @@ Loading, unauthenticated, empty-profile, and error states appear in a native ban
 - The Rust runtime stores MLS group state and the device session in SQLCipher. The 32-byte database key is held in Android Keystore-backed storage or Apple's protected Keychain store; the key is never exposed to Dart or WebView. The database lives in the app-private support directory.
 - The native bridge exposes key-package maintenance, room creation/invites, encrypted send, inbox sync, offline outbox, epoch/member inspection, device revocation, refresh, close and local purge. Decrypted incoming messages are persisted in a SQLCipher inbox and remain pending across restart until Flutter explicitly acknowledges durable acceptance; acknowledgement changes delivery state but retains encrypted room history for later reads.
 - Logout destroys the local SQLCipher database, its journal/WAL sidecars and the platform key even when server logout cannot be confirmed. A failed resume can still invoke local purge. No plaintext or Megolm fallback is permitted when native MLS is unavailable.
-- Stage 4 is not accepted until Rust/Flutter regression suites, Android Keystore runtime smoke tests, iOS native device/simulator builds and signed iOS Protected Keychain runtime validation pass on the same PR head. The current workflow now runs the signing job behind the GitHub Environment `ios-signing`; configure that environment with required reviewers and these environment secrets: `IOS_SIGNING_CERTIFICATE_P12` (base64-encoded P12), `IOS_SIGNING_CERTIFICATE_PASSWORD`, `IOS_PROVISIONING_PROFILE` (base64-encoded profile) and `IOS_TEAM_ID`. The job validates the profile team, bundle identifier, keychain-access-groups entitlement and expiry, configures manual signing, runs the iOS simulator smoke test, and verifies the resulting app signature/entitlements. This workflow change is source-reviewed but not yet executed. Missing signing secrets fail the iOS job; a skipped or unsigned test is not a pass. Never paste certificate or profile contents into chat.
+- The current CI is read-only and uses no signing secrets. It generates the Rust bridge, runs Flutter analysis/tests, builds Android, and builds unsigned iOS device/simulator targets. This does not prove runtime Keychain behavior on a signed iOS device; that still requires a real-machine acceptance test.
+- Recovery confirmation now supports the `inone://recovery/confirm?user=...&token=...&locale=...` scheme. Android/iOS project preparation scripts register the scheme. The HTTPS preview page is non-mutating, localized, and sent with no-store/referrer protections; only an explicit app launch or POST confirms recovery. This custom scheme is for Beta 1 testing. Before production release, replace it with verified Android App Links / iOS Universal Links using the actual public domain and signing association files.
+
+## Remaining Beta 1 acceptance blockers
+
+- The active `main.dart` still presents the approved HTML screens through WebView. The approved HTML is a visual reference/test host, not the accepted native Dart production UI. The separate Dart migration branch has not yet been connected to the current `InOneSession` and still contains provider-login and message-action placeholders.
+- The native Rust MLS bridge exposes session, room, encrypted text, inbox/outbox and device operations, but the active UI does not yet drive MLS send/sync through those methods. `InOneSession` still needs typed public wrappers and the native Dart chat screen must use them.
+- Encrypted file-attachment transfer is not implemented end-to-end in the Flutter/Rust bridge. Attachments must remain unavailable rather than fall back to plaintext.
+- Provider OAuth callback handling is not yet connected in the active Flutter flow.
+- The recovery custom scheme is implemented for Beta 1 testing; verified production Universal/App Links still require the real domain and platform association metadata.
 
 ## Tests
 
