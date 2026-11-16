@@ -214,14 +214,18 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
     if (transactionClient && typeof mailer.sendInTransaction === 'function') return mailer.sendInTransaction(transactionClient, message);
     return mailer.send(message);
   };
-  // Каждая подтверждённая почта получает отдельную delivery; отказ одного адреса не блокирует второй.
+  // Каждый адрес — отдельная delivery. В transaction callback получатели передаются заранее,
+  // чтобы не занимать дополнительные pool connections поверх открытой транзакции.
+  const mailToRecipients = async (recipients, subject, text, templateId = null, variables = {}, transactionClient = null) => {
+    const uniqueRecipients = [...new Set(recipients.filter(Boolean))];
+    const results = await Promise.allSettled(uniqueRecipients.map((recipient) => mailTo(recipient, subject, text, null, templateId, variables, 'ru', transactionClient)));
+    const failures = results.filter((result) => result.status === 'rejected');
+    if (failures.length) throw new AggregateError(failures.map((result) => result.reason), 'one or more email deliveries could not be queued');
+  };
   const mail = async (userId, subject, text, templateId = null, variables = {}, transactionClient = null) => {
     const profile = await storage.profileGet(userId);
     const backup = await storage.backupEmailGet(userId);
-    const recipients = [...new Set([profile?.email ?? userId, backup?.email].filter(Boolean))];
-    const results = await Promise.allSettled(recipients.map((recipient) => mailTo(recipient, subject, text, null, templateId, variables, 'ru', transactionClient)));
-    const failures = results.filter((result) => result.status === 'rejected');
-    if (failures.length) throw new AggregateError(failures.map((result) => result.reason), 'one or more email deliveries could not be queued');
+    return mailToRecipients([profile?.email ?? userId, backup?.email], subject, text, templateId, variables, transactionClient);
   };
   const revokeDevice = async (rec) => {
     await storage.revokeDevice(key(rec.userId, rec.deviceId));
@@ -2654,14 +2658,18 @@ if (req.method === 'POST' && p === '/login') {
           // Аккаунт с привязкой Google или Apple восстанавливается входом через провайдера: кода здесь нет.
           if (!phone.verified && (await storage.providerLinksOf(userId)).length === 0) {
             const emailCode = String(randomInt(0, 1_000_000)).padStart(6, '0');
+            const primaryEmail = (await storage.profileGet(userId))?.email ?? userId;
+            const backup = await storage.backupEmailGet(userId);
+            const recoveryEmail = backup?.email ?? primaryEmail;
+            const notificationRecipients = [primaryEmail, backup?.email];
             const issued = await storage.recoveryUpdateWithOutbox(userId, (r) => {
               const out = requestCode(r, { nowMs: now(), codeHash: recoveryCodeHash(userId, emailCode), linkHash: null });
               const next = out.issued ? confirmLink(out.next, { nowMs: now(), linkOk: true }).next : out.next;
               return { next, result: out.issued };
             }, async (tx, wasIssued) => {
               if (!wasIssued) return;
-              await mailTo(await confirmationEmail(userId), 'Код восстановления InOne', '', null, 'recovery_code', { code: emailCode }, 'ru', tx);
-              await mail(userId, 'Запрошено восстановление InOne', '', 'recovery_requested', {}, tx);
+              await mailTo(recoveryEmail, 'Код восстановления InOne', '', null, 'recovery_code', { code: emailCode }, 'ru', tx);
+              await mailToRecipients(notificationRecipients, 'Запрошено восстановление InOne', '', 'recovery_requested', {}, tx);
             });
             if (issued) await alertDevices(userId, { kind: 'recovery_started' });
           }
@@ -2670,12 +2678,15 @@ if (req.method === 'POST' && p === '/login') {
           if (phone.verified && (await checkRate('smsPerPhone', phone.phone)).allowed) {
             const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
             const token = randomBytes(24).toString('base64url');
+            const primaryEmail = (await storage.profileGet(userId))?.email ?? userId;
+            const backup = await storage.backupEmailGet(userId);
+            const notificationRecipients = [primaryEmail, backup?.email];
             const issued = await storage.recoveryUpdateWithOutbox(userId, (r) => {
               const out = requestCode(r, { nowMs: now(), codeHash: recoveryCodeHash(userId, code), linkHash: recoveryLinkHash(userId, token) });
               return { next: out.next, result: out.issued };
             }, async (tx, wasIssued) => {
               if (!wasIssued) return;
-              await mail(userId, 'Подтверждение восстановления', '', 'recovery_confirmation_link', { url: `${publicUrl}/recovery/confirm?user=${encodeURIComponent(userId)}&token=${token}` }, tx);
+              await mailToRecipients(notificationRecipients, 'Подтверждение восстановления', '', 'recovery_confirmation_link', { url: `${publicUrl}/recovery/confirm?user=${encodeURIComponent(userId)}&token=${token}` }, tx);
             });
             if (issued) {
               // D5: SMS-код и email-link — независимые каналы одного recovery event.
