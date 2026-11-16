@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show Platform;
-import 'dart:typed_data';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
@@ -147,6 +146,7 @@ class InOneSession extends ChangeNotifier {
   Future<Map<String, dynamic>> login({
     required String email,
     required String password,
+    String? identityCode,
   }) {
     if (_loggingOut) {
       return Future<Map<String, dynamic>>.error(const ApiException(
@@ -163,7 +163,11 @@ class InOneSession extends ChangeNotifier {
         retryable: false,
       ));
     }
-    final operation = _loginOnce(email: email, password: password);
+    final operation = _loginOnce(
+      email: email,
+      password: password,
+      identityCode: identityCode,
+    );
     _loginInFlight = operation;
     return operation.whenComplete(() {
       if (identical(_loginInFlight, operation)) _loginInFlight = null;
@@ -173,6 +177,7 @@ class InOneSession extends ChangeNotifier {
   Future<Map<String, dynamic>> _loginOnce({
     required String email,
     required String password,
+    String? identityCode,
   }) async {
     await initialize();
     final platform = Platform.isIOS
@@ -189,6 +194,8 @@ class InOneSession extends ChangeNotifier {
         'deviceId': _deviceId,
         'label': 'InOne Flutter test client',
         'platform': platform,
+        if (identityCode != null && identityCode.trim().isNotEmpty)
+          'identityCode': identityCode.trim(),
       },
     );
     final safeResult = Map<String, dynamic>.from(result)
