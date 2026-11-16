@@ -12,6 +12,7 @@ void main() {
       'providers': ['google'],
       'backupEmail': {'email': 'backup@example.test', 'verified': true},
       'securityHints': ['offer_biometric'],
+      'locale': 'ru',
     });
 
     expect(profile.userId, 'user-1');
@@ -22,6 +23,7 @@ void main() {
     expect(profile.backupEmail?.email, 'backup@example.test');
     expect(profile.backupEmail?.verified, isTrue);
     expect(profile.securityHints, ['offer_biometric']);
+    expect(profile.locale, 'ru');
     expect(profile.isEmpty, isFalse);
   });
 
@@ -40,6 +42,7 @@ void main() {
     expect(profile.nickname, isNull);
     expect(profile.email, isNull);
     expect(profile.backupEmail, isNull);
+    expect(profile.locale, 'hy');
   });
 
   test('rejects invalid backend profile shapes', () {
