@@ -14,6 +14,7 @@ const PROD = {
   INONE_MAIL_TRANSPORT: 'smtp',
   INONE_SMTP_HOST: 'smtp.example',
   INONE_SMTP_FROM: 'no-reply@inone.example',
+  INONE_EMAIL_ENCRYPTION_KEY: randomBytes(32).toString('hex'),
   DATABASE_URL: 'postgresql://db.example/inone',
 };
 
