@@ -1,0 +1,21 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+
+const html = readFileSync(new URL('../assets/approved-ui/InOne-approved-cross-platform.html', import.meta.url), 'utf8');
+const openTag = '<script type="__bundler/template">';
+const start = html.indexOf(openTag);
+assert.notEqual(start, -1, 'bundled design template exists');
+const contentStart = start + openTag.length;
+const end = html.indexOf('</script>', contentStart);
+assert.notEqual(end, -1, 'bundled design template closes');
+const template = JSON.parse(html.slice(contentStart, end));
+const labels = [...template.matchAll(/data-screen-label="([^"]+)"/g)].map((item) => item[1]);
+const dark = labels.filter((label) => label.startsWith('D') && /^D\d{2}\b/.test(label));
+const light = labels.filter((label) => !label.startsWith('D') || !/^D\d{2}\b/.test(label));
+const squareFrames = template.match(/width:390px;height:844px[^"]*border-radius:0px/g) ?? [];
+assert.equal(labels.length, 22, 'exactly 22 approved screen variants are packaged');
+assert.equal(light.length, 11, '11 light variants are packaged');
+assert.equal(dark.length, 11, '11 dark variants are packaged');
+assert.equal(squareFrames.length, 22, 'all 22 outer screen frames have square corners');
+assert.doesNotMatch(template, /width:390px;height:844px[^"]*border-radius:42px/, 'no rounded iPhone device frames remain');
+console.log('Approved UI check passed: 22 screens (11 light + 11 dark), all outer frames rectangular.');
