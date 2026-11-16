@@ -598,3 +598,39 @@ dbTest('SD KeyPackage claim: replay after restart returns the same durable resul
     await db.close();
   }
 });
+
+dbTest('SD17: неожиданные внутренние ошибки не раскрывают детали HTTP-клиенту', async () => {
+  const db = await testDatabase();
+  const store = createStore({ pool: db.pool, pinPepper: PEPPER });
+  const logs = [];
+  const logger = {
+    debug() {},
+    info() {},
+    warn() {},
+    error: (message, fields) => logs.push({ message, ...fields }),
+  };
+  const srv = createServer({
+    registrationMode: 'open',
+    requirePhone: false,
+    pinPepper: PEPPER,
+    store,
+    logger,
+  });
+  await new Promise((resolve) => srv.server.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${srv.server.address().port}`;
+  try {
+    const client = await ChatClient.create(base, ALICE, 'A_PHONE', PW);
+    const secretDetail = 'postgres-internal-host-and-query-detail';
+    store.profileGet = async () => {
+      throw Object.assign(new Error(secretDetail), { code: 'XX000' });
+    };
+    const response = await req(base, 'GET', '/profile', { token: client.token });
+    assert.equal(response.status, 500);
+    assert.deepEqual(response.json, { error: 'internal server error' });
+    assert.ok(!JSON.stringify(logs).includes(secretDetail));
+    assert.equal(logs.at(-1)?.errorCode, 'XX000');
+  } finally {
+    await new Promise((resolve) => srv.server.close(resolve));
+    await db.close();
+  }
+});
