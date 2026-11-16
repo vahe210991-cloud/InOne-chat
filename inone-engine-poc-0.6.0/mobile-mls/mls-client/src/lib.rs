@@ -2092,7 +2092,7 @@ impl Client {
         let server_epoch = self.server_epoch(room_id)?;
         let expected_epoch = i64::try_from(server_epoch)
             .map_err(|_| "MLS epoch exceeds the persistent message outbox range".to_string())?;
-        let persisted_message: Option<(Option<Vec<u8>>, Option<i64>)> = self.meta.query_row(
+        let persisted_message: (Option<Vec<u8>>, Option<i64>) = self.meta.query_row(
             "SELECT mls_message, mls_epoch FROM client_outbox WHERE local_id = ?1",
             [client_message_id],
             |row| Ok((row.get(0)?, row.get(1)?)),
