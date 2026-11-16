@@ -1107,7 +1107,7 @@ mlsPendingRemovalsFor(userId) {
       const p = profiles.get(userId);
       return p ? structuredClone(p) : null;
     },
-    userIdByEmail(email) {
+    profileLocaleSet(userId, locale) {\n      const profile = profiles.get(userId);\n      if (!profile) return false;\n      profile.locale = locale;\n      return true;\n    },\n    userIdByEmail(email) {
       for (const [userId, p] of profiles) if (p.emailVerified && p.email === email) return userId;
       return null;
     },
@@ -1118,7 +1118,7 @@ mlsPendingRemovalsFor(userId) {
       }
       return null;
     },
-    createVerifiedAccount({ userId, passwordHash, email, nickname, nowMs, provider = null, joinDefaultOrg = false }) {
+    createVerifiedAccount({ userId, passwordHash, email, nickname, nowMs, provider = null, joinDefaultOrg = false, locale = 'hy' }) {
       if (accounts.has(userId)) return 'account';
       for (const p of profiles.values()) {
         if (p.emailVerified && p.email === email) return 'email';
@@ -1128,7 +1128,7 @@ mlsPendingRemovalsFor(userId) {
       if (key && providerLinks.has(key)) return 'link';
       accounts.set(userId, passwordHash);
       if (joinDefaultOrg) addOrgMembership(DEFAULT_ORG_ID, userId, 'member', nowMs);
-      profiles.set(userId, { email, emailVerified: true, nickname, createdAt: nowMs });
+      profiles.set(userId, { email, emailVerified: true, nickname, createdAt: nowMs, locale });
       if (key) providerLinks.set(key, { userId, email, linkedAt: nowMs });
       return 'ok';
     },
