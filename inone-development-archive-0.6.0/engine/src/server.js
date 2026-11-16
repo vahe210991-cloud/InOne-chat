@@ -202,16 +202,22 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
       if (!rec.revoked) await storage.enqueue(key(rec.userId, rec.deviceId), 'security', { body: content }, null, now() + TO_DEVICE_TTL_MS);
     }
   };
-  // Отправитель писем подключается снаружи. В разработке и тестах письма складываются в список.
-  const mailer = externalMailer ?? { send: async (m) => { outbox.push(m); } };
-  const mailTo = (to, subject, text) => mailer.send({ to, subject, text });
-  // Письмо владельцу аккаунта — на подтверждённую почту. У аккаунтов без профиля адресом остаётся идентификатор.
+  // SMTP/queue подключается снаружи. Тестовый транспорт хранит письма только в памяти.
+  const mailer = externalMailer ?? { send: async ({ to, subject, text }) => { outbox.push({ to, subject, text }); } };
+  const mailTo = (to, subject, text, idempotencyKey = null) => {
+    const key = idempotencyKey ?? createHash('sha256')
+      .update(`${to}\\0${subject}\\0${text}\\0${Math.floor(now() / 300_000)}`)
+      .digest('hex');
+    return mailer.send({ to, subject, text, idempotencyKey: key });
+  };
+  // Письмо владельцу аккаунта — на подтверждённую почту. Каждая почта получает отдельную delivery.
   const mail = async (userId, subject, text) => {
     const profile = await storage.profileGet(userId);
-    // Служебные письма — на основную почту и, если она задана, на запасную.
     const backup = await storage.backupEmailGet(userId);
-    await mailTo(profile?.email ?? userId, subject, text);
-    if (backup) await mailTo(backup.email, subject, text);
+    const recipients = [...new Set([profile?.email ?? userId, backup?.email].filter(Boolean))];
+    const results = await Promise.allSettled(recipients.map((recipient) => mailTo(recipient, subject, text)));
+    const failures = results.filter((result) => result.status === 'rejected');
+    if (failures.length) throw new AggregateError(failures.map((result) => result.reason), 'one or more email deliveries could not be queued');
   };
   const revokeDevice = async (rec) => {
     await storage.revokeDevice(key(rec.userId, rec.deviceId));
