@@ -59,7 +59,7 @@ function safeVariables(input) {
   for (const [key, value] of Object.entries(input)) {
     if (typeof value !== 'string' && typeof value !== 'number') throw new Error(`invalid email template variable: ${key}`);
     const text = String(value);
-    if (text.length > 2048 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(text)) throw new Error(`unsafe email template variable: ${key}`);
+    if (text.length > 2048 || /[\x00-\x1f\x7f]/.test(text)) throw new Error(\`unsafe email template variable: \${key}\`);
     result[key] = text;
   }
   return result;
