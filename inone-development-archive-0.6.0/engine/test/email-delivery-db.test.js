@@ -44,7 +44,7 @@ test('очередь шифрует получателя и тело, дедуп
   const masterKey = randomBytes(32);
   const smtp1 = fakeSmtp();
   const first = createEmailDelivery({ pool: db.pool, smtpMailer: smtp1, encryptionKey: Buffer.from(masterKey), pollIntervalMs: 250 });
-  const payload = { to: 'private-recipient@example.test', templateId: 'registration_code', variables: { code: 'SECRET-CODE-771155' } };
+  const payload = { to: 'private-recipient@example.test', templateId: 'registration_code', variables: { code: 'SECRET-CODE-771155' }, locale: 'ru' };
   try {
     await assert.rejects(first.send({ to: payload.to, subject: 'Raw', text: 'body', idempotencyKey: 'raw-message-001' }), /templateId is required/);
     const queued = await first.send({ ...payload, idempotencyKey: 'recovery-event-001' });
@@ -74,6 +74,7 @@ test('очередь шифрует получателя и тело, дедуп
     assert.equal(smtp2.sent.length, 1);
     assert.equal(smtp2.sent[0].to, payload.to);
     assert.match(smtp2.sent[0].text, /SECRET-CODE-771155/);
+    assert.match(smtp2.sent[0].html, /<html lang="ru">/);
     assert.match(smtp2.sent[0].html, /Noto Sans Armenian/);
     assert.match(smtp2.sent[0].html, /SECRET-CODE-771155/);
     await recovered.stop();
@@ -333,6 +334,11 @@ test('profile locale and pending registration locale persist in PostgreSQL', asy
       next: { codeHash: 'locale-code-hash', codeAttempts: 0, codeExpiresAt: Date.now() + 600_000, tokenHash: null, tokenExpiresAt: 0 },
       result: null,
     }), null, 'ru');
+    assert.equal((await db.pool.query("SELECT locale FROM email_codes WHERE email = 'pending-locale@example.test'")).rows[0].locale, 'ru');
+    const preservedLocale = await store.emailCodeUpdate('pending-locale@example.test', (current) => ({
+      next: { ...current, tokenHash: 'one-time-token' }, result: current.locale,
+    }));
+    assert.equal(preservedLocale, 'ru');
     assert.equal((await db.pool.query("SELECT locale FROM email_codes WHERE email = 'pending-locale@example.test'")).rows[0].locale, 'ru');
   } finally {
     await db.close();
