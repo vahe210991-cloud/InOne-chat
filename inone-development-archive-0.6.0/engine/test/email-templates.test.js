@@ -72,4 +72,7 @@ test('HTML templates escape untrusted variables and only render HTTPS recovery a
   const safeUrl = renderEmailTemplate('recovery_confirmation_link', { url: 'https://inone.example/confirm?token=a%26b' }, 'hy');
   assert.ok(safeUrl.html.includes('href="https://inone.example/confirm?token=a%26b"'));
   assert.ok(safeUrl.html.includes('Հաստատել հաշվի վերականգնումը'));
+  const localUrl = renderEmailTemplate('recovery_confirmation_link', { url: 'http://localhost:8080/recovery/confirm?token=local' }, 'ru');
+  assert.ok(localUrl.html.includes('href="http://localhost:8080/recovery/confirm?token=local"'));
+  assert.throws(() => renderEmailTemplate('recovery_confirmation_link', { url: 'http://external.example/recovery' }, 'hy'), /safe HTTPS URL/);
 });
