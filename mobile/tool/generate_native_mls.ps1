@@ -18,13 +18,26 @@ try {
         Copy-Item -LiteralPath $source -Destination $destination -Force
     }
 
-    flutter create --platforms=android,ios --project-name inone_mobile --org com.inone .
-    if ($LASTEXITCODE -ne 0) { throw "flutter create failed with exit code $LASTEXITCODE" }
+    # Never regenerate an existing native host project: Flutter create can rewrite
+    # Gradle/Xcode files owned by the application. Create only missing platforms.
+    $MissingPlatforms = @()
+    foreach ($platform in @("android", "ios")) {
+        if (-not (Test-Path -LiteralPath (Join-Path $MobileRoot $platform))) {
+            $MissingPlatforms += $platform
+        }
+    }
+    if ($MissingPlatforms.Count -gt 0) {
+        $PlatformList = $MissingPlatforms -join ","
+        flutter create --platforms=$PlatformList --project-name inone_mobile --org com.inone .
+        if ($LASTEXITCODE -ne 0) { throw "flutter create for $PlatformList failed with exit code $LASTEXITCODE" }
+    } else {
+        Write-Host "Preserving existing Android and iOS host projects."
+    }
 
     cargo install --locked --version 2.13.0 flutter_rust_bridge_codegen
     if ($LASTEXITCODE -ne 0) { throw "Installing flutter_rust_bridge_codegen failed with exit code $LASTEXITCODE" }
 
-    flutter_rust_bridge_codegen integrate --rust-crate-dir rust --rust-crate-name inone_mls_frb --integration-backend native-assets --platforms android,ios
+    flutter_rust_bridge_codegen integrate --rust-crate-dir rust --rust-crate-name inone_mls_frb --integration-backend native-assets --platforms android,ios --skip-fvm-install --no-dart-fix --no-dart-format --no-integration-test
     if ($LASTEXITCODE -ne 0) { throw "flutter_rust_bridge_codegen integrate failed with exit code $LASTEXITCODE" }
 
     foreach ($relative in $Preserve) {
@@ -44,14 +57,16 @@ try {
         }
     }
 
-    flutter_rust_bridge_codegen generate
+    flutter_rust_bridge_codegen generate --skip-fvm-install
     if ($LASTEXITCODE -ne 0) { throw "flutter_rust_bridge_codegen generate failed with exit code $LASTEXITCODE" }
 
     $requiredGenerated = @(
         "hook/build.dart",
         "lib/src/rust/frb_generated.dart",
+        "lib/src/rust/api/session.dart",
         "rust/build.rs",
-        "rust/src/frb_generated.rs"
+        "rust/src/frb_generated.rs",
+        "rust/Cargo.lock"
     )
     foreach ($relative in $requiredGenerated) {
         if (-not (Test-Path -LiteralPath (Join-Path $MobileRoot $relative))) {
