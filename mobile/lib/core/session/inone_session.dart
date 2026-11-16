@@ -216,6 +216,7 @@ class InOneSession extends ChangeNotifier {
         'deviceId': _deviceId,
         'label': 'InOne Flutter test client',
         'platform': platform,
+        if (_localeSyncPending) 'locale': _locale,
       },
     );
     final safeResult = Map<String, dynamic>.from(result)
@@ -225,6 +226,13 @@ class InOneSession extends ChangeNotifier {
       ..remove('pollSecret')
       ..remove('approvalId');
     _acceptSession(result);
+    // The login endpoint applies a pending local language choice before it can queue
+    // identity-check or new-device security mail. Clear the pending marker only when
+    // the server actually issued an authenticated session.
+    if (_localeSyncPending && isAuthenticated) {
+      await _writeLocaleSyncPending(false);
+      _localeSyncPending = false;
+    }
     // Do not return or display access/refresh tokens or device-approval
     // secrets to callers such as the API test panel.
     result['token'] = null;
@@ -274,7 +282,10 @@ class InOneSession extends ChangeNotifier {
     _localeSyncInFlight = true;
     try {
       if (_localeSyncPending) {
-        await request('PATCH', '/profile/locale', body: {'locale': _locale});
+        final updated = await request('PATCH', '/profile/locale', body: {'locale': _locale});
+        if (updated['locale'] != _locale) {
+          throw const ApiException(code: 'locale_update_failed', statusCode: 502, retryable: true);
+        }
         await _writeLocaleSyncPending(false);
         _localeSyncPending = false;
       } else {
@@ -287,7 +298,10 @@ class InOneSession extends ChangeNotifier {
         }
       }
     } catch (_) {
-      // Authentication remains usable; the saved account locale is refreshed on the next authenticated session sync.
+      // A pending language change must be synchronized before authenticated actions
+      // can trigger account emails. Keep the pending marker and fail closed.
+      if (_localeSyncPending) rethrow;
+      // A profile read failure does not invalidate an otherwise established session.
     } finally {
       _localeSyncInFlight = false;
     }
@@ -302,6 +316,46 @@ class InOneSession extends ChangeNotifier {
       body: {'email': email.trim(), 'locale': _locale},
     );
   }
+
+  Future<Map<String, dynamic>> startRecovery({required String email}) async {
+    await initialize();
+    return request(
+      'POST',
+      '/recovery/start',
+      authenticated: false,
+      body: {'email': email.trim(), 'locale': _locale},
+    );
+  }
+
+  Future<Map<String, dynamic>> cancelRecoveryByCode({
+    required String email,
+    required String code,
+  }) =>
+      request(
+        'POST',
+        '/recovery/cancel-by-code',
+        authenticated: false,
+        body: {'email': email.trim(), 'code': code.trim(), 'locale': _locale},
+      );
+
+  Future<Map<String, dynamic>> completeRecovery({
+    required String email,
+    required String code,
+    required String newPassword,
+    String? pin,
+  }) =>
+      request(
+        'POST',
+        '/recovery/complete',
+        authenticated: false,
+        body: {
+          'email': email.trim(),
+          'code': code.trim(),
+          'newPassword': newPassword,
+          if (pin != null && pin.isNotEmpty) 'pin': pin,
+          'locale': _locale,
+        },
+      );
 
   Future<Map<String, dynamic>> confirmEmailRegistration({
     required String email,
@@ -481,6 +535,16 @@ class InOneSession extends ChangeNotifier {
         statusCode: 409,
         retryable: false,
       );
+    }
+    if (authenticated && _localeSyncPending && path != '/profile/locale') {
+      await _syncLocaleAfterAuthentication();
+      if (_localeSyncPending) {
+        throw const ApiException(
+          code: 'locale_sync_pending',
+          statusCode: 503,
+          retryable: true,
+        );
+      }
     }
     final gate = _handoffGate;
     if (gate != null) await gate.future;
