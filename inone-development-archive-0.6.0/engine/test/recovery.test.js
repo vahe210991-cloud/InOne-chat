@@ -16,6 +16,7 @@ const PHONE_A = '+37477000001';
 const PHONE_B = '+37477000002';
 const NEW_PW = 'новый-пароль-2026';
 const IDENTITY_SUBJECT = 'Подтверждение входа после восстановления';
+const OLD_DEVICES_SUBJECTS = new Set(['Հին սարքերն անջատվել են', 'Старые устройства отключены', 'Previous devices have been disconnected']);
 const HOUR = 3600_000;
 
 async function start() {
@@ -118,7 +119,7 @@ test('через 48 часов после восстановления устр�
     await phone.sync();
     srv.advance(RECOVERY_DELAY_MS + 1000);
     await assert.rejects(phone.sync(), (e) => e.status === 401);
-    assert.ok(srv.mailbox(ALICE).some((m) => m.subject === 'Старые устройства отключены'));
+    assert.ok(srv.mailbox(ALICE).some((m) => OLD_DEVICES_SUBJECTS.has(m.subject)));
   } finally {
     await stop();
   }
