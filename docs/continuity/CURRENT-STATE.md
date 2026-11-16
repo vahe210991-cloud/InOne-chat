@@ -279,3 +279,12 @@ This changes the product boundary and future scope classification. It does not i
 
 Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone-and-inone-business--2026-11-13).
 
+
+
+## 2026-11-16 — Bot Platform and Sticker Bot proposal
+
+- Added [Bot Platform & Sticker Bot architecture proposal](../../development/architecture/INONE-BOTS-AND-STICKERS.md) and its [session report](../../development/reports/2026-11-16-bots-stickers-architecture-proposal.md) on branch `docs/bots-stickers-platform-2026-11-16`.
+- Proposed Bot Manager registration, API tokens/scopes, REST/Webhooks for external builders, explicit installation/consent, moderation and audit.
+- Proposed administration-owned Sticker Bot with photo processing, personal collections, versioned packs and a server-enforced 50-sticker maximum.
+- MLS/E2EE remains fail-closed: bots must be explicit MLS participants; no hidden server-side message access.
+- Status: documentation proposal only. No code, DB schema, API route or implementation changed. Beta 1.0 WBS v1.1 remains unchanged; Beta 2.0 scope not expanded or approved.
