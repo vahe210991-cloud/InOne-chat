@@ -50,7 +50,7 @@ async function call(base, method, path, { body, token } = {}) {
 }
 
 async function registerByEmail(base, srv, email, nickname) {
-  await call(base, 'POST', '/register/email', { body: { email } });
+  await call(base, 'POST', '/register/email', { body: { email, locale: 'ru' } });
   const code = srv.mailbox(email).filter((m) => m.subject === 'Код подтверждения InOne').at(-1).text.match(/Код: (\d{6})/)[1];
   const confirmed = await call(base, 'POST', '/register/email/confirm', { body: { email, code } });
   return call(base, 'POST', '/register', { body: { email, registrationToken: confirmed.body.registrationToken, password: PW, nickname } });
@@ -64,7 +64,7 @@ const codeOf = (srv, mailbox, subject, pattern = /Код: (\d{6})/) =>
 
 /** Восстановление по почте до конца: запрос, верный код, новый пароль. Возвращает код отмены. */
 async function completedRecovery(base, srv, email, newPassword = NEW_PW) {
-  assert.equal((await call(base, 'POST', '/recovery/start', { body: { email } })).status, 202);
+  assert.equal((await call(base, 'POST', '/recovery/start', { body: { email, locale: 'ru' } })).status, 202);
   const code = codeOf(srv, email, SUBJECT_RECOVERY);
   const done = await call(base, 'POST', '/recovery/complete', { body: { email, code, newPassword } });
   assert.equal(done.status, 200);
@@ -146,7 +146,7 @@ test('R-E6: аккаунт с привязкой Google — кода восст�
   try {
     const nonce = (await call(base, 'POST', '/auth/nonce')).body.nonce;
     const v = await call(base, 'POST', '/auth/provider/verify', { body: { provider: 'google', idToken: signToken(googleClaims(nonce)), nonce } });
-    const anna = (await call(base, 'POST', '/register/provider', { body: { ticket: v.body.ticket, nickname: 'Anna.G' } })).body;
+    const anna = (await call(base, 'POST', '/register/provider', { body: { ticket: v.body.ticket, nickname: 'Anna.G', locale: 'ru' } })).body;
     assert.equal((await call(base, 'POST', '/recovery/start', { body: { email: 'anna@gmail.test' } })).status, 202);
     assert.equal(srv.mailbox('anna@gmail.test').filter((m) => m.subject === SUBJECT_RECOVERY).length, 0, 'кода для аккаунта с Google нет');
     const r = await call(base, 'POST', '/recovery/complete', { body: { userId: anna.userId, code: '000000', newPassword: NEW_PW } });
