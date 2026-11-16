@@ -88,7 +88,6 @@ export function renderEmailTemplate(templateId, variables = {}, locale = 'ru') {
   const [subject, render] = template[language];
   const values = safeVariables(variables);
   for (const key of REQUIRED_VARIABLES[templateId] ?? []) if (!(key in values)) throw new Error('missing email template variable: ' + key);
-  for (const key of required) if (!(key in values)) throw new Error(`missing email template variable: ${key}`);
   const ttlMs = ['registration_code', 'backup_email_verification', 'stepup_code'].includes(templateId)
     ? 10 * 60_000
     : ['recovery_login_code', 'recovery_code', 'recovery_confirmation_link'].includes(templateId)
