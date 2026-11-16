@@ -169,6 +169,11 @@ export function renderEmailTemplate(templateId, variables = {}, locale = 'hy') {
   for (const key of REQUIRED_VARIABLES[templateId] ?? []) if (!(key in values)) throw new Error('missing email template variable: ' + key);
   if (templateId === 'backup_email_changed' && !['added', 'changed'].includes(values.action)) throw new Error('invalid email action');
   if (templateId === 'stepup_code' && !Object.hasOwn(STEPUP_ACTION_LABELS.hy, values.action)) throw new Error('invalid step-up action');
+  if (templateId === 'recovery_confirmation_link') {
+    let parsed;
+    try { parsed = new URL(values.url); } catch { throw new Error('invalid recovery URL'); }
+    if (parsed.protocol !== 'https:' || !parsed.hostname || parsed.username || parsed.password || /[\\r\\n]/.test(values.url)) throw new Error('recovery URL must be a safe HTTPS URL');
+  }
   if (templateId === 'recovery_cancelled' && !['code', 'device'].includes(values.method)) throw new Error('invalid recovery cancellation method');
   const renderValues = templateId === 'stepup_code' ? { ...values, action: STEPUP_ACTION_LABELS[language][values.action] } : values;
   const text = render(renderValues);
