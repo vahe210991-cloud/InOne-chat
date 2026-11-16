@@ -55,6 +55,8 @@ test('очередь шифрует получателя и тело, дедуп
     assert.ok(!stored.includes(payload.to));
     assert.ok(!stored.includes('InOne հաշվի հաստատման կոդը'));
     assert.ok(!stored.includes(payload.variables.code));
+    assert.ok(!stored.includes('Noto Sans Armenian'));
+    assert.ok(!stored.includes('doctype html'));
     assert.notEqual(raw.idempotency_key.trim(), createHash('sha256').update('recovery-event-001').digest('hex'));
     const duplicate = await first.send({ ...payload, idempotencyKey: 'recovery-event-001' });
     assert.equal(duplicate.duplicate, true);
