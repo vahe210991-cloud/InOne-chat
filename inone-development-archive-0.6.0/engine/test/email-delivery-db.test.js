@@ -36,7 +36,7 @@ function fakeSmtp({ failReason = null } = {}) {
 
 test('ключ шифрования требует ровно 32 байта', () => {
   assert.equal(parseEmailEncryptionKey('11'.repeat(32)).length, 32);
-  assert.throws(() => parseEmailEncryptionKey('short'), /exactly 32 bytes/);
+  assert.throws(() => parseEmailEncryptionKey(Buffer.from('short').toString('base64')), /exactly 32 bytes/);
 });
 
 test('очередь шифрует получателя и тело, дедуплицирует и восстанавливает доставку после перезапуска', async () => {
@@ -254,6 +254,63 @@ test('истёкшее сообщение переводится в dead letter 
     assert.equal((await db.pool.query('SELECT last_error_code FROM email_deliveries WHERE id = $1', [result.deliveryId])).rows[0].last_error_code, 'expired');
   } finally {
     await queue.stop();
+    await db.close();
+  }
+});
+
+test('длительная SMTP-отправка продлевает lease и не позволяет второму worker забрать запись', async () => {
+  const db = await testDatabase();
+  const key = randomBytes(32);
+  let smtpStarted = false;
+  let finishSmtp;
+  const slowSmtp = {
+    send() {
+      smtpStarted = true;
+      return new Promise((resolve) => { finishSmtp = resolve; });
+    },
+    close() {},
+  };
+  const first = createEmailDelivery({
+    pool: db.pool, smtpMailer: slowSmtp, encryptionKey: Buffer.from(key),
+    workerId: 'lease-owner-1', pollIntervalMs: 250, batchSize: 1,
+    leaseMs: 600, leaseRenewIntervalMs: 100,
+  });
+  const secondSmtp = fakeSmtp();
+  const second = createEmailDelivery({
+    pool: db.pool, smtpMailer: secondSmtp, encryptionKey: Buffer.from(key),
+    workerId: 'lease-owner-2', pollIntervalMs: 250, batchSize: 1,
+    leaseMs: 600, leaseRenewIntervalMs: 100,
+  });
+  try {
+    const queued = await first.send({
+      to: 'lease@example.test', templateId: 'registration_code',
+      variables: { code: 'LEASE-RENEWAL' }, locale: 'hy',
+      idempotencyKey: 'lease-renewal-long-send-001',
+    });
+    first.start();
+    await waitFor(() => smtpStarted);
+    second.start();
+
+    // More than two lease periods elapse while the first SMTP call is still pending.
+    await new Promise((resolve) => setTimeout(resolve, 1_400));
+    const duringSend = (await db.pool.query(
+      'SELECT status, locked_by FROM email_deliveries WHERE id = $1',
+      [queued.deliveryId],
+    )).rows[0];
+    assert.equal(duringSend.status, 'processing');
+    assert.equal(duringSend.locked_by, 'lease-owner-1');
+    assert.equal(secondSmtp.sent.length, 0);
+
+    finishSmtp({ messageId: 'long-send-message-id' });
+    await waitFor(async () => (await db.pool.query(
+      'SELECT status FROM email_deliveries WHERE id = $1',
+      [queued.deliveryId],
+    )).rows[0].status === 'sent');
+    assert.equal(secondSmtp.sent.length, 0);
+  } finally {
+    finishSmtp?.({ messageId: 'cleanup-message-id' });
+    await first.stop();
+    await second.stop();
     await db.close();
   }
 });
