@@ -2754,14 +2754,14 @@ if (req.method === 'POST' && p === '/login') {
         const code = typeof body.code === 'string' ? body.code : '';
         const ok = !!r && windowOpen(r, now()) && !!saved && now() <= saved.expiresAt && sameHex(recoveryCancelHash(userId, code), saved.codeHash);
         if (!ok) return send(res, 403, { error: 'wrong code' });
-        // Вернуть прежний пароль и отключить устройства, появившиеся после запроса. PIN не меняется.
-        if (r.windowPreviousHash) await storage.setPasswordHash(userId, r.windowPreviousHash);
+        // Пароль, recovery state, cancellation code и уведомление фиксируются одной транзакцией.
         for (const rec of await storage.devicesOfUser(userId)) {
           if (!rec.revoked && rec.createdAt >= r.windowStartedAt) await revokeDevice(rec);
         }
-        await storage.recoveryUpdate(userId, (cur) => ({ next: cancelWindow(cur), result: null }));
-        await storage.recoveryCancelClear(userId);
-        await mail(userId, 'Восстановление отменено', '', 'recovery_cancelled', { method: 'code' });
+        const primaryEmail = (await storage.profileGet(userId))?.email ?? userId;
+        const backup = await storage.backupEmailGet(userId);
+        await storage.recoveryCancelWithOutbox(userId, r.windowPreviousHash, (cur) => ({ next: cancelWindow(cur), result: null }),
+          (tx) => mailToRecipients([primaryEmail, backup?.email], 'Восстановление отменено', '', 'recovery_cancelled', { method: 'code' }, tx));
         await alertDevices(userId, { kind: 'recovery_cancelled' });
         return send(res, 200, { ok: true });
       }
@@ -2772,13 +2772,14 @@ if (req.method === 'POST' && p === '/login') {
         if (!windowOpen(r, now())) return send(res, 404, { error: 'no active recovery' });
         // Отменить могут только устройства, существовавшие до запроса восстановления (D8).
         if (!(d.createdAt < r.windowStartedAt)) return send(res, 403, { error: 'only devices that existed before the recovery can cancel' });
-        // Вернуть прежний пароль и отключить устройства, появившиеся после запроса. PIN не меняется.
-        if (r.windowPreviousHash) await storage.setPasswordHash(d.userId, r.windowPreviousHash);
+        // Пароль, recovery state, cancellation code и уведомление фиксируются одной транзакцией.
         for (const rec of await storage.devicesOfUser(d.userId)) {
           if (!rec.revoked && rec.createdAt >= r.windowStartedAt) await revokeDevice(rec);
         }
-        await storage.recoveryUpdate(d.userId, (cur) => ({ next: cancelWindow(cur), result: null }));
-        await mail(d.userId, 'Восстановление отменено', '', 'recovery_cancelled', { method: 'device' });
+        const primaryEmail = (await storage.profileGet(d.userId))?.email ?? d.userId;
+        const backup = await storage.backupEmailGet(d.userId);
+        await storage.recoveryCancelWithOutbox(d.userId, r.windowPreviousHash, (cur) => ({ next: cancelWindow(cur), result: null }),
+          (tx) => mailToRecipients([primaryEmail, backup?.email], 'Восстановление отменено', '', 'recovery_cancelled', { method: 'device' }, tx));
         await alertDevices(d.userId, { kind: 'recovery_cancelled' });
         return send(res, 200, { ok: true });
       }
@@ -2811,17 +2812,21 @@ if (req.method === 'POST' && p === '/login') {
         if (typeof newPassword !== 'string' || newPassword.length < MIN_PASSWORD_LENGTH) {
           return send(res, 400, { error: `newPassword required (min ${MIN_PASSWORD_LENGTH} chars)` });
         }
-        // Новый пароль сразу (D1). Окно открывается; если уже открыто, не сдвигается (D8).
+        // Пароль, окно восстановления, код отмены и письмо фиксируются одной транзакцией.
         const previousHash = await storage.accountHash(userId);
-        await storage.setPasswordHash(userId, hashPassword(newPassword));
-        const keyResetAt = await storage.recoveryUpdate(userId, (r) => {
-          const next = completeRecovery(r, { nowMs: now(), previousHash });
-          return { next, result: next.windowKeyResetAt };
-        });
-        // Код отмены: для аккаунта без устройств тоже. Действует, пока открыто окно (D8).
+        const newPasswordHash = hashPassword(newPassword);
         const cancelCode = String(randomInt(0, 1_000_000)).padStart(6, '0');
-        await storage.recoveryCancelSet(userId, recoveryCancelHash(userId, cancelCode), keyResetAt);
-        await mail(userId, 'Восстановление выполнено', '', 'recovery_completed', { cancelCode });
+        const primaryEmail = (await storage.profileGet(userId))?.email ?? userId;
+        const backup = await storage.backupEmailGet(userId);
+        const keyResetAt = await storage.recoveryCompleteWithOutbox(
+          userId, newPasswordHash,
+          (r) => {
+            const next = completeRecovery(r, { nowMs: now(), previousHash });
+            return { next, result: next.windowKeyResetAt };
+          },
+          recoveryCancelHash(userId, cancelCode),
+          (tx) => mailToRecipients([primaryEmail, backup?.email], 'Восстановление выполнено', '', 'recovery_completed', { cancelCode }, tx),
+        );
         await alertDevices(userId, { kind: 'recovery_completed', keyResetAt: new Date(keyResetAt).toISOString() });
         return send(res, 200, { ok: true, keyResetAt: new Date(keyResetAt).toISOString() });
       }
