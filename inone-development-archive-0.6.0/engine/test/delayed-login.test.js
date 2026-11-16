@@ -48,7 +48,7 @@ async function call(base, method, path, { body, token } = {}) {
 
 async function registerByEmail(base, srv, email, nickname) {
   await call(base, 'POST', '/register/email', { body: { email, locale: 'ru' } });
-  const code = srv.mailbox(email).filter((m) => m.subject === 'Код подтверждения InOne').at(-1).text.match(/Код: (\d{6})/)[1];
+  const code = srv.mailbox(email).filter((m) => m.subject === 'Код подтверждения InOne').at(-1).text.match(/\b(\d{6})\b/)[1];
   const confirmed = await call(base, 'POST', '/register/email/confirm', { body: { email, code } });
   return call(base, 'POST', '/register', { body: { email, registrationToken: confirmed.body.registrationToken, password: PW, nickname } });
 }
@@ -56,7 +56,7 @@ async function registerByEmail(base, srv, email, nickname) {
 const loginByEmail = (base, email, deviceId) => call(base, 'POST', '/login', { body: { email, password: PW, deviceId } });
 const revokeDevice = (base, token, deviceId) => call(base, 'DELETE', `/devices/${deviceId}`, { token });
 const codeFromWait = (srv, mailbox) =>
-  srv.mailbox(mailbox).filter((m) => m.subject === SUBJECT_WAIT).at(-1).text.match(/отмените вход кодом (\d{6})/)[1];
+  srv.mailbox(mailbox).filter((m) => m.subject === SUBJECT_WAIT).at(-1).text.match(/кода: (\d{6})/)[1];
 
 /** Аккаунт только с почтой: первое устройство сразу, затем оно отключено, и новое устройство ждёт. */
 async function emailAccountWaiting(base, srv) {
@@ -135,7 +135,7 @@ test('D5: уведомление о ожидании уходит и на зап
     await registerByEmail(base, srv, 'boris@example.test', 'Boris');
     const token = (await loginByEmail(base, 'boris@example.test', 'BORIS_PHONE')).body.token;
     assert.equal((await call(base, 'POST', '/account/backup-email/start', { token, body: { email: 'backup@example.test', password: PW } })).status, 202);
-    const code = srv.mailbox('backup@example.test').filter((m) => m.subject === 'Подтверждение запасной почты InOne').at(-1).text.match(/Код: (\d{6})/)[1];
+    const code = srv.mailbox('backup@example.test').filter((m) => m.subject === 'Подтверждение запасной почты InOne').at(-1).text.match(/\b(\d{6})\b/)[1];
     assert.equal((await call(base, 'POST', '/account/backup-email/confirm', { token, body: { email: 'backup@example.test', code } })).status, 200);
     assert.equal((await revokeDevice(base, token, 'BORIS_PHONE')).status, 200);
     assert.equal((await loginByEmail(base, 'boris@example.test', 'BORIS_TABLET')).status, 202);

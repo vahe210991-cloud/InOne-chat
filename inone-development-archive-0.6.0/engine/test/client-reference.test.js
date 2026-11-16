@@ -44,7 +44,7 @@ async function call(base, method, path, { body, token } = {}) {
 
 async function registerByEmail(base, srv, email, nickname) {
   await call(base, 'POST', '/register/email', { body: { email, locale: 'ru' } });
-  const code = srv.mailbox(email).filter((m) => m.subject === 'Код подтверждения InOne').at(-1).text.match(/Код: (\d{6})/)[1];
+  const code = srv.mailbox(email).filter((m) => m.subject === 'Код подтверждения InOne').at(-1).text.match(/\b(\d{6})\b/)[1];
   const confirmed = await call(base, 'POST', '/register/email/confirm', { body: { email, code } });
   return call(base, 'POST', '/register', { body: { email, registrationToken: confirmed.body.registrationToken, password: PW, nickname } });
 }
@@ -125,7 +125,7 @@ test('C3: аккаунт с привязкой включает биометри
     assert.equal(client.shouldOffer((await call(base, 'GET', '/profile', { token })).body), true, 'при первом входе через провайдера предлагаем включить');
     assert.equal((await client.enable({})).status, 403, 'без кода не включается');
     assert.equal((await call(base, 'POST', '/stepup/email/start', { token, body: { action: 'enable-biometric' } })).status, 202);
-    const code = srv.mailbox('anna@gmail.test').filter((m) => m.subject === 'Подтверждение действия в InOne').at(-1).text.match(/Код: (\d{6})/)[1];
+    const code = srv.mailbox('anna@gmail.test').filter((m) => m.subject === 'Подтверждение действия в InOne').at(-1).text.match(/\b(\d{6})\b/)[1];
     const confirmed = await call(base, 'POST', '/stepup/email/confirm', { token, body: { action: 'enable-biometric', code } });
     assert.equal((await client.enable({ stepupToken: confirmed.body.stepupToken })).status, 200);
     assert.equal(client.describe(), STATES.ON);

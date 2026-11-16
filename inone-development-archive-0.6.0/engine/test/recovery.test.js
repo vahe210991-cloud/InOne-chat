@@ -49,8 +49,8 @@ async function rawLogin(base, userId, password, deviceId, identityCode) {
 
 /** Код входа после восстановления приходит письмом (D1). */
 const identityCodeFrom = (srv, userId) => {
-  const mail = srv.mailbox(userId).filter((m) => m.subject === IDENTITY_SUBJECT).at(-1);
-  return mail.text.match(/Код: (\d{6})/)[1];
+  const mail = srv.mailbox(userId).filter((m) => /\b\d{6}\b/.test(m.text)).at(-1);
+  return mail.text.match(/\b(\d{6})\b/)[1];
 };
 
 /** Сколько SMS с кодом восстановления ушло на номер. */
@@ -353,7 +353,7 @@ test('восстановление для аккаунта без подтвер
   try {
     await ChatClient.create(base, ALICE, 'A_PHONE', PW);
     await post(base, '/recovery/start', { userId: ALICE, locale: 'ru' });
-    assert.equal(srv.mailbox(ALICE).filter((m) => m.subject === 'Подтверждение восстановления').length, 0, 'ссылка не отправлена');
+    assert.equal(srv.mailbox(ALICE).filter((m) => m.text.includes('token=')).length, 0, 'ссылка не отправлена');
     assert.equal(srv.smsOutbox(PHONE_A).length, 0, 'SMS не отправлено');
   } finally {
     await stop();

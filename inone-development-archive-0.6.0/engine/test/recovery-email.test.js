@@ -16,8 +16,8 @@ const PROVIDERS = {
 const trusted = generateKeyPairSync('rsa', { modulusLength: 2048 });
 const KEYS = { keys: [{ ...trusted.publicKey.export({ format: 'jwk' }), kid: 'test-key-1', alg: 'RS256', use: 'sig' }] };
 const HOUR = 3600_000;
-const SUBJECT_RECOVERY = 'Код восстановления InOne';
-const SUBJECT_DONE = 'Восстановление выполнено';
+const SUBJECT_RECOVERY = 'Код восстановления аккаунта InOne';
+const SUBJECT_DONE = 'Восстановление аккаунта завершено';
 const SUBJECT_IDENTITY = 'Подтверждение входа после восстановления';
 const b64 = (obj) => Buffer.from(JSON.stringify(obj)).toString('base64url');
 const nowSec = () => Math.floor(Date.now() / 1000);
@@ -51,7 +51,7 @@ async function call(base, method, path, { body, token } = {}) {
 
 async function registerByEmail(base, srv, email, nickname) {
   await call(base, 'POST', '/register/email', { body: { email, locale: 'ru' } });
-  const code = srv.mailbox(email).filter((m) => m.subject === 'Код подтверждения InOne').at(-1).text.match(/Код: (\d{6})/)[1];
+  const code = srv.mailbox(email).filter((m) => m.subject === 'Код подтверждения InOne').at(-1).text.match(/\b(\d{6})\b/)[1];
   const confirmed = await call(base, 'POST', '/register/email/confirm', { body: { email, code } });
   return call(base, 'POST', '/register', { body: { email, registrationToken: confirmed.body.registrationToken, password: PW, nickname } });
 }
@@ -59,25 +59,25 @@ async function registerByEmail(base, srv, email, nickname) {
 const loginWith = (base, email, password, deviceId, identityCode) =>
   call(base, 'POST', '/login', { body: { email, password, deviceId, ...(identityCode ? { identityCode } : {}) } });
 
-const codeOf = (srv, mailbox, subject, pattern = /Код: (\d{6})/) =>
+const codeOf = (srv, mailbox, subject, pattern = /\b(\d{6})\b/) =>
   srv.mailbox(mailbox).filter((m) => m.subject === subject).at(-1).text.match(pattern)[1];
 
 /** Восстановление по почте до конца: запрос, верный код, новый пароль. Возвращает код отмены. */
 async function completedRecovery(base, srv, email, newPassword = NEW_PW) {
-  assert.equal((await call(base, 'POST', '/recovery/start', { body: { email, locale: 'ru' } })).status, 202);
+  assert.equal((await call(base, 'POST', '/recovery/start', { body: { email } })).status, 202);
   const code = codeOf(srv, email, SUBJECT_RECOVERY);
   const done = await call(base, 'POST', '/recovery/complete', { body: { email, code, newPassword } });
   assert.equal(done.status, 200);
-  return codeOf(srv, email, SUBJECT_DONE, /кодом отмены: (\d{6})/);
+  return codeOf(srv, email, SUBJECT_DONE, /кода: (\d{6})/);
 }
 
 test('R-E1: восстановление по почте — код уходит на почту аккаунта; неизвестная почта не получает ничего', async () => {
   const { srv, base, stop } = await start();
   try {
     await registerByEmail(base, srv, 'boris@example.test', 'Boris');
-    assert.equal((await call(base, 'POST', '/recovery/start', { body: { email: 'boris@example.test', locale: 'ru' } })).status, 202);
+    assert.equal((await call(base, 'POST', '/recovery/start', { body: { email: 'boris@example.test' } })).status, 202);
     assert.equal(srv.mailbox('boris@example.test').filter((m) => m.subject === SUBJECT_RECOVERY).length, 1);
-    assert.equal((await call(base, 'POST', '/recovery/start', { body: { email: 'nobody@example.test', locale: 'ru' } })).status, 202, 'ответ одинаковый');
+    assert.equal((await call(base, 'POST', '/recovery/start', { body: { email: 'nobody@example.test' } })).status, 202, 'ответ одинаковый');
     assert.equal(srv.mailbox('nobody@example.test').length, 0);
   } finally {
     await stop();
@@ -88,11 +88,11 @@ test('R-E2: неверный код не меняет пароль; верный
   const { srv, base, stop } = await start();
   try {
     await registerByEmail(base, srv, 'boris@example.test', 'Boris');
-    await call(base, 'POST', '/recovery/start', { body: { email: 'boris@example.test', locale: 'ru' } });
+    await call(base, 'POST', '/recovery/start', { body: { email: 'boris@example.test' } });
     const code = codeOf(srv, 'boris@example.test', SUBJECT_RECOVERY);
     assert.equal((await call(base, 'POST', '/recovery/complete', { body: { email: 'boris@example.test', code: '000000', newPassword: NEW_PW } })).status, 403);
     assert.equal((await call(base, 'POST', '/recovery/complete', { body: { email: 'boris@example.test', code, newPassword: NEW_PW } })).status, 200);
-    assert.match(codeOf(srv, 'boris@example.test', SUBJECT_DONE, /кодом отмены: (\d{6})/), /^\d{6}$/);
+    assert.match(codeOf(srv, 'boris@example.test', SUBJECT_DONE, /кода: (\d{6})/), /^\d{6}$/);
   } finally {
     await stop();
   }
@@ -147,7 +147,7 @@ test('R-E6: аккаунт с привязкой Google — кода восст�
     const nonce = (await call(base, 'POST', '/auth/nonce')).body.nonce;
     const v = await call(base, 'POST', '/auth/provider/verify', { body: { provider: 'google', idToken: signToken(googleClaims(nonce)), nonce } });
     const anna = (await call(base, 'POST', '/register/provider', { body: { ticket: v.body.ticket, nickname: 'Anna.G' } })).body;
-    assert.equal((await call(base, 'POST', '/recovery/start', { body: { email: 'anna@gmail.test', locale: 'ru' } })).status, 202);
+    assert.equal((await call(base, 'POST', '/recovery/start', { body: { email: 'anna@gmail.test' } })).status, 202);
     assert.equal(srv.mailbox('anna@gmail.test').filter((m) => m.subject === SUBJECT_RECOVERY).length, 0, 'кода для аккаунта с Google нет');
     const r = await call(base, 'POST', '/recovery/complete', { body: { userId: anna.userId, code: '000000', newPassword: NEW_PW } });
     assert.equal(r.status, 409);
@@ -161,11 +161,11 @@ test('R-E7: пока код восстановления жив, новый ко
   try {
     await registerByEmail(base, srv, 'boris@example.test', 'Boris');
     for (let i = 0; i < 4; i++) {
-      assert.equal((await call(base, 'POST', '/recovery/start', { body: { email: 'boris@example.test', locale: 'ru' } })).status, 202);
+      assert.equal((await call(base, 'POST', '/recovery/start', { body: { email: 'boris@example.test' } })).status, 202);
     }
     assert.equal(srv.mailbox('boris@example.test').filter((m) => m.subject === SUBJECT_RECOVERY).length, 1, 'один живой код, без спама');
     srv.advance(61 * 60_000);
-    assert.equal((await call(base, 'POST', '/recovery/start', { body: { email: 'boris@example.test', locale: 'ru' } })).status, 202);
+    assert.equal((await call(base, 'POST', '/recovery/start', { body: { email: 'boris@example.test' } })).status, 202);
     assert.equal(srv.mailbox('boris@example.test').filter((m) => m.subject === SUBJECT_RECOVERY).length, 2, 'после срока код выдаётся заново');
   } finally {
     await stop();

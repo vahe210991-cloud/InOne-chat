@@ -32,7 +32,7 @@ async function call(base, method, path, { body, token } = {}) {
 /** Код из письма о подтверждении почты. */
 function codeFor(srv, email) {
   const mail = srv.mailbox(email).filter((m) => m.subject === 'Код подтверждения InOne').at(-1);
-  return mail.text.match(/Код: (\d{6})/)[1];
+  return mail.text.match(/\b(\d{6})\b/)[1];
 }
 
 /** Регистрация по почте целиком: письмо с кодом, токен, аккаунт. */

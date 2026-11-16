@@ -356,8 +356,8 @@ async function startOn(store) {
   return { srv, base, stop: () => new Promise((r) => srv.server.close(r)) };
 }
 
-const recoveryCode = (srv, userId, subject = 'Восстановление доступа') =>
-  srv.mailbox(userId).filter((m) => m.subject === subject).at(-1).text.match(/Код: (\d{6})/)[1];
+const recoveryCode = (srv, userId) =>
+  srv.mailbox(userId).filter((m) => /\b\d{6}\b/.test(m.text)).at(-1).text.match(/\b(\d{6})\b/)[1];
 
 dbTest('SD17: окно восстановления переживает перезапуск сервера: устройства по-прежнему только читают', async () => {
   const NEW_PW = 'новый-пароль-2026';

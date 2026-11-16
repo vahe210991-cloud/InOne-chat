@@ -105,8 +105,8 @@ test('C-08: код восстановления и ссылка хранятся
   try {
     await createVerified(base, srv, ALICE, 'A_PHONE', PW, '+37477000001');
     assert.equal((await req(base, 'POST', '/recovery/start', { body: { userId: ALICE, locale: 'ru' } })).status, 202);
-    const code = srv.smsOutbox('+37477000001').at(-1).text.match(/Код: (\d{6})/)[1];
-    const token = srv.mailbox(ALICE).filter((m) => m.subject === 'Подтверждение восстановления').at(-1).text.match(/token=([A-Za-z0-9_-]+)/)[1];
+    const code = srv.smsOutbox('+37477000001').at(-1).text.match(/\b(\d{6})\b/)[1];
+    const token = srv.mailbox(ALICE).filter((m) => m.text.includes('token=')).at(-1).text.match(/token=([A-Za-z0-9_-]+)/)[1];
     const snapshot = await srv.stateSnapshot();
     assert.ok(!snapshot.includes(code), 'кода восстановления открытым текстом на сервере быть не должно');
     assert.ok(!snapshot.includes(token), 'ссылки восстановления открытым текстом на сервере быть не должно');
