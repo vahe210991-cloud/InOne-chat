@@ -45,8 +45,8 @@ SELECT last_error_code, count(*) FROM email_deliveries WHERE status = 'dead' GRO
 Multi-key decryption/key-ring пока не реализован. Поэтому rotation выполняется только через drain-and-purge:
 
 1. Включить maintenance/read-only режим для всех producers, которые ставят email в очередь.
-2. Дождаться завершения текущих HTTP requests и остановить worker через graceful shutdown.
-3. Проверить, что в `email_deliveries` нет строк со статусами `queued` или `processing`. Не продолжать ротацию, если есть pending delivery: сначала доставить или принять отдельное решение по её отмене.
+2. Дать worker завершить все уже поставленные задачи; дождаться нулевых `queued` и `processing` counts, не отключая worker до опустошения очереди.
+3. Дождаться завершения текущих HTTP requests и остановить worker через graceful shutdown. Повторно проверить, что в `email_deliveries` нет `queued` или `processing`. Не продолжать ротацию, если есть pending delivery: сначала доставить или принять отдельное решение по её отмене.
 4. После проверки выгрузить только агрегированные counts, затем удалить terminal rows (`sent` и `dead`), чтобы старые idempotency records не сравнивались новым HMAC key.
 5. Установить новый случайный 32-byte key в secret manager и deployment environment. Не передавать ключ через чат, PR, CI output или commit.
 6. Запустить backend, проверить startup/migrations, затем поставить и доставить одно тестовое письмо на контролируемый адрес.
