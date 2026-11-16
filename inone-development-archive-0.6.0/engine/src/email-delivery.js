@@ -232,10 +232,13 @@ export function createEmailDelivery({
       let leaseLost = false;
       let renewalInFlight = null;
       const renewLease = () => {
+        if (leaseLost) return Promise.resolve();
         if (renewalInFlight) return renewalInFlight;
         renewalInFlight = renewClaim(row)
           .then((owned) => { if (!owned) leaseLost = true; })
           .catch((error) => {
+            // If renewal cannot be verified, ownership is uncertain and this worker must fail closed.
+            leaseLost = true;
             logger?.warn('email delivery lease renewal failed', {
               deliveryId: row.id,
               errorCode: typeof error?.code === 'string' ? error.code : 'unknown',
