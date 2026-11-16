@@ -225,3 +225,23 @@ test('временная SMTP-ошибка повторяется с backoff и 
     await db.close();
   }
 });
+
+test('истёкшее сообщение переводится в dead letter и не отправляется', async () => {
+  const db = await testDatabase();
+  const smtp = fakeSmtp();
+  const queue = createEmailDelivery({ pool: db.pool, smtpMailer: smtp, encryptionKey: randomBytes(32), pollIntervalMs: 250 });
+  try {
+    const result = await queue.send({
+      to: 'expired@example.test', subject: 'Expired', text: 'EXPIRED-CODE',
+      idempotencyKey: 'expired-email-001',
+    });
+    await db.pool.query("UPDATE email_deliveries SET expires_at = now() - interval '1 second' WHERE id = $1", [result.deliveryId]);
+    queue.start();
+    await waitFor(async () => (await db.pool.query('SELECT status FROM email_deliveries WHERE id = $1', [result.deliveryId])).rows[0].status === 'dead');
+    assert.equal(smtp.sent.length, 0);
+    assert.equal((await db.pool.query('SELECT last_error_code FROM email_deliveries WHERE id = $1', [result.deliveryId])).rows[0].last_error_code, 'expired');
+  } finally {
+    await queue.stop();
+    await db.close();
+  }
+});
