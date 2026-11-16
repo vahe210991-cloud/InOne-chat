@@ -235,10 +235,10 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
       throw error;
     }
   };
-  const mail = async (userId, subject, text, templateId = null, variables = {}, transactionClient = null) => {
+  const mail = async (userId, subject, text, templateId = null, variables = {}, transactionClient = null, localeOverride = null) => {
     const profile = await storage.profileGet(userId);
     const backup = await storage.backupEmailGet(userId);
-    return mailToRecipients([profile?.email ?? userId, backup?.email], subject, text, templateId, variables, transactionClient, profile?.locale ?? 'hy');
+    return mailToRecipients([profile?.email ?? userId, backup?.email], subject, text, templateId, variables, transactionClient, localeOverride ?? profile?.locale ?? 'hy');
   };
   const revokeDevice = async (rec) => {
     await storage.revokeDevice(key(rec.userId, rec.deviceId));
@@ -350,7 +350,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
   // Токены и устройства лежат в хранилище; токен там хранится как ключевой хэш (C-08).
   // Через 48 часов после восстановления старые устройства отключаются, если их не отменили (D5, D8).
   // Окно хранится в базе: переживает перезапуск сервера.
-  const finalizeRecoveryIfDue = async (userId) => {
+  const finalizeRecoveryIfDue = async (userId, localeOverride = null) => {
     const current = await storage.recoveryGet(userId);
     if (current.windowKeyResetAt === null || now() < current.windowKeyResetAt) return;
     const dueSince = await storage.recoveryUpdate(userId, (r) => {
@@ -361,7 +361,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
     for (const rec of await storage.devicesOfUser(userId)) {
       if (!rec.revoked && rec.createdAt < dueSince) await revokeDevice(rec);
     }
-    await mail(userId, 'Старые устройства отключены', '', 'old_devices_revoked', {});
+    await mail(userId, 'Старые устройства отключены', '', 'old_devices_revoked', {}, null, localeOverride);
   };
   const authed = async (req) => {
     const raw = (req.headers.authorization || '').replace('Bearer ', '');
@@ -1578,7 +1578,7 @@ if (req.method === 'POST' && p === '/login') {
 
         // Новое устройство в аккаунте с уже активными устройствами: нужен код с одного из них.
         // Окно восстановления и первый вход после него (D1, D5, D8).
-        await finalizeRecoveryIfDue(userId);
+        await finalizeRecoveryIfDue(userId, requestedLocale);
         const rec = await storage.recoveryGet(userId);
         let identityPassed = false;
         // Аккаунт без подтверждённого телефона: в окне 48 часов новое устройство не добавляется, даже с кодом с почты (решение владельца).
@@ -1590,7 +1590,7 @@ if (req.method === 'POST' && p === '/login') {
             const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
             const profile = await storage.profileGet(userId);
             const primaryEmail = profile?.email ?? userId;
-            const locale = profile?.locale ?? 'hy';
+            const locale = requestedLocale ?? profile?.locale ?? 'hy';
             const backup = await storage.backupEmailGet(userId);
             await storage.recoveryUpdateWithOutbox(userId,
               (r) => ({ next: issueIdentity(r, { codeHash: identityCodeHash(userId, code) }), result: null }),
@@ -1620,7 +1620,7 @@ if (req.method === 'POST' && p === '/login') {
             const activateAt = now() + DEVICE_WAIT_MS;
             const profile = await storage.profileGet(userId);
             const primaryEmail = profile?.email ?? userId;
-            const locale = profile?.locale ?? 'hy';
+            const locale = requestedLocale ?? profile?.locale ?? 'hy';
             const backup = await storage.backupEmailGet(userId);
             const recipients = [primaryEmail, backup?.email];
             const created = await storage.deviceWaitCreateWithOutbox({
