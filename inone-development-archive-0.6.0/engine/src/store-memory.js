@@ -1145,6 +1145,14 @@ mlsPendingRemovalsFor(userId) {
       deviceWaits.set(key, { label, platform, activateAt, cancelHash, createdAt });
       return 'ok';
     },
+
+    async deviceWaitCreateWithOutbox({ userId, deviceId, label, platform, activateAt, cancelHash, createdAt }, enqueue) {
+      const key = `${userId}|${deviceId}`;
+      if (deviceWaits.has(key)) return 'exists';
+      deviceWaits.set(key, { label, platform, activateAt, cancelHash, createdAt });
+      if (enqueue) await enqueue(null);
+      return 'ok';
+    },
     deviceWaitDelete(userId, deviceId) {
       return deviceWaits.delete(`${userId}|${deviceId}`);
     },
