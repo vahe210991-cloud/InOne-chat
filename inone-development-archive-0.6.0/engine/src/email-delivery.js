@@ -64,6 +64,7 @@ export function createEmailDelivery({
   let timer = null;
   let activeTick = null;
   let stopping = false;
+  let lastCleanupAt = 0;
 
   async function claimBatch() {
     const client = await pool.connect();
@@ -72,7 +73,7 @@ export function createEmailDelivery({
       const { rows } = await client.query(
         `WITH candidates AS (
            SELECT id FROM email_deliveries
-           WHERE (status = 'queued' AND available_at <= now())
+           WHERE (status = 'queued' AND available_at <= now() AND expires_at > now())
               OR (status = 'processing' AND locked_at < now() - ($2::double precision * interval '1 millisecond'))
            ORDER BY available_at, id
            FOR UPDATE SKIP LOCKED
@@ -134,9 +135,13 @@ export function createEmailDelivery({
 
   async function tick() {
     if (stopping) return;
+    if (Date.now() - lastCleanupAt > 60 * 60_000) {
+      await pool.query(\`UPDATE email_deliveries SET status = 'dead', last_error_code = 'expired', updated_at = now() WHERE status = 'queued' AND expires_at <= now()\`);
+      await pool.query(\`DELETE FROM email_deliveries WHERE status IN ('sent', 'dead') AND updated_at < now() - interval '30 days'\`);
+      lastCleanupAt = Date.now();
+    }
     const rows = await claimBatch();
     for (const row of rows) {
-      if (stopping) break;
       try {
         const message = decryptPayload(row, key);
         const result = await smtpMailer.send(message);
@@ -167,7 +172,7 @@ export function createEmailDelivery({
   }
 
   return {
-    async send({ to, subject, text, idempotencyKey, templateId, variables, locale = 'ru' }) {
+    async send({ to, subject, text, idempotencyKey, templateId, variables, locale = 'ru', expiresAt }) {
       if (stopping) throw new Error('email delivery is stopping');
       if (typeof to !== 'string' || to.length < 3 || to.length > 320 || /[\r\n]/.test(to)) throw new Error('invalid email recipient');
       if (typeof subject !== 'string' || subject.length < 1 || subject.length > 998 || /[\r\n]/.test(subject)) throw new Error('invalid email subject');
@@ -177,11 +182,11 @@ export function createEmailDelivery({
       const encrypted = encryptPayload({ to, subject, text }, key, idempotencyHash);
       const { rows } = await pool.query(
         `INSERT INTO email_deliveries
-           (idempotency_key, payload_ciphertext, payload_iv, payload_tag)
-         VALUES ($1, $2, $3, $4)
+           (idempotency_key, payload_ciphertext, payload_iv, payload_tag, expires_at)
+         VALUES ($1, $2, $3, $4, to_timestamp($5 / 1000.0))
          ON CONFLICT (idempotency_key) DO NOTHING
          RETURNING id, status`,
-        [idempotencyHash, encrypted.ciphertext, encrypted.iv, encrypted.tag],
+        [idempotencyHash, encrypted.ciphertext, encrypted.iv, encrypted.tag, expiryMs],
       );
       if (rows[0]) return { queued: true, duplicate: false, deliveryId: rows[0].id };
       const existing = await pool.query('SELECT id, status FROM email_deliveries WHERE idempotency_key = $1', [idempotencyHash]);
