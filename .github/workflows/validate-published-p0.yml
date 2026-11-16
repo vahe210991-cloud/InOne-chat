@@ -2,7 +2,7 @@ name: Validate recovered InOne P0 source
 
 on:
   pull_request:
-    branches: [main, feature/beta1-screen-api-integration-2026-11-12]
+    branches: [main, feature/beta1-screen-api-integration-2026-11-12, feature/email-delivery-service-2026-11-16-b1]
     paths:
       - "inone-development-archive-0.6.0/engine/**"
       - ".github/workflows/validate-published-p0.yml"
