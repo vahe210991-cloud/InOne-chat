@@ -118,7 +118,7 @@ test('код и durable email outbox коммитятся и откатываю�
       result: true,
     }), async (tx) => {
       await queue.sendInTransaction(tx, {
-        to: 'rollback@example.test', templateId: 'registration_code', variables: { code: 'ROLLBACK-CODE' },
+        to: 'rollback@example.test', templateId: 'registration_code', variables: { code: 'ROLLBACK-CODE' }, locale: 'hy',
         idempotencyKey: 'atomic-rollback-001',
       });
       throw new Error('force transaction rollback');
@@ -130,7 +130,7 @@ test('код и durable email outbox коммитятся и откатываю�
       next: { codeHash: 'committed-code-hash', codeAttempts: 0, codeExpiresAt: Date.now() + 600_000, tokenHash: null, tokenExpiresAt: 0 },
       result: true,
     }), (tx) => queue.sendInTransaction(tx, {
-      to: 'commit@example.test', templateId: 'registration_code', variables: { code: 'COMMIT-CODE' },
+      to: 'commit@example.test', templateId: 'registration_code', variables: { code: 'COMMIT-CODE' }, locale: 'hy',
       idempotencyKey: 'atomic-commit-001',
     }));
     assert.equal((await db.pool.query("SELECT code_hash FROM email_codes WHERE email = 'commit@example.test'")).rows[0].code_hash, 'committed-code-hash');
