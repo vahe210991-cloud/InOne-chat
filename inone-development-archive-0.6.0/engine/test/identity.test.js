@@ -171,3 +171,42 @@ test('I8: код и токен регистрации одноразовые', (
   assert.equal(used.outcome, 'ok');
   assert.equal(useEmailToken(used.next, { nowMs: 4, tokenOk: true }).outcome, 'none', 'токен второй раз не принимается');
 });
+
+test('I9: registration and security emails follow the persisted in-app language', async () => {
+  const { srv, base, stop } = await start();
+  try {
+    for (const locale of ['hy', 'ru', 'en']) {
+      const email = `locale-${locale}@example.test`;
+      const requested = await call(base, 'POST', '/register/email', { body: { email, locale } });
+      assert.equal(requested.status, 202);
+      const registrationMail = srv.mailbox(email).at(-1);
+      assert.match(registrationMail.html, new RegExp(`<html lang="${locale}"`));
+      assert.match(registrationMail.text, /\\d{6}/);
+      const code = registrationMail.text.match(/\\d{6}/)[0];
+      const confirmed = await call(base, 'POST', '/register/email/confirm', { body: { email, code } });
+      assert.equal(confirmed.status, 200);
+      const registered = await call(base, 'POST', '/register', {
+        body: { email, registrationToken: confirmed.body.registrationToken, password: PW, nickname: `Locale${locale.toUpperCase()}` },
+      });
+      assert.equal(registered.status, 200);
+      const login = await call(base, 'POST', '/login', { body: { email, password: PW, deviceId: `LOCALE_${locale}` } });
+      assert.equal(login.status, 200);
+      const token = login.body.token;
+      const profile = await call(base, 'GET', '/profile', { token });
+      assert.equal(profile.body.locale, locale);
+      const changedLocale = locale === 'hy' ? 'ru' : locale === 'ru' ? 'en' : 'hy';
+      const changed = await call(base, 'PATCH', '/profile/locale', { token, body: { locale: changedLocale } });
+      assert.equal(changed.status, 200);
+      assert.equal(changed.body.locale, changedLocale);
+      assert.equal((await call(base, 'GET', '/profile', { token })).body.locale, changedLocale);
+      await call(base, 'POST', '/recovery/request', { body: { email } });
+      const recoveryMessages = srv.mailbox(email).slice(-2);
+      assert.equal(recoveryMessages.length, 2);
+      assert.ok(recoveryMessages.every((message) => message.html.includes(`<html lang="${changedLocale}"`)));
+    }
+    assert.equal((await call(base, 'POST', '/register/email', { body: { email: 'invalid-locale@example.test', locale: 'de' } })).status, 400);
+    assert.equal((await call(base, 'PATCH', '/profile/locale', { body: { locale: 'de' } })).status, 401);
+  } finally {
+    await stop();
+  }
+});
