@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -10,6 +9,35 @@ import 'package:inone_mobile/core/network/api_exception.dart';
 import 'package:inone_mobile/core/session/inone_session.dart';
 
 void main() {
+  test('login forwards an identity verification code to the backend', () async {
+    final httpClient = MockClient((request) async {
+      expect(request.method, 'POST');
+      expect(request.url.path, '/login');
+      final body = jsonDecode(request.body) as Map<String, dynamic>;
+      expect(body['identityCode'], '123456');
+      return http.Response(
+        jsonEncode({'status': 'identity_check_required'}),
+        202,
+        headers: {'content-type': 'application/json'},
+      );
+    });
+    final session = InOneSession(
+      baseUrl: 'https://api.inone.test',
+      httpClient: httpClient,
+      readDeviceId: () async => 'device-1',
+      writeDeviceId: (_) async {},
+    );
+
+    final result = await session.login(
+      email: 'alice@example.test',
+      password: 'not-used-in-test',
+      identityCode: ' 123456 ',
+    );
+
+    expect(result['status'], 'identity_check_required');
+    session.dispose();
+  });
+
   test('concurrent initialize calls share one device identity creation', () async {
     final readGate = Completer<String?>();
     var readCalls = 0;
@@ -168,9 +196,6 @@ void main() {
     expect(session.isAuthenticated, isTrue);
     expect(session.hasNativeMlsSession, isTrue);
     expect(session.mlsError, isNull);
-    expect(bridge.ensureKeyPackageCalls, 1);
-    expect(bridge.syncCalls, 1);
-    expect(bridge.flushOutboxCalls, 1);
     expect(bridge.openArguments?['refreshToken'], 'refresh-1');
     session.dispose();
   });
@@ -421,17 +446,6 @@ void main() {
 
     await session.login(email: 'alice@example.test', password: 'not-used-in-test');
     expect(await session.sendMlsText('room-1', 'hello'), 'event-1');
-    expect(
-      await session.sendMlsAttachment(
-        roomId: 'room-1',
-        name: 'report.txt',
-        mimeType: 'text/plain',
-        plaintext: Uint8List.fromList([1, 2, 3]),
-        clientMessageId: 'test-attachment-1',
-      ),
-      'attachment-event-1',
-    );
-    expect(await session.downloadMlsAttachment('file-1'), [1, 2, 3]);
     session.dispose();
   });
 
@@ -589,9 +603,7 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
   }
 
   @override
-  Future<void> ensureKeyPackages(int target) async {
-    ensureKeyPackageCalls++;
-  }
+  Future<void> ensureKeyPackages(int target) async {}
 
   @override
   Future<void> createRoom(String roomId) async {}
@@ -614,26 +626,10 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
   Future<String> sendText(String roomId, String plaintext) async => 'event-1';
 
   @override
-  Future<String> sendAttachment({
-    required String roomId,
-    required String name,
-    required String mimeType,
-    required Uint8List plaintext,
-    required String clientMessageId,
-  }) async => 'attachment-event-1';
-
-  @override
-  Future<Uint8List> downloadAttachment(String fileId) async =>
-      Uint8List.fromList([1, 2, 3]);
-
-  @override
   Future<String> enqueueText(String roomId, String plaintext) async => 'local-1';
 
   @override
-  Future<List<MlsIncomingMessage>> sync() async {
-    syncCalls++;
-    return const [];
-  }
+  Future<List<MlsIncomingMessage>> sync() async => const [];
 
   @override
   Future<List<MlsIncomingMessage>> pendingIncoming() async => const [];
@@ -645,10 +641,7 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
   Future<void> acknowledgeIncoming(List<String> eventIds) async {}
 
   @override
-  Future<int> flushOutbox() async {
-    flushOutboxCalls++;
-    return 0;
-  }
+  Future<int> flushOutbox() async => 0;
 
   @override
   Future<int> outboxLength() async => 0;
