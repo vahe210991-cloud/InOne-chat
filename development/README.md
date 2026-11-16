@@ -66,3 +66,9 @@ Read [PROGRESS-BASELINE.md](PROGRESS-BASELINE.md) in full before every implement
 
 - [Full Beta 1.0 / 2.0 audit](reports/2026-11-09-0935-full-beta-audit.md)
 - [UI source import and integration stage](reports/2026-11-09-1015-ui-integration-start.md)
+
+
+## Proposed platform architecture — bots and stickers
+
+- [InOne Bots & Stickers architecture proposal](architecture/INONE-BOTS-AND-STICKERS.md) — administration-owned Bot Manager, external builder REST/Webhook integration, token/scopes/security, MLS consent boundary, Sticker Bot and sticker packs (maximum 50 stickers per pack).
+- [Proposal report](reports/2026-11-16-bots-stickers-architecture-proposal.md) — scope boundary, verification status and next decisions.
