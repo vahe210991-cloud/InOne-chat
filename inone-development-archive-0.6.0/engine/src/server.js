@@ -35,6 +35,7 @@ import { DEFAULT_RATE_LIMITS } from './rate-limit.js';
 import { normalizeEmail, isEmail, validateNickname } from './identity-rules.js';
 import { requestEmailCode, checkEmailCode, useEmailToken } from './email-code-rules.js';
 import { createProviderVerifier, fetchProviderKeys } from './provider-auth.js';
+import { renderEmailTemplate } from './email-templates.js';
 
 export const RECOVERY_DELAY_MS = 48 * 60 * 60 * 1000;
 // POST, разрешённые в окне восстановления: чтение чужих ключей и отмена (право отмены проверяет маршрут, D8).
@@ -204,18 +205,19 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
   };
   // SMTP/queue подключается снаружи. Тестовый транспорт хранит письма только в памяти.
   const mailer = externalMailer ?? { send: async ({ to, subject, text }) => { outbox.push({ to, subject, text }); } };
-  const mailTo = (to, subject, text, idempotencyKey = null) => {
+  const mailTo = (to, subject, text, idempotencyKey = null, templateId = null, variables = {}, locale = 'ru') => {
+    const rendered = templateId ? renderEmailTemplate(templateId, variables, locale) : { subject, text };
     const key = idempotencyKey ?? createHash('sha256')
-      .update(`${to}\\0${subject}\\0${text}\\0${Math.floor(now() / 300_000)}`)
+      .update(`${to}\\0${rendered.subject}\\0${rendered.text}\\0${Math.floor(now() / 300_000)}`)
       .digest('hex');
-    return mailer.send({ to, subject, text, idempotencyKey: key });
+    return mailer.send({ to, subject: rendered.subject, text: rendered.text, idempotencyKey: key, templateId, variables, locale });
   };
-  // Письмо владельцу аккаунта — на подтверждённую почту. Каждая почта получает отдельную delivery.
-  const mail = async (userId, subject, text) => {
+  // Каждая подтверждённая почта получает отдельную delivery; отказ одного адреса не блокирует второй.
+  const mail = async (userId, subject, text, templateId = null, variables = {}) => {
     const profile = await storage.profileGet(userId);
     const backup = await storage.backupEmailGet(userId);
     const recipients = [...new Set([profile?.email ?? userId, backup?.email].filter(Boolean))];
-    const results = await Promise.allSettled(recipients.map((recipient) => mailTo(recipient, subject, text)));
+    const results = await Promise.allSettled(recipients.map((recipient) => mailTo(recipient, subject, text, null, templateId, variables)));
     const failures = results.filter((result) => result.status === 'rejected');
     if (failures.length) throw new AggregateError(failures.map((result) => result.reason), 'one or more email deliveries could not be queued');
   };
@@ -348,7 +350,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
     for (const rec of await storage.devicesOfUser(userId)) {
       if (!rec.revoked && rec.createdAt < dueSince) await revokeDevice(rec);
     }
-    await mail(userId, 'Старые устройства отключены', 'Прошло 48 часов после восстановления. Устройства, существовавшие до восстановления, отключены.');
+    await mail(userId, 'Старые устройства отключены', '', 'old_devices_revoked', {});
   };
   const authed = async (req) => {
     const raw = (req.headers.authorization || '').replace('Bearer ', '');
@@ -702,8 +704,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
           next: requestEmailCode(e, { nowMs: now(), codeHash: backupCodeHash(d.userId, email, code) }),
           result: null,
         }));
-        await mailTo(email, 'Подтверждение запасной почты InOne',
-          `Код: ${code}. Этот адрес указан запасной почтой аккаунта InOne. Код действует 10 минут. Если это не вы, просто проигнорируйте письмо.`);
+        await mailTo(email, 'Подтверждение запасной почты InOne', '', null, 'backup_email_verification', { code });
         return send(res, 202, { ok: true });
       }
 
@@ -730,8 +731,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
           return send(res, 409, { error: 'this backup email is used by another account' });
         }
         const primary = (await storage.profileGet(d.userId)).email;
-        await mailTo(primary, 'Запасная почта InOne изменена',
-          `Запасная почта аккаунта ${previous ? 'изменена' : 'добавлена'}. Если это не вы, войдите в аккаунт и проверьте привязки и устройства.`);
+        await mailTo(primary, 'Запасная почта InOne изменена', '', null, 'backup_email_changed', { action: previous ? 'changed' : 'added' });
         return send(res, 200, { backupEmail: { email, verified: true } });
       }
 
@@ -742,8 +742,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         if (!confirmed.ok) return send(res, confirmed.status, { error: confirmed.error });
         if (!(await storage.backupEmailRemove(d.userId))) return send(res, 404, { error: 'no backup email is set' });
         const primary = (await storage.profileGet(d.userId)).email;
-        await mailTo(primary, 'Запасная почта InOne удалена',
-          'Запасная почта удалена из аккаунта InOne. Если это не вы, войдите в аккаунт и проверьте привязки и устройства.');
+        await mailTo(primary, 'Запасная почта InOne удалена', '', null, 'backup_email_removed', {});
         return send(res, 200, await accountLevelInfo(d.userId));
       }
 
@@ -821,8 +820,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
           next: requestEmailCode(e, { nowMs: now(), codeHash: stepupCodeHash(d.userId, action, code) }),
           result: null,
         }));
-        await mailTo(await confirmationEmail(d.userId), 'Подтверждение действия в InOne',
-          `Код: ${code}. Действие: ${stepupActionText[action]}. Код действует 10 минут. Если это не вы, войдите в аккаунт и проверьте привязки и устройства.`);
+        await mailTo(await confirmationEmail(d.userId), 'Подтверждение действия в InOne', '', null, 'stepup_code', { code, action: stepupActionText[action] });
         return send(res, 202, { ok: true });
       }
 
@@ -898,8 +896,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
             next: requestEmailCode(e, { nowMs: now(), codeHash: emailCodeHash(email, code) }),
             result: null,
           }));
-          await mailTo(email, 'Код подтверждения InOne',
-            `Код: ${code}. Код действует 10 минут. Если вы не регистрировались в InOne, проигнорируйте письмо.`);
+          await mailTo(email, 'Код подтверждения InOne', '', null, 'registration_code', { code });
         }
         return send(res, 202, { ok: true });
       }
@@ -1561,8 +1558,7 @@ if (req.method === 'POST' && p === '/login') {
           if (identityCode === undefined) {
             const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
             await storage.recoveryUpdate(userId, (r) => ({ next: issueIdentity(r, { codeHash: identityCodeHash(userId, code) }), result: null }));
-            await mail(userId, 'Подтверждение входа после восстановления',
-              `Код: ${code}. Введите его, чтобы войти с нового устройства. Если это не вы — отмените восстановление с устройства, которое существовало до запроса.`);
+            await mail(userId, 'Подтверждение входа после восстановления', '', 'recovery_login_code', { code });
             return send(res, 202, { status: 'identity_check_required' });
           }
           const outcome = await storage.recoveryUpdate(userId, (r) => {
@@ -1588,8 +1584,7 @@ if (req.method === 'POST' && p === '/login') {
             const activateAt = now() + DEVICE_WAIT_MS;
             await storage.deviceWaitCreate({ userId, deviceId, label: label ?? null, platform: platform ?? null,
               activateAt, cancelHash: deviceWaitCodeHash(userId, deviceId, code), createdAt: now() });
-            await mail(userId, 'Вход с нового устройства: ожидание 48 часов',
-              `Вход с нового устройства откроется ${new Date(activateAt).toISOString()}. Если это не вы, отмените вход кодом ${code} (POST /admission/cancel).`);
+            await mail(userId, 'Вход с нового устройства: ожидание 48 часов', '', 'new_device_wait', { activateAt: new Date(activateAt).toISOString(), code });
             return send(res, 202, { status: 'waiting_period', activateAt: new Date(activateAt).toISOString() });
           }
           if (waiting.activateAt > now()) {
@@ -2665,10 +2660,8 @@ if (req.method === 'POST' && p === '/login') {
               return { next, result: out.issued };
             });
             if (issued) {
-              await mailTo(await confirmationEmail(userId), 'Код восстановления InOne',
-                `Код: ${emailCode}. Код действует час. Вход откроется только через 48 часов после смены пароля. Если это не вы, ничего не вводите.`);
-              await mail(userId, 'Запрошено восстановление InOne',
-                'Кто-то запросил восстановление доступа. Код отправлен на запасную или основную почту. Если это не вы, ничего не делайте и проверьте устройства.');
+              await mailTo(await confirmationEmail(userId), 'Код восстановления InOne', '', null, 'recovery_code', { code: emailCode });
+              await mail(userId, 'Запрошено восстановление InOne', '', 'recovery_requested', {});
               await alertDevices(userId, { kind: 'recovery_started' });
             }
           }
@@ -2684,8 +2677,7 @@ if (req.method === 'POST' && p === '/login') {
             if (issued) {
               // D5: код приходит по SMS, подтверждение — ссылкой из письма. Это два разных канала.
               await smsSender.send(phone.phone, `Код: ${code}. Код восстановления InOne действует час. Если это не вы — не вводите его.`);
-              await mail(userId, 'Подтверждение восстановления',
-                `Чтобы подтвердить восстановление, откройте ссылку: ${publicUrl}/recovery/confirm?user=${encodeURIComponent(userId)}&token=${token}. Ссылка действует час. Если это не вы — не открывайте её.`);
+              await mail(userId, 'Подтверждение восстановления', '', 'recovery_confirmation_link', { url: `${publicUrl}/recovery/confirm?user=${encodeURIComponent(userId)}&token=${token}` });
               await alertDevices(userId, { kind: 'recovery_started' });
             }
           }
@@ -2748,7 +2740,7 @@ if (req.method === 'POST' && p === '/login') {
         }
         await storage.recoveryUpdate(userId, (cur) => ({ next: cancelWindow(cur), result: null }));
         await storage.recoveryCancelClear(userId);
-        await mail(userId, 'Восстановление отменено', 'Восстановление отменено кодом отмены. Прежний пароль возвращён.');
+        await mail(userId, 'Восстановление отменено', '', 'recovery_cancelled', { method: 'code' });
         await alertDevices(userId, { kind: 'recovery_cancelled' });
         return send(res, 200, { ok: true });
       }
@@ -2765,8 +2757,7 @@ if (req.method === 'POST' && p === '/login') {
           if (!rec.revoked && rec.createdAt >= r.windowStartedAt) await revokeDevice(rec);
         }
         await storage.recoveryUpdate(d.userId, (cur) => ({ next: cancelWindow(cur), result: null }));
-        await mail(d.userId, 'Восстановление отменено',
-          'Восстановление отменено с устройства, которое существовало до запроса. Прежний пароль возвращён.');
+        await mail(d.userId, 'Восстановление отменено', '', 'recovery_cancelled', { method: 'device' });
         await alertDevices(d.userId, { kind: 'recovery_cancelled' });
         return send(res, 200, { ok: true });
       }
@@ -2809,8 +2800,7 @@ if (req.method === 'POST' && p === '/login') {
         // Код отмены: для аккаунта без устройств тоже. Действует, пока открыто окно (D8).
         const cancelCode = String(randomInt(0, 1_000_000)).padStart(6, '0');
         await storage.recoveryCancelSet(userId, recoveryCancelHash(userId, cancelCode), keyResetAt);
-        await mail(userId, 'Восстановление выполнено',
-          `Пароль изменён. Вход с новых устройств откроется через 48 часов. Отменить можно с устройства, существовавшего до запроса, или кодом отмены: ${cancelCode}.`);
+        await mail(userId, 'Восстановление выполнено', '', 'recovery_completed', { cancelCode });
         await alertDevices(userId, { kind: 'recovery_completed', keyResetAt: new Date(keyResetAt).toISOString() });
         return send(res, 200, { ok: true, keyResetAt: new Date(keyResetAt).toISOString() });
       }
