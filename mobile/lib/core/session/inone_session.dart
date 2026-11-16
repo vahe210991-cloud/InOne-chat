@@ -716,6 +716,12 @@ class InOneSession extends ChangeNotifier {
             await _deleteMlsUserId();
           }
         } finally {
+          try {
+            await _writeLocaleSyncPending(false);
+          } catch (_) {
+            // Locale preference remains local; logout must still clear credentials.
+          }
+          _localeSyncPending = false;
           _clearSession();
         }
       }
