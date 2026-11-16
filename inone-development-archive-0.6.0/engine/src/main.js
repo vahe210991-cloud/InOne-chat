@@ -7,6 +7,7 @@ import { migrate } from './migrate.js';
 import { createStore } from './store.js';
 import { createServer } from './server.js';
 import { createSmtpMailer } from './mail-smtp.js';
+import { createEmailDelivery, parseEmailEncryptionKey } from './email-delivery.js';
 
 /** Запускает сервер. pool = null — память (только для тестов и разработки). */
 export async function startServer({ config, logger = createLogger({ level: config.logLevel }), pool = null }) {
@@ -15,7 +16,7 @@ export async function startServer({ config, logger = createLogger({ level: confi
     if (config.runMigrations) await migrate(pool, { logger });
     store = createStore({ pool, pinPepper: config.pinPepper });
   }
-  const mailer = config.mailTransport === 'smtp'
+  const smtpMailer = config.mailTransport === 'smtp'
     ? createSmtpMailer({
       host: config.smtpHost,
       port: config.smtpPort,
@@ -59,6 +60,7 @@ export async function startServer({ config, logger = createLogger({ level: confi
     cleanupTimer.unref();
   });
   const port = app.server.address().port;
+  mailer?.start?.();
   logger.info('server started', { port, environment: config.nodeEnv });
   if (config.devEmailCode) logger.warn('development email code is enabled: never use this in production', { environment: config.nodeEnv });
   let stopping = null;
@@ -66,6 +68,7 @@ export async function startServer({ config, logger = createLogger({ level: confi
     stopping ??= (async () => {
       logger.info('shutting down');
       await new Promise((resolve) => app.server.close(resolve));
+      await mailer?.stop?.();
       if (pool) await pool.end();
       logger.info('stopped');
     })();
