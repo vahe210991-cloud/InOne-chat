@@ -175,7 +175,7 @@ export function createEmailDelivery({
           await pool.query("UPDATE email_deliveries SET status = 'dead', locked_at = NULL, locked_by = NULL, last_error_code = 'expired', updated_at = now() WHERE id = $1 AND status = 'processing' AND locked_by = $2", [row.id, workerId]);
           continue;
         }
-        const message = decryptPayload(row, key);
+        const message = decryptPayload(row, payloadKey);
         const result = await smtpMailer.send(message);
         await updateSent(row, result?.messageId ?? null);
         logger?.info('email delivery sent', { deliveryId: row.id, attempts: row.attempts });
@@ -219,7 +219,7 @@ export function createEmailDelivery({
       templateId: templateId ?? 'legacy', templateVersion: rendered.templateVersion ?? 1, locale: rendered.locale ?? locale,
     };
     const fingerprint = createHmac('sha256', fingerprintKey).update(JSON.stringify(payload)).digest('hex');
-    const encrypted = encryptPayload(payload, key, idempotencyHash);
+    const encrypted = encryptPayload(payload, payloadKey, idempotencyHash);
     const { rows } = await queryable.query(
       `INSERT INTO email_deliveries
          (idempotency_key, payload_fingerprint, payload_ciphertext, payload_iv, payload_tag, expires_at)
