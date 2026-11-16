@@ -66,6 +66,27 @@ void main() {
     );
   });
 
+
+  test('rejects unsupported persisted account locales', () {
+    expect(
+      () => InOneProfile.fromJson({
+        'userId': 'user-1',
+        'nickname': null,
+        'email': null,
+        'verificationLevel': 0,
+        'providers': [],
+        'backupEmail': null,
+        'securityHints': [],
+        'locale': 'de',
+      }),
+      throwsA(isA<ApiException>().having(
+        (error) => error.code,
+        'code',
+        'invalid_response',
+      )),
+    );
+  });
+
   test('rejects profile responses missing a backend field', () {
     expect(
       () => InOneProfile.fromJson({
