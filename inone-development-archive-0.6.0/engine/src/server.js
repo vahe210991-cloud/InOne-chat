@@ -732,11 +732,10 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         if (outcome === 'locked') return send(res, 403, { error: 'too many wrong codes, request a new one' });
         if (outcome !== 'ok') return send(res, 403, { error: 'wrong code' });
         const previous = await storage.backupEmailGet(d.userId);
-        if ((await storage.backupEmailSave(d.userId, email, now())) === 'taken') {
-          return send(res, 409, { error: 'this backup email is used by another account' });
-        }
         const primary = (await storage.profileGet(d.userId)).email;
-        await mailTo(primary, 'Запасная почта InOne изменена', '', null, 'backup_email_changed', { action: previous ? 'changed' : 'added' });
+        const saved = await storage.backupEmailSaveWithOutbox(d.userId, email, now(), (tx) =>
+          mailTo(primary, 'Запасная почта InOne изменена', '', null, 'backup_email_changed', { action: previous ? 'changed' : 'added' }, 'ru', tx));
+        if (saved === 'taken') return send(res, 409, { error: 'this backup email is used by another account' });
         return send(res, 200, { backupEmail: { email, verified: true } });
       }
 
@@ -745,9 +744,10 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         if (!d) return send(res, 401, { error: 'unauthorized' });
         const confirmed = await verifyStepUp(d.userId, 'remove-backup-email', body, d.deviceId);
         if (!confirmed.ok) return send(res, confirmed.status, { error: confirmed.error });
-        if (!(await storage.backupEmailRemove(d.userId))) return send(res, 404, { error: 'no backup email is set' });
         const primary = (await storage.profileGet(d.userId)).email;
-        await mailTo(primary, 'Запасная почта InOne удалена', '', null, 'backup_email_removed', {});
+        const removed = await storage.backupEmailRemoveWithOutbox(d.userId, (tx) =>
+          mailTo(primary, 'Запасная почта InOne удалена', '', null, 'backup_email_removed', {}, 'ru', tx));
+        if (!removed) return send(res, 404, { error: 'no backup email is set' });
         return send(res, 200, await accountLevelInfo(d.userId));
       }
 
