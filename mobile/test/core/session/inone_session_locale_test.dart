@@ -8,7 +8,6 @@ import 'package:inone_mobile/core/session/inone_session.dart';
 void main() {
   test('selected in-app locale is persisted and sent with registration code request', () async {
     String? savedLocale;
-    var pendingLocaleSync = false;
     Map<String, dynamic>? sentBody;
     final client = MockClient((request) async {
       sentBody = jsonDecode(request.body) as Map<String, dynamic>;
@@ -24,14 +23,11 @@ void main() {
       deleteMlsUserId: () async {},
       readLocale: () async => savedLocale,
       writeLocale: (value) async { savedLocale = value; },
-      readLocaleSyncPending: () async => pendingLocaleSync ? 'true' : 'false',
-      writeLocaleSyncPending: (value) async { pendingLocaleSync = value; },
     );
     try {
       await session.setLocale('ru');
       expect(session.locale, 'ru');
       expect(savedLocale, 'ru');
-      expect(pendingLocaleSync, isTrue);
 
       final response = await session.startEmailRegistration('user@example.test');
       expect(response['ok'], isTrue);
