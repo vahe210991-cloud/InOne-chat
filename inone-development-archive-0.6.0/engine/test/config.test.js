@@ -10,6 +10,7 @@ const GOOD = {
   DATABASE_URL: 'postgresql://db.example/inone',
   INONE_PIN_PEPPER: 'q8Lw2rT6vN1zXc4bH9mK0pJs7dFg5aYe',
   INONE_DOCS_SECRET: DOCS_SECRET,
+  INONE_EMAIL_ENCRYPTION_KEY: 'a'.repeat(64),
   INONE_PUBLIC_URL: 'https://inone.example',
   INONE_FILES_DIR: '/var/lib/inone/objects',
 };
@@ -77,4 +78,11 @@ test('продакшен без INONE_FILES_DIR не стартует: файл�
   assert.equal(ok.filesDir, '/var/lib/inone/objects');
   assert.equal(ok.fileQuotaBytes, null, 'квота не задана по умолчанию');
   assert.equal(loadConfig({ ...PROD, INONE_FILES_DIR: '/x', INONE_FILE_QUOTA_BYTES: '1000' }).fileQuotaBytes, 1000);
+});
+
+test('SMTP rejects invalid transport, mismatched credentials and invalid encryption keys', () => {
+  assert.throws(() => loadConfig({ ...GOOD, INONE_MAIL_TRANSPORT: 'sendgrid' }), /must be memory or smtp/);
+  assert.throws(() => loadConfig({ ...GOOD, INONE_MAIL_TRANSPORT: 'smtp', INONE_SMTP_HOST: 'smtp.example', INONE_SMTP_FROM: 'noreply@example.test', INONE_SMTP_USER: 'mailer' }), /must be configured together/);
+  assert.throws(() => loadConfig({ ...GOOD, INONE_MAIL_TRANSPORT: 'smtp', INONE_SMTP_HOST: 'smtp.example', INONE_SMTP_FROM: 'noreply@example.test', INONE_EMAIL_ENCRYPTION_KEY: 'short' }), /must be 32 bytes/);
+  assert.throws(() => loadConfig({ ...GOOD, INONE_MAIL_TRANSPORT: 'smtp', INONE_SMTP_HOST: 'smtp.example', INONE_SMTP_FROM: 'noreply@example.test', INONE_SMTP_PORT: '465' }), /requires INONE_SMTP_SECURE/);
 });
