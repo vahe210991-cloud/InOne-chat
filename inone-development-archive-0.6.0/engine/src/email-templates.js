@@ -167,7 +167,7 @@ export function renderEmailTemplate(templateId, variables = {}, locale = 'hy') {
   if (!template) throw new Error('unknown email template');
   if (!SUPPORTED_EMAIL_LOCALES.has(locale)) throw new Error('unsupported email locale');
   const language = locale;
-  const [subject, render] = template[language];
+  const [subject, render] = template[language] ?? template.hy;
   const values = safeVariables(variables);
   for (const key of REQUIRED_VARIABLES[templateId] ?? []) if (!(key in values)) throw new Error('missing email template variable: ' + key);
   if (templateId === 'backup_email_changed' && !['added', 'changed'].includes(values.action)) throw new Error('invalid email action');
