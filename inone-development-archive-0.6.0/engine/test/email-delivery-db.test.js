@@ -36,7 +36,7 @@ function fakeSmtp({ failReason = null } = {}) {
 
 test('ключ шифрования требует ровно 32 байта', () => {
   assert.equal(parseEmailEncryptionKey('11'.repeat(32)).length, 32);
-  assert.throws(() => parseEmailEncryptionKey('short'), /exactly 32 bytes/);
+  assert.throws(() => parseEmailEncryptionKey(Buffer.from('short').toString('base64')), /exactly 32 bytes/);
 });
 
 test('очередь шифрует получателя и тело, дедуплицирует и восстанавливает доставку после перезапуска', async () => {
