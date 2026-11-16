@@ -76,6 +76,7 @@ Multi-key decryption/key-ring пока не реализован. Поэтому
 cd inone-development-archive-0.6.0/engine
 node --version
 npm ci
+npm audit
 npm test
 ```
 
