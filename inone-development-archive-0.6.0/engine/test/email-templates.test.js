@@ -53,11 +53,18 @@ test('управляющие символы не допускаются в зн�
   assert.throws(() => renderEmailTemplate('recovery_confirmation_link', { url: 'https://example.test/\r\nBcc:x' }), /unsafe email template variable/);
 });
 
+test('step-up action names are localized from stable action identifiers', () => {
+  assert.match(renderEmailTemplate('stepup_code', fixtures.stepup_code, 'hy').text, /Google կամ Apple հաշվի անջատում/);
+  assert.match(renderEmailTemplate('stepup_code', fixtures.stepup_code, 'ru').text, /отключение аккаунта Google или Apple/);
+  assert.match(renderEmailTemplate('stepup_code', fixtures.stepup_code, 'en').text, /unlinking a Google or Apple account/);
+  assert.throws(() => renderEmailTemplate('stepup_code', { code: '482913', action: 'untrusted text' }, 'hy'), /invalid step-up action/);
+});
+
 test('HTML templates escape untrusted variables and only render HTTPS recovery actions', () => {
-  const injected = renderEmailTemplate('stepup_code', { code: '<img src=x onerror=alert(1)>', action: 'safe & approved' }, 'hy');
+  const injected = renderEmailTemplate('stepup_code', { code: '<img src=x onerror=alert(1)>', action: 'remove-provider' }, 'hy');
   assert.ok(!injected.html.includes('<img src=x'));
   assert.ok(injected.html.includes('&lt;img src=x onerror=alert(1)&gt;'));
-  assert.ok(injected.html.includes('safe &amp; approved'));
+  assert.ok(injected.html.includes('Google կամ Apple հաշվի անջատում'));
   const unsafeUrl = renderEmailTemplate('recovery_confirmation_link', { url: 'javascript:alert(1)' }, 'hy');
   assert.ok(!unsafeUrl.html.includes('href="javascript:'));
   const safeUrl = renderEmailTemplate('recovery_confirmation_link', { url: 'https://inone.example/confirm?token=a%26b' }, 'hy');
