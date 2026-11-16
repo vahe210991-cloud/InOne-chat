@@ -24,7 +24,7 @@ SMTP-адаптер уже существовал. Его недостаточн
 8. Доставка имеет семантику **at-least-once**: при аварии после принятия письма SMTP-провайдером, но до фиксации статуса, теоретически возможна повторная отправка. Идемпотентность предотвращает повторную постановку одного события в очередь, но не может гарантировать exactly-once у внешнего SMTP-провайдера.
 9. Внешний провайдер и домен не выбираются в рамках архитектурного решения. Отсутствие домена не блокирует реализацию и локальные интеграционные тесты.
 10. Смена SMTP-провайдера не должна требовать изменения ботов, Identity или бизнес-маршрутов.
-11. Enqueue для критических бизнес-событий атомарен с изменением состояния через transactional outbox hooks PostgreSQL store. Текущие hooks покрывают регистрацию, backup-email verification/change/removal, step-up, recovery start/code/link, post-recovery identity check, new-device wait, recovery cancellation и completion.
+11. Enqueue для критических бизнес-событий атомарен с изменением состояния через transactional outbox hooks PostgreSQL store. Текущие hooks покрывают регистрацию, backup-email verification/change/removal, step-up, recovery start/code/link, post-recovery identity check, new-device wait, recovery cancellation и completion.\n12. Основной язык всех продуктовых email — восточноармянский (`hy`); русский (`ru`) и английский (`en`) поддерживаются как дополнительные. Locale передаётся в шаблон, а при отсутствии пользовательской настройки используется `hy`.\n13. Каждый шаблон содержит multipart plain-text и HTML варианты. HTML следует утверждённым tokens и типографике `InOne-mobile-design-system-curated.html`; исходный дизайн-артефакт остаётся immutable. Визуальный макет Email Delivery требует отдельного owner approval до acceptance.
 
 ## Рассмотренные альтернативы
 
@@ -60,7 +60,7 @@ SMTP-адаптер уже существовал. Его недостаточн
 
 ## Acceptance gates
 
-- [ ] Node unit suite и email template tests PASS.
+- [ ] Все 13 шаблонов проверены на `hy`, `ru`, `en`; HTML и plain-text совпадают по смыслу.\n- [ ] Владелец утвердил визуальный preview, сверенный с исходной InOne design system.\n- [ ] Node unit suite и email template tests PASS.
 - [ ] PostgreSQL migration clean install/upgrade PASS.
 - [ ] Durable queue restart, idempotency, expiry, dead-letter и retry tests PASS.
 - [ ] Graceful shutdown и SMTP transport close tests PASS.
