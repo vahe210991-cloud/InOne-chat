@@ -504,6 +504,15 @@ export function createMemoryStore({ pinPepper }) {
       recovery.set(userId, structuredClone(next));
       return result;
     },
+
+    async recoveryUpdateWithOutbox(userId, change, enqueue) {
+      if (!accounts.has(userId)) return change(freshRecovery()).result;
+      const cur = recovery.get(userId);
+      const { next, result } = change(cur ? structuredClone(cur) : freshRecovery());
+      recovery.set(userId, structuredClone(next));
+      if (enqueue) await enqueue(null, result);
+      return result;
+    },
     recoveryHashes() {
       return Object.fromEntries([...recovery]
         .filter(([, r]) => r.reqCodeHash)
@@ -1085,6 +1094,14 @@ mlsPendingRemovalsFor(userId) {
       const cur = emailCodes.get(email);
       const { next, result } = change(cur ? structuredClone(cur) : freshEmailCode());
       emailCodes.set(email, structuredClone(next));
+      return result;
+    },
+
+    async emailCodeUpdateWithOutbox(email, change, enqueue) {
+      const cur = emailCodes.get(email);
+      const { next, result } = change(cur ? structuredClone(cur) : freshEmailCode());
+      emailCodes.set(email, structuredClone(next));
+      if (enqueue) await enqueue(null, result);
       return result;
     },
 
