@@ -737,6 +737,55 @@ export function createStore({ pool, pinPepper }) {
       });
     },
 
+    async recoveryCancelWithOutbox(userId, passwordHash, change, enqueue) {
+      return inTransaction(async (client) => {
+        const account = await client.query('SELECT 1 FROM accounts WHERE user_id = $1', [userId]);
+        if (account.rows.length === 0) return change(freshRecovery()).result;
+        if (passwordHash) await client.query('UPDATE accounts SET password_hash = $2 WHERE user_id = $1', [userId, passwordHash]);
+        await client.query('INSERT INTO recovery (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING', [userId]);
+        const { rows } = await client.query('SELECT * FROM recovery WHERE user_id = $1 FOR UPDATE', [userId]);
+        const { next, result } = change(fromRecoveryRow(rows[0]));
+        await client.query(
+          `UPDATE recovery SET req_status = $2, req_started_at = $3, req_expires_at = $4, req_code_hash = $5,
+             req_attempts = $6, window_started_at = $7, window_key_reset_at = $8, window_previous_hash = $9,
+             identity_check = $10, identity_code_hash = $11, identity_attempts = $12, locked_until = $13, starts = $14, req_link_hash = $15, req_link_confirmed = $16
+           WHERE user_id = $1`,
+          [userId, next.reqStatus, next.reqStartedAt, next.reqExpiresAt, next.reqCodeHash, next.reqAttempts,
+           next.windowStartedAt, next.windowKeyResetAt, next.windowPreviousHash, next.identityCheck,
+           next.identityCodeHash, next.identityAttempts, next.lockedUntil, JSON.stringify(next.starts), next.reqLinkHash, next.reqLinkConfirmed],
+        );
+        await client.query('DELETE FROM recovery_cancel_codes WHERE user_id = $1', [userId]);
+        if (enqueue) await enqueue(client, result);
+        return result;
+      });
+    },
+
+    async recoveryCompleteWithOutbox(userId, passwordHash, change, cancelCodeHash, expiresAt, enqueue) {
+      return inTransaction(async (client) => {
+        await client.query('UPDATE accounts SET password_hash = $2 WHERE user_id = $1', [userId, passwordHash]);
+        await client.query('INSERT INTO recovery (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING', [userId]);
+        const { rows } = await client.query('SELECT * FROM recovery WHERE user_id = $1 FOR UPDATE', [userId]);
+        if (rows.length === 0) throw new Error('recovery account not found');
+        const { next, result } = change(fromRecoveryRow(rows[0]));
+        await client.query(
+          `UPDATE recovery SET req_status = $2, req_started_at = $3, req_expires_at = $4, req_code_hash = $5,
+             req_attempts = $6, window_started_at = $7, window_key_reset_at = $8, window_previous_hash = $9,
+             identity_check = $10, identity_code_hash = $11, identity_attempts = $12, locked_until = $13, starts = $14, req_link_hash = $15, req_link_confirmed = $16
+           WHERE user_id = $1`,
+          [userId, next.reqStatus, next.reqStartedAt, next.reqExpiresAt, next.reqCodeHash, next.reqAttempts,
+           next.windowStartedAt, next.windowKeyResetAt, next.windowPreviousHash, next.identityCheck,
+           next.identityCodeHash, next.identityAttempts, next.lockedUntil, JSON.stringify(next.starts), next.reqLinkHash, next.reqLinkConfirmed],
+        );
+        await client.query(
+          `INSERT INTO recovery_cancel_codes (user_id, code_hash, expires_at) VALUES ($1, $2, $3)
+           ON CONFLICT (user_id) DO UPDATE SET code_hash = EXCLUDED.code_hash, expires_at = EXCLUDED.expires_at`,
+          [userId, cancelCodeHash, expiresAt],
+        );
+        if (enqueue) await enqueue(client, result);
+        return result;
+      });
+    },
+
     /** Только хэши кодов и статусы: для снимка состояния в тестах. */
     async recoveryHashes() {
       const { rows } = await pool.query('SELECT user_id, req_status, req_code_hash FROM recovery WHERE req_code_hash IS NOT NULL');
