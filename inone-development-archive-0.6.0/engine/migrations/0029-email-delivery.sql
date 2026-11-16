@@ -2,6 +2,7 @@
 CREATE TABLE IF NOT EXISTS email_deliveries (
   id BIGSERIAL PRIMARY KEY,
   idempotency_key CHAR(64) NOT NULL UNIQUE,
+  payload_fingerprint CHAR(64) NOT NULL,
   payload_ciphertext BYTEA NOT NULL,
   payload_iv BYTEA NOT NULL,
   payload_tag BYTEA NOT NULL,
