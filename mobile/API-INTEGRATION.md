@@ -10,9 +10,9 @@ flutter run --dart-define=INONE_API_BASE_URL=https://your-staging-api.example
 
 The origin must be supplied by the project owner/operator. No production host is hard-coded.
 
-## Current server contract verified in main
+## Current server contract
 
-The route definitions below were checked against `inone-development-archive-0.6.0/engine/src/server.js` on the repository's `main` branch.
+Existing Beta 1.0 routes are maintained in the canonical engine. The account-locale routes and registration locale payload are introduced in Email Delivery PR #61 and are not available on `main` until that PR is merged.
 
 ### Health and readiness
 
