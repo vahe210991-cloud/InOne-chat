@@ -103,7 +103,7 @@ impl MlsSession {
 
     /// Returns durable diagnostics for unreadable MLS events without exposing plaintext keys.
     pub fn undecryptable_json(&self) -> Result<String, String> {
-        let items = self.with_client(Client::undecryptable)?;
+        let items = self.with_client(|client| client.undecryptable())?;
         serde_json::to_string(&items).map_err(|error| error.to_string())
     }
 
@@ -162,7 +162,7 @@ impl MlsSession {
     }
 
     pub fn outbox_len(&self) -> Result<u64, String> {
-        self.with_client(Client::outbox_len)
+        self.with_client(|client| client.outbox_len())
     }
 
     pub fn flush_outbox(&self) -> Result<usize, String> {
