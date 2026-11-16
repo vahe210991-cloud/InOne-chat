@@ -46,4 +46,6 @@ jobs:
             exit 0
           fi
           git commit -m "build(mls): synchronize native dependency lockfiles"
+          git fetch origin "${GITHUB_REF_NAME}"
+          git rebase "origin/${GITHUB_REF_NAME}"
           git push origin "HEAD:${GITHUB_REF_NAME}"
