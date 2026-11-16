@@ -203,6 +203,15 @@ export function createEmailDelivery({
     return activeTick;
   }
 
+  async function queueQuery(queryable, sql, params) {
+    try { return await queryable.query(sql, params); }
+    catch {
+      const error = new Error('email queue temporarily unavailable');
+      error.code = 'EMAIL_QUEUE_UNAVAILABLE';
+      throw error;
+    }
+  }
+
   async function enqueue(queryable, { to, subject, text, idempotencyKey, templateId, variables, locale = 'ru', expiresAt }) {
     if (stopping) throw new Error('email delivery is stopping');
     if (typeof to !== 'string' || to.length < 3 || to.length > 320 || /[\\r\\n]/.test(to)) throw new Error('invalid email recipient');
@@ -220,7 +229,7 @@ export function createEmailDelivery({
     };
     const fingerprint = createHmac('sha256', fingerprintKey).update(JSON.stringify(payload)).digest('hex');
     const encrypted = encryptPayload(payload, payloadKey, idempotencyHash);
-    const { rows } = await queryable.query(
+    const { rows } = await queueQuery(queryable,
       `INSERT INTO email_deliveries
          (idempotency_key, payload_fingerprint, payload_ciphertext, payload_iv, payload_tag, expires_at)
        VALUES ($1, $2, $3, $4, $5, to_timestamp($6 / 1000.0))
@@ -229,7 +238,7 @@ export function createEmailDelivery({
       [idempotencyHash, fingerprint, encrypted.ciphertext, encrypted.iv, encrypted.tag, expiryMs],
     );
     if (rows[0]) return { queued: true, duplicate: false, deliveryId: rows[0].id };
-    const existing = await queryable.query('SELECT id, status, payload_fingerprint FROM email_deliveries WHERE idempotency_key = $1', [idempotencyHash]);
+    const existing = await queueQuery(queryable, 'SELECT id, status, payload_fingerprint FROM email_deliveries WHERE idempotency_key = $1', [idempotencyHash]);
     if (!existing.rows[0]) throw new Error('email idempotency conflict could not be resolved');
     const expected = Buffer.from(existing.rows[0].payload_fingerprint, 'hex');
     const actual = Buffer.from(fingerprint, 'hex');
