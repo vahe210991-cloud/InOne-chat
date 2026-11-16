@@ -55,6 +55,7 @@ jobs:
         run: cargo test --locked --no-fail-fast --manifest-path inone-engine-poc-0.6.0/mobile-mls/mls-client/Cargo.toml -- --test-threads=1
 
   rust-bridge:
+    if: hashFiles('mobile/rust/Cargo.toml') != ''
     name: Persistent Flutter Rust bridge host tests
     runs-on: ubuntu-24.04
     timeout-minutes: 45
