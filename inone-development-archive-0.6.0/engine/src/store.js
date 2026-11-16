@@ -1538,7 +1538,12 @@ async mlsPendingRemovalsFor(userId) {
         : null;
     },
 
-    async profileLocaleSet(userId, locale) {\n      const { rowCount } = await pool.query('UPDATE profiles SET locale = $2 WHERE user_id = $1', [userId, locale]);\n      return rowCount > 0;\n    },\n\n    async userIdByEmail(email) {
+    async profileLocaleSet(userId, locale) {
+      const { rowCount } = await pool.query('UPDATE profiles SET locale = $2 WHERE user_id = $1', [userId, locale]);
+      return rowCount > 0;
+    },
+
+    async userIdByEmail(email) {
       const { rows } = await pool.query('SELECT user_id FROM profiles WHERE email_verified AND lower(email) = lower($1)', [email]);
       return rows[0]?.user_id ?? null;
     },
@@ -1556,8 +1561,8 @@ async mlsPendingRemovalsFor(userId) {
           await c.query('INSERT INTO accounts (user_id, password_hash) VALUES ($1, $2)', [userId, passwordHash]);
           if (joinDefaultOrg) await c.query("INSERT INTO org_members (org_id, user_id, role, joined_at) VALUES ('org-default', $1, 'member', $2) ON CONFLICT DO NOTHING", [userId, Date.now()]);
           await c.query(
-            'INSERT INTO profiles (user_id, email, email_verified, nickname, created_at) VALUES ($1, $2, TRUE, $3, $4)',
-            [userId, email, nickname, nowMs],
+            'INSERT INTO profiles (user_id, email, email_verified, nickname, created_at, locale) VALUES ($1, $2, TRUE, $3, $4, $5)',
+            [userId, email, nickname, nowMs, locale],
           );
           if (provider) {
             await c.query(
@@ -1584,13 +1589,13 @@ async mlsPendingRemovalsFor(userId) {
         const r = rows[0];
         const current = {
           codeHash: r.code_hash, codeAttempts: r.code_attempts, codeExpiresAt: Number(r.code_expires_at),
-          tokenHash: r.token_hash, tokenExpiresAt: Number(r.token_expires_at),
+          tokenHash: r.token_hash, tokenExpiresAt: Number(r.token_expires_at), locale: r.locale ?? 'hy',
         };
         const { next, result } = change(current);
         await c.query(
-          `UPDATE email_codes SET code_hash = $2, code_attempts = $3, code_expires_at = $4, token_hash = $5, token_expires_at = $6
+          `UPDATE email_codes SET code_hash = $2, code_attempts = $3, code_expires_at = $4, token_hash = $5, token_expires_at = $6, locale = $7
            WHERE email = $1`,
-          [email, next.codeHash, next.codeAttempts, next.codeExpiresAt, next.tokenHash, next.tokenExpiresAt],
+          [email, next.codeHash, next.codeAttempts, next.codeExpiresAt, next.tokenHash, next.tokenExpiresAt, locale],
         );
         return result;
       });
