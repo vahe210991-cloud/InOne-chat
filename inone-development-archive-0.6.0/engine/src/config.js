@@ -2,6 +2,14 @@
 import { DEFAULT_PHONE_COUNTRIES } from './phone-international.js';
 import { parseEmailEncryptionKey } from './email-delivery.js';
 const TEST_PEPPER_MARKERS = ['test-pepper', 'change-me', 'example', 'dev-only'];
+const isValidEmailEncryptionKey = (value) => {
+  if (typeof value !== 'string') return false;
+  if (/^[a-f0-9]{64}$/i.test(value)) return true;
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(value)) return false;
+  const decoded = Buffer.from(value, 'base64');
+  return decoded.length === 32
+    && decoded.toString('base64').replace(/=+$/, '') === value.replace(/=+$/, '');
+};
 
 export function loadConfig(env = process.env) {
   const nodeEnv = env.NODE_ENV ?? 'development';
@@ -79,7 +87,7 @@ export function loadConfig(env = process.env) {
     try {
       parseEmailEncryptionKey(config.emailEncryptionKey);
     } catch {
-      errors.push('INONE_EMAIL_ENCRYPTION_KEY must be 32 bytes (64 hex characters or base64)');
+      errors.push('INONE_EMAIL_ENCRYPTION_KEY must be 32 bytes (64 hex characters or canonical base64)');
     }
   }
   if (errors.length > 0) {
