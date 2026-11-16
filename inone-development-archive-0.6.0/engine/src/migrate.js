@@ -42,7 +42,8 @@ const MARKERS = {
   '0026-mls-key-package-claim-replay': "to_regclass('mls_key_package_claims') IS NOT NULL",
   '0027-mls-commit-idempotency': "to_regclass('mls_commit_operations') IS NOT NULL",
   '0028-mls-key-package-claim-reservation-finalization': "EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'mls_key_package_claims' AND column_name = 'room_id') AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'mls_key_package_claims' AND column_name = 'state')",
-  '0029-email-delivery': "to_regclass('email_deliveries') IS NOT NULL",\n  '0030-profile-email-locale': "EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'profiles' AND column_name = 'locale') AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'email_codes' AND column_name = 'locale')",
+  '0029-email-delivery': "to_regclass('email_deliveries') IS NOT NULL",
+  '0030-profile-email-locale': "EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'profiles' AND column_name = 'locale') AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'email_codes' AND column_name = 'locale')",
 };
 
 export function listMigrations() {
