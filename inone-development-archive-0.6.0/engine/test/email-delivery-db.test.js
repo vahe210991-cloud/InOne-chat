@@ -391,7 +391,7 @@ test('ошибка продления lease не позволяет отмети
       )).rows[0].status === 'sent', 5000);
     } catch (error) {
       const finalRow = (await db.pool.query(
-        'SELECT status, locked_by, last_error_code, attempts FROM email_deliveries WHERE id = $1',
+        'SELECT status, locked_by, last_error_code, attempts, locked_at, now() AS observed_at FROM email_deliveries WHERE id = $1',
         [queued.deliveryId],
       )).rows[0];
       assert.fail(`retry worker did not complete delivery: ${JSON.stringify({ finalRow, secondEvents })}; ${error.message}`);
