@@ -218,6 +218,7 @@ export function createEmailDelivery({
       let leaseLost = false;
       let renewalInFlight = null;
       const renewLease = () => {
+        if (leaseLost) return Promise.resolve();
         if (renewalInFlight) return renewalInFlight;
         renewalInFlight = renewClaim(row)
           .then((owned) => { if (!owned) leaseLost = true; })
