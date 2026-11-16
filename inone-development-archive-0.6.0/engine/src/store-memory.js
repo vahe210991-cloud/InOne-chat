@@ -510,7 +510,12 @@ export function createMemoryStore({ pinPepper }) {
       const cur = recovery.get(userId);
       const { next, result } = change(cur ? structuredClone(cur) : freshRecovery());
       recovery.set(userId, structuredClone(next));
-      if (enqueue) await enqueue(null, result);
+      try {
+        if (enqueue) await enqueue(null, result);
+      } catch (error) {
+        if (cur) recovery.set(userId, cur); else recovery.delete(userId);
+        throw error;
+      }
       return result;
     },
     async recoveryCancelWithOutbox(userId, passwordHash, change, enqueue) {
@@ -1140,7 +1145,12 @@ mlsPendingRemovalsFor(userId) {
       const cur = emailCodes.get(email);
       const { next, result } = change(cur ? structuredClone(cur) : freshEmailCode());
       emailCodes.set(email, structuredClone(next));
-      if (enqueue) await enqueue(null, result);
+      try {
+        if (enqueue) await enqueue(null, result);
+      } catch (error) {
+        if (cur) emailCodes.set(email, cur); else emailCodes.delete(email);
+        throw error;
+      }
       return result;
     },
 
@@ -1189,7 +1199,12 @@ mlsPendingRemovalsFor(userId) {
       const key = `${userId}|${deviceId}`;
       if (deviceWaits.has(key)) return 'exists';
       deviceWaits.set(key, { label, platform, activateAt, cancelHash, createdAt });
-      if (enqueue) await enqueue(null);
+      try {
+        if (enqueue) await enqueue(null);
+      } catch (error) {
+        deviceWaits.delete(key);
+        throw error;
+      }
       return 'ok';
     },
     deviceWaitDelete(userId, deviceId) {
