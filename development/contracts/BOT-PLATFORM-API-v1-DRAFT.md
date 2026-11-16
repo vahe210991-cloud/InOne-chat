@@ -1,13 +1,13 @@
-# OneBot / StickyBot API contract v1 — DRAFT FOR OWNER APPROVAL
+# OneBot / StickyBot API contract v1 — OWNER-APPROVED IMPLEMENTATION BASELINE
 
-**Status:** proposed contract only; NOT approved for implementation  
+**Status:** OWNER APPROVED — implementation baseline (2026-11-16, UTC+3)  
 **Date:** 2026-11-16 (UTC+3)  
 **Backend base reviewed:** `feature/email-delivery-service-2026-11-16-b1` @ `1bddce2d77477faa0fb804173c97e8b06ad9ae8b`  
 **Architecture source:** PR #60, `development/architecture/INONE-BOTS-AND-STICKERS.md`  
 **Canonical bot names:** OneBot and StickyBot  
 **Language:** canonical bot names and public bot names are English-only. Interface copy may be localized.
 
-This document converts the architecture proposal into a reviewable API/schema proposal. Every route, DTO, quota, image limit and retention value below is a proposal until the owner approves it. No product code may be written against this draft as though it were an approved contract.
+The owner approved this v1 contract as the implementation baseline on 2026-11-16. The routes, lifecycle, security invariants, credential handling, media boundary and proposed media limits below are approved as the baseline. Items explicitly marked as unresolved owner decisions remain fail-closed/configuration gates; implementers must not invent production quotas, retention periods, provider choices or moderation authority. Any change to an approved invariant requires a new owner decision and a versioned contract update.
 
 ## 1. Scope and release boundary
 
@@ -241,7 +241,7 @@ Proposed API error shape, matching current backend style:
 
 Do not include raw credentials, signing secrets, image bytes, message plaintext, MLS secrets or private webhook response bodies in logs. Audit metadata must be redacted and must record actor, bot, action, target, reason, timestamp and outcome.
 
-## 8. Owner decisions required before implementation
+## 8. Remaining operational decisions (must not be guessed)
 
 The owner must approve or change the following as one versioned contract:
 1. v1 scope boundary: control plane only first, with chat event/send routes disabled until MLS participant support; confirm that this is acceptable.
@@ -254,4 +254,4 @@ The owner must approve or change the following as one versioned contract:
 8. Whether official public handles `onebot` and `stickybot` should be reserved after availability/collision checks.
 9. Physical database schema and migration plan after the above contract is approved.
 
-**Implementation gate:** until the owner approves this contract, do not add routes, migrations, token configuration, image-processing dependencies, webhook workers or UI commands based on these proposed values.
+**Implementation authorization:** owner approval is recorded. Begin implementation against the approved baseline. Where this section leaves an operational value unresolved, ship a fail-closed/configurable boundary and keep the affected production capability disabled until the owner supplies the value. Do not weaken any MLS, consent, credential, SSRF or privacy invariant.
