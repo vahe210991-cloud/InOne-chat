@@ -223,7 +223,8 @@ CREATE TABLE profiles (
   email TEXT NOT NULL,
   email_verified BOOLEAN NOT NULL DEFAULT TRUE,
   nickname TEXT NOT NULL,
-  created_at BIGINT NOT NULL DEFAULT 0
+  created_at BIGINT NOT NULL DEFAULT 0,
+  locale TEXT NOT NULL DEFAULT 'hy' CHECK (locale IN ('hy', 'ru', 'en'))
 );
 CREATE UNIQUE INDEX profiles_email_verified ON profiles (lower(email)) WHERE email_verified;
 CREATE UNIQUE INDEX profiles_nickname ON profiles (lower(nickname));
@@ -231,6 +232,7 @@ CREATE UNIQUE INDEX profiles_nickname ON profiles (lower(nickname));
 -- Коды подтверждения почты при регистрации и одноразовые токены регистрации.
 CREATE TABLE email_codes (
   email TEXT PRIMARY KEY,
+  locale TEXT NOT NULL DEFAULT 'hy' CHECK (locale IN ('hy', 'ru', 'en')),
   code_hash TEXT,
   code_attempts INTEGER NOT NULL DEFAULT 0,
   code_expires_at BIGINT NOT NULL DEFAULT 0,
