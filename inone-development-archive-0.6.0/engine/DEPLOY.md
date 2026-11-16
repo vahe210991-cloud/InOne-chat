@@ -61,7 +61,7 @@
 
 ## Ограничения этой сборки
 
-- Почта: SMTP transport и durable encrypted queue реализованы в исходниках; добавлены миграция, worker, идемпотентность, expiry, retry/dead-letter, RU/EN templates и safe logs. Новые тесты добавлены, но на текущем SHA ещё NOT RUN. До acceptance нужны Node + PostgreSQL suite, SMTP integration, restart/retry/shutdown tests и реальная проверка доставки.
+- Почта: SMTP transport и durable encrypted queue реализованы в исходниках; добавлены миграции, worker, идемпотентность, expiry, retry/dead-letter, HY/RU/EN templates, локализация по выбранному языку интерфейса и safe logs. Новые тесты добавлены, но на текущем SHA ещё NOT RUN. До acceptance нужны Node + PostgreSQL suite, SMTP integration, restart/retry/shutdown tests и реальная проверка доставки.
 - Продакшен не стартует без `INONE_MAIL_TRANSPORT=smtp` с TLS и адресом отправителя.
 - Зависимости почты по текущему `package.json`: `nodemailer` 10.3.1 и `smtp-server` 3.21.3 (только тестовый сервер). Проверку `npm audit` на этом SHA ещё не выполняли.
 - SMS не подключён: восстановление доступа по телефону недоступно.
