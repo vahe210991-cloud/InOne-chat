@@ -1532,13 +1532,13 @@ async mlsPendingRemovalsFor(userId) {
 
     // ---- профиль аккаунта: почта и никнейм ----
     async profileGet(userId) {
-      const { rows } = await pool.query('SELECT email, email_verified, nickname, created_at FROM profiles WHERE user_id = $1', [userId]);
+      const { rows } = await pool.query('SELECT email, email_verified, nickname, created_at, locale FROM profiles WHERE user_id = $1', [userId]);
       return rows[0]
-        ? { email: rows[0].email, emailVerified: rows[0].email_verified, nickname: rows[0].nickname, createdAt: Number(rows[0].created_at) }
+        ? { email: rows[0].email, emailVerified: rows[0].email_verified, nickname: rows[0].nickname, createdAt: Number(rows[0].created_at), locale: rows[0].locale ?? 'hy' }
         : null;
     },
 
-    async userIdByEmail(email) {
+    async profileLocaleSet(userId, locale) {\n      const { rowCount } = await pool.query('UPDATE profiles SET locale = $2 WHERE user_id = $1', [userId, locale]);\n      return rowCount > 0;\n    },\n\n    async userIdByEmail(email) {
       const { rows } = await pool.query('SELECT user_id FROM profiles WHERE email_verified AND lower(email) = lower($1)', [email]);
       return rows[0]?.user_id ?? null;
     },
@@ -1550,7 +1550,7 @@ async mlsPendingRemovalsFor(userId) {
 
     /** Аккаунт с подтверждённой почтой и никнеймом одной транзакцией (и связью с провайдером, если задана).
      *  Возвращает ok | email | nickname | link | account. */
-    async createVerifiedAccount({ userId, passwordHash, email, nickname, nowMs, provider = null, joinDefaultOrg = false }) {
+    async createVerifiedAccount({ userId, passwordHash, email, nickname, nowMs, provider = null, joinDefaultOrg = false, locale = 'hy' }) {
       try {
         return await inTransaction(async (c) => {
           await c.query('INSERT INTO accounts (user_id, password_hash) VALUES ($1, $2)', [userId, passwordHash]);
@@ -1596,7 +1596,7 @@ async mlsPendingRemovalsFor(userId) {
       });
     },
 
-    async emailCodeUpdateWithOutbox(email, change, enqueue) {
+    async emailCodeUpdateWithOutbox(email, change, enqueue, locale = 'hy') {
       return inTransaction(async (c) => {
         await c.query('INSERT INTO email_codes (email) VALUES ($1) ON CONFLICT (email) DO NOTHING', [email]);
         const { rows } = await c.query('SELECT * FROM email_codes WHERE email = $1 FOR UPDATE', [email]);
