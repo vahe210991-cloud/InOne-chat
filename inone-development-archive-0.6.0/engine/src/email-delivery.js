@@ -222,6 +222,8 @@ export function createEmailDelivery({
         renewalInFlight = renewClaim(row)
           .then((owned) => { if (!owned) leaseLost = true; })
           .catch((error) => {
+            // A failed renewal means ownership cannot be proven; never mark this send as delivered.
+            leaseLost = true;
             logger?.warn('email delivery lease renewal failed', {
               deliveryId: row.id,
               errorCode: typeof error?.code === 'string' ? error.code : 'unknown',
