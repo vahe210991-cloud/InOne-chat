@@ -182,39 +182,47 @@ export function createEmailDelivery({
     return activeTick;
   }
 
+  async function enqueue(queryable, { to, subject, text, idempotencyKey, templateId, variables, locale = 'ru', expiresAt }) {
+    if (stopping) throw new Error('email delivery is stopping');
+    if (typeof to !== 'string' || to.length < 3 || to.length > 320 || /[\\r\\n]/.test(to)) throw new Error('invalid email recipient');
+    const rendered = templateId ? renderEmailTemplate(templateId, variables ?? {}, locale) : { subject, text, ttlMs: 24 * 60 * 60_000 };
+    if (typeof rendered.subject !== 'string' || rendered.subject.length < 1 || rendered.subject.length > 998 || /[\\r\\n]/.test(rendered.subject)) throw new Error('invalid email subject');
+    if (typeof rendered.text !== 'string' || rendered.text.length > MAX_PAYLOAD_BYTES) throw new Error('invalid email body');
+    if (typeof idempotencyKey !== 'string' || idempotencyKey.length < 8 || idempotencyKey.length > 256) throw new Error('email idempotencyKey is required');
+    const nowMs = Date.now();
+    const expiryMs = expiresAt === undefined ? nowMs + rendered.ttlMs : Number(expiresAt);
+    if (!Number.isFinite(expiryMs) || expiryMs <= nowMs || expiryMs > nowMs + 30 * 24 * 60 * 60_000) throw new Error('invalid email expiry');
+    const idempotencyHash = createHash('sha256').update(idempotencyKey).digest('hex');
+    const payload = {
+      to, subject: rendered.subject, text: rendered.text,
+      templateId: templateId ?? 'legacy', templateVersion: rendered.templateVersion ?? 1, locale: rendered.locale ?? locale,
+    };
+    const fingerprint = createHmac('sha256', key).update(JSON.stringify(payload)).digest('hex');
+    const encrypted = encryptPayload(payload, key, idempotencyHash);
+    const { rows } = await queryable.query(
+      `INSERT INTO email_deliveries
+         (idempotency_key, payload_fingerprint, payload_ciphertext, payload_iv, payload_tag, expires_at)
+       VALUES ($1, $2, $3, $4, $5, to_timestamp($6 / 1000.0))
+       ON CONFLICT (idempotency_key) DO NOTHING
+       RETURNING id, status`,
+      [idempotencyHash, fingerprint, encrypted.ciphertext, encrypted.iv, encrypted.tag, expiryMs],
+    );
+    if (rows[0]) return { queued: true, duplicate: false, deliveryId: rows[0].id };
+    const existing = await queryable.query('SELECT id, status, payload_fingerprint FROM email_deliveries WHERE idempotency_key = $1', [idempotencyHash]);
+    if (!existing.rows[0]) throw new Error('email idempotency conflict could not be resolved');
+    const expected = Buffer.from(existing.rows[0].payload_fingerprint, 'hex');
+    const actual = Buffer.from(fingerprint, 'hex');
+    if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) throw new Error('email idempotency key was reused with a different payload');
+    return { queued: existing.rows[0].status !== 'dead', duplicate: true, deliveryId: existing.rows[0].id, status: existing.rows[0].status };
+  }
+
   return {
-    async send({ to, subject, text, idempotencyKey, templateId, variables, locale = 'ru', expiresAt }) {
-      if (stopping) throw new Error('email delivery is stopping');
-      if (typeof to !== 'string' || to.length < 3 || to.length > 320 || /[\r\n]/.test(to)) throw new Error('invalid email recipient');
-      const rendered = templateId ? renderEmailTemplate(templateId, variables ?? {}, locale) : { subject, text, ttlMs: 24 * 60 * 60_000 };
-      if (typeof rendered.subject !== 'string' || rendered.subject.length < 1 || rendered.subject.length > 998 || /[\r\n]/.test(rendered.subject)) throw new Error('invalid email subject');
-      if (typeof rendered.text !== 'string' || rendered.text.length > MAX_PAYLOAD_BYTES) throw new Error('invalid email body');
-      if (typeof idempotencyKey !== 'string' || idempotencyKey.length < 8 || idempotencyKey.length > 256) throw new Error('email idempotencyKey is required');
-      const nowMs = Date.now();
-      const expiryMs = expiresAt === undefined ? nowMs + rendered.ttlMs : Number(expiresAt);
-      if (!Number.isFinite(expiryMs) || expiryMs <= nowMs || expiryMs > nowMs + 30 * 24 * 60 * 60_000) throw new Error('invalid email expiry');
-      const idempotencyHash = createHash('sha256').update(idempotencyKey).digest('hex');
-      const payload = {
-        to, subject: rendered.subject, text: rendered.text,
-        templateId: templateId ?? 'legacy', templateVersion: rendered.templateVersion ?? 1, locale: rendered.locale ?? locale,
-      };
-      const fingerprint = createHmac('sha256', key).update(JSON.stringify(payload)).digest('hex');
-      const encrypted = encryptPayload(payload, key, idempotencyHash);
-      const { rows } = await pool.query(
-        `INSERT INTO email_deliveries
-           (idempotency_key, payload_fingerprint, payload_ciphertext, payload_iv, payload_tag, expires_at)
-         VALUES ($1, $2, $3, $4, $5, to_timestamp($6 / 1000.0))
-         ON CONFLICT (idempotency_key) DO NOTHING
-         RETURNING id, status`,
-        [idempotencyHash, fingerprint, encrypted.ciphertext, encrypted.iv, encrypted.tag, expiryMs],
-      );
-      if (rows[0]) return { queued: true, duplicate: false, deliveryId: rows[0].id };
-      const existing = await pool.query('SELECT id, status, payload_fingerprint FROM email_deliveries WHERE idempotency_key = $1', [idempotencyHash]);
-      if (!existing.rows[0]) throw new Error('email idempotency conflict could not be resolved');
-      const expected = Buffer.from(existing.rows[0].payload_fingerprint, 'hex');
-      const actual = Buffer.from(fingerprint, 'hex');
-      if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) throw new Error('email idempotency key was reused with a different payload');
-      return { queued: existing.rows[0].status !== 'dead', duplicate: true, deliveryId: existing.rows[0].id, status: existing.rows[0].status };
+    send(message) {
+      return enqueue(pool, message);
+    },
+    sendInTransaction(client, message) {
+      if (!client || typeof client.query !== 'function') throw new Error('transaction client is required');
+      return enqueue(client, message);
     },
     start() {
       if (stopping) throw new Error('email delivery cannot restart after stop');
