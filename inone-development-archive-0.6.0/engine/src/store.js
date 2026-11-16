@@ -1595,7 +1595,7 @@ async mlsPendingRemovalsFor(userId) {
         await c.query(
           `UPDATE email_codes SET code_hash = $2, code_attempts = $3, code_expires_at = $4, token_hash = $5, token_expires_at = $6, locale = $7
            WHERE email = $1`,
-          [email, next.codeHash, next.codeAttempts, next.codeExpiresAt, next.tokenHash, next.tokenExpiresAt, locale],
+          [email, next.codeHash, next.codeAttempts, next.codeExpiresAt, next.tokenHash, next.tokenExpiresAt, next.locale ?? current.locale ?? 'hy'],
         );
         return result;
       });
@@ -1608,13 +1608,13 @@ async mlsPendingRemovalsFor(userId) {
         const r = rows[0];
         const current = {
           codeHash: r.code_hash, codeAttempts: r.code_attempts, codeExpiresAt: Number(r.code_expires_at),
-          tokenHash: r.token_hash, tokenExpiresAt: Number(r.token_expires_at),
+          tokenHash: r.token_hash, tokenExpiresAt: Number(r.token_expires_at), locale: r.locale ?? 'hy',
         };
         const { next, result } = change(current);
         await c.query(
-          `UPDATE email_codes SET code_hash = $2, code_attempts = $3, code_expires_at = $4, token_hash = $5, token_expires_at = $6
+          `UPDATE email_codes SET code_hash = $2, code_attempts = $3, code_expires_at = $4, token_hash = $5, token_expires_at = $6, locale = $7
            WHERE email = $1`,
-          [email, next.codeHash, next.codeAttempts, next.codeExpiresAt, next.tokenHash, next.tokenExpiresAt],
+          [email, next.codeHash, next.codeAttempts, next.codeExpiresAt, next.tokenHash, next.tokenExpiresAt, locale],
         );
         if (enqueue) await enqueue(c, result);
         return result;
