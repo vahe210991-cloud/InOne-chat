@@ -42,7 +42,7 @@ function decryptPayload(row, payloadKey) {
   decipher.setAuthTag(row.payload_tag);
   const plain = Buffer.concat([decipher.update(row.payload_ciphertext), decipher.final()]);
   const payload = JSON.parse(plain.toString('utf8'));
-  if (!payload || typeof payload.to !== 'string' || typeof payload.subject !== 'string' || typeof payload.text !== 'string') {
+  if (!payload || typeof payload.to !== 'string' || typeof payload.subject !== 'string' || typeof payload.text !== 'string' || typeof payload.html !== 'string') {
     throw new Error('invalid encrypted email payload');
   }
   return payload;
@@ -216,20 +216,21 @@ export function createEmailDelivery({
     }
   }
 
-  async function enqueue(queryable, { to, subject, text, idempotencyKey, templateId, variables, locale = 'ru', expiresAt }) {
+  async function enqueue(queryable, { to, subject, text, html, idempotencyKey, templateId, variables, locale = 'hy', expiresAt }) {
     if (stopping) throw new Error('email delivery is stopping');
     if (typeof to !== 'string' || to.length < 3 || to.length > 320 || /[\r\n]/.test(to)) throw new Error('invalid email recipient');
     if (typeof templateId !== 'string' || templateId.length === 0) throw new Error('email templateId is required');
     const rendered = renderEmailTemplate(templateId, variables ?? {}, locale);
     if (typeof rendered.subject !== 'string' || rendered.subject.length < 1 || rendered.subject.length > 998 || /[\r\n]/.test(rendered.subject)) throw new Error('invalid email subject');
     if (typeof rendered.text !== 'string' || rendered.text.length > MAX_PAYLOAD_BYTES) throw new Error('invalid email body');
+    if (typeof rendered.html !== 'string' || rendered.html.length > 128 * 1024) throw new Error('invalid email HTML body');
     if (typeof idempotencyKey !== 'string' || idempotencyKey.length < 8 || idempotencyKey.length > 256) throw new Error('email idempotencyKey is required');
     const nowMs = Date.now();
     const expiryMs = expiresAt === undefined ? nowMs + rendered.ttlMs : Number(expiresAt);
     if (!Number.isFinite(expiryMs) || expiryMs <= nowMs || expiryMs > nowMs + 30 * 24 * 60 * 60_000) throw new Error('invalid email expiry');
     const idempotencyHash = createHmac('sha256', idempotencyKeyHashKey).update(idempotencyKey).digest('hex');
     const payload = {
-      to, subject: rendered.subject, text: rendered.text,
+      to, subject: rendered.subject, text: rendered.text, html: rendered.html,
       templateId: templateId ?? 'legacy', templateVersion: rendered.templateVersion ?? 1, locale: rendered.locale ?? locale,
     };
     const fingerprint = createHmac('sha256', fingerprintKey).update(JSON.stringify(payload)).digest('hex');
