@@ -115,7 +115,7 @@ test('D4: аккаунт с привязкой Google — вход с новог
   try {
     const nonce0 = (await call(base, 'POST', '/auth/nonce')).body.nonce;
     const v0 = await call(base, 'POST', '/auth/provider/verify', { body: { provider: 'google', idToken: signToken(googleClaims(nonce0)), nonce: nonce0 } });
-    const anna = (await call(base, 'POST', '/register/provider', { body: { ticket: v0.body.ticket, nickname: 'Anna.G' } })).body;
+    const anna = (await call(base, 'POST', '/register/provider', { body: { ticket: v0.body.ticket, nickname: 'Anna.G' , locale: 'ru'} })).body;
     const first = await call(base, 'POST', '/login', { body: { userId: anna.userId, proof: anna.proof, deviceId: 'ANNA_PHONE' } });
     assert.equal(first.status, 200);
     assert.equal((await revokeDevice(base, first.body.token, 'ANNA_PHONE')).status, 200);
