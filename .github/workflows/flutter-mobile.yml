@@ -32,6 +32,23 @@ jobs:
         with:
           # Validate the complete stacked PR result, including its current base branch.
           ref: ${{ github.sha }}
+      - name: Verify original 73-screen test gallery
+        run: node tool/verify_test_gallery.mjs
+      - name: Verify owner-approved HTML baseline
+        run: node tool/verify_approved_html.mjs
+      - name: Fetch and verify canonical owner UI archive
+        run: |
+          git -C .. fetch origin main --depth=1
+          git -C .. show FETCH_HEAD:Ui.zip > ../Ui.zip
+          printf "%s  %s\n" "cdff61e49e2b4fefc1e3a6c9b9b67f5a" "../Ui.zip" | sha256sum -c -
+      - name: Import approved UI package as reference assets
+        run: |
+          rm -rf "$RUNNER_TEMP/inone-ui"
+          mkdir -p "$RUNNER_TEMP/inone-ui"
+          unzip -q ../Ui.zip -d "$RUNNER_TEMP/inone-ui"
+          SOURCE="$(find "$RUNNER_TEMP/inone-ui" -type f -name screen-manifest.json -print -quit)"
+          test -n "$SOURCE"
+          node tool/import_ui_approval.mjs "$(dirname "$SOURCE")"
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.47.9'
