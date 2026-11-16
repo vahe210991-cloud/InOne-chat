@@ -2654,30 +2654,32 @@ if (req.method === 'POST' && p === '/login') {
           // Аккаунт с привязкой Google или Apple восстанавливается входом через провайдера: кода здесь нет.
           if (!phone.verified && (await storage.providerLinksOf(userId)).length === 0) {
             const emailCode = String(randomInt(0, 1_000_000)).padStart(6, '0');
-            const issued = await storage.recoveryUpdate(userId, (r) => {
+            const issued = await storage.recoveryUpdateWithOutbox(userId, (r) => {
               const out = requestCode(r, { nowMs: now(), codeHash: recoveryCodeHash(userId, emailCode), linkHash: null });
               const next = out.issued ? confirmLink(out.next, { nowMs: now(), linkOk: true }).next : out.next;
               return { next, result: out.issued };
+            }, async (tx, wasIssued) => {
+              if (!wasIssued) return;
+              await mailTo(await confirmationEmail(userId), 'Код восстановления InOne', '', null, 'recovery_code', { code: emailCode }, 'ru', tx);
+              await mail(userId, 'Запрошено восстановление InOne', '', 'recovery_requested', {}, tx);
             });
-            if (issued) {
-              await mailTo(await confirmationEmail(userId), 'Код восстановления InOne', '', null, 'recovery_code', { code: emailCode });
-              await mail(userId, 'Запрошено восстановление InOne', '', 'recovery_requested', {});
-              await alertDevices(userId, { kind: 'recovery_started' });
-            }
+            if (issued) await alertDevices(userId, { kind: 'recovery_started' });
           }
           // Восстановление возможно только при подтверждённом телефоне (D5).
           // SMS на номер не чаще заданного за сутки: лишние запросы не шлют SMS.
           if (phone.verified && (await checkRate('smsPerPhone', phone.phone)).allowed) {
             const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
             const token = randomBytes(24).toString('base64url');
-            const issued = await storage.recoveryUpdate(userId, (r) => {
+            const issued = await storage.recoveryUpdateWithOutbox(userId, (r) => {
               const out = requestCode(r, { nowMs: now(), codeHash: recoveryCodeHash(userId, code), linkHash: recoveryLinkHash(userId, token) });
               return { next: out.next, result: out.issued };
+            }, async (tx, wasIssued) => {
+              if (!wasIssued) return;
+              await mail(userId, 'Подтверждение восстановления', '', 'recovery_confirmation_link', { url: `${publicUrl}/recovery/confirm?user=${encodeURIComponent(userId)}&token=${token}` }, tx);
             });
             if (issued) {
-              // D5: код приходит по SMS, подтверждение — ссылкой из письма. Это два разных канала.
+              // D5: SMS-код и email-link — независимые каналы одного recovery event.
               await smsSender.send(phone.phone, `Код: ${code}. Код восстановления InOne действует час. Если это не вы — не вводите его.`);
-              await mail(userId, 'Подтверждение восстановления', '', 'recovery_confirmation_link', { url: `${publicUrl}/recovery/confirm?user=${encodeURIComponent(userId)}&token=${token}` });
               await alertDevices(userId, { kind: 'recovery_started' });
             }
           }
