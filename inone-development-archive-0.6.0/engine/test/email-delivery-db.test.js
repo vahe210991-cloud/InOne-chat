@@ -46,6 +46,7 @@ test('очередь шифрует получателя и тело, дедуп
   const first = createEmailDelivery({ pool: db.pool, smtpMailer: smtp1, encryptionKey: Buffer.from(masterKey), pollIntervalMs: 250 });
   const payload = { to: 'private-recipient@example.test', templateId: 'registration_code', variables: { code: 'SECRET-CODE-771155' } };
   try {
+    await assert.rejects(first.send({ to: payload.to, subject: 'Raw', text: 'body', idempotencyKey: 'raw-message-001' }), /templateId is required/);
     const queued = await first.send({ ...payload, idempotencyKey: 'recovery-event-001' });
     assert.equal(queued.queued, true);
     assert.equal(queued.duplicate, false);
