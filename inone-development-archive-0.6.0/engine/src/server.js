@@ -659,7 +659,9 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
       if (req.method === 'POST' && p === '/register/provider') {
         const reg = await checkRate('registrationsPerAddress', clientIp(req));
         if (!reg.allowed) return send(res, 429, { error: 'too many registrations from this address', retryAt: new Date(reg.retryAt).toISOString() });
-        // Ник проверяем до погашения билета: опечатка в нике не заставляет входить у провайдера заново.
+        // Ник и язык проверяем до погашения билета: ошибка ввода не должна сжигать одноразовый ticket.
+        const locale = resolveEmailLocale(body.locale);
+        if (!locale) return send(res, 400, { error: 'locale must be hy, ru or en' });
         const nickError = validateNickname(body.nickname);
         if (nickError) return send(res, 400, { error: nickError });
         if (await storage.searchNickname(body.nickname)) return send(res, 409, { error: 'nickname taken' });
@@ -679,6 +681,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
           nickname: body.nickname,
           nowMs: now(),
           provider: { provider: identity.provider, sub: identity.sub },
+          locale,
         });
         if (created !== 'ok') {
           const error = created === 'nickname' ? 'nickname taken' : created === 'email' ? sameEmailError : created === 'link' ? 'this provider account is already linked' : 'account exists';
