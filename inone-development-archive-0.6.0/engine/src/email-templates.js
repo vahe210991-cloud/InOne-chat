@@ -92,7 +92,7 @@ export function renderEmailTemplate(templateId, variables = {}, locale = 'ru') {
     ? 10 * 60_000
     : ['recovery_login_code', 'recovery_code', 'recovery_confirmation_link'].includes(templateId)
       ? 60 * 60_000
-      : templateId === 'new_device_wait' ? 48 * 60 * 60_000 : 7 * 24 * 60 * 60_000;
+      : ['new_device_wait', 'recovery_completed'].includes(templateId) ? 48 * 60 * 60_000 : 7 * 24 * 60 * 60_000;
   return { subject, text: render(values), locale: language, templateId, templateVersion: 1, ttlMs };
 }
 
