@@ -44,7 +44,7 @@ test('очередь шифрует получателя и тело, дедуп
   const masterKey = randomBytes(32);
   const smtp1 = fakeSmtp();
   const first = createEmailDelivery({ pool: db.pool, smtpMailer: smtp1, encryptionKey: Buffer.from(masterKey), pollIntervalMs: 250 });
-  const payload = { to: 'private-recipient@example.test', subject: 'Recovery', text: 'SECRET-CODE-771155' };
+  const payload = { to: 'private-recipient@example.test', templateId: 'registration_code', variables: { code: 'SECRET-CODE-771155' } };
   try {
     const queued = await first.send({ ...payload, idempotencyKey: 'recovery-event-001' });
     assert.equal(queued.queued, true);
@@ -52,13 +52,13 @@ test('очередь шифрует получателя и тело, дедуп
     const raw = (await db.pool.query('SELECT * FROM email_deliveries WHERE id = $1', [queued.deliveryId])).rows[0];
     const stored = JSON.stringify(raw);
     assert.ok(!stored.includes(payload.to));
-    assert.ok(!stored.includes(payload.subject));
-    assert.ok(!stored.includes(payload.text));
+    assert.ok(!stored.includes('Код подтверждения InOne'));
+    assert.ok(!stored.includes(payload.variables.code));
     assert.notEqual(raw.idempotency_key.trim(), createHash('sha256').update('recovery-event-001').digest('hex'));
     const duplicate = await first.send({ ...payload, idempotencyKey: 'recovery-event-001' });
     assert.equal(duplicate.duplicate, true);
     await assert.rejects(
-      first.send({ ...payload, text: 'different payload', idempotencyKey: 'recovery-event-001' }),
+      first.send({ ...payload, variables: { code: 'different payload' }, idempotencyKey: 'recovery-event-001' }),
       /reused with a different payload/,
     );
     await first.stop();
@@ -68,7 +68,9 @@ test('очередь шифрует получателя и тело, дедуп
     const recovered = createEmailDelivery({ pool: db.pool, smtpMailer: smtp2, encryptionKey: Buffer.from(masterKey), pollIntervalMs: 250 });
     recovered.start();
     await waitFor(async () => (await db.pool.query('SELECT status FROM email_deliveries WHERE id = $1', [queued.deliveryId])).rows[0].status === 'sent');
-    assert.deepEqual(smtp2.sent, [payload]);
+    assert.equal(smtp2.sent.length, 1);
+    assert.equal(smtp2.sent[0].to, payload.to);
+    assert.match(smtp2.sent[0].text, /SECRET-CODE-771155/);
     await recovered.stop();
     assert.equal(smtp2.closed, true);
   } finally {
@@ -84,7 +86,7 @@ test('постоянная SMTP-ошибка переводит доставку
   const queue = createEmailDelivery({ pool: db.pool, smtpMailer: smtp, encryptionKey: randomBytes(32), logger, pollIntervalMs: 250 });
   try {
     const result = await queue.send({
-      to: 'private-recipient@example.test', subject: 'Auth', text: 'SECRET-CODE-998811',
+      to: 'private-recipient@example.test', templateId: 'registration_code', variables: { code: 'SECRET-CODE-998811' },
       idempotencyKey: 'auth-failure-001',
     });
     queue.start();
@@ -110,7 +112,7 @@ test('код и durable email outbox коммитятся и откатываю�
       result: true,
     }), async (tx) => {
       await queue.sendInTransaction(tx, {
-        to: 'rollback@example.test', subject: 'Code', text: 'ROLLBACK-CODE',
+        to: 'rollback@example.test', templateId: 'registration_code', variables: { code: 'ROLLBACK-CODE' },
         idempotencyKey: 'atomic-rollback-001',
       });
       throw new Error('force transaction rollback');
@@ -122,7 +124,7 @@ test('код и durable email outbox коммитятся и откатываю�
       next: { codeHash: 'committed-code-hash', codeAttempts: 0, codeExpiresAt: Date.now() + 600_000, tokenHash: null, tokenExpiresAt: 0 },
       result: true,
     }), (tx) => queue.sendInTransaction(tx, {
-      to: 'commit@example.test', subject: 'Code', text: 'COMMIT-CODE',
+      to: 'commit@example.test', templateId: 'registration_code', variables: { code: 'COMMIT-CODE' },
       idempotencyKey: 'atomic-commit-001',
     }));
     assert.equal((await db.pool.query("SELECT code_hash FROM email_codes WHERE email = 'commit@example.test'")).rows[0].code_hash, 'committed-code-hash');
@@ -143,7 +145,7 @@ test('recovery state and new-device wait are committed with their email outbox r
       next: { ...current, reqStatus: 'pending', reqStartedAt: Date.now(), reqExpiresAt: Date.now() + 3_600_000, reqCodeHash: 'recovery-code-hash' },
       result: true,
     }), (tx) => queue.sendInTransaction(tx, {
-      to: 'recovery@example.test', subject: 'Recovery', text: 'RECOVERY-LINK',
+      to: 'recovery@example.test', templateId: 'registration_code', variables: { code: 'RECOVERY-LINK' },
       idempotencyKey: 'recovery-transaction-001',
     }));
     assert.equal(recoveryIssued, true);
@@ -153,23 +155,23 @@ test('recovery state and new-device wait are committed with their email outbox r
       userId: '@recovery-outbox', deviceId: 'new-device', label: 'New device', platform: 'test',
       activateAt: Date.now() + 48 * 60 * 60_000, cancelHash: 'cancel-hash', createdAt: Date.now(),
     }, (tx) => queue.sendInTransaction(tx, {
-      to: 'recovery@example.test', subject: 'Device wait', text: 'DEVICE-CODE',
+      to: 'recovery@example.test', templateId: 'registration_code', variables: { code: 'DEVICE-CODE' },
       idempotencyKey: 'device-wait-transaction-001',
     }));
     assert.equal(wait, 'ok');
     assert.equal((await store.deviceWaitGet('@recovery-outbox', 'new-device')).activateAt > Date.now(), true);
 
     await store.backupEmailSaveWithOutbox('@recovery-outbox', 'backup@example.test', Date.now(), (tx) =>
-      queue.sendInTransaction(tx, { to: 'primary@example.test', subject: 'Backup added', text: 'NOTICE', idempotencyKey: 'backup-save-transaction-001' }));
+      queue.sendInTransaction(tx, { to: 'primary@example.test', templateId: 'backup_email_changed', variables: { action: 'added' }, idempotencyKey: 'backup-save-transaction-001' }));
     assert.equal((await store.backupEmailGet('@recovery-outbox')).email, 'backup@example.test');
     await store.backupEmailRemoveWithOutbox('@recovery-outbox', (tx) =>
-      queue.sendInTransaction(tx, { to: 'primary@example.test', subject: 'Backup removed', text: 'NOTICE', idempotencyKey: 'backup-remove-transaction-001' }));
+      queue.sendInTransaction(tx, { to: 'primary@example.test', templateId: 'backup_email_removed', variables: {}, idempotencyKey: 'backup-remove-transaction-001' }));
     assert.equal(await store.backupEmailGet('@recovery-outbox'), null);
 
     await store.recoveryCancelSet('@recovery-outbox', 'old-cancel-hash', Date.now() + 60_000);
     await store.recoveryCancelWithOutbox('@recovery-outbox', 'restored-password-hash',
       (current) => ({ next: { ...current, reqStatus: 'cancelled' }, result: true }),
-      (tx) => queue.sendInTransaction(tx, { to: 'primary@example.test', subject: 'Recovery cancelled', text: 'NOTICE', idempotencyKey: 'recovery-cancel-transaction-001' }));
+      (tx) => queue.sendInTransaction(tx, { to: 'primary@example.test', templateId: 'recovery_cancelled', variables: { method: 'code' }, idempotencyKey: 'recovery-cancel-transaction-001' }));
     assert.equal(await store.accountHash('@recovery-outbox'), 'restored-password-hash');
     assert.equal(await store.recoveryCancelGet('@recovery-outbox'), null);
 
@@ -177,7 +179,7 @@ test('recovery state and new-device wait are committed with their email outbox r
     const completedAt = await store.recoveryCompleteWithOutbox('@recovery-outbox', 'new-password-hash',
       (current) => ({ next: { ...current, reqStatus: 'completed', windowKeyResetAt: newExpiry }, result: newExpiry }),
       'new-cancel-hash',
-      (tx) => queue.sendInTransaction(tx, { to: 'primary@example.test', subject: 'Recovery completed', text: 'NOTICE', idempotencyKey: 'recovery-complete-transaction-001' }));
+      (tx) => queue.sendInTransaction(tx, { to: 'primary@example.test', templateId: 'recovery_completed', variables: { cancelCode: 'RECOVERY-CANCEL' }, idempotencyKey: 'recovery-complete-transaction-001' }));
     assert.equal(completedAt, newExpiry);
     assert.equal(await store.accountHash('@recovery-outbox'), 'new-password-hash');
     assert.equal((await store.recoveryCancelGet('@recovery-outbox')).codeHash, 'new-cancel-hash');
@@ -211,7 +213,7 @@ test('временная SMTP-ошибка повторяется с backoff и 
   });
   try {
     const result = await queue.send({
-      to: 'retry@example.test', subject: 'Retry', text: 'RETRY-BODY',
+      to: 'retry@example.test', templateId: 'registration_code', variables: { code: 'RETRY-BODY' },
       idempotencyKey: 'transient-retry-001',
     });
     queue.start();
@@ -220,7 +222,9 @@ test('временная SMTP-ошибка повторяется с backoff и 
     assert.equal(row.attempts, 2);
     assert.equal(row.last_error_code, null);
     assert.equal(attempts, 2);
-    assert.deepEqual(sent, [{ to: 'retry@example.test', subject: 'Retry', text: 'RETRY-BODY' }]);
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].to, 'retry@example.test');
+    assert.match(sent[0].text, /RETRY-BODY/);
   } finally {
     await queue.stop();
     await db.close();
@@ -233,7 +237,7 @@ test('истёкшее сообщение переводится в dead letter 
   const queue = createEmailDelivery({ pool: db.pool, smtpMailer: smtp, encryptionKey: randomBytes(32), pollIntervalMs: 250 });
   try {
     const result = await queue.send({
-      to: 'expired@example.test', subject: 'Expired', text: 'EXPIRED-CODE',
+      to: 'expired@example.test', templateId: 'registration_code', variables: { code: 'EXPIRED-CODE' },
       idempotencyKey: 'expired-email-001',
     });
     await db.pool.query("UPDATE email_deliveries SET expires_at = now() - interval '1 second' WHERE id = $1", [result.deliveryId]);
@@ -269,8 +273,8 @@ test('graceful shutdown закрывает SMTP и освобождает нез
     pollIntervalMs: 250, batchSize: 2, retryBaseMs: 100, retryMaxMs: 500,
   });
   try {
-    const first = await queue.send({ to: 'first@example.test', subject: 'One', text: 'ONE', idempotencyKey: 'shutdown-first-001' });
-    const second = await queue.send({ to: 'second@example.test', subject: 'Two', text: 'TWO', idempotencyKey: 'shutdown-second-001' });
+    const first = await queue.send({ to: 'first@example.test', templateId: 'registration_code', variables: { code: 'ONE' }, idempotencyKey: 'shutdown-first-001' });
+    const second = await queue.send({ to: 'second@example.test', templateId: 'registration_code', variables: { code: 'TWO' }, idempotencyKey: 'shutdown-second-001' });
     queue.start();
     await waitFor(() => started);
     await queue.stop();
@@ -291,7 +295,7 @@ test('повреждённый AES-GCM payload переводится в dead le
   const queue = createEmailDelivery({ pool: db.pool, smtpMailer: smtp, encryptionKey: randomBytes(32), pollIntervalMs: 250 });
   try {
     const result = await queue.send({
-      to: 'tampered@example.test', subject: 'Integrity', text: 'DO-NOT-SEND',
+      to: 'tampered@example.test', templateId: 'registration_code', variables: { code: 'DO-NOT-SEND' },
       idempotencyKey: 'payload-tamper-001',
     });
     await db.pool.query(
