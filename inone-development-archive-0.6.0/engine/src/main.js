@@ -38,9 +38,7 @@ export async function startServer({ config, logger = createLogger({ level: confi
       pollIntervalMs: config.emailWorkerPollMs,
       maxAttempts: config.emailMaxAttempts,
     })
-    : config.testUi
-      ? { send: async () => { logger.info('test email captured'); } }
-      : undefined;
+    : undefined;
   const app = createServer({
     pinPepper: config.pinPepper,
     docsSecret: config.docsSecret || null,
