@@ -1561,8 +1561,11 @@ if (req.method === 'POST' && p === '/login') {
         if (!existing && rec.identityCheck) {
           if (identityCode === undefined) {
             const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
-            await storage.recoveryUpdate(userId, (r) => ({ next: issueIdentity(r, { codeHash: identityCodeHash(userId, code) }), result: null }));
-            await mail(userId, 'Подтверждение входа после восстановления', '', 'recovery_login_code', { code });
+            const primaryEmail = (await storage.profileGet(userId))?.email ?? userId;
+            const backup = await storage.backupEmailGet(userId);
+            await storage.recoveryUpdateWithOutbox(userId,
+              (r) => ({ next: issueIdentity(r, { codeHash: identityCodeHash(userId, code) }), result: null }),
+              (tx) => mailToRecipients([primaryEmail, backup?.email], 'Подтверждение входа после восстановления', '', 'recovery_login_code', { code }, tx));
             return send(res, 202, { status: 'identity_check_required' });
           }
           const outcome = await storage.recoveryUpdate(userId, (r) => {
