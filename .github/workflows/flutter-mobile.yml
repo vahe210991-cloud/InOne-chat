@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'mobile/**'
+      - 'inone-development-archive-0.6.0/engine/**'
       - '.github/workflows/flutter-mobile.yml'
   push:
     branches: [main, feature/stage-4-native-mls-runtime-2026-11-11]
@@ -82,6 +83,8 @@ jobs:
 
       - name: Prepare Android NDK context for native secure storage
         run: node tool/prepare_android_mls.mjs
+      - name: Register iOS recovery deep-link scheme
+        run: node tool/prepare_ios_deep_links.mjs
       - name: Verify approved cross-platform screen geometry
         run: node tool/verify_approved_html.mjs
       - name: Fetch and verify owner UI archive
