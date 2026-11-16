@@ -26,7 +26,7 @@ function fakeSmtp({ failReason = null } = {}) {
         error.reason = failReason;
         throw error;
       }
-      sent.push(message);
+      sent.push({ to: message.to, subject: message.subject, text: message.text });
       return { messageId: 'test-message-id' };
     },
     close() { closed = true; },
