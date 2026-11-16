@@ -533,3 +533,13 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Re-fetched and verified both workflow files. FRB uses branch-scoped `push.paths` for the workflow file and `mobile/**`; OpenMLS uses its existing push path allowlist; aggregate PR path triggers removed; manual dispatch retained.
 - Available execution container has Node.js only; no Rust/Cargo, Flutter/Dart or Xcode. No local tests/builds run. Actions jobs continue to fail before observable steps/logs; exact cause unknown.
 - Stage 4 NOT ACCEPTED / BLOCKED; verification accepted 0%; native MLS disabled; no merge. Report section 38.
+
+### 2026-11-16 — Email delivery and API error-path hardening
+
+- Continued the owner-approved Email Delivery implementation on PR #61. Added configurable PostgreSQL outbox lease duration and heartbeat renewal while SMTP is in flight; stale claims are not sent after lease ownership is lost.
+- Added a PostgreSQL integration test with two workers and an SMTP operation exceeding two lease periods. This test still requires the PR's PostgreSQL CI job to execute.
+- Unexpected HTTP 500 responses now return a stable generic error. Only a constrained machine-readable error code is logged; exception messages, SQL details, hostnames and stack traces are not returned to clients or copied into this log.
+- Added a persistent-store regression test for the HTTP error disclosure path.
+- PR #63's security-hygiene head `35e5729464f5d598f1c14fc234d0680d76a1cfc1` passed all seven observed CI jobs: Backend Node suite, PostgreSQL integration suite, OpenMLS client check/tests, Rust bridge check/tests, Rust formatting, P0 room-list regression and Flutter validation. This validates that CI runners are functioning for that commit; it does not validate PR #61's changed backend.
+- PR #61's stacked base branch is `feature/beta1-screen-api-integration-2026-11-12`. Its P0 workflow originally filtered pull requests to base `main`, so PR #61 received only the Flutter workflow. The base branch workflow was updated at `38d812d81b9a2d81543fc961bc6ba7b93d78cd24` to run P0 checks for stacked PRs and make Rust formatting read-only. A new PR #61 head commit is required to trigger the full matrix against the updated base.
+- No PR was merged and no runtime test result is claimed for the new email lease or HTTP error regression tests.
