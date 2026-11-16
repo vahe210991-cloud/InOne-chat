@@ -111,6 +111,15 @@ export function createEmailDelivery({
     }
   }
 
+  async function releaseClaim(row) {
+    await pool.query(
+      `UPDATE email_deliveries
+       SET status = 'queued', available_at = now(), locked_at = NULL, locked_by = NULL, updated_at = now()
+       WHERE id = $1 AND status = 'processing' AND locked_by = $2`,
+      [row.id, workerId],
+    );
+  }
+
   async function updateSent(row, messageId) {
     await pool.query(
       `UPDATE email_deliveries
@@ -157,6 +166,10 @@ export function createEmailDelivery({
     }
     const rows = await claimBatch();
     for (const row of rows) {
+      if (stopping) {
+        await releaseClaim(row);
+        continue;
+      }
       try {
         if (new Date(row.expires_at).getTime() <= Date.now()) {
           await pool.query("UPDATE email_deliveries SET status = 'dead', locked_at = NULL, locked_by = NULL, last_error_code = 'expired', updated_at = now() WHERE id = $1 AND status = 'processing' AND locked_by = $2", [row.id, workerId]);
@@ -247,8 +260,8 @@ export function createEmailDelivery({
       stopping = true;
       if (timer) clearInterval(timer);
       timer = null;
+      try { smtpMailer.close?.(); } catch { /* transport close is best-effort during shutdown */ }
       if (activeTick) await activeTick;
-      smtpMailer.close?.();
       masterKey.fill(0);
       payloadKey.fill(0);
       fingerprintKey.fill(0);
