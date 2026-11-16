@@ -52,7 +52,7 @@ const nonceOf = async (base) => (await call(base, 'POST', '/auth/nonce')).body.n
 async function newGoogleAccount(base) {
   const nonce = await nonceOf(base);
   const v = await call(base, 'POST', '/auth/provider/verify', { body: { provider: 'google', idToken: signToken(googleClaims(nonce)), nonce } });
-  return (await call(base, 'POST', '/register/provider', { body: { ticket: v.body.ticket, nickname: 'Anna.G' } })).body;
+  return (await call(base, 'POST', '/register/provider', { body: { ticket: v.body.ticket, nickname: 'Anna.G', locale: 'ru' } })).body;
 }
 
 async function sessionOf(base, account, deviceId = 'ANNA_PHONE') {
@@ -60,7 +60,7 @@ async function sessionOf(base, account, deviceId = 'ANNA_PHONE') {
 }
 
 async function registerByEmail(base, srv, email, nickname) {
-  await call(base, 'POST', '/register/email', { body: { email } });
+  await call(base, 'POST', '/register/email', { body: { email, locale: 'ru' } });
   const code = srv.mailbox(email).filter((m) => m.subject === 'Код подтверждения InOne').at(-1).text.match(/Код: (\d{6})/)[1];
   const confirmed = await call(base, 'POST', '/register/email/confirm', { body: { email, code } });
   return call(base, 'POST', '/register', { body: { email, registrationToken: confirmed.body.registrationToken, password: PW, nickname } });
