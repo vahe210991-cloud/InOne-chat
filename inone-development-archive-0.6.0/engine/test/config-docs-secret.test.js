@@ -30,3 +30,12 @@ test('с секретом документов не короче 32 символ
 test('в продакшене короткий секрет документов не принимается', () => {
   assert.throws(() => loadConfig({ ...PROD, INONE_DOCS_SECRET: 'short' }), /INONE_DOCS_SECRET/);
 });
+
+test('production rejects malformed base64 email encryption keys with one clear validation error', () => {
+  const validBase64 = randomBytes(32).toString('base64');
+  const error = assert.throws(
+    () => loadConfig({ ...PROD, INONE_DOCS_SECRET: DOCS_SECRET, INONE_EMAIL_ENCRYPTION_KEY: `!${validBase64}` }),
+    /INONE_EMAIL_ENCRYPTION_KEY/,
+  );
+  assert.equal((error.message.match(/INONE_EMAIL_ENCRYPTION_KEY/g) ?? []).length, 1);
+});
