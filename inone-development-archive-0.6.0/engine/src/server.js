@@ -205,19 +205,21 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
   };
   // SMTP/queue подключается снаружи. Тестовый транспорт хранит письма только в памяти.
   const mailer = externalMailer ?? { send: async ({ to, subject, text }) => { outbox.push({ to, subject, text }); } };
-  const mailTo = (to, subject, text, idempotencyKey = null, templateId = null, variables = {}, locale = 'ru') => {
+  const mailTo = (to, subject, text, idempotencyKey = null, templateId = null, variables = {}, locale = 'ru', transactionClient = null) => {
     const rendered = templateId ? renderEmailTemplate(templateId, variables, locale) : { subject, text };
     const key = idempotencyKey ?? createHash('sha256')
       .update(`${to}\\0${rendered.subject}\\0${rendered.text}\\0${Math.floor(now() / 300_000)}`)
       .digest('hex');
-    return mailer.send({ to, subject: rendered.subject, text: rendered.text, idempotencyKey: key, templateId, variables, locale });
+    const message = { to, subject: rendered.subject, text: rendered.text, idempotencyKey: key, templateId, variables, locale };
+    if (transactionClient && typeof mailer.sendInTransaction === 'function') return mailer.sendInTransaction(transactionClient, message);
+    return mailer.send(message);
   };
   // Каждая подтверждённая почта получает отдельную delivery; отказ одного адреса не блокирует второй.
-  const mail = async (userId, subject, text, templateId = null, variables = {}) => {
+  const mail = async (userId, subject, text, templateId = null, variables = {}, transactionClient = null) => {
     const profile = await storage.profileGet(userId);
     const backup = await storage.backupEmailGet(userId);
     const recipients = [...new Set([profile?.email ?? userId, backup?.email].filter(Boolean))];
-    const results = await Promise.allSettled(recipients.map((recipient) => mailTo(recipient, subject, text, null, templateId, variables)));
+    const results = await Promise.allSettled(recipients.map((recipient) => mailTo(recipient, subject, text, null, templateId, variables, 'ru', transactionClient)));
     const failures = results.filter((result) => result.status === 'rejected');
     if (failures.length) throw new AggregateError(failures.map((result) => result.reason), 'one or more email deliveries could not be queued');
   };
