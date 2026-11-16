@@ -48,9 +48,10 @@ test('письмо с кодом уходит через SMTP и содержи�
   const smtp = await startSmtp();
   try {
     const mailer = createSmtpMailer({ host: '127.0.0.1', port: smtp.port, requireTls: false, user: USER, password: PASS, from: FROM, timeoutMs: 3000 });
-    await mailer.send({ to: 'anna@example.test', subject: 'Код подтверждения', text: 'Ваш код: 482913' });
+    await mailer.send({ to: 'anna@example.test', subject: 'Կոդի հաստատում', text: 'Ձեր կոդը՝ 482913', html: '<!doctype html><html lang="hy"><body><strong>482913</strong></body></html>' });
     assert.equal(smtp.received.length, 1);
     assert.deepEqual(smtp.received[0].envelope.rcptTo.map((r) => r.address), ['anna@example.test']);
+    assert.match(smtp.received[0].raw, /text\/html/i);
     assert.match(messageBody(smtp.received[0].raw), /482913/);
     mailer.close();
   } finally {
