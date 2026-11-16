@@ -220,7 +220,11 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
     const uniqueRecipients = [...new Set(recipients.filter(Boolean))];
     const results = await Promise.allSettled(uniqueRecipients.map((recipient) => mailTo(recipient, subject, text, null, templateId, variables, 'ru', transactionClient)));
     const failures = results.filter((result) => result.status === 'rejected');
-    if (failures.length) throw new AggregateError(failures.map((result) => result.reason), 'one or more email deliveries could not be queued');
+    if (failures.length) {
+      const error = new AggregateError(failures.map((result) => result.reason), 'one or more email deliveries could not be queued');
+      if (failures.every((result) => result.reason?.code === 'EMAIL_QUEUE_UNAVAILABLE')) error.code = 'EMAIL_QUEUE_UNAVAILABLE';
+      throw error;
+    }
   };
   const mail = async (userId, subject, text, templateId = null, variables = {}, transactionClient = null) => {
     const profile = await storage.profileGet(userId);
@@ -2836,7 +2840,7 @@ if (req.method === 'POST' && p === '/login') {
 
       return send(res, 404, { error: 'not found' });
     } catch (e) {
-      if (e.code === 'MAIL_UNAVAILABLE') return send(res, 503, { error: 'mail is temporarily unavailable, try later' });
+      if (e.code === 'MAIL_UNAVAILABLE' || e.code === 'EMAIL_QUEUE_UNAVAILABLE') return send(res, 503, { error: 'email delivery is temporarily unavailable, try later' });
       return send(res, 500, { error: e.message });
     }
   });
