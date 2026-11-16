@@ -49,7 +49,7 @@ async function providerSignIn(base, claimsOf) {
 }
 
 async function registerByEmail(base, srv, email, nickname) {
-  await call(base, 'POST', '/register/email', { body: { email } });
+  await call(base, 'POST', '/register/email', { body: { email, locale: 'ru' } });
   const code = srv.mailbox(email).filter((m) => m.subject === 'Код подтверждения InOne').at(-1).text.match(/Код: (\d{6})/)[1];
   const confirmed = await call(base, 'POST', '/register/email/confirm', { body: { email, code } });
   return call(base, 'POST', '/register', { body: { email, registrationToken: confirmed.body.registrationToken, password: PW, nickname } });

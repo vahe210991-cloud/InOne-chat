@@ -550,7 +550,7 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
 
     final call = message.call;
     final route = call == null ? null : claudeSupportedApiCalls[call];
-    if (route == null || !claudeScreenAllowsApiCall(message.screenId, call)) {
+    if (call == null || route == null || !claudeScreenAllowsApiCall(message.screenId, call)) {
       await _setClaudeScreenState('unavailable', 'Этот API-маршрут пока не подключён');
       return;
     }

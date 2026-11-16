@@ -193,10 +193,10 @@ test('после пяти неверных кодов восстановлени
     for (let i = 0; i < 5; i++) {
       await assert.rejects(post(base, '/recovery/complete', { userId: ALICE, code: '000000', newPassword: NEW_PW }), (e) => e.status === 403);
     }
-    await post(base, '/recovery/start', { userId: ALICE });
+    await post(base, '/recovery/start', { userId: ALICE, locale: 'ru' });
     assert.equal(recoverySmsCount(srv, PHONE_A), 1, 'во время блокировки новый код не выдаётся');
     srv.advance(HOUR + 1000);
-    await post(base, '/recovery/start', { userId: ALICE });
+    await post(base, '/recovery/start', { userId: ALICE, locale: 'ru' });
     assert.equal(recoverySmsCount(srv, PHONE_A), 2, 'после часа код выдаётся снова');
   } finally {
     await stop();
@@ -212,7 +212,7 @@ test('не больше трёх кодов восстановления в ча
       await post(base, '/recovery/complete', { userId: ALICE, code, newPassword: `пароль-${i}-2026` });
     }
     assert.equal(recoverySmsCount(srv, PHONE_A), 3);
-    await post(base, '/recovery/start', { userId: ALICE });
+    await post(base, '/recovery/start', { userId: ALICE, locale: 'ru' });
     assert.equal(recoverySmsCount(srv, PHONE_A), 3, 'четвёртый код за час не выдаётся');
   } finally {
     await stop();
@@ -325,7 +325,7 @@ test('телефон подтверждается кодом из SMS; неве�
     const alice = await ChatClient.create(base, ALICE, 'A_PHONE', PW, { phone: PHONE_A });
     await assert.rejects(alice.raw('POST', '/account/phone/confirm', { code: '000000' }), (e) => e.status === 403);
     await alice.raw('POST', '/account/phone/confirm', { code: smsCodeFrom(srv, PHONE_A) });
-    await post(base, '/recovery/start', { userId: ALICE });
+    await post(base, '/recovery/start', { userId: ALICE, locale: 'ru' });
     assert.equal(recoverySmsCount(srv, PHONE_A), 1, 'подтверждённый телефон получает код восстановления');
   } finally {
     await stop();
@@ -336,7 +336,7 @@ test('без подтверждения по ссылке из письма во
   const { srv, base, stop } = await start();
   try {
     await createVerified(base, srv, ALICE, 'A_PHONE', PW, PHONE_A);
-    await post(base, '/recovery/start', { userId: ALICE });
+    await post(base, '/recovery/start', { userId: ALICE, locale: 'ru' });
     const code = smsCodeFrom(srv, PHONE_A);
     await assert.rejects(post(base, '/recovery/complete', { userId: ALICE, code, newPassword: NEW_PW }), (e) => e.status === 403, 'без ссылки не проходит');
     const wrong = await fetch(`${base}/recovery/confirm`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ user: ALICE, token: FIXTURE_1 }) });
@@ -352,7 +352,7 @@ test('восстановление для аккаунта без подтвер
   const { srv, base, stop } = await start();
   try {
     await ChatClient.create(base, ALICE, 'A_PHONE', PW);
-    await post(base, '/recovery/start', { userId: ALICE });
+    await post(base, '/recovery/start', { userId: ALICE, locale: 'ru' });
     assert.equal(srv.mailbox(ALICE).filter((m) => m.subject === 'Подтверждение восстановления').length, 0, 'ссылка не отправлена');
     assert.equal(srv.smsOutbox(PHONE_A).length, 0, 'SMS не отправлено');
   } finally {
@@ -402,7 +402,7 @@ test('открытие ссылки из письма не подтвержда�
   const { srv, base, stop } = await start();
   try {
     await createVerified(base, srv, ALICE, 'A_PHONE', PW, PHONE_A);
-    await post(base, '/recovery/start', { userId: ALICE });
+    await post(base, '/recovery/start', { userId: ALICE, locale: 'ru' });
     const token = linkTokenFrom(srv, ALICE);
     const page = await fetch(`${base}/recovery/confirm?user=${encodeURIComponent(ALICE)}&token=${token}`);
     assert.equal(page.status, 200);
@@ -420,7 +420,7 @@ test('кнопка на странице подтверждения отправ
   const { srv, base, stop } = await start();
   try {
     await createVerified(base, srv, ALICE, 'A_PHONE', PW, PHONE_A);
-    await post(base, '/recovery/start', { userId: ALICE });
+    await post(base, '/recovery/start', { userId: ALICE, locale: 'ru' });
     const token = linkTokenFrom(srv, ALICE);
     const form = { 'content-type': 'application/x-www-form-urlencoded' };
     const ok = await fetch(`${base}/recovery/confirm`, { method: 'POST', headers: form, body: new URLSearchParams({ user: ALICE, token }).toString() });
