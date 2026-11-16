@@ -532,7 +532,7 @@ export function createMemoryStore({ pinPepper }) {
       }
       return result;
     },
-    async recoveryCompleteWithOutbox(userId, passwordHash, change, cancelCodeHash, expiresAt, enqueue) {
+    async recoveryCompleteWithOutbox(userId, passwordHash, change, cancelCodeHash, enqueue) {
       if (!accounts.has(userId)) throw new Error('recovery account not found');
       const oldPassword = accounts.get(userId);
       const oldRecovery = recovery.get(userId);
@@ -540,7 +540,7 @@ export function createMemoryStore({ pinPepper }) {
       const { next, result } = change(oldRecovery ? structuredClone(oldRecovery) : freshRecovery());
       accounts.set(userId, passwordHash);
       recovery.set(userId, structuredClone(next));
-      recoveryCancels.set(userId, { codeHash: cancelCodeHash, expiresAt });
+      recoveryCancels.set(userId, { codeHash: cancelCodeHash, expiresAt: result });
       try {
         if (enqueue) await enqueue(null, result);
       } catch (error) {
