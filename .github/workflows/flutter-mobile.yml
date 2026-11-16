@@ -30,21 +30,74 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # PR validation must run on the writable head branch, not GitHub's synthetic merge ref.
-          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+          # Validate the complete stacked PR result, including its current base branch.
+          ref: ${{ github.sha }}
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.47.9'
           channel: stable
           cache: true
       - run: flutter --version
+      - name: Detect persistent native MLS bridge
+        id: native
+        run: |
+          if [ -f rust/Cargo.toml ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Generate Android and iOS platform projects
         run: flutter create --platforms=android,ios --project-name inone_mobile --org com.inone .
       - name: Remove generated template test
         run: rm -f test/widget_test.dart
       - name: Verify native-only mobile runtime
         run: node tool/verify_native_runtime.mjs
+      - name: Install Rust toolchain and Android targets
+        if: steps.native.outputs.enabled == 'true'
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.91.0"
+          components: rustfmt
+          targets: "aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android"
+      - name: Install Flutter Rust Bridge code generator
+        if: steps.native.outputs.enabled == 'true'
+        run: cargo install --locked --version 2.13.0 flutter_rust_bridge_codegen
+      - name: Integrate Native Assets for Flutter Rust bridge
+        if: steps.native.outputs.enabled == 'true'
+        timeout-minutes: 15
+        env:
+          RUST_LOG: debug
+        run: |
+          cp lib/main.dart "$RUNNER_TEMP/inone-main.dart"
+          cp rust/src/api/mod.rs "$RUNNER_TEMP/inone-api-mod.rs"
+          flutter_rust_bridge_codegen integrate \
+            --rust-crate-dir rust \
+            --rust-crate-name inone_mls_frb \
+            --integration-backend native-assets \
+            --platforms android,ios \
+            --skip-fvm-install \
+            --no-dart-fix \
+            --no-dart-format \
+            --no-integration-test
+          cp "$RUNNER_TEMP/inone-main.dart" lib/main.dart
+          cp "$RUNNER_TEMP/inone-api-mod.rs" rust/src/api/mod.rs
+          rm -f rust/src/api/simple.rs lib/src/rust/api/simple.dart
+      - name: Generate typed Dart bindings
+        if: steps.native.outputs.enabled == 'true'
+        timeout-minutes: 15
+        env:
+          RUST_LOG: debug
+        run: flutter_rust_bridge_codegen generate --skip-fvm-install
+      - name: Prepare Android NDK context for native secure storage
+        if: steps.native.outputs.enabled == 'true'
+        run: node tool/prepare_android_mls.mjs
       - run: flutter pub get
+      - name: Generate Rust lockfile and validate native bridge
+        if: steps.native.outputs.enabled == 'true'
+        run: |
+          cargo generate-lockfile --manifest-path rust/Cargo.toml
+          cargo check --locked --all-targets --manifest-path rust/Cargo.toml
+          cargo test --locked --no-fail-fast --manifest-path rust/Cargo.toml
       - run: flutter analyze
       - run: flutter test
       - name: Build Android preview APK
