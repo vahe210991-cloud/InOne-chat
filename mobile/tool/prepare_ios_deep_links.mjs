@@ -7,7 +7,12 @@ if (!fs.existsSync(infoPlist)) {
 }
 
 let source = fs.readFileSync(infoPlist, 'utf8');
-if (!/<key>FlutterDeepLinkingEnabled<\/key>\s*<true\/>/.test(source)) {
+if (/<key>FlutterDeepLinkingEnabled<\/key>\s*<false\/>/.test(source)) {
+  source = source.replace(
+    /<key>FlutterDeepLinkingEnabled<\/key>\s*<false\/>/,
+    '<key>FlutterDeepLinkingEnabled</key><true/>',
+  );
+} else if (!/<key>FlutterDeepLinkingEnabled<\/key>\s*<true\/>/.test(source)) {
   const rootClose = source.lastIndexOf('</dict>');
   if (rootClose < 0) throw new Error('Info.plist root dictionary is malformed');
   source = source.slice(0, rootClose)
