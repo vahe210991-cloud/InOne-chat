@@ -1018,8 +1018,8 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
       if (req.method === 'PATCH' && p === '/profile/locale') {
         const d = await authed(req);
         if (!d) return send(res, 401, { error: 'unauthorized' });
-        const locale = resolveEmailLocale(body.locale);
-        if (!locale) return send(res, 400, { error: 'locale must be hy, ru or en' });
+        const locale = body.locale;
+        if (!EMAIL_LOCALES.has(locale)) return send(res, 400, { error: 'locale must be hy, ru or en' });
         if (!(await storage.profileLocaleSet(d.userId, locale))) return send(res, 404, { error: 'profile not found' });
         return send(res, 200, { locale });
       }
