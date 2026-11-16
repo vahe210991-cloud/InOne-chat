@@ -86,3 +86,15 @@ test('SMTP rejects invalid transport, mismatched credentials and invalid encrypt
   assert.throws(() => loadConfig({ ...GOOD, INONE_MAIL_TRANSPORT: 'smtp', INONE_SMTP_HOST: 'smtp.example', INONE_SMTP_FROM: 'noreply@example.test', INONE_EMAIL_ENCRYPTION_KEY: 'short' }), /must be 32 bytes/);
   assert.throws(() => loadConfig({ ...GOOD, INONE_MAIL_TRANSPORT: 'smtp', INONE_SMTP_HOST: 'smtp.example', INONE_SMTP_FROM: 'noreply@example.test', INONE_SMTP_PORT: '465' }), /requires INONE_SMTP_SECURE/);
 });
+
+test('SMTP rejects non-canonical base64 encryption keys even when Buffer.from would decode bytes', () => {
+  const malformed = `${'A'.repeat(43)}!`;
+  assert.equal(Buffer.from(malformed, 'base64').length, 32);
+  assert.throws(() => loadConfig({
+    ...GOOD,
+    INONE_MAIL_TRANSPORT: 'smtp',
+    INONE_SMTP_HOST: 'smtp.example',
+    INONE_SMTP_FROM: 'noreply@example.test',
+    INONE_EMAIL_ENCRYPTION_KEY: malformed,
+  }), /canonical base64/);
+});
