@@ -111,8 +111,8 @@ const STEPUP_ACTION_LABELS = {
 
 const COPY = {
   hy: { preheader: 'Անվտանգության ծանուցում ձեր InOne հաշվից', brand: 'Ձեր թվային տարածքը', footer: 'Այս նամակն ուղարկվել է ավտոմատ կերպով։ Խնդրում ենք չպատասխանել դրան։', security: 'Անվտանգության ծանուցում', action: 'Հաստատել հաշվի վերականգնումը', codeLabel: 'Հաստատման կոդ', expiry: 'Մի՛ փոխանցեք այս կոդը որևէ մեկին։', ignore: 'Եթե այս գործողությունը դուք չեք նախաձեռնել, կարող եք անտեսել այս նամակը։' },
-  ru: { preheader: 'Уведомление безопасности вашего аккаунта InOne', brand: 'Ваше цифровое пространство', footer: 'Это автоматическое письмо. Пожалуйста, не отвечайте на него.', security: 'Уведомление безопасности', action: 'Подтвердить восстановление', codeLabel: 'Код подтверждения', expiry: 'Никому не сообщайте этот код.', ignore: 'Если вы не инициировали это действие, проигнорируйте письмо.' },
-  en: { preheader: 'A security notification from your InOne account', brand: 'Your digital space', footer: 'This is an automated message. Please do not reply.', security: 'Security notification', action: 'Confirm account recovery', codeLabel: 'Verification code', expiry: 'Never share this code with anyone.', ignore: 'If you did not initiate this action, you can ignore this email.' },
+  ru: { preheader: 'Уведомление безопасности вашего аккаунта InOne', brand: 'Ваше цифровое пространство', footer: 'Это автоматическое письмо. Пожалуйста, не отвечайте на него.', security: 'Уведомление безопасности', action: 'Подтвердить восстановление', codeLabel: 'Код подтверждения', expiry: 'Никому не сообщайте этот код.', ignore: 'Это уведомление относится к вашему аккаунту InOne. Если действие вам незнакомо, проверьте безопасность аккаунта.' },
+  en: { preheader: 'A security notification from your InOne account', brand: 'Your digital space', footer: 'This is an automated message. Please do not reply.', security: 'Security notification', action: 'Confirm account recovery', codeLabel: 'Verification code', expiry: 'Never share this code with anyone.', ignore: 'This notification relates to your InOne account. If the activity looks unfamiliar, review your account security.' },
 };
 
 function safeVariables(input) {
