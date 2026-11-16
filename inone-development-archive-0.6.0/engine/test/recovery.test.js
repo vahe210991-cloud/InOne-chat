@@ -412,6 +412,18 @@ test('открытие ссылки из письма не подтвержда�
     assert.match(pageHtml, /<form[^>]*method="post"/, 'страница с кнопкой подтверждения');
     assert.match(pageHtml, /href="inone:\/\/recovery\/confirm\?user=/, 'ссылка для открытия приложения');
     assert.match(pageHtml, /locale=ru/, 'язык подтверждения совпадает с языком письма');
+    const previousNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      const productionPage = await fetch(`${base}/recovery/confirm?user=${encodeURIComponent(ALICE)}&token=${encodeURIComponent(token)}&locale=ru`);
+      const productionHtml = await productionPage.text();
+      assert.equal(productionPage.status, 200);
+      assert.doesNotMatch(productionHtml, /href="inone:\/\/recovery\/confirm/, 'production must not expose an unverified custom scheme');
+      assert.match(productionHtml, /<form[^>]*method="post"/, 'the secure web confirmation remains available');
+    } finally {
+      if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = previousNodeEnv;
+    }
     const code = smsCodeFrom(srv, PHONE_A);
     await assert.rejects(post(base, '/recovery/complete', { userId: ALICE, code, newPassword: NEW_PW }), (e) => e.status === 403, 'после открытия ссылки без кнопки восстановление не проходит');
     await post(base, '/recovery/confirm', { user: ALICE, token });
