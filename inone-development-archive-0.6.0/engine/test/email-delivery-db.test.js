@@ -219,7 +219,7 @@ test('временная SMTP-ошибка повторяется с backoff и 
   });
   try {
     const result = await queue.send({
-      to: 'retry@example.test', templateId: 'registration_code', variables: { code: 'RETRY-BODY' },
+      to: 'retry@example.test', templateId: 'registration_code', variables: { code: 'RETRY-BODY' }, locale: 'hy',
       idempotencyKey: 'transient-retry-001',
     });
     queue.start();
@@ -243,7 +243,7 @@ test('истёкшее сообщение переводится в dead letter 
   const queue = createEmailDelivery({ pool: db.pool, smtpMailer: smtp, encryptionKey: randomBytes(32), pollIntervalMs: 250 });
   try {
     const result = await queue.send({
-      to: 'expired@example.test', templateId: 'registration_code', variables: { code: 'EXPIRED-CODE' },
+      to: 'expired@example.test', templateId: 'registration_code', variables: { code: 'EXPIRED-CODE' }, locale: 'hy',
       idempotencyKey: 'expired-email-001',
     });
     await db.pool.query("UPDATE email_deliveries SET expires_at = now() - interval '1 second' WHERE id = $1", [result.deliveryId]);
