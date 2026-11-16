@@ -760,7 +760,7 @@ export function createStore({ pool, pinPepper }) {
       });
     },
 
-    async recoveryCompleteWithOutbox(userId, passwordHash, change, cancelCodeHash, expiresAt, enqueue) {
+    async recoveryCompleteWithOutbox(userId, passwordHash, change, cancelCodeHash, enqueue) {
       return inTransaction(async (client) => {
         await client.query('UPDATE accounts SET password_hash = $2 WHERE user_id = $1', [userId, passwordHash]);
         await client.query('INSERT INTO recovery (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING', [userId]);
@@ -779,7 +779,7 @@ export function createStore({ pool, pinPepper }) {
         await client.query(
           `INSERT INTO recovery_cancel_codes (user_id, code_hash, expires_at) VALUES ($1, $2, $3)
            ON CONFLICT (user_id) DO UPDATE SET code_hash = EXCLUDED.code_hash, expires_at = EXCLUDED.expires_at`,
-          [userId, cancelCodeHash, expiresAt],
+          [userId, cancelCodeHash, result],
         );
         if (enqueue) await enqueue(client, result);
         return result;
