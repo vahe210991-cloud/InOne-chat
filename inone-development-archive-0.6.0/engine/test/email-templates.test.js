@@ -29,7 +29,7 @@ test('все почтовые шаблоны имеют RU/EN варианты �
       assert.equal(rendered.locale, locale);
       assert.ok(rendered.subject.length > 0);
       assert.ok(rendered.text.length > 0);
-      assert.ok(!rendered.subject.includes('\\r') && !rendered.subject.includes('\\n'));
+      assert.ok(!rendered.subject.includes('\r') && !rendered.subject.includes('\n'));
     }
   }
   assert.equal(renderEmailTemplate('registration_code', fixtures.registration_code).ttlMs, 10 * 60_000);
@@ -43,5 +43,5 @@ test('неизвестный шаблон и недостающие переме
 });
 
 test('управляющие символы не допускаются в значениях шаблона', () => {
-  assert.throws(() => renderEmailTemplate('recovery_confirmation_link', { url: 'https://example.test/\\r\\nBcc:x' }), /unsafe email template variable/);
+  assert.throws(() => renderEmailTemplate('recovery_confirmation_link', { url: 'https://example.test/\r\nBcc:x' }), /unsafe email template variable/);
 });
