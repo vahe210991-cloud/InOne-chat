@@ -37,7 +37,7 @@ function codeFor(srv, email) {
 
 /** Регистрация по почте целиком: письмо с кодом, токен, аккаунт. */
 async function registerByEmail(base, srv, email, nickname, password = PW) {
-  await call(base, 'POST', '/register/email', { body: { email } });
+  await call(base, 'POST', '/register/email', { body: { email, locale: 'ru' } });
   const confirmed = await call(base, 'POST', '/register/email/confirm', { body: { email, code: codeFor(srv, email) } });
   return call(base, 'POST', '/register', {
     body: { email, registrationToken: confirmed.body.registrationToken, password, nickname },
@@ -47,7 +47,7 @@ async function registerByEmail(base, srv, email, nickname, password = PW) {
 test('I1: регистрация по почте — код на почту, неверный код не подтверждает, аккаунт уровня 1, вход по почте', async () => {
   const { srv, base, stop } = await start();
   try {
-    await call(base, 'POST', '/register/email', { body: { email: 'anna@example.test' } });
+    await call(base, 'POST', '/register/email', { body: { email: 'anna@example.test', locale: 'ru' } });
     assert.equal(srv.mailbox('anna@example.test').at(-1).subject, 'Код подтверждения InOne');
     const wrong = await call(base, 'POST', '/register/email/confirm', { body: { email: 'anna@example.test', code: '000000' } });
     assert.equal(wrong.status, 403, 'неверный код не даёт токен');
@@ -70,12 +70,12 @@ test('I1: регистрация по почте — код на почту, н�
 test('I2: код истекает через 10 минут, токен регистрации — через 30', async () => {
   const { srv, base, stop } = await start();
   try {
-    await call(base, 'POST', '/register/email', { body: { email: 'anna@example.test' } });
+    await call(base, 'POST', '/register/email', { body: { email: 'anna@example.test', locale: 'ru' } });
     const code = codeFor(srv, 'anna@example.test');
     srv.advance(11 * 60_000);
     assert.equal((await call(base, 'POST', '/register/email/confirm', { body: { email: 'anna@example.test', code } })).status, 410, 'код старше 10 минут не принимается');
 
-    await call(base, 'POST', '/register/email', { body: { email: 'anna@example.test' } });
+    await call(base, 'POST', '/register/email', { body: { email: 'anna@example.test', locale: 'ru' } });
     const fresh = codeFor(srv, 'anna@example.test');
     const confirmed = await call(base, 'POST', '/register/email/confirm', { body: { email: 'anna@example.test', code: fresh } });
     assert.equal(confirmed.status, 200);
@@ -93,7 +93,7 @@ test('I3: одна подтверждённая почта — один акка
   const { srv, base, stop } = await start();
   try {
     assert.equal((await registerByEmail(base, srv, 'anna@example.test', 'Anna.K')).status, 200);
-    const again = await call(base, 'POST', '/register/email', { body: { email: 'anna@example.test' } });
+    const again = await call(base, 'POST', '/register/email', { body: { email: 'anna@example.test', locale: 'ru' } });
     assert.equal(again.status, 202, 'ответ тот же, что и для новой почты');
     assert.equal(srv.mailbox('anna@example.test').length, 1, 'письмо на занятую почту не уходит');
     const confirm = await call(base, 'POST', '/register/email/confirm', { body: { email: 'anna@example.test', code: '123456' } });
@@ -106,7 +106,7 @@ test('I3: одна подтверждённая почта — один акка
 test('I4: ник — правила формата, зарезервированные имена и уникальность без учёта регистра', async () => {
   const { srv, base, stop } = await start();
   try {
-    await call(base, 'POST', '/register/email', { body: { email: 'anna@example.test' } });
+    await call(base, 'POST', '/register/email', { body: { email: 'anna@example.test', locale: 'ru' } });
     const confirmed = await call(base, 'POST', '/register/email/confirm', { body: { email: 'anna@example.test', code: codeFor(srv, 'anna@example.test') } });
     const token = confirmed.body.registrationToken;
     for (const bad of ['ab', 'a'.repeat(21), '1abc', 'ann..a', 'ann_', 'admin', 'Аня']) {
@@ -143,9 +143,9 @@ test('I6: коды на одну почту приходят не чаще тр�
   const { srv, base, stop } = await start();
   try {
     for (let i = 0; i < 3; i++) {
-      assert.equal((await call(base, 'POST', '/register/email', { body: { email: 'anna@example.test' } })).status, 202);
+      assert.equal((await call(base, 'POST', '/register/email', { body: { email: 'anna@example.test', locale: 'ru' } })).status, 202);
     }
-    assert.equal((await call(base, 'POST', '/register/email', { body: { email: 'anna@example.test' } })).status, 429);
+    assert.equal((await call(base, 'POST', '/register/email', { body: { email: 'anna@example.test', locale: 'ru' } })).status, 429);
     assert.equal(srv.mailbox('anna@example.test').length, 3, 'четвёртое письмо не уходит');
   } finally {
     await stop();
@@ -203,7 +203,7 @@ test('I9: registration and security emails follow the persisted in-app language'
       assert.equal((await call(base, 'GET', '/profile', { token })).body.locale, changedLocale);
       assert.equal((await call(base, 'PATCH', '/profile/locale', { token, body: { locale: 'de' } })).status, 400);
       assert.equal((await call(base, 'PATCH', '/profile/locale', { token, body: {} })).status, 400);
-      await call(base, 'POST', '/recovery/start', { body: { email } });
+      await call(base, 'POST', '/recovery/start', { body: { email, locale: 'ru' } });
       const recoveryMessages = srv.mailbox(email).slice(-2);
       assert.equal(recoveryMessages.length, 2);
       assert.ok(recoveryMessages.every((message) => message.html.includes(`<html lang="${changedLocale}"`)));
