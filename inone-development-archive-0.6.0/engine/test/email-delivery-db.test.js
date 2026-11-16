@@ -332,8 +332,8 @@ test('profile locale and pending registration locale persist in PostgreSQL', asy
     await store.emailCodeUpdateWithOutbox('pending-locale@example.test', () => ({
       next: { codeHash: 'locale-code-hash', codeAttempts: 0, codeExpiresAt: Date.now() + 600_000, tokenHash: null, tokenExpiresAt: 0 },
       result: null,
-    }), null, 'hy');
-    assert.equal((await db.pool.query("SELECT locale FROM email_codes WHERE email = 'pending-locale@example.test'")).rows[0].locale, 'hy');
+    }), null, 'ru');
+    assert.equal((await db.pool.query("SELECT locale FROM email_codes WHERE email = 'pending-locale@example.test'")).rows[0].locale, 'ru');
   } finally {
     await db.close();
   }
