@@ -642,6 +642,21 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
         appBar: AppBar(
           title: Text(_selectedTitle, maxLines: 1, overflow: TextOverflow.ellipsis),
           actions: [
+            PopupMenuButton<String>(
+              tooltip: 'Язык интерфейса',
+              initialValue: _session.locale,
+              onSelected: (locale) => unawaited(_session.setLocale(locale).catchError((Object error) {
+                if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Не удалось сохранить язык интерфейса')),
+                );
+              })),
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'hy', child: Text('Հայերեն')),
+                PopupMenuItem(value: 'ru', child: Text('Русский')),
+                PopupMenuItem(value: 'en', child: Text('English')),
+              ],
+              icon: const Icon(Icons.language_rounded),
+            ),
             if (_isPersonalProfile)
               IconButton(
                 tooltip: 'Refresh profile',
