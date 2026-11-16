@@ -2883,7 +2883,9 @@ if (req.method === 'POST' && p === '/login') {
       return send(res, 404, { error: 'not found' });
     } catch (e) {
       if (e.code === 'MAIL_UNAVAILABLE' || e.code === 'EMAIL_QUEUE_UNAVAILABLE') return send(res, 503, { error: 'email delivery is temporarily unavailable, try later' });
-      return send(res, 500, { error: e.message });
+      const errorCode = typeof e?.code === 'string' && /^[A-Z0-9_]{1,64}$/.test(e.code) ? e.code : 'INTERNAL';
+      logger?.error('request failed', { errorCode });
+      return send(res, 500, { error: 'internal server error' });
     }
   });
 
