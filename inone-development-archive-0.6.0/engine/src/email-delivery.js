@@ -18,7 +18,10 @@ export function parseEmailEncryptionKey(value) {
     }
     key = decoded;
   }
-  if (key.length !== 32) throw new Error('INONE_EMAIL_ENCRYPTION_KEY must decode to exactly 32 bytes');
+  if (key.length !== 32) {
+    key.fill(0);
+    throw new Error('INONE_EMAIL_ENCRYPTION_KEY must decode to exactly 32 bytes');
+  }
   return key;
 }
 
@@ -31,9 +34,13 @@ function encryptPayload(payload, payloadKey, idempotencyHash) {
   const cipher = createCipheriv('aes-256-gcm', payloadKey, iv);
   cipher.setAAD(Buffer.from(idempotencyHash, 'hex'));
   const plain = Buffer.from(JSON.stringify(payload), 'utf8');
-  if (plain.length > MAX_PAYLOAD_BYTES) throw new Error('email payload exceeds size limit');
-  const ciphertext = Buffer.concat([cipher.update(plain), cipher.final()]);
-  return { ciphertext, iv, tag: cipher.getAuthTag() };
+  try {
+    if (plain.length > MAX_PAYLOAD_BYTES) throw new Error('email payload exceeds size limit');
+    const ciphertext = Buffer.concat([cipher.update(plain), cipher.final()]);
+    return { ciphertext, iv, tag: cipher.getAuthTag() };
+  } finally {
+    plain.fill(0);
+  }
 }
 
 function decryptPayload(row, payloadKey) {
@@ -41,11 +48,15 @@ function decryptPayload(row, payloadKey) {
   decipher.setAAD(Buffer.from(row.idempotency_key, 'hex'));
   decipher.setAuthTag(row.payload_tag);
   const plain = Buffer.concat([decipher.update(row.payload_ciphertext), decipher.final()]);
-  const payload = JSON.parse(plain.toString('utf8'));
-  if (!payload || typeof payload.to !== 'string' || typeof payload.subject !== 'string' || typeof payload.text !== 'string' || typeof payload.html !== 'string') {
-    throw new Error('invalid encrypted email payload');
+  try {
+    const payload = JSON.parse(plain.toString('utf8'));
+    if (!payload || typeof payload.to !== 'string' || typeof payload.subject !== 'string' || typeof payload.text !== 'string' || typeof payload.html !== 'string') {
+      throw new Error('invalid encrypted email payload');
+    }
+    return payload;
+  } finally {
+    plain.fill(0);
   }
-  return payload;
 }
 
 function retryDelay(attempt, baseMs, maxMs) {
@@ -67,11 +78,6 @@ export function createEmailDelivery({
 } = {}) {
   if (!pool || typeof pool.connect !== 'function') throw new Error('email delivery requires a PostgreSQL pool');
   if (!smtpMailer || typeof smtpMailer.send !== 'function') throw new Error('email delivery requires an SMTP sender');
-  const masterKey = Buffer.isBuffer(encryptionKey) ? Buffer.from(encryptionKey) : parseEmailEncryptionKey(encryptionKey);
-  if (masterKey.length !== 32) throw new Error('email encryption key must be 32 bytes');
-  const payloadKey = deriveSubkey(masterKey, 'payload-encryption');
-  const fingerprintKey = deriveSubkey(masterKey, 'payload-fingerprint');
-  const idempotencyKeyHashKey = deriveSubkey(masterKey, 'idempotency-key-hash');
   if (!Number.isInteger(batchSize) || batchSize < 1 || batchSize > 100) throw new Error('email batchSize must be 1..100');
   if (!Number.isInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > 20) throw new Error('email maxAttempts must be 1..20');
   if (!Number.isInteger(pollIntervalMs) || pollIntervalMs < 250 || pollIntervalMs > 60_000) throw new Error('email pollIntervalMs must be 250..60000');
@@ -79,6 +85,14 @@ export function createEmailDelivery({
   if (!Number.isInteger(leaseRenewIntervalMs) || leaseRenewIntervalMs < 100 || leaseRenewIntervalMs >= leaseMs / 2) throw new Error('email leaseRenewIntervalMs must be >= 100 and less than half the lease');
   if (!Number.isInteger(retryBaseMs) || retryBaseMs < 100 || retryBaseMs > 60_000) throw new Error('email retryBaseMs must be 100..60000');
   if (!Number.isInteger(retryMaxMs) || retryMaxMs < retryBaseMs || retryMaxMs > 24 * 60 * 60_000) throw new Error('email retryMaxMs must be >= retryBaseMs and <= 24h');
+  const masterKey = Buffer.isBuffer(encryptionKey) ? Buffer.from(encryptionKey) : parseEmailEncryptionKey(encryptionKey);
+  if (masterKey.length !== 32) {
+    masterKey.fill(0);
+    throw new Error('email encryption key must be 32 bytes');
+  }
+  const payloadKey = deriveSubkey(masterKey, 'payload-encryption');
+  const fingerprintKey = deriveSubkey(masterKey, 'payload-fingerprint');
+  const idempotencyKeyHashKey = deriveSubkey(masterKey, 'idempotency-key-hash');
 
   let timer = null;
   let activeTick = null;
