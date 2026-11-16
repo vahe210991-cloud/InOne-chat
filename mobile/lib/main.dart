@@ -22,11 +22,11 @@ import 'test_screens.dart';
 import 'test_gallery_loader.dart';
 
 const _configuredApiBaseUrl = String.fromEnvironment('INONE_API_BASE_URL');
-// The persistent Rust MLS client is the production default on Android/iOS.
-// Set --dart-define=INONE_MLS_NATIVE_ENABLED=false only for isolated UI-host tests.
+// Native MLS remains opt-in until the owner accepts the Android/iOS runtime,
+// persistence, recovery and security gates on the exact tested commit.
 const _nativeMlsEnabled = bool.fromEnvironment(
   'INONE_MLS_NATIVE_ENABLED',
-  defaultValue: true,
+  defaultValue: false,
 );
 
 void main() => runApp(const InOneApp());
