@@ -84,7 +84,7 @@ async function emailStepUp(base, srv, email, token, action) {
 /** Новый аккаунт через Google: вход, билет, регистрация с ником. */
 async function newGoogleAccount(base, nickname = 'Anna.G') {
   const v = await providerSignIn(base, 'google', (n) => googleClaims(n));
-  return (await call(base, 'POST', '/register/provider', { body: { ticket: v.body.ticket, nickname } })).body;
+  return (await call(base, 'POST', '/register/provider', { body: { ticket: v.body.ticket, nickname, locale: 'ru' } })).body;
 }
 
 test('P1: вход через Google для нового пользователя — билет, ник, уровень 2, вход без пароля', async () => {
