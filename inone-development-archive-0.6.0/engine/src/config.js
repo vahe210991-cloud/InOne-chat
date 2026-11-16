@@ -51,7 +51,7 @@ export function loadConfig(env = process.env) {
     if (config.pinPepper.length < 32) errors.push('INONE_PIN_PEPPER must be at least 32 characters in production');
     if (TEST_PEPPER_MARKERS.some((m) => config.pinPepper.includes(m))) errors.push('INONE_PIN_PEPPER looks like a test or example value');
     if (!config.publicUrl.startsWith('https://')) errors.push('INONE_PUBLIC_URL must start with https:// in production');
-    // Коды подтверждения должны уходить на почту. В этой сборке реального транспорта нет: продакшен не стартует молча.
+    // Production требует SMTP transport и зашифрованную PostgreSQL queue; memory transport запрещён.
     if (config.mailTransport !== 'smtp') errors.push('production needs a real mail transport: set INONE_MAIL_TRANSPORT=smtp');
     if (config.mailTransport === 'smtp' && !config.smtpRequireTls) errors.push('production SMTP must require TLS (INONE_SMTP_REQUIRE_TLS)');
     if (config.mailTransport === 'smtp' && !(/^[a-f0-9]{64}$/i.test(config.emailEncryptionKey) || Buffer.from(config.emailEncryptionKey, 'base64').length === 32)) errors.push('INONE_EMAIL_ENCRYPTION_KEY must be 32 bytes (64 hex characters or base64)');
