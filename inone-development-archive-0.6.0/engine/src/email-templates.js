@@ -75,7 +75,7 @@ function safeVariables(input) {
   for (const [key, value] of Object.entries(input)) {
     if (typeof value !== 'string' && typeof value !== 'number') throw new Error(`invalid email template variable: ${key}`);
     const text = String(value);
-    if (text.length > 2048 || /[\\x00-\\x1f\\x7f]/.test(text)) throw new Error('unsafe email template variable: ' + key);
+    if (text.length > 2048 || [...text].some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)) throw new Error('unsafe email template variable: ' + key);
     result[key] = text;
   }
   return result;
@@ -87,7 +87,7 @@ export function renderEmailTemplate(templateId, variables = {}, locale = 'ru') {
   const language = locale === 'en' ? 'en' : 'ru';
   const [subject, render] = template[language];
   const values = safeVariables(variables);
-  const required = [...render.toString().matchAll(/\b(?:code|action|activateAt|url|method|cancelCode)\b/g)].map((m) => m[0]);
+  for (const key of REQUIRED_VARIABLES[templateId] ?? []) if (!(key in values)) throw new Error('missing email template variable: ' + key);
   for (const key of required) if (!(key in values)) throw new Error(`missing email template variable: ${key}`);
   const ttlMs = ['registration_code', 'backup_email_verification', 'stepup_code'].includes(templateId)
     ? 10 * 60_000
