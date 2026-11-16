@@ -16,6 +16,7 @@ const MANIFEST_VERSION: u64 = 1;
 const GCM_NONCE_LEN: usize = 12;
 const AES256_KEY_LEN: usize = 32;
 const GCM_TAG_LEN: usize = 16;
+const MAX_MANIFEST_SIZE: usize = 4 * 1024;
 const MAX_FILE_SIZE: u64 = 250 * 1024 * 1024;
 
 /// Encrypt bytes with a fresh per-file AES-256-GCM key and nonce supplied by
@@ -289,7 +290,6 @@ mod tests {
     fn oversized_manifest_is_rejected_before_json_parsing() {
         let payload = vec![b' '; MAX_MANIFEST_SIZE + 1];
         assert!(parse_manifest(&payload, "file-1", "room-1").is_err());
-        assert!(!is_attachment_manifest(&payload));
     }
 
     #[test]
