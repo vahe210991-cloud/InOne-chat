@@ -52,7 +52,7 @@ const nonceOf = async (base) => (await call(base, 'POST', '/auth/nonce')).body.n
 async function newGoogleAccount(base) {
   const nonce = await nonceOf(base);
   const v = await call(base, 'POST', '/auth/provider/verify', { body: { provider: 'google', idToken: signToken(googleClaims(nonce)), nonce } });
-  return (await call(base, 'POST', '/register/provider', { body: { ticket: v.body.ticket, nickname: 'Anna.G' } })).body;
+  return (await call(base, 'POST', '/register/provider', { body: { ticket: v.body.ticket, nickname: 'Anna.G' , locale: 'ru'} })).body;
 }
 
 async function sessionOf(base, account, deviceId = 'ANNA_PHONE') {
