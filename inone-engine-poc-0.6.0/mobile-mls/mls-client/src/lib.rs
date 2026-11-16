@@ -2330,6 +2330,8 @@ impl Client {
         manifest_payload: &[u8],
         expected_epoch: u64,
     ) -> Result<Vec<u8>, String> {
+        let epoch = i64::try_from(expected_epoch)
+            .map_err(|_| "MLS epoch exceeds the persistent attachment journal range".to_string())?;
         let transaction = self.meta.transaction().map_err(text)?;
         let message_result = {
             let provider = DeviceProvider::new(&self.crypto, TransactionConnection(&transaction));
@@ -2355,8 +2357,6 @@ impl Client {
                 return Err(error);
             }
         };
-        let epoch = i64::try_from(expected_epoch)
-            .map_err(|_| "MLS epoch exceeds the persistent attachment journal range".to_string())?;
         let changed = match transaction.execute(
             "UPDATE client_attachment_outbox
              SET mls_message = ?4, mls_epoch = ?5
@@ -2561,7 +2561,6 @@ impl Client {
         }
 
         let server_epoch = self.server_epoch(room_id)?;
-        let provider = self.provider();
         let expected_epoch = i64::try_from(server_epoch)
             .map_err(|_| "MLS epoch exceeds the persistent attachment journal range".to_string())?;
         let persisted_message: Option<(Option<Vec<u8>>, Option<i64>)> = self.meta.query_row(
@@ -2572,7 +2571,7 @@ impl Client {
         ).optional().map_err(text)?
             .ok_or_else(|| "attachment outbox disappeared before MLS message persistence".to_string())?;
         let mls_message = match persisted_message {
-            (Some(bytes), Some(epoch)) if epoch == expected_epoch => Zeroizing::new(bytes),
+            (Some(bytes), Some(epoch)) if !bytes.is_empty() && epoch == expected_epoch => Zeroizing::new(bytes),
             _ => Zeroizing::new(self.create_and_persist_attachment_mls_message(
                 room_id,
                 operation_id.as_str(),
