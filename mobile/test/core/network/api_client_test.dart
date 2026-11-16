@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -86,7 +88,7 @@ void main() {
 
     await client.putBytes(
       'https://api.inone.test/objects/file-1?expires=123&sig=upload',
-      expected,
+      Uint8List.fromList(expected),
     );
     client.close();
   });
