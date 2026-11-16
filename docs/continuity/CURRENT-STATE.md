@@ -556,3 +556,13 @@ Do not re-port these mechanisms. See Stage 4 report section 25 for the exact com
 - Pending device login now stays on SC-11/waiting when the backend did not issue an authenticated token pair; approval claim/poll remains incomplete.
 
 - CH-01 now emits a screen-scoped `GET /rooms/mine` call on screen load; Flutter parses the typed `InOneRoomList` response and safely binds room names/roles to the HTML. Existing backend `rooms-mine.test.js` covers authenticated HTTP route behavior. New branch tests NOT RUN; live Flutter→Node E2E NOT RUN.
+
+
+## 2026-11-16 — OneBot / StickyBot implementation audit
+
+- Audited the backend at PR #61 head `1bddce2d77477faa0fb804173c97e8b06ad9ae8b` and architecture PR #60.
+- Confirmed no bot registry, bot credentials/principal, webhook worker, installation/scope enforcement, sticker packs, StickyBot image processing or bot tests exist in that source tree.
+- Existing room sticker listing is not the requested sticker-pack feature. Existing encrypted file transport cannot be repurposed for plaintext image processing without a separately approved privacy/media contract.
+- The MLS boundary remains fail-closed: no bot chat message/command delivery until an explicit MLS bot participant protocol is implemented.
+- Draft API contract: `development/contracts/BOT-PLATFORM-API-v1-DRAFT.md`. Audit: `development/reports/2026-11-16-onebot-stickybot-implementation-audit.md`.
+- Status: source audit PASS; implementation BLOCKED pending owner contract approval and complete clone/Codespace; product tests NOT RUN; no code, migrations, merge or deployment.

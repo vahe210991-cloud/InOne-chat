@@ -533,3 +533,12 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Re-fetched and verified both workflow files. FRB uses branch-scoped `push.paths` for the workflow file and `mobile/**`; OpenMLS uses its existing push path allowlist; aggregate PR path triggers removed; manual dispatch retained.
 - Available execution container has Node.js only; no Rust/Cargo, Flutter/Dart or Xcode. No local tests/builds run. Actions jobs continue to fail before observable steps/logs; exact cause unknown.
 - Stage 4 NOT ACCEPTED / BLOCKED; verification accepted 0%; native MLS disabled; no merge. Report section 38.
+
+
+### 2026-11-16 — OneBot / StickyBot implementation readiness audit
+
+- Audited the latest backend source on PR #61 head `1bddce2d77477faa0fb804173c97e8b06ad9ae8b`, stacked on PR #48, and the owner-requested architecture/name decisions in PR #60.
+- Confirmed there is no Bot Platform, bot principal/authentication, webhook delivery, installation/scope enforcement, sticker-pack model, StickyBot image worker, bot migration or bot test suite in the selected backend tree. Existing `/rooms/:roomId/stickers` is a room-asset listing, not sticker packs.
+- Confirmed that the API routes/DTOs, physical schema, quotas, scope moderation, webhook retry/retention, MLS bot participation and image processing/retention are explicitly unresolved in the architecture proposal. MLS chat hooks must remain disabled; no plaintext fallback.
+- Added `development/contracts/BOT-PLATFORM-API-v1-DRAFT.md` and `development/reports/2026-11-16-onebot-stickybot-implementation-audit.md` on branch `audit/onebot-stickybot-contract-readiness-2026-11-16`.
+- Product code and migrations were not changed. Tests NOT RUN. Implementation is BLOCKED pending owner approval of the contract and an authorized complete working copy/Codespace for broad backend edits and runtime validation.

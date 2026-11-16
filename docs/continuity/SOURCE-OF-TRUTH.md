@@ -157,3 +157,11 @@ GitHub — постоянное хранилище кода, истории, р�
 - Manifest version `0.8-approval-batch-2`; source files include `screen-manifest.json`, v1/v2 design tokens and interactions, API integration docs, screens and screenshots.
 - Source audit and unresolved API/security notes: [UI integration report](../../development/reports/2026-11-09-1015-ui-integration-start.md).
 - Status: **verified locally, not yet durably imported to GitHub**. Do not remove the original owner attachment or treat temporary extracted files as authoritative. Upload is blocked until a supported Git transport/Codespace or binary upload path is available. Do not claim the source bundle is in GitHub until its remote hash is verified.
+
+
+## OneBot / StickyBot audit artifacts — 2026-11-16
+
+- Task branch: `audit/onebot-stickybot-contract-readiness-2026-11-16`, based on PR #61 head `1bddce2d77477faa0fb804173c97e8b06ad9ae8b`.
+- `development/contracts/BOT-PLATFORM-API-v1-DRAFT.md` — draft contract; not approved for implementation.
+- `development/reports/2026-11-16-onebot-stickybot-implementation-audit.md` — read-only audit of the latest backend source and readiness gates.
+- No product source, schema, migration or test file was changed. No test execution, merge or deployment is claimed.

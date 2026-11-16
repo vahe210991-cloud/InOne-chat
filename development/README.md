@@ -66,3 +66,9 @@ Read [PROGRESS-BASELINE.md](PROGRESS-BASELINE.md) in full before every implement
 
 - [Full Beta 1.0 / 2.0 audit](reports/2026-11-09-0935-full-beta-audit.md)
 - [UI source import and integration stage](reports/2026-11-09-1015-ui-integration-start.md)
+
+
+## OneBot / StickyBot audit artifacts
+
+- [Draft API contract](contracts/BOT-PLATFORM-API-v1-DRAFT.md) — proposed routes, credential/webhook rules, scopes, sticker media/pack contract and owner approval gates.
+- [Implementation readiness audit](reports/2026-11-16-onebot-stickybot-implementation-audit.md) — source inventory, security gaps, exact backend baseline and blockers.

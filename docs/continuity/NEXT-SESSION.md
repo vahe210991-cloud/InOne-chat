@@ -463,3 +463,13 @@ Read `development/AI-AGENT-MANDATE.md` at the start of every session. ChatGPT re
 - Next, verify Actions on the latest workflow commits via the GitHub UI. If jobs still fail before steps/logs, obtain the exact startup failure detail or restore an authorized runner. Do not change source/tests based on missing logs.
 - Once a runner executes steps, run all Rust/OpenMLS, FRB codegen, Flutter, Android Keystore, iOS build and signed iOS Keychain checks on one exact final SHA. iOS environment secrets remain required for signed runtime acceptance.
 - Keep Stage 4 NOT ACCEPTED / BLOCKED, WBS v1.1 unchanged, `INONE_MLS_NATIVE_ENABLED=false`; no merge. Report section 38.
+
+
+## Next — OneBot / StickyBot
+
+1. Review and approve/amend `development/contracts/BOT-PLATFORM-API-v1-DRAFT.md` as the versioned API/schema/security contract.
+2. Resolve account eligibility, quotas, sensitive-scope moderation, webhook retry/retention, credential rotation and rate-limit values.
+3. Approve the StickyBot image processing boundary, file limits, source-image retention/deletion, pack visibility and takedown behavior.
+4. Obtain a complete authorized clone/Codespace on top of the current backend dependency chain; do not make broad server/store/schema edits through partial repository-native operations.
+5. Implement and test the Bot Platform control plane and sticker pack/media services; keep MLS message/command routes disabled until a separate MLS participant protocol passes acceptance.
+6. Run Node HTTP/unit tests, PostgreSQL migrations/concurrency tests and security tests on the exact final SHA before declaring test readiness.
