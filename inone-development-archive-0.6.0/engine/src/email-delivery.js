@@ -63,6 +63,7 @@ function errorClass(error) {
 export function createEmailDelivery({
   pool, smtpMailer, encryptionKey, logger = null, workerId = randomBytes(12).toString('hex'),
   pollIntervalMs = 1_000, batchSize = 10, maxAttempts = 8, retryBaseMs = BASE_RETRY_MS, retryMaxMs = MAX_RETRY_MS,
+  leaseMs = LEASE_MS, leaseRenewIntervalMs = Math.max(100, Math.floor(leaseMs / 3)),
 } = {}) {
   if (!pool || typeof pool.connect !== 'function') throw new Error('email delivery requires a PostgreSQL pool');
   if (!smtpMailer || typeof smtpMailer.send !== 'function') throw new Error('email delivery requires an SMTP sender');
@@ -74,6 +75,8 @@ export function createEmailDelivery({
   if (!Number.isInteger(batchSize) || batchSize < 1 || batchSize > 100) throw new Error('email batchSize must be 1..100');
   if (!Number.isInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > 20) throw new Error('email maxAttempts must be 1..20');
   if (!Number.isInteger(pollIntervalMs) || pollIntervalMs < 250 || pollIntervalMs > 60_000) throw new Error('email pollIntervalMs must be 250..60000');
+  if (!Number.isInteger(leaseMs) || leaseMs < 300 || leaseMs > 24 * 60 * 60_000) throw new Error('email leaseMs must be 300..86400000');
+  if (!Number.isInteger(leaseRenewIntervalMs) || leaseRenewIntervalMs < 100 || leaseRenewIntervalMs >= leaseMs / 2) throw new Error('email leaseRenewIntervalMs must be >= 100 and less than half the lease');
   if (!Number.isInteger(retryBaseMs) || retryBaseMs < 100 || retryBaseMs > 60_000) throw new Error('email retryBaseMs must be 100..60000');
   if (!Number.isInteger(retryMaxMs) || retryMaxMs < retryBaseMs || retryMaxMs > 24 * 60 * 60_000) throw new Error('email retryMaxMs must be >= retryBaseMs and <= 24h');
 
@@ -101,7 +104,7 @@ export function createEmailDelivery({
          FROM candidates
          WHERE e.id = candidates.id
          RETURNING e.id, e.idempotency_key, e.payload_ciphertext, e.payload_iv, e.payload_tag, e.attempts, e.expires_at`,
-        [batchSize, LEASE_MS, workerId, SEND_GUARD_MS],
+        [batchSize, leaseMs, workerId, SEND_GUARD_MS],
       );
       await client.query('COMMIT');
       return rows;
@@ -111,6 +114,19 @@ export function createEmailDelivery({
     } finally {
       client.release();
     }
+  }
+
+  async function renewClaim(row) {
+    const { rows } = await pool.query(
+      `UPDATE email_deliveries
+       SET locked_at = now(), updated_at = now()
+       WHERE id = $1 AND status = 'processing' AND locked_by = $2
+         AND locked_at >= now() - ($3::double precision * interval '1 millisecond')
+         AND expires_at > now() + ($4::double precision * interval '1 millisecond')
+       RETURNING id`,
+      [row.id, workerId, leaseMs, SEND_GUARD_MS],
+    );
+    return rows.length === 1;
   }
 
   async function releaseClaim(row) {
@@ -123,13 +139,14 @@ export function createEmailDelivery({
   }
 
   async function updateSent(row, messageId) {
-    await pool.query(
+    const result = await pool.query(
       `UPDATE email_deliveries
        SET status = 'sent', provider_message_id = $2, sent_at = now(),
            locked_at = NULL, locked_by = NULL, last_error_code = NULL, updated_at = now()
        WHERE id = $1 AND status = 'processing' AND locked_by = $3`,
       [row.id, messageId ?? null, workerId],
     );
+    return result.rowCount === 1;
   }
 
   async function updateFailure(row, error) {
@@ -162,7 +179,12 @@ export function createEmailDelivery({
     if (stopping) return;
     if (Date.now() - lastCleanupAt > 60 * 60_000) {
       await pool.query("UPDATE email_deliveries SET status = 'dead', last_error_code = 'expired', updated_at = now() WHERE status = 'queued' AND expires_at <= now() + interval '15 seconds'");
-      await pool.query("UPDATE email_deliveries SET status = 'dead', locked_at = NULL, locked_by = NULL, last_error_code = 'expired', updated_at = now() WHERE status = 'processing' AND expires_at <= now() + interval '15 seconds' AND locked_at < now() - interval '60 seconds'");
+      await pool.query(
+        `UPDATE email_deliveries SET status = 'dead', locked_at = NULL, locked_by = NULL, last_error_code = 'expired', updated_at = now()
+         WHERE status = 'processing' AND expires_at <= now() + interval '15 seconds'
+           AND locked_at < now() - ($1::double precision * interval '1 millisecond')`,
+        [leaseMs],
+      );
       await pool.query("DELETE FROM email_deliveries WHERE status IN ('sent', 'dead') AND updated_at < now() - interval '30 days'");
       lastCleanupAt = Date.now();
     }
@@ -170,6 +192,10 @@ export function createEmailDelivery({
     for (const row of rows) {
       if (stopping) {
         await releaseClaim(row);
+        continue;
+      }
+      if (!(await renewClaim(row))) {
+        logger?.warn('email delivery lease lost before send', { deliveryId: row.id });
         continue;
       }
       if (new Date(row.expires_at).getTime() <= Date.now() + SEND_GUARD_MS) {
@@ -189,12 +215,39 @@ export function createEmailDelivery({
         logger?.error('email payload rejected', { deliveryId: row.id, reason: 'payload_integrity' });
         continue;
       }
+      let leaseLost = false;
+      let renewalInFlight = null;
+      const renewLease = () => {
+        if (renewalInFlight) return renewalInFlight;
+        renewalInFlight = renewClaim(row)
+          .then((owned) => { if (!owned) leaseLost = true; })
+          .catch((error) => {
+            logger?.warn('email delivery lease renewal failed', {
+              deliveryId: row.id,
+              errorCode: typeof error?.code === 'string' ? error.code : 'unknown',
+            });
+          })
+          .finally(() => { renewalInFlight = null; });
+        return renewalInFlight;
+      };
+      const leaseTimer = setInterval(renewLease, leaseRenewIntervalMs);
+      leaseTimer.unref?.();
       try {
         const result = await smtpMailer.send(message);
-        await updateSent(row, result?.messageId ?? null);
-        logger?.info('email delivery sent', { deliveryId: row.id, attempts: row.attempts });
+        if (renewalInFlight) await renewalInFlight;
+        if (leaseLost) {
+          logger?.warn('email delivery lease lost during SMTP send', { deliveryId: row.id });
+          continue;
+        }
+        const markedSent = await updateSent(row, result?.messageId ?? null);
+        if (markedSent) logger?.info('email delivery sent', { deliveryId: row.id, attempts: row.attempts });
+        else logger?.warn('email sent after delivery lease was lost', { deliveryId: row.id });
       } catch (error) {
-        await updateFailure(row, error);
+        if (leaseLost) logger?.warn('SMTP result ignored after delivery lease loss', { deliveryId: row.id });
+        else await updateFailure(row, error);
+      } finally {
+        clearInterval(leaseTimer);
+        if (renewalInFlight) await renewalInFlight;
       }
     }
   }
