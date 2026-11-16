@@ -1,18 +1,11 @@
 {
-  "note": "Тестовый ключ. Не использовать в продакшене.",
+  "note": "Тестовый вектор. Приватный ключ намеренно не включается.",
   "algorithm": "ECDSA P-256, SHA-256, подпись DER, base64url",
   "publicKey": {
     "kty": "EC",
     "crv": "P-256",
     "x": "p_GaozHsJ6nqzK1ThtJLvTuuIE2fMF6cu4D269PSfBM",
     "y": "v6V-Uv6M2o-NalYEDofHJyirncV85SKuERm8iQX6H4E"
-  },
-  "testOnlyPrivateKey": {
-    "kty": "EC",
-    "crv": "P-256",
-    "x": "p_GaozHsJ6nqzK1ThtJLvTuuIE2fMF6cu4D269PSfBM",
-    "y": "v6V-Uv6M2o-NalYEDofHJyirncV85SKuERm8iQX6H4E",
-    "d": "ZRt54ZTj0H2GjqDmP653zP_jBWauDweY9OV16KuXYYk"
   },
   "positive": [
     {

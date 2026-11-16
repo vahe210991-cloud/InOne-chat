@@ -11,8 +11,9 @@ on:
       - 'mobile/**'
       - '.github/workflows/flutter-mobile.yml'
 
+# PR code is untrusted. This workflow only validates and must never receive write access.
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: flutter-mobile-${{ github.event.pull_request.number || github.ref }}
@@ -84,13 +85,6 @@ jobs:
             echo "::error::Expected exactly 5 WOFF2 fonts, found $font_count"
             find mobile/assets/ui-approval -type f -name '*.woff2' -print
             exit 1
-          fi
-          git add mobile/assets/ui-approval
-          if ! git diff --cached --quiet; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git commit -m "feat(ui): import owner-approved UI source assets"
-            git push origin HEAD:task/ui-archive-import-2026-11-09
           fi
       - name: Verify original 73-screen test gallery
         run: node tool/verify_test_gallery.mjs

@@ -1,0 +1,48 @@
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+!**/.env.example
+!.env.*.example
+!**/.env.*.example
+*.local
+
+# Private keys, signing material and certificates
+*.pem
+*.key
+*.p8
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.mobileprovision
+*.provisionprofile
+
+# Local credentials and cloud configuration
+.npmrc
+.pypirc
+.netrc
+.aws/
+.azure/
+.gcloud/
+.kube/
+.docker/
+.vercel/
+.firebase/
+service-account*.json
+*-service-account*.json
+
+# Terraform state and local overrides
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+
+# Runtime/build artifacts
+node_modules/
+coverage/
+.nyc_output/
+*.log
+.DS_Store
+Thumbs.db
