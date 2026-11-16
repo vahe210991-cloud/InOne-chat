@@ -131,3 +131,35 @@ test('код и durable email outbox коммитятся и откатываю�
     await db.close();
   }
 });
+
+test('recovery state and new-device wait are committed with their email outbox rows', async () => {
+  const db = await testDatabase();
+  const store = createStore({ pool: db.pool, pinPepper: 'atomic-outbox-test-pepper-0123456789' });
+  const queue = createEmailDelivery({ pool: db.pool, smtpMailer: fakeSmtp(), encryptionKey: randomBytes(32) });
+  try {
+    await store.addAccount('@recovery-outbox', 'password-hash');
+    const recoveryIssued = await store.recoveryUpdateWithOutbox('@recovery-outbox', (current) => ({
+      next: { ...current, reqStatus: 'pending', reqStartedAt: Date.now(), reqExpiresAt: Date.now() + 3_600_000, reqCodeHash: 'recovery-code-hash' },
+      result: true,
+    }), (tx) => queue.sendInTransaction(tx, {
+      to: 'recovery@example.test', subject: 'Recovery', text: 'RECOVERY-LINK',
+      idempotencyKey: 'recovery-transaction-001',
+    }));
+    assert.equal(recoveryIssued, true);
+    assert.equal((await store.recoveryGet('@recovery-outbox')).reqCodeHash, 'recovery-code-hash');
+
+    const wait = await store.deviceWaitCreateWithOutbox({
+      userId: '@recovery-outbox', deviceId: 'new-device', label: 'New device', platform: 'test',
+      activateAt: Date.now() + 48 * 60 * 60_000, cancelHash: 'cancel-hash', createdAt: Date.now(),
+    }, (tx) => queue.sendInTransaction(tx, {
+      to: 'recovery@example.test', subject: 'Device wait', text: 'DEVICE-CODE',
+      idempotencyKey: 'device-wait-transaction-001',
+    }));
+    assert.equal(wait, 'ok');
+    assert.equal((await store.deviceWaitGet('@recovery-outbox', 'new-device')).activateAt > Date.now(), true);
+    assert.equal((await db.pool.query('SELECT count(*)::int AS count FROM email_deliveries')).rows[0].count, 2);
+  } finally {
+    await queue.stop();
+    await db.close();
+  }
+});
