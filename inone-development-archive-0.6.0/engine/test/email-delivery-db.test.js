@@ -284,3 +284,26 @@ test('graceful shutdown закрывает SMTP и освобождает нез
     await db.close();
   }
 });
+
+test('повреждённый AES-GCM payload переводится в dead letter без отправки', async () => {
+  const db = await testDatabase();
+  const smtp = fakeSmtp();
+  const queue = createEmailDelivery({ pool: db.pool, smtpMailer: smtp, encryptionKey: randomBytes(32), pollIntervalMs: 250 });
+  try {
+    const result = await queue.send({
+      to: 'tampered@example.test', subject: 'Integrity', text: 'DO-NOT-SEND',
+      idempotencyKey: 'payload-tamper-001',
+    });
+    await db.pool.query(
+      'UPDATE email_deliveries SET payload_tag = set_byte(payload_tag, 0, (get_byte(payload_tag, 0) + 1) % 256) WHERE id = $1',
+      [result.deliveryId],
+    );
+    queue.start();
+    await waitFor(async () => (await db.pool.query('SELECT status FROM email_deliveries WHERE id = $1', [result.deliveryId])).rows[0].status === 'dead');
+    assert.equal(smtp.sent.length, 0);
+    assert.equal((await db.pool.query('SELECT last_error_code FROM email_deliveries WHERE id = $1', [result.deliveryId])).rows[0].last_error_code, 'payload_integrity');
+  } finally {
+    await queue.stop();
+    await db.close();
+  }
+});
