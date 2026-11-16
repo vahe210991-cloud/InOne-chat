@@ -136,8 +136,8 @@ export function createEmailDelivery({
   async function tick() {
     if (stopping) return;
     if (Date.now() - lastCleanupAt > 60 * 60_000) {
-      await pool.query(\`UPDATE email_deliveries SET status = 'dead', last_error_code = 'expired', updated_at = now() WHERE status = 'queued' AND expires_at <= now()\`);
-      await pool.query(\`DELETE FROM email_deliveries WHERE status IN ('sent', 'dead') AND updated_at < now() - interval '30 days'\`);
+      await pool.query("UPDATE email_deliveries SET status = 'dead', last_error_code = 'expired', updated_at = now() WHERE status = 'queued' AND expires_at <= now()");
+      await pool.query("DELETE FROM email_deliveries WHERE status IN ('sent', 'dead') AND updated_at < now() - interval '30 days'");
       lastCleanupAt = Date.now();
     }
     const rows = await claimBatch();
