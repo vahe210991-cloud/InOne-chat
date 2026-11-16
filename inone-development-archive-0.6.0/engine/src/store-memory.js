@@ -1167,7 +1167,20 @@ mlsPendingRemovalsFor(userId) {
       backupEmails.set(userId, { email, createdAt: nowMs });
       return 'ok';
     },
+
+    async backupEmailSaveWithOutbox(userId, email, nowMs, enqueue) {
+      for (const [uid, b] of backupEmails) if (uid !== userId && b.email === email) return 'taken';
+      backupEmails.set(userId, { email, createdAt: nowMs });
+      if (enqueue) await enqueue(null);
+      return 'ok';
+    },
     backupEmailRemove(userId) {
+      return backupEmails.delete(userId);
+    },
+
+    async backupEmailRemoveWithOutbox(userId, enqueue) {
+      if (!backupEmails.has(userId)) return false;
+      if (enqueue) await enqueue(null);
       return backupEmails.delete(userId);
     },
 
