@@ -47,6 +47,8 @@ export const FREE_PIN_ATTEMPTS = 5;
 export const TO_DEVICE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // недоставленная очередь хранится не дольше 30 дней (спецификация)
 const SEND_DEDUP_MS = 7 * 24 * 60 * 60 * 1000;             // повтор отправки с тем же номером считается дублем 7 дней
 const MAX_LOCK_MS = 24 * 60 * 60 * 1000;
+const EMAIL_LOCALES = new Set(['hy', 'ru', 'en']);
+const resolveEmailLocale = (value) => value === undefined ? 'hy' : EMAIL_LOCALES.has(value) ? value : null;
 
 const sha = (v) => createHash('sha256').update(v).digest('hex');
 const mlsCommitFingerprint = (roomId, senderId, deviceId, request) => {
@@ -230,7 +232,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
   const mail = async (userId, subject, text, templateId = null, variables = {}, transactionClient = null) => {
     const profile = await storage.profileGet(userId);
     const backup = await storage.backupEmailGet(userId);
-    return mailToRecipients([profile?.email ?? userId, backup?.email], subject, text, templateId, variables, transactionClient);
+    return mailToRecipients([profile?.email ?? userId, backup?.email], subject, text, templateId, variables, transactionClient, profile?.locale ?? 'hy');
   };
   const revokeDevice = async (rec) => {
     await storage.revokeDevice(key(rec.userId, rec.deviceId));
@@ -706,7 +708,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         await storage.emailCodeUpdateWithOutbox(backupKey(d.userId, email), (e) => ({
           next: requestEmailCode(e, { nowMs: now(), codeHash: backupCodeHash(d.userId, email, code) }),
           result: null,
-        }), (tx) => mailTo(email, 'Подтверждение запасной почты InOne', '', null, 'backup_email_verification', { code }, 'hy', tx));
+        }), (tx) => mailTo(email, '', '', null, 'backup_email_verification', { code }, profile.locale ?? 'hy', tx), profile.locale ?? 'hy');
         return send(res, 202, { ok: true });
       }
 
@@ -729,9 +731,10 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         if (outcome === 'locked') return send(res, 403, { error: 'too many wrong codes, request a new one' });
         if (outcome !== 'ok') return send(res, 403, { error: 'wrong code' });
         const previous = await storage.backupEmailGet(d.userId);
-        const primary = (await storage.profileGet(d.userId)).email;
+        const profile = await storage.profileGet(d.userId);
+        const primary = profile.email;
         const saved = await storage.backupEmailSaveWithOutbox(d.userId, email, now(), (tx) =>
-          mailTo(primary, 'Запасная почта InOne изменена', '', null, 'backup_email_changed', { action: previous ? 'changed' : 'added' }, 'hy', tx));
+          mailTo(primary, '', '', null, 'backup_email_changed', { action: previous ? 'changed' : 'added' }, profile.locale ?? 'hy', tx));
         if (saved === 'taken') return send(res, 409, { error: 'this backup email is used by another account' });
         return send(res, 200, { backupEmail: { email, verified: true } });
       }
@@ -741,9 +744,10 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         if (!d) return send(res, 401, { error: 'unauthorized' });
         const confirmed = await verifyStepUp(d.userId, 'remove-backup-email', body, d.deviceId);
         if (!confirmed.ok) return send(res, confirmed.status, { error: confirmed.error });
-        const primary = (await storage.profileGet(d.userId)).email;
+        const profile = await storage.profileGet(d.userId);
+        const primary = profile.email;
         const removed = await storage.backupEmailRemoveWithOutbox(d.userId, (tx) =>
-          mailTo(primary, 'Запасная почта InOne удалена', '', null, 'backup_email_removed', {}, 'hy', tx));
+          mailTo(primary, '', '', null, 'backup_email_removed', {}, profile.locale ?? 'hy', tx));
         if (!removed) return send(res, 404, { error: 'no backup email is set' });
         return send(res, 200, await accountLevelInfo(d.userId));
       }
@@ -814,7 +818,8 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         if (!STEPUP_ACTIONS.includes(action)) return send(res, 400, { error: 'unknown action' });
         // Пока пароль активен, подтверждение — пароль, код не выдаётся.
         if (await passwordSignInAllowed(d.userId)) return send(res, 400, { error: 'confirm with password' });
-        if (!(await storage.profileGet(d.userId))) return send(res, 400, { error: 'account has no verified email' });
+        const profile = await storage.profileGet(d.userId);
+        if (!profile) return send(res, 400, { error: 'account has no verified email' });
         const perAccount = await checkRate('stepupPerAccount', d.userId);
         if (!perAccount.allowed) return send(res, 429, { error: 'too many confirmation requests, try later' });
         const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
@@ -822,7 +827,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         await storage.emailCodeUpdateWithOutbox(stepupKey(d.userId), (e) => ({
           next: requestEmailCode(e, { nowMs: now(), codeHash: stepupCodeHash(d.userId, action, code) }),
           result: null,
-        }), (tx) => mailTo(recipient, 'Подтверждение действия в InOne', '', null, 'stepup_code', { code, action }, 'hy', tx));
+        }), (tx) => mailTo(recipient, '', '', null, 'stepup_code', { code, action }, profile.locale ?? 'hy', tx), profile.locale ?? 'hy');
         return send(res, 202, { ok: true });
       }
 
@@ -889,6 +894,8 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         // Ответ одинаковый, есть такая почта в системе или нет: по ответу не узнать, кто уже зарегистрирован.
         const email = normalizeEmail(body.email);
         if (!isEmail(email)) return send(res, 400, { error: 'email must be a valid address' });
+        const locale = resolveEmailLocale(body.locale);
+        if (!locale) return send(res, 400, { error: 'locale must be hy, ru or en' });
         const perAddress = await checkRate('emailCodePerAddress', clientIp(req));
         const perEmail = await checkRate('emailCodePerEmail', email);
         if (!perAddress.allowed || !perEmail.allowed) return send(res, 429, { error: 'too many codes, try later' });
@@ -897,7 +904,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
           await storage.emailCodeUpdateWithOutbox(email, (e) => ({
             next: requestEmailCode(e, { nowMs: now(), codeHash: emailCodeHash(email, code) }),
             result: null,
-          }), (tx) => mailTo(email, 'Код подтверждения InOne', '', null, 'registration_code', { code }, 'hy', tx));
+          }), (tx) => mailTo(email, '', '', null, 'registration_code', { code }, locale, tx), locale);
         }
         return send(res, 202, { ok: true });
       }
@@ -945,13 +952,13 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
 // Токен одноразовый: гасится до создания аккаунта, чтобы им нельзя было воспользоваться дважды.
         const used = await storage.emailCodeUpdate(email, (e) => {
           const out = useEmailToken(e, { nowMs: now(), tokenOk: !!e.tokenHash && sameHex(emailTokenHash(email, token), e.tokenHash) });
-          return { next: out.next, result: out.outcome };
+          return { next: out.next, result: { outcome: out.outcome, locale: e.locale ?? 'hy' } };
         });
-        if (used === 'expired') return send(res, 410, { error: 'registration token expired' });
-        if (used !== 'ok') return send(res, 403, { error: 'registration token invalid' });
+        if (used.outcome === 'expired') return send(res, 410, { error: 'registration token expired' });
+        if (used.outcome !== 'ok') return send(res, 403, { error: 'registration token invalid' });
         const userId = newUserId();
         const created = await storage.createVerifiedAccount({
-          userId, passwordHash: hashPassword(body.password), email, nickname: body.nickname, nowMs: now(), joinDefaultOrg: defaultOrgAutoJoin,
+          userId, passwordHash: hashPassword(body.password), email, nickname: body.nickname, nowMs: now(), joinDefaultOrg: defaultOrgAutoJoin, locale: used.locale,
         });
         if (created !== 'ok') {
           const error = created === 'nickname' ? 'nickname taken' : created === 'email' ? 'email already registered' : 'account exists';
@@ -997,11 +1004,21 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         const d = await authed(req);
         if (!d) return send(res, 401, { error: 'unauthorized' });
         const info = await accountLevelInfo(d.userId);
+        info.locale = (await storage.profileGet(d.userId))?.locale ?? 'hy';
         // Подсказка (решение владельца): аккаунт связан с Google или Apple, а на этом устройстве биометрия ещё не включена.
         if (info.providers.length > 0 && !(await storage.signingKeyGet(key(d.userId, d.deviceId)))) {
           info.securityHints = [...info.securityHints, 'offer_biometric'];
         }
         return send(res, 200, info);
+      }
+
+      if (req.method === 'PATCH' && p === '/profile/locale') {
+        const d = await authed(req);
+        if (!d) return send(res, 401, { error: 'unauthorized' });
+        const locale = resolveEmailLocale(body.locale);
+        if (!locale) return send(res, 400, { error: 'locale must be hy, ru or en' });
+        if (!(await storage.profileLocaleSet(d.userId, locale))) return send(res, 404, { error: 'profile not found' });
+        return send(res, 200, { locale });
       }
 
       if (req.method === 'POST' && p === '/register' && registrationMode === 'open') {
@@ -1558,11 +1575,13 @@ if (req.method === 'POST' && p === '/login') {
         if (!existing && rec.identityCheck) {
           if (identityCode === undefined) {
             const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
-            const primaryEmail = (await storage.profileGet(userId))?.email ?? userId;
+            const profile = await storage.profileGet(userId);
+            const primaryEmail = profile?.email ?? userId;
+            const locale = profile?.locale ?? 'hy';
             const backup = await storage.backupEmailGet(userId);
             await storage.recoveryUpdateWithOutbox(userId,
               (r) => ({ next: issueIdentity(r, { codeHash: identityCodeHash(userId, code) }), result: null }),
-              (tx) => mailToRecipients([primaryEmail, backup?.email], 'Подтверждение входа после восстановления', '', 'recovery_login_code', { code }, tx));
+              (tx) => mailToRecipients([primaryEmail, backup?.email], '', '', 'recovery_login_code', { code }, tx, locale));
             return send(res, 202, { status: 'identity_check_required' });
           }
           const outcome = await storage.recoveryUpdate(userId, (r) => {
@@ -1586,7 +1605,9 @@ if (req.method === 'POST' && p === '/login') {
           if (!waiting) {
             const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
             const activateAt = now() + DEVICE_WAIT_MS;
-            const primaryEmail = (await storage.profileGet(userId))?.email ?? userId;
+            const profile = await storage.profileGet(userId);
+            const primaryEmail = profile?.email ?? userId;
+            const locale = profile?.locale ?? 'hy';
             const backup = await storage.backupEmailGet(userId);
             const recipients = [primaryEmail, backup?.email];
             const created = await storage.deviceWaitCreateWithOutbox({
@@ -1594,7 +1615,7 @@ if (req.method === 'POST' && p === '/login') {
               activateAt, cancelHash: deviceWaitCodeHash(userId, deviceId, code), createdAt: now(),
             }, (tx) => mailToRecipients(recipients, 'Вход с нового устройства: ожидание 48 часов', '', 'new_device_wait', {
               activateAt: new Date(activateAt).toISOString(), code,
-            }, tx));
+            }, tx, locale));
             if (created === 'ok') return send(res, 202, { status: 'waiting_period', activateAt: new Date(activateAt).toISOString() });
             const existingWait = await storage.deviceWaitGet(userId, deviceId);
             return send(res, 202, { status: 'waiting_period', activateAt: new Date(existingWait?.activateAt ?? activateAt).toISOString() });
@@ -2666,7 +2687,9 @@ if (req.method === 'POST' && p === '/login') {
           // Аккаунт с привязкой Google или Apple восстанавливается входом через провайдера: кода здесь нет.
           if (!phone.verified && (await storage.providerLinksOf(userId)).length === 0) {
             const emailCode = String(randomInt(0, 1_000_000)).padStart(6, '0');
-            const primaryEmail = (await storage.profileGet(userId))?.email ?? userId;
+            const profile = await storage.profileGet(userId);
+            const primaryEmail = profile?.email ?? userId;
+            const locale = profile?.locale ?? 'hy';
             const backup = await storage.backupEmailGet(userId);
             const recoveryEmail = backup?.email ?? primaryEmail;
             const notificationRecipients = [primaryEmail, backup?.email];
@@ -2676,8 +2699,8 @@ if (req.method === 'POST' && p === '/login') {
               return { next, result: out.issued };
             }, async (tx, wasIssued) => {
               if (!wasIssued) return;
-              await mailTo(recoveryEmail, 'Код восстановления InOne', '', null, 'recovery_code', { code: emailCode }, 'hy', tx);
-              await mailToRecipients(notificationRecipients, 'Запрошено восстановление InOne', '', 'recovery_requested', {}, tx);
+              await mailTo(recoveryEmail, '', '', null, 'recovery_code', { code: emailCode }, locale, tx);
+              await mailToRecipients(notificationRecipients, '', '', 'recovery_requested', {}, tx, locale);
             });
             if (issued) await alertDevices(userId, { kind: 'recovery_started' });
           }
@@ -2686,7 +2709,9 @@ if (req.method === 'POST' && p === '/login') {
           if (phone.verified && (await checkRate('smsPerPhone', phone.phone)).allowed) {
             const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
             const token = randomBytes(24).toString('base64url');
-            const primaryEmail = (await storage.profileGet(userId))?.email ?? userId;
+            const profile = await storage.profileGet(userId);
+            const primaryEmail = profile?.email ?? userId;
+            const locale = profile?.locale ?? 'hy';
             const backup = await storage.backupEmailGet(userId);
             const notificationRecipients = [primaryEmail, backup?.email];
             const issued = await storage.recoveryUpdateWithOutbox(userId, (r) => {
@@ -2694,7 +2719,7 @@ if (req.method === 'POST' && p === '/login') {
               return { next: out.next, result: out.issued };
             }, async (tx, wasIssued) => {
               if (!wasIssued) return;
-              await mailToRecipients(notificationRecipients, 'Подтверждение восстановления', '', 'recovery_confirmation_link', { url: `${publicUrl}/recovery/confirm?user=${encodeURIComponent(userId)}&token=${token}` }, tx);
+              await mailToRecipients(notificationRecipients, '', '', 'recovery_confirmation_link', { url: `${publicUrl}/recovery/confirm?user=${encodeURIComponent(userId)}&token=${token}` }, tx, locale);
             });
             if (issued) {
               // D5: SMS-код и email-link — независимые каналы одного recovery event.
@@ -2758,10 +2783,11 @@ if (req.method === 'POST' && p === '/login') {
         for (const rec of await storage.devicesOfUser(userId)) {
           if (!rec.revoked && rec.createdAt >= r.windowStartedAt) await revokeDevice(rec);
         }
-        const primaryEmail = (await storage.profileGet(userId))?.email ?? userId;
+        const profile = await storage.profileGet(userId);
+        const primaryEmail = profile?.email ?? userId;
         const backup = await storage.backupEmailGet(userId);
         await storage.recoveryCancelWithOutbox(userId, r.windowPreviousHash, (cur) => ({ next: cancelWindow(cur), result: null }),
-          (tx) => mailToRecipients([primaryEmail, backup?.email], 'Восстановление отменено', '', 'recovery_cancelled', { method: 'code' }, tx));
+          (tx) => mailToRecipients([primaryEmail, backup?.email], '', '', 'recovery_cancelled', { method: 'code' }, tx, profile?.locale ?? 'hy'));
         await alertDevices(userId, { kind: 'recovery_cancelled' });
         return send(res, 200, { ok: true });
       }
@@ -2776,10 +2802,11 @@ if (req.method === 'POST' && p === '/login') {
         for (const rec of await storage.devicesOfUser(d.userId)) {
           if (!rec.revoked && rec.createdAt >= r.windowStartedAt) await revokeDevice(rec);
         }
-        const primaryEmail = (await storage.profileGet(d.userId))?.email ?? d.userId;
+        const profile = await storage.profileGet(d.userId);
+        const primaryEmail = profile?.email ?? d.userId;
         const backup = await storage.backupEmailGet(d.userId);
         await storage.recoveryCancelWithOutbox(d.userId, r.windowPreviousHash, (cur) => ({ next: cancelWindow(cur), result: null }),
-          (tx) => mailToRecipients([primaryEmail, backup?.email], 'Восстановление отменено', '', 'recovery_cancelled', { method: 'device' }, tx));
+          (tx) => mailToRecipients([primaryEmail, backup?.email], '', '', 'recovery_cancelled', { method: 'device' }, tx, profile?.locale ?? 'hy'));
         await alertDevices(d.userId, { kind: 'recovery_cancelled' });
         return send(res, 200, { ok: true });
       }
@@ -2816,7 +2843,8 @@ if (req.method === 'POST' && p === '/login') {
         const previousHash = await storage.accountHash(userId);
         const newPasswordHash = hashPassword(newPassword);
         const cancelCode = String(randomInt(0, 1_000_000)).padStart(6, '0');
-        const primaryEmail = (await storage.profileGet(userId))?.email ?? userId;
+        const profile = await storage.profileGet(userId);
+        const primaryEmail = profile?.email ?? userId;
         const backup = await storage.backupEmailGet(userId);
         const keyResetAt = await storage.recoveryCompleteWithOutbox(
           userId, newPasswordHash,
@@ -2825,7 +2853,7 @@ if (req.method === 'POST' && p === '/login') {
             return { next, result: next.windowKeyResetAt };
           },
           recoveryCancelHash(userId, cancelCode),
-          (tx) => mailToRecipients([primaryEmail, backup?.email], 'Восстановление выполнено', '', 'recovery_completed', { cancelCode }, tx),
+          (tx) => mailToRecipients([primaryEmail, backup?.email], '', '', 'recovery_completed', { cancelCode }, tx, profile?.locale ?? 'hy'),
         );
         await alertDevices(userId, { kind: 'recovery_completed', keyResetAt: new Date(keyResetAt).toISOString() });
         return send(res, 200, { ok: true, keyResetAt: new Date(keyResetAt).toISOString() });
