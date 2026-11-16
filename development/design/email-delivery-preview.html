@@ -8,7 +8,7 @@
 :root{color-scheme:light;--bg:#EEF1EA;--surface:#fff;--ink:#171A14;--dark:#1B1F17;--muted:#6B7268;--quiet:#8C9487;--lime:#C9F53F;--green:#5F9E1C;--line:#E4E7E0;--pale:#F1F8E3;--pale-line:#D8E9B8}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:"Noto Sans Armenian","Noto Sans",Arial,sans-serif;-webkit-font-smoothing:antialiased}
 .shell{max-width:1160px;margin:0 auto;padding:36px 24px 64px}.top{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-bottom:28px}
-.brand{display:flex;align-items:center;gap:12px}.mark{width:42px;height:42px;border-radius:13px;background:var(--lime);display:grid;place-items:center;color:var(--dark);font-weight:800;font-size:18px;letter-spacing:-1px}.word{font-size:22px;font-weight:700;letter-spacing:-.5px}
+.brand{display:flex;align-items:center}.word{font-size:24px;font-weight:700;letter-spacing:-.6px;border-bottom:3px solid var(--lime);padding-bottom:8px}
 .pill{border:1px solid var(--pale-line);background:var(--pale);color:#4A8018;border-radius:999px;padding:7px 12px;font-size:11px;font-weight:700;letter-spacing:.04em}
 h1{font-size:clamp(26px,4vw,36px);line-height:1.2;letter-spacing:-.8px;margin:0 0 10px;font-weight:700} .intro{max-width:760px;color:var(--muted);font-size:14px;line-height:1.7;margin:0 0 26px}
 .controls{display:grid;grid-template-columns:2fr 1fr;gap:12px;background:#fff;border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:18px}
@@ -25,11 +25,11 @@ label{display:block;color:#4A5147;font-size:12px;font-weight:700;margin:0 0 7px}
 <body>
 <main class="shell">
   <header class="top">
-    <div class="brand"><div class="mark">In</div><div class="word">InOne</div></div>
+    <div class="brand"><div class="word">InOne</div></div>
     <div class="pill">VISUAL DRAFT · OWNER APPROVAL</div>
   </header>
   <h1>Էլեկտրոնային նամակների ձևավորում</h1>
-  <p class="intro">InOne-ի նամակների նախադիտում՝ հիմնված հաստատված InOne Mobile Design System-ի գունային և տիպографիական սկզբունքների վրա։ Ընտրեք ծանուցման տեսակը և լեզուն․ նախադիտումը բեռնվում է հենց backend-ի իրական template renderer-ից։</p>
+  <p class="intro">InOne-ի նամակների նախադիտում՝ հիմնված հաստատված InOne Mobile Design System-ի գունային և տառատեսակային սկզբունքների վրա։ Ընտրեք ծանուցման տեսակը և լեզուն․ նախադիտումը բեռնվում է հենց backend-ի իրական template renderer-ից։</p>
   <section class="controls" aria-label="Preview controls">
     <div><label for="template">Ծանուցման տեսակ</label><select id="template"></select></div>
     <div><label for="locale">Լեզու</label><select id="locale"><option value="hy">Հայերեն · հիմնական</option><option value="ru">Русский</option><option value="en">English</option></select></div>
