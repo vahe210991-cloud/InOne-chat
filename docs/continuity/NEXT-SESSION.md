@@ -1,3 +1,7 @@
+> **NEXT EXECUTION — P0:** 1) Obtain executable Node/PostgreSQL validation for PR #54 (memory + DB tests). 2) Implement MLS attachment encryption in persistent Rust client: per-file random AEAD key/nonce, ciphertext-only upload, MLS-encrypted manifest/key delivery, key persistence inside SQLCipher, authenticated decrypt + hash/room binding tests. 3) Port Stage 4 Rust/FRB into active Flutter branch only with generated bindings; fix the prior missing-generated-output Flutter failure. 4) Add recovery deep-link initial/warm handling; production acceptance requires configured SMS provider and verified app-link domain/Android+iOS associations. 5) Reconcile PR #42 to canonical `inone-development-archive-0.6.0/engine/`. PRs #54/#56 are Draft and unmerged. Full status: [CTO audit report](../../development/reports/2026-11-15-2257-beta1-cto-audit.md).
+
+> **NEXT EXECUTION — 2026-11-15:** 1) Obtain/verify a complete local clone on the owner's Windows machine; do not overwrite an existing `C:\InOne` or backup. 2) Fix canonical backend file-download revocation with device-bound grants and PostgreSQL/memory regression tests. 3) Reconcile PR #42 against the canonical engine path; do not treat POC server checks as backend acceptance. 4) Selectively integrate Stage 4 Rust/FRB/Keystore/Keychain/session work into current Flutter source; resolve missing generated outputs and stale sample imports. 5) Implement MLS encrypted attachments and verified-phone recovery deep links; run the full local Node/PostgreSQL/Rust/Flutter/Android matrix. No Actions workflow was dispatched in the preceding session. Details: [CTO audit report](../../development/reports/2026-11-15-2257-beta1-cto-audit.md).
+
 # Immediate next steps — 2026-11-14 (engine stabilization)
 
 1. Verify exact current branch HEAD and clean worktree: `feat/flutter-ui-dart-migration-2026-11-14`; expected code/test commit `24ed7477ed308f82d5e61c97bba5aac3f5f2da65`. Do not modify `main`.
@@ -361,3 +365,37 @@ Exact-head CI: P0 run #43591433401 and Flutter run #43591437303 both failed befo
 Branch compare: 381 ahead of main, 0 behind. PR #52 remains Draft/open, base `stage0/identity-engineering-readiness-2026-11-13`. Do not retarget or merge. `main` unchanged.
 
 Next: resolve GitHub Actions runner/job provisioning failure, then run Node/PostgreSQL/Rust/Flutter checks on exact head. Continue focused audit of account/session revocation, OTP rate limiting, object storage/backup file archive safety, and MLS FFI. Production certification remains blocked pending runtime and security validation.
+
+
+## Owner-requested Stage 4 / Flutter MLS work — next execution plan (2026-11-14)
+
+Owner has explicitly requested all six items below for Beta 1.0. Use the isolated audit branch `task/beta1-stage4-mls-merge-audit-2026-11-14` as the documentation handoff; audit report: `development/reports/2026-11-14-1701-stage4-flutter-mls-integration-audit.md`.
+
+### Source branches — do not merge blindly
+
+- Current Flutter migration: `feat/flutter-ui-dart-migration-2026-11-14`, base/head code SHA at audit start `eda47ce560cb1468438460147cbd49cd2f4a4747`, PR #52 Draft/open.
+- Existing Stage 4 native MLS work: `feature/stage-4-native-mls-runtime-2026-11-11`, HEAD `016ba75045412652d362fa8c94ee166bfa371c23`, PR #45 Draft/open.
+- Branches diverged. Stage 4 branch was developed against an older app baseline. Selectively port Rust client/bridge/session files and reconcile current app/session files; do not replace current `InOneMobileApp`, screen tree or navigation with the older Stage 4 app.
+
+### Six work items and acceptance gates
+
+1. **Flutter↔Rust FFI:** port `mobile/rust`, Dart MLS bridge adapter/contract and codegen workflow; generate FRB bindings; validate ABI, generated Dart/Rust API, Android/iOS native-assets packaging and error propagation. Keep feature gate off until exact-head CI passes.
+2. **Keychain/Keystore + SQLCipher:** preserve Rust-only 32-byte key access via Android Keystore/iOS protected Keychain. Test create/close/resume, missing/wrong key fail-closed, key deletion, SQLCipher WAL/SHM cleanup, and logout. Android emulator and signed iOS runtime checks are required.
+3. **Rust-owned session:** selectively port Stage 4 token handoff/resume/refresh logic into current `InOneSession`. After adoption, Rust is the only refresh-token owner. Test login, failed handoff, concurrent refresh, restart/resume, logout races and revoked devices.
+4. **MLS messaging:** connect current Flutter room/repository/UI to Rust send/sync/decrypt and durable SQLCipher inbox/outbox. Persist before ACK; test two devices, offline/restart, epochs, commits, welcomes, replay and revocation. No plaintext fallback.
+5. **Encrypted attachments:** add client-side authenticated encryption before upload; store only ciphertext; deliver file ID, key and nonce only inside MLS-encrypted application message; download ciphertext and decrypt locally. Bind room/file/size/hash as authenticated metadata. Test object storage has no plaintext/key/filename and enforce safe streaming/temp-file handling.
+6. **Recovery deep links:** add initial + warm HTTPS App Links/Universal Links handling for exact configured recovery host/path; do not log/persist token. Show SC-08 and only POST `{user, token}` after explicit user confirmation. GET preview remains non-mutating. Then continue to SC-09 SMS code/new password flow.
+
+### External prerequisites — do not guess or expose secrets
+
+- Production recovery hostname used in the email URL.
+- Android app signing SHA-256 fingerprint / assetlinks configuration.
+- Apple Developer Team ID / Associated Domains configuration.
+- Real SMS provider and its secret configuration. Production currently forbids enabling SMS and phone confirmation returns 503 while SMS is disabled; verified-phone recovery is not production-accepted until delivery is tested.
+
+### Current blocker
+
+The repository is private. Available tools do not provide a full clone/Codespace or Rust/Flutter build runner. Individual GitHub file edits are not sufficient for this broad cross-language/native integration. First obtain an authorized full working copy and verify clean status, exact refs, submodules/LFS; then implement in a task branch and run codegen + exact-head CI. Do not merge PR #45 or PR #52, change backend contracts, or enable native MLS until the relevant acceptance gates pass.
+
+
+Source-boundary warning: Stage 4 mobile Rust depends on the POC-path `mobile-mls/mls-client`, not the canonical engine's similarly named crate. PR #45 tests against canonical engine through `INONE_ENGINE_DIR` but links the POC-path mobile client. Compare APIs/provenance and preserve this boundary before porting; do not treat the crates as interchangeable. Details: `development/reports/2026-11-14-1703-stage4-source-boundary-addendum.md`. Full private clone/build runner is BLOCKED in the current tool environment.

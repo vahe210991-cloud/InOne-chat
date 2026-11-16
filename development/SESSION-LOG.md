@@ -1,3 +1,72 @@
+## 2026-11-15 — P0 file-download security implementation and mobile transport
+
+- PR #54 opened as Draft: `fix/backend-revocable-file-downloads-2026-11-15`, head `ecded3e8bcc549a5b5e95e15bad587ecbdd289f2`, base current Flutter branch. Canonical object GET requires live bearer session, HMAC bound to exact user/device, and fresh room-membership/private-owner authorization on every request. Tests added for anonymous/cross-device/revoked-device/removed-member cases. Disk test updated. No tests run.
+- PR #56 opened as Draft stacked on #54: `feat/mobile-authenticated-file-download-transport-v2-2026-11-15`, head `019d1cad8484a140f6c6af5f02fd4abdda5da9cc`. Adds same-origin binary GET with bearer auth/one refresh retry, signed ciphertext PUT without bearer auth, redirect blocking, and tests/docs. This is transport only; no E2EE attachment crypto/manifest/decryption/UI.
+- PR #55 closed as superseded by #56; do not revive.
+- PR #56 automatically triggered workflow #43757799304; exact head matched. Job had no steps, logs returned BlobNotFound; treat as blocked infrastructure, not a confirmed Flutter source failure. No manual workflow dispatch/rerun.
+- Next: implement MLS attachment crypto + encrypted manifest/key persistence in the persistent Rust client; then integrate generated FRB outputs and Dart bridge; implement recovery deep links after app-link domain/SMS provider are configured. PR #42 still targets POC Node server and needs canonical backend reconciliation.
+- No PR merged. Node/PostgreSQL/Rust/Flutter/Android/iOS tests NOT RUN. Full evidence in `development/reports/2026-11-15-2257-beta1-cto-audit.md`.
+
+---
+
+## 2026-11-15 — final branch comparison
+
+- Before the final report addendum, live compare of PR #53 task branch against current Flutter base: 19 commits ahead / 1 behind; merge-base `eda47ce560cb1468438460147cbd49cd2f4a4747`. All additional commits in this audit session are documentation/handover only.
+- Report addendum commit: `1421f53f316ee4d82e8ddd3fd1abcc8a5e3a88fd`. PR #53 remains Draft/open; no Actions run associated with the documentation-only branch.
+- Recompare before any future cherry-pick/rebase/merge; do not force-update the branch.
+
+---
+
+## 2026-11-15 — handoff archive finalization
+
+- Exact remote read-back verification completed for all newly added files: `development/AI-AGENT-MANDATE.md`, the owner handoff text, its provenance manifest and the audit report.
+- The uploaded handoff text matches the GitHub copy exactly (20,351 Unicode characters, 600 lines, UTF-8, no final newline); original uploaded bytes 32,987 and SHA-256 `ba9bf5902051a154489c3f919317e62e67a36deff187c21d7920b7ac171147e1`.
+- Continuity files updated in commits: CURRENT-STATE `7f869c57690a5ee18590f77b7c8d77a740681fc9`; NEXT-SESSION `353c8f9430030c7b4844e3f6dbbc1bef124c2a62`; SOURCE-OF-TRUTH `63af287321798840a0d593035eeab7ebb8aadc62`; BASELINE `ddcbb497924c5c0872fb135405ac3bfbe1004531`.
+- Handoff manifest verification update commit: `6ff066511f0b90a5648def02ba75cf3e05435143`.
+- PR #53 remains Draft/open and mergeable; no workflow runs are associated with its current documentation-only head. No product source edits, tests, merges or Actions dispatches.
+
+---
+
+## 2026-11-15 — CTO intake, backend security and PR topology audit
+
+- Continued from PR #53 task branch `task/beta1-stage4-mls-merge-audit-2026-11-14`; starting HEAD `78ff06171f1c66af5043b621d294a22b210263a5`; current PR #53 head after audit files: `57ccbdb9398c41bc7daa552c698f8a76f35ee976`.
+- Current `main` observed at `1df19a001acb5f8c4892471ca4eaa0696e02c54d`; current Flutter branch #52 head observed at `9fac7114324edba4c9ebcda74a57a7788bf67c5f`.
+- Restored missing `development/AI-AGENT-MANDATE.md` from Stage 4 branch blob `aa0a8c8455d9146169ab9f801654995e80224c4e`; exact remote read-back verified.
+- Preserved owner upload `Вставленный текст(5).txt` as `development/handover/2026-11-15-INONE-CTO-HANDOFF.txt`; uploaded source SHA-256 `ba9bf5902051a154489c3f919317e62e67a36deff187c21d7920b7ac171147e1`, 32,987 bytes / 600 lines. Exact GitHub read-back equals the uploaded text. Manifest: `development/handover/2026-11-15-INONE-CTO-HANDOFF.manifest.md`.
+- Added report `development/reports/2026-11-15-2257-beta1-cto-audit.md` (report commit `57ccbdb9398c41bc7daa552c698f8a76f35ee976`).
+- Confirmed canonical backend ownership: `inone-development-archive-0.6.0/engine/`; POC Node server is not production. Found a source-level file URL revocation gap: download URLs are five-minute bearer capabilities not bound to device/session and are not invalidated by device revocation or membership removal. Regression test and implementation remain pending.
+- Confirmed E2EE attachments and verified-phone deep-link flow are not implemented end-to-end. PR #42's PostgreSQL check fails before its test due module resolution from repo root and targets the POC server, not canonical backend. PR #40's FRB run generated code but Flutter analyze failed on missing `simple.dart` and undefined `greet`.
+- Current PR #52 Flutter run #43620192889 failed before steps; no test command is evidenced as started. Historical runs only; no Actions workflow dispatched in this session.
+- Local Windows `C:\InOne` and backups cannot be inspected from this chat; no PowerShell/local terminal, full clone, or local SDK runner is exposed. No product source changes; no Node/PostgreSQL/Rust/Flutter/Android/iOS tests run. WBS v1.1 unchanged: Beta 1.0 42% / 31%; Beta 2.0 2% / 0%; historical InOne 25%.
+- No merge, retarget, force push, branch deletion, deployment, server start or production action.
+
+---
+
+## 2026-11-14 17:03 — Stage 4 MLS source-boundary clarification
+
+- Follow-up static check confirmed `mobile/rust/Cargo.toml` in PR #45 links `../../inone-engine-poc-0.6.0/mobile-mls/mls-client`, not the canonical engine client at `inone-development-archive-0.6.0/engine/mobile-mls/mls-client`.
+- These client source blobs differ substantially on both Stage 4 and current Flutter refs. Stage 4 integration workflow tests against canonical engine via `INONE_ENGINE_DIR`, while linking the POC-path mobile client. Treat this as an explicit ownership boundary; do not assume the two crates are interchangeable or copy the POC server into production.
+- Addendum: [Stage 4 source-boundary clarification](reports/2026-11-14-1703-stage4-source-boundary-addendum.md), commit `5221a5517b79f959bac2b33f08f806e05aa17177`.
+- Corrected next-step status: obtaining a complete private-repository working copy/build runner is BLOCKED, not in progress. No source implementation or tests were attempted through partial file writes.
+
+---
+
+## 2026-11-14 17:01 — Owner request: Stage 4 / Flutter MLS integration audit
+
+- Owner explicitly requested work on six Beta 1.0 items: Flutter↔Rust MLS FFI, platform Keychain/Keystore + SQLCipher key transfer, Rust-owned session refresh, MLS message send/decrypt, encrypted-only attachments, and verified-phone recovery deep links.
+- Created isolated task branch `task/beta1-stage4-mls-merge-audit-2026-11-14` from Flutter migration HEAD `eda47ce560cb1468438460147cbd49cd2f4a4747`; no changes to main, PR #52, or PR #45.
+- Static audit found Stage 4 implementation in PR #45 (`feature/stage-4-native-mls-runtime-2026-11-11`, HEAD `016ba75045412652d362fa8c94ee166bfa371c23`), but it is not integrated into current Flutter branch. Branches diverged; wholesale merge would risk replacing newer Flutter app/UI.
+- PR #45 contains Rust session/KeyStore and Dart bridge source, but FRB generated bindings are absent and Android/iOS runtime acceptance is not proven. Current Flutter branch still owns refresh token in Dart.
+- MLS text send/decrypt exists in Stage 4 client source but current Flutter app is not connected. File attachments have no native encryption/upload/decrypt path; backend object storage stores the bytes it receives, so client-side AEAD + MLS-wrapped file key is required.
+- Recovery backend has SMS + email-link two-channel flow for verified-phone accounts. GET confirmation is preview-only; POST consumes the link. Current Flutter app has SC-08 source but no deep-link intake, no SC-08 route, and no confirm-link API method. Production SMS provider is currently disabled/not integrated; do not claim verified-phone recovery production-ready.
+- Detailed audit: [2026-11-14 Stage 4 / Flutter MLS integration audit](reports/2026-11-14-1701-stage4-flutter-mls-integration-audit.md).
+- Audit artifact commit: `cd24212752a50e280ed48f03249b6e783d06f787`. No product code changed; no Rust/Flutter tests, codegen, builds, device tests or Actions dispatch performed.
+- Exact blocker: available GitHub connector is repository-native and does not provide a complete private-repository working copy or build runner. The private repo cannot be cloned into the available Vercel sandbox through its public-Git-source contract. Broad multi-file native integration must wait for an authorized complete clone/Codespace/runner; do not attempt unverified partial file overlay.
+- Next: restore missing mandatory mandate file on a reviewed docs path; then reconcile PR #45 source selectively with current Flutter app on a full clone; generate FRB; run Rust/Flutter CI; complete Android/iOS runtime tests; design encrypted attachment flow; wire app links and verify SMS provider/domain association.
+- No merge, deployment, server start, secret handling, destructive change or production enablement.
+
+---
+
 ## 2026-11-14 — InOne engine stabilization and source reconciliation
 
 - Worked only on `feat/flutter-ui-dart-migration-2026-11-14`; `main` unchanged. At handoff, branch compare confirmed ahead of main / behind 0; latest code/test commit `24ed7477ed308f82d5e61c97bba5aac3f5f2da65`.
