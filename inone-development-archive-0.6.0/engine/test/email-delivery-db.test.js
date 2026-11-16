@@ -245,3 +245,41 @@ test('истёкшее сообщение переводится в dead letter 
     await db.close();
   }
 });
+
+test('graceful shutdown закрывает SMTP и освобождает незавершённые leases', async () => {
+  const db = await testDatabase();
+  let rejectActive;
+  let started = false;
+  let closed = false;
+  const smtp = {
+    send() {
+      started = true;
+      return new Promise((resolve, reject) => { rejectActive = reject; });
+    },
+    close() {
+      closed = true;
+      const error = new Error('transport closed during shutdown');
+      error.reason = 'connection';
+      rejectActive?.(error);
+    },
+  };
+  const queue = createEmailDelivery({
+    pool: db.pool, smtpMailer: smtp, encryptionKey: randomBytes(32),
+    pollIntervalMs: 250, batchSize: 2, retryBaseMs: 100, retryMaxMs: 500,
+  });
+  try {
+    const first = await queue.send({ to: 'first@example.test', subject: 'One', text: 'ONE', idempotencyKey: 'shutdown-first-001' });
+    const second = await queue.send({ to: 'second@example.test', subject: 'Two', text: 'TWO', idempotencyKey: 'shutdown-second-001' });
+    queue.start();
+    await waitFor(() => started);
+    await queue.stop();
+    assert.equal(closed, true);
+    const rows = (await db.pool.query('SELECT id, status, locked_at, locked_by FROM email_deliveries WHERE id = ANY($1::bigint[]) ORDER BY id', [[first.deliveryId, second.deliveryId]])).rows;
+    assert.equal(rows.length, 2);
+    assert.ok(rows.every((row) => row.status === 'queued'));
+    assert.ok(rows.every((row) => row.locked_at === null && row.locked_by === null));
+  } finally {
+    await queue.stop();
+    await db.close();
+  }
+});
