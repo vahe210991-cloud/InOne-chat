@@ -260,6 +260,11 @@ class InOneSession extends ChangeNotifier {
       throw ArgumentError.value(locale, 'locale', 'Supported locales: hy, ru, en');
     }
     await initialize();
+    // Serialize a language change after an in-flight login so its security emails
+    // use the locale selected when that login request was sent, then persist the
+    // newer choice for subsequent account events.
+    final activeLogin = _loginInFlight;
+    if (activeLogin != null) await activeLogin;
     if (isAuthenticated) {
       final result = await request('PATCH', '/profile/locale', body: {'locale': locale});
       if (result['locale'] != locale) {
