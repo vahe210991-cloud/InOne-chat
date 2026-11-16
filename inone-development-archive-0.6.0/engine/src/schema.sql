@@ -572,6 +572,7 @@ CREATE TABLE IF NOT EXISTS email_deliveries (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   sent_at TIMESTAMPTZ,
+  expires_at TIMESTAMPTZ NOT NULL DEFAULT (now() + interval '24 hours'),
   CHECK ((status = 'processing') = (locked_at IS NOT NULL AND locked_by IS NOT NULL))
 );
 CREATE INDEX IF NOT EXISTS email_deliveries_ready
