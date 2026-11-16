@@ -1671,9 +1671,35 @@ async mlsPendingRemovalsFor(userId) {
       }
     },
 
+    async backupEmailSaveWithOutbox(userId, email, nowMs, enqueue) {
+      try {
+        return await inTransaction(async (client) => {
+          await client.query(
+            `INSERT INTO backup_emails (user_id, email, created_at) VALUES ($1, $2, $3)
+             ON CONFLICT (user_id) DO UPDATE SET email = EXCLUDED.email, created_at = EXCLUDED.created_at`,
+            [userId, email, nowMs],
+          );
+          if (enqueue) await enqueue(client);
+          return 'ok';
+        });
+      } catch (error) {
+        if (error.code !== '23505') throw error;
+        return 'taken';
+      }
+    },
+
     async backupEmailRemove(userId) {
       const { rowCount } = await pool.query('DELETE FROM backup_emails WHERE user_id = $1', [userId]);
       return rowCount > 0;
+    },
+
+    async backupEmailRemoveWithOutbox(userId, enqueue) {
+      return inTransaction(async (client) => {
+        const { rowCount } = await client.query('DELETE FROM backup_emails WHERE user_id = $1', [userId]);
+        if (rowCount === 0) return false;
+        if (enqueue) await enqueue(client);
+        return true;
+      });
     },
 
     // ---- одноразовые токены этапа 2 (nonce, билет регистрации, подтверждение входа) ----
