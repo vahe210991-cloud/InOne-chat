@@ -213,7 +213,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
     const key = idempotencyKey ?? createHash('sha256')
       .update(`${to}\\0${rendered.subject}\\0${rendered.text}\\0${rendered.html}\\0${rendered.templateVersion}\\0${Math.floor(now() / 300_000)}`)
       .digest('hex');
-    const message = { to, subject: rendered.subject, text: rendered.text, idempotencyKey: key, templateId, variables, locale };
+    const message = { to, subject: rendered.subject, text: rendered.text, html: rendered.html, idempotencyKey: key, templateId, variables, locale };
     if (transactionClient && typeof mailer.sendInTransaction === 'function') return mailer.sendInTransaction(transactionClient, message);
     return mailer.send(message);
   };
