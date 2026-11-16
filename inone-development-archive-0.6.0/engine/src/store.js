@@ -1629,6 +1629,22 @@ async mlsPendingRemovalsFor(userId) {
       }
     },
 
+    async deviceWaitCreateWithOutbox({ userId, deviceId, label, platform, activateAt, cancelHash, createdAt }, enqueue) {
+      try {
+        return await inTransaction(async (client) => {
+          await client.query(
+            'INSERT INTO device_waits (user_id, device_id, label, platform, activate_at, cancel_hash, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+            [userId, deviceId, label, platform, activateAt, cancelHash, createdAt],
+          );
+          if (enqueue) await enqueue(client);
+          return 'ok';
+        });
+      } catch (error) {
+        if (error.code !== '23505') throw error;
+        return 'exists';
+      }
+    },
+
     async deviceWaitDelete(userId, deviceId) {
       const { rowCount } = await pool.query('DELETE FROM device_waits WHERE user_id = $1 AND device_id = $2', [userId, deviceId]);
       return rowCount > 0;
