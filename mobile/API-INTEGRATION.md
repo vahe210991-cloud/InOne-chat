@@ -28,8 +28,9 @@ The route definitions below were checked against `inone-development-archive-0.6.
 | POST | `/login` | Email/password login; includes stable deviceId, label and platform |
 | POST | `/token/refresh` | Single-use refresh-token rotation |
 | POST | `/logout` | End current device session |
-| GET | `/profile` | Current account/profile and security hints |
-| POST | `/register/email` | Start verified email registration |
+| GET | `/profile` | Current account/profile, security hints and persisted in-app locale (`locale: hy\|ru\|en`) |
+| PATCH | `/profile/locale` | Update the authenticated account's selected in-app locale |
+| POST | `/register/email` | Start verified email registration; pass the selected app locale in `locale` (`hy`, `ru`, or `en`) |
 | POST | `/register/email/confirm` | Verify email code and receive registrationToken |
 | POST | `/register` | Create account using registrationToken |
 | POST | `/recovery/start` | Start account recovery |
@@ -69,7 +70,7 @@ The route definitions below were checked against `inone-development-archive-0.6.
 ## Client architecture
 
 - `ApiClient`: JSON HTTP transport, Bearer token injection, timeout and stable API errors.
-- `InOneSession`: in-memory access/refresh tokens, stable device ID in Keychain/Android Keystore, serialized refresh and one retry after 401.
+- `InOneSession`: in-memory access/refresh tokens, stable device ID and selected app locale in platform secure storage, serialized refresh and one retry after 401. Registration sends the selected locale; authenticated sessions synchronize it with `/profile/locale`.
 - `InOneRepositories`: typed profile, room, organization, device, approval and config reads.
 - `screen_api_catalog.dart`: maps approved/test screen IDs to safe GET probes.
 - Flutter owns network calls. The WebView receives no access token, refresh token or MLS secret.
