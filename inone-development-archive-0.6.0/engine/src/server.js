@@ -714,7 +714,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         await storage.emailCodeUpdateWithOutbox(backupKey(d.userId, email), (e) => ({
           next: requestEmailCode(e, { nowMs: now(), codeHash: backupCodeHash(d.userId, email, code) }),
           result: null,
-        }), (tx) => mailTo(email, 'Подтверждение запасной почты InOne', '', null, 'backup_email_verification', { code }, 'ru', tx));
+        }), (tx) => mailTo(email, 'Подтверждение запасной почты InOne', '', null, 'backup_email_verification', { code }, 'hy', tx));
         return send(res, 202, { ok: true });
       }
 
@@ -739,7 +739,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         const previous = await storage.backupEmailGet(d.userId);
         const primary = (await storage.profileGet(d.userId)).email;
         const saved = await storage.backupEmailSaveWithOutbox(d.userId, email, now(), (tx) =>
-          mailTo(primary, 'Запасная почта InOne изменена', '', null, 'backup_email_changed', { action: previous ? 'changed' : 'added' }, 'ru', tx));
+          mailTo(primary, 'Запасная почта InOne изменена', '', null, 'backup_email_changed', { action: previous ? 'changed' : 'added' }, 'hy', tx));
         if (saved === 'taken') return send(res, 409, { error: 'this backup email is used by another account' });
         return send(res, 200, { backupEmail: { email, verified: true } });
       }
@@ -751,7 +751,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         if (!confirmed.ok) return send(res, confirmed.status, { error: confirmed.error });
         const primary = (await storage.profileGet(d.userId)).email;
         const removed = await storage.backupEmailRemoveWithOutbox(d.userId, (tx) =>
-          mailTo(primary, 'Запасная почта InOne удалена', '', null, 'backup_email_removed', {}, 'ru', tx));
+          mailTo(primary, 'Запасная почта InOne удалена', '', null, 'backup_email_removed', {}, 'hy', tx));
         if (!removed) return send(res, 404, { error: 'no backup email is set' });
         return send(res, 200, await accountLevelInfo(d.userId));
       }
@@ -830,7 +830,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         await storage.emailCodeUpdateWithOutbox(stepupKey(d.userId), (e) => ({
           next: requestEmailCode(e, { nowMs: now(), codeHash: stepupCodeHash(d.userId, action, code) }),
           result: null,
-        }), (tx) => mailTo(recipient, 'Подтверждение действия в InOne', '', null, 'stepup_code', { code, action: stepupActionText[action] }, 'ru', tx));
+        }), (tx) => mailTo(recipient, 'Подтверждение действия в InOne', '', null, 'stepup_code', { code, action: stepupActionText[action] }, 'hy', tx));
         return send(res, 202, { ok: true });
       }
 
@@ -905,7 +905,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
           await storage.emailCodeUpdateWithOutbox(email, (e) => ({
             next: requestEmailCode(e, { nowMs: now(), codeHash: emailCodeHash(email, code) }),
             result: null,
-          }), (tx) => mailTo(email, 'Код подтверждения InOne', '', null, 'registration_code', { code }, 'ru', tx));
+          }), (tx) => mailTo(email, 'Код подтверждения InOne', '', null, 'registration_code', { code }, 'hy', tx));
         }
         return send(res, 202, { ok: true });
       }
@@ -2684,7 +2684,7 @@ if (req.method === 'POST' && p === '/login') {
               return { next, result: out.issued };
             }, async (tx, wasIssued) => {
               if (!wasIssued) return;
-              await mailTo(recoveryEmail, 'Код восстановления InOne', '', null, 'recovery_code', { code: emailCode }, 'ru', tx);
+              await mailTo(recoveryEmail, 'Код восстановления InOne', '', null, 'recovery_code', { code: emailCode }, 'hy', tx);
               await mailToRecipients(notificationRecipients, 'Запрошено восстановление InOne', '', 'recovery_requested', {}, tx);
             });
             if (issued) await alertDevices(userId, { kind: 'recovery_started' });
