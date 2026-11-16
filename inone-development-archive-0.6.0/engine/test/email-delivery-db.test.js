@@ -40,9 +40,9 @@ test('ключ шифрования требует ровно 32 байта', ()
 
 test('очередь шифрует получателя и тело, дедуплицирует и восстанавливает доставку после перезапуска', async () => {
   const db = await testDatabase();
-  const key = randomBytes(32);
+  const masterKey = randomBytes(32);
   const smtp1 = fakeSmtp();
-  const first = createEmailDelivery({ pool: db.pool, smtpMailer: smtp1, encryptionKey: key, pollIntervalMs: 250 });
+  const first = createEmailDelivery({ pool: db.pool, smtpMailer: smtp1, encryptionKey: Buffer.from(masterKey), pollIntervalMs: 250 });
   const payload = { to: 'private-recipient@example.test', subject: 'Recovery', text: 'SECRET-CODE-771155' };
   try {
     const queued = await first.send({ ...payload, idempotencyKey: 'recovery-event-001' });
@@ -64,9 +64,7 @@ test('очередь шифрует получателя и тело, дедуп
     const smtp2 = fakeSmtp();
     const restarted = createEmailDelivery({ pool: db.pool, smtpMailer: smtp2, encryptionKey: randomBytes(32).fill(0), pollIntervalMs: 250 });
     // The same encryption key is required to decrypt queued payloads.
-    const keyForRestart = Buffer.from(key);
-    const recovered = createEmailDelivery({ pool: db.pool, smtpMailer: smtp2, encryptionKey: keyForRestart, pollIntervalMs: 250 });
-    await restarted.stop();
+    const recovered = createEmailDelivery({ pool: db.pool, smtpMailer: smtp2, encryptionKey: Buffer.from(masterKey), pollIntervalMs: 250 });
     recovered.start();
     await waitFor(async () => (await db.pool.query('SELECT status FROM email_deliveries WHERE id = $1', [queued.deliveryId])).rows[0].status === 'sent');
     assert.deepEqual(smtp2.sent, [payload]);
