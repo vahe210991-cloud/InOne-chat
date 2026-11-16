@@ -58,9 +58,21 @@ fn map_incoming(items: Vec<Incoming>) -> Vec<IncomingMessage> {
                 event_id,
                 text,
             },
-            Incoming::Attachment { room_id, event_id, file_id, name, mime_type, size } => {
-                IncomingMessage::Attachment { room_id, event_id, file_id, name, mime_type, size }
-            }
+            Incoming::Attachment {
+                room_id,
+                event_id,
+                file_id,
+                name,
+                mime_type,
+                size,
+            } => IncomingMessage::Attachment {
+                room_id,
+                event_id,
+                file_id,
+                name,
+                mime_type,
+                size,
+            },
             Incoming::Unreadable { room_id, event_id } => {
                 IncomingMessage::Unreadable { room_id, event_id }
             }
