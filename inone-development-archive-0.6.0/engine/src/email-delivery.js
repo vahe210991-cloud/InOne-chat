@@ -350,8 +350,9 @@ export function createEmailDelivery({
       stopping = true;
       if (timer) clearInterval(timer);
       timer = null;
-      try { smtpMailer.close?.(); } catch { /* transport close is best-effort during shutdown */ }
+      // Let an in-flight SMTP operation finish before closing the transport.
       if (activeTick) await activeTick;
+      try { smtpMailer.close?.(); } catch { /* transport close is best-effort during shutdown */ }
       masterKey.fill(0);
       payloadKey.fill(0);
       fingerprintKey.fill(0);
