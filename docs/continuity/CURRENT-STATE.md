@@ -288,3 +288,13 @@ Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone
 - Proposed administration-owned Sticker Bot with photo processing, personal collections, versioned packs and a server-enforced 50-sticker maximum.
 - MLS/E2EE remains fail-closed: bots must be explicit MLS participants; no hidden server-side message access.
 - Status: documentation proposal only. No code, DB schema, API route or implementation changed. Beta 1.0 WBS v1.1 remains unchanged; Beta 2.0 scope not expanded or approved.
+
+
+## Owner decision — protected InOne/Propo naming policy (2026-11-16)
+
+- Reserved official names: **InOne Hub**, **InOne Developer**, **InOne Development**.
+- `InOne` and `Propo` are protected brand terms across public usernames, group/room/community names, bots, apps, integrations, organizations and other user-created named entities.
+- Only official administration-owned entities may use the protected terms, and only after the complete applicable administrative approval chain and explicit final owner approval. Admin privileges never grant unilateral naming/exception authority; administrators may only initiate a proposal.
+- Backend enforcement must normalize Unicode and reject case/separator/confusable bypasses, validate both creation and rename, atomically reserve names, and audit every decision.
+- Existing conflicts must be inventoried and escalated; do not silently rename/delete existing users or groups. The three reserved names are not evidence that corresponding services are implemented.
+- Architecture and proposal report updated. This remains a documented owner requirement, not implemented enforcement.
