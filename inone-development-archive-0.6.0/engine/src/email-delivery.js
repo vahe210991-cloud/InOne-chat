@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, createHmac, hkdfSync, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import { renderEmailTemplate } from './email-templates.js';
 
 const MAX_PAYLOAD_BYTES = 256 * 1024;
@@ -21,7 +21,11 @@ export function parseEmailEncryptionKey(value) {
   return key;
 }
 
-function encryptPayload(payload, key, idempotencyHash) {
+function deriveSubkey(masterKey, purpose) {
+  return Buffer.from(hkdfSync('sha256', masterKey, Buffer.from('inone-email-delivery-v1'), Buffer.from(purpose), 32));
+}
+
+function encryptPayload(payload, payloadKey, idempotencyHash) {
   const iv = randomBytes(12);
   const cipher = createCipheriv('aes-256-gcm', key, iv);
   cipher.setAAD(Buffer.from(idempotencyHash, 'hex'));
@@ -31,7 +35,7 @@ function encryptPayload(payload, key, idempotencyHash) {
   return { ciphertext, iv, tag: cipher.getAuthTag() };
 }
 
-function decryptPayload(row, key) {
+function decryptPayload(row, payloadKey) {
   const decipher = createDecipheriv('aes-256-gcm', key, row.payload_iv);
   decipher.setAAD(Buffer.from(row.idempotency_key, 'hex'));
   decipher.setAuthTag(row.payload_tag);
@@ -61,8 +65,10 @@ export function createEmailDelivery({
 } = {}) {
   if (!pool || typeof pool.connect !== 'function') throw new Error('email delivery requires a PostgreSQL pool');
   if (!smtpMailer || typeof smtpMailer.send !== 'function') throw new Error('email delivery requires an SMTP sender');
-  const key = Buffer.isBuffer(encryptionKey) ? encryptionKey : parseEmailEncryptionKey(encryptionKey);
-  if (key.length !== 32) throw new Error('email encryption key must be 32 bytes');
+  const masterKey = Buffer.isBuffer(encryptionKey) ? Buffer.from(encryptionKey) : parseEmailEncryptionKey(encryptionKey);
+  if (masterKey.length !== 32) throw new Error('email encryption key must be 32 bytes');
+  const payloadKey = deriveSubkey(masterKey, 'payload-encryption');
+  const fingerprintKey = deriveSubkey(masterKey, 'payload-fingerprint');
   if (!Number.isInteger(batchSize) || batchSize < 1 || batchSize > 100) throw new Error('email batchSize must be 1..100');
   if (!Number.isInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > 20) throw new Error('email maxAttempts must be 1..20');
   if (!Number.isInteger(pollIntervalMs) || pollIntervalMs < 250 || pollIntervalMs > 60_000) throw new Error('email pollIntervalMs must be 250..60000');
@@ -197,7 +203,7 @@ export function createEmailDelivery({
       to, subject: rendered.subject, text: rendered.text,
       templateId: templateId ?? 'legacy', templateVersion: rendered.templateVersion ?? 1, locale: rendered.locale ?? locale,
     };
-    const fingerprint = createHmac('sha256', key).update(JSON.stringify(payload)).digest('hex');
+    const fingerprint = createHmac('sha256', fingerprintKey).update(JSON.stringify(payload)).digest('hex');
     const encrypted = encryptPayload(payload, key, idempotencyHash);
     const { rows } = await queryable.query(
       `INSERT INTO email_deliveries
@@ -241,7 +247,9 @@ export function createEmailDelivery({
       timer = null;
       if (activeTick) await activeTick;
       smtpMailer.close?.();
-      key.fill(0);
+      masterKey.fill(0);
+      payloadKey.fill(0);
+      fingerprintKey.fill(0);
     },
     async stats() {
       const { rows } = await pool.query(
