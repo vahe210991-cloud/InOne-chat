@@ -172,7 +172,7 @@ export function renderEmailTemplate(templateId, variables = {}, locale = 'hy') {
   if (templateId === 'recovery_confirmation_link') {
     let parsed;
     try { parsed = new URL(values.url); } catch { throw new Error('invalid recovery URL'); }
-    if (parsed.protocol !== 'https:' || !parsed.hostname || parsed.username || parsed.password || /[\\r\\n]/.test(values.url)) throw new Error('recovery URL must be a safe HTTPS URL');
+    if (parsed.protocol !== 'https:' || !parsed.hostname || parsed.username || parsed.password || /[\r\n]/.test(values.url)) throw new Error('recovery URL must be a safe HTTPS URL');
   }
   if (templateId === 'recovery_cancelled' && !['code', 'device'].includes(values.method)) throw new Error('invalid recovery cancellation method');
   const renderValues = templateId === 'stepup_code' ? { ...values, action: STEPUP_ACTION_LABELS[language][values.action] } : values;
