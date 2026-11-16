@@ -324,7 +324,10 @@ void main() {
     session.dispose();
   });
 
-  test('failed adoption keeps the Flutter session usable', () async {
+  test('failed native MLS handoff logs out and clears the Flutter refresh session', () async {
+    var logoutCalls = 0;
+    var refreshCalls = 0;
+    var deletedUserId = false;
     final httpClient = MockClient((request) async {
       if (request.url.path == '/login') {
         return http.Response(
@@ -335,40 +338,51 @@ void main() {
       if (request.url.path == '/profile') {
         return http.Response(jsonEncode({'userId': '@alice:inone.test'}), 200);
       }
+      if (request.url.path == '/logout') {
+        logoutCalls++;
+        expect(request.headers['authorization'], 'Bearer access-1');
+        return http.Response('{"ok":true}', 200);
+      }
       if (request.url.path == '/token/refresh') {
-        expect(jsonDecode(request.body)['refreshToken'], 'refresh-1');
+        refreshCalls++;
         return http.Response(
           jsonEncode({'token': 'access-2', 'refreshToken': 'refresh-2'}),
           200,
         );
       }
       if (request.url.path == '/protected') {
-        if (request.headers['authorization'] == 'Bearer access-1') {
-          return http.Response('{"error":"token_expired"}', 401);
-        }
-        expect(request.headers['authorization'], 'Bearer access-2');
-        return http.Response('{"status":"ok"}', 200);
+        return http.Response('{"error":"unauthorized"}', 401);
       }
       return http.Response('{}', 404);
     });
+    final bridge = _FakeMlsSessionBridge()..failOpen = true;
     final session = InOneSession(
       baseUrl: 'https://api.inone.test',
       httpClient: httpClient,
+      nativeMlsBridge: bridge,
       readDeviceId: () async => 'device-1',
       writeDeviceId: (_) async {},
       readMlsUserId: () async => null,
       writeMlsUserId: (_) async {},
-      deleteMlsUserId: () async {},
+      deleteMlsUserId: () async {
+        deletedUserId = true;
+      },
     );
-    final bridge = _FakeMlsSessionBridge()..failOpen = true;
 
-    await session.login(email: 'alice@example.test', password: 'not-used-in-test');
-    await expectLater(session.adoptMlsSession(bridge), throwsStateError);
+    await expectLater(
+      session.login(email: 'alice@example.test', password: 'not-used-in-test'),
+      throwsA(isA<StateError>()),
+    );
+
+    expect(session.isAuthenticated, isFalse);
     expect(session.hasNativeMlsSession, isFalse);
-
-    final response = await session.request('GET', '/protected');
-    expect(response['status'], 'ok');
-    expect(bridge.closeCalls, 0);
+    expect(logoutCalls, 1);
+    expect(refreshCalls, 0);
+    expect(bridge.closeCalls, 1);
+    expect(bridge.purgeCalls, 0, 'a failed open must not destroy an existing encrypted database');
+    expect(deletedUserId, isTrue);
+    await expectLater(session.request('GET', '/protected'), throwsA(anything));
+    expect(refreshCalls, 0, 'Dart must never rotate the refresh token after failed MLS handoff');
     session.dispose();
   });
 }
