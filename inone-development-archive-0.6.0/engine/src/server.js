@@ -204,8 +204,8 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
     }
   };
   // SMTP/queue подключается снаружи. Тестовый транспорт хранит письма только в памяти.
-  const mailer = externalMailer ?? { send: async ({ to, subject, text }) => { outbox.push({ to, subject, text }); } };
-  const mailTo = (to, subject, text, idempotencyKey = null, templateId = null, variables = {}, locale = 'ru', transactionClient = null) => {
+  const mailer = externalMailer ?? { send: async ({ to, subject, text, html }) => { outbox.push({ to, subject, text, html }); } };
+  const mailTo = (to, subject, text, idempotencyKey = null, templateId = null, variables = {}, locale = 'hy', transactionClient = null) => {
     if (!templateId) throw new Error('email templateId is required');
     const rendered = renderEmailTemplate(templateId, variables, locale);
     const key = idempotencyKey ?? createHash('sha256')
@@ -217,9 +217,9 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
   };
   // Каждый адрес — отдельная delivery. В transaction callback получатели передаются заранее,
   // чтобы не занимать дополнительные pool connections поверх открытой транзакции.
-  const mailToRecipients = async (recipients, subject, text, templateId = null, variables = {}, transactionClient = null) => {
+  const mailToRecipients = async (recipients, subject, text, templateId = null, variables = {}, transactionClient = null, locale = 'hy') => {
     const uniqueRecipients = [...new Set(recipients.filter(Boolean))];
-    const results = await Promise.allSettled(uniqueRecipients.map((recipient) => mailTo(recipient, subject, text, null, templateId, variables, 'ru', transactionClient)));
+    const results = await Promise.allSettled(uniqueRecipients.map((recipient) => mailTo(recipient, subject, text, null, templateId, variables, locale, transactionClient)));
     const failures = results.filter((result) => result.status === 'rejected');
     if (failures.length) {
       const error = new AggregateError(failures.map((result) => result.reason), 'one or more email deliveries could not be queued');
