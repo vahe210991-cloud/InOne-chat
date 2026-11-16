@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { createEmailDelivery, parseEmailEncryptionKey } from '../src/email-delivery.js';
 import { testDatabase } from './helpers.js';
 import { createStore } from '../src/store.js';
@@ -54,6 +54,7 @@ test('очередь шифрует получателя и тело, дедуп
     assert.ok(!stored.includes(payload.to));
     assert.ok(!stored.includes(payload.subject));
     assert.ok(!stored.includes(payload.text));
+    assert.notEqual(raw.idempotency_key.trim(), createHash('sha256').update('recovery-event-001').digest('hex'));
     const duplicate = await first.send({ ...payload, idempotencyKey: 'recovery-event-001' });
     assert.equal(duplicate.duplicate, true);
     await assert.rejects(
