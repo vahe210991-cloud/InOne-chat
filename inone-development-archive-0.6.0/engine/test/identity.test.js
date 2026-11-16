@@ -31,7 +31,7 @@ async function call(base, method, path, { body, token } = {}) {
 
 /** Код из письма о подтверждении почты. */
 function codeFor(srv, email) {
-  const mail = srv.mailbox(email).filter((m) => m.subject === 'Код подтверждения InOne').at(-1);
+  const mail = srv.mailbox(email).filter((m) => m.templateId === 'registration_code').at(-1);
   return mail.text.match(/\b(\d{6})\b/)[1];
 }
 
@@ -203,9 +203,11 @@ test('I9: registration and security emails follow the persisted in-app language'
       assert.equal((await call(base, 'GET', '/profile', { token })).body.locale, changedLocale);
       assert.equal((await call(base, 'PATCH', '/profile/locale', { token, body: { locale: 'de' } })).status, 400);
       assert.equal((await call(base, 'PATCH', '/profile/locale', { token, body: {} })).status, 400);
-      await call(base, 'POST', '/recovery/start', { body: { email, locale: 'ru' } });
+      await call(base, 'POST', '/recovery/start', { body: { email, locale: changedLocale } });
       const recoveryMessages = srv.mailbox(email).slice(-2);
       assert.equal(recoveryMessages.length, 2);
+      assert.deepEqual(recoveryMessages.map((message) => message.templateId).sort(), ['recovery_code', 'recovery_requested']);
+      assert.ok(recoveryMessages.every((message) => message.locale === changedLocale));
       assert.ok(recoveryMessages.every((message) => message.html.includes(`<html lang="${changedLocale}"`)));
     }
     assert.equal((await call(base, 'POST', '/register/email', { body: { email: 'invalid-locale@example.test', locale: 'de' } })).status, 400);
