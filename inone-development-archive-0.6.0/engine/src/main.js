@@ -7,7 +7,7 @@ import { migrate } from './migrate.js';
 import { createStore } from './store.js';
 import { createServer } from './server.js';
 import { createSmtpMailer } from './mail-smtp.js';
-import { createEmailDelivery, parseEmailEncryptionKey } from './email-delivery.js';
+import { createEmailDelivery } from './email-delivery.js';
 
 /** Запускает сервер. pool = null — память (только для тестов и разработки). */
 export async function startServer({ config, logger = createLogger({ level: config.logLevel }), pool = null }) {
@@ -33,7 +33,7 @@ export async function startServer({ config, logger = createLogger({ level: confi
     ? createEmailDelivery({
       pool,
       smtpMailer,
-      encryptionKey: parseEmailEncryptionKey(config.emailEncryptionKey),
+      encryptionKey: config.emailEncryptionKey,
       logger,
       pollIntervalMs: config.emailWorkerPollMs,
       maxAttempts: config.emailMaxAttempts,
