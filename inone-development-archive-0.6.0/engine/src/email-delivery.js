@@ -172,27 +172,29 @@ export function createEmailDelivery({
         await releaseClaim(row);
         continue;
       }
+      if (new Date(row.expires_at).getTime() <= Date.now() + SEND_GUARD_MS) {
+        await pool.query("UPDATE email_deliveries SET status = 'dead', locked_at = NULL, locked_by = NULL, last_error_code = 'expired', updated_at = now() WHERE id = $1 AND status = 'processing' AND locked_by = $2", [row.id, workerId]);
+        continue;
+      }
+      let message;
       try {
-        if (new Date(row.expires_at).getTime() <= Date.now() + SEND_GUARD_MS) {
-          await pool.query("UPDATE email_deliveries SET status = 'dead', locked_at = NULL, locked_by = NULL, last_error_code = 'expired', updated_at = now() WHERE id = $1 AND status = 'processing' AND locked_by = $2", [row.id, workerId]);
-          continue;
-        }
-        const message = decryptPayload(row, payloadKey);
+        message = decryptPayload(row, payloadKey);
+      } catch {
+        await pool.query(
+          `UPDATE email_deliveries SET status = 'dead', locked_at = NULL, locked_by = NULL,
+            last_error_code = 'payload_integrity', updated_at = now()
+           WHERE id = $1 AND status = 'processing' AND locked_by = $2`,
+          [row.id, workerId],
+        );
+        logger?.error('email payload rejected', { deliveryId: row.id, reason: 'payload_integrity' });
+        continue;
+      }
+      try {
         const result = await smtpMailer.send(message);
         await updateSent(row, result?.messageId ?? null);
         logger?.info('email delivery sent', { deliveryId: row.id, attempts: row.attempts });
       } catch (error) {
-        if (error?.message === 'Unsupported state or unable to authenticate data' || error instanceof SyntaxError) {
-          await pool.query(
-            `UPDATE email_deliveries SET status = 'dead', locked_at = NULL, locked_by = NULL,
-              last_error_code = 'payload_integrity', updated_at = now()
-             WHERE id = $1 AND status = 'processing' AND locked_by = $2`,
-            [row.id, workerId],
-          );
-          logger?.error('email payload rejected', { deliveryId: row.id, reason: 'payload_integrity' });
-        } else {
-          await updateFailure(row, error);
-        }
+        await updateFailure(row, error);
       }
     }
   }
