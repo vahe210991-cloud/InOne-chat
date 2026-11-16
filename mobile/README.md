@@ -77,13 +77,13 @@ The LAN address above is an example only. Keep the backend bound to the local de
 
 The API panel provides:
 - Email/password login against `POST /login`.
-- In-memory access and refresh token handling.
-- One serialized refresh attempt after an authenticated 401, using `POST /token/refresh`.
+- A one-time login handoff transfers the refresh-token pair to the persistent Rust client; Dart keeps only a short-lived access-token snapshot.
+- Rust performs serialized refresh after an authenticated 401 through `POST /token/refresh`.
 - Logout through `POST /logout`.
 - Read-only GET probes for routes that are present in the current main-branch backend, including `/healthz` and `/readyz` connectivity checks.
 - JSON response/error output for QA.
 
-Only the stable device identifier and selected app locale are persisted, using platform secure storage. Access and refresh tokens remain in memory and are never passed into WebView JavaScript.
+The stable device identifier and selected app locale are persisted using platform secure storage. The refresh token is held by the Rust client in SQLCipher; Dart retains only a short-lived access-token snapshot in memory. No credentials are passed into WebView JavaScript.
 
 ### In-app language and email locale
 
