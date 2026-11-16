@@ -177,7 +177,7 @@ test('recovery state and new-device wait are committed with their email outbox r
     await store.recoveryCancelSet('@recovery-outbox', 'old-cancel-hash', Date.now() + 60_000);
     await store.recoveryCancelWithOutbox('@recovery-outbox', 'restored-password-hash',
       (current) => ({ next: { ...current, reqStatus: 'cancelled' }, result: true }),
-      (tx) => queue.sendInTransaction(tx, { to: 'primary@example.test', templateId: 'recovery_cancelled', variables: { method: 'code' }, idempotencyKey: 'recovery-cancel-transaction-001' }));
+      (tx) => queue.sendInTransaction(tx, { to: 'primary@example.test', templateId: 'recovery_cancelled', variables: { method: 'code' }, locale: 'hy', idempotencyKey: 'recovery-cancel-transaction-001' }));
     assert.equal(await store.accountHash('@recovery-outbox'), 'restored-password-hash');
     assert.equal(await store.recoveryCancelGet('@recovery-outbox'), null);
 
@@ -185,7 +185,7 @@ test('recovery state and new-device wait are committed with their email outbox r
     const completedAt = await store.recoveryCompleteWithOutbox('@recovery-outbox', 'new-password-hash',
       (current) => ({ next: { ...current, reqStatus: 'completed', windowKeyResetAt: newExpiry }, result: newExpiry }),
       'new-cancel-hash',
-      (tx) => queue.sendInTransaction(tx, { to: 'primary@example.test', templateId: 'recovery_completed', variables: { cancelCode: 'RECOVERY-CANCEL' }, idempotencyKey: 'recovery-complete-transaction-001' }));
+      (tx) => queue.sendInTransaction(tx, { to: 'primary@example.test', templateId: 'recovery_completed', variables: { cancelCode: 'RECOVERY-CANCEL' }, locale: 'hy', idempotencyKey: 'recovery-complete-transaction-001' }));
     assert.equal(completedAt, newExpiry);
     assert.equal(await store.accountHash('@recovery-outbox'), 'new-password-hash');
     assert.equal((await store.recoveryCancelGet('@recovery-outbox')).codeHash, 'new-cancel-hash');
