@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, createHash, createHmac, hkdfSync, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHmac, hkdfSync, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import { renderEmailTemplate } from './email-templates.js';
 
 const MAX_PAYLOAD_BYTES = 256 * 1024;
@@ -70,6 +70,7 @@ export function createEmailDelivery({
   if (masterKey.length !== 32) throw new Error('email encryption key must be 32 bytes');
   const payloadKey = deriveSubkey(masterKey, 'payload-encryption');
   const fingerprintKey = deriveSubkey(masterKey, 'payload-fingerprint');
+  const idempotencyKeyHashKey = deriveSubkey(masterKey, 'idempotency-key-hash');
   if (!Number.isInteger(batchSize) || batchSize < 1 || batchSize > 100) throw new Error('email batchSize must be 1..100');
   if (!Number.isInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > 20) throw new Error('email maxAttempts must be 1..20');
   if (!Number.isInteger(pollIntervalMs) || pollIntervalMs < 250 || pollIntervalMs > 60_000) throw new Error('email pollIntervalMs must be 250..60000');
@@ -223,7 +224,7 @@ export function createEmailDelivery({
     const nowMs = Date.now();
     const expiryMs = expiresAt === undefined ? nowMs + rendered.ttlMs : Number(expiresAt);
     if (!Number.isFinite(expiryMs) || expiryMs <= nowMs || expiryMs > nowMs + 30 * 24 * 60 * 60_000) throw new Error('invalid email expiry');
-    const idempotencyHash = createHash('sha256').update(idempotencyKey).digest('hex');
+    const idempotencyHash = createHmac('sha256', idempotencyKeyHashKey).update(idempotencyKey).digest('hex');
     const payload = {
       to, subject: rendered.subject, text: rendered.text,
       templateId: templateId ?? 'legacy', templateVersion: rendered.templateVersion ?? 1, locale: rendered.locale ?? locale,
@@ -275,6 +276,7 @@ export function createEmailDelivery({
       masterKey.fill(0);
       payloadKey.fill(0);
       fingerprintKey.fill(0);
+      idempotencyKeyHashKey.fill(0);
     },
     async stats() {
       const { rows } = await pool.query(
