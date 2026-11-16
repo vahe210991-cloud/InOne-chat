@@ -48,7 +48,7 @@ These are values visibly present in the curated reference; this list is limited 
 
 ## Preview
 
-Open `email-delivery-preview.html` from the repository root using a local/Codespaces static web server. The gallery imports the actual backend template renderer and lets the owner switch all 13 template IDs between Armenian, Russian and English.
+Open the branch in GitHub Codespaces, start a terminal at the repository root and run `python3 -m http.server 8000`. Open the forwarded port 8000 and navigate to `/development/design/email-delivery-preview.html`. The gallery imports the actual backend template renderer and lets the owner switch all 13 template IDs between Armenian, Russian and English. This preview does not require a local clone.
 
 ## Approval gate
 
