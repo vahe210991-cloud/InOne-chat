@@ -37,8 +37,6 @@ class InOneSession extends ChangeNotifier {
             (() => _storage.delete(key: _mlsUserIdKey)),
         _readLocale = readLocale ?? (() => _storage.read(key: _localeKey)),
         _writeLocale = writeLocale ??
-            ((value) => _storage.write(key: _localeKey, value: value)),
-        _writeLocale = writeLocale ??
             ((value) => _storage.write(key: _localeKey, value: value));
 
   static const _deviceIdKey = 'inone.device_id';
