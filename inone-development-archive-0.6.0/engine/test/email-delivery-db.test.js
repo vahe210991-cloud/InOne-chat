@@ -151,7 +151,7 @@ test('recovery state and new-device wait are committed with their email outbox r
       next: { ...current, reqStatus: 'pending', reqStartedAt: Date.now(), reqExpiresAt: Date.now() + 3_600_000, reqCodeHash: 'recovery-code-hash' },
       result: true,
     }), (tx) => queue.sendInTransaction(tx, {
-      to: 'recovery@example.test', templateId: 'registration_code', variables: { code: 'RECOVERY-LINK' },
+      to: 'recovery@example.test', templateId: 'registration_code', variables: { code: 'RECOVERY-LINK' }, locale: 'hy',
       idempotencyKey: 'recovery-transaction-001',
     }));
     assert.equal(recoveryIssued, true);
@@ -161,7 +161,7 @@ test('recovery state and new-device wait are committed with their email outbox r
       userId: '@recovery-outbox', deviceId: 'new-device', label: 'New device', platform: 'test',
       activateAt: Date.now() + 48 * 60 * 60_000, cancelHash: 'cancel-hash', createdAt: Date.now(),
     }, (tx) => queue.sendInTransaction(tx, {
-      to: 'recovery@example.test', templateId: 'registration_code', variables: { code: 'DEVICE-CODE' },
+      to: 'recovery@example.test', templateId: 'registration_code', variables: { code: 'DEVICE-CODE' }, locale: 'hy',
       idempotencyKey: 'device-wait-transaction-001',
     }));
     assert.equal(wait, 'ok');
