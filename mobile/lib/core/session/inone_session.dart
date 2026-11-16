@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show Platform;
 import 'dart:math';
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -131,7 +130,6 @@ class InOneSession extends ChangeNotifier {
           _accessToken = snapshot;
           _mlsBridge = bridge;
           _mlsError = null;
-          await _primeNativeMls(bridge);
         } catch (error) {
           _mlsError = 'Saved MLS session could not be restored: $error';
           try {
@@ -145,33 +143,10 @@ class InOneSession extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Publishes key packages, accepts pending welcomes, syncs encrypted rooms,
-  /// and flushes the Rust-owned text outbox. Failures are surfaced as diagnostics
-  /// without rolling back an otherwise successful session handoff.
-  Future<void> _primeNativeMls(MlsSessionBridge bridge) async {
-    String? failure;
-    try {
-      await bridge.ensureKeyPackages(10);
-    } catch (error) {
-      failure = 'MLS key-package publication is pending: $error';
-    }
-    try {
-      await bridge.sync();
-    } catch (error) {
-      failure = 'MLS room synchronization is pending: $error';
-    }
-    try {
-      await bridge.flushOutbox();
-    } catch (error) {
-      failure = 'MLS offline outbox flush is pending: $error';
-    }
-    _mlsError = failure;
-    notifyListeners();
-  }
-
   Future<Map<String, dynamic>> login({
     required String email,
     required String password,
+    String? identityCode,
   }) {
     if (_loggingOut) {
       return Future<Map<String, dynamic>>.error(const ApiException(
@@ -188,7 +163,11 @@ class InOneSession extends ChangeNotifier {
         retryable: false,
       ));
     }
-    final operation = _loginOnce(email: email, password: password);
+    final operation = _loginOnce(
+      email: email,
+      password: password,
+      identityCode: identityCode,
+    );
     _loginInFlight = operation;
     return operation.whenComplete(() {
       if (identical(_loginInFlight, operation)) _loginInFlight = null;
@@ -198,6 +177,7 @@ class InOneSession extends ChangeNotifier {
   Future<Map<String, dynamic>> _loginOnce({
     required String email,
     required String password,
+    String? identityCode,
   }) async {
     await initialize();
     final platform = Platform.isIOS
@@ -214,6 +194,8 @@ class InOneSession extends ChangeNotifier {
         'deviceId': _deviceId,
         'label': 'InOne Flutter test client',
         'platform': platform,
+        if (identityCode != null && identityCode.trim().isNotEmpty)
+          'identityCode': identityCode.trim(),
       },
     );
     final safeResult = Map<String, dynamic>.from(result)
@@ -394,7 +376,6 @@ class InOneSession extends ChangeNotifier {
       _accessToken = snapshot;
       _mlsError = null;
       notifyListeners();
-      await _primeNativeMls(target);
     } catch (_) {
       if (nativeOpened) {
         try {
@@ -600,28 +581,6 @@ class InOneSession extends ChangeNotifier {
   /// Encrypts and sends through OpenMLS. There is deliberately no HTTP/plaintext fallback.
   Future<String> sendMlsText(String roomId, String plaintext) async =>
       _requireMlsBridge().sendText(roomId, plaintext);
-
-  /// Encrypts and uploads an attachment through the native Rust MLS client.
-  /// The manifest key/nonce never cross this Dart boundary.
-  Future<String> sendMlsAttachment({
-    required String roomId,
-    required String name,
-    required String mimeType,
-    required Uint8List plaintext,
-    required String clientMessageId,
-  }) async {
-    return _requireMlsBridge().sendAttachment(
-      roomId: roomId,
-      name: name,
-      mimeType: mimeType,
-      plaintext: plaintext,
-      clientMessageId: clientMessageId,
-    );
-  }
-
-  /// Downloads and decrypts an attachment in Rust; only verified plaintext bytes return to Dart.
-  Future<Uint8List> downloadMlsAttachment(String fileId) async =>
-      _requireMlsBridge().downloadAttachment(fileId);
 
   /// Persists an encrypted MLS message in the Rust-owned offline outbox.
   Future<String> enqueueMlsText(String roomId, String plaintext) async =>
