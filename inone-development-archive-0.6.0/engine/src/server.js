@@ -209,6 +209,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
   const mailer = externalMailer ?? { send: async ({ to, subject, text, html }) => { outbox.push({ to, subject, text, html }); } };
   const mailTo = (to, subject, text, idempotencyKey = null, templateId = null, variables = {}, locale, transactionClient = null) => {
     if (!templateId) throw new Error('email templateId is required');
+    if (locale === undefined) throw new Error('email locale is required');
     const resolvedLocale = resolveEmailLocale(locale);
     if (!resolvedLocale) throw new Error('email locale must be hy, ru or en');
     const rendered = renderEmailTemplate(templateId, variables, resolvedLocale);
@@ -222,6 +223,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
   // Каждый адрес — отдельная delivery. В transaction callback получатели передаются заранее,
   // чтобы не занимать дополнительные pool connections поверх открытой транзакции.
   const mailToRecipients = async (recipients, subject, text, templateId = null, variables = {}, transactionClient = null, locale) => {
+    if (locale === undefined) throw new Error('email locale is required');
     const resolvedLocale = resolveEmailLocale(locale);
     if (!resolvedLocale) throw new Error('email locale must be hy, ru or en');
     const uniqueRecipients = [...new Set(recipients.filter(Boolean))];
