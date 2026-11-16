@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import { createEmailDelivery, parseEmailEncryptionKey } from '../src/email-delivery.js';
 import { testDatabase } from './helpers.js';
+import { createStore } from '../src/store.js';
 
 async function waitFor(fn, timeoutMs = 5000) {
   const started = Date.now();
@@ -92,6 +93,39 @@ test('постоянная SMTP-ошибка переводит доставку
     assert.equal(row.last_error_code, 'auth');
     assert.ok(!JSON.stringify(logs).includes('private-recipient@example.test'));
     assert.ok(!JSON.stringify(logs).includes('SECRET-CODE-998811'));
+  } finally {
+    await queue.stop();
+    await db.close();
+  }
+});
+
+test('код и durable email outbox коммитятся и откатываются одной PostgreSQL-транзакцией', async () => {
+  const db = await testDatabase();
+  const store = createStore({ pool: db.pool, pinPepper: 'atomic-outbox-test-pepper-0123456789' });
+  const queue = createEmailDelivery({ pool: db.pool, smtpMailer: fakeSmtp(), encryptionKey: randomBytes(32) });
+  try {
+    await assert.rejects(store.emailCodeUpdateWithOutbox('rollback@example.test', () => ({
+      next: { codeHash: 'code-hash', codeAttempts: 0, codeExpiresAt: Date.now() + 600_000, tokenHash: null, tokenExpiresAt: 0 },
+      result: true,
+    }), async (tx) => {
+      await queue.sendInTransaction(tx, {
+        to: 'rollback@example.test', subject: 'Code', text: 'ROLLBACK-CODE',
+        idempotencyKey: 'atomic-rollback-001',
+      });
+      throw new Error('force transaction rollback');
+    }), /force transaction rollback/);
+    assert.equal((await db.pool.query("SELECT count(*)::int AS count FROM email_codes WHERE email = 'rollback@example.test'")).rows[0].count, 0);
+    assert.equal((await db.pool.query("SELECT count(*)::int AS count FROM email_deliveries")).rows[0].count, 0);
+
+    await store.emailCodeUpdateWithOutbox('commit@example.test', () => ({
+      next: { codeHash: 'committed-code-hash', codeAttempts: 0, codeExpiresAt: Date.now() + 600_000, tokenHash: null, tokenExpiresAt: 0 },
+      result: true,
+    }), (tx) => queue.sendInTransaction(tx, {
+      to: 'commit@example.test', subject: 'Code', text: 'COMMIT-CODE',
+      idempotencyKey: 'atomic-commit-001',
+    }));
+    assert.equal((await db.pool.query("SELECT code_hash FROM email_codes WHERE email = 'commit@example.test'")).rows[0].code_hash, 'committed-code-hash');
+    assert.equal((await db.pool.query("SELECT count(*)::int AS count FROM email_deliveries")).rows[0].count, 1);
   } finally {
     await queue.stop();
     await db.close();
