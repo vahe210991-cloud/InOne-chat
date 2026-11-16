@@ -157,7 +157,30 @@ test('recovery state and new-device wait are committed with their email outbox r
     }));
     assert.equal(wait, 'ok');
     assert.equal((await store.deviceWaitGet('@recovery-outbox', 'new-device')).activateAt > Date.now(), true);
-    assert.equal((await db.pool.query('SELECT count(*)::int AS count FROM email_deliveries')).rows[0].count, 2);
+
+    await store.backupEmailSaveWithOutbox('@recovery-outbox', 'backup@example.test', Date.now(), (tx) =>
+      queue.sendInTransaction(tx, { to: 'primary@example.test', subject: 'Backup added', text: 'NOTICE', idempotencyKey: 'backup-save-transaction-001' }));
+    assert.equal((await store.backupEmailGet('@recovery-outbox')).email, 'backup@example.test');
+    await store.backupEmailRemoveWithOutbox('@recovery-outbox', (tx) =>
+      queue.sendInTransaction(tx, { to: 'primary@example.test', subject: 'Backup removed', text: 'NOTICE', idempotencyKey: 'backup-remove-transaction-001' }));
+    assert.equal(await store.backupEmailGet('@recovery-outbox'), null);
+
+    await store.recoveryCancelSet('@recovery-outbox', 'old-cancel-hash', Date.now() + 60_000);
+    await store.recoveryCancelWithOutbox('@recovery-outbox', 'restored-password-hash',
+      (current) => ({ next: { ...current, reqStatus: 'cancelled' }, result: true }),
+      (tx) => queue.sendInTransaction(tx, { to: 'primary@example.test', subject: 'Recovery cancelled', text: 'NOTICE', idempotencyKey: 'recovery-cancel-transaction-001' }));
+    assert.equal(await store.accountHash('@recovery-outbox'), 'restored-password-hash');
+    assert.equal(await store.recoveryCancelGet('@recovery-outbox'), null);
+
+    const newExpiry = Date.now() + 48 * 60 * 60_000;
+    const completedAt = await store.recoveryCompleteWithOutbox('@recovery-outbox', 'new-password-hash',
+      (current) => ({ next: { ...current, reqStatus: 'completed', windowKeyResetAt: newExpiry }, result: newExpiry }),
+      'new-cancel-hash',
+      (tx) => queue.sendInTransaction(tx, { to: 'primary@example.test', subject: 'Recovery completed', text: 'NOTICE', idempotencyKey: 'recovery-complete-transaction-001' }));
+    assert.equal(completedAt, newExpiry);
+    assert.equal(await store.accountHash('@recovery-outbox'), 'new-password-hash');
+    assert.equal((await store.recoveryCancelGet('@recovery-outbox')).codeHash, 'new-cancel-hash');
+    assert.equal((await db.pool.query('SELECT count(*)::int AS count FROM email_deliveries')).rows[0].count, 6);
   } finally {
     await queue.stop();
     await db.close();
