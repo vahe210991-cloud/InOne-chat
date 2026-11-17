@@ -98,6 +98,8 @@ jobs:
           fi
       - name: Generate Android and iOS platform projects
         run: flutter create --platforms=android,ios --project-name inone_mobile --org com.inone .
+      - name: Configure native recovery deep links
+        run: node tool/prepare_recovery_deep_links.mjs
       - name: Remove generated template test
         run: rm -f test/widget_test.dart
       - name: Verify native-only mobile runtime
