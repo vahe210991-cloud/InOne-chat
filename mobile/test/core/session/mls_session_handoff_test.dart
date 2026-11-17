@@ -377,16 +377,17 @@ void main() {
       }
       return http.Response('{}', 404);
     });
+    final bridge = _FakeMlsSessionBridge()..failOpen = true;
     final session = InOneSession(
       baseUrl: 'https://api.inone.test',
       httpClient: httpClient,
+      nativeMlsBridge: bridge,
       readDeviceId: () async => 'device-1',
       writeDeviceId: (_) async {},
       readMlsUserId: () async => null,
       writeMlsUserId: (_) async {},
       deleteMlsUserId: () async {},
     );
-    final bridge = _FakeMlsSessionBridge()..failOpen = true;
 
     await expectLater(
       session.login(email: 'alice@example.test', password: 'not-used-in-test'),
@@ -518,31 +519,3 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
   Future<int?> localEpoch(String roomId) async => null;
 
   @override
-  Future<List<String>> membersOf(String roomId) async => const [];
-
-  @override
-  Future<void> revokeDevice(String deviceId) async {}
-
-  @override
-  Future<int> removeRevokedDevices() async => 0;
-
-  @override
-  Future<String> accessTokenSnapshot() async => accessToken;
-
-  @override
-  Future<String> refreshSession() async {
-    refreshCalls++;
-    accessToken = 'access-2';
-    return accessToken;
-  }
-
-  @override
-  Future<void> logout() async {
-    logoutCalls++;
-  }
-
-  @override
-  Future<void> close() async {
-    closeCalls++;
-  }
-}
