@@ -22,7 +22,7 @@ void main() {
         return null;
     }
   });
-  addTearDown(() =>
+  tearDown(() =>
       binaryMessenger.setMockMethodCallHandler(secureStorageChannel, null));
 
   test('registration ticket stays in host memory across confirm and register',
