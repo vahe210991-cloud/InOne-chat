@@ -6,8 +6,7 @@ const isValidEmailEncryptionKey = (value) => {
   if (/^[a-f0-9]{64}$/i.test(value)) return true;
   if (!/^[A-Za-z0-9+/]+={0,2}$/.test(value)) return false;
   const decoded = Buffer.from(value, 'base64');
-  return decoded.length === 32
-    && decoded.toString('base64').replace(/=+$/, '') === value.replace(/=+$/, '');
+  return decoded.length === 32 && decoded.toString('base64') === value;
 };
 
 export function loadConfig(env = process.env) {
@@ -62,7 +61,6 @@ export function loadConfig(env = process.env) {
     // Production требует SMTP transport и зашифрованную PostgreSQL queue; memory transport запрещён.
     if (config.mailTransport !== 'smtp') errors.push('production needs a real mail transport: set INONE_MAIL_TRANSPORT=smtp');
     if (config.mailTransport === 'smtp' && !config.smtpRequireTls) errors.push('production SMTP must require TLS (INONE_SMTP_REQUIRE_TLS)');
-    if (config.mailTransport === 'smtp' && !isValidEmailEncryptionKey(config.emailEncryptionKey)) errors.push('INONE_EMAIL_ENCRYPTION_KEY must be 32 bytes (64 hex characters or canonical base64)');
     if (!config.filesDir) errors.push('INONE_FILES_DIR is required in production: files kept in memory are lost on restart');
     if (config.docsSecret.length < 32) errors.push('INONE_DOCS_SECRET must be at least 32 characters in production');
     if (config.testUi) errors.push('INONE_TEST_UI must not be set in production');
