@@ -31,7 +31,7 @@ async function call(base, method, path, { body, token } = {}) {
 
 /** Код из письма о подтверждении почты. */
 function codeFor(srv, email) {
-  const mail = srv.mailbox(email).filter((m) => m.subject === 'Код подтверждения InOne').at(-1);
+  const mail = srv.mailbox(email).filter((m) => m.templateId === 'registration_code').at(-1);
   return mail.text.match(/\b(\d{6})\b/)[1];
 }
 
@@ -48,7 +48,7 @@ test('I1: регистрация по почте — код на почту, н�
   const { srv, base, stop } = await start();
   try {
     await call(base, 'POST', '/register/email', { body: { email: 'anna@example.test', locale: 'ru' } });
-    assert.equal(srv.mailbox('anna@example.test').at(-1).subject, 'Код подтверждения InOne');
+    assert.equal(srv.mailbox('anna@example.test').at(-1).templateId, 'registration_code');
     const wrong = await call(base, 'POST', '/register/email/confirm', { body: { email: 'anna@example.test', code: '000000' } });
     assert.equal(wrong.status, 403, 'неверный код не даёт токен');
     const confirmed = await call(base, 'POST', '/register/email/confirm', {
