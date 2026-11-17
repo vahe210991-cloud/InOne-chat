@@ -141,6 +141,38 @@ test('подпись адреса защищает размер и контро�
   }
 });
 
+test('подтверждение загрузки привязано к устройству, создавшему резервирование', async () => {
+  const s = await start();
+  try {
+    const other = await ChatClient.loginFromNewDevice(s.base, ALICE, PW, 'A_OTHER', s.alice);
+    const bytes = randomBytes(120);
+    const created = (await announce(s, s.alice.token, bytes)).json;
+    assert.equal((await putTo(created.uploadUrl, bytes)).status, 200);
+    assert.equal((await completeFile(s, other.token, created.fileId)).status, 403,
+      'другое активное устройство не может завершить чужую загрузку');
+    assert.equal((await completeFile(s, s.alice.token, created.fileId)).status, 200,
+      'резервировавшее устройство может завершить загрузку');
+  } finally {
+    await s.stop();
+  }
+});
+
+test('отзыв устройства немедленно аннулирует незавершённую ссылку загрузки', async () => {
+  const s = await start();
+  try {
+    const other = await ChatClient.loginFromNewDevice(s.base, ALICE, PW, 'A_OTHER', s.alice);
+    const bytes = randomBytes(140);
+    const created = (await announce(s, other.token, bytes)).json;
+    await s.alice.raw('DELETE', '/devices/A_OTHER');
+    assert.equal((await putTo(created.uploadUrl, bytes)).status, 403,
+      'подписанная ссылка больше не работает после отзыва устройства');
+    assert.equal((await completeFile(s, other.token, created.fileId)).status, 401,
+      'отозванное устройство не может завершить загрузку');
+  } finally {
+    await s.stop();
+  }
+});
+
 test('ссылка загрузки истекает через 15 минут', async () => {
   const s = await start();
   try {
