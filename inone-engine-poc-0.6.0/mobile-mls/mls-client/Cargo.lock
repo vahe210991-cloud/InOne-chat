@@ -1121,8 +1121,8 @@ name = "mls-client"
 version = "0.1.0"
 dependencies = [
  "aes",
- "ghash",
  "aes-gcm",
+ "ghash",
  "base64",
  "openmls",
  "openmls_basic_credential",
