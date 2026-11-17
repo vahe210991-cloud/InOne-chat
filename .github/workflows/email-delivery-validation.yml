@@ -2,7 +2,7 @@ name: Email delivery and PostgreSQL validation
 # This workflow is part of the synchronized exact-HEAD CI gate for this PR.
 
 on:
-  # Validate every stacked PR head directly; prior-head successes are not reused after branch updates.
+  # Validate every PR head, including PRs whose changes are outside the engine tree.
   push:
     branches:
       - feature/email-delivery-service-2026-11-16-b1
@@ -13,9 +13,7 @@ on:
       - "inone-development-archive-0.6.0/engine/**"
       - ".github/workflows/email-delivery-validation.yml"
   pull_request:
-    paths:
-      - "inone-development-archive-0.6.0/engine/**"
-      - ".github/workflows/email-delivery-validation.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read
