@@ -13,7 +13,7 @@ const fixtures = {
   new_device_wait: { activateAt: '2026-11-17T12:00:00.000Z', code: '482913' },
   recovery_code: { code: '482913' },
   recovery_requested: {},
-  recovery_confirmation_link: { url: 'https://inone.example/recovery/confirm?token=opaque' },
+  recovery_confirmation_link: { url: 'https://inone.example/recovery/confirm?token=opaque', appUrl: 'inone://recovery/confirm?user=alice%40example.test&token=opaque_123&locale=hy' },
   recovery_cancelled: { method: 'code' },
   recovery_completed: { cancelCode: '482913' },
 };
@@ -23,7 +23,10 @@ test('все почтовые шаблоны имеют HY/RU/EN вариант�
   assert.equal(ids.length, 13);
   for (const id of ids) {
     for (const locale of ['hy', 'ru', 'en']) {
-      const rendered = renderEmailTemplate(id, fixtures[id], locale);
+      const values = id === 'recovery_confirmation_link'
+        ? { ...fixtures[id], appUrl: `inone://recovery/confirm?user=alice%40example.test&token=opaque_123&locale=${locale}` }
+        : fixtures[id];
+      const rendered = renderEmailTemplate(id, values, locale);
       assert.equal(rendered.templateId, id);
       assert.equal(rendered.templateVersion, 2);
       assert.equal(rendered.locale, locale);
@@ -51,7 +54,7 @@ test('неизвестный шаблон и недостающие переме
 });
 
 test('управляющие символы не допускаются в значениях шаблона', () => {
-  assert.throws(() => renderEmailTemplate('recovery_confirmation_link', { url: 'https://example.test/\r\nBcc:x' }), /unsafe email template variable/);
+  assert.throws(() => renderEmailTemplate('recovery_confirmation_link', { url: 'https://example.test/\r\nBcc:x', appUrl: fixtures.recovery_confirmation_link.appUrl }), /unsafe email template variable/);
 });
 
 test('step-up action names are localized from stable action identifiers', () => {
@@ -66,10 +69,14 @@ test('HTML templates escape untrusted variables and only render HTTPS recovery a
   assert.ok(!injected.html.includes('<img src=x'));
   assert.ok(injected.html.includes('&lt;img src=x onerror=alert(1)&gt;'));
   assert.ok(injected.html.includes('Google կամ Apple հաշվի անջատում'));
-  assert.throws(() => renderEmailTemplate('recovery_confirmation_link', { url: 'javascript:alert(1)' }, 'hy'), /safe HTTPS URL/);
-  assert.throws(() => renderEmailTemplate('recovery_confirmation_link', { url: 'https://user:pass@example.test/recovery' }, 'hy'), /safe HTTPS URL/);
-  assert.throws(() => renderEmailTemplate('recovery_confirmation_link', { url: 'https://example.test/\nmalicious' }, 'hy'), /unsafe email template variable|safe HTTPS URL/);
-  const safeUrl = renderEmailTemplate('recovery_confirmation_link', { url: 'https://inone.example/confirm?token=a%26b' }, 'hy');
-  assert.ok(safeUrl.html.includes('href="https://inone.example/confirm?token=a%26b"'));
+  const appUrl = 'inone://recovery/confirm?user=alice%40example.test&token=opaque_123&locale=hy';
+  assert.throws(() => renderEmailTemplate('recovery_confirmation_link', { url: 'javascript:alert(1)', appUrl }, 'hy'), /safe HTTPS URL/);
+  assert.throws(() => renderEmailTemplate('recovery_confirmation_link', { url: 'https://user:pass@example.test/recovery', appUrl }, 'hy'), /safe HTTPS URL/);
+  assert.throws(() => renderEmailTemplate('recovery_confirmation_link', { url: 'https://example.test/\nmalicious', appUrl }, 'hy'), /unsafe email template variable|safe HTTPS URL/);
+  assert.throws(() => renderEmailTemplate('recovery_confirmation_link', { url: 'https://inone.example/confirm', appUrl: 'https://evil.example/recovery/confirm?user=alice&token=opaque_123&locale=hy' }, 'hy'), /InOne recovery deep link/);
+  assert.throws(() => renderEmailTemplate('recovery_confirmation_link', { url: 'https://inone.example/confirm', appUrl }, 'ru'), /locale must match email locale/);
+  const safeUrl = renderEmailTemplate('recovery_confirmation_link', { url: 'https://inone.example/confirm?token=a%26b', appUrl }, 'hy');
+  assert.ok(safeUrl.html.includes('href="inone://recovery/confirm?user=alice%40example.test&amp;token=opaque_123&amp;locale=hy"'));
+  assert.ok(safeUrl.html.includes('https://inone.example/confirm?token=a%26b'));
   assert.ok(safeUrl.html.includes('Հաստատել հաշվի վերականգնումը'));
 });
