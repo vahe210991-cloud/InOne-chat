@@ -22,6 +22,7 @@ void main() {
         return null;
     }
   });
+  addTearDown(() => secureStorageChannel.setMockMethodCallHandler(null));
 
   test('concurrent initialize calls share one device identity creation', () async {
     final readGate = Completer<String?>();
