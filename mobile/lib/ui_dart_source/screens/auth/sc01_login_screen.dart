@@ -131,7 +131,7 @@ class _InOneLoginScreenState extends State<InOneLoginScreen> with InOneActionSta
         if (widget.onLocaleChanged != null)
           Center(
             child: PopupMenuButton<String>(
-              tooltip: 'Язык интерфейса',
+              tooltip: 'Язык писем',
               onSelected: widget.onLocaleChanged,
               itemBuilder: (context) => [
                 PopupMenuItem(
