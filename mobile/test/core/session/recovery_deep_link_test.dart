@@ -37,7 +37,7 @@ void main() {
     test('rejects control characters, malformed tokens and oversized routes', () {
       expect(RecoveryDeepLink.parse('inone://recovery/confirm?user=a%0Aadmin&token=abc'), isNull);
       expect(RecoveryDeepLink.parse('inone://recovery/confirm?user=a&token=abc%20def'), isNull);
-      expect(RecoveryDeepLink.parse('x' * 2049), isNull);
+      expect(RecoveryDeepLink.parse(List.filled(2049, 'x').join()), isNull);
     });
 
     test('falls back to Armenian for an unsupported locale', () {
