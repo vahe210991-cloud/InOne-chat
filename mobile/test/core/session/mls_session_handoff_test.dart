@@ -12,7 +12,9 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   const secureStorageChannel =
       MethodChannel('plugins.it_nomads.com/flutter_secure_storage');
-  secureStorageChannel.setMockMethodCallHandler((call) async {
+  final binaryMessenger =
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+  binaryMessenger.setMockMethodCallHandler(secureStorageChannel, (call) async {
     switch (call.method) {
       case 'containsKey':
         return false;
@@ -22,7 +24,8 @@ void main() {
         return null;
     }
   });
-  addTearDown(() => secureStorageChannel.setMockMethodCallHandler(null));
+  addTearDown(() =>
+      binaryMessenger.setMockMethodCallHandler(secureStorageChannel, null));
 
   test('concurrent initialize calls share one device identity creation', () async {
     final readGate = Completer<String?>();
