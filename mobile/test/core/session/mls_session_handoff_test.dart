@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -679,6 +680,20 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
 
   @override
   Future<String> enqueueText(String roomId, String plaintext) async => 'local-1';
+
+  @override
+  Future<String> sendAttachment({
+    required String roomId,
+    required String name,
+    required String mimeType,
+    required Uint8List plaintext,
+    required String clientMessageId,
+  }) async =>
+      throw UnsupportedError('Attachments are not exercised by this session test');
+
+  @override
+  Future<Uint8List> downloadAttachment(String fileId) async =>
+      throw UnsupportedError('Attachments are not exercised by this session test');
 
   @override
   Future<List<MlsIncomingMessage>> sync() async => const [];
