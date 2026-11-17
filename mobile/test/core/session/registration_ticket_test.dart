@@ -43,6 +43,13 @@ void main() {
       httpClient: client,
       readDeviceId: () async => 'device-1',
       writeDeviceId: (_) async {},
+      readMlsUserId: () async => null,
+      writeMlsUserId: (_) async {},
+      deleteMlsUserId: () async {},
+      readLocale: () async => null,
+      writeLocale: (_) async {},
+      readLocaleSyncPending: () async => 'false',
+      writeLocaleSyncPending: (_) async {},
     );
 
     final confirmation = await session.confirmEmailRegistration(
@@ -61,13 +68,14 @@ void main() {
     expect(registration['userId'], 'user-1');
     expect(registration.containsKey('token'), isFalse);
     expect(requests.map((request) => request.url.path),
-        ['/register/email/confirm', '/register', '/login']);
+        ['/register/email/confirm', '/register', '/login', '/profile']);
     final registerBody =
         jsonDecode(requests[1].body) as Map<String, dynamic>;
     expect(registerBody['registrationToken'], 'one-time-secret-ticket');
     expect(requests.take(2).every((request) =>
         !request.headers.containsKey('authorization')), isTrue);
-    expect(requests.last.headers.containsKey('authorization'), isFalse);
+    expect(requests.last.url.path, '/profile');
+    expect(requests.last.headers.containsKey('authorization'), isTrue);
     expect(session.isAuthenticated, isTrue);
 
     session.dispose();
