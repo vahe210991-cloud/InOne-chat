@@ -703,7 +703,7 @@ fn is_access_failure(err: &str) -> bool {
     matches!(code.parse::<u16>(), Ok(401 | 403 | 404))
 }
 
-fn is_retryable(err: &str) -> bool {
+/// Returns whether an MLS transport error is safe to retry.\npub fn is_retryable(err: &str) -> bool {
     if err.starts_with("сеть:") {
         return true;
     }
