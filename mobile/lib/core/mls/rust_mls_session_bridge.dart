@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:inone_mobile/src/rust/api/session.dart' as rust;
 import 'package:inone_mobile/src/rust/frb_generated.dart';
 import 'package:path_provider/path_provider.dart';
+import 'mls_session_bridge.dart';
 
 int _checkedNativeCount(BigInt value, String field) {
   if (value < BigInt.zero || value > BigInt.from(0x7fffffffffffffff)) {
@@ -11,8 +12,6 @@ int _checkedNativeCount(BigInt value, String field) {
   }
   return value.toInt();
 }
-
-import 'mls_session_bridge.dart';
 
 /// Production Flutter adapter for the generated flutter_rust_bridge API.
 ///
