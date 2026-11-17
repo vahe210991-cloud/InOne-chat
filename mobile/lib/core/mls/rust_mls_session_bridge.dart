@@ -50,7 +50,7 @@ class RustMlsSessionBridge implements MlsSessionBridge {
   }
 
   int _fromRustU64(BigInt value, String name) {
-    if (value < BigInt.zero || value > BigInt.from(0x7fffffffffffffff)) {
+    if (value.isNegative || value.bitLength > 63) {
       throw ArgumentError.value(value, name, 'does not fit in a Dart int');
     }
     return value.toInt();
