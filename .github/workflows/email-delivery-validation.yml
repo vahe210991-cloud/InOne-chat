@@ -71,3 +71,5 @@ jobs:
       - name: Audit production dependency vulnerabilities
         run: npm audit --omit=dev --audit-level=high
         working-directory: inone-development-archive-0.6.0/engine
+
+# Exact-head CI refresh: keep all required validation workflows active on this branch.

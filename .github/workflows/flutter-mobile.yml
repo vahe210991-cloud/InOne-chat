@@ -146,3 +146,5 @@ jobs:
           path: mobile/build/app/outputs/flutter-apk/app-debug.apk
           if-no-files-found: error
           retention-days: 14
+
+# Exact-head CI refresh: keep all required validation workflows active on this branch.
