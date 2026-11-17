@@ -215,9 +215,13 @@ void main() {
       writeLocaleSyncPending: (_) async {},
     );
 
-    await session.login(email: 'alice@example.test', password: 'not-used-in-test');
+    await expectLater(
+      session.login(email: 'alice@example.test', password: 'not-used-in-test'),
+      throwsA(isA<StateError>()),
+    );
 
-    expect(session.isAuthenticated, isTrue);
+    // The login must fail closed when Rust cannot accept refresh-token ownership.
+    expect(session.isAuthenticated, isFalse);
     expect(session.hasNativeMlsSession, isFalse);
     expect(session.mlsError, contains('MLS runtime could not be opened'));
     expect(session.userId, isNull);
