@@ -74,7 +74,8 @@ void main() {
     expect(registerBody['registrationToken'], 'one-time-secret-ticket');
     expect(requests.take(2).every((request) =>
         !request.headers.containsKey('authorization')), isTrue);
-    expect(requests.last.headers.containsKey('authorization'), isFalse);
+    expect(requests.last.url.path, '/profile');
+    expect(requests.last.headers.containsKey('authorization'), isTrue);
     expect(session.isAuthenticated, isTrue);
 
     session.dispose();
