@@ -389,7 +389,8 @@ void main() {
 
     final response = await session.request('GET', '/protected');
     expect(response['status'], 'ok');
-    expect(bridge.closeCalls, 0);
+    // A failed native open is explicitly closed to clean up any partial state.
+    expect(bridge.closeCalls, 1);
     session.dispose();
   });
 }
