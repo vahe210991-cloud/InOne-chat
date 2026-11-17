@@ -23,6 +23,10 @@ class InOneSession extends ChangeNotifier {
     Future<String?> Function()? readMlsUserId,
     Future<void> Function(String)? writeMlsUserId,
     Future<void> Function()? deleteMlsUserId,
+    Future<String?> Function()? readLocale,
+    Future<void> Function(String)? writeLocale,
+    Future<String?> Function()? readLocaleSyncPending,
+    Future<void> Function(bool)? writeLocaleSyncPending,
   })  : _httpClient = httpClient,
         _nativeMlsBridge = nativeMlsBridge,
         _readDeviceId = readDeviceId ?? (() => _storage.read(key: _deviceIdKey)),
@@ -32,10 +36,19 @@ class InOneSession extends ChangeNotifier {
         _writeMlsUserId = writeMlsUserId ??
             ((value) => _storage.write(key: _mlsUserIdKey, value: value)),
         _deleteMlsUserId = deleteMlsUserId ??
-            (() => _storage.delete(key: _mlsUserIdKey));
+            (() => _storage.delete(key: _mlsUserIdKey)),
+        _readLocale = readLocale ?? (() => _storage.read(key: _localeKey)),
+        _writeLocale = writeLocale ??
+            ((value) => _storage.write(key: _localeKey, value: value)),
+        _readLocaleSyncPending = readLocaleSyncPending ??
+            (() => _storage.read(key: _localePendingKey)),
+        _writeLocaleSyncPending = writeLocaleSyncPending ??
+            ((value) => _storage.write(key: _localePendingKey, value: value ? 'true' : 'false'));
 
   static const _deviceIdKey = 'inone.device_id';
   static const _mlsUserIdKey = 'inone.mls_user_id';
+  static const _localeKey = 'inone.app_locale';
+  static const _localePendingKey = 'inone.app_locale_pending';
   static const _storage = FlutterSecureStorage();
   static final _secureRandom = Random.secure();
 
@@ -47,12 +60,19 @@ class InOneSession extends ChangeNotifier {
   final Future<String?> Function() _readMlsUserId;
   final Future<void> Function(String) _writeMlsUserId;
   final Future<void> Function() _deleteMlsUserId;
+  final Future<String?> Function() _readLocale;
+  final Future<void> Function(String) _writeLocale;
+  final Future<String?> Function() _readLocaleSyncPending;
+  final Future<void> Function(bool) _writeLocaleSyncPending;
 
   String? _accessToken;
   String? _refreshToken;
   String? _deviceId;
   String? _userId;
   String? _savedMlsUserId;
+  String _locale = 'hy';
+  bool _localeSyncPending = false;
+  bool _localeSyncInFlight = false;
   Future<void>? _initializing;
   Future<void>? _adoptionInFlight;
   Future<Map<String, dynamic>>? _loginInFlight;
@@ -69,6 +89,7 @@ class InOneSession extends ChangeNotifier {
     httpClient: _httpClient,
   );
 
+  String get locale => _locale;
   String? get deviceId => _deviceId;
   String? get userId => _userId;
   bool get isAuthenticated => _accessToken != null && _accessToken!.isNotEmpty;
@@ -104,6 +125,11 @@ class InOneSession extends ChangeNotifier {
       await _writeDeviceId(id);
     }
     _deviceId = id;
+    final savedLocale = await _readLocale();
+    _localeSyncPending = (await _readLocaleSyncPending()) == 'true';
+    if (savedLocale != null && const ['hy', 'ru', 'en'].contains(savedLocale)) {
+      _locale = savedLocale;
+    }
 
     final savedUserId = await _readMlsUserId();
     _savedMlsUserId = savedUserId;
@@ -141,6 +167,7 @@ class InOneSession extends ChangeNotifier {
       }
     }
     notifyListeners();
+    if (isAuthenticated) await _syncLocaleAfterAuthentication();
   }
 
   Future<Map<String, dynamic>> login({
@@ -194,6 +221,7 @@ class InOneSession extends ChangeNotifier {
         'deviceId': _deviceId,
         'label': 'InOne Flutter test client',
         'platform': platform,
+        if (_localeSyncPending) 'locale': _locale,
         if (identityCode != null && identityCode.trim().isNotEmpty)
           'identityCode': identityCode.trim(),
       },
@@ -205,6 +233,10 @@ class InOneSession extends ChangeNotifier {
       ..remove('pollSecret')
       ..remove('approvalId');
     _acceptSession(result);
+    if (_localeSyncPending && isAuthenticated) {
+      await _writeLocaleSyncPending(false);
+      _localeSyncPending = false;
+    }
     // Do not return or display access/refresh tokens or device-approval
     // secrets to callers such as the API test panel.
     result['token'] = null;
@@ -223,10 +255,67 @@ class InOneSession extends ChangeNotifier {
         notifyListeners();
       }
     }
+    await _syncLocaleAfterAuthentication();
     return safeResult;
   }
 
-  Future<Map<String, dynamic>> startEmailRegistration(String email) =>
+  Future<void> setLocale(String locale) async {
+    if (!const ['hy', 'ru', 'en'].contains(locale)) {
+      throw ArgumentError.value(locale, 'locale', 'Supported locales: hy, ru, en');
+    }
+    await initialize();
+    final activeLogin = _loginInFlight;
+    if (activeLogin != null) await activeLogin;
+    if (isAuthenticated) {
+      final result = await request('PATCH', '/profile/locale', body: {'locale': locale});
+      if (result['locale'] != locale) {
+        throw const ApiException(code: 'locale_update_failed', statusCode: 502, retryable: true);
+      }
+      await _writeLocale(locale);
+      await _writeLocaleSyncPending(false);
+      _localeSyncPending = false;
+    } else {
+      await _writeLocale(locale);
+      await _writeLocaleSyncPending(true);
+      _localeSyncPending = true;
+    }
+    _locale = locale;
+    notifyListeners();
+  }
+
+  Future<void> _syncLocaleAfterAuthentication() async {
+    if (!isAuthenticated || _localeSyncInFlight) return;
+    _localeSyncInFlight = true;
+    try {
+      if (_localeSyncPending) {
+        final updated = await request('PATCH', '/profile/locale', body: {'locale': _locale});
+        if (updated['locale'] != _locale) {
+          throw const ApiException(code: 'locale_update_failed', statusCode: 502, retryable: true);
+        }
+        await _writeLocaleSyncPending(false);
+        _localeSyncPending = false;
+      } else {
+        final profile = await request('GET', '/profile');
+        final saved = profile['locale'];
+        if (saved is String && const ['hy', 'ru', 'en'].contains(saved)) {
+          _locale = saved;
+          await _writeLocale(saved);
+          notifyListeners();
+        }
+      }
+    } catch (_) {
+      if (_localeSyncPending) rethrow;
+    } finally {
+      _localeSyncInFlight = false;
+    }
+  }
+
+  Future<Map<String, dynamic>> startEmailRegistration(String email) async {
+    await initialize();
+    _registrationToken = null;
+    return _client.post('/register/email', authenticated: false,
+        body: {'email': email.trim(), 'locale': _locale});
+  }
       _client.post('/register/email',
           authenticated: false, body: {'email': email.trim()});
 
@@ -237,6 +326,7 @@ class InOneSession extends ChangeNotifier {
       _client.post('/register/email/confirm', authenticated: false, body: {
         'email': email.trim(),
         'code': code.trim(),
+        'locale': _locale,
       });
 
   Future<Map<String, dynamic>> registerAccount({
@@ -252,10 +342,14 @@ class InOneSession extends ChangeNotifier {
         'password': password,
         'nickname': nickname.trim(),
         if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
+        'locale': _locale,
       });
 
-  Future<Map<String, dynamic>> startRecovery(String email) =>
-      _client.post('/recovery/start', authenticated: false, body: {'email': email.trim()});
+  Future<Map<String, dynamic>> startRecovery(String email) async {
+    await initialize();
+    return _client.post('/recovery/start', authenticated: false,
+        body: {'email': email.trim(), 'locale': _locale});
+  }
 
   /// Confirms a recovery link only after the user explicitly taps SC-08.
   /// The GET preview endpoint is never called from the app.
@@ -275,7 +369,7 @@ class InOneSession extends ChangeNotifier {
     return _client.post(
       '/recovery/confirm',
       authenticated: false,
-      body: {'user': normalizedUserId, 'token': token},
+      body: {'user': normalizedUserId, 'token': token, 'locale': _locale},
     );
   }
 
@@ -303,7 +397,7 @@ class InOneSession extends ChangeNotifier {
       'code': code.trim(),
       'newPassword': newPassword,
       if (pin.isNotEmpty) 'pin': pin,
-      if (locale != null) 'locale': locale,
+      'locale': locale ?? _locale,
     });
   }
 
@@ -314,6 +408,7 @@ class InOneSession extends ChangeNotifier {
       _client.post('/recovery/cancel-by-code', authenticated: false, body: {
         'email': email.trim(),
         'code': code.trim(),
+        'locale': _locale,
       });
 
   Future<List<Map<String, dynamic>>> listDevices() async {
@@ -459,6 +554,16 @@ class InOneSession extends ChangeNotifier {
         statusCode: 409,
         retryable: false,
       );
+    }
+    if (authenticated && _localeSyncPending && path != '/profile/locale') {
+      await _syncLocaleAfterAuthentication();
+      if (_localeSyncPending) {
+        throw const ApiException(
+          code: 'locale_sync_pending',
+          statusCode: 503,
+          retryable: true,
+        );
+      }
     }
     final gate = _handoffGate;
     if (gate != null) await gate.future;
@@ -789,6 +894,12 @@ class InOneSession extends ChangeNotifier {
             await _deleteMlsUserId();
           }
         } finally {
+          try {
+            await _writeLocaleSyncPending(false);
+          } catch (_) {
+            // Locale preference remains local; logout must still clear credentials.
+          }
+          _localeSyncPending = false;
           _clearSession();
         }
       }
