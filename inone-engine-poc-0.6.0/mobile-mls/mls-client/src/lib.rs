@@ -420,6 +420,7 @@ fn insert_incoming_record(meta: &Connection, incoming: &Incoming) -> Result<(), 
     Ok(())
 }
 
+#[cfg(test)]
 fn persist_incoming_record(meta: &mut Connection, incoming: &Incoming) -> Result<(), String> {
     let tx = meta.transaction().map_err(text)?;
     insert_incoming_record(&tx, incoming)?;
@@ -1223,29 +1224,6 @@ impl Client {
         let group = self.groups.get_mut(room_id).ok_or("комната не создана на этом устройстве")?;
         group.mls = mls;
         Ok(())
-    }
-
-    fn merge_local_pending_commit(&mut self, room_id: &str) -> Result<(), String> {
-        let transaction = self.meta.transaction().map_err(text)?;
-        let result = {
-            let provider = DeviceProvider::new(&self.crypto, TransactionConnection(&transaction));
-            let group = self.groups.get_mut(room_id).ok_or("комната не создана на этом устройстве")?;
-            group.mls.merge_pending_commit(&provider).map_err(text)
-        };
-        match result {
-            Ok(()) => match transaction.commit() {
-                Ok(()) => Ok(()),
-                Err(error) => {
-                    self.reload_group(room_id)?;
-                    Err(text(error))
-                }
-            },
-            Err(error) => {
-                drop(transaction);
-                self.reload_group(room_id)?;
-                Err(error)
-            }
-        }
     }
 
     fn clear_local_pending_commit(&mut self, room_id: &str) -> Result<(), String> {
