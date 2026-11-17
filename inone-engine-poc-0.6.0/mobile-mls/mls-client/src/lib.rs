@@ -505,7 +505,7 @@ fn request(agent: &ureq::Agent, base: &str, token: &str, method: &str, path: &st
     let url = format!("{base}{path}");
     let mut req = agent.request(method, &url);
     if !token.is_empty() {
-        let authorization = Zeroizing::new(format!("Bearer {token}"));
+        let authorization = Zeroizing::new(format!("Bearer {}", token.as_str()));
         req = req.set("authorization", authorization.as_str());
     }
     let res = match body.as_mut() {
@@ -1257,7 +1257,7 @@ impl Client {
         let url = self.same_origin_url(raw_url)?;
         for attempt in 0..2 {
             let token = Zeroizing::new(self.tokens.lock().map_err(text)?.0.clone());
-            let authorization = Zeroizing::new(format!("Bearer {token}"));
+            let authorization = Zeroizing::new(format!("Bearer {}", token.as_str()));
             let response = self.agent.get(url.as_str())
                 .set("authorization", authorization.as_str())
                 .call();
@@ -1669,7 +1669,7 @@ impl Client {
                                                 room_id: room_id.to_string(),
                                                 event_id: event_id.to_string(),
                                             },
-                                            Some("application payload is not valid UTF-8"),
+                                            Some("application payload is not valid UTF-8".to_string()),
                                             None,
                                         ),
                                     }
@@ -1681,7 +1681,7 @@ impl Client {
                                 room_id: room_id.to_string(),
                                 event_id: event_id.to_string(),
                             },
-                            Some("MLS message is not an application message"),
+                            Some("MLS message is not an application message".to_string()),
                             None,
                         ),
                     };
@@ -2365,7 +2365,7 @@ impl Client {
         let server_epoch = self.server_epoch(room_id)?;
         let expected_epoch = i64::try_from(server_epoch)
             .map_err(|_| "MLS epoch exceeds the persistent message outbox range".to_string())?;
-        let persisted_message: Option<(Option<Vec<u8>>, Option<i64>)> = self.meta.query_row(
+        let persisted_message: (Option<Vec<u8>>, Option<i64>) = self.meta.query_row(
             "SELECT mls_message, mls_epoch FROM client_outbox WHERE local_id = ?1",
             [client_message_id],
             |row| Ok((row.get(0)?, row.get(1)?)),
@@ -2742,7 +2742,7 @@ impl Client {
         let server_epoch = self.server_epoch(room_id)?;
         let expected_epoch = i64::try_from(server_epoch)
             .map_err(|_| "MLS epoch exceeds the persistent attachment journal range".to_string())?;
-        let persisted_message: Option<(Option<Vec<u8>>, Option<i64>)> = self.meta.query_row(
+        let persisted_message: (Option<Vec<u8>>, Option<i64>) = self.meta.query_row(
             "SELECT mls_message, mls_epoch FROM client_attachment_outbox
              WHERE client_message_id = ?1 AND room_id = ?2 AND file_id = ?3",
             rusqlite::params![operation_id.as_str(), room_id, file_id],
