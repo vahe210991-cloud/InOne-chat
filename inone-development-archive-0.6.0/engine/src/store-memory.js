@@ -126,8 +126,8 @@ export function createMemoryStore({ pinPepper }) {
     activeDeviceCount: (userId) => [...devices.values()].filter((d) => d.userId === userId && !d.revoked).length,
     activeDevices: () => [...devices.values()].filter((d) => !d.revoked).map(copy),
     devicesOfUser: (userId) => [...devices.values()].filter((d) => d.userId === userId).map(copy),
-    createFile({ fileId, ownerId, roomId, kind, size, sha256, createdAt }) {
-      files.set(fileId, { fileId, ownerId, roomId, kind, size, sha256, status: 'pending', createdAt, completedAt: null });
+    createFile({ fileId, ownerId, ownerDeviceId = '', roomId, kind, size, sha256, createdAt }) {
+      files.set(fileId, { fileId, ownerId, ownerDeviceId, roomId, kind, size, sha256, status: 'pending', createdAt, completedAt: null });
     },
     getFile(fileId) {
       const f = files.get(fileId);
