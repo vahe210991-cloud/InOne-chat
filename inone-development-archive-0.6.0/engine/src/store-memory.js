@@ -126,10 +126,10 @@ export function createMemoryStore({ pinPepper }) {
     activeDeviceCount: (userId) => [...devices.values()].filter((d) => d.userId === userId && !d.revoked).length,
     activeDevices: () => [...devices.values()].filter((d) => !d.revoked).map(copy),
     devicesOfUser: (userId) => [...devices.values()].filter((d) => d.userId === userId).map(copy),
-    createFile({ fileId, ownerId, roomId, kind, size, sha256, createdAt }) {
-      files.set(fileId, { fileId, ownerId, roomId, kind, size, sha256, status: 'pending', createdAt, completedAt: null });
+    createFile({ fileId, ownerId, ownerDeviceId = '', roomId, kind, size, sha256, createdAt }) {
+      files.set(fileId, { fileId, ownerId, ownerDeviceId, roomId, kind, size, sha256, status: 'pending', createdAt, completedAt: null });
     },
-    reserveFile({ fileId, ownerId, roomId, kind, size, sha256, createdAt, pendingLimit, quotaBytes }) {
+    reserveFile({ fileId, ownerId, ownerDeviceId, roomId, kind, size, sha256, createdAt, pendingLimit, quotaBytes }) {
       if (!accounts.has(ownerId)) return { ok: false, reason: 'owner' };
       let orgId = null;
       if (roomId !== null) {
@@ -158,7 +158,7 @@ export function createMemoryStore({ pinPepper }) {
           if (orgBytes + size > orgQuota) return { ok: false, reason: 'org_quota' };
         }
       }
-      files.set(fileId, { fileId, ownerId, roomId, kind, size, sha256, status: 'pending', createdAt, completedAt: null });
+      files.set(fileId, { fileId, ownerId, ownerDeviceId, roomId, kind, size, sha256, status: 'pending', createdAt, completedAt: null });
       return { ok: true };
     },
     getFile(fileId) {
