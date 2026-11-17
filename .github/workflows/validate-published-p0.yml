@@ -6,7 +6,7 @@ on:
       - "inone-development-archive-0.6.0/engine/**"
       - ".github/workflows/validate-published-p0.yml"
   push:
-    branches: [main]
+    branches: [main, fix/email-ci-server-regex-2026-11-17]
     paths:
       - "inone-development-archive-0.6.0/engine/**"
       - ".github/workflows/validate-published-p0.yml"
@@ -163,3 +163,5 @@ jobs:
       - name: Run bridge tests
         working-directory: inone-development-archive-0.6.0/engine/mobile-mls/mls-bridge
         run: cargo test --locked --no-fail-fast
+
+# Exact-head P0 validation is enabled for this stacked PR branch.

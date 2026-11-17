@@ -145,7 +145,7 @@ fn sync_waits_out_a_short_outage_with_retries() {
     let mut alice = connect(&proxy.base, ALICE, PW, "A_PHONE", &db("alice-retry"), &keys).unwrap();
     proxy.set_online(false);
     let failed = alice.sync_retrying(2, Duration::from_millis(5)).unwrap_err();
-    assert!(!failed.trim().is_empty(), "сбой сети должен вернуть понятную ошибку");
+    assert!(failed.starts_with("сеть:"), "сбой сети должен иметь временную классификацию: {failed}");
     let flag = proxy.online.clone();
     thread::spawn(move || {
         thread::sleep(Duration::from_millis(80));
