@@ -69,6 +69,10 @@ void main() {
             deleteCalls++;
             savedUserId = null;
           },
+          readLocale: () async => null,
+          writeLocale: (_) async {},
+          readLocaleSyncPending: () async => 'false',
+          writeLocaleSyncPending: (_) async {},
         );
 
     final session = createSession();
@@ -118,6 +122,10 @@ void main() {
               deleteCalls++;
               savedUserId = null;
             },
+            readLocale: () async => null,
+            writeLocale: (_) async {},
+            readLocaleSyncPending: () async => 'false',
+            writeLocaleSyncPending: (_) async {},
           );
 
       final session = createSession();
