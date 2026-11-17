@@ -2744,7 +2744,7 @@ if (req.method === 'POST' && p === '/login') {
               return { next: out.next, result: out.issued };
             }, async (tx, wasIssued) => {
               if (!wasIssued) return;
-              const webLink = new URL('/recovery/confirm', `${publicUrl.replace(/\\/+$/, '')}/`);
+              const webLink = new URL('/recovery/confirm', `${publicUrl.replace(/\/+$/, '')}/`);
               webLink.searchParams.set('user', userId);
               webLink.searchParams.set('token', token);
               webLink.searchParams.set('locale', locale);
