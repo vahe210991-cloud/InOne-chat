@@ -119,3 +119,5 @@ jobs:
         run: cargo test --locked --no-fail-fast --manifest-path mobile/rust/Cargo.toml
 
 # Exact-head CI refresh: keep all required validation workflows active on this branch.
+
+# Exact-head CI refresh: run this validation on the synchronized branch head.
