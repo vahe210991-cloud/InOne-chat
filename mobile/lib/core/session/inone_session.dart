@@ -245,10 +245,11 @@ class InOneSession extends ChangeNotifier {
       try {
         await adoptMlsSession(native);
       } catch (error) {
-        // Authentication remains valid, but MLS stays disabled. There is no
-        // Megolm or plaintext messaging fallback.
         _mlsError = 'MLS runtime could not be opened: $error';
         notifyListeners();
+        // A mobile login is not usable until Rust has accepted ownership of
+        // the refresh token. Never continue with Dart-side token rotation.
+        rethrow;
       }
     }
     await _syncLocaleAfterAuthentication();
@@ -329,6 +330,28 @@ class InOneSession extends ChangeNotifier {
       '/recovery/start',
       authenticated: false,
       body: {'email': email.trim(), 'locale': _locale},
+    );
+  }
+
+  /// Confirms the one-time recovery link after an explicit user tap in the app.
+  /// The GET preview endpoint never mutates recovery state.
+  Future<Map<String, dynamic>> confirmRecoveryLink({
+    required String userId,
+    required String token,
+  }) async {
+    final normalizedUserId = userId.trim();
+    if (normalizedUserId.isEmpty || normalizedUserId.length > 256 ||
+        token.isEmpty || token.length > 1024) {
+      throw const ApiException(
+        code: 'invalid_recovery_link',
+        statusCode: 400,
+        retryable: false,
+      );
+    }
+    return _client.post(
+      '/recovery/confirm',
+      authenticated: false,
+      body: {'user': normalizedUserId, 'token': token},
     );
   }
 
@@ -518,13 +541,37 @@ class InOneSession extends ChangeNotifier {
       _mlsError = null;
       notifyListeners();
     } catch (_) {
-      if (!nativeOpened) {
+      if (nativeOpened) {
+        try {
+          await target.logout();
+        } catch (_) {
+          // Fall back to the ordinary API logout below if Rust could not confirm it.
+          try {
+            if (isAuthenticated) await _client.post('/logout');
+          } catch (_) {
+            // Credentials are still cleared locally below.
+          }
+        }
+      } else {
         try {
           await target.close();
         } catch (_) {
           // Preserve the original handoff error.
         }
+        try {
+          if (isAuthenticated) await _client.post('/logout');
+        } catch (_) {
+          // Credentials are still cleared locally below.
+        }
       }
+      _mlsBridge = null;
+      _savedMlsUserId = null;
+      try {
+        await _deleteMlsUserId();
+      } catch (_) {
+        // Never keep a resumable identity after an incomplete handoff.
+      }
+      _clearSession();
       rethrow;
     } finally {
       _handoffGate = null;

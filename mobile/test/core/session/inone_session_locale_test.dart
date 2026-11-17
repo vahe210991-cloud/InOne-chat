@@ -88,6 +88,61 @@ void main() {
     }
   });
 
+  test('authenticated locale changes are persisted through the profile API', () async {
+    String? savedLocale = 'ru';
+    var pendingLocaleSync = false;
+    Map<String, dynamic>? patchBody;
+    final client = MockClient((request) async {
+      if (request.url.path == '/login') {
+        return http.Response(
+          '{"token":"access","refreshToken":"refresh"}',
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+      if (request.url.path == '/profile') {
+        return http.Response(
+          '{"locale":"ru"}',
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+      if (request.url.path == '/profile/locale') {
+        patchBody = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response(
+          jsonEncode({'locale': patchBody!['locale']}),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+      return http.Response('{}', 404, headers: {'content-type': 'application/json'});
+    });
+    final session = InOneSession(
+      baseUrl: 'https://api.inone.test',
+      httpClient: client,
+      readDeviceId: () async => 'device-authenticated-locale',
+      writeDeviceId: (_) async {},
+      readMlsUserId: () async => null,
+      writeMlsUserId: (_) async {},
+      deleteMlsUserId: () async {},
+      readLocale: () async => savedLocale,
+      writeLocale: (value) async { savedLocale = value; },
+      readLocaleSyncPending: () async => pendingLocaleSync ? 'true' : 'false',
+      writeLocaleSyncPending: (value) async { pendingLocaleSync = value; },
+    );
+    try {
+      await session.login(email: 'user@example.test', password: 'long-password');
+      expect(session.locale, 'ru');
+      await session.setLocale('hy');
+      expect(patchBody, {'locale': 'hy'});
+      expect(savedLocale, 'hy');
+      expect(session.locale, 'hy');
+      expect(pendingLocaleSync, isFalse);
+    } finally {
+      session.dispose();
+    }
+  });
+
   test('recovery operations carry the currently selected interface locale', () async {
     String? savedLocale;
     var pendingLocaleSync = false;

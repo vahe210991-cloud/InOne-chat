@@ -1,3 +1,21 @@
+### 2026-11-16 — CI findings after first repair run
+
+- Backend Node suite on PR #67 executed 395 tests: 391 passed, 1 failed, 3 skipped. The remaining failure was an error-message compatibility assertion in `config.test.js`; strict shared key validation was correct, but its message did not preserve the established phrase `must be 32 bytes`. Updated the message without weakening validation.
+- Flutter validation confirmed the 73-screen catalogue and imported all approved UI assets (31 screen HTML files, 32 total HTML files, 5 WOFF2 fonts). It then failed because the PR #61 base workflow still had write permission and attempted to push generated assets to a stale branch, receiving non-fast-forward.
+- Replaced the Flutter workflow on PR #61 and PR #67 with the read-only workflow from the approved Beta 1 base: no `contents: write`, no commit, no push. The gallery check runs before code generation.
+- Also replaced PR #61's Rust-format auto-commit/push job with the read-only `cargo fmt --check` job. The earlier run's rustfmt made no changes and did not push.
+- Backend Node, PostgreSQL, OpenMLS, Rust bridge and Flutter checks must be rerun after these workflow/config fixes. Previous run is diagnostic only; not acceptance evidence.
+
+### 2026-11-16 — Beta 1 pre-test CI repair
+
+- Opened stacked PR #67 against Email Delivery PR #61; no merge to `main`.
+- CI log review isolated the Node failures to legacy tests selecting email by fixed Russian subject lines instead of stable template identity. The in-memory test transport now exposes template ID and locale, and affected tests assert template identity.
+- Production configuration and durable queue now share the same strict 32-byte email encryption-key parser. Production config fixtures include a valid key; malformed-key regression coverage added.
+- Recovery locale regression now supplies the active UI locale and verifies both recovery messages preserve it without mutating the saved account locale.
+- Flutter gallery validation now tolerates Dart formatting and runs before Flutter project/code generation.
+- Found P0 workflow on PR #61 head was restricted to PRs targeting `main`, preventing backend/PostgreSQL/Rust checks on stacked PRs. Removed that base-branch restriction in PR #61 head commit `11937d388c46cd5ad5cdb24dd247ad83142229d9`.
+- Validation for PR #67: pending GitHub Actions. Do not claim Node, PostgreSQL, Flutter, or native bridge PASS until jobs complete on the exact final head SHA.
+
 - CH-01 startup sequencing hardened: `data-api-onload` is invoked only after Flutter marks the WebView ready, avoiding lost early bridge messages. The screen now removes hard-coded demo chats, shows live backend room names/roles via `textContent`, and has a visible error target. Login and post-registration login without an authenticated token pair remain on SC-11/waiting.
 - CH-01 typed room-list slice added: HTML emits `GET /rooms/mine` with screen ID; Flutter allows only CH-01, uses `InOneRepositories.myRooms()` + `InOneRoomList` validation, then binds room display names/roles via safe text content. Existing backend `rooms-mine.test.js` is the historical runtime test basis; new inventory assertion is NOT RUN. Live Flutter→Node E2E NOT RUN.
 - Additional auth safety: a login response without an authenticated token pair remains on SC-11 in a waiting state; it cannot enter the authenticated menu. Device approval claim/poll lifecycle remains incomplete.

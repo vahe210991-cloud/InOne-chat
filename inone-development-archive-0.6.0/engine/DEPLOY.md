@@ -30,7 +30,7 @@
 | `INONE_SMTP_REQUIRE_TLS` | требовать шифрование соединения; в продакшене должно быть `true` | `true` |
 | `INONE_SMTP_USER` / `INONE_SMTP_PASSWORD` | логин и пароль ящика; пароль не пишется в журнал | — |
 | `INONE_SMTP_FROM` | адрес отправителя, например `InOne <noreply@example.com>` | обязательна для `smtp` |
-| `INONE_EMAIL_ENCRYPTION_KEY` | независимый 32-байтовый ключ AES-256-GCM для шифрования очереди (64 hex или base64) | обязателен для `smtp` |
+| `INONE_EMAIL_ENCRYPTION_KEY` | независимый 32-байтовый ключ AES-256-GCM для шифрования очереди (64 hex или канонический Base64; сгенерировать: `openssl rand -hex 32`) | обязателен для `smtp` |
 | `INONE_EMAIL_WORKER_POLL_MS` | интервал опроса durable queue, 250–60000 мс | 1000 |
 | `INONE_EMAIL_MAX_ATTEMPTS` | максимальное число попыток доставки, 1–20 | 8 |
 
