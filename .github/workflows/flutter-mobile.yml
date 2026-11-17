@@ -144,10 +144,12 @@ jobs:
         if: steps.native.outputs.enabled == 'true'
         run: node tool/prepare_android_mls.mjs
       - run: flutter pub get
-      - name: Generate Rust lockfile and validate native bridge
+      - name: Verify committed Rust lockfile
+        if: steps.native.outputs.enabled == 'true'
+        run: test -s rust/Cargo.lock
+      - name: Validate native bridge against committed lockfile
         if: steps.native.outputs.enabled == 'true'
         run: |
-          cargo generate-lockfile --manifest-path rust/Cargo.toml
           cargo check --locked --all-targets --manifest-path rust/Cargo.toml
           cargo test --locked --no-fail-fast --manifest-path rust/Cargo.toml
       - run: flutter analyze
