@@ -26,9 +26,9 @@ const googleClaims = (nonce, extra = {}) => ({
   email: 'anna@gmail.test', email_verified: true, nonce, iat: nowSec(), exp: nowSec() + 600, ...extra,
 });
 
-const SUBJECT_CODE = 'Подтверждение действия в InOne';
-const SUBJECT_BACKUP = 'Подтверждение запасной почты InOne';
-const SUBJECT_CHANGED = 'Запасная почта InOne изменена';
+const SUBJECT_CODE = 'stepup_code';
+const SUBJECT_BACKUP = 'backup_email_verification';
+const SUBJECT_CHANGED = 'backup_email_changed';
 
 async function start() {
   const srv = createServer({ defaultOrgAutoJoin: true, pinPepper: PEPPER, providers: PROVIDERS, providerKeysSource: async () => KEYS });
@@ -70,8 +70,8 @@ const loginByEmail = async (base, email, deviceId) =>
   (await call(base, 'POST', '/login', { body: { email, password: PW, deviceId } })).body.token;
 
 /** Код из последнего письма с нужной темой в ящике. */
-const codeOf = (srv, mailbox, subject) =>
-  srv.mailbox(mailbox).filter((m) => m.subject === subject).at(-1).text.match(/\b(\d{6})\b/)[1];
+const codeOf = (srv, mailbox, templateId) =>
+  srv.mailbox(mailbox).filter((m) => m.templateId === templateId).at(-1).text.match(/\b(\d{6})\b/)[1];
 
 /** Подтверждение действия кодом: код приходит на тот ящик, который сейчас назначен для подтверждений. */
 async function emailStepUp(base, srv, mailbox, token, action) {
@@ -113,7 +113,7 @@ test('B2: запасная почта подтверждается кодом н
     const stepupToken = await emailStepUp(base, srv, 'anna@gmail.test', token, 'set-backup-email');
     const started = await call(base, 'POST', '/account/backup-email/start', { token, body: { email: 'backup@example.test', stepupToken } });
     assert.equal(started.status, 202);
-    assert.equal(srv.mailbox('anna@gmail.test').filter((m) => m.subject === SUBJECT_BACKUP).length, 0, 'код не уходит на основную почту');
+    assert.equal(srv.mailbox('anna@gmail.test').filter((m) => m.templateId === SUBJECT_BACKUP).length, 0, 'код не уходит на основную почту');
     const code = codeOf(srv, 'backup@example.test', SUBJECT_BACKUP);
     assert.equal((await call(base, 'POST', '/account/backup-email/confirm', { token, body: { email: 'backup@example.test', code: '000000' } })).status, 403);
     const ok = await call(base, 'POST', '/account/backup-email/confirm', { token, body: { email: 'backup@example.test', code } });
@@ -122,7 +122,7 @@ test('B2: запасная почта подтверждается кодом н
     const profile = await call(base, 'GET', '/profile', { token });
     assert.equal(profile.body.securityHints.includes('no_backup_email'), false, 'подсказка о запасной почте пропала');
     assert.equal(profile.body.backupEmail.email, 'backup@example.test');
-    assert.equal(srv.mailbox('anna@gmail.test').filter((m) => m.subject === SUBJECT_CHANGED).length, 1, 'основная почта знает об изменении');
+    assert.equal(srv.mailbox('anna@gmail.test').filter((m) => m.templateId === SUBJECT_CHANGED).length, 1, 'основная почта знает об изменении');
     assert.equal((await call(base, 'POST', '/account/backup-email/confirm', { token, body: { email: 'backup@example.test', code } })).status, 404, 'код одноразовый');
   } finally {
     await stop();
@@ -148,10 +148,10 @@ test('B4: после добавления коды подтверждения д
     const anna = await newGoogleAccount(base);
     const token = await sessionOf(base, anna);
     await addBackup(base, srv, token, 'backup@example.test');
-    const onPrimaryBefore = srv.mailbox('anna@gmail.test').filter((m) => m.subject === SUBJECT_CODE).length;
+    const onPrimaryBefore = srv.mailbox('anna@gmail.test').filter((m) => m.templateId === SUBJECT_CODE).length;
     assert.equal((await call(base, 'POST', '/stepup/email/start', { token, body: { action: 'remove-provider' } })).status, 202);
-    assert.equal(srv.mailbox('anna@gmail.test').filter((m) => m.subject === SUBJECT_CODE).length, onPrimaryBefore, 'на основную почту код не пришёл');
-    assert.equal(srv.mailbox('backup@example.test').filter((m) => m.subject === SUBJECT_CODE).length, 1, 'код пришёл на запасную');
+    assert.equal(srv.mailbox('anna@gmail.test').filter((m) => m.templateId === SUBJECT_CODE).length, onPrimaryBefore, 'на основную почту код не пришёл');
+    assert.equal(srv.mailbox('backup@example.test').filter((m) => m.templateId === SUBJECT_CODE).length, 1, 'код пришёл на запасную');
   } finally {
     await stop();
   }
