@@ -125,7 +125,7 @@ test('C3: аккаунт с привязкой включает биометри
     assert.equal(client.shouldOffer((await call(base, 'GET', '/profile', { token })).body), true, 'при первом входе через провайдера предлагаем включить');
     assert.equal((await client.enable({})).status, 403, 'без кода не включается');
     assert.equal((await call(base, 'POST', '/stepup/email/start', { token, body: { action: 'enable-biometric' } })).status, 202);
-    const code = srv.mailbox('anna@gmail.test').filter((m) => m.subject === 'Подтверждение действия в InOne').at(-1).text.match(/\b(\d{6})\b/)[1];
+    const code = srv.mailbox('anna@gmail.test').filter((m) => m.templateId === 'stepup_code').at(-1).text.match(/\b(\d{6})\b/)[1];
     const confirmed = await call(base, 'POST', '/stepup/email/confirm', { token, body: { action: 'enable-biometric', code } });
     assert.equal((await client.enable({ stepupToken: confirmed.body.stepupToken })).status, 200);
     assert.equal(client.describe(), STATES.ON);
