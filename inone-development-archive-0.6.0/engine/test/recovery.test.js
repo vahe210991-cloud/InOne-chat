@@ -118,7 +118,7 @@ test('через 48 часов после восстановления устр�
     await phone.sync();
     srv.advance(RECOVERY_DELAY_MS + 1000);
     await assert.rejects(phone.sync(), (e) => e.status === 401);
-    assert.ok(srv.mailbox(ALICE).some((m) => m.subject === 'Старые устройства отключены'));
+    assert.ok(srv.mailbox(ALICE).some((m) => m.templateId === 'old_devices_revoked'));
   } finally {
     await stop();
   }
