@@ -5,6 +5,13 @@ import 'package:inone_mobile/src/rust/api/session.dart' as rust;
 import 'package:inone_mobile/src/rust/frb_generated.dart';
 import 'package:path_provider/path_provider.dart';
 
+int _checkedNativeCount(BigInt value, String field) {
+  if (value < BigInt.zero || value > BigInt.from(0x7fffffffffffffff)) {
+    throw RangeError('$field is outside the supported Dart int range');
+  }
+  return value.toInt();
+}
+
 import 'mls_session_bridge.dart';
 
 /// Production Flutter adapter for the generated flutter_rust_bridge API.
@@ -100,7 +107,7 @@ class RustMlsSessionBridge implements MlsSessionBridge {
 
   @override
   Future<void> ensureKeyPackages(int target) =>
-      _requireSession().ensureKeyPackages(target: target);
+      _requireSession().ensureKeyPackages(target: BigInt.from(target));
 
   @override
   Future<void> createRoom(String roomId) =>
@@ -139,7 +146,10 @@ class RustMlsSessionBridge implements MlsSessionBridge {
 
   @override
   Future<String?> quarantinedCommitReason(String roomId, int epoch) =>
-      _requireSession().quarantinedCommitReason(roomId: roomId, epoch: epoch);
+      _requireSession().quarantinedCommitReason(
+        roomId: roomId,
+        epoch: BigInt.from(epoch),
+      );
 
   @override
   Future<String> sendText(String roomId, String plaintext) =>
@@ -200,14 +210,18 @@ class RustMlsSessionBridge implements MlsSessionBridge {
   }
 
   @override
-  Future<int> flushOutbox() => _requireSession().flushOutbox();
+  Future<int> flushOutbox() async =>
+      _checkedNativeCount(await _requireSession().flushOutbox(), 'flushOutbox');
 
   @override
-  Future<int> outboxLength() => _requireSession().outboxLen();
+  Future<int> outboxLength() async =>
+      _checkedNativeCount(await _requireSession().outboxLen(), 'outboxLength');
 
   @override
-  Future<int?> localEpoch(String roomId) =>
-      _requireSession().localEpoch(roomId: roomId);
+  Future<int?> localEpoch(String roomId) async {
+    final epoch = await _requireSession().localEpoch(roomId: roomId);
+    return epoch == null ? null : _checkedNativeCount(epoch, 'localEpoch');
+  }
 
   @override
   Future<List<String>> membersOf(String roomId) =>
@@ -218,8 +232,10 @@ class RustMlsSessionBridge implements MlsSessionBridge {
       _requireSession().revokeDevice(deviceId: deviceId);
 
   @override
-  Future<int> removeRevokedDevices() =>
-      _requireSession().removeRevokedDevices();
+  Future<int> removeRevokedDevices() async => _checkedNativeCount(
+        await _requireSession().removeRevokedDevices(),
+        'removeRevokedDevices',
+      );
 
   @override
   Future<void> purgeLocalSession({
