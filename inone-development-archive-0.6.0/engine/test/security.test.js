@@ -37,7 +37,7 @@ const beginNewDevice = (base, deviceId) =>
   call(base, 'POST', '/login', { userId: ALICE, password: PW, deviceId, label: deviceId, platform: 'test' });
 
 const codeFrom = (srv, userId) =>
-  srv.mailbox(userId).filter((m) => m.text.includes('Код восстановления')).at(-1).text.match(/\b(\d{6})\b/)[1];
+  srv.mailbox(userId).filter((m) => m.templateId === 'new_device_wait').at(-1).text.match(/\b(\d{6})\b/)[1];
 
 test('вход с нового устройства ждёт подтверждения; три неверных кода отклоняют запрос', async () => {
   const { base, stop } = await start();
