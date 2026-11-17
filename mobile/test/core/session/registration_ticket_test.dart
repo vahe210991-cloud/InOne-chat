@@ -1,11 +1,26 @@
 import 'dart:convert';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:inone_mobile/core/session/inone_session.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  const secureStorageChannel =
+      MethodChannel('plugins.it_nomads.com/flutter_secure_storage');
+  secureStorageChannel.setMockMethodCallHandler((call) async {
+    switch (call.method) {
+      case 'containsKey':
+        return false;
+      case 'readAll':
+        return <String, String>{};
+      default:
+        return null;
+    }
+  });
+
   test('registration ticket stays in host memory across confirm and register',
       () async {
     final requests = <http.Request>[];
