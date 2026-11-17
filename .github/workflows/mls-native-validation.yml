@@ -12,6 +12,7 @@ on:
     branches:
       - main
       - fix/email-delivery-test-readiness-2026-11-17
+      - fix/email-delivery-shutdown-and-key-hardening-2026-11-17
     paths:
       - "inone-engine-poc-0.6.0/mobile-mls/**"
       - "mobile/rust/**"
