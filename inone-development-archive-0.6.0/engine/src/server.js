@@ -206,7 +206,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
     }
   };
   // SMTP/queue подключается снаружи. Тестовый транспорт хранит письма только в памяти.
-  const mailer = externalMailer ?? { send: async ({ to, subject, text, html }) => { outbox.push({ to, subject, text, html }); } };
+  const mailer = externalMailer ?? { send: async ({ to, subject, text, html, templateId, locale }) => { outbox.push({ to, subject, text, html, templateId, locale }); } };
   const mailTo = (to, subject, text, idempotencyKey = null, templateId = null, variables = {}, locale, transactionClient = null) => {
     if (!templateId) throw new Error('email templateId is required');
     if (locale === undefined) throw new Error('email locale is required');
@@ -2734,7 +2734,7 @@ if (req.method === 'POST' && p === '/login') {
               return { next: out.next, result: out.issued };
             }, async (tx, wasIssued) => {
               if (!wasIssued) return;
-              await mailToRecipients(notificationRecipients, '', '', 'recovery_confirmation_link', { url: `${publicUrl}/recovery/confirm?user=${encodeURIComponent(userId)}&token=${token}` }, tx, locale);
+              await mailToRecipients(notificationRecipients, '', '', 'recovery_confirmation_link', { url: `${publicUrl}/recovery/confirm?user=${encodeURIComponent(userId)}&token=${encodeURIComponent(token)}&locale=${encodeURIComponent(locale)}` }, tx, locale);
             });
             if (issued) {
               // D5: SMS-код и email-link — независимые каналы одного recovery event.
@@ -2747,17 +2747,53 @@ if (req.method === 'POST' && p === '/login') {
       }
 
       if (req.method === 'GET' && p === '/recovery/confirm') {
-        // Открытие ссылки из письма ничего не меняет: предпросмотр почты не подтвердит восстановление (D5).
+        // Opening the link only displays choices; mail preview bots must never confirm recovery.
         const userId = url.searchParams.get('user') ?? '';
         const token = url.searchParams.get('token') ?? '';
-        if (!token) return send(res, 400, { error: 'token required' });
-        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-        return res.end(htmlPage('Подтверждение восстановления', `
-<p>Нажмите кнопку, чтобы подтвердить, что восстановление запросили вы. Код из SMS вводится в приложении.</p>
+        const requestedLocale = resolveEmailLocale(url.searchParams.get('locale')) ?? 'hy';
+        if (!userId || !token) return send(res, 400, { error: 'user and token required' });
+        const copy = {
+          hy: {
+            title: 'Վերականգնման հաստատում',
+            prompt: 'Հաստատեք, որ վերականգնումը նախաձեռնել եք դուք։ SMS կոդը մուտքագրեք հավելվածում։',
+            open: 'Բացել InOne հավելվածում',
+            submit: 'Հաստատել վերականգնումը',
+          },
+          ru: {
+            title: 'Подтверждение восстановления',
+            prompt: 'Подтвердите, что запрос восстановления сделали вы. Код из SMS введите в приложении.',
+            open: 'Открыть в InOne',
+            submit: 'Подтвердить восстановление',
+          },
+          en: {
+            title: 'Confirm account recovery',
+            prompt: 'Confirm that you requested recovery. Enter the SMS code in the app.',
+            open: 'Open in InOne',
+            submit: 'Confirm recovery',
+          },
+        }[requestedLocale];
+        const appUrl = `inone://recovery/confirm?user=${encodeURIComponent(userId)}&token=${encodeURIComponent(token)}&locale=${requestedLocale}`;
+        // Unverified custom schemes can be claimed by another app; expose this beta-only
+        // handoff in development/test. Production must use verified App Links/Universal Links.
+        const appLinkHtml = process.env.NODE_ENV === 'production'
+          ? ''
+          : `<p><a href="${escapeHtml(appUrl)}">${escapeHtml(copy.open)}</a></p>`;
+        res.writeHead(200, {
+          'content-type': 'text/html; charset=utf-8',
+          'cache-control': 'no-store, private',
+          pragma: 'no-cache',
+          'referrer-policy': 'no-referrer',
+          'x-content-type-options': 'nosniff',
+          'x-frame-options': 'DENY',
+          'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+        });
+        return res.end(htmlPage(copy.title, `
+<p>${escapeHtml(copy.prompt)}</p>
+${appLinkHtml}
 <form method="post" action="/recovery/confirm">
 <input type="hidden" name="user" value="${escapeHtml(userId)}">
 <input type="hidden" name="token" value="${escapeHtml(token)}">
-<button type="submit">Подтвердить восстановление</button>
+<button type="submit">${escapeHtml(copy.submit)}</button>
 </form>`));
       }
 

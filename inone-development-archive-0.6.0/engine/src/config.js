@@ -1,5 +1,6 @@
 // Настройки сервера из переменных окружения. Неверная конфигурация останавливает запуск до открытия порта.
 import { DEFAULT_PHONE_COUNTRIES } from './phone-international.js';
+import { parseEmailEncryptionKey } from './email-delivery.js';
 const TEST_PEPPER_MARKERS = ['test-pepper', 'change-me', 'example', 'dev-only'];
 const isValidEmailEncryptionKey = (value) => {
   if (typeof value !== 'string') return false;
@@ -24,8 +25,8 @@ export function loadConfig(env = process.env) {
     registrationMode: env.INONE_REGISTRATION_MODE ?? 'verified',
     trustProxy: env.INONE_TRUST_PROXY === 'true',
     filesDir: env.INONE_FILES_DIR ?? '',
-  docsSecret: env.INONE_DOCS_SECRET ?? '',
-  testUi: env.INONE_TEST_UI === '1',
+    docsSecret: env.INONE_DOCS_SECRET ?? '',
+    testUi: env.INONE_TEST_UI === '1',
     fileQuotaBytes: env.INONE_FILE_QUOTA_BYTES ? Number(env.INONE_FILE_QUOTA_BYTES) : null,
     bodyLimitBytes: Number(env.INONE_BODY_LIMIT_BYTES ?? 4 * 1024 * 1024),
     requestTimeoutMs: Number(env.INONE_REQUEST_TIMEOUT_MS ?? 30000),
@@ -62,7 +63,6 @@ export function loadConfig(env = process.env) {
     // Production требует SMTP transport и зашифрованную PostgreSQL queue; memory transport запрещён.
     if (config.mailTransport !== 'smtp') errors.push('production needs a real mail transport: set INONE_MAIL_TRANSPORT=smtp');
     if (config.mailTransport === 'smtp' && !config.smtpRequireTls) errors.push('production SMTP must require TLS (INONE_SMTP_REQUIRE_TLS)');
-    if (config.mailTransport === 'smtp' && !isValidEmailEncryptionKey(config.emailEncryptionKey)) errors.push('INONE_EMAIL_ENCRYPTION_KEY must be 32 bytes (64 hex characters or canonical base64)');
     if (!config.filesDir) errors.push('INONE_FILES_DIR is required in production: files kept in memory are lost on restart');
     if (config.docsSecret.length < 32) errors.push('INONE_DOCS_SECRET must be at least 32 characters in production');
     if (config.testUi) errors.push('INONE_TEST_UI must not be set in production');
@@ -84,7 +84,11 @@ export function loadConfig(env = process.env) {
     if (!!config.smtpUser !== !!config.smtpPassword) errors.push('INONE_SMTP_USER and INONE_SMTP_PASSWORD must be configured together');
     if (!Number.isInteger(config.emailWorkerPollMs) || config.emailWorkerPollMs < 250 || config.emailWorkerPollMs > 60000) errors.push('INONE_EMAIL_WORKER_POLL_MS must be 250..60000');
     if (!Number.isInteger(config.emailMaxAttempts) || config.emailMaxAttempts < 1 || config.emailMaxAttempts > 20) errors.push('INONE_EMAIL_MAX_ATTEMPTS must be 1..20');
-    if (!isValidEmailEncryptionKey(config.emailEncryptionKey)) errors.push('INONE_EMAIL_ENCRYPTION_KEY must be 32 bytes (64 hex characters or canonical base64)');
+    try {
+      parseEmailEncryptionKey(config.emailEncryptionKey);
+    } catch {
+      errors.push('INONE_EMAIL_ENCRYPTION_KEY must be 32 bytes (64 hex characters or canonical base64)');
+    }
   }
   if (errors.length > 0) {
     const error = new Error(`invalid configuration: ${errors.join('; ')}`);

@@ -97,7 +97,7 @@ test('неожиданная ошибка backend не раскрывает вн
   const logger = { debug() {}, info() {}, warn() {}, error: (message, fields) => entries.push({ message, ...fields }) };
   const { base, stop } = await start({ store: db.store, logger });
   try {
-    const client = await ChatClient.create(base, '@safe-error-response', 'ERROR_DEVICE', PW);
+    const client = await ChatClient.create(base, '@safe-error-response:inone.test', 'ERROR_DEVICE', PW);
     const secretDetail = 'postgres-internal-host-and-query-detail';
     db.store.profileGet = async () => { throw Object.assign(new Error(secretDetail), { code: 'XX000' }); };
     const response = await fetch(`${base}/profile`, {

@@ -57,7 +57,7 @@ async function providerSignIn(base, provider, claimsOf) {
 
 async function registerByEmail(base, srv, email, nickname) {
   await call(base, 'POST', '/register/email', { body: { email, locale: 'ru' } });
-  const code = srv.mailbox(email).filter((m) => m.subject === 'Код подтверждения InOne').at(-1).text.match(/\b(\d{6})\b/)[1];
+  const code = srv.mailbox(email).filter((m) => m.templateId === 'registration_code').at(-1).text.match(/\b(\d{6})\b/)[1];
   const confirmed = await call(base, 'POST', '/register/email/confirm', { body: { email, code } });
   return call(base, 'POST', '/register', { body: { email, registrationToken: confirmed.body.registrationToken, password: PW, nickname } });
 }
@@ -77,7 +77,7 @@ async function sessionOf(base, account, deviceId = 'ANNA_PHONE') {
 }
 
 const codeOf = (srv, email) =>
-  srv.mailbox(email).filter((m) => m.subject === 'Подтверждение действия в InOne').at(-1).text.match(/\b(\d{6})\b/)[1];
+  srv.mailbox(email).filter((m) => m.templateId === 'stepup_code').at(-1).text.match(/\b(\d{6})\b/)[1];
 
 async function emailStepUp(base, srv, email, token, action) {
   const started = await call(base, 'POST', '/stepup/email/start', { token, body: { action } });
@@ -94,7 +94,7 @@ test('S1: для аккаунта с паролем подтверждение �
     const token = await loginByEmail(base, 'boris@example.test', 'BORIS_PHONE');
     const started = await call(base, 'POST', '/stepup/email/start', { token, body: { action: 'link-provider' } });
     assert.equal(started.status, 400, 'пока пароль активен, код не выдаётся');
-    assert.equal(srv.mailbox('boris@example.test').filter((m) => m.subject === 'Подтверждение действия в InOne').length, 0);
+    assert.equal(srv.mailbox('boris@example.test').filter((m) => m.templateId === 'stepup_code').length, 0);
   } finally {
     await stop();
   }
@@ -170,7 +170,7 @@ test('S5: запросы кода подтверждения не чаще пя�
       assert.equal((await call(base, 'POST', '/stepup/email/start', { token, body: { action: 'remove-provider' } })).status, 202);
     }
     assert.equal((await call(base, 'POST', '/stepup/email/start', { token, body: { action: 'remove-provider' } })).status, 429);
-    assert.equal(srv.mailbox('anna@gmail.test').filter((m) => m.subject === 'Подтверждение действия в InOne').length, 5);
+    assert.equal(srv.mailbox('anna@gmail.test').filter((m) => m.templateId === 'stepup_code').length, 5);
   } finally {
     await stop();
   }

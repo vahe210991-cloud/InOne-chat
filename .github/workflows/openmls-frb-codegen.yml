@@ -75,6 +75,10 @@ jobs:
         working-directory: mobile
         run: node tool/prepare_android_mls.mjs
 
+      - name: Register iOS recovery deep-link scheme
+        working-directory: mobile
+        run: node tool/prepare_ios_deep_links.mjs
+
       - name: Resolve Dart dependencies and create Rust lockfile
         working-directory: mobile
         run: |
@@ -129,23 +133,15 @@ jobs:
           name: inone-mls-android-apk
           path: mobile/build/app/outputs/flutter-apk/app-debug.apk
           if-no-files-found: error
-
-  commit-generated:
-    name: Commit generated bridge outputs
+  build-ios:
+    name: iOS native assets compile (unsigned, no secrets)
     needs: generate-and-validate
-    if: >
-      needs.generate-and-validate.result == 'success' &&
-      (
-        (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) ||
-        (github.event_name != 'pull_request' && github.ref == 'refs/heads/feature/stage-4-native-mls-runtime-2026-11-11')
-      )
-    runs-on: ubuntu-latest
+    runs-on: macos-14
     permissions:
-      contents: write
-    outputs:
-      final_sha: ${{ steps.commit.outputs.final_sha }}
+      contents: read
+    timeout-minutes: 45
     steps:
-      - name: Checkout target branch
+      - name: Checkout source branch
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
@@ -157,13 +153,13 @@ jobs:
           name: inone-mls-frb-generated
           path: ${{ runner.temp }}/inone-mls-frb-generated
 
-      - name: Copy only generated bridge files
+      - name: Copy generated bridge files without committing
         shell: bash
         run: |
           set -euo pipefail
           GENERATED="$RUNNER_TEMP/inone-mls-frb-generated"
           if find "$GENERATED" -type l -print -quit | grep -q .; then
-            echo "::error::Generated artifact contains a symlink; refusing to write it to the PR branch."
+            echo "::error::Generated artifact contains a symlink; refusing to copy it."
             exit 1
           fi
           test -d "$GENERATED/hook"
@@ -184,159 +180,12 @@ jobs:
           cp "$GENERATED/pubspec.yaml" mobile/pubspec.yaml
           cp "$GENERATED/pubspec.lock" mobile/pubspec.lock
 
-      - name: Commit generated bridge outputs
-        id: commit
-        shell: bash
-        env:
-          PR_HEAD_REF: ${{ github.event.pull_request.head.ref || github.ref_name }}
-        run: |
-          set -euo pipefail
-          git add -- mobile/hook mobile/lib/src/rust mobile/rust/Cargo.toml mobile/rust/Cargo.lock mobile/rust/build.rs mobile/rust/src/frb_generated.rs mobile/pubspec.yaml mobile/pubspec.lock
-          if ! git diff --cached --quiet; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git commit -m "build(mls): generate Flutter Rust bridge bindings"
-            git push origin "HEAD:$PR_HEAD_REF"
-          fi
-          echo "final_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
-  verify-final-sha:
-    name: Verify complete Beta 1.0 matrix on generated final SHA
-    needs: commit-generated
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    permissions:
-      contents: read
-    env:
-      INONE_ENGINE_DIR: ${{ github.workspace }}/inone-development-archive-0.6.0/engine
-      RUST_TEST_THREADS: "1"
-    outputs:
-      final_sha: ${{ steps.verify.outputs.final_sha }}
-    steps:
-      - name: Checkout exact generated final SHA
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.commit-generated.outputs.final_sha }}
-          fetch-depth: 0
-
-      - name: Verify exact checkout and generated artifacts
-        id: verify
-        shell: bash
-        run: |
-          set -euo pipefail
-          ACTUAL_SHA="$(git rev-parse HEAD)"
-          EXPECTED_SHA="${{ needs.commit-generated.outputs.final_sha }}"
-          test "$ACTUAL_SHA" = "$EXPECTED_SHA"
-          test -f mobile/lib/src/rust/frb_generated.dart
-          test -f mobile/hook/build.dart
-          test -f mobile/rust/src/frb_generated.rs
-          test -f mobile/rust/Cargo.lock
-          echo "final_sha=$ACTUAL_SHA" >> "$GITHUB_OUTPUT"
-          echo "Validated exact final SHA: $ACTUAL_SHA" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Install Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: inone-development-archive-0.6.0/engine/package-lock.json
-
-      - name: Install P0 engine fixture dependencies
-        run: npm ci --prefix inone-development-archive-0.6.0/engine
-
-      - name: Install Rust and Android targets
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: "1.91.0"
-          components: rustfmt
-          targets: "aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android"
-
-      - name: Install Flutter
+      - name: Install Flutter and iOS Rust targets
         uses: subosito/flutter-action@v2
         with:
           flutter-version: "3.47.9"
           channel: stable
           cache: true
-
-      - name: Generate Android project and prepare native context
-        working-directory: mobile
-        run: |
-          flutter create --platforms=android --project-name inone_mobile --org com.inone .
-          rm -f test/widget_test.dart
-          node tool/prepare_android_mls.mjs
-
-      - name: Resolve Dart dependencies without lockfile drift
-        working-directory: mobile
-        run: |
-          flutter pub get
-          git diff --exit-code -- pubspec.yaml pubspec.lock
-
-      - name: Verify Rust formatting
-        run: |
-          cargo fmt --manifest-path mobile/rust/Cargo.toml -- --check
-          cargo fmt --manifest-path inone-engine-poc-0.6.0/mobile-mls/mls-client/Cargo.toml -- --check
-
-      - name: Run native Rust bridge tests
-        run: cargo test --locked --manifest-path mobile/rust/Cargo.toml
-
-      - name: Run persistent OpenMLS client integration tests
-        run: cargo test --locked --manifest-path inone-engine-poc-0.6.0/mobile-mls/mls-client/Cargo.toml -- --test-threads=1
-
-      - name: Analyze and test Flutter
-        working-directory: mobile
-        run: |
-          flutter analyze
-          flutter test
-
-      - name: Build Android with native OpenMLS assets
-        working-directory: mobile
-        run: flutter build apk --debug
-
-      - name: Android Keystore runtime smoke test on final SHA
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          target: google_apis
-          arch: x86_64
-          profile: pixel_6
-          script: |
-            cd mobile
-            flutter drive --driver=test_driver/integration_test.dart --target=integration_test/mls_secure_store_test.dart
-
-
-  build-ios:
-    name: iOS native assets + Keychain runtime smoke test
-    needs: [commit-generated, verify-final-sha]
-    runs-on: macos-14
-    environment:
-      name: ios-signing
-    timeout-minutes: 45
-    env:
-      IOS_SIGNING_CERTIFICATE_P12: ${{ secrets.IOS_SIGNING_CERTIFICATE_P12 }}
-      IOS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.IOS_SIGNING_CERTIFICATE_PASSWORD }}
-      IOS_PROVISIONING_PROFILE: ${{ secrets.IOS_PROVISIONING_PROFILE }}
-      IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
-    steps:
-      - name: Checkout PR head
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.verify-final-sha.outputs.final_sha }}
-
-      - name: Verify exact final SHA
-        run: |
-          test "$(git rev-parse HEAD)" = "${{ needs.verify-final-sha.outputs.final_sha }}"
-          test "${{ needs.verify-final-sha.outputs.final_sha }}" = "${{ needs.commit-generated.outputs.final_sha }}"
-
-      - name: Install Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: "3.47.9"
-          channel: stable
-          cache: true
-
-      - name: Generate iOS platform project
-        working-directory: mobile
-        run: flutter create --platforms=ios --project-name inone_mobile --org com.inone .
 
       - name: Install Rust iOS targets
         uses: dtolnay/rust-toolchain@master
@@ -344,6 +193,12 @@ jobs:
           toolchain: "1.91.0"
           components: rustfmt
           targets: "aarch64-apple-ios,aarch64-apple-ios-sim"
+
+      - name: Generate iOS platform project and configure recovery links
+        working-directory: mobile
+        run: |
+          flutter create --platforms=ios --project-name inone_mobile --org com.inone .
+          node tool/prepare_ios_deep_links.mjs
 
       - name: Resolve Dart dependencies
         working-directory: mobile
@@ -359,137 +214,7 @@ jobs:
         working-directory: mobile
         run: flutter build ios --simulator --no-codesign
 
-      - name: Require iOS signing assets for Stage 4 acceptance
-        if: ${{ env.IOS_SIGNING_CERTIFICATE_P12 == '' || env.IOS_SIGNING_CERTIFICATE_PASSWORD == '' || env.IOS_PROVISIONING_PROFILE == '' || env.IOS_TEAM_ID == '' }}
-        shell: bash
-        run: |
-          echo "::error::Stage 4 iOS Protected Keychain acceptance requires IOS_SIGNING_CERTIFICATE_P12, IOS_SIGNING_CERTIFICATE_PASSWORD, IOS_PROVISIONING_PROFILE and IOS_TEAM_ID."
-          exit 1
-
-      - name: Install and validate iOS signing identity and provisioning profile
-        shell: bash
-        run: |
-          set -euo pipefail
-          KEYCHAIN_PASSWORD="$(openssl rand -hex 20)"
-          KEYCHAIN_PATH="$RUNNER_TEMP/inone-build.keychain"
-          printf '%s' "$IOS_SIGNING_CERTIFICATE_P12" | base64 -D > "$RUNNER_TEMP/ios-signing.p12"
-          printf '%s' "$IOS_PROVISIONING_PROFILE" | base64 -D > "$RUNNER_TEMP/inone.mobileprovision"
-          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security import "$RUNNER_TEMP/ios-signing.p12" -k "$KEYCHAIN_PATH" -P "$IOS_SIGNING_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security list-keychains -d user -s "$KEYCHAIN_PATH"
-          security find-identity -v -p codesigning "$KEYCHAIN_PATH" | tee "$RUNNER_TEMP/ios-identities.txt"
-          grep -Eq 'Apple Development|iPhone Developer' "$RUNNER_TEMP/ios-identities.txt"
-          grep -Fq "($IOS_TEAM_ID)" "$RUNNER_TEMP/ios-identities.txt"
-          security cms -D -i "$RUNNER_TEMP/inone.mobileprovision" > "$RUNNER_TEMP/profile.plist"
-          PROFILE_UUID="$(/usr/libexec/PlistBuddy -c 'Print UUID' "$RUNNER_TEMP/profile.plist")"
-          echo "IOS_PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
-          python3 - "$RUNNER_TEMP/profile.plist" "$IOS_TEAM_ID" <<'PY'
-          import plistlib
-          import sys
-          from datetime import datetime, timezone
-
-          profile_path, expected_team = sys.argv[1:]
-          with open(profile_path, "rb") as source:
-              profile = plistlib.load(source)
-
-          if expected_team not in profile.get("TeamIdentifier", []):
-              raise SystemExit("Provisioning profile TeamIdentifier does not match IOS_TEAM_ID")
-
-          entitlements = profile.get("Entitlements", {})
-          bundle_id = "com.inone.inone_mobile"
-          expected_app_id = f"{expected_team}.{bundle_id}"
-
-          def allows(pattern, value):
-              return pattern == value or (pattern.endswith(".*") and value.startswith(pattern[:-1]))
-
-          if not allows(entitlements.get("application-identifier", ""), expected_app_id):
-              raise SystemExit("Provisioning profile does not authorize com.inone.inone_mobile")
-
-          groups = entitlements.get("keychain-access-groups", [])
-          if not any(allows(group, expected_app_id) for group in groups):
-              raise SystemExit("Provisioning profile has no matching keychain-access-groups entitlement")
-
-          expiry = profile.get("ExpirationDate")
-          if expiry is None:
-              raise SystemExit("Provisioning profile has no expiration date")
-          if expiry.tzinfo is None:
-              expiry = expiry.replace(tzinfo=timezone.utc)
-          if expiry <= datetime.now(timezone.utc):
-              raise SystemExit("Provisioning profile is expired")
-          PY
-          cp "$RUNNER_TEMP/inone.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
-          cd mobile
-          python3 - "$IOS_TEAM_ID" "$PROFILE_UUID" <<'PY'
-          import pathlib
-          import re
-          import sys
-
-          team, profile_uuid = sys.argv[1:]
-          project = pathlib.Path("ios/Runner.xcodeproj/project.pbxproj")
-          content = project.read_text()
-          content = re.sub(r"^\s*PROVISIONING_PROFILE_SPECIFIER = .*?;\n", "", content, flags=re.M)
-          content = re.sub(r"^\s*CODE_SIGN_IDENTITY(?:\[[^]]+\])? = .*?;\n", "", content, flags=re.M)
-          content, count = re.subn(r"CODE_SIGN_STYLE = [^;]+;", "CODE_SIGN_STYLE = Manual;", content)
-          if count == 0:
-              raise SystemExit("Runner.xcodeproj has no CODE_SIGN_STYLE setting to configure")
-          content = re.sub(r"DEVELOPMENT_TEAM = [^;]*;", f"DEVELOPMENT_TEAM = {team};", content)
-          signing = f'CODE_SIGN_STYLE = Manual;\n\t\t\t\t\tCODE_SIGN_IDENTITY = "Apple Development";\n\t\t\t\t\tPROVISIONING_PROFILE_SPECIFIER = "{profile_uuid}";'
-          content = content.replace("CODE_SIGN_STYLE = Manual;", signing)
-          project.write_text(content)
-          PY
-          grep -q "PROVISIONING_PROFILE_SPECIFIER = \"$PROFILE_UUID\";" ios/Runner.xcodeproj/project.pbxproj
-          grep -q "DEVELOPMENT_TEAM = $IOS_TEAM_ID;" ios/Runner.xcodeproj/project.pbxproj
-
-      - name: iOS Keychain runtime smoke test
-        shell: bash
-        run: |
-          set -euo pipefail
-          DEVICE_ID="$(xcrun simctl list devices available | sed -nE 's/.*iPhone.*\(([0-9A-F-]{36})\).*/\1/p' | head -n 1)"
-          test -n "$DEVICE_ID"
-          xcrun simctl boot "$DEVICE_ID" || true
-          xcrun simctl bootstatus "$DEVICE_ID" -b
-          cd mobile
-          flutter drive -d "$DEVICE_ID" --driver=test_driver/integration_test.dart --target=integration_test/mls_secure_store_test.dart
-          APP_PATH="build/ios/iphonesimulator/Runner.app"
-          test -d "$APP_PATH"
-          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
-          codesign -d --entitlements :- "$APP_PATH" > "$RUNNER_TEMP/runner-entitlements.plist" 2>/dev/null
-          python3 - "$RUNNER_TEMP/runner-entitlements.plist" "$IOS_TEAM_ID" <<'PY'
-          import plistlib
-          import sys
-
-          entitlements_path, team = sys.argv[1:]
-          with open(entitlements_path, "rb") as source:
-              entitlements = plistlib.load(source)
-
-          expected = f"{team}.com.inone.inone_mobile"
-          app_id = entitlements.get("application-identifier", "")
-          groups = entitlements.get("keychain-access-groups", [])
-
-          def allows(pattern, value):
-              return pattern == value or (pattern.endswith(".*") and value.startswith(pattern[:-1]))
-
-          if not allows(app_id, expected):
-              raise SystemExit("Signed simulator app has no matching application-identifier entitlement")
-          if not any(allows(group, expected) for group in groups):
-              raise SystemExit("Signed simulator app has no matching keychain-access-groups entitlement")
-          PY
-
-      - name: Remove temporary iOS signing material
-        if: always()
-        shell: bash
-        run: |
-          security delete-keychain "$RUNNER_TEMP/inone-build.keychain" 2>/dev/null || true
-          rm -f "$RUNNER_TEMP/ios-signing.p12" "$RUNNER_TEMP/inone.mobileprovision" "$RUNNER_TEMP/profile.plist" "$RUNNER_TEMP/ios-identities.txt" "$RUNNER_TEMP/runner-entitlements.plist"
-          if [ -n "${IOS_PROFILE_UUID:-}" ]; then
-            rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/$IOS_PROFILE_UUID.mobileprovision"
-          fi
-
-      - name: Upload iOS simulator build
+      - name: Upload unsigned iOS simulator build
         uses: actions/upload-artifact@v4
         with:
           name: inone-mls-ios-simulator-build

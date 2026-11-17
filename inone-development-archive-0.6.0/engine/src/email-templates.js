@@ -133,6 +133,19 @@ function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 }
 
+function safeRecoveryUrl(value) {
+  try {
+    const parsed = new URL(value);
+    const localHttp = parsed.protocol === 'http:'
+      && ['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname.toLowerCase());
+    if ((parsed.protocol === 'https:' || localHttp)
+      && parsed.hostname && !parsed.username && !parsed.password && !/[\r\n]/.test(value)) {
+      return parsed.toString();
+    }
+  } catch {}
+  return null;
+}
+
 function renderHtml({ subject, text, locale, templateId, variables }) {
   const copy = COPY[locale];
   const code = ['registration_code', 'backup_email_verification', 'stepup_code', 'recovery_login_code', 'recovery_code'].includes(templateId)
@@ -147,12 +160,7 @@ function renderHtml({ subject, text, locale, templateId, variables }) {
     );
   }
   if (templateId === 'recovery_confirmation_link') {
-    const url = variables.url;
-    let safeUrl = '';
-    try {
-      const parsed = new URL(url);
-      if (parsed.protocol === 'https:' && parsed.hostname && !parsed.username && !parsed.password) safeUrl = parsed.toString();
-    } catch {}
+    const safeUrl = safeRecoveryUrl(variables.url);
     if (safeUrl) {
       content += `<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:24px 0 8px;"><tr><td bgcolor="#C9F53F" style="border-radius:12px;"><a href="${escapeHtml(safeUrl)}" style="display:inline-block;padding:14px 22px;color:#171A14;text-decoration:none;font-family:'Noto Sans Armenian','Noto Sans',Arial,sans-serif;font-size:14px;font-weight:700;border-radius:12px;">${escapeHtml(copy.action)}</a></td></tr></table>`;
     }
@@ -174,9 +182,7 @@ export function renderEmailTemplate(templateId, variables = {}, locale = 'hy') {
   if (templateId === 'backup_email_changed' && !['added', 'changed'].includes(values.action)) throw new Error('invalid email action');
   if (templateId === 'stepup_code' && !Object.hasOwn(STEPUP_ACTION_LABELS.hy, values.action)) throw new Error('invalid step-up action');
   if (templateId === 'recovery_confirmation_link') {
-    let parsed;
-    try { parsed = new URL(values.url); } catch { throw new Error('invalid recovery URL'); }
-    if (parsed.protocol !== 'https:' || !parsed.hostname || parsed.username || parsed.password || /[\r\n]/.test(values.url)) throw new Error('recovery URL must be a safe HTTPS URL');
+    if (!safeRecoveryUrl(values.url)) throw new Error('recovery URL must be a safe HTTPS URL or localhost HTTP URL');
   }
   if (templateId === 'recovery_cancelled' && !['code', 'device'].includes(values.method)) throw new Error('invalid recovery cancellation method');
   const renderValues = templateId === 'stepup_code' ? { ...values, action: STEPUP_ACTION_LABELS[resolvedLocale][values.action] } : values;

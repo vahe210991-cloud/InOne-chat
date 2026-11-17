@@ -14,6 +14,7 @@ const PROD = {
   INONE_MAIL_TRANSPORT: 'smtp',
   INONE_SMTP_HOST: 'smtp.example',
   INONE_SMTP_FROM: 'no-reply@inone.example',
+  INONE_EMAIL_ENCRYPTION_KEY: randomBytes(32).toString('hex'),
   DATABASE_URL: 'postgresql://db.example/inone',
 };
 
@@ -28,4 +29,18 @@ test('с секретом документов не короче 32 символ
 
 test('в продакшене короткий секрет документов не принимается', () => {
   assert.throws(() => loadConfig({ ...PROD, INONE_DOCS_SECRET: 'short' }), /INONE_DOCS_SECRET/);
+});
+
+test('в продакшене некорректный ключ шифрования почты отклоняется', () => {
+  assert.throws(() => loadConfig({ ...PROD, INONE_EMAIL_ENCRYPTION_KEY: 'not-a-valid-key' }), /INONE_EMAIL_ENCRYPTION_KEY/);
+  const validBase64 = randomBytes(32).toString('base64');
+  assert.throws(
+    () => loadConfig({ ...PROD, INONE_EMAIL_ENCRYPTION_KEY: `!${validBase64}` }),
+    (error) => {
+      assert.match(error.message, /INONE_EMAIL_ENCRYPTION_KEY/);
+      assert.equal((error.message.match(/INONE_EMAIL_ENCRYPTION_KEY/g) ?? []).length, 1);
+      return true;
+    },
+  );
+
 });
