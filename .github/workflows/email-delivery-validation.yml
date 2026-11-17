@@ -1,7 +1,7 @@
 name: Email delivery and PostgreSQL validation
 
 on:
-  # Direct pushes to stacked PR branches run the same full email validation as PR updates.
+  # Validate every stacked PR head directly; prior-head successes are not reused after branch updates.
   push:
     branches:
       - feature/email-delivery-service-2026-11-16-b1
