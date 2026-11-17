@@ -108,3 +108,29 @@ flutter test
 Валидация Email Delivery считается полной только после PASS всех трёх групп: Node, PostgreSQL integration и Flutter. Зафиксировать точный commit SHA и полный итоговый счётчик passed/failed/skipped. Любой FAIL исправить в этой же PR-ветке и повторить затронутые группы на новом SHA.
 
 SMTP smoke test и SPF/DKIM/DMARC выполняются отдельно после выбора владельцем домена и SMTP-провайдера; они не являются блокирующим условием для начала автоматизированных тестов.
+
+
+## Сквозной тест регистрации с реальным почтовым ящиком
+
+Регистрация уже использует единый маршрут доставки: `POST /register/email` ставит письмо с кодом в PostgreSQL outbox в той же транзакции, `email-delivery` доставляет его через SMTP, `POST /register/email/confirm` проверяет код и выдаёт одноразовый registration token. `POST /register` использует этот токен для создания аккаунта.
+
+Для проверки на реально работающем окружении с PostgreSQL и SMTP (не на memory transport):
+
+1. Убедиться, что backend работает с `INONE_REGISTRATION_MODE=verified`, `INONE_MAIL_TRANSPORT=smtp`, обязательным TLS и корректными секретами в secret manager. Не включать `INONE_DEV_EMAIL_CODE`.
+2. Использовать отдельный, ещё не зарегистрированный тестовый почтовый ящик. Не использовать адрес реального пользователя без его согласия.
+3. Из каталога engine задать адрес развёрнутого HTTPS API и тестовый email, затем запустить:
+
+```bash
+INONE_SMOKE_BASE_URL=https://<your-inone-api-host> \
+INONE_SMOKE_EMAIL=<unregistered-test-mailbox> \
+INONE_SMOKE_LOCALE=ru \
+npm run test:registration:live
+```
+
+Скрипт вызывает реальный `POST /register/email`, ждёт письмо в почтовом ящике, принимает введённый оператором шестизначный код и вызывает `POST /register/email/confirm`. Он проверяет, что backend выдал одноразовый registration token, но по умолчанию не создаёт аккаунт. Неиспользованный токен истекает через 30 минут.
+
+Чтобы дополнительно создать тестовый аккаунт, явно задать `INONE_SMOKE_CREATE_ACCOUNT=true`, `INONE_SMOKE_NICKNAME` и `INONE_SMOKE_PASSWORD`; если окружение требует телефон, задать также `INONE_SMOKE_PHONE`. Это создаёт постоянную запись аккаунта в целевой базе данных. Использовать только отдельную тестовую среду и заранее согласованный тестовый номер. Скрипт не удаляет аккаунт автоматически.
+
+Скрипт не принимает SMTP credentials и не читает секреты сервера. SMTP credentials и ключ шифрования остаются только в secret manager развёрнутого backend. Не передавать коды, пароли, registration token или секреты в CI logs, issue, PR или чат.
+
+Автоматический DB integration test `test/registration-email-delivery-db.test.js` проходит тот же HTTP registration flow через PostgreSQL outbox и Nodemailer SMTP transport, используя локальный SMTP sink. Он входит в `npm run test:db` и не отправляет внешних писем.
