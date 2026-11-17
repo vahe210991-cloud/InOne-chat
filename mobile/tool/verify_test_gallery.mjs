@@ -11,7 +11,10 @@ const cards = Array.from(html.matchAll(/<article class="screen-card"[^>]*data-ti
 assert.equal(cards.length, 73, 'The source gallery must contain exactly 73 test screen cards');
 
 const catalog = readFileSync(new URL('../lib/test_screens.dart', import.meta.url), 'utf8');
-const expectedIds = Array.from(catalog.matchAll(/TestScreen\(id: "([^"]+)"/g), (match) => match[1]);
+const expectedIds = Array.from(
+  catalog.matchAll(/TestScreen\s*\(\s*id:\s*["']([^"']+)["']/g),
+  (match) => match[1],
+);
 assert.equal(expectedIds.length, 73, 'The Flutter catalogue must contain exactly 73 test screen IDs');
 for (const id of expectedIds) {
   assert.equal(cards.filter((card) => card[1].includes(id)).length, 1, 'Gallery card missing or duplicated: ' + id);
