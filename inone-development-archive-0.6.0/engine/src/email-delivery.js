@@ -146,7 +146,7 @@ export function createEmailDelivery({
   async function releaseClaim(row) {
     await pool.query(
       `UPDATE email_deliveries
-       SET status = 'queued', available_at = now(), locked_at = NULL, locked_by = NULL, updated_at = now()
+       SET status = 'queued', attempts = GREATEST(attempts - 1, 0), available_at = now(), locked_at = NULL, locked_by = NULL, updated_at = now()
        WHERE id = $1 AND status = 'processing' AND locked_by = $2`,
       [row.id, workerId],
     );
@@ -350,9 +350,9 @@ export function createEmailDelivery({
       stopping = true;
       if (timer) clearInterval(timer);
       timer = null;
-      // Let an in-flight SMTP operation finish before closing the transport.
-      if (activeTick) await activeTick;
+      // Close the transport first so any in-flight send rejects and its lease can be released for retry.
       try { smtpMailer.close?.(); } catch { /* transport close is best-effort during shutdown */ }
+      if (activeTick) await activeTick;
       masterKey.fill(0);
       payloadKey.fill(0);
       fingerprintKey.fill(0);
