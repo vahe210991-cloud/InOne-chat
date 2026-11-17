@@ -53,6 +53,7 @@ class InOneSession extends ChangeNotifier {
   String? _deviceId;
   String? _userId;
   String? _savedMlsUserId;
+  String? _registrationToken;
   Future<void>? _initializing;
   Future<void>? _adoptionInFlight;
   Future<Map<String, dynamic>>? _loginInFlight;
@@ -218,33 +219,81 @@ class InOneSession extends ChangeNotifier {
     return safeResult;
   }
 
-  Future<Map<String, dynamic>> startEmailRegistration(String email) =>
-      _client.post('/register/email',
-          authenticated: false, body: {'email': email.trim()});
+  Future<Map<String, dynamic>> startEmailRegistration(String email) async {
+    _registrationToken = null;
+    return _client.post(
+      '/register/email',
+      authenticated: false,
+      body: {'email': email.trim()},
+    );
+  }
 
   Future<Map<String, dynamic>> confirmEmailRegistration({
     required String email,
     required String code,
-  }) =>
-      _client.post('/register/email/confirm', authenticated: false, body: {
-        'email': email.trim(),
-        'code': code.trim(),
-      });
+  }) async {
+    final result = await _client.post(
+      '/register/email/confirm',
+      authenticated: false,
+      body: {'email': email.trim(), 'code': code.trim()},
+    );
+    final token = result['registrationToken'];
+    if (token is! String || token.isEmpty) {
+      _registrationToken = null;
+      throw const ApiException(
+        code: 'invalid_registration_confirmation',
+        statusCode: 502,
+        retryable: false,
+      );
+    }
+    // The one-time registration ticket is host-only and never returned to WebView.
+    _registrationToken = token;
+    return const <String, dynamic>{'ok': true};
+  }
 
   Future<Map<String, dynamic>> registerAccount({
     required String email,
-    required String registrationToken,
     required String password,
     required String nickname,
     String? phone,
-  }) =>
-      _client.post('/register', authenticated: false, body: {
-        'email': email.trim(),
-        'registrationToken': registrationToken,
-        'password': password,
-        'nickname': nickname.trim(),
-        if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
-      });
+  }) async {
+    final token = _registrationToken;
+    if (token == null || token.isEmpty) {
+      throw const ApiException(
+        code: 'registration_confirmation_required',
+        statusCode: 409,
+        retryable: false,
+      );
+    }
+    try {
+      final result = await _client.post(
+        '/register',
+        authenticated: false,
+        body: {
+          'email': email.trim(),
+          'registrationToken': token,
+          'password': password,
+          'nickname': nickname.trim(),
+          if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
+        },
+      );
+      _registrationToken = null;
+      // Beta 1.0 owner decision D11: successful registration proceeds to an
+      // authenticated session. The registration endpoint itself returns no
+      // access token, so authenticate through the normal login flow.
+      await login(email: email, password: password);
+      return <String, dynamic>{
+        'ok': true,
+        'userId': result['userId'],
+        'nickname': result['nickname'],
+        'verificationLevel': result['verificationLevel'],
+      };
+    } catch (_) {
+      // A failed registration POST leaves the ticket available for retry. Once
+      // the server accepts registration, the ticket is consumed before login.
+      rethrow;
+    }
+  }
 
   /// Transfers the active session to the persistent OpenMLS client.
   ///
@@ -498,6 +547,7 @@ class InOneSession extends ChangeNotifier {
   }
 
   Future<void> _logoutOnce() async {
+    _registrationToken = null;
     final login = _loginInFlight;
     if (login != null) {
       try {

@@ -267,7 +267,8 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
     try {
       await _controller.runJavaScript(
         "if (window.InOne) { window.InOne.setThemeMode('auto'); "
-        "window.InOne.setInsets(${padding.top}, ${padding.bottom}); }",
+        "window.InOne.setInsets(${padding.top}, ${padding.bottom}); "
+        "if (typeof window.InOne.runAutoApi === 'function') window.InOne.runAutoApi(); }",
       );
     } catch (_) {
       if (mounted) setState(() => _error = 'Не удалось инициализировать утверждённый экран');
@@ -532,7 +533,7 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
 
     final call = message.call;
     final route = call == null ? null : claudeSupportedApiCalls[call];
-    if (route == null) {
+    if (route == null || !claudeScreenAllowsApiCall(message.screenId, call)) {
       await _setClaudeScreenState('unavailable', 'Этот API-маршрут пока не подключён');
       return;
     }
@@ -556,13 +557,18 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
       } else if (call == 'POST /register') {
         await _session.registerAccount(
           email: (message.body['email'] ?? '').toString(),
-          registrationToken: (message.body['registrationToken'] ?? '').toString(),
           password: (message.body['password'] ?? '').toString(),
           nickname: (message.body['nickname'] ?? '').toString(),
           phone: message.body['phone']?.toString(),
         );
       } else if (call == 'POST /logout') {
         await _session.logout();
+      } else if (call == 'GET /rooms/mine') {
+        final rooms = await _repositories.myRooms();
+        final roomText = rooms.isEmpty
+            ? 'Пока нет чатов'
+            : rooms.map((room) => '${room.displayName} · ${room.role}').join('\n');
+        await _setClaudeScreenData({'roomsText': roomText});
       } else {
         await _session.request(
           route.method,
@@ -571,12 +577,13 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
           body: message.body.isEmpty ? null : message.body,
         );
       }
-      await _setClaudeScreenState('default');
+      final loginPending = (call == 'POST /login' || call == 'POST /register') && !_session.isAuthenticated;
+      await _setClaudeScreenState(loginPending ? 'waiting' : 'default');
       final nextScreen = switch (call) {
         'POST /register/email' => 'SC-03',
         'POST /register/email/confirm' => 'SC-04',
-        'POST /register' => 'SC-00',
-        'POST /login' => 'SC-00',
+        'POST /register' => loginPending ? 'SC-11' : 'SC-00',
+        'POST /login' => loginPending ? 'SC-11' : 'SC-00',
         'POST /logout' => 'SC-01',
         _ => null,
       };
@@ -587,6 +594,20 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
     } catch (_) {
       // Never forward raw exceptions or request bodies to WebView/UI logs.
       await _setClaudeScreenState('error', 'Не удалось выполнить запрос. Проверьте данные и соединение.');
+    }
+  }
+
+  Future<void> _setClaudeScreenData(Map<String, String> values) async {
+    if (!mounted || !_pageReady) return;
+    final encoded = jsonEncode(values);
+    try {
+      await _controller.runJavaScript('''
+        if (window.InOne && typeof window.InOne.setData === 'function') {
+          window.InOne.setData($encoded);
+        }
+      ''');
+    } catch (_) {
+      // The screen may have been replaced while the response was in flight.
     }
   }
 

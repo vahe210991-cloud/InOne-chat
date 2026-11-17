@@ -1,3 +1,24 @@
+# Next execution — continue screen/API integration (2026-11-12)
+
+Read first:
+1. `development/reports/2026-11-12-historical-test-evidence-baseline.md`
+2. `development/reports/2026-11-12-screen-api-integration-and-bridge-ownership.md`
+3. `development/reports/2026-11-12-A1-engine-tree-drift-audit.md`
+4. Stage 3 API/backend audit and Stage 4 single-executor report.
+
+Continue from branch `feature/beta1-screen-api-integration-2026-11-12`; do not restart A1 or broad source inventory.
+
+Immediate steps:
+1. On an authorized Node runner, execute `node scripts/audit-screen-api-contracts.mjs`, `node scripts/check-mobile-bridge-ownership.mjs`, and focused backend tests. Record exact SHA and output.
+2. Run Flutter analyze/tests, especially registration ticket and screen-scoped bridge tests.
+3. Run focused CH-01 tests and Flutter analyze/tests; the typed repository, response validation, ready-gated bridge dispatch and safe HTML data binding are already implemented.
+4. Build Flutter-to-live-Node integration test so a bridge-triggered request is observable at backend receipt. Do not claim all 31 screens are connected until each screen's API path is dispatched and tested.
+5. Continue route-by-route for organization requests, recovery/provider auth, search, push and MLS chat with explicit DTO and authorization checks.
+
+No merge without owner approval. Keep `INONE_MLS_NATIVE_ENABLED=false`; Stage 4 blocked; WBS v1.1 unchanged.
+
+---
+
 # Immediate next steps — 2026-11-09 12:11 Europe/Tallinn
 
 1. Run Flutter CI independently on post-import PR #36 head `cb09a4058719576df6d589f1f8b59be517b592b5`; verify the exact candidate SHA.

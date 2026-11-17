@@ -47,6 +47,14 @@ void main() {
     expect(message?.targetScreen, 'CH-01');
   });
 
+  test('screen API allowlist prevents cross-screen and unknown calls', () {
+    expect(claudeScreenAllowsApiCall('SC-01', 'POST /login'), isTrue);
+    expect(claudeScreenAllowsApiCall('SC-01', 'POST /logout'), isFalse);
+    expect(claudeScreenAllowsApiCall('SC-05', 'POST /auth/nonce'), isFalse);
+    expect(claudeScreenAllowsApiCall('legacy-v1', 'GET /rooms/mine'), isFalse);
+    expect(claudeScreenAllowsApiCall('CH-02', 'POST /mls/groups/id/messages'), isFalse);
+  });
+
   test('API allowlist contains only backend routes currently supported', () {
     expect(claudeSupportedApiCalls['GET /rooms/mine']?.path, '/rooms/mine');
     expect(claudeSupportedApiCalls['GET /org-requests']?.path, '/org-requests');
