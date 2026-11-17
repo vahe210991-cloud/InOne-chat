@@ -144,6 +144,10 @@ void main() {
       deleteMlsUserId: () async {
         deletedUserId = true;
       },
+      readLocale: () async => null,
+      writeLocale: (_) async {},
+      readLocaleSyncPending: () async => 'false',
+      writeLocaleSyncPending: (_) async {},
     );
 
     final login = session.login(
@@ -261,6 +265,10 @@ void main() {
       readMlsUserId: () async => '@alice:inone.test',
       writeMlsUserId: (_) async {},
       deleteMlsUserId: () async { deletedUserId = true; },
+      readLocale: () async => null,
+      writeLocale: (_) async {},
+      readLocaleSyncPending: () async => 'false',
+      writeLocaleSyncPending: (_) async {},
     );
 
     await session.initialize();
@@ -288,6 +296,10 @@ void main() {
       readMlsUserId: () async => '@alice:inone.test',
       writeMlsUserId: (_) async {},
       deleteMlsUserId: () async { deletedUserId = true; },
+      readLocale: () async => null,
+      writeLocale: (_) async {},
+      readLocaleSyncPending: () async => 'false',
+      writeLocaleSyncPending: (_) async {},
     );
 
     await session.initialize();
@@ -505,6 +517,10 @@ void main() {
       readMlsUserId: () async => null,
       writeMlsUserId: (_) async {},
       deleteMlsUserId: () async { deletedUserId = true; },
+      readLocale: () async => null,
+      writeLocale: (_) async {},
+      readLocaleSyncPending: () async => 'false',
+      writeLocaleSyncPending: (_) async {},
     );
 
     await session.login(email: 'alice@example.test', password: 'not-used-in-test');
