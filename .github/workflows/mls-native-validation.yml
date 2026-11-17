@@ -56,7 +56,6 @@ jobs:
 
 
   ios-keychain:
-    if: hashFiles('mobile/rust/Cargo.toml') != ''
     name: iOS Keychain native target build
     runs-on: macos-14
     timeout-minutes: 45
@@ -64,10 +63,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: "1.91.0"
-          targets: "aarch64-apple-ios"
       - name: Detect persistent bridge crate
         id: bridge
         run: |
@@ -76,6 +71,11 @@ jobs:
           else
             echo "available=false" >> "$GITHUB_OUTPUT"
           fi
+      - uses: dtolnay/rust-toolchain@master
+        if: steps.bridge.outputs.available == 'true'
+        with:
+          toolchain: "1.91.0"
+          targets: "aarch64-apple-ios"
       - name: Verify committed iOS bridge lockfile
         if: steps.bridge.outputs.available == 'true'
         run: test -s mobile/rust/Cargo.lock
