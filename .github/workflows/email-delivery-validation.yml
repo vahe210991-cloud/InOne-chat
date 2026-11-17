@@ -73,3 +73,5 @@ jobs:
         working-directory: inone-development-archive-0.6.0/engine
 
 # Exact-head CI refresh: keep all required validation workflows active on this branch.
+
+# Exact-head CI refresh: run this validation on the synchronized branch head.
