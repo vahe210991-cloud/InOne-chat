@@ -8,9 +8,7 @@ on:
       - ".github/workflows/mls-native-validation.yml"
   push:
     branches:
-      - feat/mls-attachment-aead-core-2026-11-15
-      - feat/native-mls-persistent-ffi-2026-11-15
-      - feat/mls-encrypted-attachment-flow-2026-11-15
+      - main
     paths:
       - "inone-engine-poc-0.6.0/mobile-mls/**"
       - "mobile/rust/**"
@@ -20,8 +18,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: native-mls-${{ github.event.pull_request.number || github.ref }}-${{ github.sha }}
-  cancel-in-progress: false
+  group: native-mls-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 env:
   INONE_ENGINE_DIR: ${{ github.workspace }}/inone-development-archive-0.6.0/engine
