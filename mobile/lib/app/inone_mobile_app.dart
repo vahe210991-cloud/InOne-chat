@@ -83,7 +83,13 @@ class _InOneMobileAppState extends State<InOneMobileApp>
     }
     if (!mounted) return;
     setState(() => _initializing = false);
-    if (_pendingRecoveryLink != null) {
+    final pendingRecoveryLink = _pendingRecoveryLink;
+    if (pendingRecoveryLink != null) {
+      try {
+        await _session.setLocale(pendingRecoveryLink.locale);
+      } catch (_) {
+        // Recovery completion still sends the locale from the signed link.
+      }
       setState(() => _screen = 'recoveryLinkConfirm');
       return;
     }
@@ -103,6 +109,11 @@ class _InOneMobileAppState extends State<InOneMobileApp>
     if (_recoveryLinkInFlight) return true;
     _recoveryLinkInFlight = true;
     try {
+      try {
+        await _session.setLocale(payload.locale);
+      } catch (_) {
+        // The recovery request carries this locale even if profile sync is offline.
+      }
       _recoveryUserId = payload.userId;
       _recoveryLinkLocale = payload.locale;
       if (mounted) {
