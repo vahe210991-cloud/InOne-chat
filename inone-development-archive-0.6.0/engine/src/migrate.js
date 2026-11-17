@@ -10,7 +10,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 export const SCHEMA_FILE = path.join(here, 'schema.sql');
 export const MIGRATIONS_DIR = path.join(here, '..', 'migrations');
 /** Последняя миграция, уже включённая в schema.sql. Обновляется вместе с каждой новой миграцией. */
-export const SCHEMA_VERSION = '0030-profile-email-locale';
+export const SCHEMA_VERSION = '0031-file-upload-device-binding';
 const LOCK_KEY = 727001;
 
 /** Признак того, что миграция уже применена в базе, созданной до появления таблицы миграций. */
@@ -44,6 +44,7 @@ const MARKERS = {
   '0028-mls-key-package-claim-reservation-finalization': "EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'mls_key_package_claims' AND column_name = 'room_id') AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'mls_key_package_claims' AND column_name = 'state')",
   '0029-email-delivery': "to_regclass('email_deliveries') IS NOT NULL",
   '0030-profile-email-locale': "EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'profiles' AND column_name = 'locale') AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'email_codes' AND column_name = 'locale')",
+  '0031-file-upload-device-binding': "EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'files' AND column_name = 'owner_device_id')",
 };
 
 export function listMigrations() {
