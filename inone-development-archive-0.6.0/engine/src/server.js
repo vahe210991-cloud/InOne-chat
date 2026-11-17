@@ -2704,7 +2704,7 @@ if (req.method === 'POST' && p === '/login') {
             const emailCode = String(randomInt(0, 1_000_000)).padStart(6, '0');
             const profile = await storage.profileGet(userId);
             const primaryEmail = profile?.email ?? userId;
-            const locale = profile?.locale ?? requestedLocale ?? 'hy';
+            const locale = requestedLocale ?? profile?.locale ?? 'hy';
             const backup = await storage.backupEmailGet(userId);
             const recoveryEmail = backup?.email ?? primaryEmail;
             const notificationRecipients = [primaryEmail, backup?.email];
@@ -2726,7 +2726,7 @@ if (req.method === 'POST' && p === '/login') {
             const token = randomBytes(24).toString('base64url');
             const profile = await storage.profileGet(userId);
             const primaryEmail = profile?.email ?? userId;
-            const locale = profile?.locale ?? requestedLocale ?? 'hy';
+            const locale = requestedLocale ?? profile?.locale ?? 'hy';
             const backup = await storage.backupEmailGet(userId);
             const notificationRecipients = [primaryEmail, backup?.email];
             const issued = await storage.recoveryUpdateWithOutbox(userId, (r) => {
@@ -2803,7 +2803,7 @@ if (req.method === 'POST' && p === '/login') {
         const profile = await storage.profileGet(userId);
         const primaryEmail = profile?.email ?? userId;
         const backup = await storage.backupEmailGet(userId);
-        const locale = profile?.locale ?? requestedLocale ?? 'hy';
+        const locale = requestedLocale ?? profile?.locale ?? 'hy';
         await storage.recoveryCancelWithOutbox(userId, r.windowPreviousHash, (cur) => ({ next: cancelWindow(cur), result: null }),
           (tx) => mailToRecipients([primaryEmail, backup?.email], '', '', 'recovery_cancelled', { method: 'code' }, tx, locale));
         await alertDevices(userId, { kind: 'recovery_cancelled' });
@@ -2866,7 +2866,7 @@ if (req.method === 'POST' && p === '/login') {
         const profile = await storage.profileGet(userId);
         const primaryEmail = profile?.email ?? userId;
         const backup = await storage.backupEmailGet(userId);
-        const locale = profile?.locale ?? requestedLocale ?? 'hy';
+        const locale = requestedLocale ?? profile?.locale ?? 'hy';
         const keyResetAt = await storage.recoveryCompleteWithOutbox(
           userId, newPasswordHash,
           (r) => {
