@@ -104,13 +104,16 @@ test('SMTP rejects non-canonical base64 padding and reports the encryption-key e
   const canonical = randomBytes(32).toString('base64');
   const invalidKeys = [canonical.slice(0, -1), canonical + '='];
   for (const key of invalidKeys) {
-    const error = assert.throws(() => loadConfig({
+    assert.throws(() => loadConfig({
       ...GOOD,
       INONE_MAIL_TRANSPORT: 'smtp',
       INONE_SMTP_HOST: 'smtp.example',
       INONE_SMTP_FROM: 'noreply@example.test',
       INONE_EMAIL_ENCRYPTION_KEY: key,
-    }));
-    assert.equal((error.message.match(/INONE_EMAIL_ENCRYPTION_KEY/g) ?? []).length, 1);
+    }), (error) => {
+      assert.equal((error.message.match(/INONE_EMAIL_ENCRYPTION_KEY/g) ?? []).length, 1);
+      assert.match(error.message, /canonical base64/);
+      return true;
+    });
   }
 });
