@@ -432,8 +432,8 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
     const UPLOAD_TTL_MS = 15 * 60_000;
     const DOWNLOAD_TTL_MS = 5 * 60_000;
     const STALE_UPLOAD_MS = 24 * 3600_000;
-    const signFor = (action, fileId, expires, size = '', sha = '') =>
-      createHmac('sha256', objectSecret).update(`${action}|${fileId}|${expires}|${size}|${sha}`).digest('hex');
+    const signFor = (action, fileId, expires, size = '', sha = '', ownerId = '', ownerDeviceId = '') =>
+      createHmac('sha256', objectSecret).update(`${action}|${fileId}|${expires}|${size}|${sha}|${ownerId}|${ownerDeviceId}`).digest('hex');
     const sameSig = (a, b) => {
       const x = Buffer.from(String(a));
       const y = Buffer.from(String(b));
@@ -449,9 +449,11 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
       const file = await storage.getFile(fileId);
       if (!file) return send(res, 404, { error: 'not found' });
       if (req.method === 'PUT') {
-        if (!expires || now() > expires || !sameSig(sig, signFor('PUT', fileId, expires, file.size, file.sha256))) {
+        if (!expires || now() > expires || !file.ownerDeviceId || !sameSig(sig, signFor('PUT', fileId, expires, file.size, file.sha256, file.ownerId, file.ownerDeviceId))) {
           return send(res, 403, { error: 'upload link is invalid or expired' });
         }
+        const ownerDevice = await storage.deviceRecord(key(file.ownerId, file.ownerDeviceId));
+        if (!ownerDevice || ownerDevice.revoked) return send(res, 403, { error: 'uploading device is revoked' });
         if (file.status !== 'pending') return send(res, 409, { error: 'file is not waiting for upload' });
         if (Number(req.headers['content-length']) !== file.size) {
           res.setHeader('Connection', 'close');
@@ -470,7 +472,14 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         const bytes = Buffer.concat(chunks);
         if (bytes.length !== file.size) return send(res, 400, { error: 'incomplete body' });
         if (createHash('sha256').update(bytes).digest('hex') !== file.sha256) return send(res, 422, { error: 'checksum does not match the declaration' });
+        const activeOwnerDevice = await storage.deviceRecord(key(file.ownerId, file.ownerDeviceId));
+        if (!activeOwnerDevice || activeOwnerDevice.revoked) return send(res, 403, { error: 'uploading device is revoked' });
         await objectStore.put(fileId, bytes);
+        const stillActiveOwnerDevice = await storage.deviceRecord(key(file.ownerId, file.ownerDeviceId));
+        if (!stillActiveOwnerDevice || stillActiveOwnerDevice.revoked) {
+          await objectStore.remove(fileId).catch(() => {});
+          return send(res, 403, { error: 'uploading device is revoked' });
+        }
         await storage.markFileUploaded(fileId);
         return send(res, 200, { uploaded: true });
       }
@@ -1188,9 +1197,9 @@ if (req.method === 'POST' && p === '/files') {
     if (orgQuota !== null && (await storage.bytesForOrg(fileOrg)) + size > orgQuota) return send(res, 413, { error: 'organization storage quota exceeded', code: 'org_quota_exceeded' });
   }
   const fileId = randomBytes(16).toString('hex');
-  await storage.createFile({ fileId, ownerId: d.userId, roomId: forRoom ?? null, kind, size, sha256: digest, createdAt: now() });
+  await storage.createFile({ fileId, ownerId: d.userId, ownerDeviceId: d.deviceId, roomId: forRoom ?? null, kind, size, sha256: digest, createdAt: now() });
   const expires = now() + UPLOAD_TTL_MS;
-  const path = `/objects/${fileId}?expires=${expires}&sig=${signFor('PUT', fileId, expires, size, digest)}`;
+  const path = `/objects/${fileId}?expires=${expires}&sig=${signFor('PUT', fileId, expires, size, digest, d.userId, d.deviceId)}`;
   return send(res, 200, { fileId, uploadUrl: absoluteUrl(req, path), method: 'PUT', headers: { 'content-length': String(size) }, expiresAt: new Date(expires).toISOString() });
 }
 const fileDone = p.match(/^\/files\/([^/]+)\/complete$/);
@@ -1200,6 +1209,7 @@ if (req.method === 'POST' && fileDone) {
   const fileId = decodeURIComponent(fileDone[1]);
   const f = await storage.getFile(fileId);
   if (!f || f.ownerId !== d.userId) return send(res, 404, { error: 'not found' });
+  if (f.ownerDeviceId !== d.deviceId) return send(res, 403, { error: 'file upload belongs to another device' });
   if (!(await storage.markFileReady(fileId, now()))) return send(res, 409, { error: 'file is not uploaded yet' });
   return send(res, 200, { fileId, status: 'ready' });
 }
