@@ -257,18 +257,55 @@ class InOneSession extends ChangeNotifier {
   Future<Map<String, dynamic>> startRecovery(String email) =>
       _client.post('/recovery/start', authenticated: false, body: {'email': email.trim()});
 
+  /// Confirms a recovery link only after the user explicitly taps SC-08.
+  /// The GET preview endpoint is never called from the app.
+  Future<Map<String, dynamic>> confirmRecoveryLink({
+    required String userId,
+    required String token,
+  }) {
+    final normalizedUserId = userId.trim();
+    if (normalizedUserId.isEmpty ||
+        normalizedUserId.length > 256 ||
+        normalizedUserId.runes.any((rune) => rune < 0x20 || rune == 0x7f) ||
+        token.isEmpty ||
+        token.length > 128 ||
+        !RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(token)) {
+      throw ArgumentError('Invalid recovery link payload');
+    }
+    return _client.post(
+      '/recovery/confirm',
+      authenticated: false,
+      body: {'user': normalizedUserId, 'token': token},
+    );
+  }
+
   Future<Map<String, dynamic>> completeRecovery({
-    required String email,
+    String? email,
+    String? userId,
     required String code,
     required String newPassword,
     String pin = '',
-  }) =>
-      _client.post('/recovery/complete', authenticated: false, body: {
-        'email': email.trim(),
-        'code': code.trim(),
-        'newPassword': newPassword,
-        if (pin.isNotEmpty) 'pin': pin,
-      });
+    String? locale,
+  }) {
+    final normalizedEmail = email?.trim();
+    final normalizedUserId = userId?.trim();
+    final hasEmail = normalizedEmail != null && normalizedEmail.isNotEmpty;
+    final hasUserId = normalizedUserId != null && normalizedUserId.isNotEmpty;
+    if (hasEmail == hasUserId) {
+      throw ArgumentError('Provide exactly one recovery identity: email or userId');
+    }
+    if (locale != null && !const {'hy', 'ru', 'en'}.contains(locale)) {
+      throw ArgumentError.value(locale, 'locale', 'Supported locales: hy, ru, en');
+    }
+    return _client.post('/recovery/complete', authenticated: false, body: {
+      if (hasEmail) 'email': normalizedEmail,
+      if (hasUserId) 'userId': normalizedUserId,
+      'code': code.trim(),
+      'newPassword': newPassword,
+      if (pin.isNotEmpty) 'pin': pin,
+      if (locale != null) 'locale': locale,
+    });
+  }
 
   Future<Map<String, dynamic>> cancelRecoveryByCode({
     required String email,
