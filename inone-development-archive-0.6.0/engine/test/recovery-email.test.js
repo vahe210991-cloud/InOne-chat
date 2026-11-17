@@ -76,11 +76,13 @@ test('R-E1: восстановление по почте — код уходит
   try {
     await registerByEmail(base, srv, 'boris@example.test', 'Boris');
     assert.equal((await call(base, 'POST', '/recovery/start', { body: { email: 'boris@example.test' } })).status, 202);
-    const recoveryMail = srv.mailbox('boris@example.test').filter((m) => m.templateId === 'recovery_confirmation_link').at(-1);
-    assert.ok(recoveryMail, 'recovery confirmation email is delivered');
-    assert.match(recoveryMail.html, /href="inone:\/\/recovery\/confirm\?user=boris%40example\.test&amp;token=[A-Za-z0-9_-]+&amp;locale=ru"/);
-    assert.match(recoveryMail.text, /https:\/\/[^\s]+\/recovery\/confirm/, 'HTTPS web fallback remains available');
+    const recoveryMail = srv.mailbox('boris@example.test').filter((m) => m.templateId === 'recovery_code').at(-1);
+    assert.ok(recoveryMail, 'recovery code email is delivered');
+    assert.match(recoveryMail.text, /\b\d{6}\b/, 'recovery code is included in the email');
     assert.equal(recoveryMail.locale, 'ru');
+    const notification = srv.mailbox('boris@example.test').filter((m) => m.templateId === 'recovery_requested').at(-1);
+    assert.ok(notification, 'recovery request notification is delivered');
+    assert.equal(notification.locale, 'ru');
     assert.equal(srv.mailbox('boris@example.test').filter((m) => m.templateId === SUBJECT_RECOVERY).length, 1);
     assert.equal((await call(base, 'POST', '/recovery/start', { body: { email: 'nobody@example.test' } })).status, 202, 'ответ одинаковый');
     assert.equal(srv.mailbox('nobody@example.test').length, 0);
