@@ -38,6 +38,10 @@ test('ключ шифрования требует ровно 32 байта', ()
   assert.equal(parseEmailEncryptionKey('11'.repeat(32)).length, 32);
   assert.throws(() => parseEmailEncryptionKey(Buffer.alloc(16).toString('base64')), /exactly 32 bytes/);
   assert.throws(() => parseEmailEncryptionKey('not-base64!'), /valid base64/);
+  const canonicalBase64 = randomBytes(32).toString('base64');
+  assert.equal(parseEmailEncryptionKey(canonicalBase64).length, 32);
+  assert.throws(() => parseEmailEncryptionKey(canonicalBase64.slice(0, -1)), /canonical base64/);
+  assert.throws(() => parseEmailEncryptionKey(canonicalBase64 + '='), /canonical base64/);
 });
 
 test('очередь шифрует получателя и тело, дедуплицирует и восстанавливает доставку после перезапуска', async () => {
