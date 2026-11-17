@@ -114,7 +114,8 @@ void main() {
     session.dispose();
     nextLaunch.dispose();
   });
-  addTearDown(() => secureStorageChannel.setMockMethodCallHandler(null));
+  addTearDown(() =>
+      binaryMessenger.setMockMethodCallHandler(secureStorageChannel, null));
 
   test(
     'logout clears saved MLS identity when native runtime is unavailable',
