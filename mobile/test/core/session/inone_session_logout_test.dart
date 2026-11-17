@@ -62,6 +62,7 @@ void main() {
         return null;
     }
   });
+  addTearDown(() => secureStorageChannel.setMockMethodCallHandler(null));
 
   test('logout clears saved MLS identity when native purge fails', () async {
     String? savedDeviceId = 'device-1';
@@ -110,6 +111,7 @@ void main() {
     session.dispose();
     nextLaunch.dispose();
   });
+  addTearDown(() => secureStorageChannel.setMockMethodCallHandler(null));
 
   test(
     'logout clears saved MLS identity when native runtime is unavailable',
