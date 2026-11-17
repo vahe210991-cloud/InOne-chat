@@ -1,4 +1,5 @@
 name: Email delivery and PostgreSQL validation
+# This workflow is part of the synchronized exact-HEAD CI gate for this PR.
 
 on:
   # Validate the current recovery PR head, not stale results from an earlier commit.
