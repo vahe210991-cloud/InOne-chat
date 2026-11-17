@@ -590,7 +590,10 @@ mod tests {
 
         let result = session.logout();
 
-        assert!(result.is_err(), "the directory at the database path cannot be removed as a file");
+        assert!(
+            result.is_err(),
+            "the directory at the database path cannot be removed as a file"
+        );
         assert!(
             keys.deleted.load(Ordering::SeqCst),
             "the platform key must still be deleted when database cleanup fails"
@@ -637,5 +640,4 @@ mod tests {
             "a failed platform-store initialization cannot claim key deletion"
         );
     }
-
 }
