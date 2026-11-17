@@ -405,7 +405,6 @@ pub fn resume_session(
     })
 }
 
-
 /// Purges an MLS database whose session could not be resumed. This is local
 /// cleanup only; it does not claim that the server-side session was revoked.
 pub fn purge_local_session(
@@ -436,7 +435,6 @@ pub fn purge_local_session(
 
 #[frb(init)]
 pub fn init_app() {}
-
 
 #[cfg(test)]
 mod tests {

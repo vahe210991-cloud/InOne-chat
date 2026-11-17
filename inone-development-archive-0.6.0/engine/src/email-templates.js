@@ -52,9 +52,9 @@ const CATALOG = {
     en: ['An InOne account recovery was requested', () => 'A request to recover access to your InOne account was received. A code was sent to your backup or primary email. If this was not you, do not share any codes and review your devices.'],
   },
   recovery_confirmation_link: {
-    hy: ['Հաստատեք հաշվի վերականգնումը', ({ url }) => `Հաշվի վերականգնումը հաստատելու համար բացեք ստորև նշված հղումը։ Հղումը վավեր է մեկ ժամ։ Եթե հարցումը դուք չեք կատարել, մի՛ բացեք հղումը։\n${url}`],
-    ru: ['Подтвердите восстановление аккаунта', ({ url }) => `Чтобы подтвердить восстановление аккаунта, откройте ссылку ниже. Ссылка действует один час. Если вы не отправляли запрос, не открывайте её.\n${url}`],
-    en: ['Confirm your account recovery', ({ url }) => `To confirm account recovery, open the link below. The link expires in one hour. If you did not make this request, do not open it.\n${url}`],
+    hy: ['Հաստատեք հաշվի վերականգնումը', ({ url, appUrl }) => `Բջջային հավելվածում հաստատելու համար բացեք InOne հղումը՝ ${appUrl}։ Վեբ տարբերակը՝ ${url}։ Հղումը վավեր է մեկ ժամ։ Եթե հարցումը դուք չեք կատարել, մի՛ բացեք հղումը։`],
+    ru: ['Подтвердите восстановление аккаунта', ({ url, appUrl }) => `Для подтверждения в приложении InOne откройте ссылку: ${appUrl}. Веб-версия: ${url}. Ссылка действует один час. Если вы не отправляли запрос, не открывайте её.`],
+    en: ['Confirm your account recovery', ({ url, appUrl }) => `To confirm in the InOne app, open: ${appUrl}. Web fallback: ${url}. The link expires in one hour. If you did not make this request, do not open it.`],
   },
   recovery_cancelled: {
     hy: ['Հաշվի վերականգնումը չեղարկվել է', ({ method }) => method === 'code' ? 'Հաշվի վերականգնումը չեղարկվել է չեղարկման կոդով։ Ձեր նախկին գաղտնաբառը վերականգնվել է։' : 'Հաշվի վերականգնումը չեղարկվել է մինչև հարցումը օգտագործվող սարքից։ Ձեր նախկին գաղտնաբառը վերականգնվել է։'],
@@ -79,7 +79,7 @@ const REQUIRED_VARIABLES = {
   new_device_wait: ['activateAt', 'code'],
   recovery_code: ['code'],
   recovery_requested: [],
-  recovery_confirmation_link: ['url'],
+  recovery_confirmation_link: ['url', 'appUrl'],
   recovery_cancelled: ['method'],
   recovery_completed: ['cancelCode'],
 };
@@ -129,21 +129,27 @@ function safeVariables(input) {
   return result;
 }
 
-function escapeHtml(value) {
-  return String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
+function safeRecoveryAppUrl(value) {
+  let parsed;
+  try { parsed = new URL(value); } catch { throw new Error('invalid recovery app URL'); }
+  const keys = [...parsed.searchParams.keys()];
+  const user = parsed.searchParams.get('user') ?? '';
+  const token = parsed.searchParams.get('token') ?? '';
+  const locale = parsed.searchParams.get('locale') ?? '';
+  if (parsed.protocol !== 'inone:' || parsed.hostname !== 'recovery' || parsed.pathname !== '/confirm'
+    || parsed.username || parsed.password || parsed.port || parsed.hash
+    || keys.length !== 3 || new Set(keys).size !== 3
+    || keys.some((key) => !['user', 'token', 'locale'].includes(key))
+    || !user.trim() || user.length > 256 || /[\u0000-\u001f\u007f]/.test(user)
+    || !/^[A-Za-z0-9_-]{1,128}$/.test(token)
+    || !['hy', 'ru', 'en'].includes(locale)) {
+    throw new Error('recovery app URL must be a valid InOne recovery deep link');
+  }
+  return parsed.toString();
 }
 
-function safeRecoveryUrl(value) {
-  try {
-    const parsed = new URL(value);
-    const localHttp = parsed.protocol === 'http:'
-      && ['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname.toLowerCase());
-    if ((parsed.protocol === 'https:' || localHttp)
-      && parsed.hostname && !parsed.username && !parsed.password && !/[\r\n]/.test(value)) {
-      return parsed.toString();
-    }
-  } catch {}
-  return null;
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 }
 
 function renderHtml({ subject, text, locale, templateId, variables }) {
@@ -160,10 +166,8 @@ function renderHtml({ subject, text, locale, templateId, variables }) {
     );
   }
   if (templateId === 'recovery_confirmation_link') {
-    const safeUrl = safeRecoveryUrl(variables.url);
-    if (safeUrl) {
-      content += `<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:24px 0 8px;"><tr><td bgcolor="#C9F53F" style="border-radius:12px;"><a href="${escapeHtml(safeUrl)}" style="display:inline-block;padding:14px 22px;color:#171A14;text-decoration:none;font-family:'Noto Sans Armenian','Noto Sans',Arial,sans-serif;font-size:14px;font-weight:700;border-radius:12px;">${escapeHtml(copy.action)}</a></td></tr></table>`;
-    }
+    const safeAppUrl = safeRecoveryAppUrl(variables.appUrl);
+    content += `<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:24px 0 8px;"><tr><td bgcolor="#C9F53F" style="border-radius:12px;"><a href="${escapeHtml(safeAppUrl)}" style="display:inline-block;padding:14px 22px;color:#171A14;text-decoration:none;font-family:'Noto Sans Armenian','Noto Sans',Arial,sans-serif;font-size:14px;font-weight:700;border-radius:12px;">${escapeHtml(copy.action)}</a></td></tr></table>`;
   }
   const preheader = escapeHtml(copy.preheader);
   const safeSubject = escapeHtml(subject);
@@ -182,10 +186,17 @@ export function renderEmailTemplate(templateId, variables = {}, locale = 'hy') {
   if (templateId === 'backup_email_changed' && !['added', 'changed'].includes(values.action)) throw new Error('invalid email action');
   if (templateId === 'stepup_code' && !Object.hasOwn(STEPUP_ACTION_LABELS.hy, values.action)) throw new Error('invalid step-up action');
   if (templateId === 'recovery_confirmation_link') {
-    if (!safeRecoveryUrl(values.url)) throw new Error('recovery URL must be a safe HTTPS URL or localhost HTTP URL');
+    let parsed;
+    try { parsed = new URL(values.url); } catch { throw new Error('invalid recovery URL'); }
+    if (parsed.protocol !== 'https:' || !parsed.hostname || parsed.username || parsed.password || /[\r\n]/.test(values.url)) throw new Error('recovery URL must be a safe HTTPS URL');
   }
   if (templateId === 'recovery_cancelled' && !['code', 'device'].includes(values.method)) throw new Error('invalid recovery cancellation method');
-  const renderValues = templateId === 'stepup_code' ? { ...values, action: STEPUP_ACTION_LABELS[resolvedLocale][values.action] } : values;
+  let renderValues = templateId === 'stepup_code' ? { ...values, action: STEPUP_ACTION_LABELS[resolvedLocale][values.action] } : values;
+  if (templateId === 'recovery_confirmation_link') {
+    const appUrl = safeRecoveryAppUrl(values.appUrl);
+    if (new URL(appUrl).searchParams.get('locale') !== resolvedLocale) throw new Error('recovery app URL locale must match email locale');
+    renderValues = { ...values, appUrl };
+  }
   const text = render(renderValues);
   const ttlMs = ['registration_code', 'backup_email_verification', 'stepup_code'].includes(templateId)
     ? 10 * 60_000

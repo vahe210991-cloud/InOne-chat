@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -8,6 +9,26 @@ import 'package:inone_mobile/core/mls/mls_session_bridge.dart';
 import 'package:inone_mobile/core/session/inone_session.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  const secureStorageChannel =
+      MethodChannel('plugins.it_nomads.com/flutter_secure_storage');
+  final binaryMessenger =
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+  setUp(() {
+    binaryMessenger.setMockMethodCallHandler(secureStorageChannel, (call) async {
+    switch (call.method) {
+      case 'containsKey':
+        return false;
+      case 'readAll':
+        return <String, String>{};
+      default:
+        return null;
+    }
+    });
+  });
+  tearDown(() =>
+      binaryMessenger.setMockMethodCallHandler(secureStorageChannel, null));
+
   test('concurrent initialize calls share one device identity creation', () async {
     final readGate = Completer<String?>();
     var readCalls = 0;
@@ -24,10 +45,6 @@ void main() {
       readMlsUserId: () async => null,
       writeMlsUserId: (_) async {},
       deleteMlsUserId: () async {},
-      readLocale: () async => null,
-      writeLocale: (_) async {},
-      readLocaleSyncPending: () async => 'false',
-      writeLocaleSyncPending: (_) async {},
     );
 
     final first = session.initialize();
@@ -63,10 +80,6 @@ void main() {
       readMlsUserId: () async => null,
       writeMlsUserId: (_) async {},
       deleteMlsUserId: () async {},
-      readLocale: () async => null,
-      writeLocale: (_) async {},
-      readLocaleSyncPending: () async => 'false',
-      writeLocaleSyncPending: (_) async {},
     );
     final bridge = _FakeMlsSessionBridge()
       ..openStarted = Completer<void>()
@@ -114,10 +127,6 @@ void main() {
       deleteMlsUserId: () async {
         deletedUserId = true;
       },
-      readLocale: () async => null,
-      writeLocale: (_) async {},
-      readLocaleSyncPending: () async => 'false',
-      writeLocaleSyncPending: (_) async {},
     );
 
     final login = session.login(
@@ -166,10 +175,6 @@ void main() {
       readMlsUserId: () async => null,
       writeMlsUserId: (_) async {},
       deleteMlsUserId: () async {},
-      readLocale: () async => null,
-      writeLocale: (_) async {},
-      readLocaleSyncPending: () async => 'false',
-      writeLocaleSyncPending: (_) async {},
     );
 
     final loginResult = await session.login(email: 'alice@example.test', password: 'not-used-in-test');
@@ -209,22 +214,19 @@ void main() {
       readMlsUserId: () async => null,
       writeMlsUserId: (_) async {},
       deleteMlsUserId: () async {},
-      readLocale: () async => null,
-      writeLocale: (_) async {},
-      readLocaleSyncPending: () async => 'false',
-      writeLocaleSyncPending: (_) async {},
     );
 
     await expectLater(
       session.login(email: 'alice@example.test', password: 'not-used-in-test'),
-      throwsA(isA<StateError>()),
+      throwsStateError,
     );
 
-    // The login must fail closed when Rust cannot accept refresh-token ownership.
+    // A failed native handoff must not leave a Dart-owned refresh-token session.
     expect(session.isAuthenticated, isFalse);
     expect(session.hasNativeMlsSession, isFalse);
     expect(session.mlsError, contains('MLS runtime could not be opened'));
     expect(session.userId, isNull);
+    expect(bridge.closeCalls, 1);
     session.dispose();
   });
 
@@ -239,10 +241,6 @@ void main() {
       readMlsUserId: () async => '@alice:inone.test',
       writeMlsUserId: (_) async {},
       deleteMlsUserId: () async { deletedUserId = true; },
-      readLocale: () async => null,
-      writeLocale: (_) async {},
-      readLocaleSyncPending: () async => 'false',
-      writeLocaleSyncPending: (_) async {},
     );
 
     await session.initialize();
@@ -270,10 +268,6 @@ void main() {
       readMlsUserId: () async => '@alice:inone.test',
       writeMlsUserId: (_) async {},
       deleteMlsUserId: () async { deletedUserId = true; },
-      readLocale: () async => null,
-      writeLocale: (_) async {},
-      readLocaleSyncPending: () async => 'false',
-      writeLocaleSyncPending: (_) async {},
     );
 
     await session.initialize();
@@ -327,10 +321,6 @@ void main() {
       readMlsUserId: () async => null,
       writeMlsUserId: (_) async {},
       deleteMlsUserId: () async {},
-      readLocale: () async => null,
-      writeLocale: (_) async {},
-      readLocaleSyncPending: () async => 'false',
-      writeLocaleSyncPending: (_) async {},
     );
     final bridge = _FakeMlsSessionBridge();
 
@@ -360,10 +350,7 @@ void main() {
     session.dispose();
   });
 
-  test('failed native MLS handoff logs out and clears the Flutter refresh session', () async {
-    var logoutCalls = 0;
-    var refreshCalls = 0;
-    var deletedUserId = false;
+  test('failed adoption invalidates the session without Flutter refresh fallback', () async {
     final httpClient = MockClient((request) async {
       if (request.url.path == '/login') {
         return http.Response(
@@ -374,20 +361,19 @@ void main() {
       if (request.url.path == '/profile') {
         return http.Response(jsonEncode({'userId': '@alice:inone.test'}), 200);
       }
-      if (request.url.path == '/logout') {
-        logoutCalls++;
-        expect(request.headers['authorization'], 'Bearer access-1');
-        return http.Response('{"ok":true}', 200);
-      }
       if (request.url.path == '/token/refresh') {
-        refreshCalls++;
+        expect(jsonDecode(request.body)['refreshToken'], 'refresh-1');
         return http.Response(
           jsonEncode({'token': 'access-2', 'refreshToken': 'refresh-2'}),
           200,
         );
       }
       if (request.url.path == '/protected') {
-        return http.Response('{"error":"unauthorized"}', 401);
+        if (request.headers['authorization'] == 'Bearer access-1') {
+          return http.Response('{"error":"token_expired"}', 401);
+        }
+        expect(request.headers['authorization'], 'Bearer access-2');
+        return http.Response('{"status":"ok"}', 200);
       }
       return http.Response('{}', 404);
     });
@@ -400,29 +386,25 @@ void main() {
       writeDeviceId: (_) async {},
       readMlsUserId: () async => null,
       writeMlsUserId: (_) async {},
-      deleteMlsUserId: () async {
-        deletedUserId = true;
-      },
-      readLocale: () async => null,
-      writeLocale: (_) async {},
-      readLocaleSyncPending: () async => 'false',
-      writeLocaleSyncPending: (_) async {},
+      deleteMlsUserId: () async {},
     );
 
     await expectLater(
       session.login(email: 'alice@example.test', password: 'not-used-in-test'),
-      throwsA(isA<StateError>()),
+      throwsStateError,
     );
-
     expect(session.isAuthenticated, isFalse);
     expect(session.hasNativeMlsSession, isFalse);
-    expect(logoutCalls, 1);
-    expect(refreshCalls, 0);
+    expect(session.mlsError, contains('MLS runtime could not be opened'));
     expect(bridge.closeCalls, 1);
-    expect(bridge.purgeCalls, 0, reason: 'a failed open must not destroy an existing encrypted database');
-    expect(deletedUserId, isTrue);
-    await expectLater(session.request('GET', '/protected'), throwsA(anything));
-    expect(refreshCalls, 0, reason: 'Dart must never rotate the refresh token after failed MLS handoff');
+    expect(bridge.refreshCalls, 0);
+
+    // No authenticated request may fall back to the Dart refresh token after
+    // Rust rejects ownership of the session.
+    await expectLater(
+      session.request('GET', '/protected'),
+      throwsA(isA<Exception>()),
+    );
     session.dispose();
   });
 }

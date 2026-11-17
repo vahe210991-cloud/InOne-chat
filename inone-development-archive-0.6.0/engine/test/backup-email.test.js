@@ -61,7 +61,7 @@ async function sessionOf(base, account, deviceId = 'ANNA_PHONE') {
 
 async function registerByEmail(base, srv, email, nickname) {
   await call(base, 'POST', '/register/email', { body: { email, locale: 'ru' } });
-  const code = srv.mailbox(email).filter((m) => m.templateId === 'registration_code').at(-1).text.match(/\b(\d{6})\b/)[1];
+  const code = srv.mailbox(email).filter((m) => m.subject === 'Код подтверждения InOne').at(-1).text.match(/\b(\d{6})\b/)[1];
   const confirmed = await call(base, 'POST', '/register/email/confirm', { body: { email, code } });
   return call(base, 'POST', '/register', { body: { email, registrationToken: confirmed.body.registrationToken, password: PW, nickname } });
 }
@@ -70,8 +70,8 @@ const loginByEmail = async (base, email, deviceId) =>
   (await call(base, 'POST', '/login', { body: { email, password: PW, deviceId } })).body.token;
 
 /** Код из последнего письма с нужной темой в ящике. */
-const codeOf = (srv, mailbox, subject) =>
-  srv.mailbox(mailbox).filter((m) => m.templateId === subject).at(-1).text.match(/\b(\d{6})\b/)[1];
+const codeOf = (srv, mailbox, templateId) =>
+  srv.mailbox(mailbox).filter((m) => m.templateId === templateId).at(-1).text.match(/\b(\d{6})\b/)[1];
 
 /** Подтверждение действия кодом: код приходит на тот ящик, который сейчас назначен для подтверждений. */
 async function emailStepUp(base, srv, mailbox, token, action) {

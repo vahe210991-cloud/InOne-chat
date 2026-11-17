@@ -1,14 +1,14 @@
 // Настройки сервера из переменных окружения. Неверная конфигурация останавливает запуск до открытия порта.
 import { DEFAULT_PHONE_COUNTRIES } from './phone-international.js';
-import { parseEmailEncryptionKey } from './email-delivery.js';
 const TEST_PEPPER_MARKERS = ['test-pepper', 'change-me', 'example', 'dev-only'];
 const isValidEmailEncryptionKey = (value) => {
   if (typeof value !== 'string') return false;
   if (/^[a-f0-9]{64}$/i.test(value)) return true;
   if (!/^[A-Za-z0-9+/]+={0,2}$/.test(value)) return false;
   const decoded = Buffer.from(value, 'base64');
-  return decoded.length === 32
-    && decoded.toString('base64').replace(/=+$/, '') === value.replace(/=+$/, '');
+  const valid = decoded.length === 32 && decoded.toString('base64') === value;
+  decoded.fill(0);
+  return valid;
 };
 
 export function loadConfig(env = process.env) {
@@ -25,8 +25,8 @@ export function loadConfig(env = process.env) {
     registrationMode: env.INONE_REGISTRATION_MODE ?? 'verified',
     trustProxy: env.INONE_TRUST_PROXY === 'true',
     filesDir: env.INONE_FILES_DIR ?? '',
-    docsSecret: env.INONE_DOCS_SECRET ?? '',
-    testUi: env.INONE_TEST_UI === '1',
+  docsSecret: env.INONE_DOCS_SECRET ?? '',
+  testUi: env.INONE_TEST_UI === '1',
     fileQuotaBytes: env.INONE_FILE_QUOTA_BYTES ? Number(env.INONE_FILE_QUOTA_BYTES) : null,
     bodyLimitBytes: Number(env.INONE_BODY_LIMIT_BYTES ?? 4 * 1024 * 1024),
     requestTimeoutMs: Number(env.INONE_REQUEST_TIMEOUT_MS ?? 30000),
@@ -84,11 +84,7 @@ export function loadConfig(env = process.env) {
     if (!!config.smtpUser !== !!config.smtpPassword) errors.push('INONE_SMTP_USER and INONE_SMTP_PASSWORD must be configured together');
     if (!Number.isInteger(config.emailWorkerPollMs) || config.emailWorkerPollMs < 250 || config.emailWorkerPollMs > 60000) errors.push('INONE_EMAIL_WORKER_POLL_MS must be 250..60000');
     if (!Number.isInteger(config.emailMaxAttempts) || config.emailMaxAttempts < 1 || config.emailMaxAttempts > 20) errors.push('INONE_EMAIL_MAX_ATTEMPTS must be 1..20');
-    try {
-      parseEmailEncryptionKey(config.emailEncryptionKey);
-    } catch {
-      errors.push('INONE_EMAIL_ENCRYPTION_KEY must be 32 bytes (64 hex characters or canonical base64)');
-    }
+    if (!isValidEmailEncryptionKey(config.emailEncryptionKey)) errors.push('INONE_EMAIL_ENCRYPTION_KEY must be 32 bytes (64 hex characters or canonical base64)');
   }
   if (errors.length > 0) {
     const error = new Error(`invalid configuration: ${errors.join('; ')}`);

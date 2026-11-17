@@ -4,8 +4,14 @@ import 'dart:io';
 import 'package:inone_mobile/src/rust/api/session.dart' as rust;
 import 'package:inone_mobile/src/rust/frb_generated.dart';
 import 'package:path_provider/path_provider.dart';
-
 import 'mls_session_bridge.dart';
+
+int _checkedNativeCount(BigInt value, String field) {
+  if (value < BigInt.zero || value > BigInt.from(0x7fffffffffffffff)) {
+    throw RangeError('$field is outside the supported Dart int range');
+  }
+  return value.toInt();
+}
 
 /// Production Flutter adapter for the generated flutter_rust_bridge API.
 ///
@@ -40,20 +46,6 @@ class RustMlsSessionBridge implements MlsSessionBridge {
     final directory = Directory('${support.path}/inone/mls');
     await directory.create(recursive: true);
     return directory.path;
-  }
-
-  BigInt _toRustU64(int value, String name) {
-    if (value < 0) {
-      throw RangeError.value(value, name, 'must be non-negative');
-    }
-    return BigInt.from(value);
-  }
-
-  int _fromRustU64(BigInt value, String name) {
-    if (value.isNegative || value.bitLength > 63) {
-      throw ArgumentError.value(value, name, 'does not fit in a Dart int');
-    }
-    return value.toInt();
   }
 
   rust.MlsSession _requireSession() {
@@ -114,7 +106,7 @@ class RustMlsSessionBridge implements MlsSessionBridge {
 
   @override
   Future<void> ensureKeyPackages(int target) =>
-      _requireSession().ensureKeyPackages(target: _toRustU64(target, 'target'));
+      _requireSession().ensureKeyPackages(target: BigInt.from(target));
 
   @override
   Future<void> createRoom(String roomId) =>
@@ -155,7 +147,7 @@ class RustMlsSessionBridge implements MlsSessionBridge {
   Future<String?> quarantinedCommitReason(String roomId, int epoch) =>
       _requireSession().quarantinedCommitReason(
         roomId: roomId,
-        epoch: _toRustU64(epoch, 'epoch'),
+        epoch: BigInt.from(epoch),
       );
 
   @override
@@ -218,16 +210,16 @@ class RustMlsSessionBridge implements MlsSessionBridge {
 
   @override
   Future<int> flushOutbox() async =>
-      _fromRustU64(await _requireSession().flushOutbox(), 'flushOutbox');
+      _checkedNativeCount(await _requireSession().flushOutbox(), 'flushOutbox');
 
   @override
   Future<int> outboxLength() async =>
-      _fromRustU64(await _requireSession().outboxLen(), 'outboxLength');
+      _checkedNativeCount(await _requireSession().outboxLen(), 'outboxLength');
 
   @override
   Future<int?> localEpoch(String roomId) async {
     final epoch = await _requireSession().localEpoch(roomId: roomId);
-    return epoch == null ? null : _fromRustU64(epoch, 'localEpoch');
+    return epoch == null ? null : _checkedNativeCount(epoch, 'localEpoch');
   }
 
   @override
@@ -239,8 +231,10 @@ class RustMlsSessionBridge implements MlsSessionBridge {
       _requireSession().revokeDevice(deviceId: deviceId);
 
   @override
-  Future<int> removeRevokedDevices() async =>
-      _fromRustU64(await _requireSession().removeRevokedDevices(), 'removeRevokedDevices');
+  Future<int> removeRevokedDevices() async => _checkedNativeCount(
+        await _requireSession().removeRevokedDevices(),
+        'removeRevokedDevices',
+      );
 
   @override
   Future<void> purgeLocalSession({

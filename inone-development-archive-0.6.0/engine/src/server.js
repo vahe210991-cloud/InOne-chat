@@ -432,8 +432,8 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
     const UPLOAD_TTL_MS = 15 * 60_000;
     const DOWNLOAD_TTL_MS = 5 * 60_000;
     const STALE_UPLOAD_MS = 24 * 3600_000;
-    const signFor = (action, fileId, expires, size = '', sha = '') =>
-      createHmac('sha256', objectSecret).update(`${action}|${fileId}|${expires}|${size}|${sha}`).digest('hex');
+    const signFor = (action, fileId, expires, size = '', sha = '', ownerId = '', ownerDeviceId = '') =>
+      createHmac('sha256', objectSecret).update(`${action}|${fileId}|${expires}|${size}|${sha}|${ownerId}|${ownerDeviceId}`).digest('hex');
     const sameSig = (a, b) => {
       const x = Buffer.from(String(a));
       const y = Buffer.from(String(b));
@@ -449,9 +449,11 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
       const file = await storage.getFile(fileId);
       if (!file) return send(res, 404, { error: 'not found' });
       if (req.method === 'PUT') {
-        if (!expires || now() > expires || !sameSig(sig, signFor('PUT', fileId, expires, file.size, file.sha256))) {
+        if (!expires || now() > expires || !file.ownerDeviceId || !sameSig(sig, signFor('PUT', fileId, expires, file.size, file.sha256, file.ownerId, file.ownerDeviceId))) {
           return send(res, 403, { error: 'upload link is invalid or expired' });
         }
+        const ownerDevice = await storage.deviceRecord(key(file.ownerId, file.ownerDeviceId));
+        if (!ownerDevice || ownerDevice.revoked) return send(res, 403, { error: 'uploading device is revoked' });
         if (file.status !== 'pending') return send(res, 409, { error: 'file is not waiting for upload' });
         if (Number(req.headers['content-length']) !== file.size) {
           res.setHeader('Connection', 'close');
@@ -470,7 +472,14 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         const bytes = Buffer.concat(chunks);
         if (bytes.length !== file.size) return send(res, 400, { error: 'incomplete body' });
         if (createHash('sha256').update(bytes).digest('hex') !== file.sha256) return send(res, 422, { error: 'checksum does not match the declaration' });
+        const activeOwnerDevice = await storage.deviceRecord(key(file.ownerId, file.ownerDeviceId));
+        if (!activeOwnerDevice || activeOwnerDevice.revoked) return send(res, 403, { error: 'uploading device is revoked' });
         await objectStore.put(fileId, bytes);
+        const stillActiveOwnerDevice = await storage.deviceRecord(key(file.ownerId, file.ownerDeviceId));
+        if (!stillActiveOwnerDevice || stillActiveOwnerDevice.revoked) {
+          await objectStore.remove(fileId).catch(() => {});
+          return send(res, 403, { error: 'uploading device is revoked' });
+        }
         await storage.markFileUploaded(fileId);
         return send(res, 200, { uploaded: true });
       }
@@ -1188,9 +1197,9 @@ if (req.method === 'POST' && p === '/files') {
     if (orgQuota !== null && (await storage.bytesForOrg(fileOrg)) + size > orgQuota) return send(res, 413, { error: 'organization storage quota exceeded', code: 'org_quota_exceeded' });
   }
   const fileId = randomBytes(16).toString('hex');
-  await storage.createFile({ fileId, ownerId: d.userId, roomId: forRoom ?? null, kind, size, sha256: digest, createdAt: now() });
+  await storage.createFile({ fileId, ownerId: d.userId, ownerDeviceId: d.deviceId, roomId: forRoom ?? null, kind, size, sha256: digest, createdAt: now() });
   const expires = now() + UPLOAD_TTL_MS;
-  const path = `/objects/${fileId}?expires=${expires}&sig=${signFor('PUT', fileId, expires, size, digest)}`;
+  const path = `/objects/${fileId}?expires=${expires}&sig=${signFor('PUT', fileId, expires, size, digest, d.userId, d.deviceId)}`;
   return send(res, 200, { fileId, uploadUrl: absoluteUrl(req, path), method: 'PUT', headers: { 'content-length': String(size) }, expiresAt: new Date(expires).toISOString() });
 }
 const fileDone = p.match(/^\/files\/([^/]+)\/complete$/);
@@ -1200,6 +1209,7 @@ if (req.method === 'POST' && fileDone) {
   const fileId = decodeURIComponent(fileDone[1]);
   const f = await storage.getFile(fileId);
   if (!f || f.ownerId !== d.userId) return send(res, 404, { error: 'not found' });
+  if (f.ownerDeviceId !== d.deviceId) return send(res, 403, { error: 'file upload belongs to another device' });
   if (!(await storage.markFileReady(fileId, now()))) return send(res, 409, { error: 'file is not uploaded yet' });
   return send(res, 200, { fileId, status: 'ready' });
 }
@@ -1590,7 +1600,7 @@ if (req.method === 'POST' && p === '/login') {
             const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
             const profile = await storage.profileGet(userId);
             const primaryEmail = profile?.email ?? userId;
-            const locale = requestedLocale ?? profile?.locale ?? 'hy';
+            const locale = profile?.locale ?? requestedLocale ?? 'hy';
             const backup = await storage.backupEmailGet(userId);
             await storage.recoveryUpdateWithOutbox(userId,
               (r) => ({ next: issueIdentity(r, { codeHash: identityCodeHash(userId, code) }), result: null }),
@@ -1620,7 +1630,7 @@ if (req.method === 'POST' && p === '/login') {
             const activateAt = now() + DEVICE_WAIT_MS;
             const profile = await storage.profileGet(userId);
             const primaryEmail = profile?.email ?? userId;
-            const locale = requestedLocale ?? profile?.locale ?? 'hy';
+            const locale = profile?.locale ?? requestedLocale ?? 'hy';
             const backup = await storage.backupEmailGet(userId);
             const recipients = [primaryEmail, backup?.email];
             const created = await storage.deviceWaitCreateWithOutbox({
@@ -2734,7 +2744,18 @@ if (req.method === 'POST' && p === '/login') {
               return { next: out.next, result: out.issued };
             }, async (tx, wasIssued) => {
               if (!wasIssued) return;
-              await mailToRecipients(notificationRecipients, '', '', 'recovery_confirmation_link', { url: `${publicUrl}/recovery/confirm?user=${encodeURIComponent(userId)}&token=${encodeURIComponent(token)}&locale=${encodeURIComponent(locale)}` }, tx, locale);
+              const webLink = new URL('/recovery/confirm', `${publicUrl.replace(/\/+$/, '')}/`);
+              webLink.searchParams.set('user', userId);
+              webLink.searchParams.set('token', token);
+              webLink.searchParams.set('locale', locale);
+              const appLink = new URL('inone://recovery/confirm');
+              appLink.searchParams.set('user', userId);
+              appLink.searchParams.set('token', token);
+              appLink.searchParams.set('locale', locale);
+              await mailToRecipients(notificationRecipients, '', '', 'recovery_confirmation_link', {
+                url: webLink.toString(),
+                appUrl: appLink.toString(),
+              }, tx, locale);
             });
             if (issued) {
               // D5: SMS-код и email-link — независимые каналы одного recovery event.
@@ -2747,53 +2768,17 @@ if (req.method === 'POST' && p === '/login') {
       }
 
       if (req.method === 'GET' && p === '/recovery/confirm') {
-        // Opening the link only displays choices; mail preview bots must never confirm recovery.
+        // Открытие ссылки из письма ничего не меняет: предпросмотр почты не подтвердит восстановление (D5).
         const userId = url.searchParams.get('user') ?? '';
         const token = url.searchParams.get('token') ?? '';
-        const requestedLocale = resolveEmailLocale(url.searchParams.get('locale')) ?? 'hy';
-        if (!userId || !token) return send(res, 400, { error: 'user and token required' });
-        const copy = {
-          hy: {
-            title: 'Վերականգնման հաստատում',
-            prompt: 'Հաստատեք, որ վերականգնումը նախաձեռնել եք դուք։ SMS կոդը մուտքագրեք հավելվածում։',
-            open: 'Բացել InOne հավելվածում',
-            submit: 'Հաստատել վերականգնումը',
-          },
-          ru: {
-            title: 'Подтверждение восстановления',
-            prompt: 'Подтвердите, что запрос восстановления сделали вы. Код из SMS введите в приложении.',
-            open: 'Открыть в InOne',
-            submit: 'Подтвердить восстановление',
-          },
-          en: {
-            title: 'Confirm account recovery',
-            prompt: 'Confirm that you requested recovery. Enter the SMS code in the app.',
-            open: 'Open in InOne',
-            submit: 'Confirm recovery',
-          },
-        }[requestedLocale];
-        const appUrl = `inone://recovery/confirm?user=${encodeURIComponent(userId)}&token=${encodeURIComponent(token)}&locale=${requestedLocale}`;
-        // Unverified custom schemes can be claimed by another app; expose this beta-only
-        // handoff in development/test. Production must use verified App Links/Universal Links.
-        const appLinkHtml = process.env.NODE_ENV === 'production'
-          ? ''
-          : `<p><a href="${escapeHtml(appUrl)}">${escapeHtml(copy.open)}</a></p>`;
-        res.writeHead(200, {
-          'content-type': 'text/html; charset=utf-8',
-          'cache-control': 'no-store, private',
-          pragma: 'no-cache',
-          'referrer-policy': 'no-referrer',
-          'x-content-type-options': 'nosniff',
-          'x-frame-options': 'DENY',
-          'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
-        });
-        return res.end(htmlPage(copy.title, `
-<p>${escapeHtml(copy.prompt)}</p>
-${appLinkHtml}
+        if (!token) return send(res, 400, { error: 'token required' });
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        return res.end(htmlPage('Подтверждение восстановления', `
+<p>Нажмите кнопку, чтобы подтвердить, что восстановление запросили вы. Код из SMS вводится в приложении.</p>
 <form method="post" action="/recovery/confirm">
 <input type="hidden" name="user" value="${escapeHtml(userId)}">
 <input type="hidden" name="token" value="${escapeHtml(token)}">
-<button type="submit">${escapeHtml(copy.submit)}</button>
+<button type="submit">Подтвердить восстановление</button>
 </form>`));
       }
 

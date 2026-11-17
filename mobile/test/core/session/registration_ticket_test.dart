@@ -1,11 +1,32 @@
 import 'dart:convert';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:inone_mobile/core/session/inone_session.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  const secureStorageChannel =
+      MethodChannel('plugins.it_nomads.com/flutter_secure_storage');
+  final binaryMessenger =
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+  setUp(() {
+    binaryMessenger.setMockMethodCallHandler(secureStorageChannel, (call) async {
+    switch (call.method) {
+      case 'containsKey':
+        return false;
+      case 'readAll':
+        return <String, String>{};
+      default:
+        return null;
+    }
+    });
+  });
+  tearDown(() =>
+      binaryMessenger.setMockMethodCallHandler(secureStorageChannel, null));
+
   test('registration ticket stays in host memory across confirm and register',
       () async {
     final requests = <http.Request>[];
@@ -101,13 +122,6 @@ void main() {
       httpClient: client,
       readDeviceId: () async => 'device-2',
       writeDeviceId: (_) async {},
-      readMlsUserId: () async => null,
-      writeMlsUserId: (_) async {},
-      deleteMlsUserId: () async {},
-      readLocale: () async => null,
-      writeLocale: (_) async {},
-      readLocaleSyncPending: () async => 'false',
-      writeLocaleSyncPending: (_) async {},
     );
 
     await session.confirmEmailRegistration(
@@ -136,13 +150,6 @@ void main() {
       httpClient: client,
       readDeviceId: () async => 'device-1',
       writeDeviceId: (_) async {},
-      readMlsUserId: () async => null,
-      writeMlsUserId: (_) async {},
-      deleteMlsUserId: () async {},
-      readLocale: () async => null,
-      writeLocale: (_) async {},
-      readLocaleSyncPending: () async => 'false',
-      writeLocaleSyncPending: (_) async {},
     );
 
     await expectLater(

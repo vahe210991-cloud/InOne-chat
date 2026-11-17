@@ -88,13 +88,13 @@ dbTest('копия восстанавливается в пустую базу �
 dbTest('хранение: остаются последние копии, старые удаляются вместе с контрольными суммами', async () => {
   const tag = `${process.pid}_${Date.now() % 100000}`;
   const dbName = `inone_backup_keep_${tag}`;
+  const dbUrl = withDatabase(process.env.DATABASE_URL, dbName);
   const dir = mkdtempSync(path.join(tmpdir(), 'inone-keep-'));
   await admin(`CREATE DATABASE ${dbName}`);
   try {
-    const backupUrl = withDatabase(process.env.DATABASE_URL, dbName);
     for (let i = 0; i < 3; i++) {
       execFileSync('bash', [path.join(root, 'scripts/backup-db.sh')], {
-        env: { ...process.env, DATABASE_URL: backupUrl, BACKUP_DIR: dir, BACKUP_KEEP: '2' },
+        env: { ...process.env, DATABASE_URL: dbUrl, BACKUP_DIR: dir, BACKUP_KEEP: '2' },
         encoding: 'utf8',
       });
     }

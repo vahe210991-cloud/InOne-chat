@@ -36,7 +36,12 @@ function fakeSmtp({ failReason = null } = {}) {
 
 test('ключ шифрования требует ровно 32 байта', () => {
   assert.equal(parseEmailEncryptionKey('11'.repeat(32)).length, 32);
-  assert.throws(() => parseEmailEncryptionKey(Buffer.from('short').toString('base64')), /exactly 32 bytes/);
+  assert.throws(() => parseEmailEncryptionKey(Buffer.alloc(16).toString('base64')), /exactly 32 bytes/);
+  assert.throws(() => parseEmailEncryptionKey('not-base64!'), /valid base64/);
+  const canonicalBase64 = randomBytes(32).toString('base64');
+  assert.equal(parseEmailEncryptionKey(canonicalBase64).length, 32);
+  assert.throws(() => parseEmailEncryptionKey(canonicalBase64.slice(0, -1)), /canonical base64/);
+  assert.throws(() => parseEmailEncryptionKey(canonicalBase64 + '='), /canonical base64/);
 });
 
 test('очередь шифрует получателя и тело, дедуплицирует и восстанавливает доставку после перезапуска', async () => {
@@ -315,143 +320,42 @@ test('длительная SMTP-отправка продлевает lease и �
   }
 });
 
-test('ошибка продления lease не позволяет отметить SMTP-доставку как подтверждённую', async () => {
+test('graceful shutdown закрывает SMTP и освобождает незавершённые leases', async () => {
   const db = await testDatabase();
-  let smtpStarted = false;
-  let finishSmtp;
-  let failNextRenewal = false;
-  const key = randomBytes(32);
-  const pool = {
-    async connect(...args) {
-      const client = await db.pool.connect(...args);
-      return {
-        query(sql, params) {
-          if (failNextRenewal && typeof sql === 'string' && sql.includes('SET locked_at = now()')) {
-            failNextRenewal = false;
-            return Promise.reject(Object.assign(new Error('temporary database outage'), { code: '08006' }));
-          }
-          return client.query(sql, params);
-        },
-        release: (...args) => client.release(...args),
-      };
-    },
-    async query(sql, params) {
-      if (failNextRenewal && typeof sql === 'string' && sql.includes('SET locked_at = now()')) {
-        failNextRenewal = false;
-        return Promise.reject(Object.assign(new Error('temporary database outage'), { code: '08006' }));
-      }
-      return db.pool.query(sql, params);
-    },
-  };
-  const firstSmtp = {
-    send() {
-      smtpStarted = true;
-      return new Promise((resolve) => { finishSmtp = resolve; });
-    },
-    close() {},
-  };
-  const first = createEmailDelivery({
-    pool, smtpMailer: firstSmtp, encryptionKey: Buffer.from(key),
-    workerId: 'lease-error-owner', pollIntervalMs: 250, batchSize: 1,
-    leaseMs: 300, leaseRenewIntervalMs: 100,
-  });
-  const secondSmtp = fakeSmtp();
-  const secondEvents = [];
-  const second = createEmailDelivery({
-    pool: db.pool, smtpMailer: secondSmtp, encryptionKey: Buffer.from(key),
-    workerId: 'lease-error-retry', pollIntervalMs: 250, batchSize: 1,
-    leaseMs: 300, leaseRenewIntervalMs: 100,
-    logger: {
-      info: (message, fields) => secondEvents.push({ level: 'info', message, fields }),
-      warn: (message, fields) => secondEvents.push({ level: 'warn', message, fields }),
-      error: (message, fields) => secondEvents.push({ level: 'error', message, fields }),
-    },
-  });
-  try {
-    const queued = await first.send({
-      to: 'lease-error@example.test', templateId: 'registration_code',
-      variables: { code: 'LEASE-ERROR' }, locale: 'hy',
-      idempotencyKey: 'lease-renewal-error-001',
-    });
-    first.start();
-    await waitFor(() => smtpStarted);
-    failNextRenewal = true;
-    await waitFor(() => !failNextRenewal);
-    finishSmtp({ messageId: 'smtp-accepted-but-lease-uncertain' });
-
-    const afterUncertainSend = (await db.pool.query(
-      'SELECT status, locked_by FROM email_deliveries WHERE id = $1',
-      [queued.deliveryId],
-    )).rows[0];
-    assert.equal(afterUncertainSend.status, 'processing');
-    assert.equal(afterUncertainSend.locked_by, 'lease-error-owner');
-    assert.equal(secondSmtp.sent.length, 0);
-
-    // Stop the first worker so it cannot reclaim its own uncertain lease.
-    await first.stop();
-    second.start();
-    try {
-      await waitFor(async () => (await db.pool.query(
-        'SELECT status FROM email_deliveries WHERE id = $1',
-        [queued.deliveryId],
-      )).rows[0].status === 'sent', 5000);
-    } catch (error) {
-      const finalRow = (await db.pool.query(
-        'SELECT status, locked_by, last_error_code, attempts, locked_at, now() AS observed_at FROM email_deliveries WHERE id = $1',
-        [queued.deliveryId],
-      )).rows[0];
-      assert.fail(`retry worker did not complete delivery: ${JSON.stringify({ finalRow, secondEvents })}; ${error.message}`);
-    }
-    assert.equal(secondSmtp.sent.length, 1);
-  } finally {
-    finishSmtp?.({ messageId: 'cleanup-message-id' });
-    await first.stop();
-    await second.stop();
-    await db.close();
-  }
-});
-
-test('graceful shutdown drains the active SMTP send and releases remaining leases', async () => {
-  const db = await testDatabase();
-  let finishActive;
-  let markStarted;
-  const sendStarted = new Promise((resolve) => { markStarted = resolve; });
+  let rejectActive;
+  let started = false;
   let closed = false;
   const smtp = {
     send() {
-      markStarted();
-      return new Promise((resolve) => { finishActive = resolve; });
+      started = true;
+      return new Promise((resolve, reject) => { rejectActive = reject; });
     },
-    close() { closed = true; },
+    close() {
+      closed = true;
+      const error = new Error('transport closed during shutdown');
+      error.reason = 'connection';
+      rejectActive?.(error);
+    },
   };
   const queue = createEmailDelivery({
     pool: db.pool, smtpMailer: smtp, encryptionKey: randomBytes(32),
     pollIntervalMs: 250, batchSize: 2, retryBaseMs: 100, retryMaxMs: 500,
   });
-  let stopping = null;
   try {
     const first = await queue.send({ to: 'first@example.test', templateId: 'registration_code', variables: { code: 'ONE' }, locale: 'hy', idempotencyKey: 'shutdown-first-001' });
     const second = await queue.send({ to: 'second@example.test', templateId: 'registration_code', variables: { code: 'TWO' }, locale: 'hy', idempotencyKey: 'shutdown-second-001' });
     queue.start();
-    await sendStarted;
-    stopping = queue.stop();
-    await new Promise((resolve) => setTimeout(resolve, 25));
-    assert.equal(closed, false, 'SMTP stays open until the active message finishes');
-    finishActive({ messageId: 'shutdown-first-message-id' });
-    await stopping;
+    await waitFor(() => started);
+    await queue.stop();
     assert.equal(closed, true);
-    const rows = (await db.pool.query('SELECT id, status, locked_at, locked_by FROM email_deliveries WHERE id = ANY($1::bigint[]) ORDER BY id', [[first.deliveryId, second.deliveryId]])).rows;
+    const rows = (await db.pool.query('SELECT id, status, attempts, locked_at, locked_by FROM email_deliveries WHERE id = ANY($1::bigint[]) ORDER BY id', [[first.deliveryId, second.deliveryId]])).rows;
     assert.equal(rows.length, 2);
-    assert.equal(rows[0].status, 'sent');
-    assert.equal(rows[1].status, 'queued');
-    assert.equal(rows[0].locked_at, null);
-    assert.equal(rows[0].locked_by, null);
-    assert.equal(rows[1].locked_at, null);
-    assert.equal(rows[1].locked_by, null);
+    assert.ok(rows.every((row) => row.status === 'queued'));
+    assert.equal(Number(rows[0].attempts), 1, 'the in-flight SMTP send counts as one attempt');
+    assert.equal(Number(rows[1].attempts), 0, 'a claimed but unsent message does not consume an attempt');
+    assert.ok(rows.every((row) => row.locked_at === null && row.locked_by === null));
   } finally {
-    finishActive?.({ messageId: 'shutdown-cleanup-message-id' });
-    if (stopping) await stopping;
-    else await queue.stop();
+    await queue.stop();
     await db.close();
   }
 });

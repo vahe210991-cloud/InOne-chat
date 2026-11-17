@@ -12,9 +12,13 @@ export function parseEmailEncryptionKey(value) {
   let key;
   if (/^[a-f0-9]{64}$/i.test(value)) key = Buffer.from(value, 'hex');
   else {
-    const decoded = Buffer.from(value, 'base64');
-    if (!/^[A-Za-z0-9+/]+={0,2}$/.test(value) || decoded.toString('base64').replace(/=+$/, '') !== value.replace(/=+$/, '')) {
+    if (!/^[A-Za-z0-9+/]+={0,2}$/.test(value)) {
       throw new Error('INONE_EMAIL_ENCRYPTION_KEY must be valid base64');
+    }
+    const decoded = Buffer.from(value, 'base64');
+    if (decoded.toString('base64') !== value) {
+      decoded.fill(0);
+      throw new Error('INONE_EMAIL_ENCRYPTION_KEY must use canonical base64');
     }
     key = decoded;
   }
@@ -146,7 +150,7 @@ export function createEmailDelivery({
   async function releaseClaim(row) {
     await pool.query(
       `UPDATE email_deliveries
-       SET status = 'queued', available_at = now(), locked_at = NULL, locked_by = NULL, updated_at = now()
+       SET status = 'queued', attempts = GREATEST(attempts - 1, 0), available_at = now(), locked_at = NULL, locked_by = NULL, updated_at = now()
        WHERE id = $1 AND status = 'processing' AND locked_by = $2`,
       [row.id, workerId],
     );
@@ -232,13 +236,10 @@ export function createEmailDelivery({
       let leaseLost = false;
       let renewalInFlight = null;
       const renewLease = () => {
-        if (leaseLost) return Promise.resolve();
         if (renewalInFlight) return renewalInFlight;
         renewalInFlight = renewClaim(row)
           .then((owned) => { if (!owned) leaseLost = true; })
           .catch((error) => {
-            // If renewal cannot be verified, ownership is uncertain and this worker must fail closed.
-            leaseLost = true;
             logger?.warn('email delivery lease renewal failed', {
               deliveryId: row.id,
               errorCode: typeof error?.code === 'string' ? error.code : 'unknown',
@@ -353,9 +354,9 @@ export function createEmailDelivery({
       stopping = true;
       if (timer) clearInterval(timer);
       timer = null;
-      // Let an in-flight SMTP operation finish before closing the transport.
-      if (activeTick) await activeTick;
+      // Close the transport first so any in-flight send rejects and its lease can be released for retry.
       try { smtpMailer.close?.(); } catch { /* transport close is best-effort during shutdown */ }
+      if (activeTick) await activeTick;
       masterKey.fill(0);
       payloadKey.fill(0);
       fingerprintKey.fill(0);
