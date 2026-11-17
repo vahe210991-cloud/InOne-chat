@@ -68,7 +68,7 @@ void main() {
     expect(registration['userId'], 'user-1');
     expect(registration.containsKey('token'), isFalse);
     expect(requests.map((request) => request.url.path),
-        ['/register/email/confirm', '/register', '/login']);
+        ['/register/email/confirm', '/register', '/login', '/profile']);
     final registerBody =
         jsonDecode(requests[1].body) as Map<String, dynamic>;
     expect(registerBody['registrationToken'], 'one-time-secret-ticket');
