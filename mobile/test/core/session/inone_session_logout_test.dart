@@ -64,7 +64,7 @@ void main() {
         return null;
     }
   });
-  addTearDown(() =>
+  tearDown(() =>
       binaryMessenger.setMockMethodCallHandler(secureStorageChannel, null));
 
   test('logout clears saved MLS identity when native purge fails', () async {
