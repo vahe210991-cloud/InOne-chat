@@ -138,7 +138,7 @@ fn initialize_native_store() -> Result<(), String> {
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
-        let _ = initialized;
+        drop(initialized);
         Err("защищённое хранилище MLS доступно только на Android и iOS".to_string())
     }
 }
