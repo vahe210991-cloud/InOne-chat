@@ -84,8 +84,9 @@ pub fn build_manifest(
         "key": B64.encode(key),
         "nonce": B64.encode(nonce),
     });
-    let mut encoded = serde_json::to_vec(&payload).map_err(|error| error.to_string())?;
+    let encoded = serde_json::to_vec(&payload);
     zeroize_json_value(&mut payload);
+    let mut encoded = encoded.map_err(|error| error.to_string())?;
     if encoded.len() > MAX_MANIFEST_SIZE {
         encoded.zeroize();
         return Err("attachment manifest exceeds the maximum size".to_string());
