@@ -83,9 +83,14 @@ pub fn build_manifest(
         "key": B64.encode(key),
         "nonce": B64.encode(nonce),
     });
-    let encoded = serde_json::to_vec(&payload).map_err(|error| error.to_string());
+    let encoded = serde_json::to_vec(&payload);
     zeroize_json_value(&mut payload);
-    encoded
+    let mut encoded = encoded.map_err(|error| error.to_string())?;
+    if encoded.len() > MAX_MANIFEST_SIZE {
+        encoded.zeroize();
+        return Err("attachment manifest exceeds the maximum size".to_string());
+    }
+    Ok(encoded)
 }
 
 /// A validated manifest. Key material is zeroized when this value is dropped.
@@ -304,5 +309,50 @@ mod tests {
         assert!(decrypt(&ciphertext, &manifest).is_err());
         let wrong_room_ciphertext = encrypt(&plaintext, &key, &nonce, "room-2").unwrap();
         assert!(decrypt(&wrong_room_ciphertext, &manifest).is_err());
+    }
+
+    #[test]
+    fn oversized_manifest_is_rejected_before_json_parsing() {
+        let oversized = vec![b' '; MAX_MANIFEST_SIZE + 1];
+        assert!(parse_manifest(&oversized, "file-1", "room-1").is_err());
+    }
+
+    #[test]
+    fn parser_rejects_invalid_key_nonce_hash_version_and_display_name() {
+        let (plaintext, key, nonce, ciphertext) = fixture();
+        let payload = build_manifest(
+            "file-1", "room-1", "document.pdf", "application/pdf",
+            &plaintext, &ciphertext, &key, &nonce,
+        ).unwrap();
+
+        let mut invalid_key: Value = serde_json::from_slice(&payload).unwrap();
+        invalid_key["key"] = json!(B64.encode([0x11; AES256_KEY_LEN - 1]));
+        assert!(parse_manifest(&serde_json::to_vec(&invalid_key).unwrap(), "file-1", "room-1").is_err());
+
+        let mut invalid_nonce: Value = serde_json::from_slice(&payload).unwrap();
+        invalid_nonce["nonce"] = json!(B64.encode([0x22; GCM_NONCE_LEN - 1]));
+        assert!(parse_manifest(&serde_json::to_vec(&invalid_nonce).unwrap(), "file-1", "room-1").is_err());
+
+        let mut invalid_hash: Value = serde_json::from_slice(&payload).unwrap();
+        invalid_hash["sha256"] = json!("A".repeat(64));
+        assert!(parse_manifest(&serde_json::to_vec(&invalid_hash).unwrap(), "file-1", "room-1").is_err());
+
+        let mut invalid_version: Value = serde_json::from_slice(&payload).unwrap();
+        invalid_version["version"] = json!(MANIFEST_VERSION + 1);
+        assert!(parse_manifest(&serde_json::to_vec(&invalid_version).unwrap(), "file-1", "room-1").is_err());
+
+        let mut unsafe_name: Value = serde_json::from_slice(&payload).unwrap();
+        unsafe_name["name"] = json!("../private.txt");
+        assert!(parse_manifest(&serde_json::to_vec(&unsafe_name).unwrap(), "file-1", "room-1").is_err());
+    }
+
+    #[test]
+    fn manifest_builder_rejects_ciphertext_that_does_not_match_plaintext() {
+        let (plaintext, key, nonce, mut ciphertext) = fixture();
+        ciphertext[0] ^= 0x80;
+        assert!(build_manifest(
+            "file-1", "room-1", "document.pdf", "application/pdf",
+            &plaintext, &ciphertext, &key, &nonce,
+        ).is_err());
     }
 }
