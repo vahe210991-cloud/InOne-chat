@@ -79,7 +79,7 @@ test('R-E1: восстановление по почте — код уходит
     const recoveryMail = srv.mailbox('boris@example.test').filter((m) => m.templateId === 'recovery_confirmation_link').at(-1);
     assert.ok(recoveryMail, 'recovery confirmation email is delivered');
     assert.match(recoveryMail.html, /href="inone:\/\/recovery\/confirm\?user=boris%40example\.test&amp;token=[A-Za-z0-9_-]+&amp;locale=ru"/);
-    assert.match(recoveryMail.text, /https:\/\/[^\\s]+\/recovery\/confirm/, 'HTTPS web fallback remains available');
+    assert.match(recoveryMail.text, /https:\/\/[^\s]+\/recovery\/confirm/, 'HTTPS web fallback remains available');
     assert.equal(recoveryMail.locale, 'ru');
     assert.equal(srv.mailbox('boris@example.test').filter((m) => m.templateId === SUBJECT_RECOVERY).length, 1);
     assert.equal((await call(base, 'POST', '/recovery/start', { body: { email: 'nobody@example.test' } })).status, 202, 'ответ одинаковый');
