@@ -129,10 +129,12 @@ jobs:
           fi
           # Generated UI assets stay in this ephemeral runner workspace; never push from pull_request.
       - run: flutter pub get
-      - name: Generate Rust lockfile and validate native bridge
+      - name: Verify committed Rust lockfile
+        run: test -s rust/Cargo.lock
+      - name: Validate native bridge against committed lockfile
         run: |
-          cargo generate-lockfile --manifest-path rust/Cargo.toml
-          cargo test --locked --manifest-path rust/Cargo.toml
+          cargo check --locked --all-targets --manifest-path rust/Cargo.toml
+          cargo test --locked --no-fail-fast --manifest-path rust/Cargo.toml
       - run: flutter analyze
       - run: flutter test
       - name: Build Android preview APK
