@@ -10,6 +10,7 @@ import '../core/data/inone_room.dart';
 import '../core/network/api_environment.dart';
 import '../core/network/api_exception.dart';
 import '../core/session/inone_session.dart';
+import '../core/session/recovery_deep_link.dart';
 import '../core/mls/rust_mls_session_bridge.dart';
 import '../ui_dart_source/inone.dart';
 
@@ -23,7 +24,8 @@ class InOneMobileApp extends StatefulWidget {
   State<InOneMobileApp> createState() => _InOneMobileAppState();
 }
 
-class _InOneMobileAppState extends State<InOneMobileApp> {
+class _InOneMobileAppState extends State<InOneMobileApp>
+    with WidgetsBindingObserver {
   final _messengerKey = GlobalKey<ScaffoldMessengerState>();
   late final InOneSession _session;
   late final InOneRepositories _repositories;
@@ -45,6 +47,10 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
   InOneSystemStatus? _systemStatus;
   bool _darkMode = false;
   bool _initializing = true;
+  RecoveryDeepLinkPayload? _pendingRecoveryLink;
+  String? _recoveryUserId;
+  String? _recoveryLinkLocale;
+  bool _recoveryLinkInFlight = false;
 
   @override
   void initState() {
@@ -58,6 +64,14 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
       nativeMlsBridge: _nativeMlsEnabled ? RustMlsSessionBridge() : null,
     );
     _repositories = InOneRepositories(_session);
+    WidgetsBinding.instance.addObserver(this);
+    _pendingRecoveryLink = RecoveryDeepLink.parse(
+      WidgetsBinding.instance.platformDispatcher.defaultRouteName,
+    );
+    if (_pendingRecoveryLink case final payload?) {
+      _recoveryUserId = payload.userId;
+      _recoveryLinkLocale = payload.locale;
+    }
     unawaited(_initialize());
   }
 
@@ -69,11 +83,72 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
     }
     if (!mounted) return;
     setState(() => _initializing = false);
+    if (_pendingRecoveryLink != null) {
+      setState(() => _screen = 'recoveryLinkConfirm');
+      return;
+    }
     if (_session.isAuthenticated) await _loadAuthenticatedData();
   }
 
   @override
+  Future<bool> didPushRoute(String route) => _handleRecoveryRoute(route);
+
+  Future<bool> _handleRecoveryRoute(String route) async {
+    final payload = RecoveryDeepLink.parse(route);
+    if (payload == null) return false;
+    final current = _pendingRecoveryLink;
+    if (current?.userId == payload.userId && current?.token == payload.token) {
+      return true;
+    }
+    if (_recoveryLinkInFlight) return true;
+    _recoveryLinkInFlight = true;
+    try {
+      _recoveryUserId = payload.userId;
+      _recoveryLinkLocale = payload.locale;
+      if (mounted) {
+        setState(() {
+          _pendingRecoveryLink = payload;
+          _screen = 'recoveryLinkConfirm';
+        });
+      } else {
+        _pendingRecoveryLink = payload;
+      }
+    } finally {
+      _recoveryLinkInFlight = false;
+    }
+    return true;
+  }
+
+  Future<InOneFailure?> _confirmRecoveryLink() async {
+    final payload = _pendingRecoveryLink;
+    if (payload == null) {
+      return const InOneFailure(
+        InOneScreenState.error,
+        message: 'Ссылка восстановления недействительна. Запросите её повторно.',
+      );
+    }
+    try {
+      await _session.confirmRecoveryLink(
+        userId: payload.userId,
+        token: payload.token,
+      );
+      return null;
+    } catch (error) {
+      return _toFailure(error);
+    }
+  }
+
+  void _onRecoveryLinkConfirmed() {
+    setState(() {
+      _pendingRecoveryLink = null;
+      _screen = 'recoveryPassword';
+    });
+    _notice('Ссылка подтверждена. Введите код из SMS и задайте новый пароль.');
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _session.dispose();
     super.dispose();
   }
@@ -209,6 +284,9 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
   }
 
   Future<InOneFailure?> _startRecovery(String email) async {
+    _recoveryUserId = null;
+    _recoveryLinkLocale = null;
+    _pendingRecoveryLink = null;
     _recoveryEmail = email.trim();
     try {
       await _session.startRecovery(_recoveryEmail);
@@ -221,10 +299,12 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
   Future<InOneFailure?> _completeRecovery(String code, String newPassword, String pin) async {
     try {
       await _session.completeRecovery(
-        email: _recoveryEmail,
+        email: _recoveryUserId == null ? _recoveryEmail : null,
+        userId: _recoveryUserId,
         code: code,
         newPassword: newPassword,
         pin: pin,
+        locale: _recoveryLinkLocale,
       );
       return null;
     } catch (error) {
@@ -244,6 +324,9 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
   void _finishRecovery() {
     setState(() {
       _recoveryEmail = '';
+      _recoveryUserId = null;
+      _recoveryLinkLocale = null;
+      _pendingRecoveryLink = null;
       _screen = 'login';
     });
     _notice('Восстановление завершено. Теперь войдите с новым паролем.');
@@ -565,6 +648,11 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
           onSubmit: _startRecovery,
           onBack: () => setState(() => _screen = 'login'),
           onEnterCode: () => setState(() => _screen = 'recoveryPassword'),
+        );
+      case 'recoveryLinkConfirm':
+        return InOneRecoveryConfirmScreen(
+          onConfirm: _confirmRecoveryLink,
+          onDone: _onRecoveryLinkConfirmed,
         );
       case 'recoveryPassword':
         return InOneNewPasswordScreen(
