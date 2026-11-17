@@ -79,7 +79,7 @@ const REQUIRED_VARIABLES = {
   new_device_wait: ['activateAt', 'code'],
   recovery_code: ['code'],
   recovery_requested: [],
-  recovery_confirmation_link: ['url'],
+  recovery_confirmation_link: ['url', 'appUrl'],
   recovery_cancelled: ['method'],
   recovery_completed: ['cancelCode'],
 };
@@ -129,6 +129,25 @@ function safeVariables(input) {
   return result;
 }
 
+function safeRecoveryAppUrl(value) {
+  let parsed;
+  try { parsed = new URL(value); } catch { throw new Error('invalid recovery app URL'); }
+  const keys = [...parsed.searchParams.keys()];
+  const user = parsed.searchParams.get('user') ?? '';
+  const token = parsed.searchParams.get('token') ?? '';
+  const locale = parsed.searchParams.get('locale') ?? '';
+  if (parsed.protocol !== 'inone:' || parsed.hostname !== 'recovery' || parsed.pathname !== '/confirm'
+    || parsed.username || parsed.password || parsed.port || parsed.hash
+    || keys.length !== 3 || new Set(keys).size !== 3
+    || keys.some((key) => !['user', 'token', 'locale'].includes(key))
+    || !user.trim() || user.length > 256 || /[\\u0000-\\u001f\\u007f]/.test(user)
+    || !/^[A-Za-z0-9_-]{1,128}$/.test(token)
+    || !['hy', 'ru', 'en'].includes(locale)) {
+    throw new Error('recovery app URL must be a valid InOne recovery deep link');
+  }
+  return parsed.toString();
+}
+
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 }
@@ -147,15 +166,8 @@ function renderHtml({ subject, text, locale, templateId, variables }) {
     );
   }
   if (templateId === 'recovery_confirmation_link') {
-    const url = variables.url;
-    let safeUrl = '';
-    try {
-      const parsed = new URL(url);
-      if (parsed.protocol === 'https:' && parsed.hostname && !parsed.username && !parsed.password) safeUrl = parsed.toString();
-    } catch {}
-    if (safeUrl) {
-      content += `<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:24px 0 8px;"><tr><td bgcolor="#C9F53F" style="border-radius:12px;"><a href="${escapeHtml(safeUrl)}" style="display:inline-block;padding:14px 22px;color:#171A14;text-decoration:none;font-family:'Noto Sans Armenian','Noto Sans',Arial,sans-serif;font-size:14px;font-weight:700;border-radius:12px;">${escapeHtml(copy.action)}</a></td></tr></table>`;
-    }
+    const safeAppUrl = safeRecoveryAppUrl(variables.appUrl);
+    content += `<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:24px 0 8px;"><tr><td bgcolor="#C9F53F" style="border-radius:12px;"><a href="${escapeHtml(safeAppUrl)}" style="display:inline-block;padding:14px 22px;color:#171A14;text-decoration:none;font-family:'Noto Sans Armenian','Noto Sans',Arial,sans-serif;font-size:14px;font-weight:700;border-radius:12px;">${escapeHtml(copy.action)}</a></td></tr></table>`;
   }
   const preheader = escapeHtml(copy.preheader);
   const safeSubject = escapeHtml(subject);
@@ -179,7 +191,8 @@ export function renderEmailTemplate(templateId, variables = {}, locale = 'hy') {
     if (parsed.protocol !== 'https:' || !parsed.hostname || parsed.username || parsed.password || /[\r\n]/.test(values.url)) throw new Error('recovery URL must be a safe HTTPS URL');
   }
   if (templateId === 'recovery_cancelled' && !['code', 'device'].includes(values.method)) throw new Error('invalid recovery cancellation method');
-  const renderValues = templateId === 'stepup_code' ? { ...values, action: STEPUP_ACTION_LABELS[resolvedLocale][values.action] } : values;
+  let renderValues = templateId === 'stepup_code' ? { ...values, action: STEPUP_ACTION_LABELS[resolvedLocale][values.action] } : values;
+  if (templateId === 'recovery_confirmation_link') renderValues = { ...values, appUrl: safeRecoveryAppUrl(values.appUrl) };
   const text = render(renderValues);
   const ttlMs = ['registration_code', 'backup_email_verification', 'stepup_code'].includes(templateId)
     ? 10 * 60_000
