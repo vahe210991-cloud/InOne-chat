@@ -140,7 +140,7 @@ function safeRecoveryAppUrl(value) {
     || parsed.username || parsed.password || parsed.port || parsed.hash
     || keys.length !== 3 || new Set(keys).size !== 3
     || keys.some((key) => !['user', 'token', 'locale'].includes(key))
-    || !user.trim() || user.length > 256 || /[\\u0000-\\u001f\\u007f]/.test(user)
+    || !user.trim() || user.length > 256 || /[\u0000-\u001f\u007f]/.test(user)
     || !/^[A-Za-z0-9_-]{1,128}$/.test(token)
     || !['hy', 'ru', 'en'].includes(locale)) {
     throw new Error('recovery app URL must be a valid InOne recovery deep link');
