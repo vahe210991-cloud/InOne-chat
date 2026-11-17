@@ -401,7 +401,7 @@ dbTest('SD18: после перезапуска окно закрывается 
     second.srv.advance(48 * 60 * 60 * 1000 + 1000);
     phone.baseUrl = second.base;
     await assert.rejects(phone.sync(), (e) => e.status === 401, 'старое устройство отключено после окна');
-    assert.ok(second.srv.mailbox(ALICE).some((m) => m.subject === 'Старые устройства отключены'));
+    assert.ok(second.srv.mailbox(ALICE).some((m) => m.templateId === 'old_devices_revoked'));
   } finally {
     if (first) await first.stop();
     if (second) await second.stop();
