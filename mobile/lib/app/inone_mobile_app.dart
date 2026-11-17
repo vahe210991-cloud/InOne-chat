@@ -442,6 +442,20 @@ class _InOneMobileAppState extends State<InOneMobileApp>
     });
   }
 
+  Future<void> _changeLocale(String locale) async {
+    try {
+      await _session.setLocale(locale);
+      if (mounted) setState(() {});
+      _notice(switch (locale) {
+        'ru' => 'Язык уведомлений установлен: Русский.',
+        'en' => 'Notification language set to English.',
+        _ => 'Լեզուն ընտրված է՝ Հայերեն։',
+      });
+    } catch (_) {
+      _notice('Не удалось сохранить язык. Попробуйте ещё раз.');
+    }
+  }
+
   void _notice(String message) {
     _messengerKey.currentState?.showSnackBar(SnackBar(content: Text(message)));
   }
@@ -651,6 +665,8 @@ class _InOneMobileAppState extends State<InOneMobileApp>
           onRegister: () => setState(() => _screen = 'registerEmail'),
           onForgotPassword: () => setState(() => _screen = 'recoveryStart'),
           onSuccess: _afterLogin,
+          locale: _session.locale,
+          onLocaleChanged: _changeLocale,
         );
       case 'identityCode':
         return InOneEmailCodeScreen(
@@ -849,6 +865,8 @@ class _InOneMobileAppState extends State<InOneMobileApp>
           onRegister: () => setState(() => _screen = 'registerEmail'),
           onForgotPassword: () => _notice('Восстановление пароля пока недоступно.'),
           onSuccess: _afterLogin,
+          locale: _session.locale,
+          onLocaleChanged: _changeLocale,
         );
     }
   }
