@@ -11,7 +11,7 @@ on:
       - 'mobile/**'
       - '.github/workflows/flutter-mobile.yml'
 
-# Pull request code is untrusted; this workflow only validates generated assets.
+# Pull request code is untrusted; this workflow validates the native Flutter bridge and tests on each branch head.
 permissions:
   contents: read
 
