@@ -70,6 +70,7 @@ class InOneSession extends ChangeNotifier {
   String? _deviceId;
   String? _userId;
   String? _savedMlsUserId;
+  String? _registrationToken;
   String _locale = 'hy';
   bool _localeSyncPending = false;
   bool _localeSyncInFlight = false;
