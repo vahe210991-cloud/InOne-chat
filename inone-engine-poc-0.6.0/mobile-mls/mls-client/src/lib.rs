@@ -2595,10 +2595,10 @@ impl Client {
             ));
         }
 
-        let mut file_id: String;
+        let file_id: String;
         let mut upload_url: Option<String> = None;
-        let mut manifest_payload: Zeroizing<Vec<u8>>;
-        let mut ciphertext: Vec<u8>;
+        let manifest_payload: Zeroizing<Vec<u8>>;
+        let ciphertext: Vec<u8>;
         let mut already_uploaded = false;
 
         let completed: Option<(String, String, String, Vec<u8>)> = self.meta.query_row(
