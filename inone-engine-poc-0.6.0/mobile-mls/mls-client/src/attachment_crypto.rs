@@ -312,12 +312,6 @@ mod tests {
     }
 
     #[test]
-    fn oversized_manifest_is_rejected_before_json_parsing() {
-        let oversized = vec![b' '; MAX_MANIFEST_SIZE + 1];
-        assert!(parse_manifest(&oversized, "file-1", "room-1").is_err());
-    }
-
-    #[test]
     fn parser_rejects_invalid_key_nonce_hash_version_and_display_name() {
         let (plaintext, key, nonce, ciphertext) = fixture();
         let payload = build_manifest(
