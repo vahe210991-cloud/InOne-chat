@@ -6,7 +6,9 @@ const isValidEmailEncryptionKey = (value) => {
   if (/^[a-f0-9]{64}$/i.test(value)) return true;
   if (!/^[A-Za-z0-9+/]+={0,2}$/.test(value)) return false;
   const decoded = Buffer.from(value, 'base64');
-  return decoded.length === 32 && decoded.toString('base64') === value;
+  const valid = decoded.length === 32 && decoded.toString('base64') === value;
+  decoded.fill(0);
+  return valid;
 };
 
 export function loadConfig(env = process.env) {
