@@ -269,7 +269,43 @@ class InOneSession extends ChangeNotifier {
         normalizedUserId.runes.any((rune) => rune < 0x20 || rune == 0x7f) ||
         token.isEmpty ||
         token.length > 128 ||
-        !RegExp(r'^[A-Za-z0-9_-]+
+        !RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(token)) {
+      throw ArgumentError('Invalid recovery link payload');
+    }
+    return _client.post(
+      '/recovery/confirm',
+      authenticated: false,
+      body: {'user': normalizedUserId, 'token': token},
+    );
+  }
+
+  Future<Map<String, dynamic>> completeRecovery({
+    String? email,
+    String? userId,
+    required String code,
+    required String newPassword,
+    String pin = '',
+    String? locale,
+  }) {
+    final normalizedEmail = email?.trim();
+    final normalizedUserId = userId?.trim();
+    final hasEmail = normalizedEmail != null && normalizedEmail.isNotEmpty;
+    final hasUserId = normalizedUserId != null && normalizedUserId.isNotEmpty;
+    if (hasEmail == hasUserId) {
+      throw ArgumentError('Provide exactly one recovery identity: email or userId');
+    }
+    if (locale != null && !const {'hy', 'ru', 'en'}.contains(locale)) {
+      throw ArgumentError.value(locale, 'locale', 'Supported locales: hy, ru, en');
+    }
+    return _client.post('/recovery/complete', authenticated: false, body: {
+      if (hasEmail) 'email': normalizedEmail,
+      if (hasUserId) 'userId': normalizedUserId,
+      'code': code.trim(),
+      'newPassword': newPassword,
+      if (pin.isNotEmpty) 'pin': pin,
+      if (locale != null) 'locale': locale,
+    });
+  }
   Future<Map<String, dynamic>> cancelRecoveryByCode({
     required String email,
     required String code,
