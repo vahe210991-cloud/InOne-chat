@@ -12,9 +12,13 @@ export function parseEmailEncryptionKey(value) {
   let key;
   if (/^[a-f0-9]{64}$/i.test(value)) key = Buffer.from(value, 'hex');
   else {
-    const decoded = Buffer.from(value, 'base64');
-    if (!/^[A-Za-z0-9+/]+={0,2}$/.test(value) || decoded.toString('base64').replace(/=+$/, '') !== value.replace(/=+$/, '')) {
+    if (!/^[A-Za-z0-9+/]+={0,2}$/.test(value)) {
       throw new Error('INONE_EMAIL_ENCRYPTION_KEY must be valid base64');
+    }
+    const decoded = Buffer.from(value, 'base64');
+    if (decoded.toString('base64') !== value) {
+      decoded.fill(0);
+      throw new Error('INONE_EMAIL_ENCRYPTION_KEY must use canonical base64');
     }
     key = decoded;
   }
@@ -350,9 +354,10 @@ export function createEmailDelivery({
       stopping = true;
       if (timer) clearInterval(timer);
       timer = null;
-      // Let an in-flight SMTP operation finish before closing the transport.
-      if (activeTick) await activeTick;
+      // Close the transport first so an in-flight send is released instead of
+      // making shutdown wait forever on a socket or a stuck SMTP promise.
       try { smtpMailer.close?.(); } catch { /* transport close is best-effort during shutdown */ }
+      if (activeTick) await activeTick;
       masterKey.fill(0);
       payloadKey.fill(0);
       fingerprintKey.fill(0);
