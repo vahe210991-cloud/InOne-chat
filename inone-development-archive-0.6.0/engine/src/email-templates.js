@@ -52,9 +52,9 @@ const CATALOG = {
     en: ['An InOne account recovery was requested', () => 'A request to recover access to your InOne account was received. A code was sent to your backup or primary email. If this was not you, do not share any codes and review your devices.'],
   },
   recovery_confirmation_link: {
-    hy: ['Հաստատեք հաշվի վերականգնումը', ({ url }) => `Հաշվի վերականգնումը հաստատելու համար բացեք ստորև նշված հղումը։ Հղումը վավեր է մեկ ժամ։ Եթե հարցումը դուք չեք կատարել, մի՛ բացեք հղումը։\n${url}`],
-    ru: ['Подтвердите восстановление аккаунта', ({ url }) => `Чтобы подтвердить восстановление аккаунта, откройте ссылку ниже. Ссылка действует один час. Если вы не отправляли запрос, не открывайте её.\n${url}`],
-    en: ['Confirm your account recovery', ({ url }) => `To confirm account recovery, open the link below. The link expires in one hour. If you did not make this request, do not open it.\n${url}`],
+    hy: ['Հաստատեք հաշվի վերականգնումը', ({ url, appUrl }) => `Բջջային հավելվածում հաստատելու համար բացեք InOne հղումը՝ ${appUrl}։ Վեբ տարբերակը՝ ${url}։ Հղումը վավեր է մեկ ժամ։ Եթե հարցումը դուք չեք կատարել, մի՛ բացեք հղումը։`],
+    ru: ['Подтвердите восстановление аккаунта', ({ url, appUrl }) => `Для подтверждения в приложении InOne откройте ссылку: ${appUrl}. Веб-версия: ${url}. Ссылка действует один час. Если вы не отправляли запрос, не открывайте её.`],
+    en: ['Confirm your account recovery', ({ url, appUrl }) => `To confirm in the InOne app, open: ${appUrl}. Web fallback: ${url}. The link expires in one hour. If you did not make this request, do not open it.`],
   },
   recovery_cancelled: {
     hy: ['Հաշվի վերականգնումը չեղարկվել է', ({ method }) => method === 'code' ? 'Հաշվի վերականգնումը չեղարկվել է չեղարկման կոդով։ Ձեր նախկին գաղտնաբառը վերականգնվել է։' : 'Հաշվի վերականգնումը չեղարկվել է մինչև հարցումը օգտագործվող սարքից։ Ձեր նախկին գաղտնաբառը վերականգնվել է։'],
@@ -192,7 +192,11 @@ export function renderEmailTemplate(templateId, variables = {}, locale = 'hy') {
   }
   if (templateId === 'recovery_cancelled' && !['code', 'device'].includes(values.method)) throw new Error('invalid recovery cancellation method');
   let renderValues = templateId === 'stepup_code' ? { ...values, action: STEPUP_ACTION_LABELS[resolvedLocale][values.action] } : values;
-  if (templateId === 'recovery_confirmation_link') renderValues = { ...values, appUrl: safeRecoveryAppUrl(values.appUrl) };
+  if (templateId === 'recovery_confirmation_link') {
+    const appUrl = safeRecoveryAppUrl(values.appUrl);
+    if (new URL(appUrl).searchParams.get('locale') !== resolvedLocale) throw new Error('recovery app URL locale must match email locale');
+    renderValues = { ...values, appUrl };
+  }
   const text = render(renderValues);
   const ttlMs = ['registration_code', 'backup_email_verification', 'stepup_code'].includes(templateId)
     ? 10 * 60_000
