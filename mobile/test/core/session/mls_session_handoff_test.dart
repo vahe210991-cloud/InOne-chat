@@ -519,3 +519,31 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
   Future<int?> localEpoch(String roomId) async => null;
 
   @override
+  Future<List<String>> membersOf(String roomId) async => const [];
+
+  @override
+  Future<void> revokeDevice(String deviceId) async {}
+
+  @override
+  Future<int> removeRevokedDevices() async => 0;
+
+  @override
+  Future<String> accessTokenSnapshot() async => accessToken;
+
+  @override
+  Future<String> refreshSession() async {
+    refreshCalls++;
+    accessToken = 'access-2';
+    return accessToken;
+  }
+
+  @override
+  Future<void> logout() async {
+    logoutCalls++;
+  }
+
+  @override
+  Future<void> close() async {
+    closeCalls++;
+  }
+}
