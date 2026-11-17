@@ -335,7 +335,13 @@ test('ошибка продления lease не позволяет отмети
         release: (...args) => client.release(...args),
       };
     },
-    query: (sql, params) => db.pool.query(sql, params),
+    async query(sql, params) {
+      if (failNextRenewal && typeof sql === 'string' && sql.includes('SET locked_at = now()')) {
+        failNextRenewal = false;
+        return Promise.reject(Object.assign(new Error('temporary database outage'), { code: '08006' }));
+      }
+      return db.pool.query(sql, params);
+    },
   };
   const firstSmtp = {
     send() {
