@@ -447,8 +447,8 @@ class _InOneMobileAppState extends State<InOneMobileApp>
       await _session.setLocale(locale);
       if (mounted) setState(() {});
       _notice(switch (locale) {
-        'ru' => 'Язык уведомлений установлен: Русский.',
-        'en' => 'Notification language set to English.',
+        'ru' => 'Язык писем установлен: Русский.',
+        'en' => 'Email language set to English.',
         _ => 'Լեզուն ընտրված է՝ Հայերեն։',
       });
     } catch (_) {
