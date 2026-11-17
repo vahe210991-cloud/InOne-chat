@@ -206,7 +206,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
     }
   };
   // SMTP/queue подключается снаружи. Тестовый транспорт хранит письма только в памяти.
-  const mailer = externalMailer ?? { send: async ({ to, subject, text, html }) => { outbox.push({ to, subject, text, html }); } };
+  const mailer = externalMailer ?? { send: async ({ to, subject, text, html, templateId, locale }) => { outbox.push({ to, subject, text, html, templateId, locale }); } };
   const mailTo = (to, subject, text, idempotencyKey = null, templateId = null, variables = {}, locale, transactionClient = null) => {
     if (!templateId) throw new Error('email templateId is required');
     if (locale === undefined) throw new Error('email locale is required');
