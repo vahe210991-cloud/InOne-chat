@@ -20,6 +20,7 @@ void main() {
         return null;
     }
   });
+  addTearDown(() => secureStorageChannel.setMockMethodCallHandler(null));
 
   test('registration ticket stays in host memory across confirm and register',
       () async {
