@@ -14,7 +14,8 @@ void main() {
       MethodChannel('plugins.it_nomads.com/flutter_secure_storage');
   final binaryMessenger =
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
-  binaryMessenger.setMockMethodCallHandler(secureStorageChannel, (call) async {
+  setUp(() {
+    binaryMessenger.setMockMethodCallHandler(secureStorageChannel, (call) async {
     switch (call.method) {
       case 'containsKey':
         return false;
@@ -23,6 +24,7 @@ void main() {
       default:
         return null;
     }
+    });
   });
   tearDown(() =>
       binaryMessenger.setMockMethodCallHandler(secureStorageChannel, null));
