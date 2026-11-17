@@ -344,9 +344,11 @@ test('graceful shutdown закрывает SMTP и освобождает нез
     await waitFor(() => started);
     await queue.stop();
     assert.equal(closed, true);
-    const rows = (await db.pool.query('SELECT id, status, locked_at, locked_by FROM email_deliveries WHERE id = ANY($1::bigint[]) ORDER BY id', [[first.deliveryId, second.deliveryId]])).rows;
+    const rows = (await db.pool.query('SELECT id, status, attempts, locked_at, locked_by FROM email_deliveries WHERE id = ANY($1::bigint[]) ORDER BY id', [[first.deliveryId, second.deliveryId]])).rows;
     assert.equal(rows.length, 2);
     assert.ok(rows.every((row) => row.status === 'queued'));
+    assert.equal(Number(rows[0].attempts), 1, 'the in-flight SMTP send counts as one attempt');
+    assert.equal(Number(rows[1].attempts), 0, 'a claimed but unsent message does not consume an attempt');
     assert.ok(rows.every((row) => row.locked_at === null && row.locked_by === null));
   } finally {
     await queue.stop();
