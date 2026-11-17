@@ -43,6 +43,13 @@ void main() {
       httpClient: client,
       readDeviceId: () async => 'device-1',
       writeDeviceId: (_) async {},
+      readMlsUserId: () async => null,
+      writeMlsUserId: (_) async {},
+      deleteMlsUserId: () async {},
+      readLocale: () async => null,
+      writeLocale: (_) async {},
+      readLocaleSyncPending: () async => 'false',
+      writeLocaleSyncPending: (_) async {},
     );
 
     final confirmation = await session.confirmEmailRegistration(
@@ -93,6 +100,13 @@ void main() {
       httpClient: client,
       readDeviceId: () async => 'device-2',
       writeDeviceId: (_) async {},
+      readMlsUserId: () async => null,
+      writeMlsUserId: (_) async {},
+      deleteMlsUserId: () async {},
+      readLocale: () async => null,
+      writeLocale: (_) async {},
+      readLocaleSyncPending: () async => 'false',
+      writeLocaleSyncPending: (_) async {},
     );
 
     await session.confirmEmailRegistration(
@@ -121,6 +135,13 @@ void main() {
       httpClient: client,
       readDeviceId: () async => 'device-1',
       writeDeviceId: (_) async {},
+      readMlsUserId: () async => null,
+      writeMlsUserId: (_) async {},
+      deleteMlsUserId: () async {},
+      readLocale: () async => null,
+      writeLocale: (_) async {},
+      readLocaleSyncPending: () async => 'false',
+      writeLocaleSyncPending: (_) async {},
     );
 
     await expectLater(
