@@ -216,12 +216,17 @@ void main() {
       deleteMlsUserId: () async {},
     );
 
-    await session.login(email: 'alice@example.test', password: 'not-used-in-test');
+    await expectLater(
+      session.login(email: 'alice@example.test', password: 'not-used-in-test'),
+      throwsStateError,
+    );
 
-    expect(session.isAuthenticated, isTrue);
+    // A failed native handoff must not leave a Dart-owned refresh-token session.
+    expect(session.isAuthenticated, isFalse);
     expect(session.hasNativeMlsSession, isFalse);
     expect(session.mlsError, contains('MLS runtime could not be opened'));
     expect(session.userId, isNull);
+    expect(bridge.closeCalls, 1);
     session.dispose();
   });
 
@@ -345,7 +350,7 @@ void main() {
     session.dispose();
   });
 
-  test('failed adoption keeps the Flutter session usable', () async {
+  test('failed adoption invalidates the session without Flutter refresh fallback', () async {
     final httpClient = MockClient((request) async {
       if (request.url.path == '/login') {
         return http.Response(
@@ -383,14 +388,22 @@ void main() {
     );
     final bridge = _FakeMlsSessionBridge()..failOpen = true;
 
-    await session.login(email: 'alice@example.test', password: 'not-used-in-test');
-    await expectLater(session.adoptMlsSession(bridge), throwsStateError);
+    await expectLater(
+      session.login(email: 'alice@example.test', password: 'not-used-in-test'),
+      throwsStateError,
+    );
+    expect(session.isAuthenticated, isFalse);
     expect(session.hasNativeMlsSession, isFalse);
-
-    final response = await session.request('GET', '/protected');
-    expect(response['status'], 'ok');
-    // A failed native open is explicitly closed to clean up any partial state.
+    expect(session.mlsError, contains('MLS runtime could not be opened'));
     expect(bridge.closeCalls, 1);
+    expect(bridge.refreshCalls, 0);
+
+    // No authenticated request may fall back to the Dart refresh token after
+    // Rust rejects ownership of the session.
+    await expectLater(
+      session.request('GET', '/protected'),
+      throwsA(isA<Exception>()),
+    );
     session.dispose();
   });
 }
