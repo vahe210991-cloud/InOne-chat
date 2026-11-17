@@ -2734,7 +2734,18 @@ if (req.method === 'POST' && p === '/login') {
               return { next: out.next, result: out.issued };
             }, async (tx, wasIssued) => {
               if (!wasIssued) return;
-              await mailToRecipients(notificationRecipients, '', '', 'recovery_confirmation_link', { url: `${publicUrl}/recovery/confirm?user=${encodeURIComponent(userId)}&token=${token}` }, tx, locale);
+              const webLink = new URL('/recovery/confirm', `${publicUrl.replace(/\\/+$/, '')}/`);
+              webLink.searchParams.set('user', userId);
+              webLink.searchParams.set('token', token);
+              webLink.searchParams.set('locale', locale);
+              const appLink = new URL('inone://recovery/confirm');
+              appLink.searchParams.set('user', userId);
+              appLink.searchParams.set('token', token);
+              appLink.searchParams.set('locale', locale);
+              await mailToRecipients(notificationRecipients, '', '', 'recovery_confirmation_link', {
+                url: webLink.toString(),
+                appUrl: appLink.toString(),
+              }, tx, locale);
             });
             if (issued) {
               // D5: SMS-код и email-link — независимые каналы одного recovery event.
