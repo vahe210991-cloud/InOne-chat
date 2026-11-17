@@ -316,8 +316,6 @@ class InOneSession extends ChangeNotifier {
     return _client.post('/register/email', authenticated: false,
         body: {'email': email.trim(), 'locale': _locale});
   }
-      _client.post('/register/email',
-          authenticated: false, body: {'email': email.trim()});
 
   Future<Map<String, dynamic>> confirmEmailRegistration({
     required String email,
