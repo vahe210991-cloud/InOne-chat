@@ -47,6 +47,8 @@ jobs:
       - name: Install canonical engine dependencies for real-server integration tests
         run: npm ci
         working-directory: inone-development-archive-0.6.0/engine
+      - name: Verify committed MLS client lockfile
+        run: test -s inone-engine-poc-0.6.0/mobile-mls/mls-client/Cargo.lock
       - name: Check every MLS client target
         run: cargo check --locked --all-targets --manifest-path inone-engine-poc-0.6.0/mobile-mls/mls-client/Cargo.toml
       - name: Run MLS client unit and canonical-engine integration tests
@@ -72,9 +74,9 @@ jobs:
           else
             echo "available=false" >> "$GITHUB_OUTPUT"
           fi
-      - name: Generate the host lockfile deterministically for validation
+      - name: Verify committed bridge lockfile
         if: steps.bridge.outputs.available == 'true'
-        run: cargo generate-lockfile --manifest-path mobile/rust/Cargo.toml
+        run: test -s mobile/rust/Cargo.lock
       - name: Verify bridge formatting
         if: steps.bridge.outputs.available == 'true'
         run: cargo fmt --manifest-path mobile/rust/Cargo.toml -- --check
