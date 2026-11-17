@@ -437,7 +437,6 @@ pub fn purge_local_session(
 #[frb(init)]
 pub fn init_app() {}
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
