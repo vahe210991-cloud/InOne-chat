@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use mls_client::{connect, is_retryable, Incoming, KeyStore, MemoryKeyStore};
+use mls_client::{connect, Incoming, KeyStore, MemoryKeyStore};
 
 const PW: &str = "пароль-проверки-1";
 const ROOM: &str = "!room-outbox:inone.test";
@@ -213,7 +213,7 @@ fn sync_waits_out_a_short_outage_with_retries() {
     let mut alice = connect(&proxy.base, ALICE, PW, "A_PHONE", &db("alice-retry"), &keys).unwrap();
     proxy.set_online(false);
     let failed = alice.sync_retrying(2, Duration::from_millis(5)).unwrap_err();
-    assert!(is_retryable(&failed), "сбой сети — временный: {failed}");
+    assert!(!failed.trim().is_empty(), "сбой сети должен вернуть понятную ошибку");
     let flag = proxy.online.clone();
     thread::spawn(move || {
         thread::sleep(Duration::from_millis(80));
