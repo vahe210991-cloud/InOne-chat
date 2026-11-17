@@ -507,14 +507,14 @@ export function createStore({ pool, pinPepper }) {
       return rows.map((r) => ({ userId: r.user_id, deviceId: r.device_id, label: r.label, revoked: r.revoked, createdAt: Number(r.created_at) }));
     },
 
-    async createFile({ fileId, ownerId, roomId, kind, size, sha256, createdAt }) {
-      await pool.query('INSERT INTO files (file_id, owner_id, room_id, kind, size, sha256, status, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)', [fileId, ownerId, roomId, kind, size, sha256, 'pending', createdAt]);
+    async createFile({ fileId, ownerId, ownerDeviceId = '', roomId, kind, size, sha256, createdAt }) {
+      await pool.query('INSERT INTO files (file_id, owner_id, owner_device_id, room_id, kind, size, sha256, status, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)', [fileId, ownerId, ownerDeviceId, roomId, kind, size, sha256, 'pending', createdAt]);
     },
     async getFile(fileId) {
-      const { rows } = await pool.query('SELECT file_id, owner_id, room_id, kind, size, sha256, status, created_at, completed_at FROM files WHERE file_id = $1', [fileId]);
+      const { rows } = await pool.query('SELECT file_id, owner_id, owner_device_id, room_id, kind, size, sha256, status, created_at, completed_at FROM files WHERE file_id = $1', [fileId]);
       const r = rows[0];
       if (!r) return null;
-      return { fileId: r.file_id, ownerId: r.owner_id, roomId: r.room_id, kind: r.kind, size: Number(r.size), sha256: r.sha256, status: r.status, createdAt: Number(r.created_at), completedAt: r.completed_at === null ? null : Number(r.completed_at) };
+      return { fileId: r.file_id, ownerId: r.owner_id, ownerDeviceId: r.owner_device_id, roomId: r.room_id, kind: r.kind, size: Number(r.size), sha256: r.sha256, status: r.status, createdAt: Number(r.created_at), completedAt: r.completed_at === null ? null : Number(r.completed_at) };
     },
     async markFileUploaded(fileId) {
       await pool.query("UPDATE files SET status = 'uploaded' WHERE file_id = $1 AND status = 'pending'", [fileId]);
