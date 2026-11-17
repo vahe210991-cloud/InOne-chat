@@ -41,11 +41,9 @@ impl KeyStore for PlatformKeyStore {
             .map_err(|error| format!("создание записи защищённого хранилища: {error}"))?;
         match entry.get_secret() {
             Ok(mut secret) => {
-                let key = secret
-                    .as_slice()
-                    .try_into()
-                    .map(Some)
-                    .map_err(|_| "ключ SQLCipher в системном хранилище имеет неверную длину".to_string());
+                let key = secret.as_slice().try_into().map(Some).map_err(|_| {
+                    "ключ SQLCipher в системном хранилище имеет неверную длину".to_string()
+                });
                 secret.zeroize();
                 key
             }
@@ -84,7 +82,9 @@ impl KeyStore for PlatformKeyStore {
             .map_err(|error| format!("создание записи защищённого хранилища: {error}"))?;
         match entry.delete_credential() {
             Ok(()) | Err(KeyringError::NoEntry) => Ok(()),
-            Err(error) => Err(format!("удаление ключа SQLCipher из системного хранилища: {error}")),
+            Err(error) => Err(format!(
+                "удаление ключа SQLCipher из системного хранилища: {error}"
+            )),
         }
     }
 }
