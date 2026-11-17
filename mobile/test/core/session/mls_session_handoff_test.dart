@@ -24,7 +24,7 @@ void main() {
         return null;
     }
   });
-  addTearDown(() =>
+  tearDown(() =>
       binaryMessenger.setMockMethodCallHandler(secureStorageChannel, null));
 
   test('concurrent initialize calls share one device identity creation', () async {
