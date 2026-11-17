@@ -1,5 +1,6 @@
 name: Native MLS client validation
 
+# This workflow validates the persistent MLS bridge and client on the exact PR branch head.
 on:
   pull_request:
     paths:
