@@ -5,7 +5,7 @@
 **Рабочая ветка:** `feature/email-delivery-service-2026-11-16-b1`  
 **Интеграционный PR:** [#79](https://github.com/vahe210991-cloud/InOne-chat/pull/79)  
 **Stacked implementation PR:** [#61](https://github.com/vahe210991-cloud/InOne-chat/pull/61)  
-**Исходный проверенный HEAD перед документационной актуализацией:** `d5b91549bef794692451a96a638bde793b632365`  
+**Текущий HEAD после review-исправлений и документационной актуализации:** `bfbca105de15145c2ffb5ac1cff31cea95fde43e`  
 **Base main:** `d9d699f1c7e27107123c8a019a780f7060531a08`
 
 ## 1. Решение владельца — критерии Beta 1.0
@@ -23,10 +23,10 @@
 PR #79 направлен из `feature/email-delivery-service-2026-11-16-b1` непосредственно в `main`.
 
 - PR state: open, Draft.
-- Source HEAD: `d5b91549bef794692451a96a638bde793b632365`.
+- Source HEAD: `bfbca105de15145c2ffb5ac1cff31cea95fde43e`.
 - Base main: `d9d699f1c7e27107123c8a019a780f7060531a08`.
-- Compare: 626 commits ahead / 0 behind.
-- Changed files: 129; additions: 17,859; deletions: 584.
+- Compare: 635 commits ahead / 0 behind.
+- Changed files: 129; additions/deletions: уточняются повторным compare после последнего docs-only commit.
 - GitHub mergeable: true.
 - Main не изменён; PR не слит.
 - Review submissions: отсутствуют; inline review threads: отсутствуют.
@@ -109,13 +109,11 @@ PR #79 направлен из `feature/email-delivery-service-2026-11-16-b1` н
 
 ## 6. CI на точном HEAD
 
-На exact HEAD `d5b91549bef794692451a96a638bde793b632365` четыре обязательных направления завершились PASS:
-- Email delivery and PostgreSQL validation — [run 44243910377](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/44243910377).
-- Validate recovered InOne P0 source — [run 44243910364](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/44243910364).
-- Native MLS client validation — [run 44243910690](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/44243910690).
-- Flutter mobile validation — [run 44243910304](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/44243910304).
+На предыдущем implementation HEAD `d5b91549bef794692451a96a638bde793b632365` четыре обязательных направления завершились PASS, включая Node/PostgreSQL, Rust/OpenMLS/FRB, Flutter analyze/test и Android preview APK build.
 
-В jobs этих workflow проверены Node engine suite, PostgreSQL migration/email queue tests, production dependency audit, Rust/OpenMLS/FRB, iOS native target build, Flutter analyze/test и Android preview APK build. Успешные CI jobs не заменяют Beta 1.0 real mailbox/device acceptance.
+В review найден и исправлен дополнительный SMTP acceptance bug: теперь успешный `sendMail()` не считается доставкой, пока `info.accepted` явно не содержит единственного адресата; иначе адаптер возвращает permanent envelope error. Добавлен SMTP-server test на отказ принять recipient. Полный Email/PostgreSQL workflow на SHA `abc8474029abcf5fe101a9b06cb292ceb1ef042d` завершился PASS: syntax check, полный Node suite, PostgreSQL migration/durable queue suite и production dependency audit. Последний docs-only commit синхронизировал engineering rules с решениями владельца; на exact HEAD `bfbca105de15145c2ffb5ac1cff31cea95fde43e` четыре workflow запущены повторно и ожидают завершения. Их final job logs необходимо зафиксировать перед переводом PR в Ready.
+
+Успешные CI jobs не заменяют Beta 1.0 real mailbox/device acceptance.
 
 ## 7. Замечания review / операционные ограничения
 
