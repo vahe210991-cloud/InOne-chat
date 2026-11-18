@@ -26,6 +26,8 @@ void main() {
   test('persists ciphertext only and restores the exact document with AES-GCM', () async {
     final plaintext = utf8.encode('confidential company registration document');
     final file = await store.save(
+      ownerUserId: '@owner:inone.test',
+      ownerUserId: '@owner:inone.test',
       requestId: 'request-123',
       documentId: 'document-456',
       filename: 'registration.pdf',
@@ -46,6 +48,8 @@ void main() {
     expect(restored, plaintext);
     await expectLater(
       store.read(
+        ownerUserId: '@owner:inone.test',
+        ownerUserId: '@owner:inone.test',
         requestId: 'request-123',
         documentId: 'document-456',
         filename: 'renamed.pdf',
@@ -58,12 +62,14 @@ void main() {
   test('concurrent first writes share one secure key', () async {
     await Future.wait([
       store.save(
+        ownerUserId: '@owner:inone.test',
         requestId: 'request-123',
         documentId: 'document-1',
         filename: 'one.pdf',
         bytes: utf8.encode('first document'),
       ),
       store.save(
+        ownerUserId: '@owner:inone.test',
         requestId: 'request-123',
         documentId: 'document-2',
         filename: 'two.pdf',
