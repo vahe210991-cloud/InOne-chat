@@ -2170,12 +2170,16 @@ impl Client {
                     let staged = StagedWelcome::new_from_welcome(&provider, &join_config, welcome, None)
                         .map_err(|error| match error {
                             WelcomeError::GroupAlreadyExists => JoinFailure::Duplicate,
-                            WelcomeError::LibraryError(_) | WelcomeError::StorageError(_) => JoinFailure::Indeterminate("transient OpenMLS Welcome error".to_string()),
+                            error @ (WelcomeError::LibraryError(_) | WelcomeError::StorageError(_)) => {
+                                JoinFailure::Indeterminate(format!("{error:?}"))
+                            },
                             other => JoinFailure::Permanent(format!("Permanent Welcome error: {other:?}")),
                         })?;
                     let mls = staged.into_group(&provider).map_err(|error| match error {
                         WelcomeError::GroupAlreadyExists => JoinFailure::Duplicate,
-                        WelcomeError::LibraryError(_) | WelcomeError::StorageError(_) => JoinFailure::Indeterminate("transient OpenMLS Welcome materialization error".to_string()),
+                        error @ (WelcomeError::LibraryError(_) | WelcomeError::StorageError(_)) => {
+                            JoinFailure::Indeterminate(format!("{error:?}"))
+                        },
                         other => JoinFailure::Permanent(format!("Permanent Welcome materialization error: {other:?}")),
                     })?;
                     let actual_room = String::from_utf8_lossy(mls.group_id().as_slice()).to_string();

@@ -86,8 +86,7 @@ dbTest('копия восстанавливается в пустую базу �
 });
 
 dbTest('хранение: остаются последние копии, старые удаляются вместе с контрольными суммами', async () => {
-  const tag = `${process.pid}_${Date.now() % 100000}`;
-  const dbName = `inone_backup_keep_${tag}`;
+  const dbName = `inone_backup_keep_${process.pid}_${randomBytes(4).toString('hex')}`;
   const dbUrl = withDatabase(process.env.DATABASE_URL, dbName);
   const dir = mkdtempSync(path.join(tmpdir(), 'inone-keep-'));
   await admin(`CREATE DATABASE ${dbName}`);
