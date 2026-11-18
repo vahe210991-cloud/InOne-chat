@@ -41,7 +41,7 @@ async function call(base, method, p, token, body) {
   } catch {
     json = null;
   }
-  return { status: res.status, json, buf };
+  return { status: res.status, json, buf, headers: Object.fromEntries(res.headers.entries()) };
 }
 
 test('заявитель загружает документ и видит его; посторонний не видит; администрация открывает на просмотр и это записано', async () => {
