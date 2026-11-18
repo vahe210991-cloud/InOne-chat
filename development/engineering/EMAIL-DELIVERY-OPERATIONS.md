@@ -81,7 +81,7 @@ SET status = 'queued',
     locked_by = NULL,
     last_error_code = NULL,
     updated_at = now()
-WHERE id = ANY(ARRAY[/* explicitly reviewed IDs */]::bigint[])
+WHERE id = ANY(ARRAY[12345, 12346]::bigint[]) -- replace with explicitly reviewed delivery IDs
   AND status = 'dead'
   AND last_error_code IN ('auth', 'connection', 'transport_error')
   AND expires_at > now()
