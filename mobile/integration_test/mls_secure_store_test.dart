@@ -11,7 +11,7 @@ void main() {
       final stamp = DateTime.now().microsecondsSinceEpoch;
       final userId = '@mls-smoke-$stamp:inone.test';
       final deviceId = 'MLS-SMOKE-$stamp';
-      const baseUrl = 'http://127.0.0.1:1';
+      const baseUrl = 'https://127.0.0.1:1';
 
       final first = RustMlsSessionBridge();
       await first.open(
