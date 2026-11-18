@@ -38,9 +38,12 @@ jobs:
         working-directory: mobile
         run: flutter create --platforms=android,ios --project-name inone_mobile --org com.inone .
 
-      - name: Remove generated template test
+      - name: Remove generated Flutter template tests
         working-directory: mobile
-        run: rm -f test/widget_test.dart
+        # flutter create emits both widget_test.dart and integration_test/simple_test.dart.
+        # The latter references the template MyApp class, which this app does not define.
+        # Keep the real MLS integration test in this directory.
+        run: rm -f test/widget_test.dart integration_test/simple_test.dart
 
       - name: Install Rust toolchain and Android targets
         uses: dtolnay/rust-toolchain@master
