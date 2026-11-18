@@ -1,5 +1,7 @@
 import 'dart:async';
-import 'dart:io' show Platform;
+import 'dart:io' show Directory, File, Platform;
+
+import 'package:path_provider/path_provider.dart';
 
 import 'package:flutter/material.dart';
 
@@ -353,7 +355,12 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         final id = json['docId'];
         final kind = json['kind'];
         final size = json['size'];
-        if (id is! String || id.isEmpty || kind is! String || size is! int || size < 0) {
+        final filename = json['filename'];
+        final mimeType = json['mimeType'];
+        if (id is! String || id.isEmpty || kind is! String || size is! int || size < 0 ||
+            filename is! String || filename.isEmpty ||
+            mimeType is! String ||
+            !const ['application/pdf', 'image/jpeg', 'image/png', 'application/octet-stream'].contains(mimeType)) {
           throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false);
         }
         final label = switch (kind) {
@@ -362,7 +369,12 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           'other' => 'Другой документ',
           _ => throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false),
         };
-        return InOneDocument(id: id, name: label, typeLabel: '${(size / 1024).ceil()} КБ');
+        return InOneDocument(
+          id: id,
+          name: filename,
+          typeLabel: '$label · ${(size / 1024).ceil()} КБ',
+          mimeType: mimeType,
+        );
       }).toList(growable: false);
       if (!mounted) return;
       setState(() {
@@ -398,11 +410,54 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     }
   }
 
-  Future<InOneFailure?> _downloadAdminDocument(InOneDocument document) async =>
-      const InOneFailure(
+  Future<InOneFailure?> _downloadAdminDocument(InOneDocument document) async {
+    final request = _selectedAdminRequest;
+    if (request == null || !(_profile?.canViewPlatformRequests ?? false)) {
+      return const InOneFailure(
         InOneScreenState.error,
-        message: 'Защищённый бинарный просмотр документов будет подключён отдельным шагом G2. Документ не скачан.',
+        message: 'Документ недоступен для этой учётной записи.',
       );
+    }
+    try {
+      final response = await _repositories.downloadOrganizationRequestDocument(
+        request.id,
+        document.id,
+      );
+      final responseType = response.headers['content-type']?.split(';').first.trim().toLowerCase();
+      if (document.mimeType != null && responseType != document.mimeType) {
+        throw const ApiException(code: 'invalid_download_response', statusCode: 502, retryable: false);
+      }
+
+      final root = await getApplicationDocumentsDirectory();
+      final directory = Directory(
+        '${root.path}${Platform.pathSeparator}InOne${Platform.pathSeparator}organization-documents${Platform.pathSeparator}${request.id}',
+      );
+      await directory.create(recursive: true);
+
+      final safeName = document.name
+          .replaceAll('\\\\', '_')
+          .replaceAll('/', '_')
+          .replaceAll(RegExp(r'[\\u0000-\\u001f\\u007f]'), '')
+          .trim();
+      if (safeName.isEmpty || safeName == '.' || safeName == '..') {
+        throw const ApiException(code: 'invalid_download_filename', statusCode: 502, retryable: false);
+      }
+      var file = File('${directory.path}${Platform.pathSeparator}$safeName');
+      if (await file.exists()) {
+        final dot = safeName.lastIndexOf('.');
+        final uniqueName = dot > 0
+            ? '${safeName.substring(0, dot)}_${document.id}${safeName.substring(dot)}'
+            : '${safeName}_${document.id}';
+        file = File('${directory.path}${Platform.pathSeparator}$uniqueName');
+      }
+      await file.writeAsBytes(response.bodyBytes, flush: true);
+      if (!mounted) return null;
+      _notice('Документ сохранён в защищённом хранилище приложения.');
+      return null;
+    } catch (error) {
+      return _toFailure(error);
+    }
+  }
 
   Future<InOneFailure?> _startEmailRegistration(String email) async {
     _registrationEmail = email.trim();
