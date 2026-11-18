@@ -31,10 +31,10 @@ void main() {
         deviceId: deviceId,
       );
       expect(await resumed.accessTokenSnapshot(), 'smoke-access-token');
-      await resumed.close();
 
-      // The server is intentionally unreachable. Native logout must still
-      // purge the SQLCipher database and platform key before returning its error.
+      // Keep the resumed native session open: logout must reach Rust so it can
+      // purge the SQLCipher database and platform key even when the server is
+      // unreachable and the network request returns an error.
       await expectLater(resumed.logout(), throwsA(anything));
 
       final afterLogout = RustMlsSessionBridge();
