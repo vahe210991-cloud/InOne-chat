@@ -52,7 +52,7 @@ The GitHub repository `vahe210991-cloud/InOne-chat` is the only authoritative pr
 - P0 Wave 3 recovery bundle: verified locally from the owner-provided archive; details and checksum in [BASELINE-2026-11-08.md](BASELINE-2026-11-08.md).
 - P0 backend/MLS source is published on `recovery/p0-wave3-applied` at `7ebdeac8b322d7a1fe0b26add039f48b5f9f776f`; draft PR [#22](https://github.com/vahe210991-cloud/InOne-chat/pull/22). Functional Node/room/PostgreSQL/OpenMLS/Rust bridge checks pass on that exact SHA; overall CI remains red only at `cargo fmt -- --check` (12 Rust files). Source-integrity review remains open. See the [latest P0 recovery status](recovered-source/P0-GITHUB-RECOVERY-STATUS-2026-11-08.md).
 - Reference-only P0/Flutter/Beta documents: PR [#17](https://github.com/vahe210991-cloud/InOne-chat/pull/17); not product implementation.
-- Product Flutter Beta 1.0 source: not present in the recovered P0 bundle; do not claim there is a runnable mobile app until its actual source is located and built.
+- Product Flutter Beta 1.0 source was not part of the recovered P0 bundle. It is now present in `main` through merged PR [#82](https://github.com/vahe210991-cloud/InOne-chat/pull/82), with exact-head Flutter mobile, iOS Simulator/Device, and Native MLS CI all passing. Physical-device and two-device MLS acceptance remain separate gates.
 - Beta 1.0 uses an independent InOne backend/database. Shared operational database with Propo is deferred to a later beta.
 
 This is a handover area, not a substitute for source code. Work in Git branches and return every change to GitHub under the rules below.
@@ -66,3 +66,10 @@ Read [PROGRESS-BASELINE.md](PROGRESS-BASELINE.md) in full before every implement
 
 - [Full Beta 1.0 / 2.0 audit](reports/2026-11-09-0935-full-beta-audit.md)
 - [UI source import and integration stage](reports/2026-11-09-1015-ui-integration-start.md)
+
+
+## Latest Beta 1.0 native UI baseline — 2026-11-18
+
+- Production mobile entry is native Flutter/Dart on `main` at `a174f794535ab09699d38292acb4919308873fd7`.
+- PR [#82](https://github.com/vahe210991-cloud/InOne-chat/pull/82) was merged after all three exact-head workflows passed. See [G1 merge closeout](reports/2026-11-18-g1-native-ui-merge-closeout.md).
+- Do not treat CI green as physical-device acceptance: Android/iOS device runtime, Keystore/Keychain lifecycle, two-device MLS E2E, encrypted attachment E2E, and final screen/API wiring review remain separate gates.
