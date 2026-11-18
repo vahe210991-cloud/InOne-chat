@@ -32,6 +32,7 @@ class InOneEncryptedDocumentStore {
   final Future<String?> Function()? _readKeyOverride;
   final Future<void> Function(String value)? _writeKeyOverride;
   final AesGcm _algorithm = AesGcm.with256bits();
+  Future<SecretKey>? _keyInFlight;
 
   Future<String?> _readKey() =>
       _readKeyOverride?.call() ?? _secureStorage.read(key: _keyName);
@@ -39,7 +40,17 @@ class InOneEncryptedDocumentStore {
   Future<void> _writeKey(String value) =>
       _writeKeyOverride?.call(value) ?? _secureStorage.write(key: _keyName, value: value);
 
-  Future<SecretKey> _loadKey() async {
+  Future<SecretKey> _loadKey() {
+    final active = _keyInFlight;
+    if (active != null) return active;
+    final operation = _loadKeyOnce();
+    _keyInFlight = operation;
+    return operation.whenComplete(() {
+      if (identical(_keyInFlight, operation)) _keyInFlight = null;
+    });
+  }
+
+  Future<SecretKey> _loadKeyOnce() async {
     var encoded = await _readKey();
     if (encoded == null) {
       final random = Random.secure();
