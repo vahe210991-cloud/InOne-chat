@@ -507,7 +507,12 @@ class InOneLinks extends StatelessWidget {
     if (_row) {
       return Padding(
         padding: const EdgeInsets.only(top: 4),
-        child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: children),
+        child: Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          spacing: 8,
+          runSpacing: 0,
+          children: children,
+        ),
       );
     }
     return Padding(
