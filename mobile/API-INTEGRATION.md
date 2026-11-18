@@ -105,3 +105,11 @@ The repository's current engine deployment guide identifies this server build as
 The complete screen-to-route matrix, authentication boundaries, request-flow notes and current CH-02 MLS sequence are maintained in [API-CONTRACTS-BETA-1.md](API-CONTRACTS-BETA-1.md). That contract matrix supersedes older screen-level route notes in this file when they differ.
 
 Important: `GET /rooms/:id/events` is implemented for reading ciphertext history. It is not a message-send endpoint. All new group messages must use `POST /mls/groups/:id/messages`; the legacy `POST /rooms/:id/events` returns 409. Native MLS ownership and secure local persistence remain Stage 4 work. The WebView bridge must not receive MLS secrets or call arbitrary routes.
+
+
+## Platform organization requests (G2)
+
+- `GET /org-requests` populates PS-01; the authenticated profile exposes `platformRole` (`owner`, `admin` or `null`) for navigation only. The server independently scopes the queue and enforces every operation.
+- `GET /org-requests/:id` populates PS-02 request and document metadata.
+- `POST /org-requests/:id/decision` is connected from PS-03. Only the platform owner sees the decision action; the backend still rejects admins with 403 `not_platform_owner` and repeated decisions with 409.
+- Document bytes are not yet connected to a secure native download/preview flow. PS-02 must not be considered complete until that adapter and its tests are implemented.
