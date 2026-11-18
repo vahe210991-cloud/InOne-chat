@@ -70,6 +70,12 @@ jobs:
           rm -f rust/src/api/simple.rs lib/src/rust/api/simple.dart
           flutter_rust_bridge_codegen generate
 
+      - name: Remove Flutter Rust Bridge integration template test
+        working-directory: mobile
+        # FRB integrate overlays its template after flutter create and can recreate
+        # simple_test.dart; remove only that generated MyApp test, preserving MLS tests.
+        run: rm -f integration_test/simple_test.dart
+
       - name: Prepare declared asset directories
         working-directory: mobile
         run: mkdir -p assets/ui-approval/assets/icons assets/ui-approval/assets/images
