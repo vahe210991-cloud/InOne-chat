@@ -146,4 +146,58 @@ void main() {
     );
     client.close();
   });
+
+  test('downloads only authenticated no-store attachments with safe headers', () async {
+    final bytes = [37, 80, 68, 70, 45, 49, 46, 55];
+    final mock = MockClient((request) async {
+      expect(request.method, 'GET');
+      expect(request.url.path, '/org-requests/request-1/documents/doc-1');
+      expect(request.headers['authorization'], 'Bearer access-token');
+      expect(request.followRedirects, isFalse);
+      return http.Response.bytes(
+        bytes,
+        200,
+        headers: {
+          'content-type': 'application/pdf',
+          'content-disposition': "attachment; filename=\"application.pdf\"; filename*=UTF-8''application.pdf",
+          'x-content-type-options': 'nosniff',
+          'cache-control': 'private, no-store',
+        },
+      );
+    });
+    final client = ApiClient(
+      baseUrl: 'https://api.inone.test',
+      accessTokenProvider: () => 'access-token',
+      httpClient: mock,
+    );
+
+    final response = await client.download('/org-requests/request-1/documents/doc-1');
+    expect(response.bodyBytes, bytes);
+    expect(response.headers['content-type'], 'application/pdf');
+    client.close();
+  });
+
+  test('rejects a binary response without attachment and no-store protections', () async {
+    final mock = MockClient((request) async => http.Response.bytes(
+          [1, 2, 3],
+          200,
+          headers: {'content-type': 'application/pdf'},
+        ));
+    final client = ApiClient(
+      baseUrl: 'https://api.inone.test',
+      accessTokenProvider: () => 'access-token',
+      httpClient: mock,
+    );
+
+    await expectLater(
+      client.download('/org-requests/request-1/documents/doc-1'),
+      throwsA(isA<ApiException>().having(
+        (error) => error.code,
+        'code',
+        'invalid_download_response',
+      )),
+    );
+    client.close();
+  });
+
 }
