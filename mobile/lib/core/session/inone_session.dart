@@ -369,18 +369,31 @@ class InOneSession extends ChangeNotifier {
   }
 
   Future<Map<String, dynamic>> completeRecovery({
-    required String email,
+    String email = '',
+    String? userId,
     required String code,
     required String newPassword,
     String? pin,
   }) async {
     await initialize();
+    final normalizedEmail = email.trim();
+    final normalizedUserId = userId?.trim() ?? '';
+    if (normalizedEmail.isEmpty && normalizedUserId.isEmpty) {
+      throw const ApiException(
+        code: 'recovery_identity_required',
+        statusCode: 400,
+        retryable: false,
+      );
+    }
     return request(
       'POST',
       '/recovery/complete',
       authenticated: false,
       body: {
-        'email': email.trim(),
+        if (normalizedUserId.isNotEmpty)
+          'userId': normalizedUserId
+        else
+          'email': normalizedEmail,
         'code': code.trim(),
         'newPassword': newPassword,
         if (pin != null && pin.isNotEmpty) 'pin': pin,

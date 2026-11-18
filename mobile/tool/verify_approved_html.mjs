@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const html = readFileSync(new URL('../assets/approved-ui/InOne-approved-cross-platform.html', import.meta.url), 'utf8');
+const html = readFileSync(new URL('../../мусорный ящик/HTML-архив/mobile-assets/approved-ui/InOne-approved-cross-platform.html', import.meta.url), 'utf8');
 const openTag = '<script type="__bundler/template">';
 const start = html.indexOf(openTag);
 assert.notEqual(start, -1, 'bundled design template exists');

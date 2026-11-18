@@ -1,6 +1,5 @@
 import '../session/inone_session.dart';
 import 'inone_profile.dart';
-import 'inone_room.dart';
 
 /// Typed read repositories shared by approved screens and the test-screen host.
 class InOneRepositories {
@@ -18,8 +17,6 @@ class InOneRepositories {
     await session.setLocale(locale);
     return {'locale': session.locale};
   }
-  Future<List<InOneRoom>> myRooms() async =>
-      InOneRoomList.fromJson(await session.request('GET', '/rooms/mine')).rooms;
   Future<Map<String, dynamic>> myOrganizations() =>
       session.request('GET', '/orgs/mine');
   Future<Map<String, dynamic>> myDevices() =>
