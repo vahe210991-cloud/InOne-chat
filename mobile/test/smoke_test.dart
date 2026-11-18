@@ -51,10 +51,14 @@ void main() {
 
     await tester.pumpWidget(const InOneMobileApp());
 
-    // Session initialization performs asynchronous secure-storage I/O. Advance
-    // the fake platform channel and app lifecycle before asserting the screen.
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
+    // Session initialization crosses several asynchronous platform-channel
+    // calls. Pump in bounded intervals until the production entry leaves its
+    // loading state; a single frame is not enough to complete the channel chain.
+    for (var attempt = 0;
+        attempt < 20 && find.byType(InOneLoginScreen).evaluate().isEmpty;
+        attempt++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
 
     expect(find.byType(InOneLoginScreen), findsOneWidget);
     expect(find.text('Մուտք'), findsOneWidget);
