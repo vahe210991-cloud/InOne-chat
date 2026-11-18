@@ -125,6 +125,8 @@ jobs:
             exit 1
           fi
           # Generated UI assets stay in this ephemeral runner workspace; never push from pull_request.
+      - name: Verify approved cross-platform screen geometry
+        run: node tool/verify_approved_html.mjs
       - name: Remove ephemeral HTML reference assets from the mobile package
         run: rm -rf assets
       - run: flutter pub get
