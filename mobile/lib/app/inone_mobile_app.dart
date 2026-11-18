@@ -500,10 +500,9 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           onSubmit: _createAccount,
           onBack: () => setState(() => _screen = 'emailCode'),
           onDone: () {
-            setState(() {
-              _screen = 'login';
-            });
-            _notice('Регистрация завершена. Теперь войдите в аккаунт.');
+            _registrationEmail = '';
+            // registerAccount authenticates through the normal session flow.
+            _afterLogin();
           },
         );
       case 'logout':
@@ -650,7 +649,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       if (!mounted) return true;
       if (!error.retryable) _handledRecoveryLinkFingerprints.add(fingerprint);
       final message = switch (payload.locale) {
-        'ru' => error.code == 'recovery_expired'
+        'ru' => error.code == 'recovery expired'
             ? 'Ссылка восстановления истекла. Запросите новую.'
             : 'Не удалось подтвердить ссылку восстановления. Проверьте ссылку и повторите попытку.',
         'en' => error.code == 'recovery_expired'
