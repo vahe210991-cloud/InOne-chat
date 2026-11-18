@@ -6,6 +6,7 @@ const read = (relative) => readFileSync(new URL(relative, import.meta.url), 'utf
 const server = read('../src/server.js');
 const mobileContract = read('../../../mobile/API-CONTRACTS-BETA-1.md');
 const mobileApp = read('../../../mobile/lib/app/inone_mobile_app.dart');
+const mobileEntry = read('../../../mobile/lib/main.dart');
 const mobileRepositories = read('../../../mobile/lib/core/data/inone_repositories.dart');
 
 const routeEvidence = new Map([
