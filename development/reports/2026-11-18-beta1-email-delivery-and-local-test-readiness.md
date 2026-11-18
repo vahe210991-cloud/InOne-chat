@@ -5,7 +5,7 @@
 **Рабочая ветка:** `feature/email-delivery-service-2026-11-16-b1`  
 **Интеграционный PR:** [#79](https://github.com/vahe210991-cloud/InOne-chat/pull/79)  
 **Stacked implementation PR:** [#61](https://github.com/vahe210991-cloud/InOne-chat/pull/61)  
-**Текущий проверенный HEAD:** `d5b91549bef794692451a96a638bde793b632365`  
+**Исходный проверенный HEAD перед документационной актуализацией:** `d5b91549bef794692451a96a638bde793b632365`  
 **Base main:** `d9d699f1c7e27107123c8a019a780f7060531a08`
 
 ## 1. Решение владельца — критерии Beta 1.0
@@ -59,7 +59,7 @@ PR #79 направлен из `feature/email-delivery-service-2026-11-16-b1` н
 
 ### Каталог email-сценариев
 
-В renderer присутствуют 14 шаблонов:
+В renderer присутствуют 13 шаблонов:
 1. `registration_code`
 2. `backup_email_verification`
 3. `backup_email_changed`
@@ -73,7 +73,7 @@ PR #79 направлен из `feature/email-delivery-service-2026-11-16-b1` н
 11. `recovery_confirmation_link`
 12. `recovery_cancelled`
 13. `recovery_completed`
-14. (каталог содержит 13 фактически перечисленных template IDs; число в preview/дизайн-документах необходимо привести к фактическому каталогу — см. замечание ниже).
+
 
 Поддерживаемые локали: `hy`, `ru`, `en`. Рендерер формирует plain-text и HTML. Recovery URLs проверяются на HTTPS, HTML-значения экранируются.
 
@@ -124,7 +124,6 @@ PR #79 направлен из `feature/email-delivery-service-2026-11-16-b1` н
 3. **Dead-letter recovery.** Ошибки auth/envelope классифицируются как permanent и переходят в `dead`. После исправления конфигурации такие записи требуют контролируемого повторного enqueue/requeue. Перед эксплуатацией нужна документированная операторская процедура и тест восстановления; не делать слепой массовый reset всех dead rows.
 4. **Single active encryption key.** Versioned key ring не реализован; rotation только drain-and-purge, по текущему operations guide.
 5. **Template administration.** UI/редактор шаблонов отсутствует и не входит в Beta 1.0. Это отдельная последующая задача с audit/versioning.
-6. **Documentation count drift.** Документы дизайна ранее указывали 13 шаблонов; фактический renderer содержит 13 template IDs. Число и перечень следует синхронизировать в одном источнике истины. (В перечне выше — 13 ID.)
 7. **Full system diff.** PR объединяет 129 файлов и 626 коммитов; email subsystem и связанные интеграции проверены предметно. До перевода PR из Draft требуется завершить финальный проход по оставшимся Flutter/Rust/OpenMLS/CI/docs изменениям и зафиксировать любые найденные блокеры.
 
 ## 8. Отложенные проверки Beta 1.0
