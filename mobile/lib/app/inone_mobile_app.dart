@@ -45,6 +45,9 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   List<InOneOrganization> _organizations = const [];
   InOneOrganization? _selectedOrganization;
   InOneSystemStatus? _systemStatus;
+  InOneOrgRequest? _selectedAdminRequest;
+  List<InOneOrgRequest> _adminRequests = const [];
+  List<InOneDocument> _adminDocuments = const [];
   bool _darkMode = false;
   bool _initializing = true;
   final Completer<void> _initializationComplete = Completer<void>();
@@ -276,6 +279,130 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       if (mounted) setState(() => _screen = 'loadError');
     }
   }
+
+  String _formatAdminRequestDate(Object? value) {
+    if (value is! int || value < 0) {
+      throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false);
+    }
+    final date = DateTime.fromMillisecondsSinceEpoch(value).toLocal();
+    return '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year}';
+  }
+
+  InOneOrgRequest _parseAdminRequest(Map<String, dynamic> json) {
+    final id = json['requestId'];
+    final name = json['name'];
+    final status = switch (json['status']) {
+      'pending' => InOneRequestStatus.pending,
+      'approved' => InOneRequestStatus.approved,
+      'rejected' => InOneRequestStatus.rejected,
+      _ => null,
+    };
+    if (id is! String || id.isEmpty || name is! String || name.isEmpty || status == null) {
+      throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false);
+    }
+    return InOneOrgRequest(
+      id: id,
+      name: name,
+      date: _formatAdminRequestDate(json['createdAt']),
+      status: status,
+    );
+  }
+
+  Future<void> _openAdminRequests() async {
+    if (!(_profile?.canViewPlatformRequests ?? false)) {
+      _notice('Недостаточно прав для просмотра заявок платформы.');
+      return;
+    }
+    setState(() => _screen = 'adminRequestsLoading');
+    try {
+      final response = await _repositories.organizationRequests();
+      final raw = response['requests'];
+      if (raw is! List || raw.any((item) => item is! Map<String, dynamic>)) {
+        throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false);
+      }
+      final requests = raw.cast<Map<String, dynamic>>().map(_parseAdminRequest).toList(growable: false);
+      if (!mounted) return;
+      setState(() {
+        _adminRequests = requests;
+        _screen = 'adminRequests';
+      });
+    } catch (error) {
+      if (!mounted) return;
+      final failure = _toFailure(error);
+      setState(() => _screen = 'adminRequestsError');
+      _notice(failure.message ?? 'Не удалось загрузить очередь заявок.');
+    }
+  }
+
+  Future<void> _openAdminRequest(InOneOrgRequest request) async {
+    if (!(_profile?.canViewPlatformRequests ?? false)) return;
+    setState(() {
+      _selectedAdminRequest = request;
+      _screen = 'adminRequestLoading';
+    });
+    try {
+      final response = await _repositories.organizationRequest(request.id);
+      final rawRequest = response['request'];
+      final rawDocuments = response['documents'];
+      if (rawRequest is! Map<String, dynamic> || rawDocuments is! List ||
+          rawDocuments.any((item) => item is! Map<String, dynamic>)) {
+        throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false);
+      }
+      final parsedRequest = _parseAdminRequest(rawRequest);
+      final documents = rawDocuments.cast<Map<String, dynamic>>().map((json) {
+        final id = json['docId'];
+        final kind = json['kind'];
+        final size = json['size'];
+        if (id is! String || id.isEmpty || kind is! String || size is! int || size < 0) {
+          throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false);
+        }
+        final label = switch (kind) {
+          'registration' => 'Регистрационный документ',
+          'authority' => 'Подтверждение полномочий',
+          'other' => 'Другой документ',
+          _ => throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false),
+        };
+        return InOneDocument(id: id, name: label, typeLabel: '${(size / 1024).ceil()} КБ');
+      }).toList(growable: false);
+      if (!mounted) return;
+      setState(() {
+        _selectedAdminRequest = parsedRequest;
+        _adminDocuments = documents;
+        _screen = 'adminRequestDetails';
+      });
+    } catch (error) {
+      if (!mounted) return;
+      final failure = _toFailure(error);
+      setState(() => _screen = 'adminRequestsError');
+      _notice(failure.message ?? 'Не удалось загрузить заявку.');
+    }
+  }
+
+  Future<InOneFailure?> _decideAdminRequest(InOneDecision decision) async {
+    final request = _selectedAdminRequest;
+    if (request == null || !(_profile?.canDecidePlatformRequests ?? false)) {
+      return const InOneFailure(InOneScreenState.error, message: 'Решение доступно только владельцу платформы.');
+    }
+    try {
+      final response = await _repositories.decideOrganizationRequest(
+        request.id,
+        decision: decision == InOneDecision.approve ? 'approve' : 'reject',
+      );
+      final expected = decision == InOneDecision.approve ? 'approved' : 'rejected';
+      if (response['status'] != expected) {
+        throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false);
+      }
+      return null;
+    } catch (error) {
+      return _toFailure(error);
+    }
+  }
+
+  Future<InOneFailure?> _downloadAdminDocument(InOneDocument document) async =>
+      const InOneFailure(
+        InOneScreenState.error,
+        message: 'Защищённый бинарный просмотр документов будет подключён отдельным шагом G2. Документ не скачан.',
+      );
 
   Future<InOneFailure?> _startEmailRegistration(String email) async {
     _registrationEmail = email.trim();
@@ -520,10 +647,47 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           onCancel: () => setState(() => _screen = 'profile'),
           onDone: _finishLogout,
         );
+      case 'adminRequestsLoading':
+      case 'adminRequestLoading':
       case 'loading':
         return const Scaffold(body: Center(child: CircularProgressIndicator()));
       case 'loadError':
         return InOneLoadingErrorScreen(onRetry: () => unawaited(_loadAuthenticatedData()));
+      case 'adminRequestsError':
+        return InOneLoadingErrorScreen(onRetry: () => unawaited(_openAdminRequests()));
+      case 'adminRequests':
+        return InOneRequestsAdminScreen(
+          requests: _adminRequests,
+          onOpen: (request) => unawaited(_openAdminRequest(request)),
+          onMenu: () => setState(() => _screen = 'profile'),
+        );
+      case 'adminRequestDetails':
+        if (_selectedAdminRequest == null) {
+          return InOneLoadingErrorScreen(onRetry: () => unawaited(_openAdminRequests()));
+        }
+        return InOneRequestAdminDetailsScreen(
+          request: _selectedAdminRequest!,
+          documents: _adminDocuments,
+          isOwner: _profile?.canDecidePlatformRequests ?? false,
+          onDownload: _downloadAdminDocument,
+          onDecide: () => setState(() => _screen = 'adminRequestDecision'),
+          onBack: () => unawaited(_openAdminRequests()),
+          onMenu: () => setState(() => _screen = 'profile'),
+        );
+      case 'adminRequestDecision':
+        if (_selectedAdminRequest == null || !(_profile?.canDecidePlatformRequests ?? false)) {
+          return InOneLoadingErrorScreen(onRetry: () => unawaited(_openAdminRequests()));
+        }
+        return InOneRequestDecisionScreen(
+          request: _selectedAdminRequest!,
+          onDecision: _decideAdminRequest,
+          onBack: () => setState(() => _screen = 'adminRequestDetails'),
+          onMenu: () => setState(() => _screen = 'profile'),
+          onDone: () {
+            _notice('Решение по заявке сохранено.');
+            unawaited(_openAdminRequests());
+          },
+        );
       case 'workspace':
         return InOneWorkspaceScreen(
           summary: _workspaceSummary,
@@ -594,6 +758,12 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
               icon: Icons.business_outlined,
               onTap: _openOrganization,
             ),
+            if (_profile?.canViewPlatformRequests == true)
+              InOneProfileMenuItem(
+                label: 'Заявки платформы',
+                icon: Icons.admin_panel_settings_outlined,
+                onTap: () => unawaited(_openAdminRequests()),
+              ),
             InOneProfileMenuItem(
               label: 'Состояние системы',
               icon: Icons.settings_outlined,
