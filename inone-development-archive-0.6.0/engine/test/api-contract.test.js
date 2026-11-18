@@ -52,7 +52,7 @@ test('G2 organization request routes declared by the canonical mobile contract h
     ['PS-02 details', /const orgReqOne = p\.match/u],
     ['PS-02 audited document access', /const orgReqDoc = p\.match/u],
     ['PS-03 owner decision', /const orgReqDecision = p\.match/u],
-    ['profile platform role', /info\.platformRole = await storage\.platformRoleOf\\(d\.userId\\)/u],
+    ['profile platform role', /info\.platformRole = await storage\.platformRoleOf\(d\.userId\)/u],
   ];
   for (const [name, evidence] of required) {
     assert.match(server, evidence, `Missing backend route evidence: ${name}`);
