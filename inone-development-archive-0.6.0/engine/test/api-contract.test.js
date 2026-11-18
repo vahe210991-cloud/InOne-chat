@@ -49,7 +49,13 @@ const declaredOperations = (value) => value
   .filter((item) => /^(GET|POST|PUT|DELETE)\s+\//u.test(item));
 
 test('every operation declared by the v0.8 approval manifest has a backend handler', () => {
+  assert.equal(manifest.version, '0.8-approval-batch-2');
   assert.equal(manifest.screens.length, 24);
+  assert.equal(
+    new Set(manifest.screens.map(({ id }) => id)).size,
+    manifest.screens.length,
+    'the archived approval manifest must not contain duplicate screen IDs',
+  );
   const missing = [];
   for (const screen of manifest.screens) {
     for (const operation of declaredOperations(screen.api ?? '')) {
