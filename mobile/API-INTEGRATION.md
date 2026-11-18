@@ -54,7 +54,8 @@ Existing Beta 1.0 routes are maintained in the canonical engine. The account-loc
 | GET | `/orgs/:id/links` | Organization links |
 | GET | `/orgs/:id/admin-log` | Organization admin log |
 | GET | `/org-requests` | Organization requests |
-| GET | `/org-requests/:id` | Organization request details |
+| GET | `/org-requests/:id` | Organization request details and document metadata |
+| GET | `/org-requests/:id/documents/:docId` | Audited, authenticated binary attachment download |
 
 ### Other read probes
 
@@ -71,9 +72,9 @@ Existing Beta 1.0 routes are maintained in the canonical engine. The account-loc
 
 ## Client architecture
 
-- `ApiClient`: JSON HTTP transport, Bearer token injection, timeout and stable API errors.
+- `ApiClient`: JSON HTTP transport plus authenticated binary attachment downloads; verifies attachment disposition, allowed MIME types, `nosniff`, `no-store`, response length, Bearer token injection, timeout and stable API errors.
 - `InOneSession`: in-memory access/refresh tokens, stable device ID and selected app locale in platform secure storage, serialized refresh and one retry after 401. Registration sends the selected locale; a pending locale is sent during login before any security email can be queued; authenticated locale changes use `/profile/locale`; recovery start/cancel/complete helpers carry the current UI locale. Authenticated operations are held if a pending locale synchronization cannot be completed.
-- `InOneRepositories`: typed profile, room, organization, device, approval and config reads.
+- `InOneRepositories`: typed profile, room, organization, device, approval and config reads, plus organization-document downloads.
 - `screen_api_catalog.dart`: maps approved/test screen IDs to safe GET probes.
 - Flutter owns network calls. The WebView receives no access token, refresh token or MLS secret.
 
@@ -112,4 +113,4 @@ Important: `GET /rooms/:id/events` is implemented for reading ciphertext history
 - `GET /org-requests` populates PS-01; the authenticated profile exposes `platformRole` (`owner`, `admin` or `null`) for navigation only. The server independently scopes the queue and enforces every operation.
 - `GET /org-requests/:id` populates PS-02 request and document metadata.
 - `POST /org-requests/:id/decision` is connected from PS-03. Only the platform owner sees the decision action; the backend still rejects admins with 403 `not_platform_owner` and repeated decisions with 409.
-- Document bytes are not yet connected to a secure native download/preview flow. PS-02 must not be considered complete until that adapter and its tests are implemented.
+- Document uploads accept optional `filename` and `mimeType`; PDF/JPEG/PNG signatures are checked and filenames are normalized. Authenticated downloads are audited, sent as `Content-Disposition: attachment` with `nosniff` and `no-store`, validated by the Flutter transport, and saved to app-private documents storage. Native open/preview is still pending; PS-02 is not complete until preview and physical-device acceptance are covered.
