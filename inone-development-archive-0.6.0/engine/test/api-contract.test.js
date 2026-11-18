@@ -48,18 +48,18 @@ const declaredOperations = (value) => value
 
 test('G2 organization request routes declared by the canonical mobile contract have backend handlers', () => {
   const required = [
-    ['PS-01 queue', /req\\.method === 'GET' && p === '\\/org-requests'/u],
-    ['PS-02 details', /const orgReqOne = p\\.match/u],
-    ['PS-02 audited document access', /const orgReqDoc = p\\.match/u],
-    ['PS-03 owner decision', /const orgReqDecision = p\\.match/u],
-    ['profile platform role', /info\\.platformRole = await storage\\.platformRoleOf\\(d\\.userId\\)/u],
+    ['PS-01 queue', /req\.method === 'GET' && p === '\/org-requests'/u],
+    ['PS-02 details', /const orgReqOne = p\.match/u],
+    ['PS-02 audited document access', /const orgReqDoc = p\.match/u],
+    ['PS-03 owner decision', /const orgReqDecision = p\.match/u],
+    ['profile platform role', /info\.platformRole = await storage\.platformRoleOf\\(d\.userId\\)/u],
   ];
   for (const [name, evidence] of required) {
     assert.match(server, evidence, `Missing backend route evidence: ${name}`);
   }
-  assert.match(mobileContract, /\\| PS-01 \\| `GET \/org-requests`/u);
-  assert.match(mobileContract, /\\| PS-02 \\| `GET \/org-requests\/:id`/u);
-  assert.match(mobileContract, /\\| PS-03 \\| `POST \/org-requests\/:id\/decision`/u);
+  assert.match(mobileContract, /\| PS-01 \| `GET \/org-requests`/u);
+  assert.match(mobileContract, /\| PS-02 \| `GET \/org-requests\/:id`/u);
+  assert.match(mobileContract, /\| PS-03 \| `POST \/org-requests\/:id\/decision`/u);
 });
 
 test('native Flutter app gates platform request navigation and uses typed repositories', () => {
@@ -75,7 +75,7 @@ test('native Flutter app gates platform request navigation and uses typed reposi
 });
 
 test('CH-02 message delivery uses MLS and rejects legacy room-event POST', () => {
-  assert.ok(server.includes('const mlsMessageRoute = p.match(/^\\/mls\\/groups\\/([^/]+)\\/messages$/);'));
+  assert.ok(server.includes('const mlsMessageRoute = p.match(/^\/mls\/groups\/([^/]+)\/messages$/);'));
   assert.match(server, /mlsMessageRoute && req\.method === 'POST'/u);
   assert.match(server, /messages must be sent through \/mls\/groups\/:id\/messages/u);
   assert.match(server, /roomRoute && req\.method === 'GET'/u);
@@ -90,11 +90,9 @@ test('CH-02 message delivery uses MLS and rejects legacy room-event POST', () =>
   assert.match(server, /epoch is outdated/u);
 });
 
-test('WebView bridge does not expose arbitrary paths or a legacy message-send fallback', () => {
-  assert.match(bridge, /claudeSupportedApiCalls = <String, ClaudeApiRoute>/u);
-  assert.doesNotMatch(bridge, /POST \/rooms\/:id\/events/u);
-  assert.doesNotMatch(bridge, /POST \/mls\/groups\/:id\/messages/u);
-  assert.match(mobileHost, /final route = call == null \? null : claudeSupportedApiCalls\[call\]/u);
+test('native Flutter production entry does not depend on WebView', () => {
+  assert.match(mobileApp, /runApp\(const InOneMobileApp\(\)\)/u);
+  assert.doesNotMatch(mobileApp, /WebView/u);
 });
 
 test('organization and room role gates remain backend-owned', () => {
