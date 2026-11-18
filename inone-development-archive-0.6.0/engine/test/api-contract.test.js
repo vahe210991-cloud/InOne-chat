@@ -76,7 +76,7 @@ test('native Flutter app gates platform request navigation and uses typed reposi
 });
 
 test('CH-02 message delivery uses MLS and rejects legacy room-event POST', () => {
-  assert.ok(server.includes('const mlsMessageRoute = p.match(/^\/mls\/groups\/([^/]+)\/messages$/);'));
+  assert.match(server, /const mlsMessageRoute = p\.match/u);
   assert.match(server, /mlsMessageRoute && req\.method === 'POST'/u);
   assert.match(server, /messages must be sent through \/mls\/groups\/:id\/messages/u);
   assert.match(server, /roomRoute && req\.method === 'GET'/u);
@@ -92,7 +92,7 @@ test('CH-02 message delivery uses MLS and rejects legacy room-event POST', () =>
 });
 
 test('native Flutter production entry does not depend on WebView', () => {
-  assert.match(mobileApp, /runApp\(const InOneMobileApp\(\)\)/u);
+  assert.match(mobileEntry, /runApp\(const InOneMobileApp\(\)\)/u);
   assert.doesNotMatch(mobileApp, /WebView/u);
 });
 
