@@ -55,6 +55,40 @@ void main() {
     );
   });
 
+  test('concurrent first writes share one secure key', () async {
+    await Future.wait([
+      store.save(
+        requestId: 'request-123',
+        documentId: 'document-1',
+        filename: 'one.pdf',
+        bytes: utf8.encode('first document'),
+      ),
+      store.save(
+        requestId: 'request-123',
+        documentId: 'document-2',
+        filename: 'two.pdf',
+        bytes: utf8.encode('second document'),
+      ),
+    ]);
+
+    expect(
+      await store.read(
+        requestId: 'request-123',
+        documentId: 'document-1',
+        filename: 'one.pdf',
+      ),
+      utf8.encode('first document'),
+    );
+    expect(
+      await store.read(
+        requestId: 'request-123',
+        documentId: 'document-2',
+        filename: 'two.pdf',
+      ),
+      utf8.encode('second document'),
+    );
+  });
+
   test('rejects modified ciphertext instead of returning unauthenticated bytes', () async {
     final file = await store.save(
       requestId: 'request-123',
