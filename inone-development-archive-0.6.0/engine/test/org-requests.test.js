@@ -125,3 +125,19 @@ test('содержимое документа не попадает в журн�
     await s.stop();
   }
 });
+
+
+test('authenticated profile exposes platform role for role-aware navigation', async () => {
+  const s = await start();
+  try {
+    const ownerProfile = await call(s.base, 'GET', '/profile', s.owner.token);
+    const adminProfile = await call(s.base, 'GET', '/profile', s.staff.token);
+    const applicantProfile = await call(s.base, 'GET', '/profile', s.dir.token);
+    assert.equal(ownerProfile.status, 200);
+    assert.equal(ownerProfile.json.platformRole, 'owner');
+    assert.equal(adminProfile.json.platformRole, 'admin');
+    assert.equal(applicantProfile.json.platformRole, null);
+  } finally {
+    await s.stop();
+  }
+});
