@@ -131,7 +131,7 @@ class InOneEncryptedDocumentStore {
     final plaintext = await _algorithm.decrypt(
       secretBox,
       secretKey: await _loadKey(),
-      aad: _aad(requestId, documentId),
+      aad: _aad(requestId, documentId, filename),
     );
     return plaintext;
   }
