@@ -95,8 +95,8 @@ jobs:
       - name: Build unsigned iOS simulator app
         run: flutter build ios --simulator --no-codesign
 
-      - name: Build unsigned iOS device app
-        run: flutter build ios --no-codesign
+      - name: Build unsigned iOS device app (verbose linker diagnostics)
+        run: flutter build ios --no-codesign --verbose
 
       - name: Upload iOS build artifacts
         uses: actions/upload-artifact@v4
