@@ -45,6 +45,76 @@ void main() {
     session.dispose();
   });
 
+
+  test('completeRecovery uses the account ID from a confirmed deep link', () async {
+    final requests = <http.Request>[];
+    final client = MockClient((request) async {
+      requests.add(request);
+      return http.Response(
+        jsonEncode({'ok': true}),
+        200,
+        headers: {'content-type': 'application/json'},
+      );
+    });
+    final session = InOneSession(
+      baseUrl: 'https://api.inone.test',
+      httpClient: client,
+      readDeviceId: () async => 'device-1',
+      writeDeviceId: (_) async {},
+      readMlsUserId: () async => null,
+      writeMlsUserId: (_) async {},
+      deleteMlsUserId: () async {},
+    );
+
+    final result = await session.completeRecovery(
+      userId: '@alice:inone.test',
+      code: '123456',
+      newPassword: 'new-password',
+      pin: '1234',
+    );
+
+    expect(result['ok'], isTrue);
+    expect(requests, hasLength(1));
+    expect(requests.single.method, 'POST');
+    expect(requests.single.url.path, '/recovery/complete');
+    expect(requests.single.headers.containsKey('authorization'), isFalse);
+    expect(jsonDecode(requests.single.body), {
+      'userId': '@alice:inone.test',
+      'code': '123456',
+      'newPassword': 'new-password',
+      'pin': '1234',
+      'locale': 'hy',
+    });
+    session.dispose();
+  });
+
+  test('completeRecovery requires either an email or an account ID', () async {
+    var calls = 0;
+    final client = MockClient((_) async {
+      calls++;
+      return http.Response('{"ok":true}', 200);
+    });
+    final session = InOneSession(
+      baseUrl: 'https://api.inone.test',
+      httpClient: client,
+      readDeviceId: () async => 'device-1',
+      writeDeviceId: (_) async {},
+      readMlsUserId: () async => null,
+      writeMlsUserId: (_) async {},
+      deleteMlsUserId: () async {},
+    );
+
+    await expectLater(
+      session.completeRecovery(
+        code: '123456',
+        newPassword: 'new-password',
+      ),
+      throwsA(isA<ApiException>()),
+    );
+    expect(calls, 0);
+    session.dispose();
+  });
+
   test('confirmRecoveryLink rejects empty or oversized values before network access', () async {
     var calls = 0;
     final client = MockClient((_) async {

@@ -38,6 +38,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   String _screen = 'login';
   String _registrationEmail = '';
   String _recoveryEmail = '';
+  String _recoveryUserId = '';
   String _pendingLoginEmail = '';
   String _pendingLoginPassword = '';
   String _waitingActivateAt = '';
@@ -48,6 +49,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   InOneSystemStatus? _systemStatus;
   bool _darkMode = false;
   bool _initializing = true;
+  final Completer<void> _initializationComplete = Completer<void>();
   bool _recoveryLinkInFlight = false;
   final Set<int> _handledRecoveryLinkFingerprints = <int>{};
 
@@ -76,13 +78,19 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
 
   Future<void> _initialize() async {
     try {
-      await _session.initialize();
-    } catch (_) {
-      // The first authenticated operation will surface a safe UI error.
+      try {
+        await _session.initialize();
+      } catch (_) {
+        // The first authenticated operation will surface a safe UI error.
+      }
+      if (!mounted) return;
+      setState(() => _initializing = false);
+      if (_session.isAuthenticated) await _loadAuthenticatedData();
+    } finally {
+      if (!_initializationComplete.isCompleted) {
+        _initializationComplete.complete();
+      }
     }
-    if (!mounted) return;
-    setState(() => _initializing = false);
-    if (_session.isAuthenticated) await _loadAuthenticatedData();
   }
 
   @override
@@ -197,6 +205,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
 
   Future<InOneFailure?> _startRecovery(String email) async {
     _recoveryEmail = email.trim();
+    _recoveryUserId = '';
     try {
       await _session.startRecovery(email: _recoveryEmail);
       return null;
@@ -209,6 +218,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     try {
       await _session.completeRecovery(
         email: _recoveryEmail,
+        userId: _recoveryUserId,
         code: code,
         newPassword: newPassword,
         pin: pin,
@@ -231,6 +241,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   void _finishRecovery() {
     setState(() {
       _recoveryEmail = '';
+      _recoveryUserId = '';
       _screen = 'login';
     });
     _notice('Восстановление завершено. Теперь войдите с новым паролем.');
@@ -239,6 +250,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   void _finishRecoveryCancellation() {
     setState(() {
       _recoveryEmail = '';
+      _recoveryUserId = '';
       _screen = 'login';
     });
     _notice('Восстановление отменено. Прежний пароль восстановлен.');
@@ -639,6 +651,8 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   Future<bool> _handleRecoveryRoute(String rawRoute) async {
     final payload = RecoveryDeepLink.parse(rawRoute);
     if (payload == null) return false;
+    await _initializationComplete.future;
+    if (!mounted) return true;
 
     final fingerprint = Object.hash(payload.userId, payload.token);
     if (_handledRecoveryLinkFingerprints.contains(fingerprint)) return true;
@@ -652,10 +666,13 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       );
       if (!mounted) return true;
       _handledRecoveryLinkFingerprints.add(fingerprint);
+      _recoveryEmail = '';
+      _recoveryUserId = payload.userId;
+      setState(() => _screen = 'recoveryPassword');
       final message = switch (payload.locale) {
-        'ru' => 'Ссылка подтверждена. Вернитесь в приложение и введите код восстановления.',
-        'en' => 'The link is confirmed. Return to the app and enter your recovery code.',
-        _ => 'Հղումը հաստատված է։ Վերադարձեք հավելված և մուտքագրեք վերականգնման կոդը։',
+        'ru' => 'Ссылка подтверждена. Введите код восстановления и новый пароль.',
+        'en' => 'The link is confirmed. Enter your recovery code and new password.',
+        _ => 'Հղումը հաստատված է։ Մուտքագրեք վերականգնման կոդը և նոր գաղտնաբառը։',
       };
       _notice(message);
     } on ApiException catch (error) {
