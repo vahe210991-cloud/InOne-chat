@@ -96,6 +96,10 @@ jobs:
         run: flutter build ios --simulator --no-codesign
 
       - name: Build unsigned iOS device app (verbose linker diagnostics)
+        env:
+          # Keep rustc and the vendored OpenSSL C build aligned with the app's
+          # iOS deployment target instead of rustc's default iOS 10.0 target.
+          IPHONEOS_DEPLOYMENT_TARGET: '15.0'
         run: flutter build ios --no-codesign --verbose
 
       - name: Upload iOS build artifacts
