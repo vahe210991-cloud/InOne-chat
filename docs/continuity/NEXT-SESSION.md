@@ -480,3 +480,10 @@ Required next work:
 - Preserve existing Beta 1.0, identity, database, MLS, and security decisions unless explicitly superseded by a separate owner decision.
 
 Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone-and-inone-business--2026-11-13).
+
+
+# Next execution plan — full Beta 1.0 readiness
+
+Read and follow [the complete Beta 1.0 readiness checklist](../../development/reports/2026-11-18-beta1-full-readiness-checklist.md) before making source changes.
+
+Start at Gate G0: inspect the final state of Flutter post-merge run [44253911721](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/44253911721) for merge SHA `ef626c0d7c125f2f4c761e02992b475d1b2dd2e4`. Record every job conclusion. If any required check is incomplete or failed, resolve it in a new branch from current main and rerun on the resulting exact SHA. Then execute G1–G6 in the dependency order documented in the checklist. No blind merges, no force pushes, no production MLS enablement before security acceptance, and no merge without owner approval.
