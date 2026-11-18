@@ -1,3 +1,20 @@
+# Current state — native Flutter Chats screen update — 2026-11-12
+
+Task branch: `feature/beta1-native-chats-screen-2026-11-12`  
+Base: PR #48 head `415dbf980b496c38f89d68c441fa8f45fb1560e9`  
+Source implementation HEAD: `76efbd1361e29ac2890bcb967c604c3149700451`  
+Report: [Native Flutter CH-01](../../development/reports/2026-11-12-native-flutter-chats-screen.md)
+
+- CH-01 now has a native Flutter implementation in `mobile/lib/chats_screen.dart`; app startup selects CH-01, and the stable handoff screen ID routes to the native widget.
+- Uses the existing typed repository and authenticated `GET /rooms/mine` response. Backend route remains membership-scoped; no endpoint was invented or deployed.
+- UI includes room-kind filters, refresh/loading/empty/error/auth states, full-screen animated room-name search, inline «Показать все», context menu and bottom navigation labels Статусы / Звонки / Каналы / Сообщения / Профиль.
+- Search is limited to names in the user's current room list. It is not a global contacts search and does not search message bodies/files. Backend response lacks last-message previews/timestamps and story data.
+- Pin/archive are session-local; unread, create-chat, history, channel management and other bottom-nav destinations are not backend-connected. No plaintext message-send API was added; message send/receive remains an MLS-path task.
+- New widget tests exist but are NOT RUN. Flutter/Dart SDK unavailable locally; analyze, full Flutter tests, Android/iOS builds, visual parity and Flutter→live-backend E2E are NOT RUN. No GitHub Actions triggered.
+- WBS v1.1 remains unchanged at Beta 1.0 42% implementation / 31% verification. Native MLS disabled; Stage 4 NOT ACCEPTED / BLOCKED; no merge.
+
+---
+
 # Screen API integration update — 2026-11-12
 
 New implementation branch: `feature/beta1-screen-api-integration-2026-11-12`.

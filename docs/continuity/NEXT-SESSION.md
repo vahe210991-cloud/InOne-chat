@@ -1,3 +1,17 @@
+# Next execution — native Flutter CH-01 verification and backend expansion (2026-11-12)
+
+Continue on `feature/beta1-native-chats-screen-2026-11-12`; do not merge without owner approval.
+
+1. Re-fetch branch HEAD and review report `development/reports/2026-11-12-native-flutter-chats-screen.md`.
+2. On an authorized Flutter runner, run `flutter analyze` and focused tests `flutter test test/chats_screen_test.dart test/core/data/inone_room_test.dart`; fix only concrete failures.
+3. Run full Flutter tests and Android build on one exact final SHA; then perform Android/iOS visual parity and device interaction checks.
+4. Reconcile verified contracts before implementing global contacts, channel directory/metadata, message-history search or file search. Do not invent endpoints.
+5. Add backend persistence/contracts for pin/archive/unread only after route/DTO/authorization evidence exists. Keep message send/receive on MLS; never map it to plaintext room events.
+
+Current implementation source HEAD before report/docs commits: `76efbd1361e29ac2890bcb967c604c3149700451`. New Flutter tests and builds are NOT RUN. No Actions were triggered. Keep WBS v1.1 unchanged, `INONE_MLS_NATIVE_ENABLED=false`, Stage 4 NOT ACCEPTED / BLOCKED.
+
+---
+
 # Next execution — continue screen/API integration (2026-11-12)
 
 Read first:
