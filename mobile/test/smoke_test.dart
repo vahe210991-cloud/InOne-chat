@@ -12,7 +12,11 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
 
     await tester.pumpWidget(const InOneMobileApp());
-    await tester.pumpAndSettle(const Duration(milliseconds: 100));
+
+    // The production screen contains ongoing animations, so pump a bounded
+    // frame instead of waiting for pumpAndSettle to observe global quiescence.
+    // Initialization failures are handled by the app and reveal the login UI.
+    await tester.pump(const Duration(seconds: 1));
 
     expect(find.byType(InOneLoginScreen), findsOneWidget);
     expect(find.text('Մուտք'), findsOneWidget);
