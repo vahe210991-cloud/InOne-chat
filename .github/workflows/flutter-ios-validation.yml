@@ -95,11 +95,18 @@ jobs:
       - name: Build unsigned iOS simulator app
         run: flutter build ios --simulator --no-codesign
 
+      - name: Configure Rust iOS deployment target
+        run: |
+          # Cargo's [env] config forwards this value to rustc and native build scripts
+          # spawned by the Flutter Rust Bridge native-assets hook.
+          mkdir -p "$CARGO_HOME"
+          cat > "$CARGO_HOME/config.toml" <<'EOF'
+          [env]
+          IPHONEOS_DEPLOYMENT_TARGET = { value = "15.0", force = true }
+          EOF
+          cat "$CARGO_HOME/config.toml"
+
       - name: Build unsigned iOS device app (verbose linker diagnostics)
-        env:
-          # Keep rustc and the vendored OpenSSL C build aligned with the app's
-          # iOS deployment target instead of rustc's default iOS 10.0 target.
-          IPHONEOS_DEPLOYMENT_TARGET: '15.0'
         run: flutter build ios --no-codesign --verbose
 
       - name: Upload iOS build artifacts
