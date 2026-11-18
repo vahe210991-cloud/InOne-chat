@@ -507,14 +507,14 @@ export function createStore({ pool, pinPepper }) {
       return rows.map((r) => ({ userId: r.user_id, deviceId: r.device_id, label: r.label, revoked: r.revoked, createdAt: Number(r.created_at) }));
     },
 
-    async createFile({ fileId, ownerId, roomId, kind, size, sha256, createdAt }) {
-      await pool.query('INSERT INTO files (file_id, owner_id, room_id, kind, size, sha256, status, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)', [fileId, ownerId, roomId, kind, size, sha256, 'pending', createdAt]);
+    async createFile({ fileId, ownerId, ownerDeviceId = '', roomId, kind, size, sha256, createdAt }) {
+      await pool.query('INSERT INTO files (file_id, owner_id, owner_device_id, room_id, kind, size, sha256, status, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)', [fileId, ownerId, ownerDeviceId, roomId, kind, size, sha256, 'pending', createdAt]);
     },
     async getFile(fileId) {
-      const { rows } = await pool.query('SELECT file_id, owner_id, room_id, kind, size, sha256, status, created_at, completed_at FROM files WHERE file_id = $1', [fileId]);
+      const { rows } = await pool.query('SELECT file_id, owner_id, owner_device_id, room_id, kind, size, sha256, status, created_at, completed_at FROM files WHERE file_id = $1', [fileId]);
       const r = rows[0];
       if (!r) return null;
-      return { fileId: r.file_id, ownerId: r.owner_id, roomId: r.room_id, kind: r.kind, size: Number(r.size), sha256: r.sha256, status: r.status, createdAt: Number(r.created_at), completedAt: r.completed_at === null ? null : Number(r.completed_at) };
+      return { fileId: r.file_id, ownerId: r.owner_id, ownerDeviceId: r.owner_device_id, roomId: r.room_id, kind: r.kind, size: Number(r.size), sha256: r.sha256, status: r.status, createdAt: Number(r.created_at), completedAt: r.completed_at === null ? null : Number(r.completed_at) };
     },
     async markFileUploaded(fileId) {
       await pool.query("UPDATE files SET status = 'uploaded' WHERE file_id = $1 AND status = 'pending'", [fileId]);
@@ -712,6 +712,76 @@ export function createStore({ pool, pinPepper }) {
            next.windowStartedAt, next.windowKeyResetAt, next.windowPreviousHash, next.identityCheck,
            next.identityCodeHash, next.identityAttempts, next.lockedUntil, JSON.stringify(next.starts), next.reqLinkHash, next.reqLinkConfirmed],
         );
+        return result;
+      });
+    },
+
+    async recoveryUpdateWithOutbox(userId, change, enqueue) {
+      return inTransaction(async (c) => {
+        const acc = await c.query('SELECT 1 FROM accounts WHERE user_id = $1', [userId]);
+        if (acc.rows.length === 0) return change(freshRecovery()).result;
+        await c.query('INSERT INTO recovery (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING', [userId]);
+        const { rows } = await c.query('SELECT * FROM recovery WHERE user_id = $1 FOR UPDATE', [userId]);
+        const { next, result } = change(fromRecoveryRow(rows[0]));
+        await c.query(
+          `UPDATE recovery SET req_status = $2, req_started_at = $3, req_expires_at = $4, req_code_hash = $5,
+             req_attempts = $6, window_started_at = $7, window_key_reset_at = $8, window_previous_hash = $9,
+             identity_check = $10, identity_code_hash = $11, identity_attempts = $12, locked_until = $13, starts = $14, req_link_hash = $15, req_link_confirmed = $16
+           WHERE user_id = $1`,
+          [userId, next.reqStatus, next.reqStartedAt, next.reqExpiresAt, next.reqCodeHash, next.reqAttempts,
+           next.windowStartedAt, next.windowKeyResetAt, next.windowPreviousHash, next.identityCheck,
+           next.identityCodeHash, next.identityAttempts, next.lockedUntil, JSON.stringify(next.starts), next.reqLinkHash, next.reqLinkConfirmed],
+        );
+        if (enqueue) await enqueue(c, result);
+        return result;
+      });
+    },
+
+    async recoveryCancelWithOutbox(userId, passwordHash, change, enqueue) {
+      return inTransaction(async (client) => {
+        const account = await client.query('SELECT 1 FROM accounts WHERE user_id = $1', [userId]);
+        if (account.rows.length === 0) return change(freshRecovery()).result;
+        if (passwordHash) await client.query('UPDATE accounts SET password_hash = $2 WHERE user_id = $1', [userId, passwordHash]);
+        await client.query('INSERT INTO recovery (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING', [userId]);
+        const { rows } = await client.query('SELECT * FROM recovery WHERE user_id = $1 FOR UPDATE', [userId]);
+        const { next, result } = change(fromRecoveryRow(rows[0]));
+        await client.query(
+          `UPDATE recovery SET req_status = $2, req_started_at = $3, req_expires_at = $4, req_code_hash = $5,
+             req_attempts = $6, window_started_at = $7, window_key_reset_at = $8, window_previous_hash = $9,
+             identity_check = $10, identity_code_hash = $11, identity_attempts = $12, locked_until = $13, starts = $14, req_link_hash = $15, req_link_confirmed = $16
+           WHERE user_id = $1`,
+          [userId, next.reqStatus, next.reqStartedAt, next.reqExpiresAt, next.reqCodeHash, next.reqAttempts,
+           next.windowStartedAt, next.windowKeyResetAt, next.windowPreviousHash, next.identityCheck,
+           next.identityCodeHash, next.identityAttempts, next.lockedUntil, JSON.stringify(next.starts), next.reqLinkHash, next.reqLinkConfirmed],
+        );
+        await client.query('DELETE FROM recovery_cancel_codes WHERE user_id = $1', [userId]);
+        if (enqueue) await enqueue(client, result);
+        return result;
+      });
+    },
+
+    async recoveryCompleteWithOutbox(userId, passwordHash, change, cancelCodeHash, enqueue) {
+      return inTransaction(async (client) => {
+        await client.query('UPDATE accounts SET password_hash = $2 WHERE user_id = $1', [userId, passwordHash]);
+        await client.query('INSERT INTO recovery (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING', [userId]);
+        const { rows } = await client.query('SELECT * FROM recovery WHERE user_id = $1 FOR UPDATE', [userId]);
+        if (rows.length === 0) throw new Error('recovery account not found');
+        const { next, result } = change(fromRecoveryRow(rows[0]));
+        await client.query(
+          `UPDATE recovery SET req_status = $2, req_started_at = $3, req_expires_at = $4, req_code_hash = $5,
+             req_attempts = $6, window_started_at = $7, window_key_reset_at = $8, window_previous_hash = $9,
+             identity_check = $10, identity_code_hash = $11, identity_attempts = $12, locked_until = $13, starts = $14, req_link_hash = $15, req_link_confirmed = $16
+           WHERE user_id = $1`,
+          [userId, next.reqStatus, next.reqStartedAt, next.reqExpiresAt, next.reqCodeHash, next.reqAttempts,
+           next.windowStartedAt, next.windowKeyResetAt, next.windowPreviousHash, next.identityCheck,
+           next.identityCodeHash, next.identityAttempts, next.lockedUntil, JSON.stringify(next.starts), next.reqLinkHash, next.reqLinkConfirmed],
+        );
+        await client.query(
+          `INSERT INTO recovery_cancel_codes (user_id, code_hash, expires_at) VALUES ($1, $2, $3)
+           ON CONFLICT (user_id) DO UPDATE SET code_hash = EXCLUDED.code_hash, expires_at = EXCLUDED.expires_at`,
+          [userId, cancelCodeHash, result],
+        );
+        if (enqueue) await enqueue(client, result);
         return result;
       });
     },
@@ -1462,10 +1532,15 @@ async mlsPendingRemovalsFor(userId) {
 
     // ---- профиль аккаунта: почта и никнейм ----
     async profileGet(userId) {
-      const { rows } = await pool.query('SELECT email, email_verified, nickname, created_at FROM profiles WHERE user_id = $1', [userId]);
+      const { rows } = await pool.query('SELECT email, email_verified, nickname, created_at, locale FROM profiles WHERE user_id = $1', [userId]);
       return rows[0]
-        ? { email: rows[0].email, emailVerified: rows[0].email_verified, nickname: rows[0].nickname, createdAt: Number(rows[0].created_at) }
+        ? { email: rows[0].email, emailVerified: rows[0].email_verified, nickname: rows[0].nickname, createdAt: Number(rows[0].created_at), locale: rows[0].locale ?? 'hy' }
         : null;
+    },
+
+    async profileLocaleSet(userId, locale) {
+      const { rowCount } = await pool.query('UPDATE profiles SET locale = $2 WHERE user_id = $1', [userId, locale]);
+      return rowCount > 0;
     },
 
     async userIdByEmail(email) {
@@ -1480,14 +1555,14 @@ async mlsPendingRemovalsFor(userId) {
 
     /** Аккаунт с подтверждённой почтой и никнеймом одной транзакцией (и связью с провайдером, если задана).
      *  Возвращает ok | email | nickname | link | account. */
-    async createVerifiedAccount({ userId, passwordHash, email, nickname, nowMs, provider = null, joinDefaultOrg = false }) {
+    async createVerifiedAccount({ userId, passwordHash, email, nickname, nowMs, provider = null, joinDefaultOrg = false, locale = 'hy' }) {
       try {
         return await inTransaction(async (c) => {
           await c.query('INSERT INTO accounts (user_id, password_hash) VALUES ($1, $2)', [userId, passwordHash]);
           if (joinDefaultOrg) await c.query("INSERT INTO org_members (org_id, user_id, role, joined_at) VALUES ('org-default', $1, 'member', $2) ON CONFLICT DO NOTHING", [userId, Date.now()]);
           await c.query(
-            'INSERT INTO profiles (user_id, email, email_verified, nickname, created_at) VALUES ($1, $2, TRUE, $3, $4)',
-            [userId, email, nickname, nowMs],
+            'INSERT INTO profiles (user_id, email, email_verified, nickname, created_at, locale) VALUES ($1, $2, TRUE, $3, $4, $5)',
+            [userId, email, nickname, nowMs, locale],
           );
           if (provider) {
             await c.query(
@@ -1514,14 +1589,34 @@ async mlsPendingRemovalsFor(userId) {
         const r = rows[0];
         const current = {
           codeHash: r.code_hash, codeAttempts: r.code_attempts, codeExpiresAt: Number(r.code_expires_at),
-          tokenHash: r.token_hash, tokenExpiresAt: Number(r.token_expires_at),
+          tokenHash: r.token_hash, tokenExpiresAt: Number(r.token_expires_at), locale: r.locale ?? 'hy',
         };
         const { next, result } = change(current);
         await c.query(
-          `UPDATE email_codes SET code_hash = $2, code_attempts = $3, code_expires_at = $4, token_hash = $5, token_expires_at = $6
+          `UPDATE email_codes SET code_hash = $2, code_attempts = $3, code_expires_at = $4, token_hash = $5, token_expires_at = $6, locale = $7
            WHERE email = $1`,
-          [email, next.codeHash, next.codeAttempts, next.codeExpiresAt, next.tokenHash, next.tokenExpiresAt],
+          [email, next.codeHash, next.codeAttempts, next.codeExpiresAt, next.tokenHash, next.tokenExpiresAt, next.locale ?? current.locale ?? 'hy'],
         );
+        return result;
+      });
+    },
+
+    async emailCodeUpdateWithOutbox(email, change, enqueue, locale = 'hy') {
+      return inTransaction(async (c) => {
+        await c.query('INSERT INTO email_codes (email) VALUES ($1) ON CONFLICT (email) DO NOTHING', [email]);
+        const { rows } = await c.query('SELECT * FROM email_codes WHERE email = $1 FOR UPDATE', [email]);
+        const r = rows[0];
+        const current = {
+          codeHash: r.code_hash, codeAttempts: r.code_attempts, codeExpiresAt: Number(r.code_expires_at),
+          tokenHash: r.token_hash, tokenExpiresAt: Number(r.token_expires_at), locale: r.locale ?? 'hy',
+        };
+        const { next, result } = change(current);
+        await c.query(
+          `UPDATE email_codes SET code_hash = $2, code_attempts = $3, code_expires_at = $4, token_hash = $5, token_expires_at = $6, locale = $7
+           WHERE email = $1`,
+          [email, next.codeHash, next.codeAttempts, next.codeExpiresAt, next.tokenHash, next.tokenExpiresAt, locale],
+        );
+        if (enqueue) await enqueue(c, result);
         return result;
       });
     },
@@ -1588,6 +1683,22 @@ async mlsPendingRemovalsFor(userId) {
       }
     },
 
+    async deviceWaitCreateWithOutbox({ userId, deviceId, label, platform, activateAt, cancelHash, createdAt }, enqueue) {
+      try {
+        return await inTransaction(async (client) => {
+          await client.query(
+            'INSERT INTO device_waits (user_id, device_id, label, platform, activate_at, cancel_hash, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+            [userId, deviceId, label, platform, activateAt, cancelHash, createdAt],
+          );
+          if (enqueue) await enqueue(client);
+          return 'ok';
+        });
+      } catch (error) {
+        if (error.code !== '23505') throw error;
+        return 'exists';
+      }
+    },
+
     async deviceWaitDelete(userId, deviceId) {
       const { rowCount } = await pool.query('DELETE FROM device_waits WHERE user_id = $1 AND device_id = $2', [userId, deviceId]);
       return rowCount > 0;
@@ -1614,9 +1725,35 @@ async mlsPendingRemovalsFor(userId) {
       }
     },
 
+    async backupEmailSaveWithOutbox(userId, email, nowMs, enqueue) {
+      try {
+        return await inTransaction(async (client) => {
+          await client.query(
+            `INSERT INTO backup_emails (user_id, email, created_at) VALUES ($1, $2, $3)
+             ON CONFLICT (user_id) DO UPDATE SET email = EXCLUDED.email, created_at = EXCLUDED.created_at`,
+            [userId, email, nowMs],
+          );
+          if (enqueue) await enqueue(client);
+          return 'ok';
+        });
+      } catch (error) {
+        if (error.code !== '23505') throw error;
+        return 'taken';
+      }
+    },
+
     async backupEmailRemove(userId) {
       const { rowCount } = await pool.query('DELETE FROM backup_emails WHERE user_id = $1', [userId]);
       return rowCount > 0;
+    },
+
+    async backupEmailRemoveWithOutbox(userId, enqueue) {
+      return inTransaction(async (client) => {
+        const { rowCount } = await client.query('DELETE FROM backup_emails WHERE user_id = $1', [userId]);
+        if (rowCount === 0) return false;
+        if (enqueue) await enqueue(client);
+        return true;
+      });
     },
 
     // ---- одноразовые токены этапа 2 (nonce, билет регистрации, подтверждение входа) ----

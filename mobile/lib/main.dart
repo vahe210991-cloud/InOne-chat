@@ -14,12 +14,16 @@ import 'core/data/profile_load_status.dart';
 import 'core/data/profile_ui_bridge.dart';
 import 'core/mls/rust_mls_session_bridge.dart';
 import 'core/network/api_environment.dart';
+import 'core/network/api_exception.dart';
 import 'core/session/inone_session.dart';
+import 'core/session/recovery_deep_link.dart';
 import 'core/test_api/screen_api_catalog.dart';
 import 'test_screens.dart';
 import 'test_gallery_loader.dart';
 
 const _configuredApiBaseUrl = String.fromEnvironment('INONE_API_BASE_URL');
+// Native MLS remains opt-in until the owner accepts the Android/iOS runtime,
+// persistence, recovery and security gates on the exact tested commit.
 const _nativeMlsEnabled = bool.fromEnvironment(
   'INONE_MLS_NATIVE_ENABLED',
   defaultValue: false,
@@ -56,7 +60,7 @@ class ApprovedScreensHost extends StatefulWidget {
   State<ApprovedScreensHost> createState() => _ApprovedScreensHostState();
 }
 
-class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
+class _ApprovedScreensHostState extends State<ApprovedScreensHost> with WidgetsBindingObserver {
   late final WebViewController _controller;
   late final InOneSession _session;
   late final InOneRepositories _repositories;
@@ -70,6 +74,9 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
   ProfileLoadStatus? _profileLoadStatus;
   int _profileRequestId = 0;
   bool _lastProfileAuthentication = false;
+  String _lastSelectedLocale = 'hy';
+  bool _recoveryLinkInFlight = false;
+  final Set<int> _handledRecoveryLinkFingerprints = <int>{};
 
   bool get _isApproved => _selectedKey.startsWith('approved:');
   bool get _isHandoff => _selectedKey.startsWith('handoff:');
@@ -139,6 +146,11 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
     );
     _repositories = InOneRepositories(_session);
     _session.addListener(_onSessionChanged);
+    WidgetsBinding.instance.addObserver(this);
+    final initialRoute = WidgetsBinding.instance.platformDispatcher.defaultRouteName;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_handleRecoveryRoute(initialRoute));
+    });
     unawaited(_session.initialize().catchError((Object _) {}));
 
     _controller = WebViewController()
@@ -354,7 +366,91 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
     ''');
   }
 
+  @override
+  Future<bool> didPushRoute(String route) => _handleRecoveryRoute(route);
+
+  @override
+  Future<bool> didPushRouteInformation(RouteInformation routeInformation) =>
+      _handleRecoveryRoute(routeInformation.uri.toString());
+
+  Future<bool> _handleRecoveryRoute(String rawRoute) async {
+    final payload = RecoveryDeepLink.parse(rawRoute);
+    if (payload == null) return false;
+    final fingerprint = Object.hash(payload.userId, payload.token);
+    if (_handledRecoveryLinkFingerprints.contains(fingerprint)) return true;
+    if (_recoveryLinkInFlight) return true;
+    _recoveryLinkInFlight = true;
+    try {
+      await _session.confirmRecoveryLink(
+        userId: payload.userId,
+        token: payload.token,
+      );
+      if (!mounted) return true;
+      final message = switch (payload.locale) {
+        'ru' => 'Восстановление подтверждено. Вернитесь в приложение и введите код из SMS.',
+        'en' => 'Recovery confirmed. Return to the app and enter the SMS code.',
+        _ => 'Վերականգնումը հաստատված է։ Վերադարձեք հավելված և մուտքագրեք SMS կոդը։',
+      };
+      _handledRecoveryLinkFingerprints.add(fingerprint);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    } on ApiException catch (error) {
+      if (!mounted) return true;
+      final message = switch (error.code) {
+        'recovery expired' => switch (payload.locale) {
+            'ru' => 'Ссылка восстановления истекла. Запросите новую.',
+            'en' => 'The recovery link expired. Request a new one.',
+            _ => 'Վերականգնման հղումը ժամկետանց է։ Խնդրեք նորը։',
+          },
+        'no active recovery' => switch (payload.locale) {
+            'ru' => 'Активного запроса восстановления нет.',
+            'en' => 'There is no active recovery request.',
+            _ => 'Վերականգնման ակտիվ հարցում չկա։',
+          },
+        'wrong link' => switch (payload.locale) {
+            'ru' => 'Ссылка восстановления недействительна.',
+            'en' => 'The recovery link is invalid.',
+            _ => 'Վերականգնման հղումն անվավեր է։',
+          },
+        _ => switch (payload.locale) {
+            'ru' => 'Не удалось подтвердить восстановление. Попробуйте ещё раз.',
+            'en' => 'Could not confirm recovery. Please try again.',
+            _ => 'Չհաջողվեց հաստատել վերականգնումը։ Փորձեք կրկին։',
+          },
+      };
+      if (!error.retryable) _handledRecoveryLinkFingerprints.add(fingerprint);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    } catch (_) {
+      if (mounted) {
+        final message = switch (payload.locale) {
+          'ru' => 'Нет соединения. Не удалось подтвердить восстановление.',
+          'en' => 'Connection unavailable. Recovery could not be confirmed.',
+          _ => 'Կապ չկա։ Չհաջողվեց հաստատել վերականգնումը։',
+        };
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      }
+    } finally {
+      _recoveryLinkInFlight = false;
+    }
+    return true;
+  }
+
+  Future<void> _persistLocale(String locale) async {
+    try {
+      await _session.setLocale(locale);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось сохранить язык интерфейса')),
+      );
+    }
+  }
+
   void _onSessionChanged() {
+    final locale = _session.locale;
+    if (locale != _lastSelectedLocale) {
+      _lastSelectedLocale = locale;
+      if (mounted) setState(() {});
+    }
     final authenticated = _session.isAuthenticated;
     if (authenticated == _lastProfileAuthentication) return;
     _lastProfileAuthentication = authenticated;
@@ -533,7 +629,7 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
 
     final call = message.call;
     final route = call == null ? null : claudeSupportedApiCalls[call];
-    if (route == null || !claudeScreenAllowsApiCall(message.screenId, call)) {
+    if (call == null || route == null || !claudeScreenAllowsApiCall(message.screenId, call)) {
       await _setClaudeScreenState('unavailable', 'Этот API-маршрут пока не подключён');
       return;
     }
@@ -632,6 +728,7 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _session.removeListener(_onSessionChanged);
     _session.dispose();
     super.dispose();
@@ -642,6 +739,17 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
         appBar: AppBar(
           title: Text(_selectedTitle, maxLines: 1, overflow: TextOverflow.ellipsis),
           actions: [
+            PopupMenuButton<String>(
+              tooltip: 'Язык интерфейса',
+              initialValue: _session.locale,
+              onSelected: (locale) => unawaited(_persistLocale(locale)),
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'hy', child: Text('Հայերեն')),
+                PopupMenuItem(value: 'ru', child: Text('Русский')),
+                PopupMenuItem(value: 'en', child: Text('English')),
+              ],
+              icon: const Icon(Icons.language_rounded),
+            ),
             if (_isPersonalProfile)
               IconButton(
                 tooltip: 'Refresh profile',

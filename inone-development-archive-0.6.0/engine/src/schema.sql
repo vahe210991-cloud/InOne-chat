@@ -223,7 +223,8 @@ CREATE TABLE profiles (
   email TEXT NOT NULL,
   email_verified BOOLEAN NOT NULL DEFAULT TRUE,
   nickname TEXT NOT NULL,
-  created_at BIGINT NOT NULL DEFAULT 0
+  created_at BIGINT NOT NULL DEFAULT 0,
+  locale TEXT NOT NULL DEFAULT 'hy' CHECK (locale IN ('hy', 'ru', 'en'))
 );
 CREATE UNIQUE INDEX profiles_email_verified ON profiles (lower(email)) WHERE email_verified;
 CREATE UNIQUE INDEX profiles_nickname ON profiles (lower(nickname));
@@ -231,6 +232,7 @@ CREATE UNIQUE INDEX profiles_nickname ON profiles (lower(nickname));
 -- Коды подтверждения почты при регистрации и одноразовые токены регистрации.
 CREATE TABLE email_codes (
   email TEXT PRIMARY KEY,
+  locale TEXT NOT NULL DEFAULT 'hy' CHECK (locale IN ('hy', 'ru', 'en')),
   code_hash TEXT,
   code_attempts INTEGER NOT NULL DEFAULT 0,
   code_expires_at BIGINT NOT NULL DEFAULT 0,
@@ -382,6 +384,7 @@ CREATE TABLE refresh_tokens (
 CREATE TABLE files (
   file_id TEXT PRIMARY KEY,
   owner_id TEXT NOT NULL,
+  owner_device_id TEXT NOT NULL DEFAULT '',
   room_id TEXT REFERENCES rooms (room_id) ON DELETE CASCADE,
   kind TEXT NOT NULL,
   size BIGINT NOT NULL,
@@ -553,3 +556,32 @@ CREATE TABLE IF NOT EXISTS mls_commit_operations (
 );
 CREATE INDEX IF NOT EXISTS mls_commit_operations_created
   ON mls_commit_operations (created_at);
+
+-- Durable encrypted email delivery queue (0029).
+CREATE TABLE IF NOT EXISTS email_deliveries (
+  id BIGSERIAL PRIMARY KEY,
+  idempotency_key CHAR(64) NOT NULL UNIQUE,
+  payload_fingerprint CHAR(64) NOT NULL,
+  payload_ciphertext BYTEA NOT NULL,
+  payload_iv BYTEA NOT NULL,
+  payload_tag BYTEA NOT NULL,
+  status TEXT NOT NULL DEFAULT 'queued'
+    CHECK (status IN ('queued', 'processing', 'sent', 'dead')),
+  attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+  available_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  locked_at TIMESTAMPTZ,
+  locked_by TEXT,
+  provider_message_id TEXT,
+  last_error_code TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  sent_at TIMESTAMPTZ,
+  expires_at TIMESTAMPTZ NOT NULL DEFAULT (now() + interval '24 hours'),
+  CHECK ((status = 'processing') = (locked_at IS NOT NULL AND locked_by IS NOT NULL))
+);
+CREATE INDEX IF NOT EXISTS email_deliveries_ready
+  ON email_deliveries (available_at, id)
+  WHERE status = 'queued';
+CREATE INDEX IF NOT EXISTS email_deliveries_stale
+  ON email_deliveries (locked_at, id)
+  WHERE status = 'processing';

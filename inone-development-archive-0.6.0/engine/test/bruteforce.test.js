@@ -84,7 +84,7 @@ test('подтверждение восстановления уходит пи�
   const base = `http://127.0.0.1:${srv.server.address().port}`;
   try {
     const alice = await ChatClient.create(base, ALICE, 'A_PHONE', PW, { phone: '+37477000001' });
-    await alice.raw('POST', '/account/phone/confirm', { code: smsSent.at(-1).text.match(/Код: (\d{6})/)[1] });
+    await alice.raw('POST', '/account/phone/confirm', { code: smsSent.at(-1).text.match(/\b(\d{6})\b/)[1] });
     await fetch(`${base}/recovery/start`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ userId: ALICE }),
     });
@@ -92,7 +92,7 @@ test('подтверждение восстановления уходит пи�
     assert.match(smsSent.at(-1).text, /Код: \d{6}/);
     const mail = mailSent.at(-1);
     assert.equal(mail.to, ALICE);
-    assert.equal(mail.subject, 'Подтверждение восстановления');
+    assert.match(mail.html, /<html lang="hy"/);
     assert.match(mail.text, /token=[A-Za-z0-9_-]+/);
     assert.doesNotMatch(mail.text, /Код: \d{6}/, 'в письме кода нет: код идёт по SMS');
   } finally {

@@ -86,14 +86,14 @@ dbTest('копия восстанавливается в пустую базу �
 });
 
 dbTest('хранение: остаются последние копии, старые удаляются вместе с контрольными суммами', async () => {
+  const dbName = `inone_backup_keep_${process.pid}_${randomBytes(4).toString('hex')}`;
+  const dbUrl = withDatabase(process.env.DATABASE_URL, dbName);
   const dir = mkdtempSync(path.join(tmpdir(), 'inone-keep-'));
-  const databaseName = `inone_backup_keep_${process.pid}_${randomBytes(4).toString('hex')}`;
-  await admin(`CREATE DATABASE ${databaseName}`);
+  await admin(`CREATE DATABASE ${dbName}`);
   try {
-    const isolatedUrl = withDatabase(process.env.DATABASE_URL, databaseName);
     for (let i = 0; i < 3; i++) {
       execFileSync('bash', [path.join(root, 'scripts/backup-db.sh')], {
-        env: { ...process.env, DATABASE_URL: isolatedUrl, BACKUP_DIR: dir, BACKUP_KEEP: '2' },
+        env: { ...process.env, DATABASE_URL: dbUrl, BACKUP_DIR: dir, BACKUP_KEEP: '2' },
         encoding: 'utf8',
       });
     }
@@ -101,7 +101,7 @@ dbTest('хранение: остаются последние копии, ста
     assert.equal(files.filter((f) => f.endsWith('.dump')).length, 2);
     assert.equal(files.filter((f) => f.endsWith('.dump.sha256')).length, 2);
   } finally {
-    await admin(`DROP DATABASE IF EXISTS ${databaseName} WITH (FORCE)`).catch(() => {});
+    await admin(`DROP DATABASE IF EXISTS ${dbName} WITH (FORCE)`).catch(() => {});
     rmSync(dir, { recursive: true, force: true });
   }
 });

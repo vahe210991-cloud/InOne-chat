@@ -10,7 +10,7 @@ export const EMAIL_CODE_RULES = {
 };
 
 export function freshEmailCode() {
-  return { codeHash: null, codeAttempts: 0, codeExpiresAt: 0, tokenHash: null, tokenExpiresAt: 0 };
+  return { codeHash: null, codeAttempts: 0, codeExpiresAt: 0, tokenHash: null, tokenExpiresAt: 0, locale: 'hy' };
 }
 
 /** Новый код: прежние попытки и токен сбрасываются. */

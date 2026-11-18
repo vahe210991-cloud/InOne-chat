@@ -916,9 +916,8 @@ pub fn connect_with_approval(
                     zeroize_json_value(&mut claim);
                 }
                 other => {
-                    let reason = format!("вход отклонён: {other:?}");
                     zeroize_json_value(&mut claim);
-                    return Err(reason);
+                    return Err(format!("вход отклонён: {other:?}"));
                 }
             }
         }
@@ -1726,8 +1725,8 @@ impl Client {
         if self.flush_pending_membership_commits()? > 0 {
             let mut incoming = Vec::new();
             self.sync_room(room_id, &mut incoming)?;
-            // sync_room persists decrypted messages to the SQLCipher inbox before
-            // returning; this temporary vector is only a transport result buffer.
+            // sync_room уже записал расшифрованные события в зашифрованный SQLCipher inbox.
+            // UI читает их через pending_inbox(); дополнительная in-memory очередь не нужна.
             drop(incoming);
             return Ok(false);
         }

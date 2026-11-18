@@ -103,7 +103,7 @@ impl MlsSession {
 
     /// Returns durable diagnostics for unreadable MLS events without exposing plaintext keys.
     pub fn undecryptable_json(&self) -> Result<String, String> {
-        let items = self.with_client(Client::undecryptable)?;
+        let items = self.with_client(|client| client.undecryptable())?;
         serde_json::to_string(&items).map_err(|error| error.to_string())
     }
 
@@ -152,7 +152,8 @@ impl MlsSession {
 
     /// Returns decrypted message history for a room from the SQLCipher inbox.
     pub fn messages_for_room_json(&self, room_id: String) -> Result<String, String> {
-        let items = self.with_client(|client| client.messages_for_room(&room_id).map(map_incoming))?;
+        let items =
+            self.with_client(|client| client.messages_for_room(&room_id).map(map_incoming))?;
         serde_json::to_string(&items).map_err(|error| error.to_string())
     }
 
@@ -162,7 +163,7 @@ impl MlsSession {
     }
 
     pub fn outbox_len(&self) -> Result<u64, String> {
-        self.with_client(Client::outbox_len)
+        self.with_client(|client| client.outbox_len())
     }
 
     pub fn flush_outbox(&self) -> Result<usize, String> {
@@ -203,12 +204,18 @@ impl MlsSession {
             Err(poisoned) => {
                 let mut guard = poisoned.into_inner();
                 *guard = None;
-                Err("MLS session lock was poisoned; server logout could not be confirmed".to_string())
+                Err(
+                    "MLS session lock was poisoned; server logout could not be confirmed"
+                        .to_string(),
+                )
             }
         };
 
-        let cleanup_result =
-            cleanup_local_session(&self.database_path, &self.identity_scope, self.keys.as_ref());
+        let cleanup_result = cleanup_local_session(
+            &self.database_path,
+            &self.identity_scope,
+            self.keys.as_ref(),
+        );
         let mut errors = Vec::new();
         if let Err(error) = cleanup_result {
             errors.push(error);
@@ -258,9 +265,9 @@ fn remove_database_files(database_path: &str) -> Result<(), String> {
 }
 
 fn database_artifacts_exist(database_path: &str) -> bool {
-    ["", "-wal", "-shm", "-journal"].iter().any(|suffix| {
-        Path::new(&format!("{database_path}{suffix}")).exists()
-    })
+    ["", "-wal", "-shm", "-journal"]
+        .iter()
+        .any(|suffix| Path::new(&format!("{database_path}{suffix}")).exists())
 }
 
 fn cleanup_local_session_with_key_store(
@@ -398,7 +405,6 @@ pub fn resume_session(
     })
 }
 
-
 /// Purges an MLS database whose session could not be resumed. This is local
 /// cleanup only; it does not claim that the server-side session was revoked.
 pub fn purge_local_session(
@@ -429,7 +435,6 @@ pub fn purge_local_session(
 
 #[frb(init)]
 pub fn init_app() {}
-
 
 #[cfg(test)]
 mod tests {
@@ -538,7 +543,10 @@ mod tests {
 
         let result = session.logout();
 
-        assert!(result.is_err(), "the directory at the database path cannot be removed as a file");
+        assert!(
+            result.is_err(),
+            "the directory at the database path cannot be removed as a file"
+        );
         assert!(
             keys.deleted.load(Ordering::SeqCst),
             "the platform key must still be deleted when database cleanup fails"
@@ -570,7 +578,10 @@ mod tests {
 
         let error = result.expect_err("key deletion must remain explicitly unconfirmed");
         assert!(error.contains("protected store unavailable"));
-        assert!(!database.exists(), "encrypted database must still be removed");
+        assert!(
+            !database.exists(),
+            "encrypted database must still be removed"
+        );
         for suffix in ["-wal", "-shm", "-journal"] {
             assert!(
                 !std::path::PathBuf::from(format!("{}{}", database.display(), suffix)).exists(),
@@ -582,6 +593,4 @@ mod tests {
             "a failed platform-store initialization cannot claim key deletion"
         );
     }
-
-
 }

@@ -9,6 +9,7 @@ class InOneProfile {
     required this.providers,
     required this.backupEmail,
     required this.securityHints,
+    this.locale = 'hy',
   });
 
   final String userId;
@@ -18,6 +19,7 @@ class InOneProfile {
   final List<String> providers;
   final BackupEmail? backupEmail;
   final List<String> securityHints;
+  final String locale;
 
   bool get isEmpty =>
       (nickname == null || nickname!.isEmpty) &&
@@ -31,6 +33,7 @@ class InOneProfile {
     final providers = json['providers'];
     final backupEmail = json['backupEmail'];
     final securityHints = json['securityHints'];
+    final locale = json['locale'] ?? 'hy';
 
     if (!json.containsKey('userId') ||
         !json.containsKey('nickname') ||
@@ -50,6 +53,8 @@ class InOneProfile {
         providers.any((provider) => provider is! String) ||
         (backupEmail != null && backupEmail is! Map<String, dynamic>) ||
         securityHints is! List ||
+        locale is! String ||
+        !const ['hy', 'ru', 'en'].contains(locale) ||
         securityHints.any((hint) => hint is! String)) {
       throw const ApiException(
         code: 'invalid_response',
@@ -81,6 +86,7 @@ class InOneProfile {
       providers: List<String>.unmodifiable(providers.cast<String>()),
       backupEmail: parsedBackupEmail,
       securityHints: List<String>.unmodifiable(securityHints.cast<String>()),
+      locale: locale,
     );
   }
 }

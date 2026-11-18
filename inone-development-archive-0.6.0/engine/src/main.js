@@ -7,6 +7,7 @@ import { migrate } from './migrate.js';
 import { createStore } from './store.js';
 import { createServer } from './server.js';
 import { createSmtpMailer } from './mail-smtp.js';
+import { createEmailDelivery } from './email-delivery.js';
 
 /** Запускает сервер. pool = null — память (только для тестов и разработки). */
 export async function startServer({ config, logger = createLogger({ level: config.logLevel }), pool = null }) {
@@ -15,7 +16,7 @@ export async function startServer({ config, logger = createLogger({ level: confi
     if (config.runMigrations) await migrate(pool, { logger });
     store = createStore({ pool, pinPepper: config.pinPepper });
   }
-  const mailer = config.mailTransport === 'smtp'
+  const smtpMailer = config.mailTransport === 'smtp'
     ? createSmtpMailer({
       host: config.smtpHost,
       port: config.smtpPort,
@@ -26,8 +27,17 @@ export async function startServer({ config, logger = createLogger({ level: confi
       from: config.smtpFrom,
       logger,
     })
-    : config.testUi
-    ? { send: async (m) => { process.stdout.write(`[тестовое письмо] ${m.to} | ${m.subject} | ${m.text}\n`); } }
+    : null;
+  if (smtpMailer && !pool) throw new Error('SMTP email delivery requires PostgreSQL');
+  const mailer = smtpMailer
+    ? createEmailDelivery({
+      pool,
+      smtpMailer,
+      encryptionKey: config.emailEncryptionKey,
+      logger,
+      pollIntervalMs: config.emailWorkerPollMs,
+      maxAttempts: config.emailMaxAttempts,
+    })
     : undefined;
   const app = createServer({
     pinPepper: config.pinPepper,
@@ -50,22 +60,29 @@ export async function startServer({ config, logger = createLogger({ level: confi
   });
   app.server.requestTimeout = config.requestTimeoutMs;
   app.server.headersTimeout = Math.min(config.requestTimeoutMs, 60000);
+  let cleanupTimer = null;
   await new Promise((resolve, reject) => {
     app.server.once('error', reject);
-    app.server.listen(config.port, config.host, resolve);
-    const cleanupTimer = setInterval(() => {
-      app.sweepExpired().catch(() => {});
-    }, 10 * 60_000);
-    cleanupTimer.unref();
+    app.server.listen(config.port, config.host, () => {
+      cleanupTimer = setInterval(() => {
+        app.sweepExpired().catch(() => {});
+      }, 10 * 60_000);
+      cleanupTimer.unref();
+      resolve();
+    });
   });
   const port = app.server.address().port;
+  mailer?.start?.();
   logger.info('server started', { port, environment: config.nodeEnv });
   if (config.devEmailCode) logger.warn('development email code is enabled: never use this in production', { environment: config.nodeEnv });
   let stopping = null;
   const stop = () => {
     stopping ??= (async () => {
       logger.info('shutting down');
+      if (cleanupTimer) clearInterval(cleanupTimer);
+      cleanupTimer = null;
       await new Promise((resolve) => app.server.close(resolve));
+      await mailer?.stop?.();
       if (pool) await pool.end();
       logger.info('stopped');
     })();

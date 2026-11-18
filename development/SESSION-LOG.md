@@ -1,3 +1,21 @@
+### 2026-11-16 — CI findings after first repair run
+
+- Backend Node suite on PR #67 executed 395 tests: 391 passed, 1 failed, 3 skipped. The remaining failure was an error-message compatibility assertion in `config.test.js`; strict shared key validation was correct, but its message did not preserve the established phrase `must be 32 bytes`. Updated the message without weakening validation.
+- Flutter validation confirmed the 73-screen catalogue and imported all approved UI assets (31 screen HTML files, 32 total HTML files, 5 WOFF2 fonts). It then failed because the PR #61 base workflow still had write permission and attempted to push generated assets to a stale branch, receiving non-fast-forward.
+- Replaced the Flutter workflow on PR #61 and PR #67 with the read-only workflow from the approved Beta 1 base: no `contents: write`, no commit, no push. The gallery check runs before code generation.
+- Also replaced PR #61's Rust-format auto-commit/push job with the read-only `cargo fmt --check` job. The earlier run's rustfmt made no changes and did not push.
+- Backend Node, PostgreSQL, OpenMLS, Rust bridge and Flutter checks must be rerun after these workflow/config fixes. Previous run is diagnostic only; not acceptance evidence.
+
+### 2026-11-16 — Beta 1 pre-test CI repair
+
+- Opened stacked PR #67 against Email Delivery PR #61; no merge to `main`.
+- CI log review isolated the Node failures to legacy tests selecting email by fixed Russian subject lines instead of stable template identity. The in-memory test transport now exposes template ID and locale, and affected tests assert template identity.
+- Production configuration and durable queue now share the same strict 32-byte email encryption-key parser. Production config fixtures include a valid key; malformed-key regression coverage added.
+- Recovery locale regression now supplies the active UI locale and verifies both recovery messages preserve it without mutating the saved account locale.
+- Flutter gallery validation now tolerates Dart formatting and runs before Flutter project/code generation.
+- Found P0 workflow on PR #61 head was restricted to PRs targeting `main`, preventing backend/PostgreSQL/Rust checks on stacked PRs. Removed that base-branch restriction in PR #61 head commit `11937d388c46cd5ad5cdb24dd247ad83142229d9`.
+- Validation for PR #67: pending GitHub Actions. Do not claim Node, PostgreSQL, Flutter, or native bridge PASS until jobs complete on the exact final head SHA.
+
 - CH-01 startup sequencing hardened: `data-api-onload` is invoked only after Flutter marks the WebView ready, avoiding lost early bridge messages. The screen now removes hard-coded demo chats, shows live backend room names/roles via `textContent`, and has a visible error target. Login and post-registration login without an authenticated token pair remain on SC-11/waiting.
 - CH-01 typed room-list slice added: HTML emits `GET /rooms/mine` with screen ID; Flutter allows only CH-01, uses `InOneRepositories.myRooms()` + `InOneRoomList` validation, then binds room display names/roles via safe text content. Existing backend `rooms-mine.test.js` is the historical runtime test basis; new inventory assertion is NOT RUN. Live Flutter→Node E2E NOT RUN.
 - Additional auth safety: a login response without an authenticated token pair remains on SC-11 in a waiting state; it cannot enter the authenticated menu. Device approval claim/poll lifecycle remains incomplete.
@@ -533,3 +551,32 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Re-fetched and verified both workflow files. FRB uses branch-scoped `push.paths` for the workflow file and `mobile/**`; OpenMLS uses its existing push path allowlist; aggregate PR path triggers removed; manual dispatch retained.
 - Available execution container has Node.js only; no Rust/Cargo, Flutter/Dart or Xcode. No local tests/builds run. Actions jobs continue to fail before observable steps/logs; exact cause unknown.
 - Stage 4 NOT ACCEPTED / BLOCKED; verification accepted 0%; native MLS disabled; no merge. Report section 38.
+
+### 2026-11-16 — Email delivery and API error-path hardening
+
+- Continued the owner-approved Email Delivery implementation on PR #61. Added configurable PostgreSQL outbox lease duration and heartbeat renewal while SMTP is in flight; stale claims are not sent after lease ownership is lost.
+- Added a PostgreSQL integration test with two workers and an SMTP operation exceeding two lease periods. This test still requires the PR's PostgreSQL CI job to execute.
+- Unexpected HTTP 500 responses now return a stable generic error. Only a constrained machine-readable error code is logged; exception messages, SQL details, hostnames and stack traces are not returned to clients or copied into this log.
+- Added a persistent-store regression test for the HTTP error disclosure path.
+- PR #63's security-hygiene head `35e5729464f5d598f1c14fc234d0680d76a1cfc1` passed all seven observed CI jobs: Backend Node suite, PostgreSQL integration suite, OpenMLS client check/tests, Rust bridge check/tests, Rust formatting, P0 room-list regression and Flutter validation. This validates that CI runners are functioning for that commit; it does not validate PR #61's changed backend.
+- PR #61's stacked base branch is `feature/beta1-screen-api-integration-2026-11-12`. Its P0 workflow originally filtered pull requests to base `main`, so PR #61 received only the Flutter workflow. The base branch workflow was updated at `38d812d81b9a2d81543fc961bc6ba7b93d78cd24` to run P0 checks for stacked PRs and make Rust formatting read-only. A new PR #61 head commit is required to trigger the full matrix against the updated base.
+- No PR was merged and no runtime test result is claimed for the new email lease or HTTP error regression tests.
+
+- First full stacked CI run #43900951278 reached and executed backend/Rust/PostgreSQL jobs; Flutter validation failed only at the legacy step that pushed generated UI assets to `task/ui-archive-import-2026-11-09` and received a non-fast-forward rejection. The UI archive extraction and counts had passed (31 screens, 32 HTML files, 5 WOFF2 fonts).
+- Corrected the PR #61 base branch workflow at `e4f2002a6e1be2baed83e3a8aa5573d1b06170a1`: Flutter validation now has `contents: read` and keeps imported UI files in the ephemeral runner workspace without pushing commits. Re-triggering full CI against this updated workflow.
+
+- The first Backend Node suite on PR #61 exposed stale legacy tests that expected Russian email copy while requests relied on the new Armenian default. Updated the test helpers/requests to explicitly request `ru` where their assertions inspect Russian copy; product behavior remains driven by the user's selected locale. The production-config test now supplies the required 32-byte email encryption key when testing SMTP mode.
+- Flutter analyze on the first full run found a malformed `mobile/lib/core/network/api_environment.dart` source line and a nullable bridge route guard; repaired both.
+- The same run confirmed generated FRB Dart files are intentionally absent from source and must be generated before Flutter analysis. The PR #61 base workflow now installs Rust 1.91 and `flutter_rust_bridge_codegen 2.13.0`, runs the documented native-assets integration/generation sequence, prepares Android NDK context, generates the Rust lockfile and tests the native Rust bridge before Flutter analysis/build. The workflow remains read-only (`contents: read`) and does not push generated files.
+- Updated PR #61 head to trigger the complete validation matrix against the corrected base workflows. Awaiting the rerun before treating any of these fixes as verified.
+
+## 2026-11-13 — Owner decision: split product into InOne and InOne Business
+
+- Owner approved two separate applications:
+  - **InOne:** personal/social application with news feed, publications, personal chats, groups, Threads, and related social features.
+  - **InOne Business:** professional/work application with Kanban, CRM, Leads, Deals, Wallet, Flags, other business tools, and integration with Propo Seller Account.
+- Recorded as an authoritative product decision in `docs/continuity/DECISIONS.md` section 7 and added to `docs/continuity/SOURCE-OF-TRUTH.md`.
+- Updated continuity handoff documents to require a product-boundary impact review before reorganizing screens or implementation.
+- Important: this decision defines product boundaries only. It does not automatically decide separate/shared identity, backend, databases, repositories, or infrastructure.
+- No application code, UI, API, backend, database, CI workflow, PR state, or branch topology changed. No Actions were started and no PR was merged.
+- Next: inventory and classify existing screens, routes, repositories, APIs, and navigation into InOne, InOne Business, shared platform, or unresolved; prepare an impact map for owner review before code changes.

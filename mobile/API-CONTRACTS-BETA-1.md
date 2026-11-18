@@ -55,9 +55,17 @@ Status:
 | GR-02 | `POST /rooms` | `roomId`, `kind`, optional `name`, members and org/feature gates | Backend only; typed create form and validation pending |
 | GR-04 | `GET /rooms/:id/members`; `POST /rooms/:id/settings`; `PUT /rooms/:id/name`; roles/capabilities/owner endpoints as allowed by action | Per-capability authorization; owner/admin restrictions | Backend only; map each control to one explicit action |
 | OR-01 | `GET /orgs/mine` | Current user's organization memberships and roles | Backend + host |
-| PR-01 | `GET /profile` | Current account profile, providers and security hints | Backend + repository; profile edit contract is separate |
+| PR-01 | `GET /profile`; `PATCH /profile/locale` | Current account profile includes persisted `locale` (`hy`, `ru`, `en`); locale mutation is authenticated and account-scoped | Backend + typed repository; app-level selector persists locally and synchronizes with backend |
 
 The v0.8 approval manifest contains 24 screen IDs (SC/RQ/PS/SR/ST). The Flutter handoff catalog adds 7 chat/room/profile/organization screen IDs. The manifest's declared `api` string is a design declaration, not an authorization grant or proof of Flutter dispatch.
+
+### Account locale contract
+
+- The app owns the user's language choice; do not infer it from the device OS locale.
+- Flutter persists the selected `hy`, `ru`, or `en` locale locally and sends it with `POST /register/email`.
+- The backend stores the pending registration locale with the email-code record, then copies it into the new profile when the one-time registration token is consumed.
+- `GET /profile` returns the saved locale. `PATCH /profile/locale` changes it for the authenticated account.
+- Account-security emails for authenticated actions use the saved profile locale at event creation; every recipient, including a backup address, receives the same account locale. A successful password/provider login may include a pending local UI locale, which the backend persists after authentication and before queuing login-security email. Pre-auth recovery actions (`/recovery/start`, `/recovery/cancel-by-code`, `/recovery/complete`) carry the currently selected UI locale per event; this does not mutate the account preference. If those legacy clients omit locale, the saved profile locale is used. The locale is frozen in the encrypted queue payload so later preference changes do not rewrite already queued mail.
 
 ## 3. Authentication and authorization boundaries
 

@@ -33,9 +33,20 @@ export function createSmtpMailer({ host, port = 587, secure = false, requireTls 
     tls: { minVersion: 'TLSv1.2' },
   });
   return {
-    async send({ to, subject, text }) {
+    async send({ to, subject, text, html }) {
       try {
-        const info = await transport.sendMail({ from, to, subject, text });
+        const info = await transport.sendMail({ from, to, subject, text, html });
+        // Nodemailer can resolve sendMail() with rejected recipients in its result.
+        // Each queue row has exactly one recipient, so only an explicit acceptance
+        // of that address is a successful SMTP hand-off.
+        const recipient = to.trim().toLowerCase();
+        const accepted = Array.isArray(info.accepted) &&
+          info.accepted.some((address) => String(address).trim().toLowerCase() === recipient);
+        if (!accepted) {
+          const error = new Error('SMTP server did not accept the recipient');
+          error.code = 'EENVELOPE';
+          throw error;
+        }
         logger?.info('mail sent', { messageId: info.messageId ?? null });
         return { messageId: info.messageId ?? null };
       } catch (error) {

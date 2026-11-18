@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -8,6 +9,26 @@ import 'package:inone_mobile/core/mls/mls_session_bridge.dart';
 import 'package:inone_mobile/core/session/inone_session.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  const secureStorageChannel =
+      MethodChannel('plugins.it_nomads.com/flutter_secure_storage');
+  final binaryMessenger =
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+  setUp(() {
+    binaryMessenger.setMockMethodCallHandler(secureStorageChannel, (call) async {
+    switch (call.method) {
+      case 'containsKey':
+        return false;
+      case 'readAll':
+        return <String, String>{};
+      default:
+        return null;
+    }
+    });
+  });
+  tearDown(() =>
+      binaryMessenger.setMockMethodCallHandler(secureStorageChannel, null));
+
   test('concurrent initialize calls share one device identity creation', () async {
     final readGate = Completer<String?>();
     var readCalls = 0;
@@ -195,12 +216,17 @@ void main() {
       deleteMlsUserId: () async {},
     );
 
-    await session.login(email: 'alice@example.test', password: 'not-used-in-test');
+    await expectLater(
+      session.login(email: 'alice@example.test', password: 'not-used-in-test'),
+      throwsStateError,
+    );
 
-    expect(session.isAuthenticated, isTrue);
+    // A failed native handoff must not leave a Dart-owned refresh-token session.
+    expect(session.isAuthenticated, isFalse);
     expect(session.hasNativeMlsSession, isFalse);
     expect(session.mlsError, contains('MLS runtime could not be opened'));
     expect(session.userId, isNull);
+    expect(bridge.closeCalls, 1);
     session.dispose();
   });
 
@@ -324,7 +350,7 @@ void main() {
     session.dispose();
   });
 
-  test('failed adoption keeps the Flutter session usable', () async {
+  test('failed adoption invalidates the session without Flutter refresh fallback', () async {
     final httpClient = MockClient((request) async {
       if (request.url.path == '/login') {
         return http.Response(
@@ -351,24 +377,34 @@ void main() {
       }
       return http.Response('{}', 404);
     });
+    final bridge = _FakeMlsSessionBridge()..failOpen = true;
     final session = InOneSession(
       baseUrl: 'https://api.inone.test',
       httpClient: httpClient,
+      nativeMlsBridge: bridge,
       readDeviceId: () async => 'device-1',
       writeDeviceId: (_) async {},
       readMlsUserId: () async => null,
       writeMlsUserId: (_) async {},
       deleteMlsUserId: () async {},
     );
-    final bridge = _FakeMlsSessionBridge()..failOpen = true;
 
-    await session.login(email: 'alice@example.test', password: 'not-used-in-test');
-    await expectLater(session.adoptMlsSession(bridge), throwsStateError);
+    await expectLater(
+      session.login(email: 'alice@example.test', password: 'not-used-in-test'),
+      throwsStateError,
+    );
+    expect(session.isAuthenticated, isFalse);
     expect(session.hasNativeMlsSession, isFalse);
+    expect(session.mlsError, contains('MLS runtime could not be opened'));
+    expect(bridge.closeCalls, 1);
+    expect(bridge.refreshCalls, 0);
 
-    final response = await session.request('GET', '/protected');
-    expect(response['status'], 'ok');
-    expect(bridge.closeCalls, 0);
+    // No authenticated request may fall back to the Dart refresh token after
+    // Rust rejects ownership of the session.
+    await expectLater(
+      session.request('GET', '/protected'),
+      throwsA(isA<Exception>()),
+    );
     session.dispose();
   });
 }

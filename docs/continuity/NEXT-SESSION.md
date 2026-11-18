@@ -463,3 +463,20 @@ Read `development/AI-AGENT-MANDATE.md` at the start of every session. ChatGPT re
 - Next, verify Actions on the latest workflow commits via the GitHub UI. If jobs still fail before steps/logs, obtain the exact startup failure detail or restore an authorized runner. Do not change source/tests based on missing logs.
 - Once a runner executes steps, run all Rust/OpenMLS, FRB codegen, Flutter, Android Keystore, iOS build and signed iOS Keychain checks on one exact final SHA. iOS environment secrets remain required for signed runtime acceptance.
 - Keep Stage 4 NOT ACCEPTED / BLOCKED, WBS v1.1 unchanged, `INONE_MLS_NATIVE_ENABLED=false`; no merge. Report section 38.
+
+## New owner-approved product direction — 2026-11-13
+
+Before expanding screen implementation, perform a product-boundary impact review based on the owner's decision to create two separate apps:
+
+1. **InOne:** personal/social application — feed, publications, personal chats, groups, Threads, and related social functions.
+2. **InOne Business:** professional application — Kanban, CRM, Leads, Deals, Wallet, Flags, other business tools, integrated with Propo Seller Account.
+
+Required next work:
+- Inventory current screens, routes, API contracts, repositories, and navigation.
+- Classify every capability as InOne, InOne Business, shared platform capability, or unresolved.
+- Identify which of the 11 approved InOne UI screens belong to the personal/social app and whether any current business-oriented concepts should be reserved for InOne Business.
+- Produce a proposed product boundary / migration map and list technical decisions still needed (identity, backend/API boundaries, data ownership, app packaging, shared components).
+- Do not move code, split services/databases, alter approved UI, or merge PRs until the owner reviews the impact map and authorizes implementation.
+- Preserve existing Beta 1.0, identity, database, MLS, and security decisions unless explicitly superseded by a separate owner decision.
+
+Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone-and-inone-business--2026-11-13).

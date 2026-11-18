@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:inone_mobile/core/mls/mls_session_bridge.dart';
 import 'package:inone_mobile/core/session/inone_session.dart';
@@ -48,6 +49,26 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  const secureStorageChannel =
+      MethodChannel('plugins.it_nomads.com/flutter_secure_storage');
+  final binaryMessenger =
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+  setUp(() {
+    binaryMessenger.setMockMethodCallHandler(secureStorageChannel, (call) async {
+    switch (call.method) {
+      case 'containsKey':
+        return false;
+      case 'readAll':
+        return <String, String>{};
+      default:
+        return null;
+    }
+    });
+  });
+  tearDown(() =>
+      binaryMessenger.setMockMethodCallHandler(secureStorageChannel, null));
+
   test('logout clears saved MLS identity when native purge fails', () async {
     String? savedDeviceId = 'device-1';
     String? savedUserId = 'user-1';
