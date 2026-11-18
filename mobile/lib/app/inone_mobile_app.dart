@@ -7,7 +7,6 @@ import '../core/data/inone_profile.dart';
 import '../core/data/inone_public_config.dart';
 import '../core/data/inone_organization.dart';
 import '../core/data/inone_repositories.dart';
-import '../core/data/inone_room.dart';
 import '../core/mls/rust_mls_session_bridge.dart';
 import '../core/network/api_environment.dart';
 import '../core/network/api_exception.dart';
@@ -43,7 +42,6 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   String _pendingLoginPassword = '';
   String _waitingActivateAt = '';
   InOneProfile? _profile;
-  List<InOneRoom> _rooms = const [];
   List<InOneOrganization> _organizations = const [];
   InOneOrganization? _selectedOrganization;
   InOneSystemStatus? _systemStatus;
@@ -265,13 +263,11 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     setState(() => _screen = 'loading');
     try {
       final profile = await _repositories.profile();
-      final rooms = await _repositories.myRooms();
       final organizationResponse = await _repositories.myOrganizations();
       final organizations = InOneOrganizationList.fromJson(organizationResponse).orgs;
       if (!mounted) return;
       setState(() {
         _profile = profile;
-        _rooms = rooms;
         _organizations = organizations;
         _selectedOrganization = organizations.isEmpty ? null : organizations.first;
         _screen = 'messages';
@@ -330,7 +326,6 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   void _finishLogout() {
     setState(() {
       _profile = null;
-      _rooms = const [];
       _organizations = const [];
       _selectedOrganization = null;
       _systemStatus = null;
@@ -342,17 +337,6 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   void _notice(String message) {
     _messengerKey.currentState?.showSnackBar(SnackBar(content: Text(message)));
   }
-
-  List<InOneChatPreview> get _chatPreviews => _rooms.map((room) {
-        final isDirect = room.kind == 'direct';
-        return InOneChatPreview(
-          id: room.roomId,
-          name: room.name?.trim().isNotEmpty == true ? room.name!.trim() : 'Чат',
-          lastMessage: null,
-          time: '',
-          kind: isDirect ? InOneChatKind.person : InOneChatKind.group,
-        );
-      }).toList(growable: false);
 
   InOneUserProfile get _userProfile {
     final profile = _profile!;
@@ -583,7 +567,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         );
       case 'messages':
         return InOneMessagesScreen(
-          chats: _chatPreviews,
+          chats: const [],
           unreadCountsAvailable: false,
           onOpenChat: (_) => _notice(
             'История и отправка сообщений заблокированы до подключения нативного MLS-клиента и зашифрованного локального хранилища. Сообщение не отправлено.',

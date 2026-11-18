@@ -87,14 +87,22 @@ class _InOneMessagesScreenState extends State<InOneMessagesScreen> {
             ),
             const SizedBox(height: 8),
             Expanded(
-              child: ListView.builder(
-                itemCount: chats.length,
-                itemBuilder: (context, i) => _ChatRow(
-                  chat: chats[i],
-                  last: i == chats.length - 1,
-                  onTap: () => widget.onOpenChat(chats[i]),
-                ),
-              ),
+              child: chats.isEmpty
+                  ? const Center(
+                      child: InOneEmptyState(
+                        icon: InOneIcons.chat,
+                        title: 'No chats yet',
+                        text: 'The current Beta 1.0 backend does not expose a room-list endpoint. Chat history and sending stay unavailable until the native MLS workflow is accepted.',
+                      ),
+                    )
+                  : ListView.builder(
+                      itemCount: chats.length,
+                      itemBuilder: (context, i) => _ChatRow(
+                        chat: chats[i],
+                        last: i == chats.length - 1,
+                        onTap: () => widget.onOpenChat(chats[i]),
+                      ),
+                    ),
             ),
           ],
         ),
