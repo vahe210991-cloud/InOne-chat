@@ -1,0 +1,120 @@
+name: Flutter iOS validation
+
+on:
+  pull_request:
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/flutter-ios-validation.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/flutter-ios-validation.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: flutter-ios-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.9'
+          channel: stable
+          cache: true
+
+      - name: Report Xcode and Flutter versions
+        run: |
+          xcodebuild -version
+          flutter --version
+
+      - name: Generate iOS platform project
+        run: flutter create --platforms=ios --project-name inone_mobile --org com.inone .
+
+      - name: Remove generated template test
+        run: rm -f test/widget_test.dart
+
+      - name: Install Rust toolchain and Apple targets
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: '1.91.0'
+          components: rustfmt
+          targets: 'aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios'
+
+      - name: Install Flutter Rust Bridge code generator
+        run: cargo install --locked --version 2.13.0 flutter_rust_bridge_codegen
+
+      - name: Integrate Native Assets for iOS
+        timeout-minutes: 15
+        env:
+          RUST_LOG: debug
+        run: |
+          cp lib/main.dart "$RUNNER_TEMP/inone-main.dart"
+          cp rust/src/api/mod.rs "$RUNNER_TEMP/inone-api-mod.rs"
+          flutter_rust_bridge_codegen integrate \
+            --rust-crate-dir rust \
+            --rust-crate-name inone_mls_frb \
+            --integration-backend native-assets \
+            --platforms ios \
+            --skip-fvm-install \
+            --no-dart-fix \
+            --no-dart-format \
+            --no-integration-test
+          cp "$RUNNER_TEMP/inone-main.dart" lib/main.dart
+          cp "$RUNNER_TEMP/inone-api-mod.rs" rust/src/api/mod.rs
+          rm -f rust/src/api/simple.rs lib/src/rust/api/simple.dart
+
+      - name: Generate typed Dart bindings
+        timeout-minutes: 15
+        env:
+          RUST_LOG: debug
+        run: flutter_rust_bridge_codegen generate --skip-fvm-install
+
+      - name: Configure iOS recovery deep links
+        run: node tool/prepare_ios_deep_links.mjs
+
+      - name: Resolve Flutter dependencies
+        run: flutter pub get
+
+      - name: Analyze Flutter sources
+        run: flutter analyze
+
+      - name: Build unsigned iOS simulator app
+        run: flutter build ios --simulator --no-codesign
+
+      - name: Configure Rust iOS deployment target
+        run: |
+          # Cargo's [env] config forwards this value to rustc and native build scripts
+          # spawned by the Flutter Rust Bridge native-assets hook.
+          mkdir -p "$CARGO_HOME"
+          cat > "$CARGO_HOME/config.toml" <<'EOF'
+          [env]
+          IPHONEOS_DEPLOYMENT_TARGET = { value = "15.0", force = true }
+          EOF
+          cat "$CARGO_HOME/config.toml"
+
+      - name: Build unsigned iOS device app (verbose linker diagnostics)
+        run: flutter build ios --no-codesign --verbose
+
+      - name: Upload iOS build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: inone-beta1-ios-preview
+          path: |
+            mobile/build/ios/iphonesimulator/Runner.app
+            mobile/build/ios/iphoneos/Runner.app
+          if-no-files-found: error
+          retention-days: 14

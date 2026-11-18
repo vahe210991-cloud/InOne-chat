@@ -1,14 +1,14 @@
-# InOne Beta 1.0 — unified screen and API test host
+# InOne Beta 1.0 — native Flutter mobile application
 
-The current QA host exposes the 22 owner-approved visual variants and the 73-entry test-screen catalogue in one searchable picker (95 selectable entries total). It is still a WebView-based HTML test host, not the final native Dart production UI.
+The production entry point is `lib/main.dart`, which launches `InOneMobileApp`. The native design system and screen components live under `lib/ui_dart_source/`. The previously approved HTML design package and 73-screen test gallery are retained only as references in `../мусорный ящик/HTML-архив/mobile-assets/`; they are not bundled as Flutter assets or loaded by the production app.
 
 ## Screen catalogue
 
-- 22 approved HTML screen variants: 11 light and 11 dark. These retain the existing approved HTML asset and WebView presentation.
+- 43 native Dart UI source files containing the design system, reusable widgets, models, and screen components. The archived HTML package remains the visual reference baseline, not a runtime.
 - 51 Beta 0.7.1 test screens.
 - 1 deferred screen (CH-07, moved to 0.8).
 - 21 future concepts: calendar, tasks, files, CRM, Sindy AI, stories, geolocation and Propo map integration.
-- The 73 additional screens now load from the original owner-provided full-screen design gallery v0.8. The HTML is packaged as deterministic gzip/base64 text parts and reconstructed in memory without rewriting the source. Each Flutter catalogue ID selects its matching original gallery card.
+- The original 73-screen HTML gallery is preserved in the archive for historical/reference comparison. It is not reconstructed or loaded by the native production app.
 
 ## API transport security
 
@@ -53,7 +53,7 @@ This command sequence has not been executed in the current development environme
 
 ## Backend connection
 
-The Flutter test host uses the local development backend by default; no public URL is required.
+The native Flutter app uses the local development backend by default in debug builds; no public URL is required.
 
 - Android emulator: `http://10.0.2.2:8080` (the host computer's port 8080).
 - iOS simulator / desktop: `http://127.0.0.1:8080`.
@@ -83,11 +83,11 @@ The API panel provides:
 - Read-only GET probes for routes that are present in the current main-branch backend, including `/healthz` and `/readyz` connectivity checks.
 - JSON response/error output for QA.
 
-The stable device identifier and selected app locale are persisted using platform secure storage. The refresh token is held by the Rust client in SQLCipher; Dart retains only a short-lived access-token snapshot in memory. No credentials are passed into WebView JavaScript.
+The stable device identifier and selected app locale are persisted using platform secure storage. When the native MLS bridge is explicitly enabled, the refresh token is handed to the Rust client and Dart retains only a short-lived access-token snapshot in memory. The bridge remains disabled by default; session credentials are never passed to UI widgets or JavaScript.
 
 ### In-app language and email locale
 
-The host provides an Armenian / Russian / English language selector. The selected locale is persisted in platform secure storage, sent with verified email registration, and synchronized to the authenticated profile through `PATCH /profile/locale`. On a fresh device, the stored profile locale is loaded after authentication. The backend uses this same locale for registration and all subsequent account-security emails; it does not derive mail language from the operating system.
+`InOneSession` supports `hy`, `ru`, and `en`, persists the selected locale in platform secure storage, sends it with verified email registration, and synchronizes it with the authenticated profile through `PATCH /profile/locale`. The current native shell still needs a visible locale selector; it must not infer the account language from the operating system.
 
 ### Personal profile API integration
 
@@ -95,15 +95,15 @@ Selecting either approved personal-profile variant performs an authenticated `GE
 
 The update is limited to the currently selected profile section of the approved local Flutter asset. Main-frame navigation to other origins is blocked, the update writes text with `textContent`, and no JavaScript channel or credentials are exposed. On logout or leaving the profile screen, identity fields are cleared. The sample task/activity/project counts remain visible as labels but show `—` because `/profile` does not provide those values.
 
-Loading, unauthenticated, empty-profile, and error states appear in a native banner without replacing the WebView or changing the approved screen design. Use the profile refresh action to fetch the latest account summary.
+Loading, unauthenticated, empty-profile, and error states are rendered by native Flutter widgets through `InOneActionState` and `InOneStatusScope`; the production app no longer hosts or replaces a WebView page.
 
 ## Current integration boundary
 
-- The personal-profile identity fields are connected to the authenticated profile API; other approved screens remain visual previews and their HTML demo controls are not wired to production actions.
-- The 73 test entries use the original full-screen HTML gallery. The gallery asset integrity test checks all 73 card IDs against the Flutter catalogue.
+- The native shell currently connects login, email registration, recovery, profile, organization-membership and public-configuration reads to the current API contracts. The active backend does not expose a current-user room-list endpoint, so the mobile app does not call the unavailable `/rooms/mine` route; the chat screen displays an explicit empty state until a supported contract is added. Screens without a verified Beta 1.0 backend/native capability remain unreachable or explicitly blocked; UI previews do not fabricate successful actions.
+- The original 73-screen HTML gallery is retained only in the archive. CI checks approved HTML geometry from the archive, removes temporary imported HTML assets before Flutter analysis/tests, and verifies the native-only runtime boundary.
 - Generic API probing is read-only. POST/PUT/DELETE actions require dedicated forms, validated payloads and explicit confirmation.
 - `MlsSessionBridge` has a production `RustMlsSessionBridge` adapter over generated `flutter_rust_bridge` bindings. `INONE_MLS_NATIVE_ENABLED` defaults to `false` and remains opt-in until the owner accepts the Android/iOS runtime, persistence, recovery and security gates on the exact tested commit. When explicitly enabled, `InOneSession` transfers the refresh-token pair once to Rust and retains only a short-lived access-token snapshot in Dart; subsequent refreshes are Rust-owned. If Rust handoff fails, the mobile login fails closed, attempts server logout, clears Dart credentials and removes the resumable user marker; there is no Dart refresh fallback.
-- The Rust runtime stores MLS group state and the device session in SQLCipher. The 32-byte database key is held in Android Keystore-backed storage or Apple's protected Keychain store; the key is never exposed to Dart or WebView. The database lives in the app-private support directory.
+- The Rust runtime stores MLS group state and the device session in SQLCipher. The 32-byte database key is held in Android Keystore-backed storage or Apple's protected Keychain store; the key is never exposed to Dart UI components or application logs. The database lives in the app-private support directory.
 - The native bridge exposes key-package maintenance, room creation/invites, encrypted send, inbox sync, offline outbox, epoch/member inspection, device revocation, refresh, close and local purge. Decrypted incoming messages are persisted in a SQLCipher inbox and remain pending across restart until Flutter explicitly acknowledges durable acceptance; acknowledgement changes delivery state but retains encrypted room history for later reads.
 - Logout destroys the local SQLCipher database, its journal/WAL sidecars and the platform key even when server logout cannot be confirmed. A failed resume can still invoke local purge. No plaintext or Megolm fallback is permitted when native MLS is unavailable.
 - The current CI is read-only and uses no signing secrets. It generates the Rust bridge, runs Flutter analysis/tests, builds Android, and builds unsigned iOS device/simulator targets. This does not prove runtime Keychain behavior on a signed iOS device; that still requires a real-machine acceptance test.
@@ -111,8 +111,8 @@ Loading, unauthenticated, empty-profile, and error states appear in a native ban
 
 ## Remaining Beta 1 acceptance blockers
 
-- The active `main.dart` still presents the approved HTML screens through WebView. The approved HTML is a visual reference/test host, not the accepted native Dart production UI. The separate Dart migration branch has not yet been connected to the current `InOneSession` and still contains provider-login and message-action placeholders.
-- The native Rust MLS bridge exposes session, room, encrypted text, inbox/outbox and device operations, but the active UI does not yet drive MLS send/sync through those methods. `InOneSession` still needs typed public wrappers and the native Dart chat screen must use them.
+- Production entry point is now `lib/main.dart` → `InOneMobileApp`, with the Dart UI source set under `lib/ui_dart_source/`. The WebView dependency and active HTML assets have been removed from the Flutter package; the 219 HTML/reference files are preserved under `../мусорный ящик/HTML-архив/mobile-assets/`. The G1 native UI migration remains under review until exact-head Flutter tests/builds and screen-parity checks pass.
+- The native Rust MLS bridge exposes session, room, encrypted text, inbox/outbox and device operations. The native shell preserves the opt-in `INONE_MLS_NATIVE_ENABLED` session handoff (default false), but the active backend has no current-user room-list API and the UI does not call the historical `/rooms/mine` path. Chat history/send/sync remain blocked until a supported room-list contract, typed message workflows, SQLCipher persistence and two-device end-to-end gates are accepted.
 - Encrypted file-attachment transfer is not implemented end-to-end in the Flutter/Rust bridge. Attachments must remain unavailable rather than fall back to plaintext.
 - Provider OAuth callback handling is not yet connected in the active Flutter flow.
 - The recovery custom scheme is implemented for Beta 1 testing; verified production Universal/App Links still require the real domain and platform association metadata.
@@ -120,7 +120,7 @@ Loading, unauthenticated, empty-profile, and error states appear in a native ban
 ## Recovery deep links and remaining acceptance blockers
 
 - Beta 1 testing supports `inone://recovery/confirm?user=...&token=...&locale=...`. Android/iOS preparation scripts register the scheme. The HTTPS preview page is non-mutating, localized and uses no-store/referrer protections; only an explicit app launch or POST confirms recovery. The unverified custom scheme is hidden in production; production requires verified Android App Links / iOS Universal Links with the actual public domain and association metadata.
-- The active `main.dart` remains a WebView-based HTML QA host. It is not the accepted native Dart production UI. The separate Dart migration branch still has provider-login and message-action placeholders and is not connected to the current `InOneSession`.
+- The native Dart shell is now the production entry point. Provider authentication remains blocked until native provider callbacks are implemented; message history and sending remain blocked until the native MLS and encrypted-persistence acceptance gates pass.
 - The active UI does not yet drive MLS send/sync through the Rust bridge. Encrypted file-attachment transfer is not implemented end-to-end and must remain unavailable rather than fall back to plaintext. Provider OAuth callback handling is also not connected in the active Flutter flow.
 
 ## Tests
@@ -131,7 +131,7 @@ flutter test
 flutter analyze
 ```
 
-The tests assert the 22 approved variants, 73 test entries, the 51/1/21 stage split, 95 unique picker entries, the API transport contract and the Flutter-to-native session handoff contract.
+Tests cover API transport, typed repositories, session locale/logout, MLS handoff, recovery deep-link parsing and confirmation, registration tickets, and native login-shell rendering. Archived HTML geometry and native-runtime isolation are checked separately by CI scripts.
 
 
 ## Backend deployment note

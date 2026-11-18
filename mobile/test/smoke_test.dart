@@ -1,33 +1,73 @@
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:inone_mobile/approved_screens.dart';
-import 'package:inone_mobile/test_screens.dart';
+import 'package:inone_mobile/app/inone_mobile_app.dart';
+import 'package:inone_mobile/ui_dart_source/inone.dart';
+
+const _secureStorageChannel =
+    MethodChannel('plugins.it_nomads.com/flutter_secure_storage');
 
 void main() {
-  test('all 22 approved screen variants are registered', () {
-    expect(approvedScreens, hasLength(22));
-    expect(approvedScreens.where((screen) => screen.theme == 'light'), hasLength(11));
-    expect(approvedScreens.where((screen) => screen.theme == 'dark'), hasLength(11));
-    expect(approvedScreens.map((screen) => screen.id).toSet(), hasLength(22));
-  });
+  TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('all 73 test screens are registered in the shared catalogue', () {
-    expect(testScreens, hasLength(73));
-    expect(testScreens.map((screen) => screen.id).toSet(), hasLength(73));
-    expect(testScreens.where((screen) => screen.stage == ScreenStage.core), hasLength(51));
-    expect(testScreens.where((screen) => screen.stage == ScreenStage.deferred), hasLength(1));
-    expect(testScreens.where((screen) => screen.stage == ScreenStage.future), hasLength(21));
-  });
+  testWidgets('production entry renders the native Dart authentication screen',
+      (tester) async {
+    final storedValues = <String, String>{};
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      _secureStorageChannel,
+      (call) async {
+        final arguments = Map<Object?, Object?>.from(
+          call.arguments as Map<Object?, Object?>? ?? const {},
+        );
+        final key = arguments['key'] as String?;
 
-  test('the unified test host exposes 95 distinct screen variants', () {
-    final keys = <String>{
-      ...approvedScreens.map((screen) => 'approved:${screen.id}'),
-      ...testScreens.map((screen) => 'test:${screen.id}'),
-    };
-    expect(keys, hasLength(95));
-  });
+        switch (call.method) {
+          case 'read':
+            return key == null ? null : storedValues[key];
+          case 'write':
+            final value = arguments['value'];
+            if (key != null && value is String) storedValues[key] = value;
+            return null;
+          case 'delete':
+            if (key != null) storedValues.remove(key);
+            return null;
+          case 'deleteAll':
+            storedValues.clear();
+            return null;
+          case 'readAll':
+            return Map<String, String>.from(storedValues);
+          default:
+            throw MissingPluginException(
+              'Unsupported secure-storage method: ${call.method}',
+            );
+        }
+      },
+    );
+    addTearDown(() {
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        _secureStorageChannel,
+        null,
+      );
+    });
 
-  test('approved HTML design remains a local Flutter asset', () {
-    expect(approvedScreensAssetPath,
-        'assets/approved-ui/InOne-approved-cross-platform.html');
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(const InOneMobileApp());
+
+    // Session initialization crosses several asynchronous platform-channel
+    // calls. Pump in bounded intervals until the production entry leaves its
+    // loading state; a single frame is not enough to complete the channel chain.
+    for (var attempt = 0;
+        attempt < 20 && find.byType(InOneLoginScreen).evaluate().isEmpty;
+        attempt++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    expect(find.byType(InOneLoginScreen), findsOneWidget);
+    expect(find.text('Մուտք'), findsOneWidget);
+    expect(find.text('Google'), findsOneWidget);
+    expect(find.text('Apple'), findsOneWidget);
   });
 }
