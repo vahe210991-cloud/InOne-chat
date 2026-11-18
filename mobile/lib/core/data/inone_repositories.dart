@@ -25,6 +25,17 @@ class InOneRepositories {
       session.request('GET', '/approvals');
   Future<Map<String, dynamic>> organizationRequests() =>
       session.request('GET', '/org-requests');
+  Future<Map<String, dynamic>> organizationRequest(String requestId) =>
+      session.request('GET', '/org-requests/${Uri.encodeComponent(requestId)}');
+  Future<Map<String, dynamic>> decideOrganizationRequest(
+    String requestId, {
+    required String decision,
+  }) =>
+      session.request(
+        'POST',
+        '/org-requests/${Uri.encodeComponent(requestId)}/decision',
+        body: {'decision': decision},
+      );
   Future<Map<String, dynamic>> publicConfig() =>
       session.request('GET', '/config/public', authenticated: false);
 
