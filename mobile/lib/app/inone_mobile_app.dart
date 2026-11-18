@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../core/data/inone_profile.dart';
 import '../core/data/inone_public_config.dart';
 import '../core/data/inone_organization.dart';
+import '../core/data/inone_encrypted_document_store.dart';
 import '../core/data/inone_repositories.dart';
 import '../core/mls/rust_mls_session_bridge.dart';
 import '../core/network/api_environment.dart';
@@ -33,6 +34,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   final _messengerKey = GlobalKey<ScaffoldMessengerState>();
   late final InOneSession _session;
   late final InOneRepositories _repositories;
+  late final InOneEncryptedDocumentStore _documentStore;
 
   String _screen = 'login';
   String _registrationEmail = '';
@@ -69,6 +71,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           : null,
     );
     _repositories = InOneRepositories(_session);
+    _documentStore = InOneEncryptedDocumentStore();
     WidgetsBinding.instance.addObserver(this);
     final initialRoute = WidgetsBinding.instance.platformDispatcher.defaultRouteName;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -408,11 +411,35 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     }
   }
 
-  Future<InOneFailure?> _downloadAdminDocument(InOneDocument document) async =>
-      const InOneFailure(
+  Future<InOneFailure?> _downloadAdminDocument(InOneDocument document) async {
+    final request = _selectedAdminRequest;
+    if (request == null || !(_profile?.canViewPlatformRequests ?? false)) {
+      return const InOneFailure(
         InOneScreenState.error,
-        message: 'Загрузка отключена до подключения зашифрованного локального хранилища. Документ не сохранён.',
+        message: 'Документ недоступен для этой учётной записи.',
       );
+    }
+    try {
+      final response = await _repositories.downloadOrganizationRequestDocument(
+        request.id,
+        document.id,
+      );
+      final responseType = response.headers['content-type']?.split(';').first.trim().toLowerCase();
+      if (document.mimeType != null && responseType != document.mimeType) {
+        throw const ApiException(code: 'invalid_download_response', statusCode: 502, retryable: false);
+      }
+      await _documentStore.save(
+        requestId: request.id,
+        documentId: document.id,
+        filename: document.name,
+        bytes: response.bodyBytes,
+      );
+      if (mounted) _notice('Документ сохранён в зашифрованном локальном хранилище.');
+      return null;
+    } catch (error) {
+      return _toFailure(error);
+    }
+  }
 
   Future<InOneFailure?> _startEmailRegistration(String email) async {
     _registrationEmail = email.trim();
