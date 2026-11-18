@@ -55,6 +55,41 @@ Multi-key decryption/key-ring пока не реализован. Поэтому
 
 Если требуется ротация без остановки и purge, сначала реализовать versioned key ring, поле key version в queue, dual-key decrypt и тесты восстановления старых записей. Нельзя просто заменить environment key при наличии encrypted queue rows.
 
+## Восстановление dead-letter после исправления SMTP
+
+Permanent SMTP errors (например, `auth` или `envelope`) переводятся в `dead` и автоматически не повторяются. Сейчас отдельного административного requeue API/экрана нет. Не считать исправление SMTP credentials достаточным для повторной отправки уже dead-lettered сообщений.
+
+После устранения причины и подтверждения SMTP smoke test оператор может вручную переотправить только выбранные, ещё не истёкшие записи. Сначала проверить агрегаты и конкретные ID без чтения encrypted payload:
+
+```sql
+SELECT id, status, attempts, last_error_code, expires_at
+FROM email_deliveries
+WHERE status = 'dead'
+  AND last_error_code IN ('auth', 'connection', 'transport_error')
+  AND expires_at > now()
+ORDER BY id;
+```
+
+После ручной сверки списка и подтверждения, что причина устранена, разрешён точечный requeue по заранее проверенным ID:
+
+```sql
+UPDATE email_deliveries
+SET status = 'queued',
+    attempts = 0,
+    available_at = now(),
+    locked_at = NULL,
+    locked_by = NULL,
+    last_error_code = NULL,
+    updated_at = now()
+WHERE id = ANY(ARRAY[/* explicitly reviewed IDs */]::bigint[])
+  AND status = 'dead'
+  AND last_error_code IN ('auth', 'connection', 'transport_error')
+  AND expires_at > now()
+RETURNING id, status, attempts, expires_at;
+```
+
+Не выполнять массовый reset всех `dead` записей: среди них могут быть неверные адреса, повреждённые payload и просроченные одноразовые коды. Для `envelope` сначала проверить и исправить адрес/получателя через исходный бизнес-сценарий; не повторять его вслепую. Для `payload_integrity` и `expired` requeue запрещён. В Beta 1.0 процедуру выполнять только под контролем оператора и фиксировать delivery ID и результат фактического получения без записи адресов/кодов в общий лог.
+
 ## Runtime acceptance
 
 Перед production:
