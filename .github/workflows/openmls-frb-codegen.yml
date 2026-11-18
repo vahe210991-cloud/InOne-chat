@@ -3,7 +3,7 @@ name: OpenMLS Flutter Rust Bridge generation
 on:
   workflow_dispatch:
   push:
-    branches: [feature/stage-4-native-mls-runtime-2026-11-11]
+    branches: [feature/stage-4-native-mls-runtime-2026-11-11, docs/bots-stickers-platform-2026-11-16]
     paths:
       - ".github/workflows/openmls-frb-codegen.yml"
       - "mobile/**"

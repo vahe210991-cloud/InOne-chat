@@ -3,7 +3,7 @@ name: OpenMLS client validation
 on:
   workflow_dispatch:
   push:
-    branches: [main, feature/stage-4-native-mls-runtime-2026-11-11]
+    branches: [main, feature/stage-4-native-mls-runtime-2026-11-11, docs/bots-stickers-platform-2026-11-16]
     paths:
       - ".github/workflows/openmls-client.yml"
       - "inone-engine-poc-0.6.0/mobile-mls/mls-client/**"
