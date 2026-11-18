@@ -1023,6 +1023,9 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         if (!d) return send(res, 401, { error: 'unauthorized' });
         const info = await accountLevelInfo(d.userId);
         info.locale = (await storage.profileGet(d.userId))?.locale ?? 'hy';
+        // Platform role is a presentation hint only. Every privileged API operation
+        // independently enforces its role on the server.
+        info.platformRole = await storage.platformRoleOf(d.userId);
         // Подсказка (решение владельца): аккаунт связан с Google или Apple, а на этом устройстве биометрия ещё не включена.
         if (info.providers.length > 0 && !(await storage.signingKeyGet(key(d.userId, d.deviceId)))) {
           info.securityHints = [...info.securityHints, 'offer_biometric'];
