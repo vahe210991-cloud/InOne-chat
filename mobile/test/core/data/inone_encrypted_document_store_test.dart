@@ -44,6 +44,15 @@ void main() {
       filename: 'registration.pdf',
     );
     expect(restored, plaintext);
+    await expectLater(
+      store.read(
+        requestId: 'request-123',
+        documentId: 'document-456',
+        filename: 'renamed.pdf',
+      ),
+      throwsA(anything),
+      reason: 'the authenticated filename is bound to the encrypted document',
+    );
   });
 
   test('rejects modified ciphertext instead of returning unauthenticated bytes', () async {
