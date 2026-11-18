@@ -1,6 +1,6 @@
 # InOne — постоянная точка продолжения
 
-**Обновлено:** 2026-11-08 12:00 (UTC+3)  
+**Обновлено:** 2026-11-18 (UTC)  
 **Репозиторий:** `vahe210991-cloud/InOne-chat`  
 **Основная ветка документации:** `main`
 
@@ -32,7 +32,7 @@
 | Время (UTC+3) | Изменение |
 |---|---|
 | 2026-11-08 08:25 | Создана постоянная папка continuity; зафиксированы состояние проекта, решения, источники и handoff-инструкции. |
-| 2026-11-08 12:00 | Добавлен P0 GitHub recovery status: branch `recovery/p0-wave3-applied`, SHA `7ebdeac`; функциональные suites PASS, rustfmt FAIL, source-integrity audit остаётся открытым. |
+| 2026-11-08 12:00 | Добавлен P0 GitHub recovery status: branch `recovery/p0-wave3-applied`, SHA `7ebdeac`; функциональные suites PASS, rustfmt FAIL, source-integrity audit остаётся открытым. |\n| 2026-11-18 | Зафиксирован G1 native Dart UI closeout: PR #82 merged; main `a174f794535ab09699d38292acb4919308873fd7`; Flutter mobile, iOS simulator/device и Native MLS CI PASS на PR head `dde4de9922a328c9016ad34e3e770cc234b50b45`. Физические устройства и двухустройственный MLS E2E остаются отдельными воротами. Отчёт: `development/reports/2026-11-18-g1-native-ui-merge-closeout.md`. |
 
 
 ## Owner-approved cumulative baseline — 2026-11-09
