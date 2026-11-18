@@ -1,6 +1,6 @@
 # InOne Email Delivery — visual design proposal
 
-**Status:** Draft — owner approval required  
+**Status:** Draft — visual approval deferred beyond Beta 1.0  
 **Primary locale:** Eastern Armenian (`hy`)  
 **Additional locales:** Russian (`ru`), English (`en`)
 
@@ -54,7 +54,11 @@ Open the branch in GitHub Codespaces, start a terminal at the repository root an
 
 Email language follows the user's selected in-app language, not the operating-system locale and not a global Armenian default. The supported initial locales are Eastern Armenian (`hy`), Russian (`ru`) and English (`en`). Verified registration sends the selected locale with the registration-code request; the backend stores it alongside the pending email-code state and copies it to the account profile when registration completes. Authenticated users can change it through `PATCH /profile/locale`; the mobile host persists the same choice locally for startup and synchronizes it with the account. Authenticated account-security messages, including backup-recipient copies, use the profile locale captured when the business event is queued. If a user selected a language before login, the login request carries that pending locale and the backend persists it after successful credential verification but before any login-security email is queued. Pre-auth recovery actions (`/recovery/start`, `/recovery/cancel-by-code`, `/recovery/complete`) carry the active interface locale for that recovery event without changing the account's saved preference. Legacy callers that omit an event locale use the saved profile locale. The encrypted queued payload keeps the chosen language stable if the user changes their preference before delivery. Armenian is the fallback only for legacy clients/accounts without a saved locale; unsupported locale values are rejected rather than silently rendered in the wrong language.
 
-## Approval gate
+## Deferred visual review
+
+This proposal is not a Beta 1.0 acceptance gate. During Beta 1.0, delivery, correct recipients, semantic content, locale, code/link validity and actual receipt take priority; visual appearance is explicitly deferred. The current renderer/preview may be used as a technical baseline without design approval.
+
+After Beta 1.0, the owner can review and approve the palette, typography and composition. The future administrator panel must provide controlled editing/versioning of every email template; that editor is not part of Beta 1.0.
 
 The palette and typography are based on the approved reference, but the composition of the email shell is a new application of those foundations. Owner approval is required for:
 - header/wordmark treatment;
