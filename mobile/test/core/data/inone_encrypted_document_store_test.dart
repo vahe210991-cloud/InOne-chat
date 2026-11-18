@@ -23,10 +23,9 @@ void main() {
     if (await root.exists()) await root.delete(recursive: true);
   });
 
-  test('persists ciphertext only and restores the exact document with AES-GCM', () async {
+  test('persists ciphertext only and restores the exact owner-bound document', () async {
     final plaintext = utf8.encode('confidential company registration document');
     final file = await store.save(
-      ownerUserId: '@owner:inone.test',
       ownerUserId: '@owner:inone.test',
       requestId: 'request-123',
       documentId: 'document-456',
@@ -41,14 +40,25 @@ void main() {
     expect(storedKey, isNotNull);
 
     final restored = await store.read(
+      ownerUserId: '@owner:inone.test',
       requestId: 'request-123',
       documentId: 'document-456',
       filename: 'registration.pdf',
     );
     expect(restored, plaintext);
+
     await expectLater(
       store.read(
-        ownerUserId: '@owner:inone.test',
+        ownerUserId: '@another:inone.test',
+        requestId: 'request-123',
+        documentId: 'document-456',
+        filename: 'registration.pdf',
+      ),
+      throwsA(anything),
+      reason: 'encrypted documents are bound to the account owner',
+    );
+    await expectLater(
+      store.read(
         ownerUserId: '@owner:inone.test',
         requestId: 'request-123',
         documentId: 'document-456',
@@ -79,6 +89,7 @@ void main() {
 
     expect(
       await store.read(
+        ownerUserId: '@owner:inone.test',
         requestId: 'request-123',
         documentId: 'document-1',
         filename: 'one.pdf',
@@ -87,6 +98,7 @@ void main() {
     );
     expect(
       await store.read(
+        ownerUserId: '@owner:inone.test',
         requestId: 'request-123',
         documentId: 'document-2',
         filename: 'two.pdf',
@@ -97,6 +109,7 @@ void main() {
 
   test('rejects modified ciphertext instead of returning unauthenticated bytes', () async {
     final file = await store.save(
+      ownerUserId: '@owner:inone.test',
       requestId: 'request-123',
       documentId: 'document-456',
       filename: 'registration.pdf',
@@ -108,6 +121,7 @@ void main() {
 
     await expectLater(
       store.read(
+        ownerUserId: '@owner:inone.test',
         requestId: 'request-123',
         documentId: 'document-456',
         filename: 'registration.pdf',
@@ -119,6 +133,7 @@ void main() {
   test('rejects path-like identifiers and empty documents', () async {
     await expectLater(
       store.save(
+        ownerUserId: '@owner:inone.test',
         requestId: '../escape',
         documentId: 'document-456',
         filename: 'document.pdf',
@@ -128,6 +143,7 @@ void main() {
     );
     await expectLater(
       store.save(
+        ownerUserId: '@owner:inone.test',
         requestId: 'request-123',
         documentId: 'document-456',
         filename: 'document.pdf',
