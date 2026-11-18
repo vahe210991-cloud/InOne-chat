@@ -5,7 +5,7 @@
 **Рабочая ветка:** `feature/email-delivery-service-2026-11-16-b1`  
 **Интеграционный PR:** [#79](https://github.com/vahe210991-cloud/InOne-chat/pull/79)  
 **Stacked implementation PR:** [#61](https://github.com/vahe210991-cloud/InOne-chat/pull/61)  
-**Текущий HEAD после review-исправлений и документационной актуализации:** `bfbca105de15145c2ffb5ac1cff31cea95fde43e`  
+**HEAD перед последней синхронизацией отчёта:** `95fb3dae67b33078b12ff5ff826bbe0a71af5273`  
 **Base main:** `d9d699f1c7e27107123c8a019a780f7060531a08`
 
 ## 1. Решение владельца — критерии Beta 1.0
@@ -25,8 +25,8 @@ PR #79 направлен из `feature/email-delivery-service-2026-11-16-b1` н
 - PR state: open, Draft.
 - Source HEAD: `bfbca105de15145c2ffb5ac1cff31cea95fde43e`.
 - Base main: `d9d699f1c7e27107123c8a019a780f7060531a08`.
-- Compare: 635 commits ahead / 0 behind.
-- Changed files: 129; additions/deletions: уточняются повторным compare после последнего docs-only commit.
+- Compare: 636 commits ahead / 0 behind.
+- Changed files: 129; additions: 17,997; deletions: 585.
 - GitHub mergeable: true.
 - Main не изменён; PR не слит.
 - Review submissions: отсутствуют; inline review threads: отсутствуют.
