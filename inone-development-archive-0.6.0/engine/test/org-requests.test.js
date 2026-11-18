@@ -141,3 +141,35 @@ test('authenticated profile exposes platform role for role-aware navigation', as
     await s.stop();
   }
 });
+
+
+test('concurrent owner decisions serialize and exactly one decision is committed', async () => {
+  const s = await start();
+  try {
+    const created = await call(s.base, 'POST', '/org-requests', s.dir.token, { name: 'Конкурентная заявка' });
+    assert.equal(created.status, 200);
+    const requestId = created.json.requestId;
+    const [approved, rejected] = await Promise.all([
+      call(s.base, 'POST', `/org-requests/${requestId}/decision`, s.owner.token, { decision: 'approve' }),
+      call(s.base, 'POST', `/org-requests/${requestId}/decision`, s.owner.token, { decision: 'reject' }),
+    ]);
+    const outcomes = [approved, rejected];
+    assert.equal(outcomes.filter((result) => result.status === 200).length, 1);
+    assert.equal(outcomes.filter((result) => result.status === 409).length, 1);
+
+    const request = await s.store.getOrgRequest(requestId);
+    const decisions = (await s.store.listOrgRequestLog(requestId))
+      .filter((entry) => entry.action === 'approve' || entry.action === 'reject');
+    assert.equal(decisions.length, 1, 'exactly one decision is journaled');
+    if (request.status === 'approved') {
+      assert.equal(request.orgId, `org-${requestId}`);
+      assert.equal(await s.store.orgRoleOf(request.orgId, DIR), 'owner');
+      assert.equal(await s.store.orgStatus(request.orgId), 'approved');
+    } else {
+      assert.equal(request.status, 'rejected');
+      assert.equal(request.orgId, null);
+    }
+  } finally {
+    await s.stop();
+  }
+});
