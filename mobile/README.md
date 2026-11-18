@@ -53,7 +53,7 @@ This command sequence has not been executed in the current development environme
 
 ## Backend connection
 
-The Flutter test host uses the local development backend by default; no public URL is required.
+The native Flutter app uses the local development backend by default in debug builds; no public URL is required.
 
 - Android emulator: `http://10.0.2.2:8080` (the host computer's port 8080).
 - iOS simulator / desktop: `http://127.0.0.1:8080`.
@@ -103,7 +103,7 @@ Loading, unauthenticated, empty-profile, and error states are rendered by native
 - The original 73-screen HTML gallery is retained only in the archive. CI checks approved HTML geometry from the archive, removes temporary imported HTML assets before Flutter analysis/tests, and verifies the native-only runtime boundary.
 - Generic API probing is read-only. POST/PUT/DELETE actions require dedicated forms, validated payloads and explicit confirmation.
 - `MlsSessionBridge` has a production `RustMlsSessionBridge` adapter over generated `flutter_rust_bridge` bindings. `INONE_MLS_NATIVE_ENABLED` defaults to `false` and remains opt-in until the owner accepts the Android/iOS runtime, persistence, recovery and security gates on the exact tested commit. When explicitly enabled, `InOneSession` transfers the refresh-token pair once to Rust and retains only a short-lived access-token snapshot in Dart; subsequent refreshes are Rust-owned. If Rust handoff fails, the mobile login fails closed, attempts server logout, clears Dart credentials and removes the resumable user marker; there is no Dart refresh fallback.
-- The Rust runtime stores MLS group state and the device session in SQLCipher. The 32-byte database key is held in Android Keystore-backed storage or Apple's protected Keychain store; the key is never exposed to Dart or WebView. The database lives in the app-private support directory.
+- The Rust runtime stores MLS group state and the device session in SQLCipher. The 32-byte database key is held in Android Keystore-backed storage or Apple's protected Keychain store; the key is never exposed to Dart UI components or application logs. The database lives in the app-private support directory.
 - The native bridge exposes key-package maintenance, room creation/invites, encrypted send, inbox sync, offline outbox, epoch/member inspection, device revocation, refresh, close and local purge. Decrypted incoming messages are persisted in a SQLCipher inbox and remain pending across restart until Flutter explicitly acknowledges durable acceptance; acknowledgement changes delivery state but retains encrypted room history for later reads.
 - Logout destroys the local SQLCipher database, its journal/WAL sidecars and the platform key even when server logout cannot be confirmed. A failed resume can still invoke local purge. No plaintext or Megolm fallback is permitted when native MLS is unavailable.
 - The current CI is read-only and uses no signing secrets. It generates the Rust bridge, runs Flutter analysis/tests, builds Android, and builds unsigned iOS device/simulator targets. This does not prove runtime Keychain behavior on a signed iOS device; that still requires a real-machine acceptance test.
@@ -112,7 +112,7 @@ Loading, unauthenticated, empty-profile, and error states are rendered by native
 ## Remaining Beta 1 acceptance blockers
 
 - Production entry point is now `lib/main.dart` → `InOneMobileApp`, with the Dart UI source set under `lib/ui_dart_source/`. The WebView dependency and active HTML assets have been removed from the Flutter package; the 219 HTML/reference files are preserved under `../мусорный ящик/HTML-архив/mobile-assets/`. The G1 native UI migration remains under review until exact-head Flutter tests/builds and screen-parity checks pass.
-- The native Rust MLS bridge exposes session, room, encrypted text, inbox/outbox and device operations, but the active UI does not yet drive MLS send/sync through those methods. `InOneSession` still needs typed public wrappers and the native Dart chat screen must use them.
+- The native Rust MLS bridge exposes session, room, encrypted text, inbox/outbox and device operations. The native shell preserves the opt-in `INONE_MLS_NATIVE_ENABLED` session handoff (default false), but chat history/send/sync remain blocked until typed message workflows, SQLCipher persistence and two-device end-to-end gates are accepted.
 - Encrypted file-attachment transfer is not implemented end-to-end in the Flutter/Rust bridge. Attachments must remain unavailable rather than fall back to plaintext.
 - Provider OAuth callback handling is not yet connected in the active Flutter flow.
 - The recovery custom scheme is implemented for Beta 1 testing; verified production Universal/App Links still require the real domain and platform association metadata.
