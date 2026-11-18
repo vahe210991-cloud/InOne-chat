@@ -41,7 +41,7 @@ async function call(base, method, p, token, body) {
   } catch {
     json = null;
   }
-  return { status: res.status, json, buf };
+  return { status: res.status, json, buf, headers: Object.fromEntries(res.headers.entries()) };
 }
 
 test('заявитель загружает документ и видит его; посторонний не видит; администрация открывает на просмотр и это записано', async () => {
@@ -121,6 +121,98 @@ test('содержимое документа не попадает в журн�
     assert.ok(dump.includes('/org-requests/'), 'контроль: запрос загрузки попал в журнал');
     assert.ok(!dump.includes(b64), 'содержимое документа (base64) не попало в журнал');
     assert.ok(!dump.includes(secret), 'содержимое документа не попало в журнал открытым текстом');
+  } finally {
+    await s.stop();
+  }
+});
+
+
+test('authenticated profile exposes platform role for role-aware navigation', async () => {
+  const s = await start();
+  try {
+    const ownerProfile = await call(s.base, 'GET', '/profile', s.owner.token);
+    const adminProfile = await call(s.base, 'GET', '/profile', s.staff.token);
+    const applicantProfile = await call(s.base, 'GET', '/profile', s.dir.token);
+    assert.equal(ownerProfile.status, 200);
+    assert.equal(ownerProfile.json.platformRole, 'owner');
+    assert.equal(adminProfile.json.platformRole, 'admin');
+    assert.equal(applicantProfile.json.platformRole, null);
+  } finally {
+    await s.stop();
+  }
+});
+
+
+test('concurrent owner decisions serialize and exactly one decision is committed', async () => {
+  const s = await start();
+  try {
+    const created = await call(s.base, 'POST', '/org-requests', s.dir.token, { name: 'Конкурентная заявка' });
+    assert.equal(created.status, 200);
+    const requestId = created.json.requestId;
+    const [approved, rejected] = await Promise.all([
+      call(s.base, 'POST', `/org-requests/${requestId}/decision`, s.owner.token, { decision: 'approve' }),
+      call(s.base, 'POST', `/org-requests/${requestId}/decision`, s.owner.token, { decision: 'reject' }),
+    ]);
+    const outcomes = [approved, rejected];
+    assert.equal(outcomes.filter((result) => result.status === 200).length, 1);
+    assert.equal(outcomes.filter((result) => result.status === 409).length, 1);
+
+    const request = await s.store.getOrgRequest(requestId);
+    const decisions = (await s.store.listOrgRequestLog(requestId))
+      .filter((entry) => entry.action === 'approve' || entry.action === 'reject');
+    assert.equal(decisions.length, 1, 'exactly one decision is journaled');
+    if (request.status === 'approved') {
+      assert.equal(request.orgId, `org-${requestId}`);
+      assert.equal(await s.store.orgRoleOf(request.orgId, DIR), 'owner');
+      assert.equal(await s.store.orgStatus(request.orgId), 'approved');
+    } else {
+      assert.equal(request.status, 'rejected');
+      assert.equal(request.orgId, null);
+    }
+  } finally {
+    await s.stop();
+  }
+});
+
+
+test('document metadata is validated, persisted and returned as a safe attachment', async () => {
+  const s = await start();
+  try {
+    const created = await call(s.base, 'POST', '/org-requests', s.dir.token, { name: 'Документы' });
+    assert.equal(created.status, 200);
+    const requestId = created.json.requestId;
+    const pdf = Buffer.from('%PDF-1.7\nInOne test document\n%%EOF', 'utf8');
+    const uploaded = await call(s.base, 'POST', `/org-requests/${requestId}/documents`, s.dir.token, {
+      kind: 'registration',
+      filename: '../../Заявление.pdf',
+      mimeType: 'application/pdf',
+      contentBase64: pdf.toString('base64'),
+    });
+    assert.equal(uploaded.status, 200);
+    assert.equal(uploaded.json.filename, 'Заявление.pdf');
+    assert.equal(uploaded.json.mimeType, 'application/pdf');
+
+    const listed = await call(s.base, 'GET', `/org-requests/${requestId}`, s.staff.token);
+    assert.equal(listed.status, 200);
+    assert.equal(listed.json.documents[0].filename, 'Заявление.pdf');
+    assert.equal(listed.json.documents[0].mimeType, 'application/pdf');
+
+    const downloaded = await call(s.base, 'GET', `/org-requests/${requestId}/documents/${uploaded.json.docId}`, s.staff.token);
+    assert.equal(downloaded.status, 200);
+    assert.ok(downloaded.buf.equals(pdf));
+    assert.equal(downloaded.headers['content-type'], 'application/pdf');
+    assert.match(downloaded.headers['content-disposition'], /^attachment;/);
+    assert.match(downloaded.headers['content-disposition'], /filename\*=UTF-8''/);
+    assert.equal(downloaded.headers['x-content-type-options'], 'nosniff');
+    assert.equal(downloaded.headers['cache-control'], 'no-store');
+
+    const spoofed = await call(s.base, 'POST', `/org-requests/${requestId}/documents`, s.dir.token, {
+      kind: 'other',
+      filename: 'fake.pdf',
+      mimeType: 'application/pdf',
+      contentBase64: Buffer.from('not a pdf').toString('base64'),
+    });
+    assert.equal(spoofed.status, 400, 'declared PDF MIME type must match the file signature');
   } finally {
     await s.stop();
   }
