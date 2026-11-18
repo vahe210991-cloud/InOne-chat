@@ -269,12 +269,12 @@ export function createMemoryStore({ pinPepper }) {
     listOrgRequests({ userId, all }) {
       return [...orgRequests.values()].filter((r) => all || r.applicantId === userId).map((r) => ({ requestId: r.requestId, applicantId: r.applicantId, name: r.name, status: r.status, createdAt: r.createdAt })).sort((a, b) => a.createdAt - b.createdAt);
     },
-    addOrgRequestDocument({ docId, requestId, kind, size, sha256, objectKey, uploadedBy, createdAt }) {
-      orgRequestDocs.set(docId, { docId, requestId, kind, size, sha256, objectKey, uploadedBy, createdAt });
+    addOrgRequestDocument({ docId, requestId, kind, size, sha256, filename, mimeType, objectKey, uploadedBy, createdAt }) {
+      orgRequestDocs.set(docId, { docId, requestId, kind, size, sha256, filename, mimeType, objectKey, uploadedBy, createdAt });
       orgRequestLog.push({ requestId, actor: uploadedBy, action: 'document', at: createdAt });
     },
     listOrgRequestDocuments(requestId) {
-      return [...orgRequestDocs.values()].filter((x) => x.requestId === requestId).map((x) => ({ docId: x.docId, kind: x.kind, size: x.size, sha256: x.sha256, createdAt: x.createdAt })).sort((a, b) => a.createdAt - b.createdAt);
+      return [...orgRequestDocs.values()].filter((x) => x.requestId === requestId).map((x) => ({ docId: x.docId, kind: x.kind, size: x.size, sha256: x.sha256, filename: x.filename, mimeType: x.mimeType, createdAt: x.createdAt })).sort((a, b) => a.createdAt - b.createdAt);
     },
     getOrgRequestDocument(docId) { const x = orgRequestDocs.get(docId); return x ? { ...x } : null; },
     decideOrgRequest({ requestId, decision, decidedBy, decidedAt }) {
