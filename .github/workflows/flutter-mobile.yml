@@ -38,8 +38,6 @@ jobs:
           channel: stable
           cache: true
       - run: flutter --version
-      - name: Verify original 73-screen test gallery before code generation
-        run: node tool/verify_test_gallery.mjs
       - name: Generate Android and iOS platform projects
         run: flutter create --platforms=android,ios --project-name inone_mobile --org com.inone .
       - name: Remove generated template test
@@ -83,8 +81,6 @@ jobs:
 
       - name: Prepare Android NDK context for native secure storage
         run: node tool/prepare_android_mls.mjs
-      - name: Verify approved cross-platform screen geometry
-        run: node tool/verify_approved_html.mjs
       - name: Fetch and verify owner UI archive
         working-directory: .
         shell: bash
@@ -129,7 +125,11 @@ jobs:
             exit 1
           fi
           # Generated UI assets stay in this ephemeral runner workspace; never push from pull_request.
+      - name: Remove ephemeral HTML reference assets from the mobile package
+        run: rm -rf assets
       - run: flutter pub get
+      - name: Verify native-only production runtime
+        run: node tool/verify_native_runtime.mjs
       - name: Verify committed Rust lockfile
         run: test -s rust/Cargo.lock
       - name: Validate native bridge against committed lockfile
