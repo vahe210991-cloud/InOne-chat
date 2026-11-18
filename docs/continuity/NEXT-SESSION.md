@@ -480,3 +480,37 @@ Required next work:
 - Preserve existing Beta 1.0, identity, database, MLS, and security decisions unless explicitly superseded by a separate owner decision.
 
 Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone-and-inone-business--2026-11-13).
+
+
+## New proposal — InOne Bot Platform and StickyBot (2026-11-16)
+
+Review [development/architecture/INONE-BOTS-AND-STICKERS.md](../../development/architecture/INONE-BOTS-AND-STICKERS.md) and [the proposal report](../../development/reports/2026-11-16-bots-stickers-architecture-proposal.md).
+
+Next actions, only after owner review:
+1. Decide release placement and whether the full Bot Platform/StickyBot is approved for Beta 2.0 or a later release. Do not change WBS v1.1 without explicit approval.
+2. Approve bot creation eligibility, quotas, username policy, scopes and moderation gates.
+3. Design/approve MLS bot-participant and user-consent protocol before exposing chat contents to any bot.
+4. Define OpenAPI/Webhook event contracts, authentication, token rotation, replay/idempotency, rate limits and audit requirements.
+5. Decide image-processing provider, privacy disclosure, photo retention, output limits, moderation and sticker-pack version/deletion semantics.
+
+No bot or sticker implementation is authorized by the proposal document alone.
+
+
+## Owner decision — protected InOne/Propo naming policy (2026-11-16)
+
+- Reserved official names: **InOne Hub**, **InOne Developer**, **InOne Development**.
+- `InOne` and `Propo` are protected brand terms across public usernames, group/room/community names, bots, apps, integrations, organizations and other user-created named entities.
+- Only official administration-owned entities may use the protected terms, and only after the complete applicable administrative approval chain and explicit final owner approval. Admin privileges never grant unilateral naming/exception authority; administrators may only initiate a proposal.
+- Backend enforcement must normalize Unicode and reject case/separator/confusable bypasses, validate both creation and rename, atomically reserve names, and audit every decision.
+- Existing conflicts must be inventoried and escalated; do not silently rename/delete existing users or groups. The three reserved names are not evidence that corresponding services are implemented.
+- Architecture and proposal report updated. This remains a documented owner requirement, not implemented enforcement.
+
+
+## Owner-approved official bot names — 2026-11-16
+
+- **OneBot** is the approved canonical English name of the administration-owned official bot used to register and manage other bots. Replace the former working label “InOne Bot Manager” / “Bot Manager” with **OneBot** when referring to this named system bot.
+- **StickyBot** is the approved canonical English name of the administration-owned sticker-creation bot.
+- **The Bot** is not selected and must not be used as an alternative name.
+- Bot names and public bot-facing names are international English names only. Do not create Russian names, localized aliases or transliterations for these bots. The surrounding interface may be localized, but the canonical bot names remain unchanged.
+- These names are owner-approved design decisions, not proof that either bot, username, API or service has been implemented, registered or launched. Username availability and collision checks remain implementation-time validation.
+- The protected InOne / Propo naming and owner-approval policy remains unchanged. OneBot and StickyBot do not grant permission to use protected brand terms in other entities.
