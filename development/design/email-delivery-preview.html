@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="hy">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>InOne — Email Delivery visual approval</title>
+<style>
+:root{color-scheme:light;--bg:#EEF1EA;--surface:#fff;--ink:#171A14;--dark:#1B1F17;--muted:#6B7268;--quiet:#8C9487;--lime:#C9F53F;--green:#5F9E1C;--line:#E4E7E0;--pale:#F1F8E3;--pale-line:#D8E9B8}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:"Noto Sans Armenian","Noto Sans",Arial,sans-serif;-webkit-font-smoothing:antialiased}
+.shell{max-width:1160px;margin:0 auto;padding:36px 24px 64px}.top{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-bottom:28px}
+.brand{display:flex;align-items:center}.word{font-size:24px;font-weight:700;letter-spacing:-.6px;border-bottom:3px solid var(--lime);padding-bottom:8px}
+.pill{border:1px solid var(--pale-line);background:var(--pale);color:#4A8018;border-radius:999px;padding:7px 12px;font-size:11px;font-weight:700;letter-spacing:.04em}
+h1{font-size:clamp(26px,4vw,36px);line-height:1.2;letter-spacing:-.8px;margin:0 0 10px;font-weight:700} .intro{max-width:760px;color:var(--muted);font-size:14px;line-height:1.7;margin:0 0 26px}
+.controls{display:grid;grid-template-columns:2fr 1fr;gap:12px;background:#fff;border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:18px}
+label{display:block;color:#4A5147;font-size:12px;font-weight:700;margin:0 0 7px}select{width:100%;height:44px;border:1px solid #DDE2D8;border-radius:11px;background:#fff;color:var(--ink);padding:0 12px;font:inherit;font-size:14px;outline-color:var(--green)}
+.preview{background:#fff;border:1px solid var(--line);border-radius:20px;overflow:hidden;box-shadow:0 2px 8px rgba(23,26,20,.04)}
+.preview-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 20px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.preview-head strong{font-size:13px}.preview-head span{font-size:11px;color:var(--muted)}
+.frame-wrap{padding:18px;background:var(--bg)}iframe{display:block;width:100%;height:780px;border:0;border-radius:14px;background:var(--bg)}
+.text-preview{padding:18px 22px;border-top:1px solid var(--line)}.text-preview h2{font-size:13px;margin:0 0 10px}.text-preview pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:0;color:#4A5147;font:13px/1.7 "Noto Sans Armenian","Noto Sans",Arial,sans-serif}
+.notice{margin-top:16px;color:var(--muted);font-size:12px;line-height:1.7}
+@media(max-width:640px){.shell{padding:22px 14px 40px}.controls{grid-template-columns:1fr}.frame-wrap{padding:8px}iframe{height:760px}.preview-head{padding:14px}}
+</style>
+</head>
+<body>
+<main class="shell">
+  <header class="top">
+    <div class="brand"><div class="word">InOne</div></div>
+    <div class="pill">VISUAL DRAFT · OWNER APPROVAL</div>
+  </header>
+  <h1>Էլեկտրոնային նամակների ձևավորում</h1>
+  <p class="intro">InOne-ի նամակների նախադիտում՝ հիմնված հաստատված InOne Mobile Design System-ի գունային և տառատեսակային սկզբունքների վրա։ Ընտրեք ծանուցման տեսակը և լեզուն․ նախադիտումը բեռնվում է հենց backend-ի իրական template renderer-ից։</p>
+  <section class="controls" aria-label="Preview controls">
+    <div><label for="template">Ծանուցման տեսակ</label><select id="template"></select></div>
+    <div><label for="locale">Լեզու</label><select id="locale"><option value="hy">Հայերեն · հիմնական</option><option value="ru">Русский</option><option value="en">English</option></select></div>
+  </section>
+  <section class="preview">
+    <div class="preview-head"><strong id="subject">Նամակի նախադիտում</strong><span>600 px email canvas · responsive HTML</span></div>
+    <div class="frame-wrap"><iframe id="email" title="Rendered InOne email preview"></iframe></div>
+    <div class="text-preview"><h2>Plain-text fallback</h2><pre id="plain"></pre></div>
+  </section>
+  <p class="notice">Սա հաստատման նախադիտում է, ոչ թե վերջնական production approval։ Փոփոխությունները պետք է հաստատվեն նախքան Email Delivery-ի վերջնական acceptance-ը։ Նախադիտման մեջ օգտագործվում են միայն փորձնական կոդեր և URL-ներ։</p>
+</main>
+<script type="module">
+import { listEmailTemplates, renderEmailTemplate } from '../../inone-development-archive-0.6.0/engine/src/email-templates.js';
+const fixtures={
+  registration_code:{code:'482913'},
+  backup_email_verification:{code:'482913'},
+  backup_email_changed:{action:'added'},
+  backup_email_removed:{},
+  stepup_code:{code:'482913',action:'disable-biometric'},
+  old_devices_revoked:{},
+  recovery_login_code:{code:'482913'},
+  new_device_wait:{activateAt:'2026-11-17 12:00',code:'482913'},
+  recovery_code:{code:'482913'},
+  recovery_requested:{},
+  recovery_confirmation_link:{url:'https://example.invalid/recovery/confirm?token=DEMO-ONLY'},
+  recovery_cancelled:{method:'code'},
+  recovery_completed:{cancelCode:'482913'}
+};
+const names={
+  registration_code:'Գրանցման հաստատում',
+  backup_email_verification:'Պահուստային էլ․ փոստի հաստատում',
+  backup_email_changed:'Պահուստային էլ․ փոստի փոփոխություն',
+  backup_email_removed:'Պահուստային էլ․ փոստի հեռացում',
+  stepup_code:'Կարևոր գործողության հաստատում',
+  old_devices_revoked:'Հին սարքերի անջատում',
+  recovery_login_code:'Մուտքի հաստատում',
+  new_device_wait:'Նոր սարքի սպասման ժամկետ',
+  recovery_code:'Հաշվի վերականգնման կոդ',
+  recovery_requested:'Վերականգնման հարցում',
+  recovery_confirmation_link:'Վերականգնման հաստատման հղում',
+  recovery_cancelled:'Վերականգնման չեղարկում',
+  recovery_completed:'Վերականգնման ավարտ'
+};
+const template=document.querySelector('#template'),locale=document.querySelector('#locale'),frame=document.querySelector('#email'),subject=document.querySelector('#subject'),plain=document.querySelector('#plain');
+for(const id of listEmailTemplates()){const option=document.createElement('option');option.value=id;option.textContent=names[id]??id;template.append(option)}
+function update(){const rendered=renderEmailTemplate(template.value,fixtures[template.value],locale.value);subject.textContent=rendered.subject;frame.srcdoc=rendered.html;plain.textContent=rendered.text}
+template.addEventListener('change',update);locale.addEventListener('change',update);update();
+</script>
+</body>
+</html>

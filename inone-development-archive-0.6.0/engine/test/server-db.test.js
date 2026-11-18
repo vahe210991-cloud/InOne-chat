@@ -356,8 +356,8 @@ async function startOn(store) {
   return { srv, base, stop: () => new Promise((r) => srv.server.close(r)) };
 }
 
-const recoveryCode = (srv, userId, subject = 'Восстановление доступа') =>
-  srv.mailbox(userId).filter((m) => m.subject === subject).at(-1).text.match(/Код: (\d{6})/)[1];
+const recoveryCode = (srv, userId) =>
+  srv.mailbox(userId).filter((m) => /\b\d{6}\b/.test(m.text)).at(-1).text.match(/\b(\d{6})\b/)[1];
 
 dbTest('SD17: окно восстановления переживает перезапуск сервера: устройства по-прежнему только читают', async () => {
   const NEW_PW = 'новый-пароль-2026';
@@ -401,7 +401,7 @@ dbTest('SD18: после перезапуска окно закрывается 
     second.srv.advance(48 * 60 * 60 * 1000 + 1000);
     phone.baseUrl = second.base;
     await assert.rejects(phone.sync(), (e) => e.status === 401, 'старое устройство отключено после окна');
-    assert.ok(second.srv.mailbox(ALICE).some((m) => m.subject === 'Старые устройства отключены'));
+    assert.ok(second.srv.mailbox(ALICE).some((m) => m.templateId === 'old_devices_revoked'));
   } finally {
     if (first) await first.stop();
     if (second) await second.stop();
@@ -595,6 +595,42 @@ dbTest('SD KeyPackage claim: replay after restart returns the same durable resul
     assert.equal((await req(secondServer.base, 'GET', '/mls/key-packages/count', { token: alice.token })).json.available, 0);
   } finally {
     await secondServer.stop();
+    await db.close();
+  }
+});
+
+dbTest('SD17: неожиданные внутренние ошибки не раскрывают детали HTTP-клиенту', async () => {
+  const db = await testDatabase();
+  const store = createStore({ pool: db.pool, pinPepper: PEPPER });
+  const logs = [];
+  const logger = {
+    debug() {},
+    info() {},
+    warn() {},
+    error: (message, fields) => logs.push({ message, ...fields }),
+  };
+  const srv = createServer({
+    registrationMode: 'open',
+    requirePhone: false,
+    pinPepper: PEPPER,
+    store,
+    logger,
+  });
+  await new Promise((resolve) => srv.server.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${srv.server.address().port}`;
+  try {
+    const client = await ChatClient.create(base, ALICE, 'A_PHONE', PW);
+    const secretDetail = 'postgres-internal-host-and-query-detail';
+    store.profileGet = async () => {
+      throw Object.assign(new Error(secretDetail), { code: 'XX000' });
+    };
+    const response = await req(base, 'GET', '/profile', { token: client.token });
+    assert.equal(response.status, 500);
+    assert.deepEqual(response.json, { error: 'internal server error' });
+    assert.ok(!JSON.stringify(logs).includes(secretDetail));
+    assert.equal(logs.at(-1)?.errorCode, 'XX000');
+  } finally {
+    await new Promise((resolve) => srv.server.close(resolve));
     await db.close();
   }
 });

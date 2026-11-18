@@ -12,6 +12,7 @@ void main() {
       'providers': ['google'],
       'backupEmail': {'email': 'backup@example.test', 'verified': true},
       'securityHints': ['offer_biometric'],
+      'locale': 'ru',
     });
 
     expect(profile.userId, 'user-1');
@@ -22,6 +23,7 @@ void main() {
     expect(profile.backupEmail?.email, 'backup@example.test');
     expect(profile.backupEmail?.verified, isTrue);
     expect(profile.securityHints, ['offer_biometric']);
+    expect(profile.locale, 'ru');
     expect(profile.isEmpty, isFalse);
   });
 
@@ -40,6 +42,7 @@ void main() {
     expect(profile.nickname, isNull);
     expect(profile.email, isNull);
     expect(profile.backupEmail, isNull);
+    expect(profile.locale, 'hy');
   });
 
   test('rejects invalid backend profile shapes', () {
@@ -60,6 +63,27 @@ void main() {
           'invalid_response',
         ),
       ),
+    );
+  });
+
+
+  test('rejects unsupported persisted account locales', () {
+    expect(
+      () => InOneProfile.fromJson({
+        'userId': 'user-1',
+        'nickname': null,
+        'email': null,
+        'verificationLevel': 0,
+        'providers': [],
+        'backupEmail': null,
+        'securityHints': [],
+        'locale': 'de',
+      }),
+      throwsA(isA<ApiException>().having(
+        (error) => error.code,
+        'code',
+        'invalid_response',
+      )),
     );
   });
 

@@ -1,6 +1,6 @@
 // ============================================================================
-// ВРЕМЕННЫЙ сервер для проверки протокола. Всё хранится в памяти.
-// Для продакшена нужны PostgreSQL, TLS, настоящая почта и SMS, журналирование.
+// Канонический HTTP backend InOne. В production состояние хранится в PostgreSQL;
+// Email Delivery подключается через durable mailer, тестовый fallback остаётся in-memory.
 //
 // Что проверяется здесь:
 //  - вход по паролю; токен привязан к устройству;
@@ -35,6 +35,7 @@ import { DEFAULT_RATE_LIMITS } from './rate-limit.js';
 import { normalizeEmail, isEmail, validateNickname } from './identity-rules.js';
 import { requestEmailCode, checkEmailCode, useEmailToken } from './email-code-rules.js';
 import { createProviderVerifier, fetchProviderKeys } from './provider-auth.js';
+import { renderEmailTemplate } from './email-templates.js';
 
 export const RECOVERY_DELAY_MS = 48 * 60 * 60 * 1000;
 // POST, разрешённые в окне восстановления: чтение чужих ключей и отмена (право отмены проверяет маршрут, D8).
@@ -46,6 +47,8 @@ export const FREE_PIN_ATTEMPTS = 5;
 export const TO_DEVICE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // недоставленная очередь хранится не дольше 30 дней (спецификация)
 const SEND_DEDUP_MS = 7 * 24 * 60 * 60 * 1000;             // повтор отправки с тем же номером считается дублем 7 дней
 const MAX_LOCK_MS = 24 * 60 * 60 * 1000;
+const EMAIL_LOCALES = new Set(['hy', 'ru', 'en']);
+const resolveEmailLocale = (value) => value === undefined ? 'hy' : EMAIL_LOCALES.has(value) ? value : null;
 
 const sha = (v) => createHash('sha256').update(v).digest('hex');
 const mlsCommitFingerprint = (roomId, senderId, deviceId, request) => {
@@ -202,16 +205,40 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
       if (!rec.revoked) await storage.enqueue(key(rec.userId, rec.deviceId), 'security', { body: content }, null, now() + TO_DEVICE_TTL_MS);
     }
   };
-  // Отправитель писем подключается снаружи. В разработке и тестах письма складываются в список.
-  const mailer = externalMailer ?? { send: async (m) => { outbox.push(m); } };
-  const mailTo = (to, subject, text) => mailer.send({ to, subject, text });
-  // Письмо владельцу аккаунта — на подтверждённую почту. У аккаунтов без профиля адресом остаётся идентификатор.
-  const mail = async (userId, subject, text) => {
+  // SMTP/queue подключается снаружи. Тестовый транспорт хранит письма только в памяти.
+  const mailer = externalMailer ?? { send: async ({ to, subject, text, html, templateId, locale }) => { outbox.push({ to, subject, text, html, templateId, locale }); } };
+  const mailTo = (to, subject, text, idempotencyKey = null, templateId = null, variables = {}, locale, transactionClient = null) => {
+    if (!templateId) throw new Error('email templateId is required');
+    if (locale === undefined) throw new Error('email locale is required');
+    const resolvedLocale = resolveEmailLocale(locale);
+    if (!resolvedLocale) throw new Error('email locale must be hy, ru or en');
+    const rendered = renderEmailTemplate(templateId, variables, resolvedLocale);
+    const key = idempotencyKey ?? createHash('sha256')
+      .update(`${to}\\0${rendered.subject}\\0${rendered.text}\\0${rendered.html}\\0${rendered.templateVersion}\\0${Math.floor(now() / 300_000)}`)
+      .digest('hex');
+    const message = { to, subject: rendered.subject, text: rendered.text, html: rendered.html, idempotencyKey: key, templateId, variables, locale: resolvedLocale };
+    if (transactionClient && typeof mailer.sendInTransaction === 'function') return mailer.sendInTransaction(transactionClient, message);
+    return mailer.send(message);
+  };
+  // Каждый адрес — отдельная delivery. В transaction callback получатели передаются заранее,
+  // чтобы не занимать дополнительные pool connections поверх открытой транзакции.
+  const mailToRecipients = async (recipients, subject, text, templateId = null, variables = {}, transactionClient = null, locale) => {
+    if (locale === undefined) throw new Error('email locale is required');
+    const resolvedLocale = resolveEmailLocale(locale);
+    if (!resolvedLocale) throw new Error('email locale must be hy, ru or en');
+    const uniqueRecipients = [...new Set(recipients.filter(Boolean))];
+    const results = await Promise.allSettled(uniqueRecipients.map((recipient) => mailTo(recipient, subject, text, null, templateId, variables, resolvedLocale, transactionClient)));
+    const failures = results.filter((result) => result.status === 'rejected');
+    if (failures.length) {
+      const error = new AggregateError(failures.map((result) => result.reason), 'one or more email deliveries could not be queued');
+      if (failures.every((result) => result.reason?.code === 'EMAIL_QUEUE_UNAVAILABLE')) error.code = 'EMAIL_QUEUE_UNAVAILABLE';
+      throw error;
+    }
+  };
+  const mail = async (userId, subject, text, templateId = null, variables = {}, transactionClient = null, localeOverride = null) => {
     const profile = await storage.profileGet(userId);
-    // Служебные письма — на основную почту и, если она задана, на запасную.
     const backup = await storage.backupEmailGet(userId);
-    await mailTo(profile?.email ?? userId, subject, text);
-    if (backup) await mailTo(backup.email, subject, text);
+    return mailToRecipients([profile?.email ?? userId, backup?.email], subject, text, templateId, variables, transactionClient, localeOverride ?? profile?.locale ?? 'hy');
   };
   const revokeDevice = async (rec) => {
     await storage.revokeDevice(key(rec.userId, rec.deviceId));
@@ -231,14 +258,6 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
   // Подтверждение действий над провайдерами (этап 2, решения владельца): пока пароль активен — пароль;
   // после привязки Google или Apple пароль отключён полностью — подтверждение кодом с почты, привязанным к действию.
   const STEPUP_ACTIONS = ['link-provider', 'remove-provider', 'set-backup-email', 'remove-backup-email', 'enable-biometric', 'disable-biometric'];
-  const stepupActionText = {
-    'link-provider': 'привязка аккаунта Google или Apple',
-    'remove-provider': 'отвязка аккаунта Google или Apple',
-    'set-backup-email': 'добавление или смена запасной почты',
-    'remove-backup-email': 'удаление запасной почты',
-    'enable-biometric': 'включение подтверждения Face ID или Touch ID',
-    'disable-biometric': 'отключение подтверждения Face ID или Touch ID',
-  };
   const stepupKey = (userId) => `stepup|${userId}`;
   const stepupCodeHash = (userId, action, code) => keyedHash(pinPepper, `stepup-code:${userId}:${action}`, code);
   const stepupTokenHash = (userId, action, token) => keyedHash(pinPepper, `stepup-token:${userId}:${action}`, token);
@@ -331,7 +350,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
   // Токены и устройства лежат в хранилище; токен там хранится как ключевой хэш (C-08).
   // Через 48 часов после восстановления старые устройства отключаются, если их не отменили (D5, D8).
   // Окно хранится в базе: переживает перезапуск сервера.
-  const finalizeRecoveryIfDue = async (userId) => {
+  const finalizeRecoveryIfDue = async (userId, localeOverride = null) => {
     const current = await storage.recoveryGet(userId);
     if (current.windowKeyResetAt === null || now() < current.windowKeyResetAt) return;
     const dueSince = await storage.recoveryUpdate(userId, (r) => {
@@ -342,7 +361,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
     for (const rec of await storage.devicesOfUser(userId)) {
       if (!rec.revoked && rec.createdAt < dueSince) await revokeDevice(rec);
     }
-    await mail(userId, 'Старые устройства отключены', 'Прошло 48 часов после восстановления. Устройства, существовавшие до восстановления, отключены.');
+    await mail(userId, 'Старые устройства отключены', '', 'old_devices_revoked', {}, null, localeOverride);
   };
   const authed = async (req) => {
     const raw = (req.headers.authorization || '').replace('Bearer ', '');
@@ -413,8 +432,8 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
     const UPLOAD_TTL_MS = 15 * 60_000;
     const DOWNLOAD_TTL_MS = 5 * 60_000;
     const STALE_UPLOAD_MS = 24 * 3600_000;
-    const signFor = (action, fileId, expires, size = '', sha = '') =>
-      createHmac('sha256', objectSecret).update(`${action}|${fileId}|${expires}|${size}|${sha}`).digest('hex');
+    const signFor = (action, fileId, expires, size = '', sha = '', ownerId = '', ownerDeviceId = '') =>
+      createHmac('sha256', objectSecret).update(`${action}|${fileId}|${expires}|${size}|${sha}|${ownerId}|${ownerDeviceId}`).digest('hex');
     const sameSig = (a, b) => {
       const x = Buffer.from(String(a));
       const y = Buffer.from(String(b));
@@ -430,9 +449,11 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
       const file = await storage.getFile(fileId);
       if (!file) return send(res, 404, { error: 'not found' });
       if (req.method === 'PUT') {
-        if (!expires || now() > expires || !sameSig(sig, signFor('PUT', fileId, expires, file.size, file.sha256))) {
+        if (!expires || now() > expires || !file.ownerDeviceId || !sameSig(sig, signFor('PUT', fileId, expires, file.size, file.sha256, file.ownerId, file.ownerDeviceId))) {
           return send(res, 403, { error: 'upload link is invalid or expired' });
         }
+        const ownerDevice = await storage.deviceRecord(key(file.ownerId, file.ownerDeviceId));
+        if (!ownerDevice || ownerDevice.revoked) return send(res, 403, { error: 'uploading device is revoked' });
         if (file.status !== 'pending') return send(res, 409, { error: 'file is not waiting for upload' });
         if (Number(req.headers['content-length']) !== file.size) {
           res.setHeader('Connection', 'close');
@@ -451,7 +472,14 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         const bytes = Buffer.concat(chunks);
         if (bytes.length !== file.size) return send(res, 400, { error: 'incomplete body' });
         if (createHash('sha256').update(bytes).digest('hex') !== file.sha256) return send(res, 422, { error: 'checksum does not match the declaration' });
+        const activeOwnerDevice = await storage.deviceRecord(key(file.ownerId, file.ownerDeviceId));
+        if (!activeOwnerDevice || activeOwnerDevice.revoked) return send(res, 403, { error: 'uploading device is revoked' });
         await objectStore.put(fileId, bytes);
+        const stillActiveOwnerDevice = await storage.deviceRecord(key(file.ownerId, file.ownerDeviceId));
+        if (!stillActiveOwnerDevice || stillActiveOwnerDevice.revoked) {
+          await objectStore.remove(fileId).catch(() => {});
+          return send(res, 403, { error: 'uploading device is revoked' });
+        }
         await storage.markFileUploaded(fileId);
         return send(res, 200, { uploaded: true });
       }
@@ -646,7 +674,9 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
       if (req.method === 'POST' && p === '/register/provider') {
         const reg = await checkRate('registrationsPerAddress', clientIp(req));
         if (!reg.allowed) return send(res, 429, { error: 'too many registrations from this address', retryAt: new Date(reg.retryAt).toISOString() });
-        // Ник проверяем до погашения билета: опечатка в нике не заставляет входить у провайдера заново.
+        // Ник и язык проверяем до погашения билета: ошибка ввода не должна сжигать одноразовый ticket.
+        const locale = resolveEmailLocale(body.locale);
+        if (!locale) return send(res, 400, { error: 'locale must be hy, ru or en' });
         const nickError = validateNickname(body.nickname);
         if (nickError) return send(res, 400, { error: nickError });
         if (await storage.searchNickname(body.nickname)) return send(res, 409, { error: 'nickname taken' });
@@ -666,6 +696,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
           nickname: body.nickname,
           nowMs: now(),
           provider: { provider: identity.provider, sub: identity.sub },
+          locale,
         });
         if (created !== 'ok') {
           const error = created === 'nickname' ? 'nickname taken' : created === 'email' ? sameEmailError : created === 'link' ? 'this provider account is already linked' : 'account exists';
@@ -692,12 +723,10 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         const perAccount = await checkRate('backupEmailPerAccount', d.userId);
         if (!perAccount.allowed) return send(res, 429, { error: 'too many requests, try later' });
         const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
-        await storage.emailCodeUpdate(backupKey(d.userId, email), (e) => ({
+        await storage.emailCodeUpdateWithOutbox(backupKey(d.userId, email), (e) => ({
           next: requestEmailCode(e, { nowMs: now(), codeHash: backupCodeHash(d.userId, email, code) }),
           result: null,
-        }));
-        await mailTo(email, 'Подтверждение запасной почты InOne',
-          `Код: ${code}. Этот адрес указан запасной почтой аккаунта InOne. Код действует 10 минут. Если это не вы, просто проигнорируйте письмо.`);
+        }), (tx) => mailTo(email, '', '', null, 'backup_email_verification', { code }, profile.locale ?? 'hy', tx), profile.locale ?? 'hy');
         return send(res, 202, { ok: true });
       }
 
@@ -720,12 +749,11 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         if (outcome === 'locked') return send(res, 403, { error: 'too many wrong codes, request a new one' });
         if (outcome !== 'ok') return send(res, 403, { error: 'wrong code' });
         const previous = await storage.backupEmailGet(d.userId);
-        if ((await storage.backupEmailSave(d.userId, email, now())) === 'taken') {
-          return send(res, 409, { error: 'this backup email is used by another account' });
-        }
-        const primary = (await storage.profileGet(d.userId)).email;
-        await mailTo(primary, 'Запасная почта InOne изменена',
-          `Запасная почта аккаунта ${previous ? 'изменена' : 'добавлена'}. Если это не вы, войдите в аккаунт и проверьте привязки и устройства.`);
+        const profile = await storage.profileGet(d.userId);
+        const primary = profile.email;
+        const saved = await storage.backupEmailSaveWithOutbox(d.userId, email, now(), (tx) =>
+          mailTo(primary, '', '', null, 'backup_email_changed', { action: previous ? 'changed' : 'added' }, profile.locale ?? 'hy', tx));
+        if (saved === 'taken') return send(res, 409, { error: 'this backup email is used by another account' });
         return send(res, 200, { backupEmail: { email, verified: true } });
       }
 
@@ -734,10 +762,11 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         if (!d) return send(res, 401, { error: 'unauthorized' });
         const confirmed = await verifyStepUp(d.userId, 'remove-backup-email', body, d.deviceId);
         if (!confirmed.ok) return send(res, confirmed.status, { error: confirmed.error });
-        if (!(await storage.backupEmailRemove(d.userId))) return send(res, 404, { error: 'no backup email is set' });
-        const primary = (await storage.profileGet(d.userId)).email;
-        await mailTo(primary, 'Запасная почта InOne удалена',
-          'Запасная почта удалена из аккаунта InOne. Если это не вы, войдите в аккаунт и проверьте привязки и устройства.');
+        const profile = await storage.profileGet(d.userId);
+        const primary = profile.email;
+        const removed = await storage.backupEmailRemoveWithOutbox(d.userId, (tx) =>
+          mailTo(primary, '', '', null, 'backup_email_removed', {}, profile.locale ?? 'hy', tx));
+        if (!removed) return send(res, 404, { error: 'no backup email is set' });
         return send(res, 200, await accountLevelInfo(d.userId));
       }
 
@@ -807,16 +836,16 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         if (!STEPUP_ACTIONS.includes(action)) return send(res, 400, { error: 'unknown action' });
         // Пока пароль активен, подтверждение — пароль, код не выдаётся.
         if (await passwordSignInAllowed(d.userId)) return send(res, 400, { error: 'confirm with password' });
-        if (!(await storage.profileGet(d.userId))) return send(res, 400, { error: 'account has no verified email' });
+        const profile = await storage.profileGet(d.userId);
+        if (!profile) return send(res, 400, { error: 'account has no verified email' });
         const perAccount = await checkRate('stepupPerAccount', d.userId);
         if (!perAccount.allowed) return send(res, 429, { error: 'too many confirmation requests, try later' });
         const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
-        await storage.emailCodeUpdate(stepupKey(d.userId), (e) => ({
+        const recipient = await confirmationEmail(d.userId);
+        await storage.emailCodeUpdateWithOutbox(stepupKey(d.userId), (e) => ({
           next: requestEmailCode(e, { nowMs: now(), codeHash: stepupCodeHash(d.userId, action, code) }),
           result: null,
-        }));
-        await mailTo(await confirmationEmail(d.userId), 'Подтверждение действия в InOne',
-          `Код: ${code}. Действие: ${stepupActionText[action]}. Код действует 10 минут. Если это не вы, войдите в аккаунт и проверьте привязки и устройства.`);
+        }), (tx) => mailTo(recipient, '', '', null, 'stepup_code', { code, action }, profile.locale ?? 'hy', tx), profile.locale ?? 'hy');
         return send(res, 202, { ok: true });
       }
 
@@ -883,17 +912,17 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         // Ответ одинаковый, есть такая почта в системе или нет: по ответу не узнать, кто уже зарегистрирован.
         const email = normalizeEmail(body.email);
         if (!isEmail(email)) return send(res, 400, { error: 'email must be a valid address' });
+        const locale = resolveEmailLocale(body.locale);
+        if (!locale) return send(res, 400, { error: 'locale must be hy, ru or en' });
         const perAddress = await checkRate('emailCodePerAddress', clientIp(req));
         const perEmail = await checkRate('emailCodePerEmail', email);
         if (!perAddress.allowed || !perEmail.allowed) return send(res, 429, { error: 'too many codes, try later' });
         if (!(await storage.userIdByEmail(email))) {
           const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
-          await storage.emailCodeUpdate(email, (e) => ({
+          await storage.emailCodeUpdateWithOutbox(email, (e) => ({
             next: requestEmailCode(e, { nowMs: now(), codeHash: emailCodeHash(email, code) }),
             result: null,
-          }));
-          await mailTo(email, 'Код подтверждения InOne',
-            `Код: ${code}. Код действует 10 минут. Если вы не регистрировались в InOne, проигнорируйте письмо.`);
+          }), (tx) => mailTo(email, '', '', null, 'registration_code', { code }, locale, tx), locale);
         }
         return send(res, 202, { ok: true });
       }
@@ -941,13 +970,13 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
 // Токен одноразовый: гасится до создания аккаунта, чтобы им нельзя было воспользоваться дважды.
         const used = await storage.emailCodeUpdate(email, (e) => {
           const out = useEmailToken(e, { nowMs: now(), tokenOk: !!e.tokenHash && sameHex(emailTokenHash(email, token), e.tokenHash) });
-          return { next: out.next, result: out.outcome };
+          return { next: out.next, result: { outcome: out.outcome, locale: e.locale ?? 'hy' } };
         });
-        if (used === 'expired') return send(res, 410, { error: 'registration token expired' });
-        if (used !== 'ok') return send(res, 403, { error: 'registration token invalid' });
+        if (used.outcome === 'expired') return send(res, 410, { error: 'registration token expired' });
+        if (used.outcome !== 'ok') return send(res, 403, { error: 'registration token invalid' });
         const userId = newUserId();
         const created = await storage.createVerifiedAccount({
-          userId, passwordHash: hashPassword(body.password), email, nickname: body.nickname, nowMs: now(), joinDefaultOrg: defaultOrgAutoJoin,
+          userId, passwordHash: hashPassword(body.password), email, nickname: body.nickname, nowMs: now(), joinDefaultOrg: defaultOrgAutoJoin, locale: used.locale,
         });
         if (created !== 'ok') {
           const error = created === 'nickname' ? 'nickname taken' : created === 'email' ? 'email already registered' : 'account exists';
@@ -993,11 +1022,21 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         const d = await authed(req);
         if (!d) return send(res, 401, { error: 'unauthorized' });
         const info = await accountLevelInfo(d.userId);
+        info.locale = (await storage.profileGet(d.userId))?.locale ?? 'hy';
         // Подсказка (решение владельца): аккаунт связан с Google или Apple, а на этом устройстве биометрия ещё не включена.
         if (info.providers.length > 0 && !(await storage.signingKeyGet(key(d.userId, d.deviceId)))) {
           info.securityHints = [...info.securityHints, 'offer_biometric'];
         }
         return send(res, 200, info);
+      }
+
+      if (req.method === 'PATCH' && p === '/profile/locale') {
+        const d = await authed(req);
+        if (!d) return send(res, 401, { error: 'unauthorized' });
+        const locale = body.locale;
+        if (!EMAIL_LOCALES.has(locale)) return send(res, 400, { error: 'locale must be hy, ru or en' });
+        if (!(await storage.profileLocaleSet(d.userId, locale))) return send(res, 404, { error: 'profile not found' });
+        return send(res, 200, { locale });
       }
 
       if (req.method === 'POST' && p === '/register' && registrationMode === 'open') {
@@ -1158,9 +1197,9 @@ if (req.method === 'POST' && p === '/files') {
     if (orgQuota !== null && (await storage.bytesForOrg(fileOrg)) + size > orgQuota) return send(res, 413, { error: 'organization storage quota exceeded', code: 'org_quota_exceeded' });
   }
   const fileId = randomBytes(16).toString('hex');
-  await storage.createFile({ fileId, ownerId: d.userId, roomId: forRoom ?? null, kind, size, sha256: digest, createdAt: now() });
+  await storage.createFile({ fileId, ownerId: d.userId, ownerDeviceId: d.deviceId, roomId: forRoom ?? null, kind, size, sha256: digest, createdAt: now() });
   const expires = now() + UPLOAD_TTL_MS;
-  const path = `/objects/${fileId}?expires=${expires}&sig=${signFor('PUT', fileId, expires, size, digest)}`;
+  const path = `/objects/${fileId}?expires=${expires}&sig=${signFor('PUT', fileId, expires, size, digest, d.userId, d.deviceId)}`;
   return send(res, 200, { fileId, uploadUrl: absoluteUrl(req, path), method: 'PUT', headers: { 'content-length': String(size) }, expiresAt: new Date(expires).toISOString() });
 }
 const fileDone = p.match(/^\/files\/([^/]+)\/complete$/);
@@ -1170,6 +1209,7 @@ if (req.method === 'POST' && fileDone) {
   const fileId = decodeURIComponent(fileDone[1]);
   const f = await storage.getFile(fileId);
   if (!f || f.ownerId !== d.userId) return send(res, 404, { error: 'not found' });
+  if (f.ownerDeviceId !== d.deviceId) return send(res, 403, { error: 'file upload belongs to another device' });
   if (!(await storage.markFileReady(fileId, now()))) return send(res, 409, { error: 'file is not uploaded yet' });
   return send(res, 200, { fileId, status: 'ready' });
 }
@@ -1506,6 +1546,8 @@ if (req.method === 'POST' && p === '/login') {
         const loginEmail = normalizeEmail(body.email);
         const userId = body.userId ?? ((loginEmail && (await storage.userIdByEmail(loginEmail))) || loginEmail);
         const { password, deviceId, label, platform, identityCode, proof: providerProof } = body;
+        const requestedLocale = body.locale === undefined ? null : resolveEmailLocale(body.locale);
+        if (body.locale !== undefined && !requestedLocale) return send(res, 400, { error: 'locale must be hy, ru or en' });
         const stored = await storage.accountHash(userId);
         // Вход через Google или Apple: одноразовое подтверждение провайдера вместо пароля (этап 2).
         let providerOk = null;
@@ -1541,10 +1583,12 @@ if (req.method === 'POST' && p === '/login') {
         const dk = key(userId, deviceId);
         const existing = await storage.deviceRecord(dk);
         if (existing?.revoked) return send(res, 403, { error: 'device revoked; log in with a new device id' });
+        // The authenticated login choice is persisted before any login-security email is queued.
+        if (requestedLocale) await storage.profileLocaleSet(userId, requestedLocale);
 
         // Новое устройство в аккаунте с уже активными устройствами: нужен код с одного из них.
         // Окно восстановления и первый вход после него (D1, D5, D8).
-        await finalizeRecoveryIfDue(userId);
+        await finalizeRecoveryIfDue(userId, requestedLocale);
         const rec = await storage.recoveryGet(userId);
         let identityPassed = false;
         // Аккаунт без подтверждённого телефона: в окне 48 часов новое устройство не добавляется, даже с кодом с почты (решение владельца).
@@ -1554,9 +1598,13 @@ if (req.method === 'POST' && p === '/login') {
         if (!existing && rec.identityCheck) {
           if (identityCode === undefined) {
             const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
-            await storage.recoveryUpdate(userId, (r) => ({ next: issueIdentity(r, { codeHash: identityCodeHash(userId, code) }), result: null }));
-            await mail(userId, 'Подтверждение входа после восстановления',
-              `Код: ${code}. Введите его, чтобы войти с нового устройства. Если это не вы — отмените восстановление с устройства, которое существовало до запроса.`);
+            const profile = await storage.profileGet(userId);
+            const primaryEmail = profile?.email ?? userId;
+            const locale = profile?.locale ?? requestedLocale ?? 'hy';
+            const backup = await storage.backupEmailGet(userId);
+            await storage.recoveryUpdateWithOutbox(userId,
+              (r) => ({ next: issueIdentity(r, { codeHash: identityCodeHash(userId, code) }), result: null }),
+              (tx) => mailToRecipients([primaryEmail, backup?.email], '', '', 'recovery_login_code', { code }, tx, locale));
             return send(res, 202, { status: 'identity_check_required' });
           }
           const outcome = await storage.recoveryUpdate(userId, (r) => {
@@ -1580,11 +1628,20 @@ if (req.method === 'POST' && p === '/login') {
           if (!waiting) {
             const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
             const activateAt = now() + DEVICE_WAIT_MS;
-            await storage.deviceWaitCreate({ userId, deviceId, label: label ?? null, platform: platform ?? null,
-              activateAt, cancelHash: deviceWaitCodeHash(userId, deviceId, code), createdAt: now() });
-            await mail(userId, 'Вход с нового устройства: ожидание 48 часов',
-              `Вход с нового устройства откроется ${new Date(activateAt).toISOString()}. Если это не вы, отмените вход кодом ${code} (POST /admission/cancel).`);
-            return send(res, 202, { status: 'waiting_period', activateAt: new Date(activateAt).toISOString() });
+            const profile = await storage.profileGet(userId);
+            const primaryEmail = profile?.email ?? userId;
+            const locale = profile?.locale ?? requestedLocale ?? 'hy';
+            const backup = await storage.backupEmailGet(userId);
+            const recipients = [primaryEmail, backup?.email];
+            const created = await storage.deviceWaitCreateWithOutbox({
+              userId, deviceId, label: label ?? null, platform: platform ?? null,
+              activateAt, cancelHash: deviceWaitCodeHash(userId, deviceId, code), createdAt: now(),
+            }, (tx) => mailToRecipients(recipients, 'Вход с нового устройства: ожидание 48 часов', '', 'new_device_wait', {
+              activateAt: new Date(activateAt).toISOString(), code,
+            }, tx, locale));
+            if (created === 'ok') return send(res, 202, { status: 'waiting_period', activateAt: new Date(activateAt).toISOString() });
+            const existingWait = await storage.deviceWaitGet(userId, deviceId);
+            return send(res, 202, { status: 'waiting_period', activateAt: new Date(existingWait?.activateAt ?? activateAt).toISOString() });
           }
           if (waiting.activateAt > now()) {
             return send(res, 202, { status: 'waiting_period', activateAt: new Date(waiting.activateAt).toISOString() });
@@ -2641,6 +2698,8 @@ if (req.method === 'POST' && p === '/login') {
 
       // ---------- восстановление после кражи ----------
       if (req.method === 'POST' && p === '/recovery/start') {
+        const requestedLocale = body.locale === undefined ? null : resolveEmailLocale(body.locale);
+        if (body.locale !== undefined && !requestedLocale) return send(res, 400, { error: 'locale must be hy, ru or en' });
         // Один и тот же ответ, есть такой аккаунт или нет: не раскрываем, кто зарегистрирован.
         const startEmail = normalizeEmail(body.email);
         const userId = body.userId ?? (startEmail ? await storage.userIdByEmail(startEmail) : null);
@@ -2653,33 +2712,54 @@ if (req.method === 'POST' && p === '/login') {
           // Аккаунт с привязкой Google или Apple восстанавливается входом через провайдера: кода здесь нет.
           if (!phone.verified && (await storage.providerLinksOf(userId)).length === 0) {
             const emailCode = String(randomInt(0, 1_000_000)).padStart(6, '0');
-            const issued = await storage.recoveryUpdate(userId, (r) => {
+            const profile = await storage.profileGet(userId);
+            const primaryEmail = profile?.email ?? userId;
+            const locale = requestedLocale ?? profile?.locale ?? 'hy';
+            const backup = await storage.backupEmailGet(userId);
+            const recoveryEmail = backup?.email ?? primaryEmail;
+            const notificationRecipients = [primaryEmail, backup?.email];
+            const issued = await storage.recoveryUpdateWithOutbox(userId, (r) => {
               const out = requestCode(r, { nowMs: now(), codeHash: recoveryCodeHash(userId, emailCode), linkHash: null });
               const next = out.issued ? confirmLink(out.next, { nowMs: now(), linkOk: true }).next : out.next;
               return { next, result: out.issued };
+            }, async (tx, wasIssued) => {
+              if (!wasIssued) return;
+              await mailTo(recoveryEmail, '', '', null, 'recovery_code', { code: emailCode }, locale, tx);
+              await mailToRecipients(notificationRecipients, '', '', 'recovery_requested', {}, tx, locale);
             });
-            if (issued) {
-              await mailTo(await confirmationEmail(userId), 'Код восстановления InOne',
-                `Код: ${emailCode}. Код действует час. Вход откроется только через 48 часов после смены пароля. Если это не вы, ничего не вводите.`);
-              await mail(userId, 'Запрошено восстановление InOne',
-                'Кто-то запросил восстановление доступа. Код отправлен на запасную или основную почту. Если это не вы, ничего не делайте и проверьте устройства.');
-              await alertDevices(userId, { kind: 'recovery_started' });
-            }
+            if (issued) await alertDevices(userId, { kind: 'recovery_started' });
           }
           // Восстановление возможно только при подтверждённом телефоне (D5).
           // SMS на номер не чаще заданного за сутки: лишние запросы не шлют SMS.
           if (phone.verified && (await checkRate('smsPerPhone', phone.phone)).allowed) {
             const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
             const token = randomBytes(24).toString('base64url');
-            const issued = await storage.recoveryUpdate(userId, (r) => {
+            const profile = await storage.profileGet(userId);
+            const primaryEmail = profile?.email ?? userId;
+            const locale = requestedLocale ?? profile?.locale ?? 'hy';
+            const backup = await storage.backupEmailGet(userId);
+            const notificationRecipients = [primaryEmail, backup?.email];
+            const issued = await storage.recoveryUpdateWithOutbox(userId, (r) => {
               const out = requestCode(r, { nowMs: now(), codeHash: recoveryCodeHash(userId, code), linkHash: recoveryLinkHash(userId, token) });
               return { next: out.next, result: out.issued };
+            }, async (tx, wasIssued) => {
+              if (!wasIssued) return;
+              const webLink = new URL('/recovery/confirm', `${publicUrl.replace(/\/+$/, '')}/`);
+              webLink.searchParams.set('user', userId);
+              webLink.searchParams.set('token', token);
+              webLink.searchParams.set('locale', locale);
+              const appLink = new URL('inone://recovery/confirm');
+              appLink.searchParams.set('user', userId);
+              appLink.searchParams.set('token', token);
+              appLink.searchParams.set('locale', locale);
+              await mailToRecipients(notificationRecipients, '', '', 'recovery_confirmation_link', {
+                url: webLink.toString(),
+                appUrl: appLink.toString(),
+              }, tx, locale);
             });
             if (issued) {
-              // D5: код приходит по SMS, подтверждение — ссылкой из письма. Это два разных канала.
+              // D5: SMS-код и email-link — независимые каналы одного recovery event.
               await smsSender.send(phone.phone, `Код: ${code}. Код восстановления InOne действует час. Если это не вы — не вводите его.`);
-              await mail(userId, 'Подтверждение восстановления',
-                `Чтобы подтвердить восстановление, откройте ссылку: ${publicUrl}/recovery/confirm?user=${encodeURIComponent(userId)}&token=${token}. Ссылка действует час. Если это не вы — не открывайте её.`);
               await alertDevices(userId, { kind: 'recovery_started' });
             }
           }
@@ -2725,6 +2805,8 @@ if (req.method === 'POST' && p === '/login') {
       }
 
       if (req.method === 'POST' && p === '/recovery/cancel-by-code') {
+        const requestedLocale = body.locale === undefined ? null : resolveEmailLocale(body.locale);
+        if (body.locale !== undefined && !requestedLocale) return send(res, 400, { error: 'locale must be hy, ru or en' });
         // Отмена восстановления кодом из письма: нужна, если устройств для отмены нет (решение владельца).
         const email = normalizeEmail(body.email);
         const perEmail = await checkRate('recoveryCancelPerEmail', email);
@@ -2735,14 +2817,16 @@ if (req.method === 'POST' && p === '/login') {
         const code = typeof body.code === 'string' ? body.code : '';
         const ok = !!r && windowOpen(r, now()) && !!saved && now() <= saved.expiresAt && sameHex(recoveryCancelHash(userId, code), saved.codeHash);
         if (!ok) return send(res, 403, { error: 'wrong code' });
-        // Вернуть прежний пароль и отключить устройства, появившиеся после запроса. PIN не меняется.
-        if (r.windowPreviousHash) await storage.setPasswordHash(userId, r.windowPreviousHash);
+        // Пароль, recovery state, cancellation code и уведомление фиксируются одной транзакцией.
         for (const rec of await storage.devicesOfUser(userId)) {
           if (!rec.revoked && rec.createdAt >= r.windowStartedAt) await revokeDevice(rec);
         }
-        await storage.recoveryUpdate(userId, (cur) => ({ next: cancelWindow(cur), result: null }));
-        await storage.recoveryCancelClear(userId);
-        await mail(userId, 'Восстановление отменено', 'Восстановление отменено кодом отмены. Прежний пароль возвращён.');
+        const profile = await storage.profileGet(userId);
+        const primaryEmail = profile?.email ?? userId;
+        const backup = await storage.backupEmailGet(userId);
+        const locale = requestedLocale ?? profile?.locale ?? 'hy';
+        await storage.recoveryCancelWithOutbox(userId, r.windowPreviousHash, (cur) => ({ next: cancelWindow(cur), result: null }),
+          (tx) => mailToRecipients([primaryEmail, backup?.email], '', '', 'recovery_cancelled', { method: 'code' }, tx, locale));
         await alertDevices(userId, { kind: 'recovery_cancelled' });
         return send(res, 200, { ok: true });
       }
@@ -2753,19 +2837,22 @@ if (req.method === 'POST' && p === '/login') {
         if (!windowOpen(r, now())) return send(res, 404, { error: 'no active recovery' });
         // Отменить могут только устройства, существовавшие до запроса восстановления (D8).
         if (!(d.createdAt < r.windowStartedAt)) return send(res, 403, { error: 'only devices that existed before the recovery can cancel' });
-        // Вернуть прежний пароль и отключить устройства, появившиеся после запроса. PIN не меняется.
-        if (r.windowPreviousHash) await storage.setPasswordHash(d.userId, r.windowPreviousHash);
+        // Пароль, recovery state, cancellation code и уведомление фиксируются одной транзакцией.
         for (const rec of await storage.devicesOfUser(d.userId)) {
           if (!rec.revoked && rec.createdAt >= r.windowStartedAt) await revokeDevice(rec);
         }
-        await storage.recoveryUpdate(d.userId, (cur) => ({ next: cancelWindow(cur), result: null }));
-        await mail(d.userId, 'Восстановление отменено',
-          'Восстановление отменено с устройства, которое существовало до запроса. Прежний пароль возвращён.');
+        const profile = await storage.profileGet(d.userId);
+        const primaryEmail = profile?.email ?? d.userId;
+        const backup = await storage.backupEmailGet(d.userId);
+        await storage.recoveryCancelWithOutbox(d.userId, r.windowPreviousHash, (cur) => ({ next: cancelWindow(cur), result: null }),
+          (tx) => mailToRecipients([primaryEmail, backup?.email], '', '', 'recovery_cancelled', { method: 'device' }, tx, profile?.locale ?? 'hy'));
         await alertDevices(d.userId, { kind: 'recovery_cancelled' });
         return send(res, 200, { ok: true });
       }
 
       if (req.method === 'POST' && p === '/recovery/complete') {
+        const requestedLocale = body.locale === undefined ? null : resolveEmailLocale(body.locale);
+        if (body.locale !== undefined && !requestedLocale) return send(res, 400, { error: 'locale must be hy, ru or en' });
         const { code, pin, newPassword } = body;
         // Восстановление по почте: адрес вместо идентификатора (без входа идентификатора не знают).
         const userId = body.userId ?? (typeof body.email === 'string' ? await storage.userIdByEmail(normalizeEmail(body.email)) : null);
@@ -2793,26 +2880,33 @@ if (req.method === 'POST' && p === '/login') {
         if (typeof newPassword !== 'string' || newPassword.length < MIN_PASSWORD_LENGTH) {
           return send(res, 400, { error: `newPassword required (min ${MIN_PASSWORD_LENGTH} chars)` });
         }
-        // Новый пароль сразу (D1). Окно открывается; если уже открыто, не сдвигается (D8).
+        // Пароль, окно восстановления, код отмены и письмо фиксируются одной транзакцией.
         const previousHash = await storage.accountHash(userId);
-        await storage.setPasswordHash(userId, hashPassword(newPassword));
-        const keyResetAt = await storage.recoveryUpdate(userId, (r) => {
-          const next = completeRecovery(r, { nowMs: now(), previousHash });
-          return { next, result: next.windowKeyResetAt };
-        });
-        // Код отмены: для аккаунта без устройств тоже. Действует, пока открыто окно (D8).
+        const newPasswordHash = hashPassword(newPassword);
         const cancelCode = String(randomInt(0, 1_000_000)).padStart(6, '0');
-        await storage.recoveryCancelSet(userId, recoveryCancelHash(userId, cancelCode), keyResetAt);
-        await mail(userId, 'Восстановление выполнено',
-          `Пароль изменён. Вход с новых устройств откроется через 48 часов. Отменить можно с устройства, существовавшего до запроса, или кодом отмены: ${cancelCode}.`);
+        const profile = await storage.profileGet(userId);
+        const primaryEmail = profile?.email ?? userId;
+        const backup = await storage.backupEmailGet(userId);
+        const locale = requestedLocale ?? profile?.locale ?? 'hy';
+        const keyResetAt = await storage.recoveryCompleteWithOutbox(
+          userId, newPasswordHash,
+          (r) => {
+            const next = completeRecovery(r, { nowMs: now(), previousHash });
+            return { next, result: next.windowKeyResetAt };
+          },
+          recoveryCancelHash(userId, cancelCode),
+          (tx) => mailToRecipients([primaryEmail, backup?.email], '', '', 'recovery_completed', { cancelCode }, tx, locale),
+        );
         await alertDevices(userId, { kind: 'recovery_completed', keyResetAt: new Date(keyResetAt).toISOString() });
         return send(res, 200, { ok: true, keyResetAt: new Date(keyResetAt).toISOString() });
       }
 
       return send(res, 404, { error: 'not found' });
     } catch (e) {
-      if (e.code === 'MAIL_UNAVAILABLE') return send(res, 503, { error: 'mail is temporarily unavailable, try later' });
-      return send(res, 500, { error: e.message });
+      if (e.code === 'MAIL_UNAVAILABLE' || e.code === 'EMAIL_QUEUE_UNAVAILABLE') return send(res, 503, { error: 'email delivery is temporarily unavailable, try later' });
+      const errorCode = typeof e?.code === 'string' && /^[A-Z0-9_]{1,64}$/.test(e.code) ? e.code : 'INTERNAL';
+      logger?.error('request failed', { errorCode });
+      return send(res, 500, { error: 'internal server error' });
     }
   });
 

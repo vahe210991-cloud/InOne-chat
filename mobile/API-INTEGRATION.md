@@ -10,9 +10,9 @@ flutter run --dart-define=INONE_API_BASE_URL=https://your-staging-api.example
 
 The origin must be supplied by the project owner/operator. No production host is hard-coded.
 
-## Current server contract verified in main
+## Current server contract
 
-The route definitions below were checked against `inone-development-archive-0.6.0/engine/src/server.js` on the repository's `main` branch.
+Existing Beta 1.0 routes are maintained in the canonical engine. The account-locale routes and registration locale payload are introduced in Email Delivery PR #61 and are not available on `main` until that PR is merged.
 
 ### Health and readiness
 
@@ -25,14 +25,17 @@ The route definitions below were checked against `inone-development-archive-0.6.
 
 | Method | Route | Use |
 |---|---|---|
-| POST | `/login` | Email/password login; includes stable deviceId, label and platform |
+| POST | `/login` | Email/password login; includes stable deviceId, label and platform. If a local UI-language change is pending, pass `locale`; the backend saves it after successful authentication and before queuing login-security email |
 | POST | `/token/refresh` | Single-use refresh-token rotation |
 | POST | `/logout` | End current device session |
-| GET | `/profile` | Current account/profile and security hints |
-| POST | `/register/email` | Start verified email registration |
+| GET | `/profile` | Current account/profile, security hints and persisted in-app locale (`locale: hy\|ru\|en`) |
+| PATCH | `/profile/locale` | Update the authenticated account's selected in-app locale |
+| POST | `/register/email` | Start verified email registration; pass the selected app locale in `locale` (`hy`, `ru`, or `en`) |
 | POST | `/register/email/confirm` | Verify email code and receive registrationToken |
 | POST | `/register` | Create account using registrationToken |
-| POST | `/recovery/start` | Start account recovery |
+| POST | `/recovery/start` | Start account recovery; pass the currently selected UI `locale` (`hy`, `ru`, `en`) |
+| POST | `/recovery/cancel-by-code` | Cancel recovery by email code; pass the current UI `locale` |
+| POST | `/recovery/complete` | Complete recovery; pass the current UI `locale` |
 
 ### Rooms and organizations
 
@@ -69,7 +72,7 @@ The route definitions below were checked against `inone-development-archive-0.6.
 ## Client architecture
 
 - `ApiClient`: JSON HTTP transport, Bearer token injection, timeout and stable API errors.
-- `InOneSession`: in-memory access/refresh tokens, stable device ID in Keychain/Android Keystore, serialized refresh and one retry after 401.
+- `InOneSession`: in-memory access/refresh tokens, stable device ID and selected app locale in platform secure storage, serialized refresh and one retry after 401. Registration sends the selected locale; a pending locale is sent during login before any security email can be queued; authenticated locale changes use `/profile/locale`; recovery start/cancel/complete helpers carry the current UI locale. Authenticated operations are held if a pending locale synchronization cannot be completed.
 - `InOneRepositories`: typed profile, room, organization, device, approval and config reads.
 - `screen_api_catalog.dart`: maps approved/test screen IDs to safe GET probes.
 - Flutter owns network calls. The WebView receives no access token, refresh token or MLS secret.

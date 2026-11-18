@@ -1,3 +1,39 @@
+### 2026-11-16 — CI findings after first repair run
+
+- Backend Node suite on PR #67 executed 395 tests: 391 passed, 1 failed, 3 skipped. The remaining failure was an error-message compatibility assertion in `config.test.js`; strict shared key validation was correct, but its message did not preserve the established phrase `must be 32 bytes`. Updated the message without weakening validation.
+- Flutter validation confirmed the 73-screen catalogue and imported all approved UI assets (31 screen HTML files, 32 total HTML files, 5 WOFF2 fonts). It then failed because the PR #61 base workflow still had write permission and attempted to push generated assets to a stale branch, receiving non-fast-forward.
+- Replaced the Flutter workflow on PR #61 and PR #67 with the read-only workflow from the approved Beta 1 base: no `contents: write`, no commit, no push. The gallery check runs before code generation.
+- Also replaced PR #61's Rust-format auto-commit/push job with the read-only `cargo fmt --check` job. The earlier run's rustfmt made no changes and did not push.
+- Backend Node, PostgreSQL, OpenMLS, Rust bridge and Flutter checks must be rerun after these workflow/config fixes. Previous run is diagnostic only; not acceptance evidence.
+
+### 2026-11-16 — Beta 1 pre-test CI repair
+
+- Opened stacked PR #67 against Email Delivery PR #61; no merge to `main`.
+- CI log review isolated the Node failures to legacy tests selecting email by fixed Russian subject lines instead of stable template identity. The in-memory test transport now exposes template ID and locale, and affected tests assert template identity.
+- Production configuration and durable queue now share the same strict 32-byte email encryption-key parser. Production config fixtures include a valid key; malformed-key regression coverage added.
+- Recovery locale regression now supplies the active UI locale and verifies both recovery messages preserve it without mutating the saved account locale.
+- Flutter gallery validation now tolerates Dart formatting and runs before Flutter project/code generation.
+- Found P0 workflow on PR #61 head was restricted to PRs targeting `main`, preventing backend/PostgreSQL/Rust checks on stacked PRs. Removed that base-branch restriction in PR #61 head commit `11937d388c46cd5ad5cdb24dd247ad83142229d9`.
+- Validation for PR #67: pending GitHub Actions. Do not claim Node, PostgreSQL, Flutter, or native bridge PASS until jobs complete on the exact final head SHA.
+
+- CH-01 startup sequencing hardened: `data-api-onload` is invoked only after Flutter marks the WebView ready, avoiding lost early bridge messages. The screen now removes hard-coded demo chats, shows live backend room names/roles via `textContent`, and has a visible error target. Login and post-registration login without an authenticated token pair remain on SC-11/waiting.
+- CH-01 typed room-list slice added: HTML emits `GET /rooms/mine` with screen ID; Flutter allows only CH-01, uses `InOneRepositories.myRooms()` + `InOneRoomList` validation, then binds room display names/roles via safe text content. Existing backend `rooms-mine.test.js` is the historical runtime test basis; new inventory assertion is NOT RUN. Live Flutter→Node E2E NOT RUN.
+- Additional auth safety: a login response without an authenticated token pair remains on SC-11 in a waiting state; it cannot enter the authenticated menu. Device approval claim/poll lifecycle remains incomplete.
+## 2026-11-12 — Screen API integration and bridge ownership work
+
+- Started all five Beta 1.0 plan workstreams. Reused A1 and historical test evidence; no repeat A1.
+- Added screen API inventory generator/test, Flutter FRB ownership guard/test, backend live HTTP smoke test, and screen API inventory regression test.
+- Source ownership: Node/PostgreSQL backend remains archive engine tree; Flutter FRB crate `mobile/rust` links persistent OpenMLS `mls-client` in POC tree; standalone `mls-bridge` is not the Flutter dependency.
+- Hardened WebView API dispatch with per-screen allowlist. Added tests for cross-screen/unknown-call rejection.
+- Fixed verified-email registration ticket lifecycle: token remains host-only, new registration/logout clears it, registration requires host-held token, then normal login creates authenticated session per D11. Added Dart tests.
+- Backend request smoke test now starts real `createServer` and issues HTTP requests to route handlers. Flutter-to-live-backend E2E is still NOT RUN.
+- New report: `development/reports/2026-11-12-screen-api-integration-and-bridge-ownership.md`.
+- Historical test evidence baseline copied into this branch; exact historical PASS scopes remain unchanged.
+- New scripts/tests are committed but NOT RUN because no authorized runner was available in this session. Do not claim green.
+- Native MLS remains disabled; PR #45 remains Draft/open/unmerged; no WBS changes.
+
+---
+
 ## 2026-11-11 — Conservative repository file cleanup
 
 - Inspected the complete recursive Git tree on the current base (964 entries / 853 files; response not truncated) and grouped exact duplicate blobs by SHA.
@@ -231,6 +267,309 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - PR remains draft/open/unmerged; main unchanged by this task. Runtime WebView rendering, live API/bridge, visual parity and device E2E remain unverified.
 - WBS baseline v1.1 unchanged: Beta 1.0 42% implementation / 31% verification; Beta 2.0 2% / 0%; overall historical 25%.
 
+
+## 2026-11-11 — Beta 1.0 Stage 4 single-executor continuation
+
+- Owner instruction: ChatGPT is the sole developer/executor; do not assign or assume an external agent. Current product stage is Beta 1.0 only; Beta 2.0 is out of scope.
+- Preserved approved WBS v1.1 weights and Beta 1.0 baseline (42% implementation / 31% verification). No percentage increase claimed.
+- Added native MLS build-time feature gate defaulting to disabled; hardening changes cover logout key deletion, inbox replay idempotency, concurrent session initialization/handoff, Android JNI initialization error propagation, malformed MLS event rejection and crypto-error propagation.
+- Made iOS Protected Keychain runtime validation require signing secrets rather than silently accepting a skipped test.
+- Added report `development/reports/2026-11-11-stage-4-single-executor-progress.md`.
+- Latest source head at report time: `048db63a7817b28e38a3a8353f8665a713f56730`; report commit: `a73f59a253224eefa7b794c708666a3a20153519`.
+- CI runs #42976612169 (OpenMLS client) and #42976612175 (FRB) failed before the first step: `runner_id=0`, empty step arrays, no retrievable job logs. iOS dependent job skipped. Flutter mobile workflow is intentionally skipped for the Stage 4 branch; FRB workflow is intended to run Flutter analyze/tests and Android build.
+- No test command ran. Stage 4 is NOT ACCEPTED; no merge or deployment performed.
+- Critical open review item: OpenMLS provider storage and client metadata use separate SQLite connections; crash atomicity between ratchet-state mutation and durable inbox persistence is not yet established. Requires crash/restart test and a proven atomic/recoverable design.
+- Next: resolve runner allocation; implement/test MLS state + inbox atomicity; run Rust/OpenMLS, FRB, Flutter, Android Keystore and signed iOS Protected Keychain gates on one exact SHA.
+
+
+### 2026-11-11 — Post-report CI recheck
+
+- PR #45 documentation-updated head: `87089c610e03ba5302b316db07baa2d44d71260a`; source code head remains `048db63a7817b28e38a3a8353f8665a713f56730`.
+- Latest OpenMLS run #42976768215 and FRB run #42976768182 again failed before step 1 with `runner_id=0` and `steps=[]`; iOS dependent job skipped.
+- Flutter mobile run #42976768225 was skipped by the Stage 4 branch condition.
+- No source test executed; Stage 4 remains NOT ACCEPTED. Updated report section 8.
+
+
+### 2026-11-11 — MLS persistence transaction refactor
+
+- Refactored `mls-client` to use one SQLCipher connection for OpenMLS storage and client metadata.
+- Added a transaction-backed generic `DeviceProvider`; incoming MLS processing, ratchet-state writes, inbox row and processed marker now share one SQLite transaction. On failure, rollback and reload group state.
+- Wrapped server commit processing/merge, room creation and Welcome adoption in transactions.
+- Invite and revoked-device commits are staged and merged locally only after server acceptance; rejected commits are cleared without advancing the local epoch.
+- Added OpenMLS provider transaction rollback/commit regression and pending-commit discard regression. These tests are committed but have NOT executed.
+- Latest source SHA: `c8ba8f99c45cd532b0941fd774304b6763429511`.
+- CI #42977451436 (OpenMLS client) and #42977451456 (FRB) failed before step 1 with runner_id 0 and empty steps; iOS dependent job skipped. No source tests executed.
+- Updated detailed report section 4.1 and section 9. Stage 4 remains NOT ACCEPTED.
+
+
+### 2026-11-11 — Pending-commit restart reconciliation
+
+- Added `sync_room` reconciliation: clear an unmerged local pending commit before applying authoritative server state; reject synchronization if local MLS epoch is ahead of server epoch.
+- Source SHA: `e4133120d59ea833dd010bdaa10a7f7a4f281375`.
+- CI #42977699906 and #42977699954 again failed before step 1 with runner_id 0 and empty steps. OpenMLS rerun #42977708226 repeated the same result; FRB rerun #42977708143 remained queued at inspection.
+- Updated report section 10. No test executed; Stage 4 remains NOT ACCEPTED.
+
+
+### 2026-11-11 — Logout/session race hardening
+
+- Serialized logout against in-flight login, session restoration, MLS handoff and refresh operations.
+- Blocked new login/adoption/API requests while logout is active; in-memory credentials are always cleared even if persistent identity deletion fails.
+- Added regression test for logout during a blocked native MLS handoff.
+- Source SHA: `404775ff54c5e8a5eee175eb8d908c6c6929e2c0`.
+- CI #42977937179 (OpenMLS) and #42977937116 (FRB) failed before step 1 with runner_id 0 and empty steps; iOS dependent job skipped. No tests executed.
+- Updated report section 11. Stage 4 remains NOT ACCEPTED.
+
+
+### 2026-11-11 — Welcome ACK and SQLCipher key recovery
+
+- Added a durable Welcome ACK marker in the same transaction as the joined OpenMLS group and room index; retries ACK after restart without processing the same Welcome twice.
+- Split KeyStore existing-key lookup from key creation. Resume now refuses to create a replacement key; existing SQLCipher DB without protected key fails closed.
+- New-session creation checks DB/key consistency and attempts to remove partial DB/sidecars and a newly created key if initial construction fails.
+- Added tests for missing-key resume, existing DB without key and sidecar detection; not executed.
+- Source SHA: `da844b08240c3e67762997be9b65d8e91cab120f`.
+- CI #42978533658 (OpenMLS) and #42978533643 (FRB) failed before step 1 with runner_id 0 and empty steps; iOS dependent job skipped. No tests executed.
+- Updated report section 12. Stage 4 remains NOT ACCEPTED.
+
+
+### 2026-11-11 — Post-key-recovery CI recheck
+
+- PR #45 current head after report/continuity updates: `24e9a15e1fbc8446a18e68c84a779abe7a865729`; product source head: `da844b08240c3e67762997be9b65d8e91cab120f`.
+- OpenMLS run #42978646222 and FRB run #42978646245 failed before step 1 with runner_id 0 and empty steps; iOS dependent job skipped. Flutter mobile run #42978646254 skipped by branch condition.
+- No source tests/platform builds executed. Updated report section 13. Stage 4 remains NOT ACCEPTED.
+
+
+### 2026-11-11 — Logout/key-handling follow-up
+
+- Rust logout now catches remote logout panic and recovers poisoned session mutex so local SQLCipher/sidecar and platform-key cleanup still runs; added poisoned-lock regression.
+- Dart clears refresh token immediately after native open succeeds, before access-token snapshot.
+- Rust bridge initialization retry clears a failed cached initialization future.
+- Source SHA: `eab7b4d9a8889f4a5d69cdbb6de29dc2986272ab`.
+- CI #42979003433 (OpenMLS) and #42979003356 (FRB) failed before step 1 with runner_id 0 and empty steps; iOS dependent job skipped. No tests executed.
+- Updated report section 14. Stage 4 remains NOT ACCEPTED.
+
+
+### 2026-11-11 — CI recheck on current PR head
+
+- PR #45 head: `ca49b376a65766fb59e792cf2097ba7b4f2b50ce`; source head: `eab7b4d9a8889f4a5d69cdbb6de29dc2986272ab`.
+- OpenMLS #42979080737 and FRB #42979080732 failed before step 1 with runner_id 0 and empty steps; iOS dependent job skipped; Flutter mobile #42979080672 skipped by branch condition.
+- No tests or platform builds executed. Updated report section 15. Stage 4 remains NOT ACCEPTED.
+
+
+### 2026-11-11 — Secret-memory zeroization
+
+- Added RAII zeroization for Rust session tokens, SQLCipher key buffers, keyring byte buffers, request/response token JSON, authorization header copies and serialized token pairs.
+- Wrapped access/refresh token arguments at the Rust FFI open-session boundary.
+- Added `has_database_key` to check key presence without returning key bytes; all KeyStore implementations updated.
+- Source SHA: `3d4e64d4f302f7ddbe417903ede4dd4443b10975`.
+- CI #42979859714 (OpenMLS) and #42979859709 (FRB) failed before step 1 with runner_id 0 and empty steps; iOS dependent job skipped. No tests executed.
+- Updated report section 16. Stage 4 remains NOT ACCEPTED.
+
+
+### 2026-11-11 — CI recheck on current PR head after zeroization
+
+- PR #45 head: `c103cc2ae4eaa9e3ce721101f3581f3b6047e138`; product source head: `3d4e64d4f302f7ddbe417903ede4dd4443b10975`.
+- OpenMLS #42979954916 and FRB #42979955089 failed before step 1 with runner_id 0 and empty steps; iOS dependent job skipped; Flutter mobile #42979954833 skipped by branch condition.
+- No tests executed on current PR head. Updated report section 17. Stage 4 remains NOT ACCEPTED.
+
+
+### 2026-11-11 — Sole-executor instruction, source hardening and CI state
+
+- Owner confirmed Beta 1.0 is the current development stage and ChatGPT is the sole executor; no external agent is involved unless owner explicitly enables one later.
+- Fixed confirmed Rust identifier defect in `mobile/rust/src/api/session.rs`; removed duplicate `path_provider` in mobile pubspec.
+- Made Android/iOS native key-store initialization and Android JNI context initialization retryable after failures.
+- Added HTTPS/local-debug API origin validation in Rust and Flutter, rejected origin credentials/query/fragment, disabled redirects to protect bearer tokens, added regression tests and documented the policy.
+- Corrected bridge documentation for decrypted SQLCipher inbox history and acknowledgement state.
+- Current PR #45 head: `84248642e05e03c976a6f8d0eae0a9ab03a64765`.
+- CI #42981617948 (OpenMLS) and #42981617913 (FRB) FAILED with no step summaries; job-log downloads returned BlobNotFound; iOS dependent job skipped. Flutter mobile #42981617907 skipped by Stage 4 branch condition.
+- Local environment has Node/npm/Java but no rustc, cargo, Flutter, Dart or Xcode. No local tests/builds were executed.
+- Exact GitHub job failure cause remains UNKNOWN. All source changes in this entry are unverified until CI or an authorized build environment executes the tests.
+- Beta 1.0 WBS v1.1 is unchanged. Stage 4 NOT ACCEPTED; do not merge or enable native MLS.
+
+
+### 2026-11-11 — Credential-retention hardening
+
+- Rust login and device-approval JSON responses are zeroized after token extraction; one-time code and poll secret use Zeroizing.
+- Flutter login result excludes access/refresh tokens, approval code, poll secret and approval ID; response maps are cleared after ownership transfer.
+- Flutter refresh response fields are cleared; request body bytes and bearer headers are cleared after send.
+- Added regression assertion that login results do not expose auth secrets.
+- Source/PR head: `6e56671b632c993ebd15735caf5001ad2662012a`.
+- CI #42982066347 (OpenMLS) and #42982066366 (FRB) FAILED with null steps/log URLs; iOS dependent job skipped; Flutter mobile #42982066410 skipped by branch condition.
+- No tests executed. Stage 4 remains NOT ACCEPTED.
+
+
+### 2026-11-11 — P0 parity audit of active mobile MLS client
+
+- Compared active Stage 4 client `inone-engine-poc-0.6.0/mobile-mls/mls-client/src/lib.rs` with accepted P0 reference `inone-development-archive-0.6.0/engine/mobile-mls/mls-client/src/lib.rs` and P0 acceptance map.
+- Confirmed active client lacks durable Welcome receipts/ACK retry, membership journal/fingerprint, KeyPackage claim replay, WaitingForCommit, Commit quarantine and sticky RecoveryRequired.
+- Confirmed active invite still uses legacy GET KeyPackage endpoint rather than P0 claim ID reservation/replay.
+- These are active mobile-runtime gaps; archived P0 acceptance does not prove the Beta 1.0 mobile runtime contains them.
+- Added F1/F4/F5/P0.3 and claim/replay porting tasks to the Stage 4 checklist. No tests were run.
+
+
+### 2026-11-11 — Single-executor re-audit and local purge hardening
+
+- Owner confirmed: Beta 1.0 is the active stage; ChatGPT is the sole developer/executor. No external agent is assigned.
+- Corrected the earlier P0 parity audit: active mobile MLS source now contains Welcome receipts/ACK retry, membership journal/fingerprint, KeyPackage claim/replay, WaitingForCommit, Commit quarantine, RecoveryRequired and event identity validation. Six active test files have the same Git blob SHA as their accepted P0 archive counterparts. The earlier claim that these mechanisms were absent is superseded; source parity does not prove test execution.
+- Added cleanup_local_session_with_key_store so SQLCipher DB/WAL/SHM/journal removal still runs if platform Keystore/Keychain initialization fails; key deletion remains explicitly unconfirmed in that case. Added purge_removes_database_even_when_platform_key_store_initialization_fails.
+- Product source commit: 4670646558723ae5b33eeffdaa105f3a6df209ed. New regression is not executed.
+- Reviewed FRB workflow and mobile source. Generated Dart/Rust bindings, build hook and Rust lockfile are absent; the mobile README now documents the pinned code-generation sequence.
+- Found iOS workflow mismatch: current workflow builds with --no-codesign and does not import/reference the signing secrets described in previous docs. Protected Keychain runtime acceptance is not proven; signed workflow must be implemented.
+- Reran latest available earlier-head CI: OpenMLS #42985487129 and FRB #42985487107 still failed with no retrievable steps/logs; iOS dependent job skipped; Flutter mobile #42985487102 skipped by branch condition. No tests executed on the new source commit; connector returned no run records for it.
+- Local environment has no Rust/Cargo/Flutter/Dart/Xcode and no external network access. No local tests/builds claimed.
+- Updated report section 25 and mobile/README.md. Beta 1.0 WBS unchanged; Stage 4 NOT ACCEPTED; native MLS flag remains false.
+
+
+### 2026-11-11 — Single-executor Stage 4 hardening and verification gate
+
+- Owner confirmed Beta 1.0 is the active product stage and ChatGPT is the sole developer/executor until the owner says otherwise. No external agent used.
+- Source branch: `feature/stage-4-native-mls-runtime-2026-11-11`; recorded HEAD `df53ff48a42d9b9ca1dc7b19f049f8f3b05585a6`; PR #45 remains OPEN/Draft.
+- Added membership reconciliation, P0.2 staged Commit metadata verification, durable membership Commit journal, idempotent KeyPackage claims/replay, stale epoch rebase and journaled device removal.
+- Added durable Welcome receipt/ACK recovery, WaitingForCommit state, Commit quarantine, late-event/unreadable handling, API response shape validation and per-room outbox isolation.
+- Added Rust/Flutter recovery diagnostics and safe invite cancellation; updated Flutter bridge fake.
+- Updated native logout integration test to verify local SQLCipher database and platform key cleanup when the server logout endpoint is unreachable.
+- Updated OpenMLS client CI to test exact PR head with P0 archived engine fixture. iOS signed protected-Keychain runtime smoke is conditional on signing secrets; a skipped step is not PASS.
+- Latest CI on recorded HEAD: OpenMLS #42986269774 FAILURE with no step summary/logs; FRB #42986269879 FAILURE with no step summary/logs; Flutter mobile #42986269746 SKIPPED by configured branch condition. Job log retrieval returned BlobNotFound. Exact cause UNKNOWN.
+- Rerun attempts did not provide step summaries or logs. No local Cargo/Rust compiler available; no local test results are claimed. No Stage 4 test is marked PASS.
+- Detailed report: `development/reports/2026-11-11-stage-4-native-mls-hardening-progress.md`.
+- Acceptance: Stage 4 NOT ACCEPTED / BLOCKED. Beta 1.0 WBS v1.1 baseline unchanged at 42% implementation / 31% verification. Do not merge.
+
+
+### 2026-11-11 — CI privilege isolation and exact-SHA gate
+
+- Refactored the FRB workflow: default contents permission is read-only; only a separate generated-artifact commit job has contents:write; it rejects symlinks and copies only allowlisted generated outputs.
+- Added a read-only final-SHA verification job that reruns Rust formatting, native bridge tests, persistent OpenMLS/P0 engine integration tests, Flutter analyze/tests, Android APK build and Android Keystore runtime smoke test on the exact generated commit.
+- iOS job now depends on exact-SHA verification, checks out that SHA, requires signing secrets, validates certificate/profile/team/app/keychain-group/expiry, configures manual signing, runs Protected Keychain smoke test and verifies app signature/entitlements. Temporary signing material is cleaned up.
+- Corrected macOS base64 decoding to `base64 -D`; checked iOS profile and certificate team match.
+- Workflow source commit: `00efe8fd002a78f3bb0dbbc2033b9581eda8efec`; subsequent signing/verification fixes: `a754735ca14ffe274f720590a09ceb5b88b9bfcb`, `56102098427b8853b746b94d8c073c5aa97d0c2c`.
+- Latest PR head: `56102098427b8853b746b94d8c073c5aa97d0c2c`.
+- Latest OpenMLS #42987007179 and FRB #42987007308 failed with no steps/log URLs; FRB downstream commit/final-SHA/iOS jobs skipped. Flutter #42987007363 skipped by branch condition. No test command is evidenced as executed.
+- Stage 4 remains NOT ACCEPTED / BLOCKED; Beta 1.0 WBS unchanged; native MLS flag remains false.
+- Report section 26 records exact CI evidence and remaining unblock.
+
+
+### 2026-11-11 — Protected iOS environment and latest CI
+
+- Added GitHub Environment `ios-signing` to the iOS job so signing credentials are released only after environment protection approval. Required environment secrets are documented in mobile/README.md: base64 P12, P12 password, base64 provisioning profile and Team ID. Whether the owner has configured these settings is UNKNOWN.
+- Latest observed full CI on prior head `5e3a9dc7644bb9e2eb462a41de345b4ff9f7df3c`: OpenMLS #42987334965 FAILED, FRB #42987334938 FAILED before steps/logs, Flutter #42987335071 SKIPPED; downstream generated commit/final-SHA/iOS jobs skipped.
+- Latest PR head after README/report updates: `a9b81e0c04ce1826d361845b8596eae0c4acaaf9`. No workflow-run records for the immediately preceding README head were returned at the time of the report; current SHA still requires CI evidence.
+- No tests are accepted or claimed. Stage 4 remains blocked pending a working runner, generated FRB outputs and complete green matrix on one exact SHA.
+
+
+### 2026-11-11 — Exact-head CI recheck
+
+- PR #45 exact head at check: e8f50e566d1095ed7ad6ed9427abb5d666b5097b.
+- OpenMLS #42987463963 failed; job 130411972408 had steps=null/logs_url=null; log download returned BlobNotFound.
+- FRB #42987464006 failed; job 130411972791 had steps=null/logs_url=null; log download returned BlobNotFound. Generated commit, final-SHA verification and iOS jobs skipped.
+- Flutter #42987463998 skipped by the explicit Stage 4 branch condition.
+- Combined status API returned no status entries for the exact SHA. No test command is evidenced as executed; exact job-start failure reason UNKNOWN.
+- Report section 28 records evidence. Owner needs to provide the job-level failure message from GitHub Actions UI or restore an authorized runner. No diagnosis is guessed.
+
+
+### 2026-11-11 — Logout fail-closed and crash-consistency regressions
+
+- Rust `Client.logout` now attempts remote logout but always deletes local SQLCipher session-token row and clears in-memory access/refresh tokens; added offline-server regression.
+- Flutter `InOneSession.logout` clears saved MLS user identity on every explicit logout attempt, even if native purge fails; missing native runtime/device identity is now an explicit error. Added two tests to prevent automatic resume after failed purge/unavailable runtime.
+- Added Rust regressions for wrong protected-key mismatch without replacement, partial new-session initialization cleanup, and child-process termination with an open SQLCipher WAL transaction (OpenMLS storage/inbox/processed writes must all roll back).
+- These source/test changes are not executed.
+- Exact tested head: `54711b873349a8adb575f27d9c1fcccebbc49081`. FRB #42988592622 and OpenMLS #42988592592 failed with no steps/log URL; log retrieval returned BlobNotFound. Flutter #42988592656 skipped. No tests evidenced as run.
+- Report section 29 records details. Stage 4 remains NOT ACCEPTED / BLOCKED; Beta 1.0 WBS unchanged; native MLS flag false.
+
+
+### 2026-11-11 — Owner execution mandate
+
+- Created previously missing `development/AI-AGENT-MANDATE.md` referenced by root AGENTS.md.
+- Recorded owner instruction: ChatGPT sole executor; no external agent unless explicitly authorized; current product stage Beta 1.0; no assumptions as facts; accept only complete criteria with green tests on one exact SHA; concise reports with criteria, WBS percentage and checklist; archive reports in GitHub; no product merge without owner approval.
+- Updated WORKING-RULES startup checklist to include the mandate.
+- Governance-only change. No test result or acceptance status changed.
+
+
+### 2026-11-11 — Latest CI retry after logout regression
+
+- Exact code/test head: `5ca865573e7ed8949698ce7eda7d0adbf5f5915a`.
+- FRB #42988901680: FAILED; generation job `130416646502` had no steps/log URL; downstream commit/final-SHA/iOS jobs skipped.
+- OpenMLS #42988901678: FAILED; job `130416646666` had no steps/log URL.
+- Flutter #42988901824: SKIPPED by branch condition.
+- Log retrieval returned BlobNotFound. No test command evidenced as executed; exact failure cause UNKNOWN.
+- Report section 31. Stage 4 remains NOT ACCEPTED / BLOCKED.
+
+
+### 2026-11-11 — Exact-head CI after crash-test naming correction
+
+- The process-exit regression is now named `process_crash_rolls_back_openmls_storage_and_inbox_atomically`; it tests OpenMLS signature-key storage plus inbox/processed writes, not a live group ratchet.
+- Latest PR #45 head: `28aa6f488472688ae5d728e18da8ef24910d540d`.
+- OpenMLS #42989119932 failed with no steps/log URL; FRB #42989119937 failed with no steps/log URL and downstream jobs skipped; Flutter #42989120066 skipped.
+- No test command evidenced as executed. Exact failure cause UNKNOWN. Report section 32.
+
+
+### 2026-11-11 — Current-head CI status
+
+- Latest PR #45 head checked: `d81e05a794f10aa47e414dcc8d8920ffcd35755e`.
+- OpenMLS #42989207053 failed; job `130417656507` had no steps/log URL and log retrieval returned BlobNotFound.
+- FRB #42989207170 failed; job `130417656993` had no steps/log URL and log retrieval returned BlobNotFound. Generated commit/final-SHA/iOS jobs skipped.
+- Flutter #42989207122 skipped by branch condition.
+- No test command evidenced as executed; exact job-start failure cause UNKNOWN. Report section 33.
+
+
+### 2026-11-11 — Latest current-head CI retry
+
+- PR #45 head checked: `e7e19ce9de18e6042b36e5bd5f2ae9700796afd1`.
+- FRB #42989322261 failed; job `130418031253` had no steps/log URL; log retrieval returned BlobNotFound; downstream jobs skipped.
+- OpenMLS #42989322167 failed; job `130418031986` had no steps/log URL; log retrieval returned BlobNotFound.
+- Flutter #42989322186 skipped by branch condition.
+- No test command evidenced as executed; exact failure cause UNKNOWN. Report section 34.
+
+
+### 2026-11-11 — Latest exact-head CI and trigger policy
+
+- FRB workflow now runs its full matrix only for workflow-file and `mobile/**` changes; documentation-only edits no longer trigger native CI.
+- Latest PR #45 head: `bfb87598068239c1107233d930ee79f25ff62d77`.
+- FRB #42989491362 and OpenMLS #42989491373 failed with no steps/log URLs; log retrieval returned BlobNotFound. Flutter #42989491354 skipped.
+- No test command evidenced as executed. Exact failure cause UNKNOWN. Report section 35.
+
+
+### 2026-11-11 — PR #45 failed-job rerun
+
+- Re-read PR #45, mandate, WBS v1.1, working rules and Stage 4 reports/continuity.
+- Latest recorded PR head: `f6384a0bd68460849cbc9b9ce0fa6d7e9fcb9a6a`; latest code-triggered run SHA: `bfb87598068239c1107233d930ee79f25ff62d77`.
+- Re-ran failed jobs in FRB run #42989491362 and OpenMLS run #42989491373. Latest attempts still failed with `steps=null`, `logs_url=null`; log retrieval returned `BlobNotFound`. Latest job IDs: `130426024038` and `130426036241`.
+- FRB generated-commit/final-SHA/iOS jobs skipped; Flutter run #42989491354 skipped by branch condition. No test/build/codegen command is evidenced as executed.
+- No speculative workflow/source edit made because the failure occurs before observable steps. Exact Actions startup cause remains UNKNOWN.
+- Stage 4 remains NOT ACCEPTED / BLOCKED; verification accepted 0%; native MLS disabled; no merge. See report section 36.
+
+
+### 2026-11-11 — CI trigger-filter correction
+
+- A docs-only archive commit generated FRB #42991893141 and OpenMLS #42991893195 because `pull_request.paths` sees the aggregate PR diff; FRB `push` also lacked a `paths` filter. Both jobs again failed before observable steps/logs; Flutter #42991893163 skipped. Log retrieval returned BlobNotFound.
+- Corrected `.github/workflows/openmls-frb-codegen.yml` to use explicit `push.paths` for the workflow file and `mobile/**`, removing the aggregate `pull_request` trigger. Corrected `.github/workflows/openmls-client.yml` by removing the aggregate `pull_request` trigger; its existing push path allowlist remains. Manual dispatch remains in both.
+- These are source-reviewed workflow trigger changes only; no passing workflow/test result is claimed. Same-repository PR head pushes remain covered; fork PR automation is not covered by this branch-specific setup.
+- Stage 4 remains NOT ACCEPTED / BLOCKED, verification accepted 0%, native MLS disabled, no merge. See report section 37.
+
+
+### 2026-11-11 — Current Stage 4 branch hand-back
+
+- Workflow trigger corrections and continuity archive are committed on `feature/stage-4-native-mls-runtime-2026-11-11`; latest verified commit at report time: `16a522a358a5b3d0d1f9b82f70785a0f599478ea`.
+- Re-fetched and verified both workflow files. FRB uses branch-scoped `push.paths` for the workflow file and `mobile/**`; OpenMLS uses its existing push path allowlist; aggregate PR path triggers removed; manual dispatch retained.
+- Available execution container has Node.js only; no Rust/Cargo, Flutter/Dart or Xcode. No local tests/builds run. Actions jobs continue to fail before observable steps/logs; exact cause unknown.
+- Stage 4 NOT ACCEPTED / BLOCKED; verification accepted 0%; native MLS disabled; no merge. Report section 38.
+
+### 2026-11-16 — Email delivery and API error-path hardening
+
+- Continued the owner-approved Email Delivery implementation on PR #61. Added configurable PostgreSQL outbox lease duration and heartbeat renewal while SMTP is in flight; stale claims are not sent after lease ownership is lost.
+- Added a PostgreSQL integration test with two workers and an SMTP operation exceeding two lease periods. This test still requires the PR's PostgreSQL CI job to execute.
+- Unexpected HTTP 500 responses now return a stable generic error. Only a constrained machine-readable error code is logged; exception messages, SQL details, hostnames and stack traces are not returned to clients or copied into this log.
+- Added a persistent-store regression test for the HTTP error disclosure path.
+- PR #63's security-hygiene head `35e5729464f5d598f1c14fc234d0680d76a1cfc1` passed all seven observed CI jobs: Backend Node suite, PostgreSQL integration suite, OpenMLS client check/tests, Rust bridge check/tests, Rust formatting, P0 room-list regression and Flutter validation. This validates that CI runners are functioning for that commit; it does not validate PR #61's changed backend.
+- PR #61's stacked base branch is `feature/beta1-screen-api-integration-2026-11-12`. Its P0 workflow originally filtered pull requests to base `main`, so PR #61 received only the Flutter workflow. The base branch workflow was updated at `38d812d81b9a2d81543fc961bc6ba7b93d78cd24` to run P0 checks for stacked PRs and make Rust formatting read-only. A new PR #61 head commit is required to trigger the full matrix against the updated base.
+- No PR was merged and no runtime test result is claimed for the new email lease or HTTP error regression tests.
+
+- First full stacked CI run #43900951278 reached and executed backend/Rust/PostgreSQL jobs; Flutter validation failed only at the legacy step that pushed generated UI assets to `task/ui-archive-import-2026-11-09` and received a non-fast-forward rejection. The UI archive extraction and counts had passed (31 screens, 32 HTML files, 5 WOFF2 fonts).
+- Corrected the PR #61 base branch workflow at `e4f2002a6e1be2baed83e3a8aa5573d1b06170a1`: Flutter validation now has `contents: read` and keeps imported UI files in the ephemeral runner workspace without pushing commits. Re-triggering full CI against this updated workflow.
+
+- The first Backend Node suite on PR #61 exposed stale legacy tests that expected Russian email copy while requests relied on the new Armenian default. Updated the test helpers/requests to explicitly request `ru` where their assertions inspect Russian copy; product behavior remains driven by the user's selected locale. The production-config test now supplies the required 32-byte email encryption key when testing SMTP mode.
+- Flutter analyze on the first full run found a malformed `mobile/lib/core/network/api_environment.dart` source line and a nullable bridge route guard; repaired both.
+- The same run confirmed generated FRB Dart files are intentionally absent from source and must be generated before Flutter analysis. The PR #61 base workflow now installs Rust 1.91 and `flutter_rust_bridge_codegen 2.13.0`, runs the documented native-assets integration/generation sequence, prepares Android NDK context, generates the Rust lockfile and tests the native Rust bridge before Flutter analysis/build. The workflow remains read-only (`contents: read`) and does not push generated files.
+- Updated PR #61 head to trigger the complete validation matrix against the corrected base workflows. Awaiting the rerun before treating any of these fixes as verified.
+
 ## 2026-11-13 — Owner decision: split product into InOne and InOne Business
 
 - Owner approved two separate applications:
@@ -241,4 +580,3 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Important: this decision defines product boundaries only. It does not automatically decide separate/shared identity, backend, databases, repositories, or infrastructure.
 - No application code, UI, API, backend, database, CI workflow, PR state, or branch topology changed. No Actions were started and no PR was merged.
 - Next: inventory and classify existing screens, routes, repositories, APIs, and navigation into InOne, InOne Business, shared platform, or unresolved; prepare an impact map for owner review before code changes.
-

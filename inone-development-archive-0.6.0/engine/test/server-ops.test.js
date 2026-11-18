@@ -3,6 +3,8 @@ import { randomBytes } from 'node:crypto';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from '../src/server.js';
+import { ChatClient, DEFAULT_PASSWORD as PW } from '../src/client.js';
+import { storeForTest } from './helpers.js';
 
 const PEPPER = randomBytes(24).toString('hex');
 const FIXTURE_1 = randomBytes(16).toString('hex');
@@ -82,6 +84,32 @@ test('журнал запросов не содержит тело запрос�
     assert.ok(!JSON.stringify(entries).includes('trace=1'));
   } finally {
     await stop();
+  }
+});
+
+test('неожиданная ошибка backend не раскрывает внутреннее сообщение клиенту', async (t) => {
+  const db = await storeForTest(PEPPER);
+  if (!db) {
+    t.skip('DATABASE_URL is required for the persistent-store error-path test');
+    return;
+  }
+  const entries = [];
+  const logger = { debug() {}, info() {}, warn() {}, error: (message, fields) => entries.push({ message, ...fields }) };
+  const { base, stop } = await start({ store: db.store, logger });
+  try {
+    const client = await ChatClient.create(base, '@safe-error-response:inone.test', 'ERROR_DEVICE', PW);
+    const secretDetail = 'postgres-internal-host-and-query-detail';
+    db.store.profileGet = async () => { throw Object.assign(new Error(secretDetail), { code: 'XX000' }); };
+    const response = await fetch(`${base}/profile`, {
+      headers: { authorization: `Bearer ${client.token}` },
+    });
+    assert.equal(response.status, 500);
+    assert.deepEqual(await response.json(), { error: 'internal server error' });
+    assert.ok(!JSON.stringify(entries).includes(secretDetail));
+    assert.equal(entries.at(-1)?.errorCode, 'XX000');
+  } finally {
+    await stop();
+    await db.close();
   }
 });
 

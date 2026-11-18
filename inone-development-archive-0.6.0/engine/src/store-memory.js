@@ -126,8 +126,8 @@ export function createMemoryStore({ pinPepper }) {
     activeDeviceCount: (userId) => [...devices.values()].filter((d) => d.userId === userId && !d.revoked).length,
     activeDevices: () => [...devices.values()].filter((d) => !d.revoked).map(copy),
     devicesOfUser: (userId) => [...devices.values()].filter((d) => d.userId === userId).map(copy),
-    createFile({ fileId, ownerId, roomId, kind, size, sha256, createdAt }) {
-      files.set(fileId, { fileId, ownerId, roomId, kind, size, sha256, status: 'pending', createdAt, completedAt: null });
+    createFile({ fileId, ownerId, ownerDeviceId = '', roomId, kind, size, sha256, createdAt }) {
+      files.set(fileId, { fileId, ownerId, ownerDeviceId, roomId, kind, size, sha256, status: 'pending', createdAt, completedAt: null });
     },
     getFile(fileId) {
       const f = files.get(fileId);
@@ -504,6 +504,59 @@ export function createMemoryStore({ pinPepper }) {
       recovery.set(userId, structuredClone(next));
       return result;
     },
+
+    async recoveryUpdateWithOutbox(userId, change, enqueue) {
+      if (!accounts.has(userId)) return change(freshRecovery()).result;
+      const cur = recovery.get(userId);
+      const { next, result } = change(cur ? structuredClone(cur) : freshRecovery());
+      recovery.set(userId, structuredClone(next));
+      try {
+        if (enqueue) await enqueue(null, result);
+      } catch (error) {
+        if (cur) recovery.set(userId, cur); else recovery.delete(userId);
+        throw error;
+      }
+      return result;
+    },
+    async recoveryCancelWithOutbox(userId, passwordHash, change, enqueue) {
+      if (!accounts.has(userId)) return change(freshRecovery()).result;
+      const oldPassword = accounts.get(userId);
+      const oldRecovery = recovery.get(userId);
+      const oldCancel = recoveryCancels.get(userId);
+      const { next, result } = change(oldRecovery ? structuredClone(oldRecovery) : freshRecovery());
+      if (passwordHash) accounts.set(userId, passwordHash);
+      recovery.set(userId, structuredClone(next));
+      recoveryCancels.delete(userId);
+      try {
+        if (enqueue) await enqueue(null, result);
+      } catch (error) {
+        accounts.set(userId, oldPassword);
+        if (oldRecovery) recovery.set(userId, oldRecovery); else recovery.delete(userId);
+        if (oldCancel) recoveryCancels.set(userId, oldCancel);
+        throw error;
+      }
+      return result;
+    },
+    async recoveryCompleteWithOutbox(userId, passwordHash, change, cancelCodeHash, enqueue) {
+      if (!accounts.has(userId)) throw new Error('recovery account not found');
+      const oldPassword = accounts.get(userId);
+      const oldRecovery = recovery.get(userId);
+      const oldCancel = recoveryCancels.get(userId);
+      const { next, result } = change(oldRecovery ? structuredClone(oldRecovery) : freshRecovery());
+      accounts.set(userId, passwordHash);
+      recovery.set(userId, structuredClone(next));
+      recoveryCancels.set(userId, { codeHash: cancelCodeHash, expiresAt: result });
+      try {
+        if (enqueue) await enqueue(null, result);
+      } catch (error) {
+        accounts.set(userId, oldPassword);
+        if (oldRecovery) recovery.set(userId, oldRecovery); else recovery.delete(userId);
+        if (oldCancel) recoveryCancels.set(userId, oldCancel); else recoveryCancels.delete(userId);
+        throw error;
+      }
+      return result;
+    },
+
     recoveryHashes() {
       return Object.fromEntries([...recovery]
         .filter(([, r]) => r.reqCodeHash)
@@ -1054,6 +1107,12 @@ mlsPendingRemovalsFor(userId) {
       const p = profiles.get(userId);
       return p ? structuredClone(p) : null;
     },
+    profileLocaleSet(userId, locale) {
+      const profile = profiles.get(userId);
+      if (!profile) return false;
+      profile.locale = locale;
+      return true;
+    },
     userIdByEmail(email) {
       for (const [userId, p] of profiles) if (p.emailVerified && p.email === email) return userId;
       return null;
@@ -1065,7 +1124,7 @@ mlsPendingRemovalsFor(userId) {
       }
       return null;
     },
-    createVerifiedAccount({ userId, passwordHash, email, nickname, nowMs, provider = null, joinDefaultOrg = false }) {
+    createVerifiedAccount({ userId, passwordHash, email, nickname, nowMs, provider = null, joinDefaultOrg = false, locale = 'hy' }) {
       if (accounts.has(userId)) return 'account';
       for (const p of profiles.values()) {
         if (p.emailVerified && p.email === email) return 'email';
@@ -1075,7 +1134,7 @@ mlsPendingRemovalsFor(userId) {
       if (key && providerLinks.has(key)) return 'link';
       accounts.set(userId, passwordHash);
       if (joinDefaultOrg) addOrgMembership(DEFAULT_ORG_ID, userId, 'member', nowMs);
-      profiles.set(userId, { email, emailVerified: true, nickname, createdAt: nowMs });
+      profiles.set(userId, { email, emailVerified: true, nickname, createdAt: nowMs, locale });
       if (key) providerLinks.set(key, { userId, email, linkedAt: nowMs });
       return 'ok';
     },
@@ -1085,6 +1144,19 @@ mlsPendingRemovalsFor(userId) {
       const cur = emailCodes.get(email);
       const { next, result } = change(cur ? structuredClone(cur) : freshEmailCode());
       emailCodes.set(email, structuredClone(next));
+      return result;
+    },
+
+    async emailCodeUpdateWithOutbox(email, change, enqueue, locale = 'hy') {
+      const cur = emailCodes.get(email);
+      const { next, result } = change(cur ? structuredClone(cur) : freshEmailCode());
+      emailCodes.set(email, structuredClone({ ...next, locale }));
+      try {
+        if (enqueue) await enqueue(null, result);
+      } catch (error) {
+        if (cur) emailCodes.set(email, cur); else emailCodes.delete(email);
+        throw error;
+      }
       return result;
     },
 
@@ -1128,6 +1200,19 @@ mlsPendingRemovalsFor(userId) {
       deviceWaits.set(key, { label, platform, activateAt, cancelHash, createdAt });
       return 'ok';
     },
+
+    async deviceWaitCreateWithOutbox({ userId, deviceId, label, platform, activateAt, cancelHash, createdAt }, enqueue) {
+      const key = `${userId}|${deviceId}`;
+      if (deviceWaits.has(key)) return 'exists';
+      deviceWaits.set(key, { label, platform, activateAt, cancelHash, createdAt });
+      try {
+        if (enqueue) await enqueue(null);
+      } catch (error) {
+        deviceWaits.delete(key);
+        throw error;
+      }
+      return 'ok';
+    },
     deviceWaitDelete(userId, deviceId) {
       return deviceWaits.delete(`${userId}|${deviceId}`);
     },
@@ -1142,7 +1227,20 @@ mlsPendingRemovalsFor(userId) {
       backupEmails.set(userId, { email, createdAt: nowMs });
       return 'ok';
     },
+
+    async backupEmailSaveWithOutbox(userId, email, nowMs, enqueue) {
+      for (const [uid, b] of backupEmails) if (uid !== userId && b.email === email) return 'taken';
+      if (enqueue) await enqueue(null);
+      backupEmails.set(userId, { email, createdAt: nowMs });
+      return 'ok';
+    },
     backupEmailRemove(userId) {
+      return backupEmails.delete(userId);
+    },
+
+    async backupEmailRemoveWithOutbox(userId, enqueue) {
+      if (!backupEmails.has(userId)) return false;
+      if (enqueue) await enqueue(null);
       return backupEmails.delete(userId);
     },
 

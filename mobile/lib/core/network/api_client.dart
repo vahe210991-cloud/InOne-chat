@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import 'api_exception.dart';
@@ -18,9 +19,47 @@ class ApiClient {
     required AccessTokenProvider accessTokenProvider,
     http.Client? httpClient,
     this.timeout = const Duration(seconds: 20),
-  })  : _baseUri = Uri.parse(baseUrl),
+  })  : _baseUri = _parseBaseUri(baseUrl),
         _accessTokenProvider = accessTokenProvider,
         _http = httpClient ?? http.Client();
+
+  static Uri _parseBaseUri(String baseUrl) {
+    final uri = Uri.parse(baseUrl.trim());
+    if (!uri.hasAuthority ||
+        uri.host.isEmpty ||
+        uri.userInfo.isNotEmpty ||
+        uri.hasQuery ||
+        uri.hasFragment) {
+      throw ArgumentError.value(
+        baseUrl,
+        'baseUrl',
+        'API origin must have a host and must not contain credentials, query, or fragment',
+      );
+    }
+    if (uri.scheme == 'https') return uri;
+    if (uri.scheme == 'http' && kDebugMode && _isLocalDevelopmentHost(uri.host)) {
+      return uri;
+    }
+    throw ArgumentError.value(
+      baseUrl,
+      'baseUrl',
+      'HTTPS is required; HTTP is allowed only for private/local debug endpoints',
+    );
+  }
+
+  static bool _isLocalDevelopmentHost(String host) {
+    if (host.toLowerCase() == 'localhost') return true;
+    final address = InternetAddress.tryParse(host);
+    if (address == null) return false;
+    if (address.isLoopback || address.isLinkLocal) return true;
+    final bytes = address.rawAddress;
+    if (address.type == InternetAddressType.IPv4) {
+      return bytes[0] == 10 ||
+          (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31) ||
+          (bytes[0] == 192 && bytes[1] == 168);
+    }
+    return bytes.length == 16 && (bytes[0] & 0xfe) == 0xfc;
+  }
 
   final Uri _baseUri;
   final AccessTokenProvider _accessTokenProvider;
@@ -66,6 +105,7 @@ class ApiClient {
     }
 
     final request = http.Request(method.toUpperCase(), uri)
+      ..followRedirects = false
       ..headers.addAll(headers);
 
     if (body != null) {
@@ -115,7 +155,27 @@ class ApiClient {
         code: 'invalid_response',
         retryable: false,
       );
+    } finally {
+      _clearRequestSecrets(request, headers);
     }
+  }
+
+  void _clearRequestSecrets(
+    http.Request request,
+    Map<String, String> headers,
+  ) {
+    try {
+      final bytes = request.bodyBytes;
+      bytes.fillRange(0, bytes.length, 0);
+    } catch (_) {
+      // Request implementations may finalize their body buffer after send.
+    }
+    try {
+      request.headers.remove('authorization');
+    } catch (_) {
+      // Keep cleanup best-effort for finalized request implementations.
+    }
+    headers.remove('authorization');
   }
 
   Uri _resolve(String path) {

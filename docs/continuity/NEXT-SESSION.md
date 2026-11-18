@@ -1,3 +1,24 @@
+# Next execution — continue screen/API integration (2026-11-12)
+
+Read first:
+1. `development/reports/2026-11-12-historical-test-evidence-baseline.md`
+2. `development/reports/2026-11-12-screen-api-integration-and-bridge-ownership.md`
+3. `development/reports/2026-11-12-A1-engine-tree-drift-audit.md`
+4. Stage 3 API/backend audit and Stage 4 single-executor report.
+
+Continue from branch `feature/beta1-screen-api-integration-2026-11-12`; do not restart A1 or broad source inventory.
+
+Immediate steps:
+1. On an authorized Node runner, execute `node scripts/audit-screen-api-contracts.mjs`, `node scripts/check-mobile-bridge-ownership.mjs`, and focused backend tests. Record exact SHA and output.
+2. Run Flutter analyze/tests, especially registration ticket and screen-scoped bridge tests.
+3. Run focused CH-01 tests and Flutter analyze/tests; the typed repository, response validation, ready-gated bridge dispatch and safe HTML data binding are already implemented.
+4. Build Flutter-to-live-Node integration test so a bridge-triggered request is observable at backend receipt. Do not claim all 31 screens are connected until each screen's API path is dispatched and tested.
+5. Continue route-by-route for organization requests, recovery/provider auth, search, push and MLS chat with explicit DTO and authorization checks.
+
+No merge without owner approval. Keep `INONE_MLS_NATIVE_ENABLED=false`; Stage 4 blocked; WBS v1.1 unchanged.
+
+---
+
 # Immediate next steps — 2026-11-09 12:11 Europe/Tallinn
 
 1. Run Flutter CI independently on post-import PR #36 head `cb09a4058719576df6d589f1f8b59be517b592b5`; verify the exact candidate SHA.
@@ -219,6 +240,230 @@ Latest exact-head evidence: [push run 42465804591](https://github.com/vahe210991
 
 Before any work, read [AGENTS.md](../../AGENTS.md), the full [AI agent mandate](../../development/AI-AGENT-MANDATE.md), and the full [owner-approved progress baseline](../../development/PROGRESS-BASELINE.md). The WBS is approved and immutable without a new owner decision. Current UI stage is Beta 1.0 UI-01 through UI-06; continue from [UI integration report](../../development/reports/2026-11-09-1015-ui-integration-start.md) and branch `feat/beta1-ui-source-integration`. The owner-provided Ui.zip has been checksum-verified locally; its full binary/source package is not yet confirmed uploaded to GitHub. Do not claim import complete until remote files/checksums are verified.
 
+
+## Current next-session instructions — Beta 1.0 Stage 4 (2026-11-11)
+
+**Execution ownership:** ChatGPT is the sole developer/executor. Do not prepare or delegate tasks to an external agent unless the owner explicitly instructs otherwise.
+
+**Scope:** Beta 1.0 only. Keep the approved WBS v1.1 weights and baseline unchanged.
+
+1. Start from the latest PR #45 head; read `development/WORKING-RULES.md`, `development/PROGRESS-BASELINE.md`, `docs/continuity/CURRENT-STATE.md`, `docs/continuity/DECISIONS.md`, and `development/reports/2026-11-11-stage-4-single-executor-progress.md`.
+2. Resolve GitHub Actions runner allocation. The latest OpenMLS and FRB jobs failed before their first step with runner_id 0 and empty step arrays. Do not infer a billing, policy or source-code cause without evidence.
+3. Design and implement an atomic or recoverable persistence boundary between OpenMLS ratchet-state mutation and durable inbox persistence. Add crash injection, app restart and duplicate-delivery regressions.
+4. Execute Rust/OpenMLS tests, FRB generation, Flutter analyze/tests, Android APK + Keystore runtime test, iOS device/simulator builds and signed iOS Protected Keychain runtime test.
+5. Keep `INONE_MLS_NATIVE_ENABLED` false until all platform and security gates pass. No plaintext or Megolm fallback.
+6. Run the complete required matrix on one exact final SHA. Record commands, results, logs and artifacts. A skipped or unexecuted test is not a pass.
+7. Do not merge PR #45 or claim Stage 4 accepted until all required checks are green. Owner approval is required.
+8. Do not recalculate Beta 1.0 progress or alter WBS weights without verified evidence and owner-approved scope.
+
+Report: `development/reports/2026-11-11-stage-4-single-executor-progress.md`.
+
+
+## Additional Stage 4 verification tasks — 2026-11-11
+
+- Verify the one-connection transaction-backed OpenMLS provider compiles and passes its rollback/commit regression.
+- Add/run process-kill crash/restart coverage around `process_and_persist_incoming`; prove ratchet state and inbox remain consistent.
+- Add/run restart coverage for a server-accepted invite/revocation commit when the process terminates before local merge.
+- Verify `clear_pending_commit` behavior on OpenMLS 0.8 with the rejected-commit regression.
+- Verify that invite/revocation server errors clear pending commits without advancing local epoch.
+- Execute full Rust/OpenMLS, FRB, Flutter, Android Keystore and signed iOS Protected Keychain matrix on one exact final SHA. Current GitHub Actions jobs still fail before runner allocation; no tests have executed.
+
+
+## Additional recovery checks — 2026-11-11
+
+- Test Welcome ACK retry after local group commit and process restart; verify the same Welcome is not processed twice.
+- Test SQLCipher resume with an absent platform key; assert that no replacement key is generated.
+- Test new-session initialization failure after key creation; verify both database artifacts and the newly created key are cleaned.
+- Test DB/key mismatch through every session-creation entrypoint (`connect`, `connect_with_session`, `connect_with_approval`).
+
+
+## Current execution instructions — Beta 1.0 / Stage 4 — 2026-11-11
+
+- Work as the sole ChatGPT executor. Do not assume or assign an external agent; owner will notify if one becomes available.
+- Current product stage is Beta 1.0. Use approved WBS v1.1 only; do not include Beta 2.0/future scope in current acceptance.
+- Current PR #45 head: `84248642e05e03c976a6f8d0eae0a9ab03a64765`.
+- Review and verify the latest source changes: undeclared Rust identifier correction, duplicate pubspec dependency removal, retryable Android/iOS secure-store initialization, retryable Android JNI context, HTTPS/local-debug origin validation, disabled redirects, and associated regression tests.
+- Current CI #42981617948 (OpenMLS) and #42981617913 (FRB) failed before any retrievable step summary; logs returned BlobNotFound. iOS dependent job skipped. Flutter mobile #42981617907 skipped by branch condition. Do not infer the root cause.
+- Local environment currently has no Rust/Cargo/Flutter/Dart/Xcode. Do not claim local tests. Obtain an executable GitHub Actions runner or another owner-authorized build environment before declaring any test result.
+- Continue code review and implement tests for: transaction-backed OpenMLS storage rollback/commit; incoming ratchet+inbox atomicity under process crash; duplicate delivery after restart; Welcome ACK retry after local durable join; server-accepted invite/revocation commit recovery after crash before local merge; missing SQLCipher key fail-closed; key/database mismatch; logout cleanup.
+- Verify Android Keystore and iOS Protected Keychain runtime behavior, signed iOS build and Android runtime smoke tests.
+- Keep `INONE_MLS_NATIVE_ENABLED=false` until all required platform and security checks pass.
+- No merge of PR #45 without complete green required matrix on one exact final SHA and owner approval. Do not update Beta 1.0 progress percentages until WBS criteria have accepted evidence.
+
+Report: `development/reports/2026-11-11-stage-4-single-executor-progress.md`.
+
+
+## Additional next-session tasks — credential handling
+
+- Verify Rust login/approval response zeroization tests and ensure all response branches zeroize.
+- Verify Flutter login callers only receive sanitized maps and no screen/log exposes tokens, one-time codes or poll secrets.
+- Verify request body buffer cleanup and bearer-header removal do not break IOClient/MockClient or retries.
+- Run full Rust/OpenMLS and Flutter test suites on the exact current PR head `6e56671b632c993ebd15735caf5001ad2662012a`; current workflows have no step summaries or log URLs.
+
+
+## Historical P0 parity implementation checklist — ported, verification pending
+
+The following invariants have been ported into the active `inone-engine-poc-0.6.0/mobile-mls/mls-client` while preserving SQLCipher/platform-key architecture. The next task is verification, not re-porting:
+
+1. F1: durable Welcome receipts, duplicate handling, quarantine and ACK retry after restart.
+2. F4: membership journal, exact staged-Commit fingerprint, idempotent replay and safe rebase.
+3. F5: event identity/epoch validation before processing/marking.
+4. P0.3: room-scoped WaitingForCommit, Commit quarantine and sticky RecoveryRequired.
+5. KeyPackage claim/replay: durable claim intent, claim IDs, server reservation replay.
+6. Adapted regression sources are present in the active mobile client; test execution remains unverified.
+7. Preserve secure storage, token zeroization, HTTPS and no-redirect hardening.
+8. Execute the complete CI and Android/iOS runtime matrix on one final SHA. No acceptance until green.
+
+Reference files:
+- `inone-development-archive-0.6.0/engine/mobile-mls/P0-ACCEPTANCE-MAP.md`
+- `inone-development-archive-0.6.0/engine/mobile-mls/mls-client/src/lib.rs`
+- `inone-development-archive-0.6.0/engine/mobile-mls/mls-client/tests/welcome_receipt_recovery.rs`
+- `inone-development-archive-0.6.0/engine/mobile-mls/mls-client/tests/membership_journal.rs`
+- `inone-development-archive-0.6.0/engine/mobile-mls/mls-client/tests/waiting_for_commit.rs`
+- `inone-development-archive-0.6.0/engine/mobile-mls/mls-client/tests/commit_quarantine.rs`
+
+
+## Next session — Beta 1.0 Stage 4 verification gate (2026-11-11)
+
+1. Start from PR #45 branch `feature/stage-4-native-mls-runtime-2026-11-11`, latest recorded HEAD `df53ff48a42d9b9ca1dc7b19f049f8f3b05585a6`. Re-fetch PR head before any work.
+2. Read `development/reports/2026-11-11-stage-4-native-mls-hardening-progress.md` and this continuity file set.
+3. Do not assume any test passed. Latest OpenMLS #42986269774 and FRB #42986269879 failed without step summaries/logs; Flutter job #42986269746 was skipped. Obtain usable logs or restore CI observability before diagnosing.
+4. Do not start an external agent; owner has specified that ChatGPT is the sole developer until further notice.
+5. Do not weaken tests or remove checks. Fix only causes confirmed by actual logs.
+6. Run full mls-client integration suite against P0 engine; run FRB codegen, Rust bridge tests, Flutter analyze/tests, Android build/emulator runtime, iOS build and signed protected-Keychain runtime when signing secrets are available.
+7. Record exact final SHA, test counts and run links. A skipped platform test is not PASS.
+8. Keep refresh-token rotation and SQLCipher key in Rust/native secure storage; preserve fail-closed behavior and no plaintext fallback.
+9. Keep Beta 1.0 WBS v1.1 baseline unchanged until evidence-based acceptance; do not work on Beta 2.0.
+10. Do not merge PR #45 or #46 without owner approval.
+
+
+## Current next-session instructions — Beta 1.0 Stage 4 — 2026-11-11 (supersedes earlier heads)
+
+1. Work as ChatGPT sole executor. Do not create or assume an external-agent workstream.
+2. Active stage is Beta 1.0. Preserve approved WBS v1.1; do not include Beta 2.0 scope or change percentages.
+3. Re-fetch PR #45 before editing. Latest verified branch head at this entry: `56102098427b8853b746b94d8c073c5aa97d0c2c`. PR remains OPEN/Draft.
+4. P0 parity porting is complete at source level; do not re-port F1/F4/F5/P0.3 or claim their tests passed. Six active regression files are blob-identical to accepted archive files; execute them on the final SHA.
+5. Review the new local-purge fallback in `mobile/rust/src/api/session.rs` (commit `4670646558723ae5b33eeffdaa105f3a6df209ed`) and execute its regression when a runner is available.
+6. The FRB workflow now defaults to read-only; generated outputs are committed by a separate allowlisted write job; a final-SHA job reruns Rust/OpenMLS, Flutter and Android checks; iOS is downstream and requires signing assets.
+7. Latest OpenMLS #42987007179 and FRB #42987007308 failed with no step summaries/log URLs; FRB generated commit/final-SHA/iOS jobs skipped. Flutter #42987007363 skipped by branch condition. Exact cause is UNKNOWN; do not infer billing, permissions or runner policy.
+8. Generated FRB bindings, hook/build.dart and mobile/rust/Cargo.lock remain absent because codegen did not execute. Do not claim the mobile app is buildable from a clean checkout until these outputs are generated and committed.
+9. Obtain a working GitHub Actions execution path or an owner-authorized build environment. Current local environment has no Rust/Cargo/Flutter/Dart/Xcode and no outbound network.
+10. Run the full matrix on one exact final SHA: Rust format/tests, active mls-client integration against P0 engine, FRB codegen, Flutter analyze/tests, Android APK/emulator Keystore, iOS build and signed Protected Keychain runtime. A skipped test is not PASS.
+11. Keep `INONE_MLS_NATIVE_ENABLED=false`. Do not merge PR #45 or claim Stage 4 accepted until all required checks are green on the exact same final SHA and owner approval is given.
+
+Report: `development/reports/2026-11-11-stage-4-single-executor-progress.md`, sections 25–26.
+
+
+## Latest continuation instruction — Beta 1.0 Stage 4 — 2026-11-11
+
+- Re-fetch PR #45 and the current branch head before any edits. Latest source/workflow head checked: `5e3a9dc7644bb9e2eb462a41de345b4ff9f7df3c`; subsequent commits are documentation/continuity updates. PR remains OPEN/Draft.
+- Do not assign an external agent. ChatGPT is the sole executor until the owner says otherwise.
+- P0 parity implementation is present in active source; six checked regression files are blob-identical to the accepted archive. Do not re-port; run tests on the final SHA.
+- Local-purge fallback regression was added in `4670646558723ae5b33eeffdaa105f3a6df209ed`; execute it when a runner is available.
+- FRB workflow is read-only by default; generated output is committed by an isolated allowlisted write job; final-SHA job runs Rust/OpenMLS, Flutter and Android tests. iOS job is behind the protected GitHub Environment `ios-signing`.
+- Owner must configure `ios-signing` with required reviewers and environment secrets: `IOS_SIGNING_CERTIFICATE_P12` (base64 P12), `IOS_SIGNING_CERTIFICATE_PASSWORD`, `IOS_PROVISIONING_PROFILE` (base64 profile), `IOS_TEAM_ID`. Do not send secret values in chat.
+- Latest full CI on 5e3a9dc: OpenMLS #42987334965 FAILED with no steps/logs; FRB #42987334938 FAILED with no steps/logs and downstream jobs skipped; Flutter #42987335071 SKIPPED. Exact failure cause UNKNOWN.
+- Generated FRB bindings, build hook and Rust lockfile remain absent until codegen executes. No local Rust/Cargo/Flutter/Dart/Xcode or network is available.
+- Obtain an executing GitHub Actions runner or owner-authorized build environment. Do not diagnose from guesswork.
+- Run full matrix on one exact final SHA. A failed job with no steps/logs is not a test result; skipped platform jobs are not PASS.
+- Keep `INONE_MLS_NATIVE_ENABLED=false`; no merge; no WBS percentage changes until all Beta 1.0 criteria have green evidence and owner approval.
+
+Report: `development/reports/2026-11-11-stage-4-single-executor-progress.md`, sections 25–27.
+
+
+## Exact next action — unblock CI on current Stage 4 head
+
+- Re-fetch PR #45 head before work. At the last check it was e8f50e566d1095ed7ad6ed9427abb5d666b5097b; report/continuity commits may have advanced it since.
+- Latest exact-head runs: OpenMLS #42987463963 and FRB #42987464006 FAILED with no steps/log URLs; Flutter #42987463998 SKIPPED. FRB downstream jobs skipped. The combined status API returned no entries.
+- Obtain the exact job-level failure message from the GitHub Actions UI for run #42987464006 or #42987463963. Do not infer runner/billing/permissions causes from BlobNotFound.
+- Once the reason is known, restore execution, then run the full matrix on one exact final SHA. Generated FRB artifacts remain absent; do not accept Stage 4 until codegen, Rust/OpenMLS, Flutter, Android and signed iOS checks all pass.
+- Keep Beta 1.0 WBS unchanged and INONE_MLS_NATIVE_ENABLED=false. No merge.
+
+Report: development/reports/2026-11-11-stage-4-single-executor-progress.md, section 28.
+
+
+## Latest next actions — logout safety and crash consistency — 2026-11-11
+
+- Review Rust `Client.logout` and execute `logout_clears_local_session_tokens_when_server_is_unavailable`.
+- Review Flutter `InOneSession.logout` and execute both new tests in `mobile/test/core/session/inone_session_logout_test.dart`.
+- Execute Rust tests `existing_database_with_wrong_protected_key_is_rejected_without_replacement`, `failed_new_session_initialization_removes_partial_database_and_key`, and `process_crash_rolls_back_openmls_storage_and_inbox_atomically`.
+- Latest test-source head: `54711b873349a8adb575f27d9c1fcccebbc49081`. FRB #42988592622 and OpenMLS #42988592592 failed with no step/log data; Flutter #42988592656 skipped. Do not infer cause.
+- Obtain the exact job-level failure message from GitHub Actions UI or an authorized working runner. Then run the complete Beta 1.0 matrix on one final SHA.
+- Do not mark any new regression PASS until executed. Keep native MLS disabled and do not merge.
+- Report section 29.
+
+
+## Governance prerequisite — current owner instruction
+
+Read `development/AI-AGENT-MANDATE.md` at the start of every session. ChatGPT remains sole executor; do not delegate to an external agent unless the owner explicitly authorizes it. Active product stage is Beta 1.0. Acceptance remains based on all criteria and green tests on one exact SHA.
+
+
+## Latest CI retry evidence — 2026-11-11
+
+- Code/test head: `5ca865573e7ed8949698ce7eda7d0adbf5f5915a`.
+- FRB run #42988901680 and OpenMLS run #42988901678 failed with no steps/log URLs; logs returned BlobNotFound. Flutter run #42988901824 skipped.
+- Do not infer root cause. Obtain the exact job-level failure message from GitHub Actions UI or restore an authorized runner.
+- New Rust/Dart regressions remain NOT RUN. No PASS claims. See report section 31.
+
+
+## Latest exact-head state — 2026-11-11
+
+- PR #45 head: `28aa6f488472688ae5d728e18da8ef24910d540d`.
+- OpenMLS #42989119932 and FRB #42989119937 failed before steps/logs; Flutter #42989120066 skipped. No test command evidenced as executed.
+- Crash regression `process_crash_rolls_back_openmls_storage_and_inbox_atomically` tests OpenMLS storage plus inbox/processed transaction rollback on process exit; do not describe it as live ratchet mutation.
+- Exact CI failure reason UNKNOWN; obtain job-level message from GitHub Actions UI or restore an authorized runner. Report section 32.
+
+
+## Current-head CI unblock — 2026-11-11
+
+- Latest PR #45 head checked: `d81e05a794f10aa47e414dcc8d8920ffcd35755e`.
+- OpenMLS #42989207053 and FRB #42989207170 failed before steps/logs; logs returned BlobNotFound. Flutter #42989207122 skipped.
+- No tests are evidenced as executed. Obtain the exact job-level failure message from GitHub Actions UI for run #42989207170 or #42989207053. Do not infer cause.
+- Once execution is restored, run all Beta 1.0 acceptance checks on one exact final SHA. Keep native MLS disabled; no merge. Report section 33.
+
+
+## Latest current-head CI retry — 2026-11-11
+
+- PR #45 head checked: `e7e19ce9de18e6042b36e5bd5f2ae9700796afd1`.
+- FRB #42989322261 and OpenMLS #42989322167 failed before steps/logs; logs returned BlobNotFound. Flutter #42989322186 skipped.
+- No test command evidenced as executed. Obtain the exact job-level failure message from GitHub Actions UI or restore an authorized runner. Do not infer cause.
+- Report section 34. Keep Beta 1.0 scope, native MLS disabled and no merge.
+
+
+## Latest CI gate — 2026-11-11
+
+- Native matrix path filter: workflow file + `mobile/**`; documentation-only edits do not trigger the matrix.
+- Latest PR #45 head: `bfb87598068239c1107233d930ee79f25ff62d77`.
+- FRB #42989491362 and OpenMLS #42989491373 failed before steps/logs; logs returned BlobNotFound. Flutter #42989491354 skipped.
+- No test command evidenced as executed. Obtain the exact job-level failure message from GitHub Actions UI or restore an authorized runner. Report section 35.
+
+
+## Stage 4 — next action after failed-job rerun — 2026-11-11
+
+- PR #45 latest recorded head: `f6384a0bd68460849cbc9b9ce0fa6d7e9fcb9a6a`; latest code-triggered run SHA: `bfb87598068239c1107233d930ee79f25ff62d77`.
+- Failed-job reruns #42989491362 and #42989491373 were accepted by the API but again failed with no step summaries/log URLs; logs return `BlobNotFound`. Latest job IDs: `130426024038` and `130426036241`.
+- No test/codegen/build command is evidenced as executed. Do not modify runner labels, permissions or acceptance checks speculatively.
+- Obtain the exact job-start failure detail visible in the Actions UI or use an owner-authorized working runner; then execute the full Beta 1.0 matrix on one exact final SHA.
+- Keep native MLS disabled, WBS v1.1 unchanged, Stage 4 NOT ACCEPTED / BLOCKED; no merge. Report section 36.
+
+
+## Stage 4 — next after trigger-filter correction — 2026-11-11
+
+- Workflow changes are committed in the Stage 4 branch: FRB trigger now uses explicit push paths for workflow file + `mobile/**`; OpenMLS uses its existing push path allowlist; aggregate PR path triggers removed; manual dispatch retained.
+- Rationale: docs-only commits were still triggering due aggregate PR diff matching `pull_request.paths`, and FRB `push` had no path allowlist.
+- Verify workflow syntax and confirm push-triggered jobs start on the new workflow commits. If they still fail before steps/logs, obtain the exact Actions startup failure from GitHub UI or an authorized working runner; do not infer a code/test failure.
+- Run the complete Beta 1.0 matrix on one exact final SHA once a runner executes steps. iOS protected-Keychain smoke test also requires the configured `ios-signing` environment/secrets.
+- Keep Stage 4 NOT ACCEPTED / BLOCKED, WBS v1.1 unchanged, `INONE_MLS_NATIVE_ENABLED=false`; no merge. Report section 37.
+
+
+## Stage 4 — current hand-back — 2026-11-11
+
+- Continue on `feature/stage-4-native-mls-runtime-2026-11-11`; last verified commit before this note: `16a522a358a5b3d0d1f9b82f70785a0f599478ea`.
+- Workflow trigger correction is committed: FRB push allowlist covers its workflow file + `mobile/**`; OpenMLS push allowlist covers its workflow file + MLS client/engine paths; both retain manual dispatch and no longer use aggregate PR path triggers.
+- Next, verify Actions on the latest workflow commits via the GitHub UI. If jobs still fail before steps/logs, obtain the exact startup failure detail or restore an authorized runner. Do not change source/tests based on missing logs.
+- Once a runner executes steps, run all Rust/OpenMLS, FRB codegen, Flutter, Android Keystore, iOS build and signed iOS Keychain checks on one exact final SHA. iOS environment secrets remain required for signed runtime acceptance.
+- Keep Stage 4 NOT ACCEPTED / BLOCKED, WBS v1.1 unchanged, `INONE_MLS_NATIVE_ENABLED=false`; no merge. Report section 38.
+
 ## New owner-approved product direction — 2026-11-13
 
 Before expanding screen implementation, perform a product-boundary impact review based on the owner's decision to create two separate apps:
@@ -235,4 +480,3 @@ Required next work:
 - Preserve existing Beta 1.0, identity, database, MLS, and security decisions unless explicitly superseded by a separate owner decision.
 
 Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone-and-inone-business--2026-11-13).
-

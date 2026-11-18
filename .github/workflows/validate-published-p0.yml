@@ -2,12 +2,11 @@ name: Validate recovered InOne P0 source
 
 on:
   pull_request:
-    branches: [main]
     paths:
       - "inone-development-archive-0.6.0/engine/**"
       - ".github/workflows/validate-published-p0.yml"
   push:
-    branches: [main]
+    branches: [main, fix/email-delivery-shutdown-and-key-hardening-2026-11-17]
     paths:
       - "inone-development-archive-0.6.0/engine/**"
       - ".github/workflows/validate-published-p0.yml"
@@ -29,8 +28,6 @@ jobs:
   rust-format:
     name: Rust format (1.91)
     runs-on: ubuntu-24.04
-    permissions:
-      contents: write
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -40,22 +37,7 @@ jobs:
         with:
           toolchain: "1.91"
           components: rustfmt
-      - name: Apply Rust formatting
-        working-directory: inone-development-archive-0.6.0/engine/mobile-mls
-        run: |
-          cargo fmt --manifest-path mls-client/Cargo.toml
-          cargo fmt --manifest-path mls-bridge/Cargo.toml
-      - name: Commit formatting if needed
-        if: github.event_name == 'pull_request'
-        run: |
-          if ! git diff --quiet; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add inone-development-archive-0.6.0/engine/mobile-mls
-            git commit -m "style(mls): apply rustfmt"
-            git push origin HEAD:${{ github.event.pull_request.head.ref }}
-          fi
-      - name: Verify Rust formatting
+      - name: Verify Rust formatting without modifying the PR branch
         working-directory: inone-development-archive-0.6.0/engine/mobile-mls
         run: |
           cargo fmt --manifest-path mls-client/Cargo.toml -- --check
@@ -75,6 +57,9 @@ jobs:
           cache: npm
           cache-dependency-path: inone-development-archive-0.6.0/engine/package-lock.json
       - run: npm ci
+        working-directory: ${{ env.ENGINE_DIR }}
+      - name: Audit production and development dependencies
+        run: npm audit --audit-level=high
         working-directory: ${{ env.ENGINE_DIR }}
       - run: npm test
         working-directory: ${{ env.ENGINE_DIR }}
@@ -178,3 +163,5 @@ jobs:
       - name: Run bridge tests
         working-directory: inone-development-archive-0.6.0/engine/mobile-mls/mls-bridge
         run: cargo test --locked --no-fail-fast
+
+# Exact-head P0 validation is enabled for this stacked PR branch.

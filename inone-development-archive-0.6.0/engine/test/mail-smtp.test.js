@@ -12,22 +12,33 @@ const PASS = 'MAIL-SECRET-PASSWORD-1';
 const FROM = 'InOne <noreply@inone.example>';
 
 
-/** Тело письма: если оно закодировано в base64 (так кодируется русский текст), декодируем его. */
-function messageBody(raw) {
-  const cut = raw.indexOf('\r\n\r\n');
-  const headers = raw.slice(0, cut);
-  const body = raw.slice(cut + 4);
-  if (/Content-Transfer-Encoding: base64/i.test(headers)) return Buffer.from(body.replace(/\s+/g, ''), 'base64').toString('utf8');
-  return body;
+/** Decode text MIME alternatives from Nodemailer test capture. */
+function decodedMimeBodies(raw) {
+  return raw.split(/\r\n--[^\r\n]+(?:--)?\r\n/g).map((part) => {
+    const separator = part.indexOf('\r\n\r\n');
+    if (separator < 0) return '';
+    const headers = part.slice(0, separator);
+    const body = part.slice(separator + 4).trim();
+    if (/Content-Transfer-Encoding: base64/i.test(headers)) return Buffer.from(body.replace(/\s+/g, ''), 'base64').toString('utf8');
+    return body;
+  }).join('\n');
 }
 
-function startSmtp() {
+function startSmtp({ rejectRecipient = null } = {}) {
   const received = [];
   const server = new SMTPServer({
     disabledCommands: ['STARTTLS'],
     onAuth(auth, session, callback) {
       if (auth.username === USER && auth.password === PASS) return callback(null, { user: auth.username });
       return callback(new Error('bad credentials'));
+    },
+    onRcptTo(address, session, callback) {
+      if (rejectRecipient && address.address.toLowerCase() === rejectRecipient.toLowerCase()) {
+        const error = new Error('recipient rejected by test SMTP server');
+        error.responseCode = 550;
+        return callback(error);
+      }
+      return callback();
     },
     onData(stream, session, callback) {
       let raw = '';
@@ -48,10 +59,40 @@ test('письмо с кодом уходит через SMTP и содержи�
   const smtp = await startSmtp();
   try {
     const mailer = createSmtpMailer({ host: '127.0.0.1', port: smtp.port, requireTls: false, user: USER, password: PASS, from: FROM, timeoutMs: 3000 });
-    await mailer.send({ to: 'anna@example.test', subject: 'Код подтверждения', text: 'Ваш код: 482913' });
+    await mailer.send({ to: 'anna@example.test', subject: 'Կոդի հաստատում', text: 'Ձեր կոդը՝ 482913', html: '<!doctype html><html lang="hy"><body><strong>482913</strong></body></html>' });
     assert.equal(smtp.received.length, 1);
     assert.deepEqual(smtp.received[0].envelope.rcptTo.map((r) => r.address), ['anna@example.test']);
-    assert.match(messageBody(smtp.received[0].raw), /482913/);
+    assert.match(smtp.received[0].raw, /text\/html/i);
+    const decoded = decodedMimeBodies(smtp.received[0].raw);
+    assert.match(decoded, /482913/);
+    assert.match(decoded, /Ձեր կոդը/);
+    assert.match(smtp.received[0].raw, /multipart\/alternative/i);
+    mailer.close();
+  } finally {
+    await smtp.stop();
+  }
+});
+
+test('отклонённый SMTP recipient не считается доставленным', async () => {
+  const smtp = await startSmtp({ rejectRecipient: 'rejected@example.test' });
+  try {
+    const mailer = createSmtpMailer({
+      host: '127.0.0.1',
+      port: smtp.port,
+      requireTls: false,
+      user: USER,
+      password: PASS,
+      from: FROM,
+      timeoutMs: 3000,
+    });
+    const error = await mailer.send({
+      to: 'rejected@example.test',
+      subject: 'Код',
+      text: 'Ваш код: 482913',
+    }).catch((value) => value);
+    assert.equal(error.code, 'MAIL_UNAVAILABLE');
+    assert.equal(error.reason, 'envelope');
+    assert.equal(smtp.received.length, 0);
     mailer.close();
   } finally {
     await smtp.stop();

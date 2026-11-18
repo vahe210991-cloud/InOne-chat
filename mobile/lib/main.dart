@@ -12,13 +12,22 @@ import 'core/data/inone_repositories.dart';
 import 'core/data/inone_profile.dart';
 import 'core/data/profile_load_status.dart';
 import 'core/data/profile_ui_bridge.dart';
+import 'core/mls/rust_mls_session_bridge.dart';
 import 'core/network/api_environment.dart';
+import 'core/network/api_exception.dart';
 import 'core/session/inone_session.dart';
+import 'core/session/recovery_deep_link.dart';
 import 'core/test_api/screen_api_catalog.dart';
 import 'test_screens.dart';
 import 'test_gallery_loader.dart';
 
 const _configuredApiBaseUrl = String.fromEnvironment('INONE_API_BASE_URL');
+// Native MLS remains opt-in until the owner accepts the Android/iOS runtime,
+// persistence, recovery and security gates on the exact tested commit.
+const _nativeMlsEnabled = bool.fromEnvironment(
+  'INONE_MLS_NATIVE_ENABLED',
+  defaultValue: false,
+);
 
 void main() => runApp(const InOneApp());
 
@@ -51,7 +60,7 @@ class ApprovedScreensHost extends StatefulWidget {
   State<ApprovedScreensHost> createState() => _ApprovedScreensHostState();
 }
 
-class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
+class _ApprovedScreensHostState extends State<ApprovedScreensHost> with WidgetsBindingObserver {
   late final WebViewController _controller;
   late final InOneSession _session;
   late final InOneRepositories _repositories;
@@ -65,6 +74,9 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
   ProfileLoadStatus? _profileLoadStatus;
   int _profileRequestId = 0;
   bool _lastProfileAuthentication = false;
+  String _lastSelectedLocale = 'hy';
+  bool _recoveryLinkInFlight = false;
+  final Set<int> _handledRecoveryLinkFingerprints = <int>{};
 
   bool get _isApproved => _selectedKey.startsWith('approved:');
   bool get _isHandoff => _selectedKey.startsWith('handoff:');
@@ -125,9 +137,20 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
       configured: _configuredApiBaseUrl,
       isAndroid: Platform.isAndroid,
     );
-    _session = InOneSession(baseUrl: apiBaseUrl);
+    _session = InOneSession(
+      baseUrl: apiBaseUrl,
+      nativeMlsBridge: _nativeMlsEnabled &&
+              (Platform.isAndroid || Platform.isIOS)
+          ? RustMlsSessionBridge()
+          : null,
+    );
     _repositories = InOneRepositories(_session);
     _session.addListener(_onSessionChanged);
+    WidgetsBinding.instance.addObserver(this);
+    final initialRoute = WidgetsBinding.instance.platformDispatcher.defaultRouteName;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_handleRecoveryRoute(initialRoute));
+    });
     unawaited(_session.initialize().catchError((Object _) {}));
 
     _controller = WebViewController()
@@ -256,7 +279,8 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
     try {
       await _controller.runJavaScript(
         "if (window.InOne) { window.InOne.setThemeMode('auto'); "
-        "window.InOne.setInsets(${padding.top}, ${padding.bottom}); }",
+        "window.InOne.setInsets(${padding.top}, ${padding.bottom}); "
+        "if (typeof window.InOne.runAutoApi === 'function') window.InOne.runAutoApi(); }",
       );
     } catch (_) {
       if (mounted) setState(() => _error = 'Не удалось инициализировать утверждённый экран');
@@ -342,7 +366,91 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
     ''');
   }
 
+  @override
+  Future<bool> didPushRoute(String route) => _handleRecoveryRoute(route);
+
+  @override
+  Future<bool> didPushRouteInformation(RouteInformation routeInformation) =>
+      _handleRecoveryRoute(routeInformation.uri.toString());
+
+  Future<bool> _handleRecoveryRoute(String rawRoute) async {
+    final payload = RecoveryDeepLink.parse(rawRoute);
+    if (payload == null) return false;
+    final fingerprint = Object.hash(payload.userId, payload.token);
+    if (_handledRecoveryLinkFingerprints.contains(fingerprint)) return true;
+    if (_recoveryLinkInFlight) return true;
+    _recoveryLinkInFlight = true;
+    try {
+      await _session.confirmRecoveryLink(
+        userId: payload.userId,
+        token: payload.token,
+      );
+      if (!mounted) return true;
+      final message = switch (payload.locale) {
+        'ru' => 'Восстановление подтверждено. Вернитесь в приложение и введите код из SMS.',
+        'en' => 'Recovery confirmed. Return to the app and enter the SMS code.',
+        _ => 'Վերականգնումը հաստատված է։ Վերադարձեք հավելված և մուտքագրեք SMS կոդը։',
+      };
+      _handledRecoveryLinkFingerprints.add(fingerprint);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    } on ApiException catch (error) {
+      if (!mounted) return true;
+      final message = switch (error.code) {
+        'recovery expired' => switch (payload.locale) {
+            'ru' => 'Ссылка восстановления истекла. Запросите новую.',
+            'en' => 'The recovery link expired. Request a new one.',
+            _ => 'Վերականգնման հղումը ժամկետանց է։ Խնդրեք նորը։',
+          },
+        'no active recovery' => switch (payload.locale) {
+            'ru' => 'Активного запроса восстановления нет.',
+            'en' => 'There is no active recovery request.',
+            _ => 'Վերականգնման ակտիվ հարցում չկա։',
+          },
+        'wrong link' => switch (payload.locale) {
+            'ru' => 'Ссылка восстановления недействительна.',
+            'en' => 'The recovery link is invalid.',
+            _ => 'Վերականգնման հղումն անվավեր է։',
+          },
+        _ => switch (payload.locale) {
+            'ru' => 'Не удалось подтвердить восстановление. Попробуйте ещё раз.',
+            'en' => 'Could not confirm recovery. Please try again.',
+            _ => 'Չհաջողվեց հաստատել վերականգնումը։ Փորձեք կրկին։',
+          },
+      };
+      if (!error.retryable) _handledRecoveryLinkFingerprints.add(fingerprint);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    } catch (_) {
+      if (mounted) {
+        final message = switch (payload.locale) {
+          'ru' => 'Нет соединения. Не удалось подтвердить восстановление.',
+          'en' => 'Connection unavailable. Recovery could not be confirmed.',
+          _ => 'Կապ չկա։ Չհաջողվեց հաստատել վերականգնումը։',
+        };
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      }
+    } finally {
+      _recoveryLinkInFlight = false;
+    }
+    return true;
+  }
+
+  Future<void> _persistLocale(String locale) async {
+    try {
+      await _session.setLocale(locale);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось сохранить язык интерфейса')),
+      );
+    }
+  }
+
   void _onSessionChanged() {
+    final locale = _session.locale;
+    if (locale != _lastSelectedLocale) {
+      _lastSelectedLocale = locale;
+      if (mounted) setState(() {});
+    }
     final authenticated = _session.isAuthenticated;
     if (authenticated == _lastProfileAuthentication) return;
     _lastProfileAuthentication = authenticated;
@@ -521,7 +629,7 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
 
     final call = message.call;
     final route = call == null ? null : claudeSupportedApiCalls[call];
-    if (route == null) {
+    if (call == null || route == null || !claudeScreenAllowsApiCall(message.screenId, call)) {
       await _setClaudeScreenState('unavailable', 'Этот API-маршрут пока не подключён');
       return;
     }
@@ -545,13 +653,18 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
       } else if (call == 'POST /register') {
         await _session.registerAccount(
           email: (message.body['email'] ?? '').toString(),
-          registrationToken: (message.body['registrationToken'] ?? '').toString(),
           password: (message.body['password'] ?? '').toString(),
           nickname: (message.body['nickname'] ?? '').toString(),
           phone: message.body['phone']?.toString(),
         );
       } else if (call == 'POST /logout') {
         await _session.logout();
+      } else if (call == 'GET /rooms/mine') {
+        final rooms = await _repositories.myRooms();
+        final roomText = rooms.isEmpty
+            ? 'Пока нет чатов'
+            : rooms.map((room) => '${room.displayName} · ${room.role}').join('\n');
+        await _setClaudeScreenData({'roomsText': roomText});
       } else {
         await _session.request(
           route.method,
@@ -560,12 +673,13 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
           body: message.body.isEmpty ? null : message.body,
         );
       }
-      await _setClaudeScreenState('default');
+      final loginPending = (call == 'POST /login' || call == 'POST /register') && !_session.isAuthenticated;
+      await _setClaudeScreenState(loginPending ? 'waiting' : 'default');
       final nextScreen = switch (call) {
         'POST /register/email' => 'SC-03',
         'POST /register/email/confirm' => 'SC-04',
-        'POST /register' => 'SC-00',
-        'POST /login' => 'SC-00',
+        'POST /register' => loginPending ? 'SC-11' : 'SC-00',
+        'POST /login' => loginPending ? 'SC-11' : 'SC-00',
         'POST /logout' => 'SC-01',
         _ => null,
       };
@@ -576,6 +690,20 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
     } catch (_) {
       // Never forward raw exceptions or request bodies to WebView/UI logs.
       await _setClaudeScreenState('error', 'Не удалось выполнить запрос. Проверьте данные и соединение.');
+    }
+  }
+
+  Future<void> _setClaudeScreenData(Map<String, String> values) async {
+    if (!mounted || !_pageReady) return;
+    final encoded = jsonEncode(values);
+    try {
+      await _controller.runJavaScript('''
+        if (window.InOne && typeof window.InOne.setData === 'function') {
+          window.InOne.setData($encoded);
+        }
+      ''');
+    } catch (_) {
+      // The screen may have been replaced while the response was in flight.
     }
   }
 
@@ -600,6 +728,7 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _session.removeListener(_onSessionChanged);
     _session.dispose();
     super.dispose();
@@ -610,6 +739,17 @@ class _ApprovedScreensHostState extends State<ApprovedScreensHost> {
         appBar: AppBar(
           title: Text(_selectedTitle, maxLines: 1, overflow: TextOverflow.ellipsis),
           actions: [
+            PopupMenuButton<String>(
+              tooltip: 'Язык интерфейса',
+              initialValue: _session.locale,
+              onSelected: (locale) => unawaited(_persistLocale(locale)),
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'hy', child: Text('Հայերեն')),
+                PopupMenuItem(value: 'ru', child: Text('Русский')),
+                PopupMenuItem(value: 'en', child: Text('English')),
+              ],
+              icon: const Icon(Icons.language_rounded),
+            ),
             if (_isPersonalProfile)
               IconButton(
                 tooltip: 'Refresh profile',
@@ -903,6 +1043,21 @@ class _ApiTestPanelState extends State<ApiTestPanel> {
               SelectableText(session?.baseUrl ?? 'Не задан'),
               const SizedBox(height: 6),
               const Text('Локальный тестовый backend: Android-эмулятор использует 10.0.2.2:8080, iOS Simulator — 127.0.0.1:8080. Для физического устройства задайте локальный IP компьютера через INONE_API_BASE_URL.'),
+              if (session != null)
+                AnimatedBuilder(
+                  animation: session,
+                  builder: (context, _) => Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: Text(
+                      session.hasNativeMlsSession
+                          ? 'MLS: защищённый native runtime активен'
+                          : 'MLS: отключён — ${session.mlsError ?? 'native runtime ещё не открыт'}. Отправка сообщений без MLS запрещена.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: session.hasNativeMlsSession ? Colors.green : Colors.deepOrange,
+                          ),
+                    ),
+                  ),
+                ),
               if (session == null) ...[
                 const SizedBox(height: 8),
                 const Text('Сервер ещё не настроен. Запустите приложение с параметром --dart-define=INONE_API_BASE_URL=https://адрес-вашего-api.'),

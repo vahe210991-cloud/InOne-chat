@@ -1,0 +1,222 @@
+name: OpenMLS Flutter Rust Bridge generation
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/stage-4-native-mls-runtime-2026-11-11]
+    paths:
+      - ".github/workflows/openmls-frb-codegen.yml"
+      - "mobile/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: openmls-frb-codegen-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  generate-and-validate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+          fetch-depth: 0
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.47.9"
+          channel: stable
+          cache: true
+
+      - name: Generate Android and iOS platform projects
+        working-directory: mobile
+        run: flutter create --platforms=android,ios --project-name inone_mobile --org com.inone .
+
+      - name: Remove generated template test
+        working-directory: mobile
+        run: rm -f test/widget_test.dart
+
+      - name: Install Rust toolchain and Android targets
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.91.0"
+          components: rustfmt
+          targets: "aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android"
+
+      - name: Install Flutter Rust Bridge code generator
+        run: cargo install --locked --version 2.13.0 flutter_rust_bridge_codegen
+
+      - name: Integrate and generate typed Dart bindings
+        working-directory: mobile
+        run: |
+          cp lib/main.dart /tmp/inone-main.dart
+          cp rust/src/api/mod.rs /tmp/inone-api-mod.rs
+          flutter_rust_bridge_codegen integrate \
+            --rust-crate-dir rust \
+            --rust-crate-name inone_mls_frb \
+            --integration-backend native-assets \
+            --platforms android,ios
+          cp /tmp/inone-main.dart lib/main.dart
+          cp /tmp/inone-api-mod.rs rust/src/api/mod.rs
+          rm -f rust/src/api/simple.rs lib/src/rust/api/simple.dart
+          flutter_rust_bridge_codegen generate
+
+      - name: Prepare declared asset directories
+        working-directory: mobile
+        run: mkdir -p assets/ui-approval/assets/icons assets/ui-approval/assets/images
+
+      - name: Prepare Android NDK context for native secure storage
+        working-directory: mobile
+        run: node tool/prepare_android_mls.mjs
+
+      - name: Register iOS recovery deep-link scheme
+        working-directory: mobile
+        run: node tool/prepare_ios_deep_links.mjs
+
+      - name: Resolve Dart dependencies and create Rust lockfile
+        working-directory: mobile
+        run: |
+          flutter pub get
+          cargo generate-lockfile --manifest-path rust/Cargo.toml
+
+      - name: Format Rust bridge sources
+        run: cargo fmt --manifest-path mobile/rust/Cargo.toml
+
+      - name: Validate Rust bridge on Linux
+        run: cargo test --locked --manifest-path mobile/rust/Cargo.toml
+
+      - name: Validate Flutter code and session contract
+        working-directory: mobile
+        run: |
+          flutter analyze
+          flutter test
+
+      - name: Build Android with native OpenMLS assets
+        working-directory: mobile
+        run: flutter build apk --debug
+
+      - name: Android Keystore runtime smoke test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          script: |
+            cd mobile
+            flutter drive --driver=test_driver/integration_test.dart --target=integration_test/mls_secure_store_test.dart
+
+      - name: Upload generated FRB outputs for iOS validation
+        uses: actions/upload-artifact@v4
+        with:
+          name: inone-mls-frb-generated
+          path: |
+            mobile/hook/**
+            mobile/lib/src/rust/**
+            mobile/rust/Cargo.toml
+            mobile/rust/Cargo.lock
+            mobile/rust/build.rs
+            mobile/rust/src/frb_generated.rs
+            mobile/pubspec.yaml
+            mobile/pubspec.lock
+          if-no-files-found: error
+
+      - name: Upload Android preview APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: inone-mls-android-apk
+          path: mobile/build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
+  build-ios:
+    name: iOS native assets compile (unsigned, no secrets)
+    needs: generate-and-validate
+    runs-on: macos-14
+    permissions:
+      contents: read
+    timeout-minutes: 45
+    steps:
+      - name: Checkout source branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+          fetch-depth: 0
+
+      - name: Download generated bridge artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: inone-mls-frb-generated
+          path: ${{ runner.temp }}/inone-mls-frb-generated
+
+      - name: Copy generated bridge files without committing
+        shell: bash
+        run: |
+          set -euo pipefail
+          GENERATED="$RUNNER_TEMP/inone-mls-frb-generated"
+          if find "$GENERATED" -type l -print -quit | grep -q .; then
+            echo "::error::Generated artifact contains a symlink; refusing to copy it."
+            exit 1
+          fi
+          test -d "$GENERATED/hook"
+          test -d "$GENERATED/lib/src/rust"
+          test -f "$GENERATED/rust/Cargo.toml"
+          test -f "$GENERATED/rust/Cargo.lock"
+          test -f "$GENERATED/rust/build.rs"
+          test -f "$GENERATED/rust/src/frb_generated.rs"
+          test -f "$GENERATED/pubspec.yaml"
+          test -f "$GENERATED/pubspec.lock"
+          mkdir -p mobile/hook mobile/lib/src/rust mobile/rust/src
+          rsync -a "$GENERATED/hook/" mobile/hook/
+          rsync -a "$GENERATED/lib/src/rust/" mobile/lib/src/rust/
+          cp "$GENERATED/rust/Cargo.toml" mobile/rust/Cargo.toml
+          cp "$GENERATED/rust/Cargo.lock" mobile/rust/Cargo.lock
+          cp "$GENERATED/rust/build.rs" mobile/rust/build.rs
+          cp "$GENERATED/rust/src/frb_generated.rs" mobile/rust/src/frb_generated.rs
+          cp "$GENERATED/pubspec.yaml" mobile/pubspec.yaml
+          cp "$GENERATED/pubspec.lock" mobile/pubspec.lock
+
+      - name: Install Flutter and iOS Rust targets
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.47.9"
+          channel: stable
+          cache: true
+
+      - name: Install Rust iOS targets
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.91.0"
+          components: rustfmt
+          targets: "aarch64-apple-ios,aarch64-apple-ios-sim"
+
+      - name: Generate iOS platform project and configure recovery links
+        working-directory: mobile
+        run: |
+          flutter create --platforms=ios --project-name inone_mobile --org com.inone .
+          node tool/prepare_ios_deep_links.mjs
+
+      - name: Resolve Dart dependencies
+        working-directory: mobile
+        run: |
+          flutter pub get
+          git diff --exit-code -- pubspec.yaml pubspec.lock
+
+      - name: Build iOS device target without signing
+        working-directory: mobile
+        run: flutter build ios --no-codesign
+
+      - name: Build iOS simulator target without signing
+        working-directory: mobile
+        run: flutter build ios --simulator --no-codesign
+
+      - name: Upload unsigned iOS simulator build
+        uses: actions/upload-artifact@v4
+        with:
+          name: inone-mls-ios-simulator-build
+          path: mobile/build/ios/iphonesimulator/Runner.app
+          if-no-files-found: error

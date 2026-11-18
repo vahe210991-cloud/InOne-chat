@@ -29,7 +29,7 @@ Status:
 | SC-01 | `POST /login` | Email/password + device metadata; returns access and refresh tokens, expiry metadata | Backend + host; verify complete error mapping |
 | SC-02 | `POST /register/email` | `202 {ok:true}`; same response for existing/non-existing email; rate limited | Backend + host |
 | SC-03 | `POST /register/email/confirm` | `200 {registrationToken}`; invalid/expired/locked code returns 403/410 | Backend + host; response navigation is host-driven |
-| SC-04 | `POST /register` | Email, registrationToken, password, nickname, optional/required phone per server config | Backend + host; owner policy says phone required, SMS confirmation not yet wired |
+| SC-04 | `POST /register` | Email, registrationToken, password, nickname, optional/required phone per server config | Backend + host; one-time registration ticket is held only in Flutter session memory; successful registration follows with normal login per D11. SMS confirmation not yet wired |
 | SC-05 | `POST /auth/nonce` → `POST /auth/provider/verify` | One-use nonce (10 min); provider google/apple; result is linked proof or registration ticket | Backend only; native provider callback and typed host flow pending |
 | SC-06 | `POST /register/provider` | One-use provider ticket + nickname; returns registration/session result | Backend only; typed host flow pending |
 | SC-07 | `POST /recovery/start` | Privacy-preserving `202 {ok:true}`; rate limit returns 429 + retryAt | Backend only; typed host flow and channel-specific copy pending |
@@ -49,15 +49,23 @@ Status:
 | ST-01 | `PUT /devices/me/push`; `DELETE /devices/me/push` | Authenticated current-device push-token lifecycle; feature flag applies | Backend only; native permission/token registration pending |
 | ST-02 | `GET /config/public`; `GET /config` | Public config unauthenticated; private config authenticated | Backend + host |
 | ST-03 | Shared state and public config | No separate screen-specific mutation | Client/shared host state |
-| CH-01 | `GET /rooms/mine` | Authenticated user's rooms | Backend + host; screen data binding pending |
+| CH-01 | `GET /rooms/mine` | Authenticated user's rooms | Screen-scoped Flutter dispatch + typed repository/response validation + safe HTML data binding implemented; new-branch tests NOT RUN and live Flutter→Node E2E NOT RUN |
 | CH-02 | `GET /rooms/:id/events`; `GET /mls/groups/:id/commits?since=N`; `GET /mls/welcomes`; `POST /mls/welcomes/:id/ack`; `POST /mls/groups/:id/messages`; `GET /sync?since=N&signal_since=M`; `POST /rooms/:id/read` | Room event history is ciphertext only; MLS commits/messages are epoch-checked; membership checked | Backend + protocol integration pending; no WebView direct send |
 | GR-01 | `GET /rooms/mine` | Authenticated user's rooms/groups | Backend + host; group-specific presentation pending |
 | GR-02 | `POST /rooms` | `roomId`, `kind`, optional `name`, members and org/feature gates | Backend only; typed create form and validation pending |
 | GR-04 | `GET /rooms/:id/members`; `POST /rooms/:id/settings`; `PUT /rooms/:id/name`; roles/capabilities/owner endpoints as allowed by action | Per-capability authorization; owner/admin restrictions | Backend only; map each control to one explicit action |
 | OR-01 | `GET /orgs/mine` | Current user's organization memberships and roles | Backend + host |
-| PR-01 | `GET /profile` | Current account profile, providers and security hints | Backend + repository; profile edit contract is separate |
+| PR-01 | `GET /profile`; `PATCH /profile/locale` | Current account profile includes persisted `locale` (`hy`, `ru`, `en`); locale mutation is authenticated and account-scoped | Backend + typed repository; app-level selector persists locally and synchronizes with backend |
 
 The v0.8 approval manifest contains 24 screen IDs (SC/RQ/PS/SR/ST). The Flutter handoff catalog adds 7 chat/room/profile/organization screen IDs. The manifest's declared `api` string is a design declaration, not an authorization grant or proof of Flutter dispatch.
+
+### Account locale contract
+
+- The app owns the user's language choice; do not infer it from the device OS locale.
+- Flutter persists the selected `hy`, `ru`, or `en` locale locally and sends it with `POST /register/email`.
+- The backend stores the pending registration locale with the email-code record, then copies it into the new profile when the one-time registration token is consumed.
+- `GET /profile` returns the saved locale. `PATCH /profile/locale` changes it for the authenticated account.
+- Account-security emails for authenticated actions use the saved profile locale at event creation; every recipient, including a backup address, receives the same account locale. A successful password/provider login may include a pending local UI locale, which the backend persists after authentication and before queuing login-security email. Pre-auth recovery actions (`/recovery/start`, `/recovery/cancel-by-code`, `/recovery/complete`) carry the currently selected UI locale per event; this does not mutate the account preference. If those legacy clients omit locale, the saved profile locale is used. The locale is frozen in the encrypted queue payload so later preference changes do not rewrite already queued mail.
 
 ## 3. Authentication and authorization boundaries
 

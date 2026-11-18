@@ -1130,7 +1130,9 @@ dependencies = [
  "serde",
  "serde_json",
  "ureq",
+ "url",
  "urlencoding",
+ "zeroize",
 ]
 
 [[package]]

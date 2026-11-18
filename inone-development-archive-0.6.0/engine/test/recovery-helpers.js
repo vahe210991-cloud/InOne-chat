@@ -2,11 +2,11 @@
 import { ChatClient } from '../src/client.js';
 
 /** Последний код из SMS на номер. */
-export const smsCodeFrom = (srv, phone) => srv.smsOutbox(phone).at(-1).text.match(/Код: (\d{6})/)[1];
+export const smsCodeFrom = (srv, phone) => srv.smsOutbox(phone).at(-1).text.match(/\b(\d{6})\b/)[1];
 
 /** Токен из последнего письма со ссылкой восстановления. */
 export const linkTokenFrom = (srv, userId) => {
-  const mail = srv.mailbox(userId).filter((m) => m.subject === 'Подтверждение восстановления').at(-1);
+  const mail = srv.mailbox(userId).filter((m) => m.text.includes('token=')).at(-1);
   return mail.text.match(/token=([A-Za-z0-9_-]+)/)[1];
 };
 

@@ -6,11 +6,55 @@ import 'package:inone_mobile/core/network/api_client.dart';
 import 'package:inone_mobile/core/network/api_exception.dart';
 
 void main() {
+  test('allows HTTPS API origins', () {
+    final client = ApiClient(
+      baseUrl: 'https://api.inone.test',
+      accessTokenProvider: () => null,
+    );
+    client.close();
+  });
+
+  test('allows private HTTP endpoints in debug builds', () {
+    final client = ApiClient(
+      baseUrl: 'http://10.0.2.2:8080',
+      accessTokenProvider: () => null,
+    );
+    client.close();
+  });
+
+  test('rejects public HTTP endpoints before sending credentials', () {
+    expect(
+      () => ApiClient(
+        baseUrl: 'http://api.inone.test',
+        accessTokenProvider: () => 'secret-token',
+      ),
+      throwsArgumentError,
+    );
+  });
+
+  test('rejects credentials and query strings in the API origin', () {
+    expect(
+      () => ApiClient(
+        baseUrl: 'https://user:password@api.inone.test',
+        accessTokenProvider: () => null,
+      ),
+      throwsArgumentError,
+    );
+    expect(
+      () => ApiClient(
+        baseUrl: 'https://api.inone.test?token=secret',
+        accessTokenProvider: () => null,
+      ),
+      throwsArgumentError,
+    );
+  });
+
   test('sends bearer token and decodes JSON response', () async {
     final mock = MockClient((request) async {
       expect(request.method, 'GET');
       expect(request.url.path, '/profile');
       expect(request.headers['authorization'], 'Bearer access-token');
+      expect(request.followRedirects, isFalse);
       return http.Response(
           '{"userId":"user-1","nickname":"Test User","email":"user@example.test","verificationLevel":1,"providers":[],"backupEmail":null,"securityHints":[]}',
           200,

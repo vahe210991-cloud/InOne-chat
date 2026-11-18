@@ -101,4 +101,3 @@
 - This decision establishes the product split. It does **not**, by itself, decide whether the applications share identity, backend services, databases, repositories, infrastructure, or common UI components. Preserve existing approved identity/database/security decisions until a separate technical decision is recorded.
 - Existing InOne Beta 1.0 work and approved UI must not be silently rebranded or moved between products. Audit current screens and APIs against this split and propose a migration/classification plan before changing implementation.
 - Do not expand InOne Business scope by assuming that every Propo Seller Account capability is already specified; define and version the integration contract separately.
-
