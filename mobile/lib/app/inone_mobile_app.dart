@@ -435,9 +435,9 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       await directory.create(recursive: true);
 
       final safeName = document.name
-          .replaceAll('\\\\', '_')
+          .replaceAll(String.fromCharCode(92), '_')
           .replaceAll('/', '_')
-          .replaceAll(RegExp(r'[\\u0000-\\u001f\\u007f]'), '')
+          .replaceAll(RegExp(r'[\u0000-\u001f\u007f]'), '')
           .trim();
       if (safeName.isEmpty || safeName == '.' || safeName == '..') {
         throw const ApiException(code: 'invalid_download_filename', statusCode: 502, retryable: false);
