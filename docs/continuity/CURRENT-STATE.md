@@ -556,3 +556,14 @@ Do not re-port these mechanisms. See Stage 4 report section 25 for the exact com
 - Pending device login now stays on SC-11/waiting when the backend did not issue an authenticated token pair; approval claim/poll remains incomplete.
 
 - CH-01 now emits a screen-scoped `GET /rooms/mine` call on screen load; Flutter parses the typed `InOneRoomList` response and safely binds room names/roles to the HTML. Existing backend `rooms-mine.test.js` covers authenticated HTTP route behavior. New branch tests NOT RUN; live Flutter→Node E2E NOT RUN.
+
+## Owner decision update — 2026-11-13: two-app product structure
+
+The owner has approved two separate applications:
+
+- **InOne:** personal/social use — news feed, publications, personal chats, groups, Threads, and related social features.
+- **InOne Business:** professional work — Kanban, CRM, Leads, Deals, Wallet, Flags, other business tools, and integration with Propo Seller Account.
+
+This changes the product boundary and future scope classification. It does not itself authorize code changes, PR merges, backend/database separation, or changes to the approved Beta 1.0 UI. Existing screens, APIs, repositories, and roadmap items must be audited and mapped to InOne or InOne Business before implementation is reorganized.
+
+Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone-and-inone-business--2026-11-13).

@@ -569,3 +569,14 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Flutter analyze on the first full run found a malformed `mobile/lib/core/network/api_environment.dart` source line and a nullable bridge route guard; repaired both.
 - The same run confirmed generated FRB Dart files are intentionally absent from source and must be generated before Flutter analysis. The PR #61 base workflow now installs Rust 1.91 and `flutter_rust_bridge_codegen 2.13.0`, runs the documented native-assets integration/generation sequence, prepares Android NDK context, generates the Rust lockfile and tests the native Rust bridge before Flutter analysis/build. The workflow remains read-only (`contents: read`) and does not push generated files.
 - Updated PR #61 head to trigger the complete validation matrix against the corrected base workflows. Awaiting the rerun before treating any of these fixes as verified.
+
+## 2026-11-13 — Owner decision: split product into InOne and InOne Business
+
+- Owner approved two separate applications:
+  - **InOne:** personal/social application with news feed, publications, personal chats, groups, Threads, and related social features.
+  - **InOne Business:** professional/work application with Kanban, CRM, Leads, Deals, Wallet, Flags, other business tools, and integration with Propo Seller Account.
+- Recorded as an authoritative product decision in `docs/continuity/DECISIONS.md` section 7 and added to `docs/continuity/SOURCE-OF-TRUTH.md`.
+- Updated continuity handoff documents to require a product-boundary impact review before reorganizing screens or implementation.
+- Important: this decision defines product boundaries only. It does not automatically decide separate/shared identity, backend, databases, repositories, or infrastructure.
+- No application code, UI, API, backend, database, CI workflow, PR state, or branch topology changed. No Actions were started and no PR was merged.
+- Next: inventory and classify existing screens, routes, repositories, APIs, and navigation into InOne, InOne Business, shared platform, or unresolved; prepare an impact map for owner review before code changes.
