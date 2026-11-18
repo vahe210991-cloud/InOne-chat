@@ -111,20 +111,19 @@ void main() {
       )),
     );
   });
-}
 
-
-test('accepts admin role for platform queue but never grants decisions', () {
-  final profile = InOneProfile.fromJson({
-    'userId': 'admin-1',
-    'nickname': 'Platform Admin',
-    'email': 'admin@example.test',
-    'verificationLevel': 1,
-    'providers': [],
-    'backupEmail': null,
-    'securityHints': [],
-    'platformRole': 'admin',
+  test('accepts admin role for platform queue but never grants decisions', () {
+    final profile = InOneProfile.fromJson({
+      'userId': 'admin-1',
+      'nickname': 'Platform Admin',
+      'email': 'admin@example.test',
+      'verificationLevel': 1,
+      'providers': [],
+      'backupEmail': null,
+      'securityHints': [],
+      'platformRole': 'admin',
+    });
+    expect(profile.canViewPlatformRequests, isTrue);
+    expect(profile.canDecidePlatformRequests, isFalse);
   });
-  expect(profile.canViewPlatformRequests, isTrue);
-  expect(profile.canDecidePlatformRequests, isFalse);
-});
+}
