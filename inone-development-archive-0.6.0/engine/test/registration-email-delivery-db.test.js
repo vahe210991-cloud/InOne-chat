@@ -112,9 +112,9 @@ test('verified account registration sends its email code through PostgreSQL outb
 
     const raw = await waitFor(() => smtp.received[0]);
     const decoded = decodeMime(raw);
-    assert.match(raw, /registration-smtp@example\\.test/i);
+    assert.match(raw, /registration-smtp@example\.test/i);
     assert.match(decoded, /Ваш код подтверждения:/);
-    const code = decoded.match(/Ваш код подтверждения:\\s*(\\d{6})/)?.[1];
+    const code = decoded.match(/Ваш код подтверждения:\s*(\d{6})/)?.[1];
     assert.ok(code, 'actual SMTP message contains the registration code');
 
     const confirmResponse = await fetch(`${base}/register/email/confirm`, {
