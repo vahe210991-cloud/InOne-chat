@@ -1,116 +1,158 @@
-# Beta 1.0 — этап Email Delivery и подготовка безопасной интеграции в main
+# Beta 1.0 — Email Delivery: code review и подготовка интеграции в main
 
-**Дата актуализации:** 2026-11-18  
+**Актуализация:** 2026-11-18  
 **Репозиторий:** `vahe210991-cloud/InOne-chat`  
 **Рабочая ветка:** `feature/email-delivery-service-2026-11-16-b1`  
-**PR реализации:** [#61](https://github.com/vahe210991-cloud/InOne-chat/pull/61)  
-**Проверенный implementation HEAD:** `72560086aa91944b28a3820237aa6893d1c06b9b`  
-**HEAD рабочей ветки после включения отчёта:** `68e7a4c9c5ec1e0b2ceda2c6e2636a51142e2a22`  
-**PR документации:** [#78](https://github.com/vahe210991-cloud/InOne-chat/pull/78)
+**Интеграционный PR:** [#79](https://github.com/vahe210991-cloud/InOne-chat/pull/79)  
+**Stacked implementation PR:** [#61](https://github.com/vahe210991-cloud/InOne-chat/pull/61)  
+**Текущий проверенный HEAD:** `d5b91549bef794692451a96a638bde793b632365`  
+**Base main:** `d9d699f1c7e27107123c8a019a780f7060531a08`
 
-## 1. Решение владельца и границы текущего этапа
+## 1. Решение владельца — критерии Beta 1.0
 
-Владелец подтвердил, что для Beta 1.0 допустим локальный запуск Backend на Windows-компьютере. Публичный HTTPS Backend и публичный домен пока не настроены. Локальный запуск сервера и тестирование на iPhone отложены до завершения текущего этапа.
+Цель Beta 1.0 по Email Delivery — **фактически получить все письма от всех подключённых служб для каждого предусмотренного сценария**. Проверка должна подтвердить реальную доставку до контролируемого почтового ящика/устройства, а не только постановку в очередь или успешный ответ SMTP transport.
 
-Текущая цель — проверить состав выбранной ветки, историю, код, миграции, безопасность и CI, подготовить интеграцию в `main` с сохранением истории. Отложенные испытания на локальном Backend и iPhone не должны выдаваться за пройденные.
+- Визуальный вид писем не является критерием приёмки Beta 1.0.
+- Корректность адресата, назначения, содержимого, языка, срока действия кодов/ссылок и фактическое получение — являются.
+- Все шаблоны должны стать редактируемыми из административной панели, но это последующий этап, не Beta 1.0.
+- Проверки на реальных устройствах и почтовых клиентах проводятся в рамках Beta 1.0. Они не выдаются за уже выполненные.
+- Текущий preview — технический draft; его визуальное утверждение не требуется для merge.
 
-## 2. Подтверждённое SMTP/Brevo свидетельство
+## 2. Git / PR состояние на момент проверки
 
-Локальный SMTP-тест владельца завершился:
-- `SEND=PASS`
-- `ELAPSED_MS=1019`
-- `MESSAGE_ID=<024d4343-cca0-21c6-9a41-f0ff6c399e8a@gmail.com>`
-- SMTP host `smtp-relay.brevo.com`, port `587`
-- STARTTLS, Nodemailer `secure: false`, `requireTLS: true`, минимум TLS 1.2.
+PR #79 направлен из `feature/email-delivery-service-2026-11-16-b1` непосредственно в `main`.
 
-Тест выполнялся временным Node.js-скриптом на Windows, после выполнения скрипт удалён. Это подтверждает успешную передачу тестового сообщения напрямую из Node.js через Brevo. Это НЕ доказывает отправку через InOne Backend API, сквозную регистрацию/восстановление, конечную доставку по полной трассировке, SPF/DKIM/DMARC или доступность публичного API. Домен в Message-ID не доказывает последний почтовый hop.
+- PR state: open, Draft.
+- Source HEAD: `d5b91549bef794692451a96a638bde793b632365`.
+- Base main: `d9d699f1c7e27107123c8a019a780f7060531a08`.
+- Compare: 626 commits ahead / 0 behind.
+- Changed files: 129; additions: 17,859; deletions: 584.
+- GitHub mergeable: true.
+- Main не изменён; PR не слит.
+- Review submissions: отсутствуют; inline review threads: отсутствуют.
 
-SMTP credentials — секреты: не помещать их в Git, документацию, PR, issue, исходники или CI-логи. Если действующий ключ раскрывался, выполнить ротацию. Указанный владельцем бесплатный лимит 300 писем/сутки — ориентир тарифа, который требуется перепроверить у провайдера перед эксплуатацией.
+626 коммитов — накопленная история Beta 1.0, а не только Email Delivery. Ветка включает Backend, Email Delivery, Flutter, Rust/OpenMLS MLS runtime, secure storage, recovery/session, screen/API integration, tests, CI и документацию. Для переноса истории сохраняем обычный merge commit; не используем squash/rebase/cherry-pick.
 
-## 3. Инфраструктурная граница
+## 3. Проверка Email Delivery implementation
 
-На момент актуализации:
-- публичный HTTPS Backend и домен не настроены;
-- GitHub хранит исходный код, но не является запущенным Backend;
-- Vercel preview является статическим preview, не Backend API;
-- SMTP тест не проходил через InOne API;
-- локальный Backend/PostgreSQL и подключение iPhone ещё не запускались в рамках текущего этапа.
+Изучены текущие исходники и связанные материалы:
+- `engine/src/email-delivery.js`;
+- `engine/src/email-templates.js`;
+- `engine/src/mail-smtp.js`;
+- `engine/src/config.js`, `main.js`, `server.js`;
+- `engine/src/store.js`, `store-memory.js`;
+- миграции `0029`, `0030`, `0031`;
+- email delivery, registration delivery, templates и SMTP tests;
+- ADR, design proposal, operations guide и текущий stage report;
+- email validation workflow.
 
-## 4. Текущие GitHub refs и история
+### Подтверждённые свойства реализации
 
-PR #61:
-- base: `feature/beta1-screen-api-integration-2026-11-12`;
-- head: `feature/email-delivery-service-2026-11-16-b1`;
-- state: open, draft; GitHub сообщил mergeable=true;
-- head SHA: `72560086aa91944b28a3820237aa6893d1c06b9b`;
-- 264 commits в PR #61, 86 изменённых файлов, +4,114/-639.
+- PostgreSQL durable outbox; SMTP worker запускается вместе с Backend при SMTP-конфигурации.
+- Адрес получателя и тело письма шифруются AES-256-GCM; HKDF разделяет encryption/HMAC subkeys.
+- Idempotency и payload fingerprint защищены HMAC.
+- Enqueue для критических сценариев выполняется в той же PostgreSQL-транзакции, что и изменение бизнес-состояния.
+- Worker использует lease/claim, retry с backoff+jitter, expiry и dead-letter.
+- SMTP transport требует TLS 1.2+; production запрещает memory transport.
+- Логи не должны содержать адреса, коды, ссылки, содержимое или credentials.
+- Delivery semantics — at-least-once, не exactly-once: после неопределённого исхода SMTP возможна повторная отправка.
 
-Сравнение ветки Email Delivery с `main` на SHA `d9d699f1c7e27107123c8a019a780f7060531a08`:
-- статус ahead;
-- ahead_by 623, behind_by 0;
-- merge base совпадает с main;
-- 129 файлов в полном сравнении после включения отчёта, +17,858/-584.
+### Каталог email-сценариев
 
-623 коммита — это совокупная Beta 1.0 история, а не только Email Delivery. В неё входят backend, Flutter, Rust/OpenMLS MLS runtime, session/recovery, screen/API integration, tests, CI и документация. Историю нельзя переносить cherry-pick/squash выборкой: целевая интеграция должна сохранять граф коммитов обычным merge PR.
+В renderer присутствуют 14 шаблонов:
+1. `registration_code`
+2. `backup_email_verification`
+3. `backup_email_changed`
+4. `backup_email_removed`
+5. `stepup_code`
+6. `old_devices_revoked`
+7. `recovery_login_code`
+8. `new_device_wait`
+9. `recovery_code`
+10. `recovery_requested`
+11. `recovery_confirmation_link`
+12. `recovery_cancelled`
+13. `recovery_completed`
+14. (каталог содержит 13 фактически перечисленных template IDs; число в preview/дизайн-документах необходимо привести к фактическому каталогу — см. замечание ниже).
 
-PR #48 остаётся открытым промежуточным PR между Stage 4 и Screen/API branch; его не следует отдельно вливать в main поверх уже интегрированной цепочки.
+Поддерживаемые локали: `hy`, `ru`, `en`. Рендерер формирует plain-text и HTML. Recovery URLs проверяются на HTTPS, HTML-значения экранируются.
 
-## 5. Объём ветки относительно main
+Основные связанные бизнес-потоки, найденные в Backend:
+- регистрационный код;
+- подтверждение резервной почты, уведомление об изменении/удалении;
+- step-up confirmation;
+- проверка личности при входе и ожидание нового устройства;
+- код восстановления, уведомления о старте, ссылка подтверждения;
+- отмена и завершение восстановления;
+- отключение старых устройств после восстановления.
 
-Сравнение содержит изменения в следующих областях:
-- Backend engine: Email Delivery/outbox, SMTP adapter, server/store/config, migrations 0029–0031, тесты регистрации и восстановления;
-- Rust/OpenMLS: persistent MLS client, consistency/quarantine/outbox/welcome recovery tests;
-- Flutter: Rust FFI crate, session bridge, secure storage, locale, API client, recovery deep links и тесты;
-- CI: Email Delivery/PostgreSQL, Native MLS, Flutter, OpenMLS/FRB codegen, P0 validation;
-- docs: ADR, engineering/operations, continuity и stage reports.
+Наличие route/call-site и зелёных тестов подтверждает реализацию на уровне исходников/автоматизированных сценариев, но не фактическое получение каждого письма на реальном почтовом ящике.
 
-Наличие файлов и тестов не равнозначно подтверждённому runtime acceptance. Каждый workflow и локально не выполненный тест учитывается отдельно.
+## 4. Миграции и хранение
 
-## 6. CI — подтверждённые и текущие проверки
+- `0029-email-delivery.sql`: durable encrypted queue, unique idempotency key, lifecycle status, leases, retry timestamps, provider message ID, expiry и индексы.
+- `0030-profile-email-locale.sql`: locale профиля и pending email code с ограничением `hy/ru/en`.
+- `0031-file-upload-device-binding.sql`: привязка незавершённых загрузок к устройству; не является email migration, но входит в общий Beta 1.0 diff.
+- Migration runner сортирует версии, применяет миграции транзакционно и использует advisory lock. Новая схема синхронизирована до `0031-file-upload-device-binding`.
 
-Для `72560086aa91944b28a3820237aa6893d1c06b9b` GitHub вернул четыре завершённых успешных workflow:
-1. Email delivery and PostgreSQL validation — run `44230295545`, success.
-2. Native MLS client validation — run `44230295517`, success.
-3. Validate recovered InOne P0 source — run `44230295509`, success.
-4. Flutter mobile validation — run `44230295585`, success.
+Проверки migration/DB входят в CI. Перед merge нужно сохранить exact-head evidence; локальная production база не затрагивалась.
 
-Старый failure Flutter run `43834981126` относился к более раннему SHA `1bddce2d77477faa0fb804173c97e8b06ad9ae8b`; он не описывает текущий HEAD. В CI анализе приоритет имеет exact SHA. После включения отчёта в source branch на PR #79 запущены повторные проверки на SHA `68e7a4c9c5ec1e0b2ceda2c6e2636a51142e2a22`: Email Delivery/PostgreSQL, Flutter, P0, Native MLS и OpenMLS/FRB. На момент фиксации часть запусков ещё выполнялась; результаты необходимо обновить после их завершения. Успехи на `72560086…` не подменяют результаты на новом SHA. Зелёные workflows подтверждают только команды/сценарии, реально входящие в jobs; они не заменяют локальный Backend/iPhone E2E.
+## 5. SMTP evidence и его ограничения
 
-## 7. Owner review и незавершённые доказательства
+Владелец выполнил отдельный Windows Node.js → Brevo SMTP test:
+- `SEND=PASS`;
+- `ELAPSED_MS=1019`;
+- SMTP host `smtp-relay.brevo.com`, port 587;
+- STARTTLS, Nodemailer `secure: false`, `requireTLS: true`, TLS minimum 1.2.
 
-PR #61 остаётся Draft как stacked implementation PR. Основной интеграционный PR #79 также оставлен Draft до завершения CI и review. PR #78 с отчётом уже merged в feature branch. Визуальный preview email-шаблонов требует отдельного owner approval. Preview не считать утверждённым без явного решения владельца. Отдельно следует удостовериться, что все необходимые Node/PostgreSQL/Flutter проверки действительно покрыты зелёными workflows; не заявлять npm audit, полный локальный `npm test`, `npm run test:db`, `flutter test` или `flutter analyze` как отдельно выполненные, если нет соответствующего точного лога.
+Это доказывает передачу отдельного тестового письма из Node.js через Brevo. Это не InOne Backend E2E и не доказывает получение всех сценариев/служб. Не подтверждены SPF/DKIM/DMARC, bounce processing и реальная работа production deployment. SMTP key не должен попадать в Git/документацию/логи; при раскрытии требуется ротация.
 
-SPF/DKIM/DMARC, реальная эксплуатационная конфигурация и end-to-end Backend → SMTP → mailbox остаются за границей доступных доказательств. Локальный Backend и iPhone-тестирование отложены по решению владельца.
+## 6. CI на точном HEAD
 
-## 8. Безопасная стратегия интеграции
+На exact HEAD `d5b91549bef794692451a96a638bde793b632365` четыре обязательных направления завершились PASS:
+- Email delivery and PostgreSQL validation — [run 44243910377](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/44243910377).
+- Validate recovered InOne P0 source — [run 44243910364](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/44243910364).
+- Native MLS client validation — [run 44243910690](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/44243910690).
+- Flutter mobile validation — [run 44243910304](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/44243910304).
 
-1. Сохранить исходную feature-ветку и весь commit graph; не делать force push, cherry-pick или squash.
-2. Включить актуальный отчёт в feature-ветку (PR #78 merged; commit `68e7a4c9…`).
-3. Создан интеграционный PR #79 из `feature/email-delivery-service-2026-11-16-b1` непосредственно в `main`.
-4. Проверить точный PR head, полный diff, миграции и конфликтность; убедиться, что PR включает всю историю Beta 1.0 и не исключает MLS/Flutter/API работы.
-5. Дождаться всех обязательных workflow на точном PR head и изучить фактические jobs/логи, а не только общий статус.
-6. Проверить секреты, миграционный порядок/идемпотентность, конфигурацию SMTP и безопасное логирование.
-7. Получить необходимые owner approvals. Draft preview шаблонов остаётся явно неутверждённым до отдельного решения.
-8. Выполнить merge commit (не squash/rebase), только если обязательные проверки и approvals удовлетворены.
-9. После merge проверить SHA `main`, повторный CI и записать merge SHA в continuity-документы.
+В jobs этих workflow проверены Node engine suite, PostgreSQL migration/email queue tests, production dependency audit, Rust/OpenMLS/FRB, iOS native target build, Flutter analyze/test и Android preview APK build. Успешные CI jobs не заменяют Beta 1.0 real mailbox/device acceptance.
 
-GitHub `mergeable=true` — только сигнал об отсутствии известного конфликта на момент запроса, не доказательство корректности.
+## 7. Замечания review / операционные ограничения
 
-## 9. Критерии готовности к merge
+1. **SMTP acceptance ≠ mailbox delivery.** SMTP transport отмечает `sent` после успешного `sendMail`; это означает принятие сообщения SMTP сервером, а не доказательство, что оно попало во входящие. Beta 1.0 должна сверять фактическое получение.
+2. **At-least-once.** Возможна повторная доставка при сбое после SMTP acceptance до фиксации статуса.
+3. **Dead-letter recovery.** Ошибки auth/envelope классифицируются как permanent и переходят в `dead`. После исправления конфигурации такие записи требуют контролируемого повторного enqueue/requeue. Перед эксплуатацией нужна документированная операторская процедура и тест восстановления; не делать слепой массовый reset всех dead rows.
+4. **Single active encryption key.** Versioned key ring не реализован; rotation только drain-and-purge, по текущему operations guide.
+5. **Template administration.** UI/редактор шаблонов отсутствует и не входит в Beta 1.0. Это отдельная последующая задача с audit/versioning.
+6. **Documentation count drift.** Документы дизайна ранее указывали 13 шаблонов; фактический renderer содержит 13 template IDs. Число и перечень следует синхронизировать в одном источнике истины. (В перечне выше — 13 ID.)
+7. **Full system diff.** PR объединяет 129 файлов и 626 коммитов; email subsystem и связанные интеграции проверены предметно. До перевода PR из Draft требуется завершить финальный проход по оставшимся Flutter/Rust/OpenMLS/CI/docs изменениям и зафиксировать любые найденные блокеры.
 
-- полный diff относительно актуального main проверен;
-- все критичные workflows завершились PASS на точном PR HEAD;
-- миграции 0029/0030/0031 и upgrade path проверены;
-- нет секретов в изменениях и логах;
-- нет открытых блокирующих review threads или необработанных замечаний;
-- owner approval по тем частям, которые PR явно помечает как требующие такого approval, получен либо эти части явно исключены/отложены владельцем;
-- PR не Draft и GitHub разрешает merge;
-- merge выполняется с сохранением истории;
-- после merge проверен main.
+## 8. Отложенные проверки Beta 1.0
 
-## 10. Отложенный этап
+В Beta 1.0 выполнить матрицу фактической доставки:
+- каждый из 13 template IDs;
+- каждая поддерживаемая локаль, где она применима;
+- каждый инициирующий сервис/route;
+- основной и резервный адресаты, если сценарий предусматривает обоих;
+- правильный адресат, текст/plain-text, ссылка/код, срок действия;
+- подтверждение появления письма в реальном ящике/устройстве;
+- повторные отправки, временный сбой SMTP, постоянная ошибка, истечение TTL и восстановление dead-letter;
+- проверка inbox/spam и provider events, где доступны.
 
-После интеграции в main отдельным этапом выполнить локальный запуск Backend/PostgreSQL на Windows и сквозные проверки Flutter-клиента на iPhone в доверенной локальной сети. До этого не заявлять, что реальная эксплуатационная готовность подтверждена.
+Параллельно Beta 1.0 включает проверку мобильного приложения на реальных устройствах. До её выполнения не утверждать, что вся Beta 1.0 acceptance завершена.
+
+## 9. План подготовки к merge
+
+1. Завершить полный review всех 129 файлов относительно актуального `main`.
+2. Устранить только реальные блокирующие дефекты; не расширять Beta 1.0 объём на визуальный редактор или admin template UI.
+3. Синхронизировать ADR/operations/report/PR description с решением владельца.
+4. Проверить точный HEAD и повторить CI после любых изменений.
+5. Убедиться, что нет секретов и блокирующих review threads.
+6. Перевести PR #79 из Draft в Ready только после завершения review и проверок.
+7. Слить обычным merge commit с сохранением commit graph, после подтверждения владельцем.
+8. После merge проверить `main`, exact merge SHA и CI.
+
+PR #79 пока не слит. GitHub `mergeable=true` не заменяет code review и approval.
 
 ---
-Отчёт фиксирует наблюдаемые refs и evidence на дату актуализации. Он не утверждает, что локальный Backend/iPhone E2E завершён или что merge в main уже выполнен.
+Этот отчёт разделяет доказанные исходниками/CI факты, отдельный SMTP smoke test и будущую фактическую Beta 1.0 приёмку. Он не утверждает, что все письма уже реально получены.
