@@ -42,9 +42,9 @@ Status:
 | RQ-02 | `POST /org-requests/:id/documents` | `kind`, `contentBase64`; max 5 MB; secret/config and pending-request checks | Backend only; native picker, MIME/size checks, progress and retry pending |
 | RQ-03 | `GET /org-requests` | Applicant sees own requests; platform staff sees queue | Backend + host; role-aware presentation pending |
 | RQ-04 | `GET /org-requests/:id`; `GET /org-requests/:id/documents/:docId` | Applicant and authorized platform staff; document view is audited | Backend only / host partial; binary download adapter pending |
-| PS-01 | `GET /org-requests` | Platform queue; role checks server-side | Backend + host; staff-only navigation/presentation pending |
-| PS-02 | `GET /org-requests/:id`; `GET /org-requests/:id/documents/:docId` | Platform view is read-only and journaled | Backend only / host partial |
-| PS-03 | `POST /org-requests/:id/decision` | Platform owner only; admin receives 403 `not_platform_owner`; repeat decision 409 | Backend only; owner-only action and error text pending |
+| PS-01 | `GET /org-requests` | Platform queue; role checks server-side | Flutter queue connected; navigation shown only for verified `platformRole` owner/admin; status filters are client-side; server remains authoritative |
+| PS-02 | `GET /org-requests/:id`; `GET /org-requests/:id/documents/:docId` | Platform view is read-only and journaled | Request/document metadata connected; protected binary download and in-app preview pending |
+| PS-03 | `POST /org-requests/:id/decision` | Platform owner only; admin receives 403 `not_platform_owner`; repeat decision 409 | Owner-only Flutter action connected; backend 403/409 remains authoritative; exact-head tests pending |
 | SR-01 | `GET /users/search?nickname=...` | Rate limited; returns only userId/nickname/verificationLevel; requires shared org/link | Backend only; typed query/result UI pending |
 | ST-01 | `PUT /devices/me/push`; `DELETE /devices/me/push` | Authenticated current-device push-token lifecycle; feature flag applies | Backend only; native permission/token registration pending |
 | ST-02 | `GET /config/public`; `GET /config` | Public config unauthenticated; private config authenticated | Backend + host |
