@@ -8,6 +8,7 @@ import '../core/data/inone_public_config.dart';
 import '../core/data/inone_organization.dart';
 import '../core/data/inone_repositories.dart';
 import '../core/data/inone_room.dart';
+import '../core/mls/rust_mls_session_bridge.dart';
 import '../core/network/api_environment.dart';
 import '../core/network/api_exception.dart';
 import '../core/session/inone_session.dart';
@@ -15,6 +16,12 @@ import '../core/session/recovery_deep_link.dart';
 import '../ui_dart_source/inone.dart';
 
 const _configuredApiBaseUrl = String.fromEnvironment('INONE_API_BASE_URL');
+// Native MLS remains opt-in until the owner accepts the runtime, persistence,
+// recovery, and security gates on an exact tested commit.
+const _nativeMlsEnabled = bool.fromEnvironment(
+  'INONE_MLS_NATIVE_ENABLED',
+  defaultValue: false,
+);
 
 class InOneMobileApp extends StatefulWidget {
   const InOneMobileApp({super.key});
@@ -51,7 +58,13 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       configured: _configuredApiBaseUrl,
       isAndroid: Platform.isAndroid,
     );
-    _session = InOneSession(baseUrl: baseUrl);
+    _session = InOneSession(
+      baseUrl: baseUrl,
+      nativeMlsBridge: _nativeMlsEnabled &&
+              (Platform.isAndroid || Platform.isIOS)
+          ? RustMlsSessionBridge()
+          : null,
+    );
     _repositories = InOneRepositories(_session);
     WidgetsBinding.instance.addObserver(this);
     final initialRoute = WidgetsBinding.instance.platformDispatcher.defaultRouteName;
