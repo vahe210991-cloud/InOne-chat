@@ -468,6 +468,8 @@ CREATE TABLE org_request_documents (
   kind TEXT NOT NULL,
   size BIGINT NOT NULL,
   sha256 TEXT NOT NULL,
+  filename TEXT NOT NULL DEFAULT 'document.bin',
+  mime_type TEXT NOT NULL DEFAULT 'application/octet-stream',
   object_key TEXT NOT NULL,
   uploaded_by TEXT NOT NULL REFERENCES accounts (user_id),
   created_at BIGINT NOT NULL
