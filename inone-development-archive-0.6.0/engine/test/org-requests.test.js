@@ -173,3 +173,47 @@ test('concurrent owner decisions serialize and exactly one decision is committed
     await s.stop();
   }
 });
+
+
+test('document metadata is validated, persisted and returned as a safe attachment', async () => {
+  const s = await start();
+  try {
+    const created = await call(s.base, 'POST', '/org-requests', s.dir.token, { name: 'Документы' });
+    assert.equal(created.status, 200);
+    const requestId = created.json.requestId;
+    const pdf = Buffer.from('%PDF-1.7\nInOne test document\n%%EOF', 'utf8');
+    const uploaded = await call(s.base, 'POST', `/org-requests/${requestId}/documents`, s.dir.token, {
+      kind: 'registration',
+      filename: '../../Заявление.pdf',
+      mimeType: 'application/pdf',
+      contentBase64: pdf.toString('base64'),
+    });
+    assert.equal(uploaded.status, 200);
+    assert.equal(uploaded.json.filename, 'Заявление.pdf');
+    assert.equal(uploaded.json.mimeType, 'application/pdf');
+
+    const listed = await call(s.base, 'GET', `/org-requests/${requestId}`, s.staff.token);
+    assert.equal(listed.status, 200);
+    assert.equal(listed.json.documents[0].filename, 'Заявление.pdf');
+    assert.equal(listed.json.documents[0].mimeType, 'application/pdf');
+
+    const downloaded = await call(s.base, 'GET', `/org-requests/${requestId}/documents/${uploaded.json.docId}`, s.staff.token);
+    assert.equal(downloaded.status, 200);
+    assert.ok(downloaded.buf.equals(pdf));
+    assert.equal(downloaded.headers['content-type'], 'application/pdf');
+    assert.match(downloaded.headers['content-disposition'], /^attachment;/);
+    assert.match(downloaded.headers['content-disposition'], /filename\*=UTF-8''/);
+    assert.equal(downloaded.headers['x-content-type-options'], 'nosniff');
+    assert.equal(downloaded.headers['cache-control'], 'no-store');
+
+    const spoofed = await call(s.base, 'POST', `/org-requests/${requestId}/documents`, s.dir.token, {
+      kind: 'other',
+      filename: 'fake.pdf',
+      mimeType: 'application/pdf',
+      contentBase64: Buffer.from('not a pdf').toString('base64'),
+    });
+    assert.equal(spoofed.status, 400, 'declared PDF MIME type must match the file signature');
+  } finally {
+    await s.stop();
+  }
+});
