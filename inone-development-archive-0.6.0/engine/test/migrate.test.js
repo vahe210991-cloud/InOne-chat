@@ -34,6 +34,11 @@ test('новая база создаётся из schema.sql и получает
     assert.deepEqual(await migrate(db.pool), []);
     const { rows } = await db.pool.query('SELECT version FROM schema_migrations ORDER BY version');
     assert.deepEqual(rows.map((r) => r.version), listMigrations());
+    const metadataColumns = (await db.pool.query(
+      "SELECT column_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'org_request_documents' AND column_name IN ('filename', 'mime_type') ORDER BY column_name",
+    )).rows.map((row) => row.column_name);
+    assert.deepEqual(metadataColumns, ['filename', 'mime_type']);
+
     assert.deepEqual(await migrate(db.pool), [], 'повторный запуск ничего не меняет');
   } finally {
     await db.close();
@@ -55,6 +60,11 @@ test('старая база из выпуска alpha.21 обновляется,
     const room = (await db.pool.query("SELECT owner, visibility, join_policy FROM rooms WHERE room_id = '!club'")).rows[0];
     assert.deepEqual(room, { owner: '@alice', visibility: 'private', join_policy: 'approval' });
     assert.equal((await db.pool.query("SELECT to_regclass('group_assets') IS NOT NULL AS ok")).rows[0].ok, true);
+    const documentColumns = (await db.pool.query(
+      "SELECT column_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'org_request_documents' AND column_name IN ('filename', 'mime_type') ORDER BY column_name",
+    )).rows.map((row) => row.column_name);
+    assert.deepEqual(documentColumns, ['filename', 'mime_type'], 'legacy organization request documents receive download metadata');
+
   } finally {
     await db.close();
   }
