@@ -456,6 +456,9 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       _organizations = const [];
       _selectedOrganization = null;
       _systemStatus = null;
+      _selectedAdminRequest = null;
+      _adminRequests = const [];
+      _adminDocuments = const [];
       _registrationEmail = '';
       _screen = 'login';
     });
