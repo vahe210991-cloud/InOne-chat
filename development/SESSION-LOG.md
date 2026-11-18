@@ -580,3 +580,12 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Important: this decision defines product boundaries only. It does not automatically decide separate/shared identity, backend, databases, repositories, or infrastructure.
 - No application code, UI, API, backend, database, CI workflow, PR state, or branch topology changed. No Actions were started and no PR was merged.
 - Next: inventory and classify existing screens, routes, repositories, APIs, and navigation into InOne, InOne Business, shared platform, or unresolved; prepare an impact map for owner review before code changes.
+
+
+### 2026-11-18 — Beta 1.0 full readiness checklist authored
+
+- Added `development/reports/2026-11-18-beta1-full-readiness-checklist.md` with seven workstreams, step-by-step execution, explicit DoD, gates G0–G6, evidence ledger format and final release acceptance.
+- Recorded PR #79 merge baseline: `ef626c0d7c125f2f4c761e02992b475d1b2dd2e4`. This is not a claim that all post-merge checks or device acceptance passed.
+- Required next action: inspect final conclusion of Flutter post-merge run #44253911721 on the exact merge SHA. Its last observed state during audit was in progress at native bridge validation; analyze/tests/APK were still pending at that observation time.
+- Preserved WBS v1.1 as the authoritative progress method; do not replace its weights with unapproved estimates.
+- No product source code, runtime flags, branches containing implementation work, or merges were changed as part of this documentation task.
