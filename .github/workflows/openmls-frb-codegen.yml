@@ -19,7 +19,8 @@ jobs:
   generate-and-validate:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Android emulator startup and Keystore integration smoke tests need a longer CI window.
+    timeout-minutes: 60
     steps:
       - name: Checkout PR head
         uses: actions/checkout@v4
