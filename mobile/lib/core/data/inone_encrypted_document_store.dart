@@ -64,8 +64,8 @@ class InOneEncryptedDocumentStore {
     }
   }
 
-  List<int> _aad(String requestId, String documentId) =>
-      utf8.encode('InOne|organization-document|v1|$requestId|$documentId');
+  List<int> _aad(String requestId, String documentId, String filename) =>
+      utf8.encode('InOne|organization-document|v1|$requestId|$documentId|$filename');
 
   Future<File> _file(String requestId, String documentId) async {
     final root = await _rootDirectory();
@@ -92,7 +92,7 @@ class InOneEncryptedDocumentStore {
       bytes,
       secretKey: secretKey,
       nonce: nonce,
-      aad: _aad(requestId, documentId),
+      aad: _aad(requestId, documentId, filename),
     );
     final envelope = <int>[
       ..._magic,
