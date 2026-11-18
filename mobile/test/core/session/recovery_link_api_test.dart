@@ -23,10 +23,32 @@ void main() {
       httpClient: client,
       readDeviceId: () async => 'device-1',
       writeDeviceId: (_) async {},
-      readMlsUserId: () async => null,
-      writeMlsUserId: (_) async {},
-      deleteMlsUserId: () async {},
-    );
+import 'dart:convert';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+
+import 'package:inone_mobile/core/network/api_exception.dart';
+import 'package:inone_mobile/core/session/inone_session.dart';
+
+void main() {
+  test('confirmRecoveryLink posts an unauthenticated one-time confirmation', () async {
+    final requests = <http.Request>[];
+    final client = MockClient((request) async {
+      requests.add(request);
+      return http.Response(
+        jsonEncode({'ok': true}),
+        200,
+        headers: {'content-type': 'application/json'},
+      );
+    });
+    final session = InOneSession(
+      baseUrl: 'https://api.inone.test',
+      httpClient: client,
+      readDeviceId: () async => 'device-1',
+      writeDeviceId: (_) async {},
+
 
     final result = await session.confirmRecoveryLink(
       userId: '@alice:inone.test',
@@ -64,6 +86,10 @@ void main() {
       readMlsUserId: () async => null,
       writeMlsUserId: (_) async {},
       deleteMlsUserId: () async {},
+      readLocale: () async => 'hy',
+      writeLocale: (_) async {},
+      readLocaleSyncPending: () async => null,
+      writeLocaleSyncPending: (_) async {},
     );
 
     final result = await session.completeRecovery(
