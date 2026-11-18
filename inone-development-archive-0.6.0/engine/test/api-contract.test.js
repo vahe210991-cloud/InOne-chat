@@ -4,10 +4,9 @@ import assert from 'node:assert/strict';
 
 const read = (relative) => readFileSync(new URL(relative, import.meta.url), 'utf8');
 const server = read('../src/server.js');
-const manifest = JSON.parse(read('../../../mobile/assets/ui-approval/screen-manifest.json'));
-const handoffCatalog = read('../../../mobile/lib/claude_screen_catalog.dart');
-const bridge = read('../../../mobile/lib/claude_ui_bridge.dart');
-const mobileHost = read('../../../mobile/lib/main.dart');
+const mobileContract = read('../../../mobile/API-CONTRACTS-BETA-1.md');
+const mobileApp = read('../../../mobile/lib/app/inone_mobile_app.dart');
+const mobileRepositories = read('../../../mobile/lib/core/data/inone_repositories.dart');
 
 const routeEvidence = new Map([
   ['POST /login', /req\.method === 'POST' && p === '\/login'/],
@@ -47,36 +46,32 @@ const declaredOperations = (value) => value
   .map((item) => item.trim())
   .filter((item) => /^(GET|POST|PUT|DELETE)\s+\//u.test(item));
 
-test('every operation declared by the v0.8 approval manifest has a backend handler', () => {
-  assert.equal(manifest.screens.length, 24);
-  const missing = [];
-  for (const screen of manifest.screens) {
-    for (const operation of declaredOperations(screen.api ?? '')) {
-      const evidence = routeEvidence.get(operation);
-      if (!evidence || !evidence.test(server)) missing.push(`${screen.id}: ${operation}`);
-    }
+test('G2 organization request routes declared by the canonical mobile contract have backend handlers', () => {
+  const required = [
+    ['PS-01 queue', /req\\.method === 'GET' && p === '\\/org-requests'/u],
+    ['PS-02 details', /const orgReqOne = p\\.match/u],
+    ['PS-02 audited document access', /const orgReqDoc = p\\.match/u],
+    ['PS-03 owner decision', /const orgReqDecision = p\\.match/u],
+    ['profile platform role', /info\\.platformRole = await storage\\.platformRoleOf\\(d\\.userId\\)/u],
+  ];
+  for (const [name, evidence] of required) {
+    assert.match(server, evidence, `Missing backend route evidence: ${name}`);
   }
-  assert.deepEqual(missing, [], `Missing backend route evidence: ${missing.join(', ')}`);
-  assert.match(server, /if \(req\.method === 'POST' && orgReqDocs\)/u);
-  assert.match(server, /if \(req\.method === 'GET' && orgReqOne\)/u);
-  assert.match(server, /if \(req\.method === 'GET' && orgReqDoc\)/u);
-  assert.match(server, /if \(req\.method === 'POST' && orgReqDecision\)/u);
-  assert.match(server, /action === 'claim'/u);
+  assert.match(mobileContract, /\\| PS-01 \\| `GET \/org-requests`/u);
+  assert.match(mobileContract, /\\| PS-02 \\| `GET \/org-requests\/:id`/u);
+  assert.match(mobileContract, /\\| PS-03 \\| `POST \/org-requests\/:id\/decision`/u);
 });
 
-test('every API declared by the legacy Flutter handoff catalog has a backend handler', () => {
-  const declared = handoffCatalog.split('\n')
-    .map((line) => line.match(/api: '([^']+)'/u)?.[1])
-    .filter((operation) => typeof operation === 'string');
-  const missing = declared.filter((operation) => !routeEvidence.get(operation)?.test(server));
-  assert.deepEqual(missing, [], `Missing legacy backend route evidence: ${missing.join(', ')}`);
-
-  // GR-02 and GR-04 describe multi-action screens without a single api property.
-  assert.match(server, /req\.method === 'POST' && p === '\/rooms'/u);
-  assert.match(server, /const memberRoute = p\.match/u);
-  assert.match(server, /memberRoute && req\.method === 'GET'/u);
-  assert.match(server, /const settingsRoute = p\.match/u);
-  assert.match(server, /settingsRoute && req\.method === 'POST'/u);
+test('native Flutter app gates platform request navigation and uses typed repositories', () => {
+  assert.match(mobileApp, /canViewPlatformRequests/u);
+  assert.match(mobileApp, /canDecidePlatformRequests/u);
+  assert.match(mobileApp, /InOneRequestsAdminScreen/u);
+  assert.match(mobileApp, /InOneRequestAdminDetailsScreen/u);
+  assert.match(mobileApp, /InOneRequestDecisionScreen/u);
+  assert.match(mobileRepositories, /organizationRequests\(\)/u);
+  assert.match(mobileRepositories, /organizationRequest\(String requestId\)/u);
+  assert.match(mobileRepositories, /decideOrganizationRequest\(/u);
+  assert.doesNotMatch(mobileApp, /WebView/u);
 });
 
 test('CH-02 message delivery uses MLS and rejects legacy room-event POST', () => {
