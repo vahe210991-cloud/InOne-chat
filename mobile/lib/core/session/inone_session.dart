@@ -592,6 +592,44 @@ class InOneSession extends ChangeNotifier {
     }
   }
 
+  Future<http.Response> download(
+    String path, {
+    bool authenticated = true,
+  }) async {
+    if (_loggingOut) {
+      throw const ApiException(code: 'session_logging_out', statusCode: 409, retryable: false);
+    }
+    if (authenticated && _localeSyncPending && path != '/profile/locale') {
+      await _syncLocaleAfterAuthentication();
+      if (_localeSyncPending) {
+        throw const ApiException(code: 'locale_sync_pending', statusCode: 503, retryable: true);
+      }
+    }
+    final gate = _handoffGate;
+    if (gate != null) await gate.future;
+    try {
+      return await _client.download(path, authenticated: authenticated);
+    } on ApiException catch (error) {
+      if (_loggingOut) {
+        throw const ApiException(code: 'session_logging_out', statusCode: 409, retryable: false);
+      }
+      if (!authenticated || error.statusCode != 401) rethrow;
+      final native = _mlsBridge;
+      if (native != null) {
+        final token = await _refreshNativeOnce(native);
+        if (token.isEmpty) {
+          throw const ApiException(code: 'mls_session_missing_access_token', statusCode: 502, retryable: false);
+        }
+        _accessToken = token;
+        notifyListeners();
+        return _client.download(path, authenticated: true);
+      }
+      if (_refreshToken == null) rethrow;
+      await _refreshOnce();
+      return _client.download(path, authenticated: true);
+    }
+  }
+
   Future<Map<String, dynamic>> request(
     String method,
     String path, {
