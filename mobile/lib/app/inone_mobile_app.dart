@@ -413,7 +413,8 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
 
   Future<InOneFailure?> _downloadAdminDocument(InOneDocument document) async {
     final request = _selectedAdminRequest;
-    if (request == null || !(_profile?.canViewPlatformRequests ?? false)) {
+    final ownerUserId = _session.userId;
+    if (request == null || ownerUserId == null || !(_profile?.canViewPlatformRequests ?? false)) {
       return const InOneFailure(
         InOneScreenState.error,
         message: 'Документ недоступен для этой учётной записи.',
@@ -429,6 +430,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         throw const ApiException(code: 'invalid_download_response', statusCode: 502, retryable: false);
       }
       await _documentStore.save(
+        ownerUserId: ownerUserId,
         requestId: request.id,
         documentId: document.id,
         filename: document.name,
