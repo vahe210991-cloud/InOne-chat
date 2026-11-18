@@ -39,20 +39,20 @@ function startSmtpSink() {
 }
 
 function decodeMime(raw) {
-  return raw.split(/\\r\\n--[^\\r\\n]+(?:--)?\\r\\n/g).map((part) => {
-    const separator = part.indexOf('\\r\\n\\r\\n');
+  return raw.split(/\r\n--[^\r\n]+(?:--)?\r\n/g).map((part) => {
+    const separator = part.indexOf('\r\n\r\n');
     if (separator < 0) return '';
     const headers = part.slice(0, separator);
     let body = part.slice(separator + 4).trim();
     if (/Content-Transfer-Encoding: base64/i.test(headers)) {
-      return Buffer.from(body.replace(/\\s+/g, ''), 'base64').toString('utf8');
+      return Buffer.from(body.replace(/\s+/g, ''), 'base64').toString('utf8');
     }
     if (/Content-Transfer-Encoding: quoted-printable/i.test(headers)) {
-      body = body.replace(/=\\r?\\n/g, '').replace(/=([0-9A-F]{2})/gi, (_match, hex) => String.fromCharCode(Number.parseInt(hex, 16)));
-      return Buffer.from(body, 'binary').toString('utf8');
+      body = body.replace(/=\r?\n/g, '').replace(/=([0-9A-F]{2})/gi, (_match, hex) => String.fromCharCode(Number.parseInt(hex, 16)));
+      return Buffer.from(body, 'binary').toString('utf8').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/gi, ' ');
     }
     return body;
-  }).join('\\n');
+  }).join('\n');
 }
 
 async function waitFor(fn, timeoutMs = 8000) {
