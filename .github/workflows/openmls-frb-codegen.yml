@@ -121,9 +121,8 @@ jobs:
           # Hosted runners can take several minutes to boot API 35 images; fail only after a generous boot window.
           emulator-boot-timeout: 900
           disable-animations: true
-          script: |
-            cd mobile
-            flutter drive --driver=test_driver/integration_test.dart --target=integration_test/mls_secure_store_test.dart
+          # Keep directory change and Flutter invocation in the same shell command.
+          script: cd mobile && flutter drive --driver=test_driver/integration_test.dart --target=integration_test/mls_secure_store_test.dart
 
       - name: Upload generated FRB outputs for iOS validation
         uses: actions/upload-artifact@v4
