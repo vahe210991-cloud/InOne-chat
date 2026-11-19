@@ -556,6 +556,37 @@ mod tests {
     }
 
     #[test]
+    fn concurrent_reservations_allow_only_one_live_client_per_identity() {
+        use std::sync::{mpsc, Barrier};
+
+        let identity = "user/device-a1-concurrent-reservation";
+        let start = Arc::new(Barrier::new(3));
+        let release_winner = Arc::new(Barrier::new(2));
+        let (tx, rx) = mpsc::channel();
+
+        for _ in 0..2 {
+            let start = start.clone();
+            let release_winner = release_winner.clone();
+            let tx = tx.clone();
+            std::thread::spawn(move || {
+                start.wait();
+                let reservation = reserve_identity(identity);
+                let won = reservation.is_ok();
+                tx.send(won).unwrap();
+                if let Ok(reservation) = reservation {
+                    release_winner.wait();
+                    drop(reservation);
+                }
+            });
+        }
+        drop(tx);
+        start.wait();
+        let outcomes: Vec<bool> = rx.iter().collect();
+        assert_eq!(outcomes.iter().filter(|won| **won).count(), 1);
+        release_winner.wait();
+    }
+
+    #[test]
     fn identity_and_database_directory_inputs_fail_closed() {
         assert!(validated_identity("", "device").is_err());
         assert!(validated_identity("user", "device/other").is_err());
