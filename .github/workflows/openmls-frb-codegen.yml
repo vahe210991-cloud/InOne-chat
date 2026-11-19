@@ -3,7 +3,7 @@ name: OpenMLS Flutter Rust Bridge generation
 on:
   workflow_dispatch:
   push:
-    branches: [feature/stage-4-native-mls-runtime-2026-11-11]
+    branches: [feature/stage-4-native-mls-runtime-2026-11-11, fix/android-path-provider-jni-smoke-2026-11-19b]
     paths:
       - ".github/workflows/openmls-frb-codegen.yml"
       - "mobile/**"
@@ -18,8 +18,8 @@ concurrency:
 jobs:
   generate-and-validate:
     if: github.actor != 'github-actions[bot]'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
     steps:
       - name: Checkout PR head
         uses: actions/checkout@v4
@@ -83,6 +83,7 @@ jobs:
         working-directory: mobile
         run: |
           flutter pub get
+          git diff --exit-code -- pubspec.yaml pubspec.lock
           cargo generate-lockfile --manifest-path rust/Cargo.toml
 
       - name: Format Rust bridge sources
@@ -101,6 +102,15 @@ jobs:
         working-directory: mobile
         run: flutter build apk --debug
 
+      - name: Enable KVM for Android emulator
+        run: |
+          test -e /dev/kvm || { echo "::error::GitHub runner does not expose /dev/kvm; hardware-accelerated Android runtime tests cannot run."; exit 1; }
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          sudo chmod 0666 /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
+
       - name: Android Keystore runtime smoke test
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -108,6 +118,9 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_6
+          emulator-boot-timeout: 900
+          disable-linux-hw-accel: false
+          disable-animations: true
           script: |
             cd mobile
             flutter drive --driver=test_driver/integration_test.dart --target=integration_test/mls_secure_store_test.dart
@@ -136,7 +149,7 @@ jobs:
   build-ios:
     name: iOS native assets compile (unsigned, no secrets)
     needs: generate-and-validate
-    runs-on: macos-14
+    runs-on: macos-15
     permissions:
       contents: read
     timeout-minutes: 45
