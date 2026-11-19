@@ -90,7 +90,8 @@ fn handle_connection(
         return;
     }
 
-    if method == "GET" && path.starts_with("/rooms/") && path.ends_with("/events") {
+    let route = path.split('?').next().unwrap_or(&path);
+    if method == "GET" && route.starts_with("/rooms/") && route.ends_with("/events") {
         let status = events_status.load(Ordering::SeqCst);
         if status != 0 {
             let token_expired = expired_access.load(Ordering::SeqCst);
