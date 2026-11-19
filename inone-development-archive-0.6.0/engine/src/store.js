@@ -242,8 +242,22 @@ export function createStore({ pool, pinPepper }) {
       return rows.map((r) => ({ requestId: r.request_id, applicantId: r.applicant_id, name: r.name, status: r.status, createdAt: Number(r.created_at) }));
     },
     async addOrgRequestDocument({ docId, requestId, kind, size, sha256, filename, mimeType, objectKey, uploadedBy, createdAt }) {
-      await pool.query('INSERT INTO org_request_documents (doc_id, request_id, kind, size, sha256, filename, mime_type, object_key, uploaded_by, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)', [docId, requestId, kind, size, sha256, filename, mimeType, objectKey, uploadedBy, createdAt]);
-      await pool.query("INSERT INTO org_request_log (request_id, actor, action, at) VALUES ($1, $2, 'document', $3)", [requestId, uploadedBy, createdAt]);
+      return inTransaction(async (client) => {
+        const { rows } = await client.query(
+          'SELECT status FROM org_requests WHERE request_id = $1 FOR UPDATE',
+          [requestId],
+        );
+        if (!rows[0] || rows[0].status !== 'pending') return false;
+        await client.query(
+          'INSERT INTO org_request_documents (doc_id, request_id, kind, size, sha256, filename, mime_type, object_key, uploaded_by, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
+          [docId, requestId, kind, size, sha256, filename, mimeType, objectKey, uploadedBy, createdAt],
+        );
+        await client.query(
+          "INSERT INTO org_request_log (request_id, actor, action, at) VALUES ($1, $2, 'document', $3)",
+          [requestId, uploadedBy, createdAt],
+        );
+        return true;
+      });
     },
     async listOrgRequestDocuments(requestId) {
       const { rows } = await pool.query('SELECT doc_id, kind, size, sha256, filename, mime_type, created_at FROM org_request_documents WHERE request_id = $1 ORDER BY created_at', [requestId]);
