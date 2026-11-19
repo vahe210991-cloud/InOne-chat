@@ -70,6 +70,38 @@ async function uploadReady(s, token, bytes, options) {
   return created.fileId;
 }
 
+test('ссылка скачивания привязана к активному устройству и текущему членству в комнате', async () => {
+  const s = await start();
+  try {
+    const fileId = await uploadReady(s, s.alice.token, randomBytes(400));
+
+    const bobOld = await ChatClient.loginFromNewDevice(s.base, BOB, PW, 'B_OLD', s.bob);
+    const oldDeviceLink = (await http(s.base, 'GET', `/files/${enc(fileId)}/url`, { token: bobOld.token })).json;
+    const oldDeviceUrl = new URL(oldDeviceLink.downloadUrl);
+
+    assert.equal((await http(oldDeviceUrl.origin, 'GET', oldDeviceUrl.pathname + oldDeviceUrl.search)).status, 401,
+      'signed URL without an active session must not grant access');
+    assert.equal((await http(oldDeviceUrl.origin, 'GET', oldDeviceUrl.pathname + oldDeviceUrl.search, { token: s.bob.token })).status, 403,
+      'URL must not work with another device token');
+    assert.equal((await http(oldDeviceUrl.origin, 'GET', oldDeviceUrl.pathname + oldDeviceUrl.search, { token: bobOld.token })).status, 200,
+      'URL works only with the issuing active device');
+
+    await s.bob.raw('DELETE', `/devices/${enc('B_OLD')}`);
+    assert.equal((await http(oldDeviceUrl.origin, 'GET', oldDeviceUrl.pathname + oldDeviceUrl.search, { token: bobOld.token })).status, 401,
+      'revocation immediately invalidates an already-issued URL');
+
+    const currentDeviceLink = (await http(s.base, 'GET', `/files/${enc(fileId)}/url`, { token: s.bob.token })).json;
+    const currentDeviceUrl = new URL(currentDeviceLink.downloadUrl);
+    assert.equal((await http(currentDeviceUrl.origin, 'GET', currentDeviceUrl.pathname + currentDeviceUrl.search, { token: s.bob.token })).status, 200);
+
+    await s.alice.raw('DELETE', `/rooms/${enc(ROOM)}/members/${enc(BOB)}`);
+    assert.equal((await http(currentDeviceUrl.origin, 'GET', currentDeviceUrl.pathname + currentDeviceUrl.search, { token: s.bob.token })).status, 403,
+      'removing a room member immediately invalidates an already-issued URL');
+  } finally {
+    await s.stop();
+  }
+});
+
 test('полный путь: загрузка по подписанному адресу, подтверждение, скачивание по ссылке', async () => {
   const s = await start();
   try {
@@ -81,7 +113,7 @@ test('полный путь: загрузка по подписанному ад
     const link = (await http(s.base, 'GET', `/files/${enc(created.fileId)}/url`, { token: s.bob.token })).json;
     assert.ok(link, 'участник получил ссылку');
     const u = new URL(link.downloadUrl);
-    const got = await http(u.origin, 'GET', u.pathname + u.search);
+    const got = await http(u.origin, 'GET', u.pathname + u.search, { token: s.bob.token });
     assert.equal(got.status, 200);
     assert.ok(got.buffer.equals(bytes), 'байты совпадают');
     assert.equal(got.headers.get('content-disposition'), 'attachment', 'файл не открывается в браузере');

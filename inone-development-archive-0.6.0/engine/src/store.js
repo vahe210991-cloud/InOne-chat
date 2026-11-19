@@ -255,9 +255,41 @@ export function createStore({ pool, pinPepper }) {
       if (!r) return null;
       return { docId: r.doc_id, requestId: r.request_id, kind: r.kind, size: Number(r.size), sha256: r.sha256, objectKey: r.object_key };
     },
-    async decideOrgRequest({ requestId, status, decidedBy, decidedAt, orgId }) {
-      await pool.query('UPDATE org_requests SET status = $2, decided_by = $3, decided_at = $4, org_id = $5 WHERE request_id = $1', [requestId, status, decidedBy, decidedAt, orgId]);
-      await pool.query('INSERT INTO org_request_log (request_id, actor, action, at) VALUES ($1, $2, $3, $4)', [requestId, decidedBy, status === 'approved' ? 'approve' : 'reject', decidedAt]);
+    async decideOrgRequest({ requestId, decision, decidedBy, decidedAt }) {
+      return inTransaction(async (client) => {
+        const { rows } = await client.query(
+          'SELECT applicant_id, name, status, org_id FROM org_requests WHERE request_id = $1 FOR UPDATE',
+          [requestId],
+        );
+        const request = rows[0];
+        if (!request) return null;
+        if (request.status !== 'pending') {
+          return { conflict: true, status: request.status, orgId: request.org_id };
+        }
+
+        const status = decision === 'approve' ? 'approved' : 'rejected';
+        const orgId = decision === 'approve' ? `org-${requestId}` : null;
+        if (orgId) {
+          await client.query(
+            'INSERT INTO organizations (org_id, name, status, created_by, created_at) VALUES ($1, $2, $3, $4, $5)',
+            [orgId, request.name, 'approved', request.applicant_id, decidedAt],
+          );
+          await client.query(
+            "INSERT INTO org_members (org_id, user_id, role, joined_at) VALUES ($1, $2, 'owner', $3)",
+            [orgId, request.applicant_id, decidedAt],
+          );
+        }
+        const updated = await client.query(
+          "UPDATE org_requests SET status = $2, decided_by = $3, decided_at = $4, org_id = $5 WHERE request_id = $1 AND status = 'pending'",
+          [requestId, status, decidedBy, decidedAt, orgId],
+        );
+        if (updated.rowCount !== 1) throw new Error('organization request decision lost pending lock');
+        await client.query(
+          'INSERT INTO org_request_log (request_id, actor, action, at) VALUES ($1, $2, $3, $4)',
+          [requestId, decidedBy, decision, decidedAt],
+        );
+        return { status, orgId };
+      });
     },
     async logOrgRequest(requestId, actor, action, at) {
       await pool.query('INSERT INTO org_request_log (request_id, actor, action, at) VALUES ($1, $2, $3, $4)', [requestId, actor, action, at]);
