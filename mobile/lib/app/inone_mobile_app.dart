@@ -166,10 +166,10 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     );
   }
 
-  Future<void> _handleUnauthorizedSession() {
+  Future<void> _handleUnauthorizedSession([String? ownerUserId]) {
     final active = _revocationCleanupInFlight;
     if (active != null) return active;
-    final operation = _handleUnauthorizedSessionOnce();
+    final operation = _handleUnauthorizedSessionOnce(ownerUserId);
     _revocationCleanupInFlight = operation;
     return operation.whenComplete(() {
       if (identical(_revocationCleanupInFlight, operation)) {
@@ -178,8 +178,8 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     });
   }
 
-  Future<void> _handleUnauthorizedSessionOnce() async {
-    final ownerUserId = _session.userId ?? _profile?.userId;
+  Future<void> _handleUnauthorizedSessionOnce(String? requestedOwnerUserId) async {
+    final ownerUserId = requestedOwnerUserId ?? _session.userId ?? _profile?.userId;
     if (ownerUserId == null) return;
     try {
       await _documentStore.purgeAccount(ownerUserId);
@@ -211,12 +211,13 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   }
 
   Future<InOneFailure?> _runApi(Future<Object?> Function() operation) async {
+    final ownerUserId = _session.userId ?? _profile?.userId;
     try {
       await operation();
       return null;
     } catch (error) {
       if (error is ApiException && error.statusCode == 401) {
-        await _handleUnauthorizedSession();
+        await _handleUnauthorizedSession(ownerUserId);
       }
       return _toFailure(error);
     }
@@ -335,6 +336,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
 
 
   Future<void> _loadAuthenticatedData() async {
+    final ownerUserId = _session.userId ?? _profile?.userId;
     if (!_session.isAuthenticated) {
       setState(() => _screen = 'login');
       return;
@@ -353,7 +355,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       });
     } catch (error) {
       if (error is ApiException && error.statusCode == 401) {
-        await _handleUnauthorizedSession();
+        await _handleUnauthorizedSession(ownerUserId);
         if (_session.userId == null) return;
       }
       if (mounted) setState(() => _screen = 'loadError');
@@ -389,6 +391,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   }
 
   Future<void> _openAdminRequests() async {
+    final ownerUserId = _session.userId ?? _profile?.userId;
     if (!(_profile?.canViewPlatformRequests ?? false)) {
       _notice('Недостаточно прав для просмотра заявок платформы.');
       return;
@@ -408,7 +411,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       });
     } catch (error) {
       if (error is ApiException && error.statusCode == 401) {
-        await _handleUnauthorizedSession();
+        await _handleUnauthorizedSession(ownerUserId);
         return;
       }
       if (!mounted) return;
@@ -419,6 +422,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   }
 
   Future<void> _openAdminRequest(InOneOrgRequest request) async {
+    final ownerUserId = _session.userId ?? _profile?.userId;
     if (!(_profile?.canViewPlatformRequests ?? false)) return;
     setState(() {
       _selectedAdminRequest = request;
@@ -466,7 +470,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       });
     } catch (error) {
       if (error is ApiException && error.statusCode == 401) {
-        await _handleUnauthorizedSession();
+        await _handleUnauthorizedSession(ownerUserId);
         return;
       }
       if (!mounted) return;
@@ -477,6 +481,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   }
 
   Future<InOneFailure?> _decideAdminRequest(InOneDecision decision) async {
+    final ownerUserId = _session.userId ?? _profile?.userId;
     final request = _selectedAdminRequest;
     if (request == null || !(_profile?.canDecidePlatformRequests ?? false)) {
       return const InOneFailure(InOneScreenState.error, message: 'Решение доступно только владельцу платформы.');
@@ -493,7 +498,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       return null;
     } catch (error) {
       if (error is ApiException && error.statusCode == 401) {
-        await _handleUnauthorizedSession();
+        await _handleUnauthorizedSession(ownerUserId);
       }
       return _toFailure(error);
     }
@@ -612,7 +617,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       return null;
     } catch (error) {
       if (error is ApiException && error.statusCode == 401) {
-        await _handleUnauthorizedSession();
+        await _handleUnauthorizedSession(ownerUserId);
       }
       return _toFailure(error);
     }
