@@ -18,8 +18,8 @@ concurrency:
 jobs:
   generate-and-validate:
     if: github.actor != 'github-actions[bot]'
-    # Use a macOS host with Hypervisor.framework; GitHub Ubuntu runners lack KVM and the software emulator never reaches a stable ADB session.
-    runs-on: macos-15
+    # Linux hosted runners support KVM-backed Android virtualization; macOS ARM runners do not provide nested virtualization.
+    runs-on: ubuntu-24.04
     # Android emulator startup and Keystore integration smoke tests need a longer CI window.
     timeout-minutes: 60
     steps:
@@ -112,16 +112,25 @@ jobs:
         working-directory: mobile
         run: flutter build apk --debug
 
+      - name: Enable KVM for Android emulator
+        run: |
+          test -e /dev/kvm || { echo "::error::GitHub runner does not expose /dev/kvm; hardware-accelerated Android runtime tests cannot run."; exit 1; }
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          sudo chmod 0666 /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
+
       - name: Android Keystore runtime smoke test
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
           target: google_apis
-          # macos-15 is Apple Silicon; use a matching native ARM64 system image.
-          arch: arm64-v8a
+          # Ubuntu x64 runner with KVM; use the matching x86_64 Android system image.
+          arch: x86_64
           profile: pixel_6
-          # Hosted runners can take several minutes to boot API 35 images; fail only after a generous boot window.
           emulator-boot-timeout: 900
+          disable-linux-hw-accel: false
           disable-animations: true
           # Keep directory change and Flutter invocation in the same shell command.
           script: cd mobile && flutter drive --driver=test_driver/integration_test.dart --target=integration_test/mls_secure_store_test.dart
@@ -150,7 +159,7 @@ jobs:
   build-ios:
     name: iOS native assets compile (unsigned, no secrets)
     needs: generate-and-validate
-    runs-on: macos-14
+    runs-on: macos-15
     permissions:
       contents: read
     timeout-minutes: 45
