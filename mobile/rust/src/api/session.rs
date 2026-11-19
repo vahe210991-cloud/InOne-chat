@@ -692,6 +692,7 @@ mod tests {
     fn logout_removes_database_sidecars_and_platform_key() {
         let (database, keys, session) = fixture();
         session.logout().unwrap();
+        assert!(reserve_identity(&session.identity_scope).is_ok());
         assert!(!database.exists());
         assert!(!std::path::PathBuf::from(format!("{}-wal", database.display())).exists());
         assert!(!std::path::PathBuf::from(format!("{}-shm", database.display())).exists());
@@ -722,6 +723,7 @@ mod tests {
     fn close_releases_handle_without_deleting_persistent_session() {
         let (database, keys, session) = fixture();
         session.close().unwrap();
+        assert!(reserve_identity(&session.identity_scope).is_ok());
         assert!(database.exists());
         assert!(!keys.deleted.load(Ordering::SeqCst));
         let _ = std::fs::remove_file(&database);
