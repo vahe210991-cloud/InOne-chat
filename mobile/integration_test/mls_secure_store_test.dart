@@ -1,5 +1,10 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:inone_mobile/core/mls/rust_mls_session_bridge.dart';
 
 void main() {
@@ -13,39 +18,108 @@ void main() {
       final deviceId = 'MLS-SMOKE-$stamp';
       const baseUrl = 'https://127.0.0.1:1';
 
-      final first = RustMlsSessionBridge();
-      await first.open(
-        baseUrl: baseUrl,
-        userId: userId,
-        deviceId: deviceId,
-        accessToken: 'smoke-access-token',
-        refreshToken: 'smoke-refresh-token',
+      final supportDirectory = await getApplicationSupportDirectory();
+      expect(supportDirectory.isAbsolute, isTrue);
+      expect(await supportDirectory.exists(), isTrue);
+
+      final identity = '$userId/$deviceId';
+      final databaseName = '${sha256.convert(utf8.encode(identity))}.sqlcipher';
+      final databasePath =
+          '${supportDirectory.path}/inone/mls/$databaseName';
+      final backupDirectory = Directory(
+        '${supportDirectory.path}/.mls-keystore-smoke-$stamp',
       );
-      expect(await first.accessTokenSnapshot(), 'smoke-access-token');
-      await first.close();
+      await backupDirectory.create(recursive: true);
+      final backedUpSuffixes = <String>[];
+      const suffixes = ['', '-wal', '-shm', '-journal'];
 
-      final resumed = RustMlsSessionBridge();
-      await resumed.resume(
-        baseUrl: baseUrl,
-        userId: userId,
-        deviceId: deviceId,
-      );
-      expect(await resumed.accessTokenSnapshot(), 'smoke-access-token');
-
-      // Keep the resumed native session open: logout must reach Rust so it can
-      // purge the SQLCipher database and platform key even when the server is
-      // unreachable and the network request returns an error.
-      await expectLater(resumed.logout(), throwsA(anything));
-
-      final afterLogout = RustMlsSessionBridge();
-      await expectLater(
-        afterLogout.resume(
+      try {
+        final first = RustMlsSessionBridge();
+        await first.open(
           baseUrl: baseUrl,
           userId: userId,
           deviceId: deviceId,
-        ),
-        throwsA(anything),
-      );
+          accessToken: 'smoke-access-$stamp',
+          refreshToken: 'smoke-refresh-$stamp',
+        );
+        final initialAccessToken = await first.accessTokenSnapshot();
+        expect(initialAccessToken, 'smoke-access-$stamp');
+        await first.close();
+
+        final resumed = RustMlsSessionBridge();
+        await resumed.resume(
+          baseUrl: baseUrl,
+          userId: userId,
+          deviceId: deviceId,
+        );
+        expect(await resumed.accessTokenSnapshot(), initialAccessToken);
+        await resumed.close();
+
+        // Back up only the encrypted database artifacts. Restoring this
+        // ciphertext after logout proves that a missing database alone is
+        // not what makes the post-logout resume fail.
+        expect(await File(databasePath).exists(), isTrue);
+        for (final suffix in suffixes) {
+          final source = File('$databasePath$suffix');
+          if (await source.exists()) {
+            await source.copy(
+              '${backupDirectory.path}/$databaseName$suffix',
+            );
+            backedUpSuffixes.add(suffix);
+          }
+        }
+        expect(backedUpSuffixes, contains(''));
+
+        final logoutSession = RustMlsSessionBridge();
+        await logoutSession.resume(
+          baseUrl: baseUrl,
+          userId: userId,
+          deviceId: deviceId,
+        );
+
+        // The server is intentionally unreachable. Rust must still delete
+        // the encrypted database and Android Keystore key before returning
+        // the remote logout error.
+        await expectLater(logoutSession.logout(), throwsA(anything));
+        for (final suffix in suffixes) {
+          expect(await File('$databasePath$suffix').exists(), isFalse);
+        }
+
+        // Restore ciphertext without restoring its platform-protected key.
+        for (final suffix in backedUpSuffixes) {
+          await File(
+            '${backupDirectory.path}/$databaseName$suffix',
+          ).copy('$databasePath$suffix');
+        }
+
+        final afterLogout = RustMlsSessionBridge();
+        Object? resumeError;
+        try {
+          await afterLogout.resume(
+            baseUrl: baseUrl,
+            userId: userId,
+            deviceId: deviceId,
+          );
+        } catch (error) {
+          resumeError = error;
+        }
+        if (resumeError == null) {
+          await afterLogout.close();
+        }
+        expect(resumeError, isNotNull);
+        expect(
+          resumeError.toString(),
+          contains('ключ SQLCipher сохранённой MLS-сессии отсутствует'),
+        );
+      } finally {
+        await backupDirectory.delete(recursive: true);
+        for (final suffix in suffixes) {
+          final artifact = File('$databasePath$suffix');
+          if (await artifact.exists()) {
+            await artifact.delete();
+          }
+        }
+      }
     },
   );
 }
