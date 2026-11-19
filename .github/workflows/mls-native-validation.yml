@@ -6,6 +6,7 @@ on:
   pull_request:
     paths:
       - "inone-engine-poc-0.6.0/mobile-mls/**"
+      - "inone-development-archive-0.6.0/engine/mobile-mls/**"
       - "mobile/rust/**"
       - ".github/workflows/mls-native-validation.yml"
   push:
@@ -15,6 +16,7 @@ on:
       - fix/email-delivery-shutdown-and-key-hardening-2026-11-17
     paths:
       - "inone-engine-poc-0.6.0/mobile-mls/**"
+      - "inone-development-archive-0.6.0/engine/mobile-mls/**"
       - "mobile/rust/**"
       - ".github/workflows/mls-native-validation.yml"
 
@@ -36,7 +38,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Verify exact source SHA
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$EXPECTED_SHA"
+          echo "Validated source SHA: $actual"
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -57,6 +67,43 @@ jobs:
         run: cargo test --locked --no-fail-fast --manifest-path inone-engine-poc-0.6.0/mobile-mls/mls-client/Cargo.toml -- --test-threads=1
 
 
+  canonical-mls-client:
+    name: Canonical B MLS client regression tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Verify exact source SHA
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$EXPECTED_SHA"
+          echo "Validated canonical B source SHA: $actual"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: inone-development-archive-0.6.0/engine/package-lock.json
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.91.0"
+          components: rustfmt
+      - name: Install canonical engine dependencies for real-server integration tests
+        run: npm ci
+        working-directory: inone-development-archive-0.6.0/engine
+      - name: Verify canonical B lockfile
+        run: test -s inone-development-archive-0.6.0/engine/mobile-mls/mls-client/Cargo.lock
+      - name: Verify canonical B Rust formatting
+        run: cargo fmt --manifest-path inone-development-archive-0.6.0/engine/mobile-mls/mls-client/Cargo.toml -- --check
+      - name: Check every canonical B MLS client target
+        run: cargo check --locked --all-targets --manifest-path inone-development-archive-0.6.0/engine/mobile-mls/mls-client/Cargo.toml
+      - name: Run canonical B P1 MLS regression tests
+        run: cargo test --locked --no-fail-fast --manifest-path inone-development-archive-0.6.0/engine/mobile-mls/mls-client/Cargo.toml -- --test-threads=1
+
   ios-keychain:
     name: iOS Keychain native target build
     runs-on: macos-15
@@ -64,7 +111,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Verify exact source SHA
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$EXPECTED_SHA"
+          echo "Validated source SHA: $actual"
       - name: Detect persistent bridge crate
         id: bridge
         run: |
@@ -92,7 +147,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Verify exact source SHA
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$EXPECTED_SHA"
+          echo "Validated source SHA: $actual"
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: "1.91.0"
