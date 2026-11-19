@@ -2255,9 +2255,15 @@ impl Client {
                 event_id: event_id.to_string(),
             };
             let transaction = self.meta.unchecked_transaction().map_err(text)?;
-            insert_incoming_record(&transaction, &incoming)?;
-            insert_processed_event(&transaction, event_id)?;
-            transaction.commit().map_err(text)?;
+            if let Err(error) = insert_incoming_record(&transaction, &incoming)
+                .and_then(|_| insert_processed_event(&transaction, event_id))
+            {
+                drop(transaction);
+                return Err(format!("временная ошибка сохранения unreadable inbox item: {error}"));
+            }
+            transaction.commit().map_err(|error| {
+                format!("временная ошибка фиксации unreadable inbox item: {}", text(error))
+            })?;
             self.processed.insert(event_id.to_string());
             out.push(incoming);
             return Ok(());
@@ -2329,12 +2335,12 @@ impl Client {
                 {
                     drop(transaction);
                     self.reload_group(room_id)?;
-                    return Err(error);
+                    return Err(format!("временная ошибка сохранения MLS inbox, повтор позже: {error}"));
                 }
 
                 if let Err(error) = transaction.commit() {
                     self.reload_group(room_id)?;
-                    return Err(format!("не удалось атомарно сохранить MLS inbox: {}", text(error)));
+                    return Err(format!("временная ошибка фиксации MLS inbox, повтор позже: {}", text(error)));
                 }
                 self.processed.insert(event_id.to_string());
                 out.push(incoming);
@@ -2353,16 +2359,25 @@ impl Client {
                         event_id: event_id.to_string(),
                     };
                     let quarantine = self.meta.unchecked_transaction().map_err(text)?;
-                    insert_incoming_record(&quarantine, &incoming)?;
-                    quarantine
-                        .execute(
+                    if let Err(error) = insert_incoming_record(&quarantine, &incoming) {
+                        drop(quarantine);
+                        return Err(format!("временная ошибка сохранения unreadable inbox item: {error}"));
+                    }
+                    if let Err(error) = quarantine.execute(
                             "INSERT OR IGNORE INTO client_undecryptable (event_id, room_id, reason)
                              VALUES (?1, ?2, ?3)",
                             rusqlite::params![event_id, room_id, reason],
-                        )
-                        .map_err(text)?;
-                    insert_processed_event(&quarantine, event_id)?;
-                    quarantine.commit().map_err(text)?;
+                        ) {
+                        drop(quarantine);
+                        return Err(format!("временная ошибка сохранения unreadable diagnostic: {}", text(error)));
+                    }
+                    if let Err(error) = insert_processed_event(&quarantine, event_id) {
+                        drop(quarantine);
+                        return Err(format!("временная ошибка сохранения processed marker: {error}"));
+                    }
+                    quarantine.commit().map_err(|error| {
+                        format!("временная ошибка фиксации unreadable inbox item: {}", text(error))
+                    })?;
                     self.processed.insert(event_id.to_string());
                     out.push(incoming);
                 }
