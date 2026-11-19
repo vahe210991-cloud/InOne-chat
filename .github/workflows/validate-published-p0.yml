@@ -3,11 +3,6 @@ name: Validate recovered InOne P0 source
 on:
   workflow_dispatch:
   pull_request:
-    paths:
-      - "inone-development-archive-0.6.0/engine/**"
-      - "inone-engine-poc-0.6.0/mobile-mls/**"
-      - "mobile/rust/**"
-      - ".github/workflows/validate-published-p0.yml"
   push:
     branches: ['**']
     paths:
