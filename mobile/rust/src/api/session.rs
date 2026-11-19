@@ -37,6 +37,50 @@ pub enum IncomingMessage {
     },
 }
 
+/// Convert an unexpected Rust panic into a stable FFI error. Never expose panic
+/// payloads because they may contain request or credential data.
+fn ffi_guard<T>(operation: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+    catch_unwind(AssertUnwindSafe(operation))
+        .unwrap_or_else(|_| Err("panic inside native MLS boundary; operation aborted".to_string()))
+}
+
+/// Resolve the app-private database directory once and derive a deterministic,
+/// identity-scoped database filename. Canonicalization prevents later path
+/// interpretation from depending on a relative path or unresolved components.
+fn prepare_database_path(
+    database_directory: &str,
+    user_id: &str,
+    device_id: &str,
+) -> Result<(String, String), String> {
+    if user_id.trim().is_empty() || device_id.trim().is_empty() {
+        return Err("user_id и device_id обязательны".to_string());
+    }
+    if database_directory.trim().is_empty() {
+        return Err("каталог базы MLS не задан".to_string());
+    }
+    std::fs::create_dir_all(database_directory)
+        .map_err(|error| format!("создание каталога базы MLS: {error}"))?;
+    let directory = std::fs::canonicalize(database_directory)
+        .map_err(|error| format!("нормализация каталога базы MLS: {error}"))?;
+    let metadata = std::fs::metadata(&directory)
+        .map_err(|error| format!("проверка каталога базы MLS: {error}"))?;
+    if !metadata.is_dir() || !directory.is_absolute() {
+        return Err("каталог базы MLS должен быть абсолютным каталогом приложения".to_string());
+    }
+
+    let identity = format!("{user_id}/{device_id}");
+    let digest = Sha256::digest(identity.as_bytes());
+    let filename = digest
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    let database_path = directory
+        .join(format!("{filename}.sqlcipher"))
+        .to_string_lossy()
+        .into_owned();
+    Ok((identity, database_path))
+}
+
 fn map_incoming(items: Vec<Incoming>) -> Vec<IncomingMessage> {
     items
         .into_iter()
@@ -62,11 +106,27 @@ impl MlsSession {
         &self,
         operation: impl FnOnce(&mut Client) -> Result<T, String>,
     ) -> Result<T, String> {
-        let mut guard = self.client.lock().map_err(|error| error.to_string())?;
+        let mut guard = match self.client.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                let mut guard = poisoned.into_inner();
+                *guard = None;
+                self.client.clear_poison();
+                return Err("MLS session lock was poisoned; session closed and must be reopened".to_string());
+            }
+        };
         let client = guard
             .as_mut()
             .ok_or_else(|| "MLS session is closed".to_string())?;
-        operation(client)
+        match catch_unwind(AssertUnwindSafe(|| operation(client))) {
+            Ok(result) => result,
+            Err(_) => {
+                // A panic may leave OpenMLS or its persistence transaction in an
+                // unknown state. Fail closed instead of reusing a possibly damaged client.
+                *guard = None;
+                Err("panic inside native MLS operation; session closed and must be reopened".to_string())
+            }
+        }
     }
 
     /// Current short-lived access token only. Refresh token stays in Rust.
@@ -211,11 +271,13 @@ impl MlsSession {
             }
         };
 
-        let cleanup_result = cleanup_local_session(
-            &self.database_path,
-            &self.identity_scope,
-            self.keys.as_ref(),
-        );
+        let cleanup_result = ffi_guard(|| {
+            cleanup_local_session(
+                &self.database_path,
+                &self.identity_scope,
+                self.keys.as_ref(),
+            )
+        });
         let mut errors = Vec::new();
         if let Err(error) = cleanup_result {
             errors.push(error);
@@ -317,57 +379,49 @@ pub fn open_session(
     refresh_token: String,
     database_directory: String,
 ) -> Result<MlsSession, String> {
-    let access_token = Zeroizing::new(access_token);
-    let refresh_token = Zeroizing::new(refresh_token);
-    let keys: Arc<dyn KeyStore> = Arc::new(PlatformKeyStore::new()?);
-    std::fs::create_dir_all(&database_directory)
-        .map_err(|error| format!("создание каталога базы MLS: {error}"))?;
-    let identity = format!("{user_id}/{device_id}");
-    let digest = Sha256::digest(identity.as_bytes());
-    let filename = digest
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>();
-    let database_path = Path::new(&database_directory)
-        .join(format!("{filename}.sqlcipher"))
-        .to_string_lossy()
-        .into_owned();
-    let has_existing_key = keys.has_database_key(&identity)?;
-    let database_existed = database_artifacts_exist(&database_path);
-    if database_existed && !has_existing_key {
-        return Err(
-            "файл SQLCipher существует, но защищённый ключ отсутствует; автоматическая генерация нового ключа запрещена, требуется явное восстановление"
-                .to_string(),
-        );
-    }
-    let client = match connect_with_session(
-        &base_url,
-        &user_id,
-        &device_id,
-        access_token.as_str(),
-        refresh_token.as_str(),
-        &database_path,
-        keys.as_ref(),
-    ) {
-        Ok(client) => client,
-        Err(error) => {
-            if !has_existing_key && !database_existed {
-                if let Err(cleanup_error) =
-                    cleanup_local_session(&database_path, &identity, keys.as_ref())
-                {
-                    return Err(format!(
-                        "{error}; очистка частично созданной MLS-сессии не завершена: {cleanup_error}"
-                    ));
-                }
-            }
-            return Err(error);
+    ffi_guard(|| {
+        let access_token = Zeroizing::new(access_token);
+        let refresh_token = Zeroizing::new(refresh_token);
+        let keys: Arc<dyn KeyStore> = Arc::new(PlatformKeyStore::new()?);
+        let (identity, database_path) =
+            prepare_database_path(&database_directory, &user_id, &device_id)?;
+        let has_existing_key = keys.has_database_key(&identity)?;
+        let database_existed = database_artifacts_exist(&database_path);
+        if database_existed && !has_existing_key {
+            return Err(
+                "файл SQLCipher существует, но защищённый ключ отсутствует; автоматическая генерация нового ключа запрещена, требуется явное восстановление"
+                    .to_string(),
+            );
         }
-    };
-    Ok(MlsSession {
-        client: Mutex::new(Some(client)),
-        database_path,
-        identity_scope: identity,
-        keys,
+        let client = match connect_with_session(
+            &base_url,
+            &user_id,
+            &device_id,
+            access_token.as_str(),
+            refresh_token.as_str(),
+            &database_path,
+            keys.as_ref(),
+        ) {
+            Ok(client) => client,
+            Err(error) => {
+                if !has_existing_key && !database_existed {
+                    if let Err(cleanup_error) =
+                        cleanup_local_session(&database_path, &identity, keys.as_ref())
+                    {
+                        return Err(format!(
+                            "{error}; очистка частично созданной MLS-сессии не завершена: {cleanup_error}"
+                        ));
+                    }
+                }
+                return Err(error);
+            }
+        };
+        Ok(MlsSession {
+            client: Mutex::new(Some(client)),
+            database_path,
+            identity_scope: identity,
+            keys,
+        })
     })
 }
 
@@ -379,29 +433,23 @@ pub fn resume_session(
     device_id: String,
     database_directory: String,
 ) -> Result<MlsSession, String> {
-    let keys: Arc<dyn KeyStore> = Arc::new(PlatformKeyStore::new()?);
-    let identity = format!("{user_id}/{device_id}");
-    let digest = Sha256::digest(identity.as_bytes());
-    let filename = digest
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>();
-    let database_path = Path::new(&database_directory)
-        .join(format!("{filename}.sqlcipher"))
-        .to_string_lossy()
-        .into_owned();
-    let client = resume_with_session(
-        &base_url,
-        &user_id,
-        &device_id,
-        &database_path,
-        keys.as_ref(),
-    )?;
-    Ok(MlsSession {
-        client: Mutex::new(Some(client)),
-        database_path,
-        identity_scope: identity,
-        keys,
+    ffi_guard(|| {
+        let keys: Arc<dyn KeyStore> = Arc::new(PlatformKeyStore::new()?);
+        let (identity, database_path) =
+            prepare_database_path(&database_directory, &user_id, &device_id)?;
+        let client = resume_with_session(
+            &base_url,
+            &user_id,
+            &device_id,
+            &database_path,
+            keys.as_ref(),
+        )?;
+        Ok(MlsSession {
+            client: Mutex::new(Some(client)),
+            database_path,
+            identity_scope: identity,
+            keys,
+        })
     })
 }
 
@@ -412,25 +460,16 @@ pub fn purge_local_session(
     device_id: String,
     database_directory: String,
 ) -> Result<(), String> {
-    if user_id.trim().is_empty() || device_id.trim().is_empty() {
-        return Err("user_id и device_id обязательны для очистки MLS-сессии".to_string());
-    }
-    let identity = format!("{user_id}/{device_id}");
-    let digest = Sha256::digest(identity.as_bytes());
-    let filename = digest
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>();
-    let database_path = Path::new(&database_directory)
-        .join(format!("{filename}.sqlcipher"))
-        .to_string_lossy()
-        .into_owned();
-    let platform_keys = PlatformKeyStore::new();
-    let keys: Result<&dyn KeyStore, String> = match &platform_keys {
-        Ok(keys) => Ok(keys),
-        Err(error) => Err(error.clone()),
-    };
-    cleanup_local_session_with_key_store(&database_path, &identity, keys)
+    ffi_guard(|| {
+        let (identity, database_path) =
+            prepare_database_path(&database_directory, &user_id, &device_id)?;
+        let platform_keys = PlatformKeyStore::new();
+        let keys: Result<&dyn KeyStore, String> = match &platform_keys {
+            Ok(keys) => Ok(keys),
+            Err(error) => Err(error.clone()),
+        };
+        cleanup_local_session_with_key_store(&database_path, &identity, keys)
+    })
 }
 
 #[frb(init)]
@@ -485,6 +524,42 @@ mod tests {
             keys: keys.clone(),
         };
         (database, keys, session)
+    }
+
+    #[test]
+    fn ffi_guard_converts_panics_to_non_sensitive_errors() {
+        let result = ffi_guard::<()>(|| panic!("must not escape the FFI boundary"));
+        let error = result.expect_err("panic must become an error");
+        assert_eq!(error, "panic inside native MLS boundary; operation aborted");
+    }
+
+    #[test]
+    fn database_path_is_canonical_and_identity_scoped() {
+        let root = std::env::temp_dir().join(format!(
+            "inone-mls-path-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let (identity, database) = prepare_database_path(
+            root.to_string_lossy().as_ref(),
+            "@alice:inone.test",
+            "device-1",
+        ).unwrap();
+        assert_eq!(identity, "@alice:inone.test/device-1");
+        assert!(Path::new(&database).is_absolute());
+        assert!(Path::new(&database).parent().unwrap().is_dir());
+        assert!(database.ends_with(".sqlcipher"));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn database_path_rejects_empty_identity_and_directory() {
+        assert!(prepare_database_path("", "alice", "device").is_err());
+        assert!(prepare_database_path("/tmp/inone-mls", " ", "device").is_err());
+        assert!(prepare_database_path("/tmp/inone-mls", "alice", "").is_err());
     }
 
     #[test]
