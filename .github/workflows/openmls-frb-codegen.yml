@@ -72,39 +72,10 @@ jobs:
       - name: Install Flutter Rust Bridge code generator
         run: cargo install --locked --version 2.13.0 flutter_rust_bridge_codegen
 
-      - name: Integrate and generate typed Dart bindings
+      - name: Run deterministic FRB generation and contract verification
         working-directory: mobile
-        run: |
-          cp lib/main.dart /tmp/inone-main.dart
-          cp rust/src/api/mod.rs /tmp/inone-api-mod.rs
-          cp pubspec.yaml /tmp/inone-pubspec.yaml
-          flutter_rust_bridge_codegen integrate \
-            --rust-crate-dir rust \
-            --rust-crate-name inone_mls_frb \
-            --integration-backend native-assets \
-            --platforms android,ios \
-            --no-dart-fix \
-            --no-dart-format \
-            --no-integration-test
-          cp /tmp/inone-main.dart lib/main.dart
-          cp /tmp/inone-api-mod.rs rust/src/api/mod.rs
-          cp /tmp/inone-pubspec.yaml pubspec.yaml
-          rm -f rust/src/api/simple.rs lib/src/rust/api/simple.dart
-          flutter pub get
-          flutter_rust_bridge_codegen generate \
-            --skip-fvm-install \
-            --no-dart-fix \
-            --no-dart-format \
-            --no-auto-upgrade-dependency \
-            --no-web \
-            --stop-on-error
-          # Web is explicitly disabled; discard the stale web adapter emitted by integration templates.
-          rm -f lib/src/rust/frb_generated.web.dart
-
-      - name: Remove Flutter Rust Bridge integration template test
-        working-directory: mobile
-        # FRB integration can recreate its sample test; do not remove the MLS smoke test.
-        run: rm -f integration_test/simple_test.dart
+        timeout-minutes: 30
+        run: node tool/frb_ci.mjs
 
       - name: Prepare declared asset directories
         working-directory: mobile
@@ -161,6 +132,7 @@ jobs:
           diff -u "$snapshot/Cargo.lock" rust/Cargo.lock
           diff -u "$snapshot/pubspec.yaml" pubspec.yaml
           diff -u "$snapshot/pubspec.lock" pubspec.lock
+          node tool/frb_ci.mjs --verify-only
 
       - name: Format generated Rust bridge module registration
         run: cargo fmt --manifest-path mobile/rust/Cargo.toml
@@ -225,9 +197,11 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_6
+          cores: 2
           emulator-boot-timeout: 900
           disable-linux-hw-accel: false
           disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           script: cd mobile && flutter drive --driver=test_driver/integration_test.dart --target=integration_test/mls_secure_store_test.dart
 
       - name: Upload Android preview APK
@@ -292,6 +266,7 @@ jobs:
           cmp "$GENERATED/pubspec.yaml" mobile/pubspec.yaml
           cmp "$GENERATED/rust/Cargo.toml" mobile/rust/Cargo.toml
           cmp "$GENERATED/rust/Cargo.lock" mobile/rust/Cargo.lock
+          cmp "$GENERATED/pubspec.lock" mobile/pubspec.lock
           mkdir -p mobile/hook mobile/lib/src/rust mobile/rust/src
           rsync -a "$GENERATED/hook/" mobile/hook/
           rsync -a "$GENERATED/lib/src/rust/" mobile/lib/src/rust/
@@ -319,11 +294,11 @@ jobs:
           flutter create --platforms=ios --project-name inone_mobile --org com.inone .
           node tool/prepare_ios_deep_links.mjs
 
-      - name: Resolve Flutter dependencies
+      - name: Resolve Flutter dependencies without lockfile drift
         working-directory: mobile
         run: |
           flutter pub get --enforce-lockfile
-          git diff --exit-code -- pubspec.yaml
+          git diff --exit-code -- pubspec.yaml pubspec.lock
 
       - name: Configure Rust iOS deployment target
         working-directory: mobile
