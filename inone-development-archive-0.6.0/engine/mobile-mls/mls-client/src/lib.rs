@@ -2279,6 +2279,7 @@ impl Client {
                 .mls
                 .process_message(&transactional_provider, protocol)
         };
+        drop(transactional_provider);
 
         match processed_result {
             Ok(processed) => {
