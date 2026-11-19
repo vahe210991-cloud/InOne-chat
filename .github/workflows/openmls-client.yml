@@ -2,17 +2,8 @@ name: OpenMLS client validation
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - ".github/workflows/openmls-client.yml"
-      - "inone-engine-poc-0.6.0/mobile-mls/mls-client/**"
-      - "inone-engine-poc-0.6.0/src/**"
-      - "inone-engine-poc-0.6.0/package.json"
-      - "inone-development-archive-0.6.0/engine/package.json"
-      - "inone-development-archive-0.6.0/engine/package-lock.json"
-      - "inone-development-archive-0.6.0/engine/src/**"
   push:
-    branches: ["**"]
+    branches: [main, feature/stage-4-native-mls-runtime-2026-11-11]
     paths:
       - ".github/workflows/openmls-client.yml"
       - "inone-engine-poc-0.6.0/mobile-mls/mls-client/**"
