@@ -288,6 +288,10 @@ impl MlsSession {
         self.with_client(|client| client.outbox_len())
     }
 
+    pub fn pending_outbox_json(&self, room_id: String) -> Result<String, String> {
+        self.with_client(|client| client.pending_outbox_for_room_json(&room_id))
+    }
+
     pub fn flush_outbox(&self) -> Result<usize, String> {
         self.with_client(Client::flush_outbox)
     }
