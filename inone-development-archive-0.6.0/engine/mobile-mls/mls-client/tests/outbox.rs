@@ -209,23 +209,12 @@ fn repeated_send_with_the_same_identifier_is_stored_once() {
 #[test]
 fn encrypted_inbox_survives_restart_until_app_ack_and_never_replays_after_ack() {
     let engine = start_engine();
-    let proxy = start_proxy(&engine.base);
     let keys = MemoryKeyStore::default();
 
     let alice_db = db("alice-durable-inbox");
     let bob_db = db("bob-durable-inbox");
-    let (bob_access, bob_refresh) = login_tokens(&proxy.base, BOB, "B_INBOX");
-    let mut alice = connect(&proxy.base, ALICE, PW, "A_INBOX", &alice_db, &keys).unwrap();
-    let mut bob = connect_with_session(
-        &proxy.base,
-        BOB,
-        "B_INBOX",
-        &bob_access,
-        &bob_refresh,
-        &bob_db,
-        &keys,
-    )
-    .unwrap();
+    let mut alice = connect(&engine.base, ALICE, PW, "A_INBOX", &alice_db, &keys).unwrap();
+    let mut bob = connect(&engine.base, BOB, PW, "B_INBOX", &bob_db, &keys).unwrap();
 
     bob.ensure_key_packages(2).unwrap();
     let room = "!room-durable-inbox:inone.test";
@@ -239,10 +228,11 @@ fn encrypted_inbox_survives_restart_until_app_ack_and_never_replays_after_ack() 
 
     let pending = bob.pending_incoming().unwrap();
     assert_eq!(texts(&pending), vec![plaintext.to_string()]);
-    assert!(pending.iter().any(|item| matches!(
-        item,
-        Incoming::Text { event_id: pending_id, .. } if pending_id == &event_id
-    )));
+    assert!(matches!(
+        pending.as_slice(),
+        [Incoming::Text { event_id: pending_id, .. }]
+            if pending_id.as_str() == event_id.as_str()
+    ));
 
     // SQLCipher protects the pending plaintext at rest, including WAL sidecars.
     for suffix in ["", "-wal", "-shm", "-journal"] {
@@ -250,7 +240,9 @@ fn encrypted_inbox_survives_restart_until_app_ack_and_never_replays_after_ack() 
         if let Ok(ciphertext) = std::fs::read(path) {
             if ciphertext.len() >= plaintext.len() {
                 assert!(
-                    !ciphertext.windows(plaintext.len()).any(|window| window == plaintext.as_bytes()),
+                    !ciphertext
+                        .windows(plaintext.len())
+                        .any(|window| window == plaintext.as_bytes()),
                     "pending inbox plaintext must not appear in database files"
                 );
             }
@@ -259,9 +251,12 @@ fn encrypted_inbox_survives_restart_until_app_ack_and_never_replays_after_ack() 
 
     // Simulate app/process restart after decrypt+commit but before the UI ACK.
     drop(bob);
-    let mut resumed = resume_with_session(&proxy.base, BOB, "B_INBOX", &bob_db, &keys)
+    let mut resumed = connect(&engine.base, BOB, PW, "B_INBOX", &bob_db, &keys)
         .expect("resume device after crash before app acknowledgement");
-    assert_eq!(texts(&resumed.pending_incoming().unwrap()), vec![plaintext.to_string()]);
+    assert_eq!(
+        texts(&resumed.pending_incoming().unwrap()),
+        vec![plaintext.to_string()]
+    );
 
     // ACK is idempotent and durable.
     resumed.acknowledge_incoming(&[event_id.clone()]).unwrap();
@@ -270,7 +265,7 @@ fn encrypted_inbox_survives_restart_until_app_ack_and_never_replays_after_ack() 
     drop(resumed);
 
     // Simulate another restart after ACK. Neither the inbox nor a repeated server sync replays it.
-    let mut after_ack = resume_with_session(&proxy.base, BOB, "B_INBOX", &bob_db, &keys)
+    let mut after_ack = connect(&engine.base, BOB, PW, "B_INBOX", &bob_db, &keys)
         .expect("resume after acknowledged inbox item");
     assert!(after_ack.pending_incoming().unwrap().is_empty());
     assert!(after_ack.sync().unwrap().is_empty());
