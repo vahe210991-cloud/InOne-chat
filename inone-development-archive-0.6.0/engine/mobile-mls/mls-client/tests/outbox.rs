@@ -273,7 +273,6 @@ fn encrypted_inbox_survives_restart_until_app_ack_and_never_replays_after_ack() 
     after_ack.logout().unwrap();
 }
 
-
 #[test]
 fn inbox_write_failure_rolls_back_mls_state_and_allows_server_redelivery() {
     let engine = start_engine();
@@ -295,7 +294,10 @@ fn inbox_write_failure_rolls_back_mls_state_and_allows_server_redelivery() {
     // Open the same real SQLCipher database with the device key and inject a
     // deterministic storage failure at the inbox INSERT boundary.
     let key = keys.database_key(&format!("{BOB}/B_INBOX_FAIL")).unwrap();
-    let key_hex = key.iter().map(|byte| format!("{byte:02x}")).collect::<String>();
+    let key_hex = key
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
     let fault = rusqlite::Connection::open(&bob_db).unwrap();
     fault
         .pragma_update(None, "key", format!("x'{key_hex}'"))
@@ -324,7 +326,9 @@ fn inbox_write_failure_rolls_back_mls_state_and_allows_server_redelivery() {
 
     // The event must not be marked processed and the in-memory MLS group must
     // be reloaded from the rolled-back SQLCipher state before retrying.
-    fault.execute_batch("DROP TRIGGER reject_inbox_insert;").unwrap();
+    fault
+        .execute_batch("DROP TRIGGER reject_inbox_insert;")
+        .unwrap();
     drop(fault);
 
     let redelivered = bob
