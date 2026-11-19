@@ -195,6 +195,7 @@ fn messages_written_offline_are_delivered_once_when_back_online() {
     alice.create_room(ROOM).unwrap();
     alice.invite(ROOM, BOB).unwrap();
     assert!(bob.sync().unwrap().is_empty());
+    assert_eq!(alice.local_room_ids(), vec![ROOM.to_string()]);
 
     proxy.set_online(false);
     alice.enqueue_text(ROOM, "в метро").unwrap();
