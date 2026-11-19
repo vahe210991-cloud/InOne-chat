@@ -108,6 +108,9 @@ void main() {
         } catch (error) {
           resumeError = error;
         }
+        if (resumeError == null) {
+          await afterLogout.close();
+        }
         expect(resumeError, isNotNull);
         expect(
           resumeError.toString(),
@@ -117,7 +120,9 @@ void main() {
         await backupDirectory.delete(recursive: true);
         for (final suffix in ['', '-wal', '-shm', '-journal']) {
           final artifact = File('${databasePath}${suffix}');
-          if (await artifact.exists()) await artifact.delete();
+          if (await artifact.exists()) {
+            await artifact.delete();
+          }
         }
       }
     },
