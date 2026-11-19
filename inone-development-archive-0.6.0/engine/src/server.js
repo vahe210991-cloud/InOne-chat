@@ -160,7 +160,7 @@ const TEST_UI_FILES = {
   'common/state.mjs': { dir: 'client-screens', name: 'common/state.mjs', type: 'text/javascript; charset=utf-8' },
   'common/device.mjs': { dir: 'client-screens', name: 'common/device.mjs', type: 'text/javascript; charset=utf-8' },
 };
-export function createServer({ pinPepper, mailer: externalMailer, store, trustProxy = false, sms, requirePhone = false, registrationMode = 'verified', sessionTtl = {}, objectStore, objectSecret = randomBytes(32).toString('hex'), filesDir = null, quotaBytes = null, pushSender = null, docsSecret = null, defaultOrgAutoJoin = false, testUi = false, providers = {}, providerKeysSource = null, publicUrl = 'https://inone.test', rateLimits = {}, bodyLimit = 4 * 1024 * 1024, logger = null, wireLogLimit = 2000, smsEnabled = true, phoneBlockedCountries = [], phoneAllowedCountries = [], devEmailCode = '' } = {}) {
+export function createServer({ pinPepper, mailer: externalMailer, store, trustProxy = false, sms, requirePhone = false, registrationMode = 'verified', sessionTtl = {}, objectStore, objectSecret = randomBytes(32).toString('hex'), filesDir = null, quotaBytes = null, pushSender = null, docsSecret = null, defaultOrgAutoJoin = false, testUi = false, providers = {}, providerKeysSource = null, publicUrl = 'https://inone.test', rateLimits = {}, bodyLimit = 4 * 1024 * 1024, documentBodyLimit = 7 * 1024 * 1024, logger = null, wireLogLimit = 2000, smsEnabled = true, phoneBlockedCountries = [], phoneAllowedCountries = [], devEmailCode = '' } = {}) {
   // Аккаунты и PIN: в базе (store.js) или в памяти по умолчанию (store-memory.js).
   const storage = store ?? createMemoryStore({ pinPepper });
   // SMS-поставщик подключается снаружи; по умолчанию сообщения складываются в список (для тестов).
@@ -622,9 +622,12 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
     try {
       const chunks = [];
       let received = 0;
+      const isOrganizationDocumentUpload =
+        req.method === 'POST' && /^\\/org-requests\\/[^/]+\\/documents$/.test(pathOnly);
+      const requestBodyLimit = isOrganizationDocumentUpload ? documentBodyLimit : bodyLimit;
       for await (const c of req) {
         received += c.length;
-        if (received > bodyLimit) {
+        if (received > requestBodyLimit) {
           res.setHeader('Connection', 'close');
           return send(res, 413, { error: 'request body too large' });
         }
