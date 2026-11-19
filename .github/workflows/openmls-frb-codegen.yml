@@ -197,7 +197,8 @@ jobs:
           cp "$GENERATED/rust/Cargo.toml" mobile/rust/Cargo.toml
           cp "$GENERATED/rust/Cargo.lock" mobile/rust/Cargo.lock
           cp "$GENERATED/rust/src/frb_generated.rs" mobile/rust/src/frb_generated.rs
-          cp "$GENERATED/pubspec.yaml" mobile/pubspec.yaml
+          # Keep the checked-in pubspec.yaml authoritative. Reuse only the lockfile
+          # resolved by the Linux generation job so iOS validates the same dependency graph.
           cp "$GENERATED/pubspec.lock" mobile/pubspec.lock
 
       - name: Install Flutter and iOS Rust targets
@@ -223,8 +224,8 @@ jobs:
       - name: Resolve Flutter dependencies
         working-directory: mobile
         run: |
-          flutter pub get
-          git diff --exit-code -- pubspec.yaml pubspec.lock
+          flutter pub get --enforce-lockfile
+          git diff --exit-code -- pubspec.yaml
 
       - name: Build iOS device target without signing
         working-directory: mobile
