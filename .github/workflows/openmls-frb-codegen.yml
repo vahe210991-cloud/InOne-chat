@@ -2,8 +2,12 @@ name: OpenMLS Flutter Rust Bridge generation
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/openmls-frb-codegen.yml"
+      - "mobile/**"
   push:
-    branches: [feature/stage-4-native-mls-runtime-2026-11-11]
+    branches: [feature/stage-4-native-mls-runtime-2026-11-11, fix/android-keystore-runtime-smoke-2026-11-19]
     paths:
       - ".github/workflows/openmls-frb-codegen.yml"
       - "mobile/**"
@@ -12,14 +16,15 @@ permissions:
   contents: read
 
 concurrency:
-  group: openmls-frb-codegen-${{ github.event.pull_request.number || github.ref }}
+  group: openmls-frb-codegen-${{ github.event.pull_request.head.ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
   generate-and-validate:
     if: github.actor != 'github-actions[bot]'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Ubuntu x64 runners expose KVM for hardware-accelerated Android emulation.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
     steps:
       - name: Checkout PR head
         uses: actions/checkout@v4
@@ -38,9 +43,10 @@ jobs:
         working-directory: mobile
         run: flutter create --platforms=android,ios --project-name inone_mobile --org com.inone .
 
-      - name: Remove generated template test
+      - name: Remove generated Flutter template tests
         working-directory: mobile
-        run: rm -f test/widget_test.dart
+        # Keep the real MLS integration test; remove only Flutter's generated sample tests.
+        run: rm -f test/widget_test.dart integration_test/simple_test.dart
 
       - name: Install Rust toolchain and Android targets
         uses: dtolnay/rust-toolchain@master
@@ -66,6 +72,11 @@ jobs:
           cp /tmp/inone-api-mod.rs rust/src/api/mod.rs
           rm -f rust/src/api/simple.rs lib/src/rust/api/simple.dart
           flutter_rust_bridge_codegen generate
+
+      - name: Remove Flutter Rust Bridge integration template test
+        working-directory: mobile
+        # FRB integration can recreate its sample test; do not remove the MLS smoke test.
+        run: rm -f integration_test/simple_test.dart
 
       - name: Prepare declared asset directories
         working-directory: mobile
@@ -101,6 +112,15 @@ jobs:
         working-directory: mobile
         run: flutter build apk --debug
 
+      - name: Enable KVM for Android emulator
+        run: |
+          test -e /dev/kvm || { echo "::error::GitHub runner does not expose /dev/kvm; hardware-accelerated Android runtime tests cannot run."; exit 1; }
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          sudo chmod 0666 /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
+
       - name: Android Keystore runtime smoke test
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -108,9 +128,10 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_6
-          script: |
-            cd mobile
-            flutter drive --driver=test_driver/integration_test.dart --target=integration_test/mls_secure_store_test.dart
+          emulator-boot-timeout: 900
+          disable-linux-hw-accel: false
+          disable-animations: true
+          script: cd mobile && flutter drive --driver=test_driver/integration_test.dart --target=integration_test/mls_secure_store_test.dart
 
       - name: Upload generated FRB outputs for iOS validation
         uses: actions/upload-artifact@v4
@@ -136,7 +157,7 @@ jobs:
   build-ios:
     name: iOS native assets compile (unsigned, no secrets)
     needs: generate-and-validate
-    runs-on: macos-14
+    runs-on: macos-15
     permissions:
       contents: read
     timeout-minutes: 45
@@ -166,7 +187,7 @@ jobs:
           test -d "$GENERATED/lib/src/rust"
           test -f "$GENERATED/rust/Cargo.toml"
           test -f "$GENERATED/rust/Cargo.lock"
-          test -f "$GENERATED/rust/build.rs"
+          # This Rust crate intentionally has no custom build.rs; Native Assets are prepared by hook/build.dart.
           test -f "$GENERATED/rust/src/frb_generated.rs"
           test -f "$GENERATED/pubspec.yaml"
           test -f "$GENERATED/pubspec.lock"
@@ -175,9 +196,9 @@ jobs:
           rsync -a "$GENERATED/lib/src/rust/" mobile/lib/src/rust/
           cp "$GENERATED/rust/Cargo.toml" mobile/rust/Cargo.toml
           cp "$GENERATED/rust/Cargo.lock" mobile/rust/Cargo.lock
-          cp "$GENERATED/rust/build.rs" mobile/rust/build.rs
           cp "$GENERATED/rust/src/frb_generated.rs" mobile/rust/src/frb_generated.rs
-          cp "$GENERATED/pubspec.yaml" mobile/pubspec.yaml
+          # Keep the checked-in pubspec.yaml authoritative. Reuse only the lockfile
+          # resolved by the Linux generation job so iOS validates the same dependency graph.
           cp "$GENERATED/pubspec.lock" mobile/pubspec.lock
 
       - name: Install Flutter and iOS Rust targets
@@ -200,11 +221,11 @@ jobs:
           flutter create --platforms=ios --project-name inone_mobile --org com.inone .
           node tool/prepare_ios_deep_links.mjs
 
-      - name: Resolve Dart dependencies
+      - name: Resolve Flutter dependencies
         working-directory: mobile
         run: |
-          flutter pub get
-          git diff --exit-code -- pubspec.yaml pubspec.lock
+          flutter pub get --enforce-lockfile
+          git diff --exit-code -- pubspec.yaml
 
       - name: Build iOS device target without signing
         working-directory: mobile
