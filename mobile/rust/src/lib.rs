@@ -1,6 +1,15 @@
 pub mod api;
 mod secure_store;
 
+#[cfg(any(target_os = "android", test))]
+fn validate_android_context_initialized(initialized: bool) -> Result<(), String> {
+    if initialized {
+        Ok(())
+    } else {
+        Err("Android application context was not initialized".to_string())
+    }
+}
+
 #[cfg(target_os = "android")]
 mod android_context {
     use std::ffi::c_void;
@@ -56,11 +65,7 @@ mod android_context {
         let initialized = state
             .lock()
             .map_err(|error| format!("Android context initialization lock: {error}"))?;
-        if *initialized {
-            Ok(())
-        } else {
-            Err("Android application context was not initialized".to_string())
-        }
+        super::validate_android_context_initialized(*initialized)
     }
 }
 
@@ -72,4 +77,17 @@ pub(crate) fn ensure_android_context_initialized() -> Result<(), String> {
 #[cfg(not(target_os = "android"))]
 pub(crate) fn ensure_android_context_initialized() -> Result<(), String> {
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_android_context_initialized;
+
+    #[test]
+    fn native_key_store_context_gate_fails_closed_before_initialization() {
+        let error = validate_android_context_initialized(false)
+            .expect_err("an uninitialized Android context must never open the native key store");
+        assert_eq!(error, "Android application context was not initialized");
+        assert!(validate_android_context_initialized(true).is_ok());
+    }
 }
