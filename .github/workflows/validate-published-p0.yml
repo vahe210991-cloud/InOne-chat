@@ -38,11 +38,22 @@ jobs:
         with:
           toolchain: "1.91"
           components: rustfmt
+      - name: Record Rust format toolchain versions
+        run: |
+          rustc --version | tee "$RUNNER_TEMP/rust-format-toolchain.txt"
+          cargo --version | tee -a "$RUNNER_TEMP/rust-format-toolchain.txt"
       - name: Verify Rust formatting without modifying the PR branch
         working-directory: inone-development-archive-0.6.0/engine/mobile-mls
         run: |
           cargo fmt --manifest-path mls-client/Cargo.toml -- --check
           cargo fmt --manifest-path mls-bridge/Cargo.toml -- --check
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rust-format-evidence
+          path: ${{ runner.temp }}/rust-format-toolchain.txt
+          if-no-files-found: warn
+          retention-days: 14
 
   backend-node:
     name: Backend Node suite
@@ -97,8 +108,23 @@ jobs:
           cache-dependency-path: inone-development-archive-0.6.0/engine/package-lock.json
       - run: npm ci
         working-directory: ${{ env.ENGINE_DIR }}
-      - run: node --test test/rooms-mine.test.js
+      - name: Record room-list Node toolchain
+        run: node --version | tee "$RUNNER_TEMP/room-list-toolchain.txt"
+      - name: Run room-list regression with retained log
+        shell: bash
+        run: |
+          set -o pipefail
+          node --test test/rooms-mine.test.js 2>&1 | tee "$RUNNER_TEMP/room-list-test.log"
         working-directory: ${{ env.ENGINE_DIR }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: room-list-test-evidence
+          path: |
+            ${{ runner.temp }}/room-list-test.log
+            ${{ runner.temp }}/room-list-toolchain.txt
+          if-no-files-found: warn
+          retention-days: 14
 
   postgres-integration:
     name: PostgreSQL integration suite
