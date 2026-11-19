@@ -64,14 +64,14 @@ class InOneDocumentRow extends StatelessWidget {
   const InOneDocumentRow({
     super.key,
     required this.document,
-    required this.onDownload,
+    required this.onOpen,
     this.busy = false,
   });
 
   final InOneDocument document;
 
   /// `null` — кнопка заблокирована.
-  final VoidCallback? onDownload;
+  final VoidCallback? onOpen;
   final bool busy;
 
   @override
@@ -80,11 +80,11 @@ class InOneDocumentRow extends StatelessWidget {
       title: document.name,
       subtitle: document.typeLabel,
       trailing: InOneButton(
-        label: 'Ներբեռնել',
+        label: 'Բացել',
         kind: InOneButtonKind.outline,
         small: true,
         loading: busy,
-        onPressed: onDownload,
+        onPressed: onOpen,
       ),
     );
   }
