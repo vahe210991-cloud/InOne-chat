@@ -80,6 +80,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     _session.addListener(_handleSessionStateChanged);
     WidgetsBinding.instance.addObserver(this);
     unawaited(_clearStaleDocumentPreviews());
+    unawaited(_purgeLegacyDocumentCache());
     final initialRoute = WidgetsBinding.instance.platformDispatcher.defaultRouteName;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_handleRecoveryRoute(initialRoute));
@@ -137,8 +138,17 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   Future<void> _purgeOwnerDocuments(String ownerUserId) async {
     try {
       await _documentPreview.clear();
-    } finally {
       await _documentStore.purgeOwner(ownerUserId);
+    } catch (_) {
+      if (mounted) _notice('Не удалось полностью очистить локальные документы. Повторите выход из аккаунта.');
+    }
+  }
+
+  Future<void> _purgeLegacyDocumentCache() async {
+    try {
+      await _documentStore.purgeLegacyUnscopedData();
+    } catch (_) {
+      if (mounted) _notice('Не удалось удалить устаревший локальный кеш документов.');
     }
   }
 
