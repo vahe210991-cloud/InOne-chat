@@ -8,12 +8,14 @@ void main() {
   late Directory root;
   late Map<String, String> keys;
   late int keyWrites;
+  late bool legacyKeyPresent;
   late InOneEncryptedDocumentStore store;
 
   setUp(() async {
     root = await Directory.systemTemp.createTemp('inone-documents-');
     keys = {};
     keyWrites = 0;
+    legacyKeyPresent = true;
     store = InOneEncryptedDocumentStore(
       rootDirectory: () async => root,
       readKey: (scope) async => keys[scope],
@@ -21,7 +23,8 @@ void main() {
         keyWrites++;
         keys[scope] = value;
       },
-      deleteKey: (scope) async => keys.remove(scope),
+      deleteKey: (scope) async { keys.remove(scope); },
+      deleteLegacyKey: () async { legacyKeyPresent = false; },
     );
   });
 
@@ -175,6 +178,29 @@ void main() {
         .where((entity) => entity is File && entity.path.endsWith('.in1doc'))
         .toList();
     expect(remainingFiles, isEmpty);
+  });
+
+  test('upgrade cleanup erases legacy global key without deleting owner-scoped data', () async {
+    final scopedFile = await store.save(
+      ownerUserId: 'owner-1',
+      requestId: 'request-1',
+      documentId: 'document-1',
+      filename: 'private.pdf',
+      bytes: utf8.encode('new scoped data'),
+    );
+    final legacyDirectory = Directory('${root.path}${Platform.pathSeparator}InOne'
+        '${Platform.pathSeparator}organization-documents'
+        '${Platform.pathSeparator}legacy-request');
+    await legacyDirectory.create(recursive: true);
+    final legacyFile = File('${legacyDirectory.path}${Platform.pathSeparator}old.in1doc');
+    await legacyFile.writeAsBytes([1, 2, 3]);
+
+    await store.purgeLegacyUnscopedData();
+
+    expect(legacyKeyPresent, isFalse);
+    expect(await legacyFile.exists(), isFalse);
+    expect(await scopedFile.exists(), isTrue);
+    expect(keys, hasLength(1));
   });
 
   test('rejects modified ciphertext instead of returning unauthenticated bytes', () async {
