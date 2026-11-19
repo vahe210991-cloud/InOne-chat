@@ -160,51 +160,6 @@ fn invitation_works_when_regular_packages_run_out() {
 }
 
 #[test]
-fn non_utf8_application_payload_is_quarantined_without_poisoning_room() {
-    let engine = start_engine();
-    let keys = MemoryKeyStore::default();
-    let (alice_db, bob_db) = (db("alice-invalid-utf8"), db("bob-invalid-utf8"));
-    let mut alice = login(&engine, &keys, "@alice:inone.test", "A_UTF8", &alice_db);
-    let mut bob = login(&engine, &keys, "@bob:inone.test", "B_UTF8", &bob_db);
-    bob.upload_key_packages(2).unwrap();
-
-    let room = "!room-invalid-utf8:inone.test";
-    alice.create_room(room).unwrap();
-    alice.invite(room, "@bob:inone.test").unwrap();
-    assert!(bob.sync().unwrap().is_empty());
-
-    let invalid_event_id = alice
-        .send_application_payload_with_id(room, &[0xff, 0xfe, 0x80], "invalid-utf8-1")
-        .expect("MLS accepts opaque application bytes");
-
-    let unreadable_items = bob
-        .sync()
-        .expect("invalid UTF-8 is an event-level content error");
-    assert_eq!(unreadable(&unreadable_items), 1);
-    assert!(matches!(
-        unreadable_items.as_slice(),
-        [Incoming::Unreadable { room_id, event_id }]
-            if room_id == room && event_id == &invalid_event_id
-    ));
-    assert_eq!(
-        bob.desync_reason(room).unwrap(),
-        None,
-        "invalid application text must not mark the MLS room RecoveryRequired"
-    );
-
-    alice
-        .send_text(room, "valid message after invalid payload")
-        .unwrap();
-    let recovered = bob.sync().expect("the same room remains synchronized");
-    assert_eq!(
-        texts(&recovered),
-        vec!["valid message after invalid payload"]
-    );
-    assert_eq!(unreadable(&recovered), 0);
-    assert_eq!(bob.desync_reason(room).unwrap(), None);
-}
-
-#[test]
 fn non_utf8_application_payload_is_quarantined_and_durably_acknowledged() {
     let engine = start_engine();
     let keys = MemoryKeyStore::default();
