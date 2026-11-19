@@ -7,7 +7,7 @@ on:
       - ".github/workflows/openmls-frb-codegen.yml"
       - "mobile/**"
   push:
-    branches: [feature/stage-4-native-mls-runtime-2026-11-11]
+    branches: [feature/stage-4-native-mls-runtime-2026-11-11, fix/android-keystore-runtime-smoke-2026-11-19]
     paths:
       - ".github/workflows/openmls-frb-codegen.yml"
       - "mobile/**"
@@ -16,7 +16,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: openmls-frb-codegen-${{ github.event.pull_request.number || github.ref }}
+  group: openmls-frb-codegen-${{ github.event.pull_request.head.ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
