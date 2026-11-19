@@ -12,7 +12,7 @@ on:
       - "inone-development-archive-0.6.0/engine/package-lock.json"
       - "inone-development-archive-0.6.0/engine/src/**"
   push:
-    branches: [main, feature/stage-4-native-mls-runtime-2026-11-11]
+    branches: ["**"]
     paths:
       - ".github/workflows/openmls-client.yml"
       - "inone-engine-poc-0.6.0/mobile-mls/mls-client/**"
