@@ -210,11 +210,27 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: "1.91"
+      - name: Record Rust bridge toolchain versions
+        run: |
+          rustc --version | tee "$RUNNER_TEMP/rust-bridge-toolchain.txt"
+          cargo --version | tee -a "$RUNNER_TEMP/rust-bridge-toolchain.txt"
       - name: Check all bridge targets
         working-directory: inone-development-archive-0.6.0/engine/mobile-mls/mls-bridge
         run: cargo check --locked --all-targets
-      - name: Run bridge tests
+      - name: Run bridge tests with retained log
+        shell: bash
         working-directory: inone-development-archive-0.6.0/engine/mobile-mls/mls-bridge
-        run: cargo test --locked --no-fail-fast
+        run: |
+          set -o pipefail
+          cargo test --locked --no-fail-fast 2>&1 | tee "$RUNNER_TEMP/rust-bridge-test.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rust-bridge-test-evidence
+          path: |
+            ${{ runner.temp }}/rust-bridge-test.log
+            ${{ runner.temp }}/rust-bridge-toolchain.txt
+          if-no-files-found: warn
+          retention-days: 14
 
 # Exact-head P0 validation is enabled for this stacked PR branch.
