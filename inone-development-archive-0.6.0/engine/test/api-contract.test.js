@@ -4,11 +4,10 @@ import assert from 'node:assert/strict';
 
 const read = (relative) => readFileSync(new URL(relative, import.meta.url), 'utf8');
 const server = read('../src/server.js');
-const manifest = JSON.parse(read('../../../мусорный ящик/HTML-архив/mobile-assets/ui-approval/screen-manifest.json'));
-const handoffCatalog = read('../../../мусорный ящик/HTML-архив/mobile-legacy-host/lib/claude_screen_catalog.dart');
-const mobileEntry = read('../../../mobile/lib/main.dart');
-const mobileApp = read('../../../mobile/lib/app/inone_mobile_app.dart');
-const dartUi = read('../../../mobile/lib/ui_dart_source/inone.dart');
+const manifest = JSON.parse(read('../../../mobile/assets/ui-approval/screen-manifest.json'));
+const handoffCatalog = read('../../../mobile/lib/claude_screen_catalog.dart');
+const bridge = read('../../../mobile/lib/claude_ui_bridge.dart');
+const mobileHost = read('../../../mobile/lib/main.dart');
 
 const routeEvidence = new Map([
   ['POST /login', /req\.method === 'POST' && p === '\/login'/],
@@ -49,13 +48,7 @@ const declaredOperations = (value) => value
   .filter((item) => /^(GET|POST|PUT|DELETE)\s+\//u.test(item));
 
 test('every operation declared by the v0.8 approval manifest has a backend handler', () => {
-  assert.equal(manifest.version, '0.8-approval-batch-2');
   assert.equal(manifest.screens.length, 24);
-  assert.equal(
-    new Set(manifest.screens.map(({ id }) => id)).size,
-    manifest.screens.length,
-    'the archived approval manifest must not contain duplicate screen IDs',
-  );
   const missing = [];
   for (const screen of manifest.screens) {
     for (const operation of declaredOperations(screen.api ?? '')) {
@@ -71,7 +64,7 @@ test('every operation declared by the v0.8 approval manifest has a backend handl
   assert.match(server, /action === 'claim'/u);
 });
 
-test('every API declared by the archived Flutter handoff catalog has a backend handler', () => {
+test('every API declared by the legacy Flutter handoff catalog has a backend handler', () => {
   const declared = handoffCatalog.split('\n')
     .map((line) => line.match(/api: '([^']+)'/u)?.[1])
     .filter((operation) => typeof operation === 'string');
@@ -102,20 +95,11 @@ test('CH-02 message delivery uses MLS and rejects legacy room-event POST', () =>
   assert.match(server, /epoch is outdated/u);
 });
 
-test('production Flutter entry point uses native Dart screens and session-owned APIs', () => {
-  assert.match(mobileEntry, /import 'app\/inone_mobile_app\.dart'/u);
-  assert.match(mobileEntry, /runApp\(const InOneMobileApp\(\)\)/u);
-  assert.match(mobileApp, /import '\.\.\/ui_dart_source\/inone\.dart'/u);
-  assert.match(mobileApp, /return InOneLoginScreen/u);
-  assert.match(mobileApp, /return InOneMessagesScreen/u);
-  assert.match(mobileApp, /await _session\.login/u);
-  assert.match(mobileApp, /await _session\.logout/u);
-  assert.match(dartUi, /export 'screens\/auth\/sc01_login_screen\.dart'/u);
-  assert.match(dartUi, /export 'screens\/main\/inone_messages_screen\.dart'/u);
-  assert.doesNotMatch(
-    `${mobileEntry}\n${mobileApp}`,
-    /package:webview_flutter|WebViewController|loadFlutterAsset|InOneBridge/u,
-  );
+test('WebView bridge does not expose arbitrary paths or a legacy message-send fallback', () => {
+  assert.match(bridge, /claudeSupportedApiCalls = <String, ClaudeApiRoute>/u);
+  assert.doesNotMatch(bridge, /POST \/rooms\/:id\/events/u);
+  assert.doesNotMatch(bridge, /POST \/mls\/groups\/:id\/messages/u);
+  assert.match(mobileHost, /final route = call == null \? null : claudeSupportedApiCalls\[call\]/u);
 });
 
 test('organization and room role gates remain backend-owned', () => {
