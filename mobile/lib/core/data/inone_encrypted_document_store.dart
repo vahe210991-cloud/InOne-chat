@@ -56,17 +56,20 @@ class InOneEncryptedDocumentStore {
     String ownerUserId,
     Future<T> Function(String ownerScope) operation,
   ) async {
-    final scope = await _ownerScope(ownerUserId);
-    final previous = _ownerQueues[scope] ?? Future<void>.value();
+    _validateOwner(ownerUserId);
+    // Enqueue synchronously by the canonical account ID before the first await.
+    // This preserves call order even while the SHA-256 scope is being derived.
+    final previous = _ownerQueues[ownerUserId] ?? Future<void>.value();
     final release = Completer<void>();
-    _ownerQueues[scope] = release.future;
+    _ownerQueues[ownerUserId] = release.future;
     await previous;
     try {
+      final scope = await _ownerScope(ownerUserId);
       return await operation(scope);
     } finally {
       release.complete();
-      if (identical(_ownerQueues[scope], release.future)) {
-        _ownerQueues.remove(scope);
+      if (identical(_ownerQueues[ownerUserId], release.future)) {
+        _ownerQueues.remove(ownerUserId);
       }
     }
   }
