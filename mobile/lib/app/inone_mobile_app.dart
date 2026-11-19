@@ -492,6 +492,9 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       }
       return null;
     } catch (error) {
+      if (error is ApiException && error.statusCode == 401) {
+        await _handleUnauthorizedSession();
+      }
       return _toFailure(error);
     }
   }
