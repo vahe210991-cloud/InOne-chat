@@ -14,6 +14,7 @@ on:
     branches: ['**']
     paths:
       - "inone-engine-poc-0.6.0/mobile-mls/**"
+      - "inone-development-archive-0.6.0/engine/mobile-mls/**"
       - "mobile/rust/**"
       - ".github/workflows/mls-native-validation.yml"
 
