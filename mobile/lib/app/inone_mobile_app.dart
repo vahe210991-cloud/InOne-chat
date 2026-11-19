@@ -908,7 +908,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           request: _selectedAdminRequest!,
           documents: _adminDocuments,
           isOwner: _profile?.canDecidePlatformRequests ?? false,
-          onDownload: _downloadAdminDocument,
+          onOpen: _openAdminDocument,
           onDecide: () => setState(() => _screen = 'adminRequestDecision'),
           onBack: () => unawaited(_openAdminRequests()),
           onMenu: () => setState(() => _screen = 'profile'),
