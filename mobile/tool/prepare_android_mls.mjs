@@ -78,7 +78,7 @@ const source = [
   '            }',
   '    }',
   '}',
-].join('\\n');
+].join('\n');
 
 fs.writeFileSync(mainActivity, source, 'utf8');
 console.log('Configured Android native context and app-private MLS storage channel.');
@@ -100,7 +100,7 @@ if (!activityMatch[0].includes('android:scheme="inone"')) {
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="inone" android:host="recovery" android:path="/confirm" />
             </intent-filter>`;
-  const updatedActivity = activityMatch[0].replace('</activity>', recoveryIntent + '\\n        </activity>');
+  const updatedActivity = activityMatch[0].replace('</activity>', recoveryIntent + '\n        </activity>');
   manifest = manifest.replace(activityMatch[0], updatedActivity);
   fs.writeFileSync(manifestPath, manifest, 'utf8');
 }
