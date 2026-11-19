@@ -2,12 +2,14 @@ name: Flutter mobile validation
 # This workflow is part of the synchronized exact-HEAD CI gate for this PR.
 
 on:
+  workflow_dispatch:
   pull_request:
     paths:
       - 'mobile/**'
+      - 'inone-development-archive-0.6.0/engine/mobile-mls/**'
       - '.github/workflows/flutter-mobile.yml'
   push:
-    branches: [main, feature/stage-4-native-mls-runtime-2026-11-11, fix/email-delivery-test-readiness-2026-11-17, fix/email-delivery-shutdown-and-key-hardening-2026-11-17]
+    branches: ['**']
     paths:
       - 'mobile/**'
       - '.github/workflows/flutter-mobile.yml'
