@@ -142,6 +142,17 @@ jobs:
       - run: flutter test
       - name: Build Android preview APK
         run: flutter build apk --debug
+      - name: Android Keystore runtime smoke test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          script: |
+            cd mobile
+            flutter drive --driver=test_driver/integration_test.dart --target=integration_test/mls_secure_store_test.dart
+
       - uses: actions/upload-artifact@v4
         with:
           name: inone-beta1-android-preview
