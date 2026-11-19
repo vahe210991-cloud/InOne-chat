@@ -434,18 +434,45 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
     const STALE_UPLOAD_MS = 24 * 3600_000;
     const signFor = (action, fileId, expires, size = '', sha = '', ownerId = '', ownerDeviceId = '') =>
       createHmac('sha256', objectSecret).update(`${action}|${fileId}|${expires}|${size}|${sha}|${ownerId}|${ownerDeviceId}`).digest('hex');
+    // A download URL is bound to the exact authenticated account and device.
+    // The live access token is required on every GET, so revocation is immediate.
+    const signDownloadFor = (fileId, expires, userId, deviceId) =>
+      createHmac('sha256', objectSecret).update(`GET|${fileId}|${expires}|${userId}|${deviceId}`).digest('hex');
     const sameSig = (a, b) => {
       const x = Buffer.from(String(a));
       const y = Buffer.from(String(b));
       return x.length === y.length && timingSafeEqual(x, y);
     };
-    const absoluteUrl = (req, path) => `${req.socket.encrypted ? 'https' : 'http'}://${req.headers.host}${path}`;
+    const absoluteUrl = (req, path) => {
+      const localAddress = req.socket.localAddress || '127.0.0.1';
+      const localHost = localAddress.includes(':') ? `[${localAddress}]` : localAddress;
+      const localPort = req.socket.localPort;
+      const localAuthority = `${localHost}${localPort ? `:${localPort}` : ''}`.toLowerCase();
+      const requestAuthority = String(req.headers.host || '').toLowerCase();
+      // Accept Host only when it exactly identifies the socket's local endpoint
+      // (the direct loopback test/dev case). Proxied/public requests use configured
+      // publicUrl; an attacker-controlled Host header is never reflected.
+      const origin = requestAuthority === localAuthority
+        ? `${req.socket.encrypted ? 'https' : 'http'}://${localAuthority}`
+        : new URL(publicUrl).origin;
+      return new URL(path, origin).toString();
+    };
 
     async function handleObjectRequest(req, res) {
       const url = new URL(req.url, 'http://localhost');
       const fileId = decodeURIComponent(url.pathname.slice('/objects/'.length));
       const expires = Number(url.searchParams.get('expires'));
       const sig = url.searchParams.get('sig') ?? '';
+      // Authenticate and validate the device-bound signature before object lookup:
+      // a signed URL alone is not a bearer grant and anonymous callers cannot probe IDs.
+      const downloadSession = req.method === 'GET' ? await authed(req) : null;
+      if (req.method === 'GET' && !downloadSession) return send(res, 401, { error: 'unauthorized' });
+      if (req.method === 'GET' && (
+        !expires || now() > expires ||
+        !sameSig(sig, signDownloadFor(fileId, expires, downloadSession.userId, downloadSession.deviceId))
+      )) {
+        return send(res, 403, { error: 'download link is invalid, expired, or bound to another device' });
+      }
       const file = await storage.getFile(fileId);
       if (!file) return send(res, 404, { error: 'not found' });
       if (req.method === 'PUT') {
@@ -484,7 +511,15 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         return send(res, 200, { uploaded: true });
       }
       if (req.method === 'GET') {
-        if (!expires || now() > expires || !sameSig(sig, signFor('GET', fileId, expires))) return send(res, 403, { error: 'download link is invalid or expired' });
+        // Re-check current authorization at download time, not only when the URL
+        // is issued. Membership removal and device revocation take effect now.
+        const d = downloadSession;
+        if (file.roomId) {
+          const room = await storage.getRoom(file.roomId);
+          if (!room || !room.members.includes(d.userId)) return send(res, 403, { error: 'not a member' });
+        } else if (file.ownerId !== d.userId) {
+          return send(res, 403, { error: 'not the owner' });
+        }
         if (file.status !== 'ready') return send(res, 404, { error: 'not ready' });
         const bytes = await objectStore.get(fileId);
         if (!bytes) return send(res, 404, { error: 'not found' });
@@ -1226,7 +1261,8 @@ if (req.method === 'GET' && fileLink) {
   } else if (f.ownerId !== d.userId) return send(res, 403, { error: 'not the owner' });
   if (f.status !== 'ready') return send(res, 409, { error: 'file is not ready' });
   const expires = now() + DOWNLOAD_TTL_MS;
-  return send(res, 200, { downloadUrl: absoluteUrl(req, `/objects/${fileId}?expires=${expires}&sig=${signFor('GET', fileId, expires)}`), expiresAt: new Date(expires).toISOString() });
+  const signature = signDownloadFor(fileId, expires, d.userId, d.deviceId);
+  return send(res, 200, { downloadUrl: absoluteUrl(req, `/objects/${fileId}?expires=${expires}&sig=${signature}`), expiresAt: new Date(expires).toISOString() });
 }
 if (req.method === 'GET' && p === '/devices/mine') {
   const d = await authed(req);
