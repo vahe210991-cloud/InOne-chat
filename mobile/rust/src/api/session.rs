@@ -581,7 +581,7 @@ mod tests {
         }
         drop(tx);
         start.wait();
-        let outcomes: Vec<bool> = rx.iter().collect();
+        let outcomes = [rx.recv().unwrap(), rx.recv().unwrap()];
         assert_eq!(outcomes.iter().filter(|won| **won).count(), 1);
         release_winner.wait();
     }
