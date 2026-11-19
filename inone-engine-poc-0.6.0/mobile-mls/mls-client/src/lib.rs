@@ -1546,7 +1546,6 @@ impl Client {
         let incoming = Incoming::Unreadable {
             room_id: room_id.to_string(),
             event_id: event_id.to_string(),
-        
             mine: false,
         };
         let transaction = self.meta.transaction().map_err(text)?;
@@ -1615,7 +1614,6 @@ impl Client {
                                             name: manifest.name.clone(),
                                             mime_type: manifest.mime_type.clone(),
                                             size: manifest.size,
-                                        
                                             mine: false,
                                         },
                                         None,
@@ -1625,7 +1623,6 @@ impl Client {
                                         Incoming::Unreadable {
                                             room_id: room_id.to_string(),
                                             event_id: event_id.to_string(),
-                                        
                                             mine: false,
                                         },
                                         Some(format!("invalid MLS attachment manifest: {error}")),
@@ -1638,7 +1635,6 @@ impl Client {
                                         Incoming::Unreadable {
                                             room_id: room_id.to_string(),
                                             event_id: event_id.to_string(),
-                                        
                                             mine: false,
                                         },
                                         Some("MLS attachment manifest is missing the outer file reference".to_string()),
@@ -1651,7 +1647,6 @@ impl Client {
                                                 room_id: room_id.to_string(),
                                                 event_id: event_id.to_string(),
                                                 text,
-                                            
                                                 mine: false,
                                             },
                                             None,
@@ -1661,7 +1656,6 @@ impl Client {
                                             Incoming::Unreadable {
                                                 room_id: room_id.to_string(),
                                                 event_id: event_id.to_string(),
-                                            
                                                 mine: false,
                                             },
                                             Some("application payload is not valid UTF-8".to_string()),
@@ -1675,7 +1669,6 @@ impl Client {
                             Incoming::Unreadable {
                                 room_id: room_id.to_string(),
                                 event_id: event_id.to_string(),
-                            
                                 mine: false,
                             },
                             Some("MLS message is not an application message".to_string()),
@@ -2397,7 +2390,6 @@ impl Client {
             room_id: room_id.to_string(),
             event_id: event_id.clone(),
             text: plaintext.to_string(),
-        
             mine: true,
         };
         let transaction = self.meta.transaction().map_err(text)?;
@@ -2781,7 +2773,6 @@ impl Client {
             name: name.to_string(),
             mime_type: mime_type.to_string(),
             size: plaintext.len() as u64,
-        
             mine: true,
         };
         let transaction = self.meta.transaction().map_err(text)?;
@@ -4001,7 +3992,6 @@ mod retry_tests {
                         room_id: "room-crash".to_string(),
                         event_id: "event-crash".to_string(),
                         text: "must commit with ratchet state".to_string(),
-                    
                         mine: false,
                     },
                 )
@@ -4288,7 +4278,6 @@ mod retry_tests {
             room_id: "!room:inone.test".to_string(),
             event_id: "$event-1".to_string(),
             text: "original".to_string(),
-        
             mine: false,
         };
         persist_incoming_record(&mut db, &original).unwrap();
@@ -4302,7 +4291,6 @@ mod retry_tests {
             room_id: "!room:inone.test".to_string(),
             event_id: "$event-1".to_string(),
             text: "replayed".to_string(),
-        
             mine: false,
         };
         persist_incoming_record(&mut db, &replay).unwrap();
