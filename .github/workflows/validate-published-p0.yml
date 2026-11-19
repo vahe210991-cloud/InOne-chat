@@ -6,7 +6,7 @@ on:
       - "inone-development-archive-0.6.0/engine/**"
       - ".github/workflows/validate-published-p0.yml"
   push:
-    branches: [main, fix/email-delivery-shutdown-and-key-hardening-2026-11-17]
+    branches: ["**"]
     paths:
       - "inone-development-archive-0.6.0/engine/**"
       - ".github/workflows/validate-published-p0.yml"
