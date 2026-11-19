@@ -112,7 +112,10 @@ impl MlsSession {
                 let mut guard = poisoned.into_inner();
                 *guard = None;
                 self.client.clear_poison();
-                return Err("MLS session lock was poisoned; session closed and must be reopened".to_string());
+                return Err(
+                    "MLS session lock was poisoned; session closed and must be reopened"
+                        .to_string(),
+                );
             }
         };
         let client = guard
@@ -124,7 +127,10 @@ impl MlsSession {
                 // A panic may leave OpenMLS or its persistence transaction in an
                 // unknown state. Fail closed instead of reusing a possibly damaged client.
                 *guard = None;
-                Err("panic inside native MLS operation; session closed and must be reopened".to_string())
+                Err(
+                    "panic inside native MLS operation; session closed and must be reopened"
+                        .to_string(),
+                )
             }
         }
     }
@@ -547,7 +553,8 @@ mod tests {
             root.to_string_lossy().as_ref(),
             "@alice:inone.test",
             "device-1",
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(identity, "@alice:inone.test/device-1");
         assert!(Path::new(&database).is_absolute());
         assert!(Path::new(&database).parent().unwrap().is_dir());
