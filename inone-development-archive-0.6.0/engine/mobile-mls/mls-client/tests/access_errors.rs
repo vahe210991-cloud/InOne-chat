@@ -181,8 +181,11 @@ fn auth_access_deleted_room_and_failed_refresh_never_mark_mls_recovery_required(
     bob.ensure_key_packages(2).unwrap();
 
     let room = "!room-access-errors:inone.test";
+    let other_room = "!room-access-errors-other:inone.test";
     alice.create_room(room).unwrap();
     alice.invite(room, "@bob:inone.test").unwrap();
+    alice.create_room(other_room).unwrap();
+    alice.invite(other_room, "@bob:inone.test").unwrap();
     assert!(bob.sync().unwrap().is_empty());
 
     for status in [401, 403, 404] {
@@ -197,6 +200,7 @@ fn auth_access_deleted_room_and_failed_refresh_never_mark_mls_recovery_required(
             None,
             "HTTP {status} does not prove MLS state corruption"
         );
+        assert_eq!(bob.desync_reason(other_room).unwrap(), None);
     }
 
     // A token-expired event response followed by a rejected refresh is still a
@@ -205,13 +209,21 @@ fn auth_access_deleted_room_and_failed_refresh_never_mark_mls_recovery_required(
     let refresh_error = bob.sync().expect_err("failed refresh must be surfaced");
     assert!(refresh_error.contains("token/refresh -> 401"), "{refresh_error}");
     assert_eq!(bob.desync_reason(room).unwrap(), None);
+    assert_eq!(bob.desync_reason(other_room).unwrap(), None);
 
     proxy.reset();
     alice.send_text(room, "room remains usable after access recovery").unwrap();
-    let received = bob.sync().expect("same MLS room remains usable");
+    alice
+        .send_text(other_room, "other room remains usable after access recovery")
+        .unwrap();
+    let received = bob.sync().expect("same and other MLS rooms remain usable");
     assert_eq!(
         common::texts(&received),
-        vec!["room remains usable after access recovery"]
+        vec![
+            "room remains usable after access recovery",
+            "other room remains usable after access recovery"
+        ]
     );
     assert_eq!(bob.desync_reason(room).unwrap(), None);
+    assert_eq!(bob.desync_reason(other_room).unwrap(), None);
 }
