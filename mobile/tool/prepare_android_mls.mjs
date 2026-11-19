@@ -18,31 +18,71 @@ if (!fs.existsSync(mainActivity)) {
   throw new Error(`Flutter Android MainActivity was not generated: ${mainActivity}`);
 }
 
-const source = `package com.inone.inone_mobile
-
-import android.content.Context
-import android.os.Bundle
-import io.flutter.embedding.android.FlutterActivity
-
-class MainActivity : FlutterActivity() {
-    companion object {
-        init {
-            System.loadLibrary("inone_mls_frb")
-        }
-
-        @JvmStatic
-        external fun init_android(context: Context)
-    }
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        init_android(applicationContext)
-        super.onCreate(savedInstanceState)
-    }
-}
-`;
+const source = [
+  'package com.inone.inone_mobile',
+  '',
+  'import android.content.Context',
+  'import android.os.Bundle',
+  'import io.flutter.embedding.android.FlutterActivity',
+  'import io.flutter.embedding.engine.FlutterEngine',
+  'import io.flutter.plugin.common.MethodChannel',
+  'import java.io.IOException',
+  '',
+  'class MainActivity : FlutterActivity() {',
+  '    companion object {',
+  '        private const val STORAGE_CHANNEL = "com.inone.mls/platform_storage"',
+  '',
+  '        init {',
+  '            System.loadLibrary("inone_mls_frb")',
+  '        }',
+  '',
+  '        @JvmStatic',
+  '        external fun init_android(context: Context)',
+  '    }',
+  '',
+  '    override fun onCreate(savedInstanceState: Bundle?) {',
+  '        init_android(applicationContext)',
+  '        super.onCreate(savedInstanceState)',
+  '    }',
+  '',
+  '    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {',
+  '        // Preserve generated plugin registration before adding the narrow',
+  '        // app-private storage channel used by the Rust MLS adapter.',
+  '        super.configureFlutterEngine(flutterEngine)',
+  '',
+  '        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, STORAGE_CHANNEL)',
+  '            .setMethodCallHandler { call, result ->',
+  '                when (call.method) {',
+  '                    "applicationSupportDirectory" -> {',
+  '                        val directory = applicationContext.filesDir',
+  '                        if (!directory.isDirectory || !directory.canRead() || !directory.canWrite()) {',
+  '                            result.error(',
+  '                                "APP_SUPPORT_DIRECTORY_UNAVAILABLE",',
+  '                                "App-private storage directory is not accessible",',
+  '                                null',
+  '                            )',
+  '                        } else {',
+  '                            try {',
+  '                                result.success(directory.canonicalPath)',
+  '                            } catch (_: IOException) {',
+  '                                result.error(',
+  '                                    "APP_SUPPORT_DIRECTORY_UNAVAILABLE",',
+  '                                    "App-private storage path could not be resolved",',
+  '                                    null',
+  '                                )',
+  '                            }',
+  '                        }',
+  '                    }',
+  '                    else -> result.notImplemented()',
+  '                }',
+  '            }',
+  '    }',
+  '}',
+].join('\n');
 
 fs.writeFileSync(mainActivity, source, 'utf8');
-console.log('Configured Android NDK context initialization for the OpenMLS Rust library.');
+console.log('Configured Android native context and app-private MLS storage channel.');
+
 const manifestPath = path.join(process.cwd(), 'android', 'app', 'src', 'main', 'AndroidManifest.xml');
 if (!fs.existsSync(manifestPath)) {
   throw new Error(`Flutter Android manifest was not generated: ${manifestPath}`);
