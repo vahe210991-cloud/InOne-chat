@@ -3,7 +3,7 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, Zeroizing};
 
 use serde::Serialize;
 
@@ -38,6 +38,14 @@ pub enum IncomingMessage {
         room_id: String,
         event_id: String,
     },
+}
+
+impl Drop for IncomingMessage {
+    fn drop(&mut self) {
+        if let Self::Text { text, .. } = self {
+            text.zeroize();
+        }
+    }
 }
 
 static ACTIVE_IDENTITIES: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
@@ -187,11 +195,13 @@ impl MlsSession {
     }
 
     pub fn send_text(&self, room_id: String, plaintext: String) -> Result<String, String> {
-        self.with_client(|client| client.send_text(&room_id, &plaintext))
+        let plaintext = Zeroizing::new(plaintext);
+        self.with_client(|client| client.send_text(&room_id, plaintext.as_str()))
     }
 
     pub fn enqueue_text(&self, room_id: String, plaintext: String) -> Result<String, String> {
-        self.with_client(|client| client.enqueue_text(&room_id, &plaintext))
+        let plaintext = Zeroizing::new(plaintext);
+        self.with_client(|client| client.enqueue_text(&room_id, plaintext.as_str()))
     }
 
     pub fn sync(&self) -> Result<Vec<IncomingMessage>, String> {
