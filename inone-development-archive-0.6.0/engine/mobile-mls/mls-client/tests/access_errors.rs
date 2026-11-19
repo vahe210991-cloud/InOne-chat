@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 use std::sync::Arc;
 use std::thread;
 
-use mls_client::MemoryKeyStore;
+use mls_client::{connect, MemoryKeyStore};
 
 struct StatusProxy {
     base: String,
@@ -188,8 +188,24 @@ fn auth_access_deleted_room_and_failed_refresh_never_mark_mls_recovery_required(
         common::db("access-errors-alice"),
         common::db("access-errors-bob"),
     );
-    let mut alice = common::login(&engine, &keys, "@alice:inone.test", "A_ACCESS", &alice_db);
-    let mut bob = common::login(&engine, &keys, "@bob:inone.test", "B_ACCESS", &bob_db);
+    let mut alice = connect(
+        &proxy.base,
+        "@alice:inone.test",
+        common::PW,
+        "A_ACCESS",
+        &alice_db,
+        &keys,
+    )
+    .unwrap();
+    let mut bob = connect(
+        &proxy.base,
+        "@bob:inone.test",
+        common::PW,
+        "B_ACCESS",
+        &bob_db,
+        &keys,
+    )
+    .unwrap();
     bob.ensure_key_packages(2).unwrap();
 
     let room = "!room-access-errors:inone.test";
