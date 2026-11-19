@@ -485,7 +485,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
             .toList(growable: false);
         _notice('Серверный список комнат недоступен; восстановлены локальные MLS-комнаты: $error');
       }
-      final pending = await _session.pendingMlsMessages();
+      final pendingIncoming = await _session.pendingMlsMessages();
       final chats = <InOneChatPreview>[];
       for (final row in rows) {
         if (row is! Map) continue;
@@ -496,7 +496,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
             ? rawName.trim()
             : roomId;
         final messages = await _session.mlsMessagesForRoom(roomId);
-        final pending = await _session.pendingMlsOutbox(roomId);
+        final pendingOutgoing = await _session.pendingMlsOutbox(roomId);
         String? lastMessage;
         for (final message in messages) {
           if (message.text != null) {
@@ -505,7 +505,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
             lastMessage = '📎 ${message.name ?? 'Вложение'}';
           }
         }
-        if (pending.isNotEmpty) lastMessage = pending.last.text;
+        if (pendingOutgoing.isNotEmpty) lastMessage = pendingOutgoing.last.text;
         final kind = row['kind'] == 'person' || row['kind'] == 'direct'
             ? InOneChatKind.person
             : InOneChatKind.group;
@@ -525,7 +525,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       });
       // The Rust inbox is already durable in SQLCipher. Acknowledge only after
       // the UI has accepted the refreshed room/message snapshot.
-      final accepted = pending.map((message) => message.eventId).toSet().toList();
+      final accepted = pendingIncoming.map((message) => message.eventId).toSet().toList();
       if (accepted.isNotEmpty) await _session.acknowledgeMlsMessages(accepted);
     } catch (error) {
       if (!mounted) return;
