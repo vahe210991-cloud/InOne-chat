@@ -3,7 +3,7 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
-use zeroize::{Zeroize, Zeroizing};
+use zeroize::Zeroizing;
 
 use serde::Serialize;
 
@@ -40,14 +40,6 @@ pub enum IncomingMessage {
     },
 }
 
-impl Drop for IncomingMessage {
-    fn drop(&mut self) {
-        if let Self::Text { text, .. } = self {
-            text.zeroize();
-        }
-    }
-}
-
 static ACTIVE_IDENTITIES: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
 
 struct IdentityReservation {
@@ -76,7 +68,7 @@ fn validated_identity(user_id: &str, device_id: &str) -> Result<String, String> 
         if value.trim().is_empty() {
             return Err(format!("{name} is required"));
         }
-        if value.contains('/') || value.contains('\\') || value.chars().any(char::is_control) {
+        if (name == "device_id" && value.contains('/')) || value.chars().any(char::is_control) {
             return Err(format!("{name} contains a forbidden character"));
         }
     }
@@ -566,8 +558,8 @@ mod tests {
     #[test]
     fn identity_and_database_directory_inputs_fail_closed() {
         assert!(validated_identity("", "device").is_err());
-        assert!(validated_identity("user/other", "device").is_err());
-        assert!(validated_identity("user", "device\\other").is_err());
+        assert!(validated_identity("user", "device/other").is_err());
+        assert!(validated_identity("user/with/slash", "device").is_ok());
         assert!(normalized_database_directory("relative/path", true).is_err());
     }
 
