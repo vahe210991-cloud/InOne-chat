@@ -98,6 +98,23 @@ fn normalized_database_directory(directory: &str, create: bool) -> Result<String
     Ok(canonical.to_string_lossy().into_owned())
 }
 
+fn purge_database_directory(directory: &str) -> Result<String, String> {
+    let path = Path::new(directory);
+    if !path.is_absolute() {
+        return Err("MLS database directory must be an absolute app-private path".to_string());
+    }
+    match std::fs::canonicalize(path) {
+        Ok(canonical) if canonical.is_dir() => Ok(canonical.to_string_lossy().into_owned()),
+        Ok(_) => Err("MLS database path is not a directory".to_string()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            // Preserve key deletion even if the app-private database directory
+            // itself has already disappeared.
+            Ok(path.to_string_lossy().into_owned())
+        }
+        Err(error) => Err(format!("проверка каталога базы MLS: {error}")),
+    }
+}
+
 fn database_path_for_identity(directory: &str, identity: &str) -> String {
     let digest = Sha256::digest(identity.as_bytes());
     let filename = digest
@@ -492,7 +509,7 @@ pub fn purge_local_session(
 ) -> Result<(), String> {
     let identity = validated_identity(&user_id, &device_id)?;
     let _reservation = reserve_identity(&identity)?;
-    let database_directory = normalized_database_directory(&database_directory, false)?;
+    let database_directory = purge_database_directory(&database_directory)?;
     let database_path = database_path_for_identity(&database_directory, &identity);
     let platform_keys = PlatformKeyStore::new();
     let keys: Result<&dyn KeyStore, String> = match &platform_keys {
@@ -609,6 +626,28 @@ mod tests {
         assert!(validated_identity("user", "device/other").is_err());
         assert!(validated_identity("user/with/slash", "device").is_ok());
         assert!(normalized_database_directory("relative/path", true).is_err());
+    }
+
+    #[test]
+    fn purge_can_delete_protected_key_when_database_directory_is_missing() {
+        let root = std::env::temp_dir().join(format!(
+            "inone-mls-missing-purge-dir-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let missing_directory = root.join("missing");
+        let normalized = purge_database_directory(&missing_directory.to_string_lossy()).unwrap();
+        assert_eq!(normalized, missing_directory.to_string_lossy());
+
+        let identity = "user/missing-directory-purge";
+        let database_path = database_path_for_identity(&normalized, identity);
+        let keys = TestKeyStore::default();
+        cleanup_local_session(&database_path, identity, &keys).unwrap();
+        assert!(keys.deleted.load(Ordering::SeqCst));
+        assert!(!missing_directory.exists());
     }
 
     #[test]
