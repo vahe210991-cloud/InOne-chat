@@ -229,6 +229,7 @@ void main() {
     expect(incoming, hasLength(1));
     expect(incoming.single.eventId, 'event-in-1');
     expect((await session.mlsMessagesForRoom('room-1')).single.text, 'received');
+    expect(await session.localMlsRoomIds(), ['room-1']);
     expect(await session.pendingMlsOutbox('room-1'), isEmpty);
     await session.acknowledgeMlsMessages(['event-in-1']);
     expect(bridge.acknowledgedEventIds, ['event-in-1']);
@@ -585,6 +586,9 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
   Future<List<MlsIncomingMessage>> messagesForRoom(String roomId) async => const [
         MlsIncomingMessage(roomId: 'room-1', eventId: 'event-in-1', text: 'received'),
       ];
+
+  @override
+  Future<List<String>> localRoomIds() async => const ['room-1'];
 
   @override
   Future<List<MlsPendingOutgoing>> pendingOutgoing(String roomId) async => const [];
