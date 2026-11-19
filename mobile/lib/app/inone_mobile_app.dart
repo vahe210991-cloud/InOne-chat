@@ -556,41 +556,51 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   Future<bool> _sendMlsMessage(String plaintext) async {
     final roomId = _activeMlsRoomId;
     if (roomId == null || plaintext.trim().isEmpty) return false;
+    var enqueuedLocally = false;
     try {
-      // Queue first: the plaintext is protected by SQLCipher before any network
-      // attempt. Offline sends remain durable and are flushed on the next sync.
+      // Commit to SQLCipher before network I/O. Once this succeeds, the composer
+      // must clear even if the server is temporarily unavailable; otherwise a
+      // second tap could enqueue a duplicate copy of the same text.
       await _session.enqueueMlsText(roomId, plaintext);
+      enqueuedLocally = true;
+      if (mounted) {
+        setState(() {
+          _activeMlsThread = [
+            ..._activeMlsThread,
+            InOneThreadItem(
+              kind: InOneThreadItemKind.text,
+              text: plaintext,
+              mine: true,
+              meta: 'Сохранено в зашифрованной очереди',
+            ),
+          ];
+          _mlsChats = _mlsChats.map((chat) => chat.id == roomId
+              ? InOneChatPreview(
+                  id: chat.id,
+                  name: chat.name,
+                  lastMessage: plaintext,
+                  time: chat.time,
+                  kind: chat.kind,
+                  unread: chat.unread,
+                  initials: chat.initials,
+                )
+              : chat).toList(growable: false);
+        });
+      }
       final sent = await _session.flushMlsOutbox();
       final queued = await _session.mlsOutboxLength();
-      if (!mounted) return true;
-      setState(() {
-        _activeMlsThread = [
-          ..._activeMlsThread,
-          InOneThreadItem(
-            kind: InOneThreadItemKind.text,
-            text: plaintext,
-            mine: true,
-            meta: sent > 0 ? 'Отправлено через MLS' : 'В очереди · $queued',
-          ),
-        ];
-        _mlsChats = _mlsChats.map((chat) => chat.id == roomId
-            ? InOneChatPreview(
-                id: chat.id,
-                name: chat.name,
-                lastMessage: plaintext,
-                time: chat.time,
-                kind: chat.kind,
-                unread: chat.unread,
-                initials: chat.initials,
-              )
-            : chat).toList(growable: false);
-      });
-      if (sent == 0 && queued > 0) {
+      if (sent > 0) {
+        await _refreshActiveMlsChat();
+      } else if (queued > 0) {
         _notice('Сообщение сохранено в зашифрованной очереди и будет отправлено после восстановления связи.');
       }
       return true;
     } catch (error) {
-      _notice('Сообщение не отправлено: $error');
+      if (enqueuedLocally) {
+        _notice('Сообщение уже сохранено в SQLCipher. Отправка будет повторена при следующей синхронизации: $error');
+        return true;
+      }
+      _notice('Не удалось сохранить сообщение в зашифрованную очередь: $error');
       return false;
     }
   }
