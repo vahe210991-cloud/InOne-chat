@@ -997,6 +997,7 @@ fn build_client(agent: ureq::Agent, base: &str, tokens: SessionTokens, user_id: 
          CREATE TABLE IF NOT EXISTS client_processed (event_id TEXT PRIMARY KEY);
          CREATE TABLE IF NOT EXISTS client_inbox (seq INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL UNIQUE, room_id TEXT NOT NULL, kind TEXT NOT NULL, body TEXT, acknowledged INTEGER NOT NULL DEFAULT 0);
          CREATE TABLE IF NOT EXISTS client_outbox (local_id TEXT PRIMARY KEY, room_id TEXT NOT NULL, body TEXT NOT NULL, seq INTEGER NOT NULL);
+         CREATE TABLE IF NOT EXISTS client_outbox_crypto (local_id TEXT PRIMARY KEY, room_id TEXT NOT NULL, mls_message BLOB NOT NULL, mls_epoch INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS client_remote_config (id INTEGER PRIMARY KEY CHECK (id = 1), etag TEXT NOT NULL, body TEXT NOT NULL, fetched_at INTEGER NOT NULL);",
     )
     .map_err(text)?;
@@ -2015,27 +2016,113 @@ impl Client {
     /// Отправляет текст с идентификатором клиента: повтор с тем же идентификатором не создаёт дубля.
     pub fn send_text_with_id(&mut self, room_id: &str, plaintext: &str, client_message_id: &str) -> Result<String, String> {
         self.ensure_writable()?;
+        if client_message_id.is_empty()
+            || client_message_id.len() > 64
+            || !client_message_id.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
+        {
+            return Err("clientMessageId must contain 1-64 letters, digits, _ or -".to_string());
+        }
         if let Some(reason) = self.desync_reason(room_id)? {
             return Err(format!("комната рассинхронизирована и требует восстановления: {reason}"));
         }
-        let server = self.server_epoch(room_id)?;
-        let provider = DeviceProvider::new(&self.crypto, &self.meta);
-        let body = {
-            let group = self.groups.get_mut(room_id).ok_or("комната не создана на этом устройстве")?;
-            let local = group.mls.epoch().as_u64();
-            if local != server {
-                return Err(format!("устройство на эпохе {local}, сервер на {server}: сначала синхронизация"));
+
+        let queued: bool = self.meta.query_row(
+            "SELECT EXISTS(SELECT 1 FROM client_outbox WHERE local_id = ?1 AND room_id = ?2)",
+            rusqlite::params![client_message_id, room_id],
+            |row| row.get(0),
+        ).map_err(text)?;
+
+        // If a previous attempt reached the server but its response was lost,
+        // resend the exact same MLS bytes. Never consume another sender generation
+        // for the same durable outbox operation.
+        let cached: Option<(String, Vec<u8>)> = self.meta.query_row(
+            "SELECT room_id, mls_message FROM client_outbox_crypto WHERE local_id = ?1",
+            [client_message_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        ).optional().map_err(text)?;
+        let encoded_message = if let Some((cached_room, bytes)) = cached {
+            if cached_room != room_id {
+                return Err("queued MLS message belongs to another room".to_string());
             }
-            let message = group.mls.create_message(&provider, &self.signer, plaintext.as_bytes()).map_err(text)?;
-            B64.encode(message.tls_serialize_detached().map_err(text)?)
+            B64.encode(bytes)
+        } else {
+            let server_epoch = self.server_epoch(room_id)?;
+            let transaction = self.meta.transaction().map_err(text)?;
+            let message_result = {
+                let provider = DeviceProvider::new(&self.crypto, TransactionConnection(&transaction));
+                let group = self.groups.get_mut(room_id)
+                    .ok_or("комната не создана на этом устройстве")?;
+                let local_epoch = group.mls.epoch().as_u64();
+                if local_epoch != server_epoch {
+                    Err(format!(
+                        "устройство на эпохе {local_epoch}, сервер на {server_epoch}: сначала синхронизация"
+                    ))
+                } else {
+                    group.mls
+                        .create_message(&provider, &self.signer, plaintext.as_bytes())
+                        .map_err(text)
+                        .and_then(|message| message.tls_serialize_detached().map_err(text))
+                }
+            };
+            let bytes = match message_result {
+                Ok(bytes) => bytes,
+                Err(error) => {
+                    drop(transaction);
+                    self.reload_group(room_id)?;
+                    return Err(error);
+                }
+            };
+            if queued {
+                let changed = transaction.execute(
+                    "INSERT OR REPLACE INTO client_outbox_crypto (local_id, room_id, mls_message, mls_epoch)
+                     VALUES (?1, ?2, ?3, ?4)",
+                    rusqlite::params![client_message_id, room_id, bytes, server_epoch as i64],
+                ).map_err(text)?;
+                if changed != 1 {
+                    drop(transaction);
+                    self.reload_group(room_id)?;
+                    return Err("could not persist the exact MLS outbox message".to_string());
+                }
+            }
+            if let Err(error) = transaction.commit() {
+                self.reload_group(room_id)?;
+                return Err(text(error));
+            }
+            B64.encode(bytes)
         };
-        let res = self.call(
+
+        let response = self.call(
             "POST",
             &format!("/mls/groups/{}/messages", urlencoding::encode(room_id)),
-            Some(json!({ "message": body, "kind": "text", "forwarded": false, "clientMessageId": client_message_id })),
+            Some(json!({
+                "message": encoded_message,
+                "kind": "text",
+                "forwarded": false,
+                "clientMessageId": client_message_id
+            })),
         )?;
-        let event_id = res["event_id"].as_str().ok_or("сервер не вернул event_id")?.to_string();
-        self.mark_processed(&event_id)?;
+        let event_id = response["event_id"].as_str()
+            .ok_or("сервер не вернул event_id")?.to_string();
+
+        // Persist the sender's own plaintext in the encrypted inbox only after
+        // server acceptance. The durable outbox/ciphertext journal remains until
+        // this transaction commits, making a lost local response safely retryable.
+        let transaction = self.meta.transaction().map_err(text)?;
+        transaction.execute(
+            "INSERT OR IGNORE INTO client_inbox (event_id, room_id, kind, body, acknowledged)
+             VALUES (?1, ?2, 'text', ?3, 1)",
+            rusqlite::params![event_id, room_id, plaintext],
+        ).map_err(text)?;
+        transaction.execute(
+            "INSERT OR IGNORE INTO client_processed (event_id) VALUES (?1)",
+            [event_id.as_str()],
+        ).map_err(text)?;
+        transaction.execute(
+            "DELETE FROM client_outbox_crypto WHERE local_id = ?1",
+            [client_message_id],
+        ).map_err(text)?;
+        transaction.commit().map_err(text)?;
+        self.processed.insert(event_id.clone());
         Ok(event_id)
     }
 
