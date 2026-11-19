@@ -1,7 +1,9 @@
 import 'dart:async';
-import 'dart:io' show Platform;
+import 'dart:io' show Directory, File, Platform;
 
 import 'package:flutter/material.dart';
+import 'package:open_filex/open_filex.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../core/data/inone_profile.dart';
 import '../core/data/inone_public_config.dart';
@@ -82,6 +84,13 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
 
   Future<void> _initialize() async {
     try {
+      // A previous native viewer may have been interrupted by process death.
+      // Never retain its transient plaintext hand-off cache across app starts.
+      try {
+        await _clearDocumentPreviewCache();
+      } catch (_) {
+        // The encrypted document store remains authoritative; cache cleanup retries on logout.
+      }
       try {
         await _session.initialize();
       } catch (_) {
@@ -278,7 +287,33 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         _selectedOrganization = organizations.isEmpty ? null : organizations.first;
         _screen = 'messages';
       });
-    } catch (_) {
+    } catch (error) {
+      if (error is ApiException && error.statusCode == 401) {
+        final revokedUserId = _session.userId;
+        if (revokedUserId != null) {
+          try {
+            await _documentStore.purgeAccount(revokedUserId);
+            await _clearDocumentPreviewCache();
+          } finally {
+            try {
+              await _session.logout();
+            } catch (_) {
+              // A server-revoked session may reject remote logout; local purge is mandatory.
+            }
+          }
+          if (mounted) {
+            setState(() {
+              _profile = null;
+              _adminRequests = const [];
+              _adminDocuments = const [];
+              _selectedAdminRequest = null;
+              _screen = 'login';
+            });
+            _notice('Сессия отозвана. Локальные документы и ключи удалены. Войдите снова.');
+          }
+          return;
+        }
+      }
       if (mounted) setState(() => _screen = 'loadError');
     }
   }
@@ -411,6 +446,39 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     }
   }
 
+  Future<Directory> _documentPreviewDirectory() async {
+    final temporary = await getTemporaryDirectory();
+    final directory = Directory(
+      '${temporary.path}${Platform.pathSeparator}InOne'
+      '${Platform.pathSeparator}organization-document-preview',
+    );
+    await directory.create(recursive: true);
+    return directory;
+  }
+
+  Future<void> _clearDocumentPreviewCache() async {
+    final temporary = await getTemporaryDirectory();
+    final directory = Directory(
+      '${temporary.path}${Platform.pathSeparator}InOne'
+      '${Platform.pathSeparator}organization-document-preview',
+    );
+    if (await directory.exists()) await directory.delete(recursive: true);
+  }
+
+  Future<void> _openNativeDocument(InOneDocument document, List<int> bytes) async {
+    final directory = await _documentPreviewDirectory();
+    final safeName = document.name.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+    final file = File(
+      '${directory.path}${Platform.pathSeparator}${_selectedAdminRequest!.id}_'
+      '${document.id}_$safeName',
+    );
+    await file.writeAsBytes(bytes, flush: true);
+    final result = await OpenFilex.open(file.path, type: document.mimeType);
+    if (result.type != ResultType.done) {
+      throw StateError('Native document viewer failed: ${result.message}');
+    }
+  }
+
   Future<InOneFailure?> _downloadAdminDocument(InOneDocument document) async {
     final request = _selectedAdminRequest;
     final ownerUserId = _session.userId;
@@ -436,7 +504,49 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         filename: document.name,
         bytes: response.bodyBytes,
       );
-      if (mounted) _notice('Документ сохранён в зашифрованном локальном хранилище.');
+      // Preview is always rendered from authenticated, decrypted bytes read back
+      // from the encrypted store; the network response is never sent to a viewer.
+      final plaintext = await _documentStore.read(
+        ownerUserId: ownerUserId,
+        requestId: request.id,
+        documentId: document.id,
+        filename: document.name,
+      );
+      if (document.mimeType == 'image/jpeg' || document.mimeType == 'image/png') {
+        if (!mounted) return null;
+        await showDialog<void>(
+          context: context,
+          builder: (dialogContext) => Dialog(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(document.name, style: Theme.of(dialogContext).textTheme.titleMedium),
+                ),
+                Flexible(
+                  child: InteractiveViewer(
+                    child: Image.memory(
+                      Uint8List.fromList(plaintext),
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => const Center(
+                        child: Text('Не удалось отобразить изображение.'),
+                      ),
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Закрыть'),
+                ),
+              ],
+            ),
+          ),
+        );
+      } else {
+        await _openNativeDocument(document, plaintext);
+      }
+      if (mounted) _notice('Документ открыт из зашифрованного локального хранилища.');
       return null;
     } catch (error) {
       return _toFailure(error);
@@ -481,11 +591,16 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   }
 
   Future<InOneFailure?> _logout() async {
+    final ownerUserId = _session.userId;
     try {
       await _session.logout();
       return null;
     } catch (error) {
       return _toFailure(error);
+    } finally {
+      // Logout is a local data-destruction boundary even when remote logout fails.
+      if (ownerUserId != null) await _documentStore.purgeAccount(ownerUserId);
+      await _clearDocumentPreviewCache();
     }
   }
 
