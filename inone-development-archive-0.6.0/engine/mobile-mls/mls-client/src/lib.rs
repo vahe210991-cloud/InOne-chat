@@ -2345,7 +2345,10 @@ impl Client {
                 ));
             }
             transaction.commit().map_err(|error| {
-                format!("временная ошибка фиксации unreadable inbox item: {}", text(error))
+                format!(
+                    "временная ошибка фиксации unreadable inbox item: {}",
+                    text(error)
+                )
             })?;
             self.processed.insert(event_id.to_string());
             out.push(incoming);
@@ -2450,12 +2453,15 @@ impl Client {
                         ));
                     }
                     if let Err(error) = quarantine.execute(
-                            "INSERT OR IGNORE INTO client_undecryptable (event_id, room_id, reason)
-                             VALUES (?1, ?2, ?3)",
-                            rusqlite::params![event_id, room_id, reason],
-                        ) {
+                        "INSERT OR IGNORE INTO client_undecryptable (event_id, room_id, reason)
+                         VALUES (?1, ?2, ?3)",
+                        rusqlite::params![event_id, room_id, reason],
+                    ) {
                         drop(quarantine);
-                        return Err(format!("временная ошибка сохранения unreadable diagnostic: {}", text(error)));
+                        return Err(format!(
+                            "временная ошибка сохранения unreadable diagnostic: {}",
+                            text(error)
+                        ));
                     }
                     if let Err(error) = insert_processed_event(&quarantine, event_id) {
                         drop(quarantine);
