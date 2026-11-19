@@ -127,6 +127,54 @@ test('содержимое документа не попадает в журн�
 });
 
 
+test('owner, admin, applicant and ordinary user authorization is enforced on every G2 route', async () => {
+  const s = await start();
+  try {
+    const created = await call(s.base, 'POST', '/org-requests', s.dir.token, { name: 'G2 access matrix' });
+    assert.equal(created.status, 200);
+    const requestId = created.json.requestId;
+
+    const applicantQueue = await call(s.base, 'GET', '/org-requests', s.dir.token);
+    const outsiderQueue = await call(s.base, 'GET', '/org-requests', s.out.token);
+    const adminQueue = await call(s.base, 'GET', '/org-requests', s.staff.token);
+    const ownerQueue = await call(s.base, 'GET', '/org-requests', s.owner.token);
+    assert.ok(applicantQueue.json.requests.some((item) => item.requestId === requestId));
+    assert.ok(!outsiderQueue.json.requests.some((item) => item.requestId === requestId));
+    assert.ok(adminQueue.json.requests.some((item) => item.requestId === requestId));
+    assert.ok(ownerQueue.json.requests.some((item) => item.requestId === requestId));
+
+    const [applicantDetail, outsiderDetail, adminDetail, ownerDetail] = await Promise.all([
+      call(s.base, 'GET', `/org-requests/${requestId}`, s.dir.token),
+      call(s.base, 'GET', `/org-requests/${requestId}`, s.out.token),
+      call(s.base, 'GET', `/org-requests/${requestId}`, s.staff.token),
+      call(s.base, 'GET', `/org-requests/${requestId}`, s.owner.token),
+    ]);
+    assert.equal(applicantDetail.status, 200);
+    assert.equal(outsiderDetail.status, 404, 'ordinary users cannot inspect another applicant request');
+    assert.equal(adminDetail.status, 200, 'platform admin has read-only request access');
+    assert.equal(ownerDetail.status, 200, 'platform owner can inspect requests');
+
+    const [adminDecision, ordinaryDecision] = await Promise.all([
+      call(s.base, 'POST', `/org-requests/${requestId}/decision`, s.staff.token, { decision: 'reject' }),
+      call(s.base, 'POST', `/org-requests/${requestId}/decision`, s.out.token, { decision: 'reject' }),
+    ]);
+    assert.equal(adminDecision.status, 403, 'platform admin is read-only');
+    assert.equal(ordinaryDecision.status, 403, 'ordinary user cannot decide platform requests');
+
+    const ownerDecision = await call(
+      s.base,
+      'POST',
+      `/org-requests/${requestId}/decision`,
+      s.owner.token,
+      { decision: 'approve' },
+    );
+    assert.equal(ownerDecision.status, 200);
+    assert.equal(ownerDecision.json.status, 'approved');
+  } finally {
+    await s.stop();
+  }
+});
+
 test('authenticated profile exposes platform role for role-aware navigation', async () => {
   const s = await start();
   try {
