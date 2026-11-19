@@ -349,12 +349,14 @@ fn classify_api_failure(error: &str) -> ApiFailure {
         .collect();
     let status = status_text.parse::<u16>().ok();
     let body_code = response.find('{').and_then(|start| {
-        serde_json::from_str::<Value>(&response[start..]).ok().and_then(|body| {
-            body.get("code")
-                .or_else(|| body.get("error"))
-                .and_then(Value::as_str)
-                .map(str::to_string)
-        })
+        serde_json::from_str::<Value>(&response[start..])
+            .ok()
+            .and_then(|body| {
+                body.get("code")
+                    .or_else(|| body.get("error"))
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            })
     });
     let kind = match status {
         Some(401) => ApiFailureKind::AuthSession,
@@ -899,9 +901,7 @@ impl Client {
     /// Вызов API. Если токен доступа истёк, токен обновляется и запрос повторяется один раз.
     fn call(&self, method: &str, path: &str, body: Option<Value>) -> Result<Value, String> {
         match self.call_once(method, path, body.clone()) {
-            Err(e)
-                if classify_api_failure(&e).code.as_deref() == Some("token_expired") =>
-            {
+            Err(e) if classify_api_failure(&e).code.as_deref() == Some("token_expired") => {
                 self.renew()?;
                 self.call_once(method, path, body)
             }
@@ -2340,7 +2340,9 @@ impl Client {
                 })
             {
                 drop(transaction);
-                return Err(format!("временная ошибка сохранения unreadable inbox item: {error}"));
+                return Err(format!(
+                    "временная ошибка сохранения unreadable inbox item: {error}"
+                ));
             }
             transaction.commit().map_err(|error| {
                 format!("временная ошибка фиксации unreadable inbox item: {}", text(error))
@@ -2419,7 +2421,10 @@ impl Client {
 
                 if let Err(error) = transaction.commit() {
                     self.reload_group(room_id)?;
-                    return Err(format!("временная ошибка фиксации MLS inbox, повтор позже: {}", text(error)));
+                    return Err(format!(
+                        "временная ошибка фиксации MLS inbox, повтор позже: {}",
+                        text(error)
+                    ));
                 }
                 self.processed.insert(event_id.to_string());
                 out.push(incoming);
@@ -2440,7 +2445,9 @@ impl Client {
                     let quarantine = self.meta.unchecked_transaction().map_err(text)?;
                     if let Err(error) = insert_incoming_record(&quarantine, &incoming) {
                         drop(quarantine);
-                        return Err(format!("временная ошибка сохранения unreadable inbox item: {error}"));
+                        return Err(format!(
+                            "временная ошибка сохранения unreadable inbox item: {error}"
+                        ));
                     }
                     if let Err(error) = quarantine.execute(
                             "INSERT OR IGNORE INTO client_undecryptable (event_id, room_id, reason)
@@ -2452,7 +2459,9 @@ impl Client {
                     }
                     if let Err(error) = insert_processed_event(&quarantine, event_id) {
                         drop(quarantine);
-                        return Err(format!("временная ошибка сохранения processed marker: {error}"));
+                        return Err(format!(
+                            "временная ошибка сохранения processed marker: {error}"
+                        ));
                     }
                     quarantine.commit().map_err(|error| {
                         format!(
@@ -2714,11 +2723,7 @@ impl Client {
                 // Сервер больше не пускает устройство в комнату: это расхождение состава, а не причина остановить все комнаты.
                 Err(e) if e.contains("not a member") => self.check_consistency(&room)?,
                 // Некорректный event identity — ошибка контракта ответа, а не повреждение MLS room.
-                Err(e)
-                    if classify_api_failure(&e).kind == ApiFailureKind::Contract =>
-                {
-                    continue
-                }
+                Err(e) if classify_api_failure(&e).kind == ApiFailureKind::Contract => continue,
                 // Сетевые/HTTP и локальные временные ошибки возвращаются вызывающему коду без MLS-карантина.
                 Err(e)
                     if e.contains("временная ошибка")
@@ -3054,28 +3059,23 @@ mod retry_tests {
 
     #[test]
     fn api_failures_are_typed_by_status_and_server_error_code() {
-        let auth = classify_api_failure(
-            r#"GET /rooms/x/events -> 401 {"error":"device_revoked"}"#,
-        );
+        let auth = classify_api_failure(r#"GET /rooms/x/events -> 401 {"error":"device_revoked"}"#);
         assert_eq!(auth.kind, ApiFailureKind::AuthSession);
         assert_eq!(auth.status, Some(401));
         assert_eq!(auth.code.as_deref(), Some("device_revoked"));
 
-        let denied = classify_api_failure(
-            r#"GET /rooms/x/events -> 403 {"code":"permission_denied"}"#,
-        );
+        let denied =
+            classify_api_failure(r#"GET /rooms/x/events -> 403 {"code":"permission_denied"}"#);
         assert_eq!(denied.kind, ApiFailureKind::AccessDenied);
         assert_eq!(denied.code.as_deref(), Some("permission_denied"));
 
-        let deleted = classify_api_failure(
-            r#"GET /rooms/x/events -> 404 {"error":"room_deleted"}"#,
-        );
+        let deleted =
+            classify_api_failure(r#"GET /rooms/x/events -> 404 {"error":"room_deleted"}"#);
         assert_eq!(deleted.kind, ApiFailureKind::ResourceDeleted);
         assert_eq!(deleted.status, Some(404));
 
-        let refresh = classify_api_failure(
-            r#"POST /token/refresh -> 401 {"error":"refresh_revoked"}"#,
-        );
+        let refresh =
+            classify_api_failure(r#"POST /token/refresh -> 401 {"error":"refresh_revoked"}"#);
         assert_eq!(refresh.kind, ApiFailureKind::AuthSession);
         assert!(!is_retryable(
             r#"POST /token/refresh -> 401 {"error":"refresh_revoked"}"#
