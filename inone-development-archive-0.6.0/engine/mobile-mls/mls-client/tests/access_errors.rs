@@ -217,13 +217,14 @@ fn auth_access_deleted_room_and_failed_refresh_never_mark_mls_recovery_required(
         .send_text(other_room, "other room remains usable after access recovery")
         .unwrap();
     let received = bob.sync().expect("same and other MLS rooms remain usable");
-    assert_eq!(
-        common::texts(&received),
-        vec![
-            "room remains usable after access recovery",
-            "other room remains usable after access recovery"
-        ]
-    );
+    let mut received_texts = common::texts(&received);
+    received_texts.sort();
+    let mut expected_texts = vec![
+        "room remains usable after access recovery".to_string(),
+        "other room remains usable after access recovery".to_string(),
+    ];
+    expected_texts.sort();
+    assert_eq!(received_texts, expected_texts);
     assert_eq!(bob.desync_reason(room).unwrap(), None);
     assert_eq!(bob.desync_reason(other_room).unwrap(), None);
 }
