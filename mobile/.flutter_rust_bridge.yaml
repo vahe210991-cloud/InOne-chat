@@ -11,7 +11,7 @@ default_dart_async: true
 type_64bit_int: false
 dart3: true
 dart_enums_style: true
-default_rust_opaque_codec: moi
+default_rust_opaque_codec: Moi
 
 # Keep generation deterministic and scoped to the mobile native targets.
 web: false
