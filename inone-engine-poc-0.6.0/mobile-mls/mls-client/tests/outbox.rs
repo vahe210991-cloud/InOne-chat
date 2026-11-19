@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use mls_client::{connect, connect_with_session, resume_with_session, Incoming, MemoryKeyStore};
+use mls_client::{connect, connect_with_session, resume_with_session, Incoming, KeyStore, MemoryKeyStore};
 use serde_json::json;
 
 const PW: &str = "пароль-проверки-1";
@@ -102,6 +102,18 @@ fn db(name: &str) -> String {
     path.to_string_lossy().to_string()
 }
 
+fn open_encrypted_db(path: &str, key: &[u8; 32]) -> rusqlite::Connection {
+    let connection = rusqlite::Connection::open(path).expect("open SQLCipher database");
+    let key_hex = key.iter().map(|byte| format!("{byte:02x}")).collect::<String>();
+    connection
+        .pragma_update(None, "key", format!("x'{key_hex}'"))
+        .expect("unlock SQLCipher database");
+    connection
+        .query_row("SELECT count(*) FROM sqlite_master", [], |row| row.get::<_, i64>(0))
+        .expect("verify SQLCipher key");
+    connection
+}
+
 fn texts(items: &[Incoming]) -> Vec<String> {
     items
         .iter()
@@ -135,6 +147,64 @@ fn messages_written_offline_are_delivered_once_when_back_online() {
     assert_eq!(alice.outbox_len().unwrap(), 0);
     assert_eq!(alice.flush_outbox().unwrap(), 0, "повторный сброс ничего не шлёт");
     assert_eq!(texts(&bob.sync().unwrap()), vec!["в метро"], "у Боба ровно одно сообщение");
+}
+
+#[test]
+fn queued_text_reuses_exact_mls_ciphertext_after_server_commit_and_local_failure() {
+    let engine = start_engine();
+    let keys = MemoryKeyStore::default();
+    let alice_db = db("alice-exact-retry");
+    let mut alice = connect(&engine.base, ALICE, PW, "A_PHONE", &alice_db, &keys).unwrap();
+    let mut bob = connect(&engine.base, BOB, PW, "B_PHONE", &db("bob-exact-retry"), &keys).unwrap();
+    bob.ensure_key_packages(1).unwrap();
+    alice.create_room(ROOM).unwrap();
+    alice.invite(ROOM, BOB).unwrap();
+    assert!(bob.sync().unwrap().is_empty());
+
+    let database_key = keys
+        .existing_database_key(&format!("{ALICE}/A_PHONE"))
+        .unwrap()
+        .expect("sender SQLCipher key");
+    let connection = open_encrypted_db(&alice_db, &database_key);
+    connection.execute_batch(
+        "CREATE TRIGGER fail_outgoing_inbox_insert
+         BEFORE INSERT ON client_inbox
+         WHEN NEW.acknowledged = 1
+         BEGIN
+           SELECT RAISE(ABORT, 'simulated local history persistence failure');
+         END;",
+    ).unwrap();
+    drop(connection);
+
+    let local_id = alice.enqueue_text(ROOM, "exact ciphertext retry").unwrap();
+    assert!(alice.flush_outbox().is_err(),
+        "server accepts the message, then local history commit is deliberately rejected");
+
+    let read_ciphertext = || {
+        let connection = open_encrypted_db(&alice_db, &database_key);
+        connection.query_row(
+            "SELECT mls_message FROM client_outbox_crypto WHERE local_id = ?1",
+            [&local_id],
+            |row| row.get::<_, Vec<u8>>(0),
+        ).expect("durable exact MLS ciphertext")
+    };
+    let first_ciphertext = read_ciphertext();
+    assert!(!first_ciphertext.is_empty());
+
+    assert!(alice.flush_outbox().is_err(),
+        "idempotent retry still fails only at the forced local persistence boundary");
+    assert_eq!(read_ciphertext(), first_ciphertext,
+        "retry must reuse the exact MLS bytes and sender generation");
+
+    let connection = open_encrypted_db(&alice_db, &database_key);
+    connection.execute_batch("DROP TRIGGER fail_outgoing_inbox_insert;").unwrap();
+    drop(connection);
+
+    assert_eq!(alice.flush_outbox().unwrap(), 1);
+    assert_eq!(alice.outbox_len().unwrap(), 0);
+    assert_eq!(texts(&alice.messages_for_room(ROOM).unwrap()), vec!["exact ciphertext retry"]);
+    assert_eq!(texts(&bob.sync().unwrap()), vec!["exact ciphertext retry"],
+        "the receiver sees exactly one accepted message");
 }
 
 #[test]
