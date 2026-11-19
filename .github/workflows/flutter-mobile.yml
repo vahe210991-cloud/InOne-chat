@@ -146,6 +146,15 @@ jobs:
       - run: flutter test
       - name: Build Android preview APK
         run: flutter build apk --debug
+      - name: Verify and grant access to KVM on the ephemeral runner
+        working-directory: .
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -c /dev/kvm || { echo "::error::KVM device /dev/kvm is unavailable on this runner"; exit 1; }
+          sudo chmod 666 /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm || { echo "::error::KVM device is not readable and writable"; exit 1; }
+          echo "KVM device is available; hardware acceleration is required."
       - name: Android runtime smoke — Keystore and SQLCipher lifecycle
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -153,8 +162,13 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_6
+          cores: 4
+          ram-size: 4096M
+          heap-size: 512M
+          emulator-boot-timeout: 900
+          disable-linux-hw-accel: false
           disable-animations: true
-          emulator-options: -no-window -noaudio -no-boot-anim -camera-back none -camera-front none
+          emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
           script: flutter drive --driver=test_driver/integration_test.dart --target=integration_test/mls_secure_store_test.dart -d emulator-5554
       - uses: actions/upload-artifact@v4
         with:
