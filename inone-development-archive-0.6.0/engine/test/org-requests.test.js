@@ -219,6 +219,32 @@ test('document metadata is validated, persisted and returned as a safe attachmen
 });
 
 
+test('accepts the documented 5 MiB organization document limit', async () => {
+  const s = await start();
+  try {
+    const created = await call(s.base, 'POST', '/org-requests', s.dir.token, { name: 'Maximum size document' });
+    assert.equal(created.status, 200);
+    const pdf = Buffer.alloc(5 * 1024 * 1024, 0x20);
+    pdf.set(Buffer.from('%PDF-1.7'), 0);
+    const uploaded = await call(
+      s.base,
+      'POST',
+      `/org-requests/${created.json.requestId}/documents`,
+      s.dir.token,
+      {
+        kind: 'registration',
+        filename: 'maximum.pdf',
+        mimeType: 'application/pdf',
+        contentBase64: pdf.toString('base64'),
+      },
+    );
+    assert.equal(uploaded.status, 200);
+    assert.equal(uploaded.json.size, 5 * 1024 * 1024);
+  } finally {
+    await s.stop();
+  }
+});
+
 test('an upload racing with a request decision is rejected and its encrypted blob is removed', async () => {
   const objects = new Map();
   let signalPutStarted;
