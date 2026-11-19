@@ -169,7 +169,7 @@ jobs:
           disable-linux-hw-accel: false
           disable-animations: true
           emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
-          script: flutter drive --driver=test_driver/integration_test.dart --target=integration_test/mls_secure_store_test.dart -d emulator-5554
+          script: cd mobile && flutter drive --driver=test_driver/integration_test.dart --target=integration_test/mls_secure_store_test.dart -d emulator-5554
       - uses: actions/upload-artifact@v4
         with:
           name: inone-beta1-android-preview
