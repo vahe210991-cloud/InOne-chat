@@ -1,0 +1,25 @@
+# Explicit Flutter Rust Bridge 2.13.0 generation contract.
+# Run from mobile/; generated files are build artifacts, not hand-maintained sources.
+rust_input: crate::api
+rust_root: rust
+rust_output: src/frb_generated.rs
+dart_output: lib/src/rust
+dart_entrypoint_class_name: RustLib
+
+# Preserve the production Dart/Rust contract.
+default_dart_async: true
+type_64bit_int: false
+dart3: true
+dart_enums_style: true
+default_rust_opaque_codec: moi
+
+# Keep generation deterministic and scoped to the mobile native targets.
+web: false
+build_runner: true
+auto_upgrade_dependency: false
+dart_fix: false
+dart_format: false
+rust_format: false
+add_mod_to_lib: true
+enable_lifetime: false
+full_dep: false
