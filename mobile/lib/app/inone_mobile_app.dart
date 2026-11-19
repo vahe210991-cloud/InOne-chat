@@ -526,13 +526,13 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
               fileId: message.fileId,
               fileLabel: message.name ?? 'Вложение',
               text: '${message.size ?? 0} bytes · ${message.mimeType ?? 'file'}',
-              mine: false,
+              mine: message.mine,
               meta: 'MLS · epoch $epoch',
             )
           : InOneThreadItem(
               kind: InOneThreadItemKind.text,
               text: message.text ?? 'Не удалось расшифровать сообщение',
-              mine: false,
+              mine: message.mine,
               meta: message.isReadable ? 'MLS · epoch $epoch' : 'Не расшифровано',
             )).toList(growable: false);
       if (!mounted) return;
@@ -709,13 +709,13 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
                 fileId: message.fileId,
                 fileLabel: message.name ?? 'Вложение',
                 text: '${message.size ?? 0} bytes · ${message.mimeType ?? 'file'}',
-                mine: false,
+                mine: message.mine,
                 meta: 'MLS',
               )
             : InOneThreadItem(
                 kind: InOneThreadItemKind.text,
                 text: message.text ?? 'Не удалось расшифровать сообщение',
-                mine: false,
+                mine: message.mine,
                 meta: message.isReadable ? 'MLS' : 'Не расшифровано',
               )).toList(growable: false);
       });
