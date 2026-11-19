@@ -220,9 +220,7 @@ fn auth_access_deleted_room_and_failed_refresh_never_mark_mls_recovery_required(
     // A token-expired event response followed by a rejected refresh is still a
     // session problem, not an MLS recovery condition.
     proxy.set_failed_refresh(true);
-    let refresh_error = bob
-        .sync()
-        .expect_err("failed refresh must be surfaced");
+    let refresh_error = bob.sync().expect_err("failed refresh must be surfaced");
     assert!(
         refresh_error.contains("token/refresh -> 401"),
         "{refresh_error}"
@@ -231,7 +229,9 @@ fn auth_access_deleted_room_and_failed_refresh_never_mark_mls_recovery_required(
     assert_eq!(bob.desync_reason(other_room).unwrap(), None);
 
     proxy.reset();
-    alice.send_text(room, "room remains usable after access recovery").unwrap();
+    alice
+        .send_text(room, "room remains usable after access recovery")
+        .unwrap();
     alice
         .send_text(
             other_room,
