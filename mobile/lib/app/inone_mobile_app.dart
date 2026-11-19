@@ -45,6 +45,12 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   List<InOneOrganization> _organizations = const [];
   InOneOrganization? _selectedOrganization;
   InOneSystemStatus? _systemStatus;
+  List<InOneChatPreview> _mlsChats = const [];
+  String? _activeMlsRoomId;
+  String _activeMlsRoomName = '';
+  List<InOneThreadItem> _activeMlsThread = const [];
+  bool _messagesLoading = false;
+  String? _messagesError;
   bool _darkMode = false;
   bool _initializing = true;
   final Completer<void> _initializationComplete = Completer<void>();
@@ -272,6 +278,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         _selectedOrganization = organizations.isEmpty ? null : organizations.first;
         _screen = 'messages';
       });
+      if (_session.hasNativeMlsSession) await _loadMlsRooms();
     } catch (_) {
       if (mounted) setState(() => _screen = 'loadError');
     }
@@ -372,6 +379,168 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       about: null,
       verified: false,
     );
+  }
+
+  Future<void> _loadMlsRooms() async {
+    if (!_session.hasNativeMlsSession) {
+      if (mounted) setState(() => _mlsChats = const []);
+      return;
+    }
+    if (mounted) {
+      setState(() {
+        _messagesLoading = true;
+        _messagesError = null;
+      });
+    }
+    try {
+      // Rust synchronizes Welcome/Commit state and decrypts incoming events.
+      await _session.syncMlsMessages();
+      final response = await _repositories.myRooms();
+      final rows = response['rooms'];
+      if (rows is! List) {
+        throw const FormatException('Backend room list is not an array');
+      }
+      final pending = await _session.pendingMlsMessages();
+      final chats = <InOneChatPreview>[];
+      for (final row in rows) {
+        if (row is! Map) continue;
+        final roomId = row['roomId'];
+        if (roomId is! String || roomId.trim().isEmpty) continue;
+        final rawName = row['name'];
+        final name = rawName is String && rawName.trim().isNotEmpty
+            ? rawName.trim()
+            : roomId;
+        final messages = await _session.mlsMessagesForRoom(roomId);
+        String? lastMessage;
+        for (final message in messages) {
+          if (message.text != null) lastMessage = message.text;
+        }
+        final kind = row['kind'] == 'person' || row['kind'] == 'direct'
+            ? InOneChatKind.person
+            : InOneChatKind.group;
+        chats.add(InOneChatPreview(
+          id: roomId,
+          name: name,
+          lastMessage: lastMessage,
+          time: '—',
+          kind: kind,
+        ));
+      }
+      if (!mounted) return;
+      setState(() {
+        _mlsChats = chats;
+        _messagesLoading = false;
+        _messagesError = null;
+      });
+      // The Rust inbox is already durable in SQLCipher. Acknowledge only after
+      // the UI has accepted the refreshed room/message snapshot.
+      final accepted = pending.map((message) => message.eventId).toSet().toList();
+      if (accepted.isNotEmpty) await _session.acknowledgeMlsMessages(accepted);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _messagesLoading = false;
+        _messagesError = 'Не удалось синхронизировать MLS-чаты: $error';
+      });
+    }
+  }
+
+  Future<void> _openMlsChat(InOneChatPreview chat) async {
+    if (!_session.hasNativeMlsSession) {
+      _notice('Нативная MLS-сессия недоступна. Переписка не открыта.');
+      return;
+    }
+    try {
+      await _session.syncMlsMessages();
+      final epoch = await _session.mlsLocalEpoch(chat.id);
+      if (epoch == null) {
+        _notice('Для этой комнаты ещё не получен MLS Welcome. Сообщения не открыты.');
+        return;
+      }
+      final messages = await _session.mlsMessagesForRoom(chat.id);
+      final items = messages.map((message) => InOneThreadItem(
+        kind: InOneThreadItemKind.text,
+        text: message.text ?? 'Не удалось расшифровать сообщение',
+        mine: false,
+        meta: message.isReadable ? 'MLS · epoch $epoch' : 'Не расшифровано',
+      )).toList(growable: false);
+      if (!mounted) return;
+      setState(() {
+        _activeMlsRoomId = chat.id;
+        _activeMlsRoomName = chat.name;
+        _activeMlsThread = items;
+        _screen = 'chatThread';
+      });
+      final pending = await _session.pendingMlsMessages();
+      final accepted = pending
+          .where((message) => message.roomId == chat.id)
+          .map((message) => message.eventId)
+          .toList(growable: false);
+      if (accepted.isNotEmpty) await _session.acknowledgeMlsMessages(accepted);
+    } catch (error) {
+      _notice('Не удалось открыть MLS-комнату: $error');
+    }
+  }
+
+  Future<void> _sendMlsMessage(String plaintext) async {
+    final roomId = _activeMlsRoomId;
+    if (roomId == null || plaintext.trim().isEmpty) return;
+    try {
+      // Queue first: the plaintext is protected by SQLCipher before any network
+      // attempt. Offline sends remain durable and are flushed on the next sync.
+      await _session.enqueueMlsText(roomId, plaintext);
+      final sent = await _session.flushMlsOutbox();
+      final queued = await _session.mlsOutboxLength();
+      if (!mounted) return;
+      setState(() {
+        _activeMlsThread = [
+          ..._activeMlsThread,
+          InOneThreadItem(
+            kind: InOneThreadItemKind.text,
+            text: plaintext,
+            mine: true,
+            meta: sent > 0 ? 'Отправлено через MLS' : 'В очереди · $queued',
+          ),
+        ];
+        _mlsChats = _mlsChats.map((chat) => chat.id == roomId
+            ? InOneChatPreview(
+                id: chat.id,
+                name: chat.name,
+                lastMessage: plaintext,
+                time: chat.time,
+                kind: chat.kind,
+                unread: chat.unread,
+                initials: chat.initials,
+              )
+            : chat).toList(growable: false);
+      });
+      if (sent == 0 && queued > 0) {
+        _notice('Сообщение сохранено в зашифрованной очереди и будет отправлено после восстановления связи.');
+      }
+    } catch (error) {
+      _notice('Сообщение не отправлено: $error');
+    }
+  }
+
+  Future<void> _refreshActiveMlsChat() async {
+    final roomId = _activeMlsRoomId;
+    if (roomId == null) return;
+    try {
+      await _session.syncMlsMessages();
+      await _session.flushMlsOutbox();
+      final messages = await _session.mlsMessagesForRoom(roomId);
+      if (!mounted) return;
+      setState(() {
+        _activeMlsThread = messages.map((message) => InOneThreadItem(
+          kind: InOneThreadItemKind.text,
+          text: message.text ?? 'Не удалось расшифровать сообщение',
+          mine: false,
+          meta: message.isReadable ? 'MLS' : 'Не расшифровано',
+        )).toList(growable: false);
+      });
+    } catch (error) {
+      _notice('Синхронизация MLS не выполнена: $error');
+    }
   }
 
   Future<void> _loadSystemStatus() async {
@@ -566,16 +735,38 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           onMenu: () => setState(() => _screen = 'workspace'),
         );
       case 'messages':
+        if (!_session.hasNativeMlsSession) {
+          return InOneMessagesScreen(
+            chats: const [],
+            unreadCountsAvailable: false,
+            onOpenChat: (_) => _notice('Нативная MLS-сессия не открыта.'),
+            onSearch: () => _notice('Поиск по содержимому сообщений пока не реализован.'),
+            onFilter: () => _notice('Дополнительные фильтры пока недоступны.'),
+            onTab: _selectTab,
+            onAdd: () => _notice('Создание групповых комнат пока доступно через приглашение.'),
+          );
+        }
         return InOneMessagesScreen(
-          chats: const [],
+          chats: _mlsChats,
           unreadCountsAvailable: false,
-          onOpenChat: (_) => _notice(
-            'История и отправка сообщений заблокированы до подключения нативного MLS-клиента и зашифрованного локального хранилища. Сообщение не отправлено.',
-          ),
+          onOpenChat: _openMlsChat,
           onSearch: () => _notice('Поиск по содержимому сообщений пока не реализован.'),
           onFilter: () => _notice('Дополнительные фильтры пока недоступны.'),
           onTab: _selectTab,
-          onAdd: () => _notice('Создание публикаций не входит в Beta 1.0.'),
+          onAdd: () => _notice('Создание групповых комнат пока доступно через приглашение.'),
+        );
+      case 'chatThread':
+        return InOneChatThreadScreen(
+          header: InOneThreadHeader(
+            name: _activeMlsRoomName,
+            statusLabel: 'Сквозное шифрование · MLS',
+            online: false,
+          ),
+          items: _activeMlsThread,
+          onSend: (text) => unawaited(_sendMlsMessage(text)),
+          onBack: () => setState(() => _screen = 'messages'),
+          onMore: () => unawaited(_refreshActiveMlsChat()),
+          onAttach: () => _notice('Зашифрованные вложения подключаются отдельным шагом G2-E2.'),
         );
       case 'profile':
         if (_profile == null) {
