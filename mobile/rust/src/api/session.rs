@@ -640,7 +640,8 @@ mod tests {
         ));
         let missing_directory = root.join("missing");
         let normalized = purge_database_directory(&missing_directory.to_string_lossy()).unwrap();
-        assert_eq!(normalized, missing_directory.to_string_lossy());
+        let expected = missing_directory.to_string_lossy().into_owned();
+        assert_eq!(normalized, expected);
 
         let identity = "user/missing-directory-purge";
         let database_path = database_path_for_identity(&normalized, identity);
