@@ -697,7 +697,7 @@ class InOneSession extends ChangeNotifier {
       return token;
     } catch (error) {
       final revoked = RegExp(
-        r'(?:\\b401\\b|unauthori[sz]ed|refresh.?token.*revok|session.*revok)',
+        r'(?:\b401\b|unauthori[sz]ed|refresh.?token.*revok|session.*revok)',
         caseSensitive: false,
       ).hasMatch(error.toString());
       if (revoked) await _invalidateNativeSession(bridge);
