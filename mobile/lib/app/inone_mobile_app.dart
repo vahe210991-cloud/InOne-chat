@@ -464,10 +464,26 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         // A transient outage must not hide the room list or discard queued text.
         _notice('Исходящие MLS-сообщения останутся в защищённой очереди: $error');
       }
-      final response = await _repositories.myRooms();
-      final rows = response['rooms'];
-      if (rows is! List) {
-        throw const FormatException('Backend room list is not an array');
+      late final List<dynamic> rows;
+      try {
+        final response = await _repositories.myRooms();
+        final remoteRows = response['rooms'];
+        if (remoteRows is! List) {
+          throw const FormatException('Backend room list is not an array');
+        }
+        rows = remoteRows;
+      } catch (error) {
+        // The persistent Rust client is the source of truth for already joined
+        // rooms when the network is unavailable.
+        final localRoomIds = await _session.localMlsRoomIds();
+        rows = localRoomIds
+            .map((roomId) => <String, dynamic>{
+                  'roomId': roomId,
+                  'name': roomId,
+                  'kind': 'group',
+                })
+            .toList(growable: false);
+        _notice('Серверный список комнат недоступен; восстановлены локальные MLS-комнаты: $error');
       }
       final pending = await _session.pendingMlsMessages();
       final chats = <InOneChatPreview>[];
