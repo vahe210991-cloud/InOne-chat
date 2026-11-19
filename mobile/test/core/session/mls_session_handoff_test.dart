@@ -407,6 +407,61 @@ void main() {
     );
     session.dispose();
   });
+
+  test('revoked native refresh purges local MLS identity and invalidates the session', () async {
+    final httpClient = MockClient((request) async {
+      if (request.url.path == '/login') {
+        return http.Response(
+          jsonEncode({'token': 'access-1', 'refreshToken': 'refresh-1'}),
+          200,
+        );
+      }
+      if (request.url.path == '/profile') {
+        return http.Response(jsonEncode({'userId': '@alice:inone.test'}), 200);
+      }
+      if (request.url.path == '/protected') {
+        return http.Response('{"error":"token_expired"}', 401);
+      }
+      return http.Response('{}', 404);
+    });
+    String? savedUserId;
+    var deleteIdentityCalls = 0;
+    final bridge = _FakeMlsSessionBridge()
+      ..refreshError = StateError('HTTP 401 unauthorized: refresh token revoked');
+    final session = InOneSession(
+      baseUrl: 'https://api.inone.test',
+      httpClient: httpClient,
+      nativeMlsBridge: bridge,
+      readDeviceId: () async => 'device-1',
+      writeDeviceId: (_) async {},
+      readMlsUserId: () async => savedUserId,
+      writeMlsUserId: (value) async { savedUserId = value; },
+      deleteMlsUserId: () async {
+        deleteIdentityCalls++;
+        savedUserId = null;
+      },
+    );
+
+    await session.login(email: 'alice@example.test', password: 'not-used-in-test');
+    expect(session.hasNativeMlsSession, isTrue);
+    expect(savedUserId, '@alice:inone.test');
+
+    await expectLater(
+      session.request('GET', '/protected'),
+      throwsA(isA<StateError>()),
+    );
+
+    expect(session.isAuthenticated, isFalse);
+    expect(session.hasNativeMlsSession, isFalse);
+    expect(session.userId, isNull);
+    expect(savedUserId, isNull);
+    expect(deleteIdentityCalls, 1);
+    expect(bridge.logoutCalls, 1);
+    expect(bridge.purgeCalls, 1);
+    expect(bridge.closeCalls, 1);
+    session.dispose();
+  });
+
 }
 
 class _FakeMlsSessionBridge implements MlsSessionBridge {
@@ -420,6 +475,7 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
   int logoutCalls = 0;
   int purgeCalls = 0;
   int closeCalls = 0;
+  Object? refreshError;
   int openCalls = 0;
   Completer<void>? openStarted;
   Completer<void>? openGate;
@@ -533,6 +589,7 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
   @override
   Future<String> refreshSession() async {
     refreshCalls++;
+    if (refreshError != null) throw refreshError!;
     accessToken = 'access-2';
     return accessToken;
   }
