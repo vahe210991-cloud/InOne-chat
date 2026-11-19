@@ -10,6 +10,7 @@ class MlsIncomingMessage {
     this.name,
     this.mimeType,
     this.size,
+    this.mine = false,
   });
 
   final String roomId;
@@ -19,6 +20,7 @@ class MlsIncomingMessage {
   final String? name;
   final String? mimeType;
   final int? size;
+  final bool mine;
 
   bool get isAttachment => fileId != null;
   bool get isReadable => text != null || isAttachment;
