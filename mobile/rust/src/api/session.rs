@@ -124,9 +124,15 @@ fn map_incoming(items: Vec<Incoming>) -> Vec<IncomingMessage> {
                 size,
                 mine,
             },
-            Incoming::Unreadable { room_id, event_id, mine } => {
-                IncomingMessage::Unreadable { room_id, event_id, mine }
-            }
+            Incoming::Unreadable {
+                room_id,
+                event_id,
+                mine,
+            } => IncomingMessage::Unreadable {
+                room_id,
+                event_id,
+                mine,
+            },
         })
         .collect()
 }
