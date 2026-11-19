@@ -107,7 +107,7 @@ class InOneEncryptedDocumentStore {
       throw ArgumentError('Invalid organization request or document identifier');
     }
     if (filename.trim().isEmpty || filename.length > 180 ||
-        filename.contains('/') || filename.contains(r'\\')) {
+        filename.contains('/') || filename.contains(String.fromCharCode(92))) {
       throw ArgumentError.value(filename, 'filename', 'Invalid document filename');
     }
   }
