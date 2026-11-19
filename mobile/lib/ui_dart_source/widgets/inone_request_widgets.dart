@@ -67,7 +67,7 @@ class InOneDocumentRow extends StatelessWidget {
     this.onOpen,
     this.onDownload,
     this.busy = false,
-  }) : assert((onOpen == null) != (onDownload == null));
+  }) : assert(onOpen == null || onDownload == null);
 
   final InOneDocument document;
 
