@@ -235,19 +235,38 @@ class InOneEncryptedDocumentStore {
   /// Removes the pre-owner-scoped cache and its legacy global key on upgrade.
   /// New owner-scoped directories are preserved.
   Future<void> purgeLegacyUnscopedData() async {
-    await (_deleteLegacyKeyOverride?.call() ?? _secureStorage.delete(key: _keyName));
-    final root = await _rootDirectory();
-    final directory = Directory(
-      '${root.path}${Platform.pathSeparator}InOne'
-      '${Platform.pathSeparator}organization-documents',
-    );
-    if (!await directory.exists()) return;
-    await for (final entity in directory.list(followLinks: false)) {
-      if (entity is! Directory) continue;
-      final name = entity.uri.pathSegments.where((part) => part.isNotEmpty).last;
-      // SHA-256 base64url owner scopes are exactly 43 characters. Older
-      // directories were keyed directly by the 1..128-character request ID.
-      if (name.length != 43) await entity.delete(recursive: true);
+    final failures = <Object>[];
+    try {
+      await (_deleteLegacyKeyOverride?.call() ?? _secureStorage.delete(key: _keyName));
+    } catch (error) {
+      failures.add(error);
+    }
+    try {
+      final root = await _rootDirectory();
+      final directory = Directory(
+        '${root.path}${Platform.pathSeparator}InOne'
+        '${Platform.pathSeparator}organization-documents',
+      );
+      if (await directory.exists()) {
+        await for (final entity in directory.list(followLinks: false)) {
+          if (entity is! Directory) continue;
+          final name = entity.uri.pathSegments.where((part) => part.isNotEmpty).last;
+          // SHA-256 base64url owner scopes are exactly 43 characters. Older
+          // directories were keyed directly by the 1..128-character request ID.
+          if (name.length != 43) {
+            try {
+              await entity.delete(recursive: true);
+            } catch (error) {
+              failures.add(error);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      failures.add(error);
+    }
+    if (failures.isNotEmpty) {
+      throw StateError('Legacy document cache cleanup incomplete (${failures.length} failure(s))');
     }
   }
 
@@ -256,14 +275,26 @@ class InOneEncryptedDocumentStore {
   Future<void> purgeOwner(String ownerUserId) {
     _validateOwner(ownerUserId);
     return _withOwnerLock(ownerUserId, (scope) async {
-      await _deleteKey(scope);
-      final root = await _rootDirectory();
-      final directory = Directory(
-        '${root.path}${Platform.pathSeparator}InOne'
-        '${Platform.pathSeparator}organization-documents'
-        '${Platform.pathSeparator}$scope',
-      );
-      if (await directory.exists()) await directory.delete(recursive: true);
+      final failures = <Object>[];
+      try {
+        await _deleteKey(scope);
+      } catch (error) {
+        failures.add(error);
+      }
+      try {
+        final root = await _rootDirectory();
+        final directory = Directory(
+          '${root.path}${Platform.pathSeparator}InOne'
+          '${Platform.pathSeparator}organization-documents'
+          '${Platform.pathSeparator}$scope',
+        );
+        if (await directory.exists()) await directory.delete(recursive: true);
+      } catch (error) {
+        failures.add(error);
+      }
+      if (failures.isNotEmpty) {
+        throw StateError('Owner document purge incomplete (${failures.length} failure(s))');
+      }
     });
   }
 }
