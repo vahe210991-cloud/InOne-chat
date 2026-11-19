@@ -2786,6 +2786,13 @@ impl Client {
         };
         let transaction = self.meta.transaction().map_err(text)?;
         insert_incoming_record(&transaction, &incoming)?;
+        let tagged = transaction.execute(
+            "UPDATE client_inbox SET client_message_id = ?1 WHERE event_id = ?2",
+            rusqlite::params![operation_id.as_str(), event_id.as_str()],
+        ).map_err(text)?;
+        if tagged != 1 {
+            return Err("could not tag outgoing attachment direction in local history".to_string());
+        }
         transaction.execute(
             "INSERT OR IGNORE INTO client_attachments
              (file_id, room_id, event_id, manifest, direction, created_at, client_message_id)
