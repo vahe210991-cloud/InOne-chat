@@ -294,13 +294,18 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         if (revokedUserId != null) {
           try {
             await _documentStore.purgeAccount(revokedUserId);
+          } catch (_) {
+            // Continue clearing the session even if filesystem cleanup is interrupted.
+          }
+          try {
             await _clearDocumentPreviewCache();
-          } finally {
-            try {
-              await _session.logout();
-            } catch (_) {
-              // A server-revoked session may reject remote logout; local purge is mandatory.
-            }
+          } catch (_) {
+            // A later app start retries the temporary-cache cleanup.
+          }
+          try {
+            await _session.logout();
+          } catch (_) {
+            // A server-revoked session may reject remote logout; local purge is mandatory.
           }
           if (mounted) {
             setState(() {
@@ -466,7 +471,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     if (await directory.exists()) await directory.delete(recursive: true);
   }
 
-  Future<void> _openNativeDocument(InOneDocument document, List<int> bytes) async {
+  Future<void> _openNativeDocument(String requestId, InOneDocument document, List<int> bytes) async {
     final directory = await _documentPreviewDirectory();
     final safeName = document.name.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
     final file = File(
@@ -545,7 +550,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           ),
         );
       } else {
-        await _openNativeDocument(document, plaintext);
+        await _openNativeDocument(request.id, document, plaintext);
       }
       if (mounted) _notice('Документ открыт из зашифрованного локального хранилища.');
       return null;
