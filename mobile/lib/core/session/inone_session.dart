@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show Platform;
@@ -782,6 +783,26 @@ class InOneSession extends ChangeNotifier {
       throw ArgumentError.value(plaintext, 'plaintext', 'Message text cannot be empty');
     }
     return _requireNativeMlsBridge().enqueueText(roomId, plaintext);
+  }
+
+  Future<String> sendMlsAttachment(
+    String roomId,
+    String name,
+    String mimeType,
+    Uint8List plaintext,
+  ) {
+    _validateMlsRoomId(roomId);
+    if (name.trim().isEmpty || mimeType.trim().isEmpty || plaintext.isEmpty) {
+      throw ArgumentError('Attachment name, MIME type and bytes are required');
+    }
+    return _requireNativeMlsBridge().sendAttachment(roomId, name, mimeType, plaintext);
+  }
+
+  Future<Uint8List> downloadMlsAttachment(String fileId) {
+    if (fileId.trim().isEmpty || fileId.length > 128) {
+      throw ArgumentError.value(fileId, 'fileId', 'A valid attachment ID is required');
+    }
+    return _requireNativeMlsBridge().downloadAttachment(fileId);
   }
 
   Future<List<MlsIncomingMessage>> syncMlsMessages() =>
