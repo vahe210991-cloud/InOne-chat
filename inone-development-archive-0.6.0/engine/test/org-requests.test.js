@@ -217,3 +217,63 @@ test('document metadata is validated, persisted and returned as a safe attachmen
     await s.stop();
   }
 });
+
+
+test('owner/admin/applicant authorization matrix isolates queue and details and gates decisions', async () => {
+  const s = await start();
+  try {
+    const applicantRequest = await call(s.base, 'POST', '/org-requests', s.dir.token, { name: 'Applicant private request' });
+    const outsiderRequest = await call(s.base, 'POST', '/org-requests', s.out.token, { name: 'Outsider private request' });
+    assert.equal(applicantRequest.status, 200);
+    assert.equal(outsiderRequest.status, 200);
+    const requestId = applicantRequest.json.requestId;
+    const outsiderRequestId = outsiderRequest.json.requestId;
+
+    const [ownerQueue, adminQueue, applicantQueue, outsiderQueue] = await Promise.all([
+      call(s.base, 'GET', '/org-requests', s.owner.token),
+      call(s.base, 'GET', '/org-requests', s.staff.token),
+      call(s.base, 'GET', '/org-requests', s.dir.token),
+      call(s.base, 'GET', '/org-requests', s.out.token),
+    ]);
+    for (const queue of [ownerQueue, adminQueue, applicantQueue, outsiderQueue]) {
+      assert.equal(queue.status, 200);
+    }
+    const ids = (queue) => queue.json.requests.map((request) => request.requestId);
+    assert.ok(ids(ownerQueue).includes(requestId));
+    assert.ok(ids(ownerQueue).includes(outsiderRequestId));
+    assert.ok(ids(adminQueue).includes(requestId));
+    assert.ok(ids(adminQueue).includes(outsiderRequestId));
+    assert.deepEqual(ids(applicantQueue), [requestId]);
+    assert.deepEqual(ids(outsiderQueue), [outsiderRequestId]);
+
+    const [ownerDetails, adminDetails, applicantDetails, outsiderDetails] = await Promise.all([
+      call(s.base, 'GET', `/org-requests/${requestId}`, s.owner.token),
+      call(s.base, 'GET', `/org-requests/${requestId}`, s.staff.token),
+      call(s.base, 'GET', `/org-requests/${requestId}`, s.dir.token),
+      call(s.base, 'GET', `/org-requests/${requestId}`, s.out.token),
+    ]);
+    assert.equal(ownerDetails.status, 200);
+    assert.equal(adminDetails.status, 200);
+    assert.equal(applicantDetails.status, 200);
+    assert.equal(outsiderDetails.status, 404, 'another applicant cannot enumerate request details');
+
+    const adminDecision = await call(
+      s.base, 'POST', `/org-requests/${requestId}/decision`, s.staff.token, { decision: 'approve' },
+    );
+    const applicantDecision = await call(
+      s.base, 'POST', `/org-requests/${requestId}/decision`, s.dir.token, { decision: 'approve' },
+    );
+    assert.equal(adminDecision.status, 403);
+    assert.equal(adminDecision.json.code, 'not_platform_owner');
+    assert.equal(applicantDecision.status, 403);
+    assert.equal(applicantDecision.json.code, 'not_platform_owner');
+
+    const ownerDecision = await call(
+      s.base, 'POST', `/org-requests/${requestId}/decision`, s.owner.token, { decision: 'approve' },
+    );
+    assert.equal(ownerDecision.status, 200);
+    assert.equal(ownerDecision.json.status, 'approved');
+  } finally {
+    await s.stop();
+  }
+});
