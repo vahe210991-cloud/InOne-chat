@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:flutter/services.dart';
 import 'package:inone_mobile/core/mls/rust_mls_session_bridge.dart';
 
 void main() {
@@ -16,11 +16,15 @@ void main() {
       final deviceId = 'MLS-SMOKE-$stamp';
       const baseUrl = 'http://127.0.0.1:1';
 
-      // Exercise the real Android plugin registration and application context
+      // Exercise the real MainActivity channel and Android application context
       // before Rust is entered; no test platform override or fake directory.
-      final supportDirectory = await getApplicationSupportDirectory();
-      expect(FileSystemEntity.isAbsolute(supportDirectory.path), isTrue);
-      expect(await supportDirectory.exists(), isTrue);
+      const storageChannel = MethodChannel('com.inone.mls/platform_storage');
+      final supportPath = await storageChannel.invokeMethod<String>(
+        'applicationSupportDirectory',
+      );
+      expect(supportPath, isNotNull);
+      expect(FileSystemEntity.isAbsolute(supportPath!), isTrue);
+      expect(await Directory(supportPath).exists(), isTrue);
 
       final first = RustMlsSessionBridge();
       await first.open(
