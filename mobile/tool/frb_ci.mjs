@@ -113,7 +113,7 @@ function verifyContract() {
       throw new Error('Unexpected generated Dart method remains: ' + method);
     }
   }
-  if (/\\bIncomingMessage\\b/.test(generatedSource)) {
+  if (/\bIncomingMessage\b/.test(generatedSource)) {
     throw new Error('Unexpected generated Dart IncomingMessage type remains');
   }
 
@@ -130,7 +130,7 @@ function verifyContract() {
     'Future<String> pendingIncomingJson(',
     'Future<String> messagesForRoomJson(',
     'Future<String> undecryptableJson(',
-    'Future<void> ensureKeyPackages({required BigInt target}',
+    'Future<void> ensureKeyPackages({required BigInt target ',
   ];
   for (const signature of requiredTypes) {
     if (!normalizedSession.includes(signature)) {
