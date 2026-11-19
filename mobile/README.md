@@ -1,5 +1,7 @@
 # InOne Beta 1.0 — native Flutter mobile application
 
+> **A2 FRB reconciliation — 2026-11-19:** Initial audit is recorded in [the A2 report](../development/reports/2026-11-19-A2-frb-reconciliation-audit.md). The production adapter references generated files that are intentionally produced during the pinned bootstrap; actual generated symbols/types and clean-repeat determinism remain unverified. This audit is not A2 acceptance.
+
 The production entry point is `lib/main.dart`, which launches `InOneMobileApp`. The native design system and screen components live under `lib/ui_dart_source/`. The previously approved HTML design package and 73-screen test gallery are retained only as references in `../мусорный ящик/HTML-архив/mobile-assets/`; they are not bundled as Flutter assets or loaded by the production app.
 
 ## Screen catalogue
