@@ -95,7 +95,9 @@ mod tests {
 
     #[test]
     fn jni_ffi_boundary_contains_unwinding_panics() {
-        assert!(!ffi_panic_boundary(|| panic!("simulated JNI callback panic")));
+        assert!(!ffi_panic_boundary(|| panic!(
+            "simulated JNI callback panic"
+        )));
         assert!(ffi_panic_boundary(|| {}));
     }
 
