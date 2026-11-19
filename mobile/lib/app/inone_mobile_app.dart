@@ -482,16 +482,16 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     }
   }
 
-  Future<void> _sendMlsMessage(String plaintext) async {
+  Future<bool> _sendMlsMessage(String plaintext) async {
     final roomId = _activeMlsRoomId;
-    if (roomId == null || plaintext.trim().isEmpty) return;
+    if (roomId == null || plaintext.trim().isEmpty) return false;
     try {
       // Queue first: the plaintext is protected by SQLCipher before any network
       // attempt. Offline sends remain durable and are flushed on the next sync.
       await _session.enqueueMlsText(roomId, plaintext);
       final sent = await _session.flushMlsOutbox();
       final queued = await _session.mlsOutboxLength();
-      if (!mounted) return;
+      if (!mounted) return true;
       setState(() {
         _activeMlsThread = [
           ..._activeMlsThread,
@@ -517,8 +517,10 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       if (sent == 0 && queued > 0) {
         _notice('Сообщение сохранено в зашифрованной очереди и будет отправлено после восстановления связи.');
       }
+      return true;
     } catch (error) {
       _notice('Сообщение не отправлено: $error');
+      return false;
     }
   }
 
@@ -769,7 +771,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
             online: false,
           ),
           items: _activeMlsThread,
-          onSend: (text) => unawaited(_sendMlsMessage(text)),
+          onSend: _sendMlsMessage,
           onBack: () => setState(() => _screen = 'messages'),
           onMore: () => unawaited(_refreshActiveMlsChat()),
           onAttach: () => _notice('Зашифрованные вложения подключаются отдельным шагом G2-E2.'),
