@@ -1,7 +1,8 @@
 import 'dart:async';
-import 'dart:io' show Platform;
+import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../core/data/inone_profile.dart';
 import '../core/data/inone_public_config.dart';
@@ -413,7 +414,11 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         final messages = await _session.mlsMessagesForRoom(roomId);
         String? lastMessage;
         for (final message in messages) {
-          if (message.text != null) lastMessage = message.text;
+          if (message.text != null) {
+            lastMessage = message.text;
+          } else if (message.isAttachment) {
+            lastMessage = '📎 ${message.name ?? 'Вложение'}';
+          }
         }
         final kind = row['kind'] == 'person' || row['kind'] == 'direct'
             ? InOneChatKind.person
@@ -458,12 +463,21 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         return;
       }
       final messages = await _session.mlsMessagesForRoom(chat.id);
-      final items = messages.map((message) => InOneThreadItem(
-        kind: InOneThreadItemKind.text,
-        text: message.text ?? 'Не удалось расшифровать сообщение',
-        mine: false,
-        meta: message.isReadable ? 'MLS · epoch $epoch' : 'Не расшифровано',
-      )).toList(growable: false);
+      final items = messages.map((message) => message.isAttachment
+          ? InOneThreadItem(
+              kind: InOneThreadItemKind.file,
+              fileId: message.fileId,
+              fileLabel: message.name ?? 'Вложение',
+              text: '${message.size ?? 0} bytes · ${message.mimeType ?? 'file'}',
+              mine: false,
+              meta: 'MLS · epoch $epoch',
+            )
+          : InOneThreadItem(
+              kind: InOneThreadItemKind.text,
+              text: message.text ?? 'Не удалось расшифровать сообщение',
+              mine: false,
+              meta: message.isReadable ? 'MLS · epoch $epoch' : 'Не расшифровано',
+            )).toList(growable: false);
       if (!mounted) return;
       setState(() {
         _activeMlsRoomId = chat.id;
@@ -521,6 +535,25 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     } catch (error) {
       _notice('Сообщение не отправлено: $error');
       return false;
+    }
+  }
+
+  Future<void> _downloadMlsAttachment(String fileId) async {
+    try {
+      final message = _activeMlsThread.where((item) => item.fileId == fileId).firstOrNull;
+      final bytes = await _session.downloadMlsAttachment(fileId);
+      final support = await getApplicationSupportDirectory();
+      final directory = Directory('${support.path}/inone/downloads');
+      await directory.create(recursive: true);
+      final rawName = message?.fileLabel ?? 'attachment';
+      final safeName = rawName.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+      final file = File('${directory.path}/$fileId-$safeName');
+      await file.writeAsBytes(bytes, flush: true);
+      if (mounted) {
+        _notice('Вложение расшифровано и сохранено в защищённом каталоге приложения.');
+      }
+    } catch (error) {
+      _notice('Не удалось получить вложение: $error');
     }
   }
 
@@ -774,7 +807,8 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           onSend: _sendMlsMessage,
           onBack: () => setState(() => _screen = 'messages'),
           onMore: () => unawaited(_refreshActiveMlsChat()),
-          onAttach: () => _notice('Зашифрованные вложения подключаются отдельным шагом G2-E2.'),
+          onAttach: () => unawaited(_pickAndSendMlsAttachment()),
+          onDownloadAttachment: (fileId) => unawaited(_downloadMlsAttachment(fileId)),
         );
       case 'profile':
         if (_profile == null) {
