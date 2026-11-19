@@ -1752,18 +1752,28 @@ impl Client {
         Err("invite не удалось применить".to_string())
     }
 
-    /// Отправляет текст в комнату. Устройство должно быть на эпохе сервера: иначе сначала синхронизация.
-    /// Отправляет текст в комнату. Устройство должно быть на эпохе сервера: иначе сначала синхронизация.
+    /// Отправляет UTF-8 текст в комнату. Устройство должно быть на эпохе сервера.
     pub fn send_text(&mut self, room_id: &str, plaintext: &str) -> Result<String, String> {
         let id = hex_encode(&self.provider.rand().random_vec(16).map_err(text)?);
         self.send_text_with_id(room_id, plaintext, &id)
     }
 
-    /// Отправляет текст с идентификатором клиента: повтор с тем же идентификатором не создаёт дубля.
+    /// Отправляет UTF-8 текст с идемпотентным идентификатором клиента.
     pub fn send_text_with_id(
         &mut self,
         room_id: &str,
         plaintext: &str,
+        client_message_id: &str,
+    ) -> Result<String, String> {
+        self.send_application_payload_with_id(room_id, plaintext.as_bytes(), client_message_id)
+    }
+
+    /// Sends an opaque MLS application payload. Text consumers may classify non-UTF-8 payloads
+    /// as unreadable, but must still advance and persist the MLS event without poisoning the room.
+    pub fn send_application_payload_with_id(
+        &mut self,
+        room_id: &str,
+        payload: &[u8],
         client_message_id: &str,
     ) -> Result<String, String> {
         if self.flush_pending_membership_commits()? > 0 {
@@ -1789,7 +1799,7 @@ impl Client {
             }
             let message = group
                 .mls
-                .create_message(&self.provider, &self.signer, plaintext.as_bytes())
+                .create_message(&self.provider, &self.signer, payload)
                 .map_err(text)?;
             B64.encode(message.tls_serialize_detached().map_err(text)?)
         };
@@ -2159,11 +2169,29 @@ impl Client {
         match result {
             Ok(processed) => {
                 match processed.into_content() {
-                    ProcessedMessageContent::ApplicationMessage(app) => out.push(Incoming::Text {
-                        room_id: room_id.to_string(),
-                        event_id: event_id.to_string(),
-                        text: String::from_utf8(app.into_bytes()).map_err(text)?,
-                    }),
+                    ProcessedMessageContent::ApplicationMessage(app) => {
+                        match String::from_utf8(app.into_bytes()) {
+                            Ok(text) => out.push(Incoming::Text {
+                                room_id: room_id.to_string(),
+                                event_id: event_id.to_string(),
+                                text,
+                            }),
+                            Err(_) => {
+                                // The MLS ratchet has already advanced. Treat invalid UTF-8 as
+                                // an unreadable event, not as a room-state failure. Never persist
+                                // the rejected bytes or include them in diagnostics.
+                                self.record_unreadable(
+                                    room_id,
+                                    event_id,
+                                    "application payload is not valid UTF-8",
+                                )?;
+                                out.push(Incoming::Unreadable {
+                                    room_id: room_id.to_string(),
+                                    event_id: event_id.to_string(),
+                                });
+                            }
+                        }
+                    }
                     _ => {
                         self.record_unreadable(room_id, event_id, "не сообщение")?;
                         out.push(Incoming::Unreadable {
