@@ -186,6 +186,7 @@ fn attachment_is_mls_encrypted_uploaded_and_persisted_for_both_devices() {
         .unwrap();
 
     let received = bob.sync().unwrap();
+    assert!(matches!(received.as_slice(), [Incoming::Attachment { mine: false, .. }]));
     let received_attachments = attachments(&received);
     assert_eq!(received_attachments.len(), 1);
     let (file_id, name, mime_type, size) = &received_attachments[0];
@@ -196,7 +197,9 @@ fn attachment_is_mls_encrypted_uploaded_and_persisted_for_both_devices() {
     assert_eq!(bob.download_attachment(file_id).unwrap(), plaintext);
     assert_eq!(alice.download_attachment(file_id).unwrap(), plaintext);
 
-    let sender_history = attachments(&alice.messages_for_room(ROOM).unwrap());
+    let sender_messages = alice.messages_for_room(ROOM).unwrap();
+    assert!(matches!(sender_messages.as_slice(), [Incoming::Attachment { mine: true, .. }]));
+    let sender_history = attachments(&sender_messages);
     assert_eq!(sender_history.len(), 1);
     assert_eq!(sender_history[0].0, *file_id);
 
