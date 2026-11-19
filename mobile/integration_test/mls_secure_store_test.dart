@@ -1,8 +1,8 @@
 import 'dart:io';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
-import 'package:flutter/services.dart';
 import 'package:inone_mobile/core/mls/rust_mls_session_bridge.dart';
 
 void main() {
@@ -23,8 +23,9 @@ void main() {
         'applicationSupportDirectory',
       );
       expect(supportPath, isNotNull);
-      expect(FileSystemEntity.isAbsolute(supportPath!), isTrue);
-      expect(await Directory(supportPath).exists(), isTrue);
+      final resolvedSupportPath = supportPath!;
+      expect(FileSystemEntity.isAbsolute(resolvedSupportPath), isTrue);
+      expect(await Directory(resolvedSupportPath).exists(), isTrue);
 
       final first = RustMlsSessionBridge();
       await first.open(
