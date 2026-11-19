@@ -100,10 +100,12 @@ fn map_incoming(items: Vec<Incoming>) -> Vec<IncomingMessage> {
                 room_id,
                 event_id,
                 text,
+                mine,
             } => IncomingMessage::Text {
                 room_id,
                 event_id,
                 text,
+                mine,
             },
             Incoming::Attachment {
                 room_id,
