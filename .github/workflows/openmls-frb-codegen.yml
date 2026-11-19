@@ -171,7 +171,7 @@ jobs:
           cp mobile/rust/Cargo.toml mobile/rust/Cargo.lock "$artifact/rust/"
           cp mobile/rust/src/lib.rs mobile/rust/src/frb_generated.rs "$artifact/rust/src/"
           cp mobile/pubspec.yaml mobile/pubspec.lock "$artifact/"
-          printf '%s\\n' "$EXPECTED_SHA" > "$artifact/source.sha"
+          printf '%s\n' "$EXPECTED_SHA" > "$artifact/source.sha"
           (
             cd "$artifact"
             find hook lib/src/rust rust pubspec.yaml pubspec.lock -type f -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
@@ -248,6 +248,8 @@ jobs:
 
       - name: Copy generated bridge files without committing
         shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
           GENERATED="$RUNNER_TEMP/inone-mls-frb-generated"
