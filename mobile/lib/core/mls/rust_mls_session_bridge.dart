@@ -159,6 +159,23 @@ class RustMlsSessionBridge implements MlsSessionBridge {
       _requireSession().enqueueText(roomId: roomId, plaintext: plaintext);
 
   @override
+  Future<String> sendAttachment(
+    String roomId,
+    String name,
+    String mimeType,
+    Uint8List plaintext,
+  ) => _requireSession().sendAttachment(
+        roomId: roomId,
+        name: name,
+        mimeType: mimeType,
+        plaintext: plaintext,
+      );
+
+  @override
+  Future<Uint8List> downloadAttachment(String fileId) =>
+      _requireSession().downloadAttachment(fileId: fileId);
+
+  @override
   Future<List<MlsIncomingMessage>> sync() async =>
       _decodeIncoming(await _requireSession().syncJson());
 
@@ -199,6 +216,23 @@ class RustMlsSessionBridge implements MlsSessionBridge {
           roomId: roomId,
           eventId: eventId,
           text: text,
+        );
+      }
+      if (kind == 'attachment') {
+        final fileId = value['file_id'];
+        final name = value['name'];
+        final mimeType = value['mime_type'];
+        final size = value['size'];
+        if (fileId is! String || name is! String || mimeType is! String || size is! int) {
+          throw const FormatException('Native MLS attachment metadata is invalid');
+        }
+        return MlsIncomingMessage(
+          roomId: roomId,
+          eventId: eventId,
+          fileId: fileId,
+          name: name,
+          mimeType: mimeType,
+          size: size,
         );
       }
       if (kind == 'unreadable') {
