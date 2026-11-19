@@ -49,18 +49,24 @@ struct IdentityReservation {
 impl Drop for IdentityReservation {
     fn drop(&mut self) {
         let active = ACTIVE_IDENTITIES.get_or_init(|| Mutex::new(HashSet::new()));
-        let mut active = active.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut active = active
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         active.remove(&self.identity);
     }
 }
 
 fn reserve_identity(identity: &str) -> Result<IdentityReservation, String> {
     let active = ACTIVE_IDENTITIES.get_or_init(|| Mutex::new(HashSet::new()));
-    let mut active = active.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut active = active
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     if !active.insert(identity.to_string()) {
         return Err("MLS session is already active for this user/device identity".to_string());
     }
-    Ok(IdentityReservation { identity: identity.to_string() })
+    Ok(IdentityReservation {
+        identity: identity.to_string(),
+    })
 }
 
 fn validated_identity(user_id: &str, device_id: &str) -> Result<String, String> {
@@ -94,7 +100,10 @@ fn normalized_database_directory(directory: &str, create: bool) -> Result<String
 
 fn database_path_for_identity(directory: &str, identity: &str) -> String {
     let digest = Sha256::digest(identity.as_bytes());
-    let filename = digest.iter().map(|byte| format!("{byte:02x}")).collect::<String>();
+    let filename = digest
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
     PathBuf::from(directory)
         .join(format!("{filename}.sqlcipher"))
         .to_string_lossy()
@@ -255,7 +264,9 @@ impl MlsSession {
     /// Logs out remotely when possible, then always destroys local MLS state.
     /// A network error is returned after local database and key cleanup.
     pub fn logout(&self) -> Result<(), String> {
-        let mut reservation = self.identity_reservation.lock()
+        let mut reservation = self
+            .identity_reservation
+            .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         if reservation.is_none() {
             return Err("MLS session is closed; logout cannot purge a later session".to_string());
@@ -306,7 +317,9 @@ impl MlsSession {
     /// Drops the Rust client and releases the encrypted database connection.
     /// It does not revoke the server session; call logout first when required.
     pub fn close(&self) -> Result<(), String> {
-        let mut reservation = self.identity_reservation.lock()
+        let mut reservation = self
+            .identity_reservation
+            .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         let result = match self.client.lock() {
             Ok(mut guard) => {
