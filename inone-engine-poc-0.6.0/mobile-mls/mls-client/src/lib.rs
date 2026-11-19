@@ -459,6 +459,8 @@ fn incoming_from_row(
             event_id,
             text: body.ok_or("в сохранённом сообщении отсутствует текст")?,
             mine,
+        
+        mine: false,
         }),
         "attachment" => {
             let body = body.ok_or("в сохранённом вложении отсутствуют метаданные")?;
@@ -475,9 +477,13 @@ fn incoming_from_row(
             let size = value.get("size").and_then(Value::as_u64)
                 .filter(|size| *size > 0 && *size <= 50 * 1024 * 1024 - 16)
                 .ok_or("в метаданных вложения некорректный размер")?;
-            Ok(Incoming::Attachment { room_id, event_id, file_id, name, mime_type, size, mine })
+            Ok(Incoming::Attachment { room_id, event_id, file_id, name, mime_type, size, mine 
+ mine: false,
+ })
         }
-        "unreadable" => Ok(Incoming::Unreadable { room_id, event_id, mine }),
+        "unreadable" => Ok(Incoming::Unreadable { room_id, event_id, mine 
+ mine: false,
+ }),
         _ => Err(format!("неизвестный тип локального сообщения: {kind}")),
     }
 }
@@ -1546,6 +1552,8 @@ impl Client {
         let incoming = Incoming::Unreadable {
             room_id: room_id.to_string(),
             event_id: event_id.to_string(),
+        
+        mine: false,
         };
         let transaction = self.meta.transaction().map_err(text)?;
         insert_incoming_record(&transaction, &incoming)?;
@@ -1613,6 +1621,8 @@ impl Client {
                                             name: manifest.name.clone(),
                                             mime_type: manifest.mime_type.clone(),
                                             size: manifest.size,
+                                        
+                                        mine: false,
                                         },
                                         None,
                                         Some(Zeroizing::new(app_bytes.to_vec())),
@@ -1621,6 +1631,8 @@ impl Client {
                                         Incoming::Unreadable {
                                             room_id: room_id.to_string(),
                                             event_id: event_id.to_string(),
+                                        
+                                        mine: false,
                                         },
                                         Some(format!("invalid MLS attachment manifest: {error}")),
                                         None,
@@ -1632,6 +1644,8 @@ impl Client {
                                         Incoming::Unreadable {
                                             room_id: room_id.to_string(),
                                             event_id: event_id.to_string(),
+                                        
+                                        mine: false,
                                         },
                                         Some("MLS attachment manifest is missing the outer file reference".to_string()),
                                         None,
@@ -1643,6 +1657,8 @@ impl Client {
                                                 room_id: room_id.to_string(),
                                                 event_id: event_id.to_string(),
                                                 text,
+                                            
+                                            mine: false,
                                             },
                                             None,
                                             None,
@@ -1651,6 +1667,8 @@ impl Client {
                                             Incoming::Unreadable {
                                                 room_id: room_id.to_string(),
                                                 event_id: event_id.to_string(),
+                                            
+                                            mine: false,
                                             },
                                             Some("application payload is not valid UTF-8".to_string()),
                                             None,
@@ -1663,6 +1681,8 @@ impl Client {
                             Incoming::Unreadable {
                                 room_id: room_id.to_string(),
                                 event_id: event_id.to_string(),
+                            
+                            mine: false,
                             },
                             Some("MLS message is not an application message".to_string()),
                             None,
@@ -2383,6 +2403,8 @@ impl Client {
             room_id: room_id.to_string(),
             event_id: event_id.clone(),
             text: plaintext.to_string(),
+        
+        mine: true,
         };
         let transaction = self.meta.transaction().map_err(text)?;
         if let Err(error) = insert_incoming_record(&transaction, &outgoing) {
@@ -2765,6 +2787,8 @@ impl Client {
             name: name.to_string(),
             mime_type: mime_type.to_string(),
             size: plaintext.len() as u64,
+        
+        mine: true,
         };
         let transaction = self.meta.transaction().map_err(text)?;
         insert_incoming_record(&transaction, &incoming)?;
@@ -3949,6 +3973,8 @@ mod retry_tests {
                         room_id: "room-crash".to_string(),
                         event_id: "event-crash".to_string(),
                         text: "must commit with ratchet state".to_string(),
+                    
+                    mine: false,
                     },
                 )
                 .unwrap();
@@ -4234,6 +4260,8 @@ mod retry_tests {
             room_id: "!room:inone.test".to_string(),
             event_id: "$event-1".to_string(),
             text: "original".to_string(),
+        
+        mine: false,
         };
         persist_incoming_record(&mut db, &original).unwrap();
         db.execute(
@@ -4246,6 +4274,8 @@ mod retry_tests {
             room_id: "!room:inone.test".to_string(),
             event_id: "$event-1".to_string(),
             text: "replayed".to_string(),
+        
+        mine: false,
         };
         persist_incoming_record(&mut db, &replay).unwrap();
 
