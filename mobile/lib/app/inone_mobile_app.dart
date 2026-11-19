@@ -632,18 +632,23 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         return;
       }
       final bytes = await selected.xFile.readAsBytes();
-      if (bytes.isEmpty || bytes.length > maximumBytes) {
-        _notice('Файл пустой или превышает допустимый размер.');
-        return;
+      try {
+        if (bytes.isEmpty || bytes.length > maximumBytes) {
+          _notice('Файл пустой или превышает допустимый размер.');
+          return;
+        }
+        await _session.sendMlsAttachment(
+          roomId,
+          selected.name,
+          _attachmentMimeType(selected.name),
+          bytes,
+        );
+        await _refreshActiveMlsChat();
+        if (mounted) _notice('Вложение отправлено через MLS.');
+      } finally {
+        // The native FFI also zeroizes its owned copy after AES-GCM encryption.
+        bytes.fillRange(0, bytes.length, 0);
       }
-      await _session.sendMlsAttachment(
-        roomId,
-        selected.name,
-        _attachmentMimeType(selected.name),
-        bytes,
-      );
-      await _refreshActiveMlsChat();
-      if (mounted) _notice('Вложение отправлено через MLS.');
     } catch (error) {
       _notice('Не удалось отправить зашифрованное вложение: $error');
     }
