@@ -205,6 +205,7 @@ class RustMlsSessionBridge implements MlsSessionBridge {
       final kind = value['type'];
       final roomId = value['room_id'];
       final eventId = value['event_id'];
+      final mine = value['mine'] == true;
       if (roomId is! String || eventId is! String) {
         throw const FormatException('Native MLS message has no room/event identity');
       }
@@ -217,6 +218,7 @@ class RustMlsSessionBridge implements MlsSessionBridge {
           roomId: roomId,
           eventId: eventId,
           text: text,
+          mine: mine,
         );
       }
       if (kind == 'attachment') {
@@ -234,10 +236,11 @@ class RustMlsSessionBridge implements MlsSessionBridge {
           name: name,
           mimeType: mimeType,
           size: size,
+          mine: mine,
         );
       }
       if (kind == 'unreadable') {
-        return MlsIncomingMessage(roomId: roomId, eventId: eventId);
+        return MlsIncomingMessage(roomId: roomId, eventId: eventId, mine: mine);
       }
       throw const FormatException('Native MLS returned an unknown message kind');
     }).toList(growable: false);
