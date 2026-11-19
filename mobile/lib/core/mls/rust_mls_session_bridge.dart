@@ -189,6 +189,16 @@ class RustMlsSessionBridge implements MlsSessionBridge {
       _decodeIncoming(await _requireSession().messagesForRoomJson(roomId: roomId));
 
   @override
+  Future<List<String>> localRoomIds() async {
+    final raw = await _requireSession().localRoomIdsJson();
+    final decoded = jsonDecode(raw);
+    if (decoded is! List || decoded.any((value) => value is! String)) {
+      throw const FormatException('Native MLS local room list is invalid');
+    }
+    return decoded.cast<String>();
+  }
+
+  @override
   Future<List<MlsPendingOutgoing>> pendingOutgoing(String roomId) async {
     final raw = await _requireSession().pendingOutboxJson(roomId: roomId);
     final decoded = jsonDecode(raw);
