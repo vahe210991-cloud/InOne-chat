@@ -1,6 +1,7 @@
 pub mod api;
 mod secure_store;
 
+#[cfg(any(target_os = "android", test))]
 fn validate_android_context_initialized(initialized: bool) -> Result<(), String> {
     if initialized {
         Ok(())
