@@ -1338,7 +1338,27 @@ if (req.method === 'POST' && orgReqDocs) {
   if (!docsKey) return send(res, 503, { error: 'document storage is not configured' });
   const objectKey = randomBytes(16).toString('hex');
   await objectStore.put(objectKey, encryptDoc(content));
-  await storage.addOrgRequestDocument({ docId, requestId, kind, size: content.length, sha256: createHash('sha256').update(content).digest('hex'), ...metadata, objectKey, uploadedBy: d.userId, createdAt: now() });
+  let attached;
+  try {
+    attached = await storage.addOrgRequestDocument({
+      docId,
+      requestId,
+      kind,
+      size: content.length,
+      sha256: createHash('sha256').update(content).digest('hex'),
+      ...metadata,
+      objectKey,
+      uploadedBy: d.userId,
+      createdAt: now(),
+    });
+  } catch (error) {
+    await objectStore.remove(objectKey).catch(() => {});
+    throw error;
+  }
+  if (!attached) {
+    await objectStore.remove(objectKey).catch(() => {});
+    return send(res, 409, { error: 'request is already decided' });
+  }
   return send(res, 200, { docId, kind, size: content.length, ...metadata });
 }
 if (req.method === 'GET' && orgReqDoc) {
