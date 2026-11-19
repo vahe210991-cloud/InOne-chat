@@ -2,7 +2,7 @@
 # Run from mobile/; generated files are build artifacts, not hand-maintained sources.
 rust_input: crate::api
 rust_root: rust
-rust_output: src/frb_generated.rs
+rust_output: rust/src/frb_generated.rs
 dart_output: lib/src/rust
 dart_entrypoint_class_name: RustLib
 
