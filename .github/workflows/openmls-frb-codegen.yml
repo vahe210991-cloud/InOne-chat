@@ -187,7 +187,7 @@ jobs:
           test -d "$GENERATED/lib/src/rust"
           test -f "$GENERATED/rust/Cargo.toml"
           test -f "$GENERATED/rust/Cargo.lock"
-          test -f "$GENERATED/rust/build.rs"
+          # This Rust crate intentionally has no custom build.rs; Native Assets are prepared by hook/build.dart.
           test -f "$GENERATED/rust/src/frb_generated.rs"
           test -f "$GENERATED/pubspec.yaml"
           test -f "$GENERATED/pubspec.lock"
@@ -196,7 +196,6 @@ jobs:
           rsync -a "$GENERATED/lib/src/rust/" mobile/lib/src/rust/
           cp "$GENERATED/rust/Cargo.toml" mobile/rust/Cargo.toml
           cp "$GENERATED/rust/Cargo.lock" mobile/rust/Cargo.lock
-          cp "$GENERATED/rust/build.rs" mobile/rust/build.rs
           cp "$GENERATED/rust/src/frb_generated.rs" mobile/rust/src/frb_generated.rs
           cp "$GENERATED/pubspec.yaml" mobile/pubspec.yaml
           cp "$GENERATED/pubspec.lock" mobile/pubspec.lock
