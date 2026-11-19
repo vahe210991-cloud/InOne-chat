@@ -3647,6 +3647,13 @@ impl Client {
     }
 
     /// Returns the local encrypted message history for one room.
+    /// Local MLS rooms restored from the persistent SQLCipher-backed client.
+    pub fn local_room_ids(&self) -> Vec<String> {
+        let mut room_ids = self.groups.keys().cloned().collect::<Vec<_>>();
+        room_ids.sort();
+        room_ids
+    }
+
     pub fn messages_for_room(&self, room_id: &str) -> Result<Vec<Incoming>, String> {
         let mut stmt = self.meta.prepare(
             "SELECT event_id, room_id, kind, body, client_message_id FROM client_inbox WHERE room_id = ?1 ORDER BY seq"
