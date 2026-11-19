@@ -45,7 +45,7 @@ fn classify_process_error<S>(error: &openmls::prelude::ProcessMessageError<S>) -
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Incoming {
-    Text { room_id: String, event_id: String, text: String },
+    Text { room_id: String, event_id: String, text: String, mine: bool },
     Attachment {
         room_id: String,
         event_id: String,
@@ -53,8 +53,9 @@ pub enum Incoming {
         name: String,
         mime_type: String,
         size: u64,
+        mine: bool,
     },
-    Unreadable { room_id: String, event_id: String },
+    Unreadable { room_id: String, event_id: String, mine: bool },
 }
 
 /// Кодек хранилища OpenMLS: JSON.
@@ -413,10 +414,10 @@ fn open_db(path: &str, key: &[u8; 32]) -> Result<Connection, String> {
 
 fn insert_incoming_record(meta: &Connection, incoming: &Incoming) -> Result<(), String> {
     let (event_id, room_id, kind, body) = match incoming {
-        Incoming::Text { room_id, event_id, text } => (
+        Incoming::Text { room_id, event_id, text, .. } => (
             event_id.as_str(), room_id.as_str(), "text", Some(text.clone())
         ),
-        Incoming::Attachment { room_id, event_id, file_id, name, mime_type, size } => (
+        Incoming::Attachment { room_id, event_id, file_id, name, mime_type, size, .. } => (
             event_id.as_str(),
             room_id.as_str(),
             "attachment",
@@ -427,7 +428,7 @@ fn insert_incoming_record(meta: &Connection, incoming: &Incoming) -> Result<(), 
                 "size": size,
             })).map_err(text)?),
         ),
-        Incoming::Unreadable { room_id, event_id } => (
+        Incoming::Unreadable { room_id, event_id, .. } => (
             event_id.as_str(), room_id.as_str(), "unreadable", None
         ),
     };
@@ -449,12 +450,15 @@ fn incoming_from_row(
     room_id: String,
     kind: String,
     body: Option<String>,
+    client_message_id: Option<String>,
 ) -> Result<Incoming, String> {
+    let mine = client_message_id.is_some();
     match kind.as_str() {
         "text" => Ok(Incoming::Text {
             room_id,
             event_id,
             text: body.ok_or("в сохранённом сообщении отсутствует текст")?,
+            mine,
         }),
         "attachment" => {
             let body = body.ok_or("в сохранённом вложении отсутствуют метаданные")?;
@@ -471,9 +475,9 @@ fn incoming_from_row(
             let size = value.get("size").and_then(Value::as_u64)
                 .filter(|size| *size > 0 && *size <= 50 * 1024 * 1024 - 16)
                 .ok_or("в метаданных вложения некорректный размер")?;
-            Ok(Incoming::Attachment { room_id, event_id, file_id, name, mime_type, size })
+            Ok(Incoming::Attachment { room_id, event_id, file_id, name, mime_type, size, mine })
         }
-        "unreadable" => Ok(Incoming::Unreadable { room_id, event_id }),
+        "unreadable" => Ok(Incoming::Unreadable { room_id, event_id, mine }),
         _ => Err(format!("неизвестный тип локального сообщения: {kind}")),
     }
 }
@@ -3578,7 +3582,7 @@ impl Client {
     /// The UI must acknowledge only after it has durably accepted the message.
     pub fn pending_incoming(&self) -> Result<Vec<Incoming>, String> {
         let mut stmt = self.meta.prepare(
-            "SELECT event_id, room_id, kind, body FROM client_inbox WHERE acknowledged = 0 ORDER BY seq"
+            "SELECT event_id, room_id, kind, body, client_message_id FROM client_inbox WHERE acknowledged = 0 ORDER BY seq"
         ).map_err(text)?;
         let rows = stmt.query_map([], |row| {
             Ok((
@@ -3586,12 +3590,13 @@ impl Client {
                 row.get::<_, String>(1)?,
                 row.get::<_, String>(2)?,
                 row.get::<_, Option<String>>(3)?,
+                row.get::<_, Option<String>>(4)?,
             ))
         }).map_err(text)?;
         let mut incoming = Vec::new();
         for row in rows {
-            let (event_id, room_id, kind, body) = row.map_err(text)?;
-            incoming.push(incoming_from_row(event_id, room_id, kind, body)?);
+            let (event_id, room_id, kind, body, client_message_id) = row.map_err(text)?;
+            incoming.push(incoming_from_row(event_id, room_id, kind, body, client_message_id)?);
         }
         Ok(incoming)
     }
@@ -3599,7 +3604,7 @@ impl Client {
     /// Returns the local encrypted message history for one room.
     pub fn messages_for_room(&self, room_id: &str) -> Result<Vec<Incoming>, String> {
         let mut stmt = self.meta.prepare(
-            "SELECT event_id, room_id, kind, body FROM client_inbox WHERE room_id = ?1 ORDER BY seq"
+            "SELECT event_id, room_id, kind, body, client_message_id FROM client_inbox WHERE room_id = ?1 ORDER BY seq"
         ).map_err(text)?;
         let rows = stmt.query_map([room_id], |row| {
             Ok((
@@ -3607,12 +3612,13 @@ impl Client {
                 row.get::<_, String>(1)?,
                 row.get::<_, String>(2)?,
                 row.get::<_, Option<String>>(3)?,
+                row.get::<_, Option<String>>(4)?,
             ))
         }).map_err(text)?;
         let mut incoming = Vec::new();
         for row in rows {
-            let (event_id, room_id, kind, body) = row.map_err(text)?;
-            incoming.push(incoming_from_row(event_id, room_id, kind, body)?);
+            let (event_id, room_id, kind, body, client_message_id) = row.map_err(text)?;
+            incoming.push(incoming_from_row(event_id, room_id, kind, body, client_message_id)?);
         }
         Ok(incoming)
     }
