@@ -6,16 +6,22 @@ import 'package:inone_mobile/core/data/inone_encrypted_document_store.dart';
 
 void main() {
   late Directory root;
-  late String? storedKey;
+  late Map<String, String> keys;
+  late int keyWrites;
   late InOneEncryptedDocumentStore store;
 
   setUp(() async {
     root = await Directory.systemTemp.createTemp('inone-documents-');
-    storedKey = null;
+    keys = {};
+    keyWrites = 0;
     store = InOneEncryptedDocumentStore(
       rootDirectory: () async => root,
-      readKey: () async => storedKey,
-      writeKey: (value) async => storedKey = value,
+      readKey: (scope) async => keys[scope],
+      writeKey: (scope, value) async {
+        keyWrites++;
+        keys[scope] = value;
+      },
+      deleteKey: (scope) async => keys.remove(scope),
     );
   });
 
@@ -37,7 +43,7 @@ void main() {
     final ciphertext = await file.readAsBytes();
     expect(base64Encode(ciphertext), isNot(contains(base64Encode(plaintext))));
     expect(ciphertext, isNot(plaintext));
-    expect(storedKey, isNotNull);
+    expect(keys, hasLength(1));
 
     final restored = await store.read(
       ownerUserId: '@owner:inone.test',
@@ -69,7 +75,7 @@ void main() {
     );
   });
 
-  test('concurrent first writes share one secure key', () async {
+  test('concurrent first writes share one account-scoped secure key', () async {
     await Future.wait([
       store.save(
         ownerUserId: '@owner:inone.test',
@@ -87,6 +93,7 @@ void main() {
       ),
     ]);
 
+    expect(keyWrites, 1);
     expect(
       await store.read(
         ownerUserId: '@owner:inone.test',
@@ -105,6 +112,66 @@ void main() {
       ),
       utf8.encode('second document'),
     );
+  });
+
+  test('isolates account keys and paths and purges only the requested owner', () async {
+    final ownerFile = await store.save(
+      ownerUserId: 'owner-1',
+      requestId: 'request-1',
+      documentId: 'document-1',
+      filename: 'owner.pdf',
+      bytes: utf8.encode('owner one'),
+    );
+    final otherFile = await store.save(
+      ownerUserId: 'owner-2',
+      requestId: 'request-1',
+      documentId: 'document-1',
+      filename: 'owner.pdf',
+      bytes: utf8.encode('owner two'),
+    );
+    expect(ownerFile.path, isNot(otherFile.path));
+    expect(keys, hasLength(2));
+
+    await store.purgeOwner('owner-1');
+
+    expect(await ownerFile.exists(), isFalse);
+    expect(await otherFile.exists(), isTrue);
+    expect(keys, hasLength(1));
+    expect(
+      await store.read(
+        ownerUserId: 'owner-2',
+        requestId: 'request-1',
+        documentId: 'document-1',
+        filename: 'owner.pdf',
+      ),
+      utf8.encode('owner two'),
+    );
+    await expectLater(
+      store.read(
+        ownerUserId: 'owner-1',
+        requestId: 'request-1',
+        documentId: 'document-1',
+        filename: 'owner.pdf',
+      ),
+      throwsA(anything),
+    );
+  });
+
+  test('purge waits for queued writes and crypto-erases the owner key', () async {
+    await Future.wait([
+      store.save(
+        ownerUserId: 'owner-1',
+        requestId: 'request-1',
+        documentId: 'document-1',
+        filename: 'one.pdf',
+        bytes: utf8.encode('first'),
+      ),
+      store.purgeOwner('owner-1'),
+    ]);
+
+    expect(keys, isEmpty);
+    final directory = Directory('${root.path}${Platform.pathSeparator}InOne');
+    expect(await directory.exists(), isFalse);
   });
 
   test('rejects modified ciphertext instead of returning unauthenticated bytes', () async {
@@ -130,13 +197,23 @@ void main() {
     );
   });
 
-  test('rejects path-like identifiers and empty documents', () async {
+  test('rejects path-like identifiers, filenames and empty documents', () async {
     await expectLater(
       store.save(
         ownerUserId: '@owner:inone.test',
         requestId: '../escape',
         documentId: 'document-456',
         filename: 'document.pdf',
+        bytes: [1],
+      ),
+      throwsArgumentError,
+    );
+    await expectLater(
+      store.save(
+        ownerUserId: '@owner:inone.test',
+        requestId: 'request-123',
+        documentId: 'document-456',
+        filename: '../document.pdf',
         bytes: [1],
       ),
       throwsArgumentError,
