@@ -22,7 +22,8 @@ impl StatusProxy {
     }
 
     fn set_failed_refresh(&self, enabled: bool) {
-        self.events_status.store(if enabled { 401 } else { 0 }, Ordering::SeqCst);
+        self.events_status
+            .store(if enabled { 401 } else { 0 }, Ordering::SeqCst);
         self.expired_access.store(enabled, Ordering::SeqCst);
         self.refresh_denied.store(enabled, Ordering::SeqCst);
     }
@@ -55,7 +56,12 @@ fn handle_connection(
     };
     let mut reader = BufReader::new(cloned);
     let mut request_line = String::new();
-    if reader.read_line(&mut request_line).ok().filter(|n| *n > 0).is_none() {
+    if reader
+        .read_line(&mut request_line)
+        .ok()
+        .filter(|n| *n > 0)
+        .is_none()
+    {
         return;
     }
     let mut parts = request_line.split_whitespace();
@@ -99,11 +105,13 @@ fn handle_connection(
             return;
         }
     }
-    if method == "POST"
-        && path == "/token/refresh"
-        && refresh_denied.load(Ordering::SeqCst)
-    {
-        respond(client, 401, "Unauthorized", r#"{"error":"refresh_revoked"}"#);
+    if method == "POST" && path == "/token/refresh" && refresh_denied.load(Ordering::SeqCst) {
+        respond(
+            client,
+            401,
+            "Unauthorized",
+            r#"{"error":"refresh_revoked"}"#,
+        );
         return;
     }
 
@@ -175,7 +183,10 @@ fn auth_access_deleted_room_and_failed_refresh_never_mark_mls_recovery_required(
     let engine = common::start_engine();
     let proxy = start_status_proxy(&engine.base);
     let keys = MemoryKeyStore::default();
-    let (alice_db, bob_db) = (common::db("access-errors-alice"), common::db("access-errors-bob"));
+    let (alice_db, bob_db) = (
+        common::db("access-errors-alice"),
+        common::db("access-errors-bob"),
+    );
     let mut alice = common::login(&engine, &keys, "@alice:inone.test", "A_ACCESS", &alice_db);
     let mut bob = common::login(&engine, &keys, "@bob:inone.test", "B_ACCESS", &bob_db);
     bob.ensure_key_packages(2).unwrap();
@@ -190,7 +201,9 @@ fn auth_access_deleted_room_and_failed_refresh_never_mark_mls_recovery_required(
 
     for status in [401, 403, 404] {
         proxy.set_events_status(status);
-        let error = bob.sync().expect_err("HTTP access failure must be surfaced");
+        let error = bob
+            .sync()
+            .expect_err("HTTP access failure must be surfaced");
         assert!(
             error.contains(&format!("-> {status}")),
             "expected HTTP {status}, got {error}"
@@ -206,13 +219,20 @@ fn auth_access_deleted_room_and_failed_refresh_never_mark_mls_recovery_required(
     // A token-expired event response followed by a rejected refresh is still a
     // session problem, not an MLS recovery condition.
     proxy.set_failed_refresh(true);
-    let refresh_error = bob.sync().expect_err("failed refresh must be surfaced");
-    assert!(refresh_error.contains("token/refresh -> 401"), "{refresh_error}");
+    let refresh_error = bob
+        .sync()
+        .expect_err("failed refresh must be surfaced");
+    assert!(
+        refresh_error.contains("token/refresh -> 401"),
+        "{refresh_error}"
+    );
     assert_eq!(bob.desync_reason(room).unwrap(), None);
     assert_eq!(bob.desync_reason(other_room).unwrap(), None);
 
     proxy.reset();
-    alice.send_text(room, "room remains usable after access recovery").unwrap();
+    alice
+        .send_text(room, "room remains usable after access recovery")
+        .unwrap();
     alice
         .send_text(other_room, "other room remains usable after access recovery")
         .unwrap();
