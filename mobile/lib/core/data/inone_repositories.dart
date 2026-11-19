@@ -21,6 +21,8 @@ class InOneRepositories {
       session.request('GET', '/orgs/mine');
   Future<Map<String, dynamic>> myDevices() =>
       session.request('GET', '/devices/mine');
+  Future<Map<String, dynamic>> myRooms() =>
+      session.request('GET', '/rooms/mine');
   Future<Map<String, dynamic>> loginApprovals() =>
       session.request('GET', '/approvals');
   Future<Map<String, dynamic>> organizationRequests() =>
