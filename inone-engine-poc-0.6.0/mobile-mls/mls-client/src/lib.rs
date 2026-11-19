@@ -3564,6 +3564,26 @@ impl Client {
         Ok(local_id)
     }
 
+    /// Returns pending plaintext only from the encrypted SQLCipher outbox so
+    /// the UI can restore queued bubbles after an app restart.
+    pub fn pending_outbox_for_room_json(&self, room_id: &str) -> Result<String, String> {
+        if room_id.trim().is_empty() || room_id.len() > 255 {
+            return Err("invalid MLS room id".to_string());
+        }
+        let mut statement = self.meta.prepare(
+            "SELECT local_id, body FROM client_outbox WHERE room_id = ?1 ORDER BY seq"
+        ).map_err(text)?;
+        let rows = statement.query_map([room_id], |row| {
+            Ok(json!({
+                "local_id": row.get::<_, String>(0)?,
+                "room_id": room_id,
+                "text": row.get::<_, String>(1)?,
+            }))
+        }).map_err(text)?;
+        let pending = rows.collect::<Result<Vec<_>, _>>().map_err(text)?;
+        serde_json::to_string(&pending).map_err(text)
+    }
+
     /// Сколько сообщений ждут отправки.
     pub fn outbox_len(&self) -> Result<u64, String> {
         let n: i64 = self.meta.query_row("SELECT COUNT(*) FROM client_outbox", [], |r| r.get(0)).map_err(text)?;
