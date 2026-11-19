@@ -58,11 +58,25 @@ jobs:
           cache-dependency-path: inone-development-archive-0.6.0/engine/package-lock.json
       - run: npm ci
         working-directory: ${{ env.ENGINE_DIR }}
+      - name: Record Node toolchain versions
+        run: |
+          node --version | tee backend-node-environment.txt
+          npm --version | tee -a backend-node-environment.txt
       - name: Audit production and development dependencies
         run: npm audit --audit-level=high
         working-directory: ${{ env.ENGINE_DIR }}
-      - run: npm test
+      - name: Run Node suite and preserve TAP output
+        run: npm test 2>&1 | tee backend-node-test.log
         working-directory: ${{ env.ENGINE_DIR }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-node-${{ github.sha }}
+          path: |
+            inone-development-archive-0.6.0/engine/backend-node-environment.txt
+            inone-development-archive-0.6.0/engine/backend-node-test.log
+          if-no-files-found: warn
+          retention-days: 14
 
   p0-room-list:
     name: P0 room-list regression
@@ -118,8 +132,23 @@ jobs:
           /usr/lib/postgresql/16/bin/pg_dump --version
       - run: npm ci
         working-directory: ${{ env.ENGINE_DIR }}
-      - run: npm run test:db
+      - name: Record PostgreSQL and Node toolchain versions
+        run: |
+          node --version | tee postgres-environment.txt
+          npm --version | tee -a postgres-environment.txt
+          psql --version | tee -a postgres-environment.txt
+      - name: Run PostgreSQL suite and preserve TAP output
+        run: npm run test:db 2>&1 | tee postgres-test.log
         working-directory: ${{ env.ENGINE_DIR }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-postgres-${{ github.sha }}
+          path: |
+            inone-development-archive-0.6.0/engine/postgres-environment.txt
+            inone-development-archive-0.6.0/engine/postgres-test.log
+          if-no-files-found: warn
+          retention-days: 14
 
   openmls-client:
     name: OpenMLS client check and tests
@@ -142,9 +171,24 @@ jobs:
       - name: Check all OpenMLS client targets
         working-directory: inone-development-archive-0.6.0/engine/mobile-mls/mls-client
         run: cargo check --locked --all-targets
-      - name: Run all OpenMLS client tests
+      - name: Record OpenMLS client toolchain versions
+        run: |
+          rustc --version | tee openmls-environment.txt
+          cargo --version | tee -a openmls-environment.txt
+          node --version | tee -a openmls-environment.txt
+          npm --version | tee -a openmls-environment.txt
+      - name: Run all OpenMLS client tests and preserve output
         working-directory: inone-development-archive-0.6.0/engine/mobile-mls/mls-client
-        run: cargo test --locked --no-fail-fast
+        run: cargo test --locked --no-fail-fast 2>&1 | tee openmls-client-test.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: openmls-client-${{ github.sha }}
+          path: |
+            inone-development-archive-0.6.0/engine/mobile-mls/mls-client/openmls-environment.txt
+            inone-development-archive-0.6.0/engine/mobile-mls/mls-client/openmls-client-test.log
+          if-no-files-found: warn
+          retention-days: 14
 
   rust-bridge:
     name: Rust bridge check and tests
@@ -160,8 +204,21 @@ jobs:
       - name: Check all bridge targets
         working-directory: inone-development-archive-0.6.0/engine/mobile-mls/mls-bridge
         run: cargo check --locked --all-targets
-      - name: Run bridge tests
+      - name: Record Rust bridge toolchain versions
+        run: |
+          rustc --version | tee bridge-environment.txt
+          cargo --version | tee -a bridge-environment.txt
+      - name: Run bridge tests and preserve output
         working-directory: inone-development-archive-0.6.0/engine/mobile-mls/mls-bridge
-        run: cargo test --locked --no-fail-fast
+        run: cargo test --locked --no-fail-fast 2>&1 | tee bridge-test.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mls-bridge-${{ github.sha }}
+          path: |
+            inone-development-archive-0.6.0/engine/mobile-mls/mls-bridge/bridge-environment.txt
+            inone-development-archive-0.6.0/engine/mobile-mls/mls-bridge/bridge-test.log
+          if-no-files-found: warn
+          retention-days: 14
 
 # Exact-head P0 validation is enabled for this stacked PR branch.
