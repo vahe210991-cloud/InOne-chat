@@ -17,10 +17,10 @@ const STAFF = '@staff-req:inone.test';
 const OWNER = '@owner-req:inone.test';
 const JSON_HEADERS = { 'content-type': 'application/json' };
 
-async function start() {
+async function start({ objectStore } = {}) {
   const db = await storeForTest(PEPPER);
   const store = db?.store ?? createMemoryStore({ pinPepper: PEPPER });
-  const srv = createServer({ defaultOrgAutoJoin: true, registrationMode: 'open', requirePhone: false, pinPepper: PEPPER, store, docsSecret: 'test-docs-secret-0123456789-abcdefgh' });
+  const srv = createServer({ defaultOrgAutoJoin: true, registrationMode: 'open', requirePhone: false, pinPepper: PEPPER, store, objectStore, docsSecret: 'test-docs-secret-0123456789-abcdefgh' });
   await new Promise((resolve) => srv.server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${srv.server.address().port}`;
   const dir = await ChatClient.create(base, DIR, 'D_PHONE', PW);
@@ -218,6 +218,61 @@ test('document metadata is validated, persisted and returned as a safe attachmen
   }
 });
 
+
+test('an upload racing with a request decision is rejected and its encrypted blob is removed', async () => {
+  const objects = new Map();
+  let signalPutStarted;
+  let releasePut;
+  const putStarted = new Promise((resolve) => { signalPutStarted = resolve; });
+  const putGate = new Promise((resolve) => { releasePut = resolve; });
+  const objectStore = {
+    async put(key, value) {
+      signalPutStarted();
+      await putGate;
+      objects.set(key, Buffer.from(value));
+    },
+    async get(key) { return objects.get(key) ?? null; },
+    async remove(key) { objects.delete(key); },
+  };
+  const s = await start({ objectStore });
+  try {
+    const created = await call(s.base, 'POST', '/org-requests', s.dir.token, { name: 'Upload race' });
+    assert.equal(created.status, 200);
+    const requestId = created.json.requestId;
+    const pdf = Buffer.from('%PDF-1.7\\nconcurrent upload\\n%%EOF');
+    const uploadPromise = call(
+      s.base,
+      'POST',
+      `/org-requests/${requestId}/documents`,
+      s.dir.token,
+      {
+        kind: 'registration',
+        filename: 'registration.pdf',
+        mimeType: 'application/pdf',
+        contentBase64: pdf.toString('base64'),
+      },
+    );
+
+    await putStarted;
+    const decision = await call(
+      s.base,
+      'POST',
+      `/org-requests/${requestId}/decision`,
+      s.owner.token,
+      { decision: 'reject' },
+    );
+    assert.equal(decision.status, 200);
+    releasePut();
+
+    const upload = await uploadPromise;
+    assert.equal(upload.status, 409);
+    assert.equal(objects.size, 0, 'the rejected upload blob is removed');
+    assert.deepEqual(await s.store.listOrgRequestDocuments(requestId), []);
+  } finally {
+    releasePut();
+    await s.stop();
+  }
+});
 
 test('owner/admin/applicant authorization matrix isolates queue and details and gates decisions', async () => {
   const s = await start();
