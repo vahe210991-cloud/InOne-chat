@@ -30,6 +30,7 @@ class InOneDocumentPreview {
     'application/pdf',
     'image/jpeg',
     'image/png',
+    'application/octet-stream',
   };
 
   Future<bool> open({
