@@ -7,7 +7,7 @@ on:
       - ".github/workflows/openmls-frb-codegen.yml"
       - "mobile/**"
   push:
-    branches: [feature/stage-4-native-mls-runtime-2026-11-11, fix/android-keystore-runtime-smoke-2026-11-19]
+    branches: [main, feature/stage-4-native-mls-runtime-2026-11-11, fix/android-keystore-runtime-smoke-2026-11-19]
     paths:
       - ".github/workflows/openmls-frb-codegen.yml"
       - "mobile/**"
@@ -22,6 +22,8 @@ concurrency:
 jobs:
   generate-and-validate:
     if: github.actor != 'github-actions[bot]'
+    outputs:
+      generated_artifact_id: ${{ steps.upload-generated.outputs.artifact-id }}
     # Ubuntu x64 runners expose KVM for hardware-accelerated Android emulation.
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -29,8 +31,17 @@ jobs:
       - name: Checkout PR head
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
+
+      - name: Verify exact source SHA
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$EXPECTED_SHA"
+          echo "Validated source SHA: $actual"
 
       - name: Install Flutter
         uses: subosito/flutter-action@v2
@@ -55,6 +66,9 @@ jobs:
           components: rustfmt
           targets: "aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android"
 
+      - name: Install pinned cargo-expand
+        run: cargo install --locked --version 1.0.127 cargo-expand
+
       - name: Install Flutter Rust Bridge code generator
         run: cargo install --locked --version 2.13.0 flutter_rust_bridge_codegen
 
@@ -67,11 +81,23 @@ jobs:
             --rust-crate-dir rust \
             --rust-crate-name inone_mls_frb \
             --integration-backend native-assets \
-            --platforms android,ios
+            --platforms android,ios \
+            --no-dart-fix \
+            --no-dart-format \
+            --no-integration-test
           cp /tmp/inone-main.dart lib/main.dart
           cp /tmp/inone-api-mod.rs rust/src/api/mod.rs
           rm -f rust/src/api/simple.rs lib/src/rust/api/simple.dart
-          flutter_rust_bridge_codegen generate
+          flutter pub get
+          flutter_rust_bridge_codegen generate \
+            --skip-fvm-install \
+            --skip-tool-install \
+            --no-dart-fix \
+            --no-dart-format \
+            --no-rust-format \
+            --no-auto-upgrade-dependency \
+            --no-web \
+            --stop-on-error
 
       - name: Remove Flutter Rust Bridge integration template test
         working-directory: mobile
@@ -90,14 +116,37 @@ jobs:
         working-directory: mobile
         run: node tool/prepare_ios_deep_links.mjs
 
-      - name: Resolve Dart dependencies and create Rust lockfile
+      - name: Verify clean repeated FRB generation
         working-directory: mobile
         run: |
-          flutter pub get
-          cargo generate-lockfile --manifest-path rust/Cargo.toml
+          set -euo pipefail
+          snapshot="$RUNNER_TEMP/frb-generation-first"
+          mkdir -p "$snapshot"
+          cp -a hook "$snapshot/hook"
+          cp -a lib/src/rust "$snapshot/lib-src-rust"
+          mkdir -p "$snapshot/rust/src"
+          cp rust/src/frb_generated.rs rust/src/lib.rs "$snapshot/rust/src/"
+          cp rust/Cargo.toml rust/Cargo.lock pubspec.yaml pubspec.lock "$snapshot/"
+          flutter_rust_bridge_codegen generate \
+            --skip-fvm-install \
+            --skip-tool-install \
+            --no-dart-fix \
+            --no-dart-format \
+            --no-rust-format \
+            --no-auto-upgrade-dependency \
+            --no-web \
+            --stop-on-error
+          diff -ru "$snapshot/hook" hook
+          diff -ru "$snapshot/lib-src-rust" lib/src/rust
+          diff -u "$snapshot/rust/src/frb_generated.rs" rust/src/frb_generated.rs
+          diff -u "$snapshot/rust/src/lib.rs" rust/src/lib.rs
+          diff -u "$snapshot/Cargo.toml" rust/Cargo.toml
+          diff -u "$snapshot/Cargo.lock" rust/Cargo.lock
+          diff -u "$snapshot/pubspec.yaml" pubspec.yaml
+          diff -u "$snapshot/pubspec.lock" pubspec.lock
 
-      - name: Format Rust bridge sources
-        run: cargo fmt --manifest-path mobile/rust/Cargo.toml
+      - name: Verify Rust formatting without modifying sources
+        run: cargo fmt --manifest-path mobile/rust/Cargo.toml -- --check
 
       - name: Validate Rust bridge on Linux
         run: cargo test --locked --manifest-path mobile/rust/Cargo.toml
@@ -107,6 +156,34 @@ jobs:
         run: |
           flutter analyze
           flutter test
+
+      - name: Prepare FRB artifact with source provenance and checksums
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          artifact="$RUNNER_TEMP/inone-mls-frb-generated"
+          rm -rf "$artifact"
+          mkdir -p "$artifact/lib" "$artifact/rust/src"
+          cp -a mobile/hook "$artifact/hook"
+          mkdir -p "$artifact/lib/src"
+          cp -a mobile/lib/src/rust "$artifact/lib/src/rust"
+          cp mobile/rust/Cargo.toml mobile/rust/Cargo.lock "$artifact/rust/"
+          cp mobile/rust/src/lib.rs mobile/rust/src/frb_generated.rs "$artifact/rust/src/"
+          cp mobile/pubspec.yaml mobile/pubspec.lock "$artifact/"
+          printf '%s\\n' "$EXPECTED_SHA" > "$artifact/source.sha"
+          (
+            cd "$artifact"
+            find hook lib/src/rust rust pubspec.yaml pubspec.lock -type f -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
+          )
+
+      - name: Upload generated FRB outputs for iOS validation
+        id: upload-generated
+        uses: actions/upload-artifact@v4
+        with:
+          name: inone-mls-frb-generated
+          path: ${{ runner.temp }}/inone-mls-frb-generated
+          if-no-files-found: error
 
       - name: Build Android with native OpenMLS assets
         working-directory: mobile
@@ -133,21 +210,6 @@ jobs:
           disable-animations: true
           script: cd mobile && flutter drive --driver=test_driver/integration_test.dart --target=integration_test/mls_secure_store_test.dart
 
-      - name: Upload generated FRB outputs for iOS validation
-        uses: actions/upload-artifact@v4
-        with:
-          name: inone-mls-frb-generated
-          path: |
-            mobile/hook/**
-            mobile/lib/src/rust/**
-            mobile/rust/Cargo.toml
-            mobile/rust/Cargo.lock
-            mobile/rust/build.rs
-            mobile/rust/src/frb_generated.rs
-            mobile/pubspec.yaml
-            mobile/pubspec.lock
-          if-no-files-found: error
-
       - name: Upload Android preview APK
         uses: actions/upload-artifact@v4
         with:
@@ -157,6 +219,7 @@ jobs:
   build-ios:
     name: iOS native assets compile (unsigned, no secrets)
     needs: generate-and-validate
+    if: ${{ always() && needs.generate-and-validate.outputs.generated_artifact_id != '' }}
     runs-on: macos-15
     permissions:
       contents: read
@@ -165,8 +228,17 @@ jobs:
       - name: Checkout source branch
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
+
+      - name: Verify exact source SHA
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$EXPECTED_SHA"
+          echo "Validated source SHA: $actual"
 
       - name: Download generated bridge artifact
         uses: actions/download-artifact@v4
@@ -187,18 +259,22 @@ jobs:
           test -d "$GENERATED/lib/src/rust"
           test -f "$GENERATED/rust/Cargo.toml"
           test -f "$GENERATED/rust/Cargo.lock"
-          # This Rust crate intentionally has no custom build.rs; Native Assets are prepared by hook/build.dart.
+          test -f "$GENERATED/rust/src/lib.rs"
           test -f "$GENERATED/rust/src/frb_generated.rs"
           test -f "$GENERATED/pubspec.yaml"
           test -f "$GENERATED/pubspec.lock"
+          test -f "$GENERATED/source.sha"
+          test "$(cat "$GENERATED/source.sha")" = "$EXPECTED_SHA"
+          (cd "$GENERATED" && sha256sum -c SHA256SUMS)
+          # Integration must not silently change manually maintained manifests.
+          cmp "$GENERATED/pubspec.yaml" mobile/pubspec.yaml
+          cmp "$GENERATED/rust/Cargo.toml" mobile/rust/Cargo.toml
+          cmp "$GENERATED/rust/Cargo.lock" mobile/rust/Cargo.lock
           mkdir -p mobile/hook mobile/lib/src/rust mobile/rust/src
           rsync -a "$GENERATED/hook/" mobile/hook/
           rsync -a "$GENERATED/lib/src/rust/" mobile/lib/src/rust/
-          cp "$GENERATED/rust/Cargo.toml" mobile/rust/Cargo.toml
-          cp "$GENERATED/rust/Cargo.lock" mobile/rust/Cargo.lock
+          cp "$GENERATED/rust/src/lib.rs" mobile/rust/src/lib.rs
           cp "$GENERATED/rust/src/frb_generated.rs" mobile/rust/src/frb_generated.rs
-          # Keep the checked-in pubspec.yaml authoritative. Reuse only the lockfile
-          # resolved by the Linux generation job so iOS validates the same dependency graph.
           cp "$GENERATED/pubspec.lock" mobile/pubspec.lock
 
       - name: Install Flutter and iOS Rust targets
