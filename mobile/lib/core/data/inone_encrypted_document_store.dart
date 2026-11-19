@@ -18,11 +18,13 @@ class InOneEncryptedDocumentStore {
     Future<String?> Function(String ownerScope)? readKey,
     Future<void> Function(String ownerScope, String value)? writeKey,
     Future<void> Function(String ownerScope)? deleteKey,
+    Future<void> Function()? deleteLegacyKey,
   })  : _secureStorage = secureStorage ?? const FlutterSecureStorage(),
         _rootDirectory = rootDirectory ?? getApplicationSupportDirectory,
         _readKeyOverride = readKey,
         _writeKeyOverride = writeKey,
-        _deleteKeyOverride = deleteKey;
+        _deleteKeyOverride = deleteKey,
+        _deleteLegacyKeyOverride = deleteLegacyKey;
 
   static const _keyName = 'inone.organization_document_key.v1';
   static const List<int> _magic = [0x49, 0x4e, 0x31, 0x44, 0x4f, 0x43, 0x30, 0x31];
@@ -34,6 +36,7 @@ class InOneEncryptedDocumentStore {
   final Future<String?> Function(String ownerScope)? _readKeyOverride;
   final Future<void> Function(String ownerScope, String value)? _writeKeyOverride;
   final Future<void> Function(String ownerScope)? _deleteKeyOverride;
+  final Future<void> Function()? _deleteLegacyKeyOverride;
   final AesGcm _algorithm = AesGcm.with256bits();
   final Map<String, Future<void>> _ownerQueues = {};
 
@@ -224,6 +227,25 @@ class InOneEncryptedDocumentStore {
       final file = await _file(scope, requestId, documentId);
       if (await file.exists()) await file.delete();
     });
+  }
+
+  /// Removes the pre-owner-scoped cache and its legacy global key on upgrade.
+  /// New owner-scoped directories are preserved.
+  Future<void> purgeLegacyUnscopedData() async {
+    await (_deleteLegacyKeyOverride?.call() ?? _secureStorage.delete(key: _keyName));
+    final root = await _rootDirectory();
+    final directory = Directory(
+      '${root.path}${Platform.pathSeparator}InOne'
+      '${Platform.pathSeparator}organization-documents',
+    );
+    if (!await directory.exists()) return;
+    await for (final entity in directory.list(followLinks: false)) {
+      if (entity is! Directory) continue;
+      final name = entity.uri.pathSegments.where((part) => part.isNotEmpty).last;
+      // SHA-256 base64url owner scopes are exactly 43 characters. Older
+      // directories were keyed directly by the 1..128-character request ID.
+      if (name.length != 43) await entity.delete(recursive: true);
+    }
   }
 
   /// Crypto-erases one account's key, then removes all of its cached documents.
