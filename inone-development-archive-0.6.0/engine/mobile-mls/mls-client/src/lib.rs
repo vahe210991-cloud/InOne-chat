@@ -201,7 +201,7 @@ fn insert_incoming_record(db: &Connection, incoming: &Incoming) -> Result<(), St
 
     let (pending_count, pending_bytes): (i64, i64) = db
         .query_row(
-            "SELECT COUNT(*), COALESCE(SUM(LENGTH(body)), 0)
+            "SELECT COUNT(*), COALESCE(SUM(LENGTH(CAST(body AS BLOB))), 0)
              FROM client_inbox WHERE acknowledged = 0",
             [],
             |row| Ok((row.get(0)?, row.get(1)?)),
