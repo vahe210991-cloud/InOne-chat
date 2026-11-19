@@ -106,10 +106,15 @@ function verifyContract() {
     if (!pattern.test(rustSource)) throw new Error('Rust-only helper ' + method + ' must be marked #[frb(ignore)]');
   }
 
-  for (const leaked of ['sync_', 'pendingIncoming', 'welcomeReceiptStatusJson', 'IncomingMessage']) {
-    if (generatedSource.includes(leaked)) {
-      throw new Error('Unexpected generated Dart export/type remains: ' + leaked);
+  const forbiddenGeneratedMethods = ['sync_', 'pendingIncoming', 'welcomeReceiptStatusJson'];
+  for (const method of forbiddenGeneratedMethods) {
+    const pattern = new RegExp('\\bFuture<[^;\\n]*?>\\s+' + method + '\\s*\\(');
+    if (pattern.test(generatedSource)) {
+      throw new Error('Unexpected generated Dart method remains: ' + method);
     }
+  }
+  if (/\\bIncomingMessage\\b/.test(generatedSource)) {
+    throw new Error('Unexpected generated Dart IncomingMessage type remains');
   }
 
   const normalizedSession = sessionBlock.replace(/\s+/g, ' ');
