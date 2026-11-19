@@ -2263,6 +2263,16 @@ impl Client {
             let transaction = self.meta.unchecked_transaction().map_err(text)?;
             if let Err(error) = insert_incoming_record(&transaction, &incoming)
                 .and_then(|_| insert_processed_event(&transaction, event_id))
+                .and_then(|_| {
+                    transaction
+                        .execute(
+                            "INSERT OR IGNORE INTO client_undecryptable (event_id, room_id, reason)
+                             VALUES (?1, ?2, ?3)",
+                            rusqlite::params![event_id, room_id, "MLS message is malformed"],
+                        )
+                        .map_err(text)?;
+                    Ok(())
+                })
             {
                 drop(transaction);
                 return Err(format!("временная ошибка сохранения unreadable inbox item: {error}"));
