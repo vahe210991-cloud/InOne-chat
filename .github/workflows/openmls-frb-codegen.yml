@@ -18,7 +18,8 @@ concurrency:
 jobs:
   generate-and-validate:
     if: github.actor != 'github-actions[bot]'
-    runs-on: ubuntu-latest
+    # Use a macOS host with Hypervisor.framework; GitHub Ubuntu runners lack KVM and the software emulator never reaches a stable ADB session.
+    runs-on: macos-15
     # Android emulator startup and Keystore integration smoke tests need a longer CI window.
     timeout-minutes: 60
     steps:
