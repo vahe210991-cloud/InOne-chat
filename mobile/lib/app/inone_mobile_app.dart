@@ -453,6 +453,12 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     try {
       // Rust synchronizes Welcome/Commit state and decrypts incoming events.
       await _session.syncMlsMessages();
+      try {
+        await _session.flushMlsOutbox();
+      } catch (error) {
+        // A transient outage must not hide the room list or discard queued text.
+        _notice('Исходящие MLS-сообщения останутся в защищённой очереди: $error');
+      }
       final response = await _repositories.myRooms();
       final rows = response['rooms'];
       if (rows is! List) {
@@ -469,6 +475,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
             ? rawName.trim()
             : roomId;
         final messages = await _session.mlsMessagesForRoom(roomId);
+        final pending = await _session.pendingMlsOutbox(roomId);
         String? lastMessage;
         for (final message in messages) {
           if (message.text != null) {
@@ -477,6 +484,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
             lastMessage = '📎 ${message.name ?? 'Вложение'}';
           }
         }
+        if (pending.isNotEmpty) lastMessage = pending.last.text;
         final kind = row['kind'] == 'person' || row['kind'] == 'direct'
             ? InOneChatKind.person
             : InOneChatKind.group;
@@ -514,12 +522,18 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     }
     try {
       await _session.syncMlsMessages();
+      try {
+        await _session.flushMlsOutbox();
+      } catch (error) {
+        _notice('Исходящие сообщения остаются в защищённой очереди: $error');
+      }
       final epoch = await _session.mlsLocalEpoch(chat.id);
       if (epoch == null) {
         _notice('Для этой комнаты ещё не получен MLS Welcome. Сообщения не открыты.');
         return;
       }
       final messages = await _session.mlsMessagesForRoom(chat.id);
+      final pending = await _session.pendingMlsOutbox(chat.id);
       final items = messages.map((message) => message.isAttachment
           ? InOneThreadItem(
               kind: InOneThreadItemKind.file,
@@ -534,7 +548,13 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
               text: message.text ?? 'Не удалось расшифровать сообщение',
               mine: message.mine,
               meta: message.isReadable ? 'MLS · epoch $epoch' : 'Не расшифровано',
-            )).toList(growable: false);
+            )).toList();
+      items.addAll(pending.map((message) => InOneThreadItem(
+        kind: InOneThreadItemKind.text,
+        text: message.text,
+        mine: true,
+        meta: 'В очереди · защищено SQLCipher',
+      )));
       if (!mounted) return;
       setState(() {
         _activeMlsRoomId = chat.id;
@@ -709,25 +729,38 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     if (roomId == null) return;
     try {
       await _session.syncMlsMessages();
-      await _session.flushMlsOutbox();
+      try {
+        await _session.flushMlsOutbox();
+      } catch (error) {
+        _notice('Очередь MLS сохранена до восстановления связи: $error');
+      }
       final messages = await _session.mlsMessagesForRoom(roomId);
+      final pending = await _session.pendingMlsOutbox(roomId);
       if (!mounted) return;
       setState(() {
-        _activeMlsThread = messages.map((message) => message.isAttachment
-            ? InOneThreadItem(
-                kind: InOneThreadItemKind.file,
-                fileId: message.fileId,
-                fileLabel: message.name ?? 'Вложение',
-                text: '${message.size ?? 0} bytes · ${message.mimeType ?? 'file'}',
-                mine: message.mine,
-                meta: 'MLS',
-              )
-            : InOneThreadItem(
+        _activeMlsThread = [
+          ...messages.map((message) => message.isAttachment
+              ? InOneThreadItem(
+                  kind: InOneThreadItemKind.file,
+                  fileId: message.fileId,
+                  fileLabel: message.name ?? 'Вложение',
+                  text: '${message.size ?? 0} bytes · ${message.mimeType ?? 'file'}',
+                  mine: message.mine,
+                  meta: 'MLS',
+                )
+              : InOneThreadItem(
+                  kind: InOneThreadItemKind.text,
+                  text: message.text ?? 'Не удалось расшифровать сообщение',
+                  mine: message.mine,
+                  meta: message.isReadable ? 'MLS' : 'Не расшифровано',
+                )),
+          ...pending.map((message) => InOneThreadItem(
                 kind: InOneThreadItemKind.text,
-                text: message.text ?? 'Не удалось расшифровать сообщение',
-                mine: message.mine,
-                meta: message.isReadable ? 'MLS' : 'Не расшифровано',
-              )).toList(growable: false);
+                text: message.text,
+                mine: true,
+                meta: 'В очереди · защищено SQLCipher',
+              )),
+        ];
       });
     } catch (error) {
       _notice('Синхронизация MLS не выполнена: $error');
