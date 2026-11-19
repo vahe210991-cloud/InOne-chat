@@ -1,5 +1,17 @@
 import 'dart:typed_data';
 
+class MlsPendingOutgoing {
+  const MlsPendingOutgoing({
+    required this.localId,
+    required this.roomId,
+    required this.text,
+  });
+
+  final String localId;
+  final String roomId;
+  final String text;
+}
+
 /// Data returned from the native OpenMLS runtime after decryption.
 class MlsIncomingMessage {
   const MlsIncomingMessage({
@@ -82,6 +94,7 @@ abstract interface class MlsSessionBridge {
   Future<List<MlsIncomingMessage>> sync();
   Future<List<MlsIncomingMessage>> pendingIncoming();
   Future<List<MlsIncomingMessage>> messagesForRoom(String roomId);
+  Future<List<MlsPendingOutgoing>> pendingOutgoing(String roomId);
   Future<void> acknowledgeIncoming(List<String> eventIds);
   Future<int> flushOutbox();
   Future<int> outboxLength();
