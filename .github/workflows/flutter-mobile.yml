@@ -7,7 +7,7 @@ on:
       - 'mobile/**'
       - '.github/workflows/flutter-mobile.yml'
   push:
-    branches: [main, feature/stage-4-native-mls-runtime-2026-11-11, fix/email-delivery-test-readiness-2026-11-17, fix/email-delivery-shutdown-and-key-hardening-2026-11-17, docs/bots-stickers-platform-2026-11-16]
+    branches: [main, feature/stage-4-native-mls-runtime-2026-11-11, fix/email-delivery-test-readiness-2026-11-17, fix/email-delivery-shutdown-and-key-hardening-2026-11-17]
     paths:
       - 'mobile/**'
       - '.github/workflows/flutter-mobile.yml'
