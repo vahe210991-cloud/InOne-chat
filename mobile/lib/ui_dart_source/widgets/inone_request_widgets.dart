@@ -64,14 +64,18 @@ class InOneDocumentRow extends StatelessWidget {
   const InOneDocumentRow({
     super.key,
     required this.document,
-    required this.onOpen,
+    this.onOpen,
+    this.onDownload,
     this.busy = false,
-  });
+  }) : assert((onOpen == null) != (onDownload == null));
 
   final InOneDocument document;
 
-  /// `null` — кнопка заблокирована.
+  /// Native preview/open action for protected documents.
   final VoidCallback? onOpen;
+
+  /// Legacy download action used by applicant-side request screens.
+  final VoidCallback? onDownload;
   final bool busy;
 
   @override
@@ -80,11 +84,11 @@ class InOneDocumentRow extends StatelessWidget {
       title: document.name,
       subtitle: document.typeLabel,
       trailing: InOneButton(
-        label: 'Բացել',
+        label: onOpen != null ? 'Բացել' : 'Ներբեռնել',
         kind: InOneButtonKind.outline,
         small: true,
         loading: busy,
-        onPressed: onOpen,
+        onPressed: onOpen ?? onDownload,
       ),
     );
   }
