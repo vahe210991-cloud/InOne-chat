@@ -587,11 +587,11 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
               : chat).toList(growable: false);
         });
       }
-      final sent = await _session.flushMlsOutbox();
+      await _session.flushMlsOutbox();
       final queued = await _session.mlsOutboxLength();
-      if (sent > 0) {
+      if (queued == 0) {
         await _refreshActiveMlsChat();
-      } else if (queued > 0) {
+      } else {
         _notice('Сообщение сохранено в зашифрованной очереди и будет отправлено после восстановления связи.');
       }
       return true;
