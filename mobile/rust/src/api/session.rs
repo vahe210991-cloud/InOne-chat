@@ -198,6 +198,8 @@ impl MlsSession {
     }
 
     /// Returns the durable Welcome receipt outcome and ACK state for diagnostics.
+    /// Kept Rust-internal until the Dart bridge exposes a typed receipt contract.
+    #[frb(ignore)]
     pub fn welcome_receipt_status_json(&self, welcome_id: i64) -> Result<String, String> {
         let status = self.with_client(|client| client.welcome_receipt_status(welcome_id))?;
         serde_json::to_string(&status).map_err(|error| error.to_string())
@@ -222,6 +224,8 @@ impl MlsSession {
         self.with_client(|client| client.enqueue_text(&room_id, plaintext.as_str()))
     }
 
+    /// Internal typed helper; the stable Dart boundary is `sync_json`.
+    #[frb(ignore)]
     pub fn sync(&self) -> Result<Vec<IncomingMessage>, String> {
         self.with_client(|client| client.sync().map(map_incoming))
     }
@@ -232,7 +236,8 @@ impl MlsSession {
         serde_json::to_string(&items).map_err(|error| error.to_string())
     }
 
-    /// Returns pending decrypted messages without consuming them.
+    /// Internal typed helper; the stable Dart boundary is `pending_incoming_json`.
+    #[frb(ignore)]
     pub fn pending_incoming(&self) -> Result<Vec<IncomingMessage>, String> {
         self.with_client(|client| client.pending_incoming().map(map_incoming))
     }
