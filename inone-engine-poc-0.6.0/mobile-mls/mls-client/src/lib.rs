@@ -2073,11 +2073,18 @@ impl Client {
                 }
             };
             if queued {
-                let changed = transaction.execute(
+                let changed = match transaction.execute(
                     "INSERT OR REPLACE INTO client_outbox_crypto (local_id, room_id, mls_message, mls_epoch)
                      VALUES (?1, ?2, ?3, ?4)",
                     rusqlite::params![client_message_id, room_id, bytes, server_epoch as i64],
-                ).map_err(text)?;
+                ) {
+                    Ok(changed) => changed,
+                    Err(error) => {
+                        drop(transaction);
+                        self.reload_group(room_id)?;
+                        return Err(text(error));
+                    }
+                };
                 if changed != 1 {
                     drop(transaction);
                     self.reload_group(room_id)?;
@@ -2091,7 +2098,7 @@ impl Client {
             B64.encode(bytes)
         };
 
-        let response = self.call(
+        let response = match self.call(
             "POST",
             &format!("/mls/groups/{}/messages", urlencoding::encode(room_id)),
             Some(json!({
@@ -2100,7 +2107,21 @@ impl Client {
                 "forwarded": false,
                 "clientMessageId": client_message_id
             })),
-        )?;
+        ) {
+            Ok(response) => response,
+            Err(error) if error.contains("epoch is outdated") && queued => {
+                // The server did not accept this operation at the old epoch.
+                // Rebase the local group, discard only the stale cached ciphertext,
+                // then create a fresh message under the same idempotency key.
+                self.meta.execute(
+                    "DELETE FROM client_outbox_crypto WHERE local_id = ?1",
+                    [client_message_id],
+                ).map_err(text)?;
+                self.sync()?;
+                return self.send_text_with_id(room_id, plaintext, client_message_id);
+            }
+            Err(error) => return Err(error),
+        };
         let event_id = response["event_id"].as_str()
             .ok_or("сервер не вернул event_id")?.to_string();
 
