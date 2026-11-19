@@ -17,8 +17,8 @@ void main() {
     store = InOneEncryptedDocumentStore(
       rootDirectory: () async => root,
       readKey: (_) async => key,
-      writeKey: (_, value) async => key = value,
-      deleteKey: (_) async => key = null,
+      writeKey: (_, value) async { key = value; },
+      deleteKey: (_) async { key = null; },
     );
   });
 
@@ -65,7 +65,7 @@ void main() {
         .where((entity) => entity is File && entity.path.endsWith('.in1doc'))
         .cast<File>()
         .first;
-    expect(await encrypted.readAsString(), isNot(plaintext));
+    expect(await encrypted.readAsBytes(), isNot(utf8.encode(plaintext)));
   });
 
   test('removes plaintext when native handler cannot open the document', () async {
