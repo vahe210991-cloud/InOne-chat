@@ -176,8 +176,12 @@ fn uncertain_text_send_reuses_the_same_mls_ciphertext_until_local_commit_succeed
     let event_id = alice.send_text_with_id(ROOM, "retry this text", client_message_id).unwrap();
     assert_eq!(alice.send_text_with_id(ROOM, "retry this text", client_message_id).unwrap(), event_id);
     assert_eq!(alice.outbox_len().unwrap(), 0);
-    assert_eq!(texts(&alice.messages_for_room(ROOM).unwrap()), vec!["retry this text"]);
-    assert_eq!(texts(&bob.sync().unwrap()), vec!["retry this text"]);
+    let sender_history = alice.messages_for_room(ROOM).unwrap();
+    assert_eq!(texts(&sender_history), vec!["retry this text"]);
+    assert!(matches!(sender_history.as_slice(), [Incoming::Text { mine: true, .. }]));
+    let received = bob.sync().unwrap();
+    assert_eq!(texts(&received), vec!["retry this text"]);
+    assert!(matches!(received.as_slice(), [Incoming::Text { mine: false, .. }]));
 }
 
 #[test]
