@@ -30,6 +30,7 @@ pub enum IncomingMessage {
         room_id: String,
         event_id: String,
         text: String,
+        mine: bool,
     },
     Attachment {
         room_id: String,
@@ -38,10 +39,12 @@ pub enum IncomingMessage {
         name: String,
         mime_type: String,
         size: u64,
+        mine: bool,
     },
     Unreadable {
         room_id: String,
         event_id: String,
+        mine: bool,
     },
 }
 
@@ -109,6 +112,7 @@ fn map_incoming(items: Vec<Incoming>) -> Vec<IncomingMessage> {
                 name,
                 mime_type,
                 size,
+                mine,
             } => IncomingMessage::Attachment {
                 room_id,
                 event_id,
@@ -116,9 +120,10 @@ fn map_incoming(items: Vec<Incoming>) -> Vec<IncomingMessage> {
                 name,
                 mime_type,
                 size,
+                mine,
             },
-            Incoming::Unreadable { room_id, event_id } => {
-                IncomingMessage::Unreadable { room_id, event_id }
+            Incoming::Unreadable { room_id, event_id, mine } => {
+                IncomingMessage::Unreadable { room_id, event_id, mine }
             }
         })
         .collect()
