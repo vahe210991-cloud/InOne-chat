@@ -6,12 +6,14 @@ on:
   pull_request:
     paths:
       - "inone-engine-poc-0.6.0/mobile-mls/**"
+      - "inone-engine-poc-0.6.0/MLS_CLIENT_CORE.md"
       - "mobile/rust/**"
       - ".github/workflows/mls-native-validation.yml"
   push:
     branches: ["**"]
     paths:
       - "inone-engine-poc-0.6.0/mobile-mls/**"
+      - "inone-engine-poc-0.6.0/MLS_CLIENT_CORE.md"
       - "mobile/rust/**"
       - ".github/workflows/mls-native-validation.yml"
 
