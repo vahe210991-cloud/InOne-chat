@@ -230,11 +230,12 @@ fn auth_access_deleted_room_and_failed_refresh_never_mark_mls_recovery_required(
     assert_eq!(bob.desync_reason(other_room).unwrap(), None);
 
     proxy.reset();
+    alice.send_text(room, "room remains usable after access recovery").unwrap();
     alice
-        .send_text(room, "room remains usable after access recovery")
-        .unwrap();
-    alice
-        .send_text(other_room, "other room remains usable after access recovery")
+        .send_text(
+            other_room,
+            "other room remains usable after access recovery",
+        )
         .unwrap();
     let received = bob.sync().expect("same and other MLS rooms remain usable");
     let mut received_texts = common::texts(&received);
