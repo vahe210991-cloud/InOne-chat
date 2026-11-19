@@ -51,16 +51,18 @@ jobs:
         working-directory: inone-development-archive-0.6.0/engine
       - name: Verify committed MLS client lockfile
         run: test -s inone-engine-poc-0.6.0/mobile-mls/mls-client/Cargo.lock
-      - name: Check every MLS client target
-        run: cargo check --all-targets --manifest-path inone-engine-poc-0.6.0/mobile-mls/mls-client/Cargo.toml
-      - name: Run MLS client unit and canonical-engine integration tests
-        run: cargo test --no-fail-fast --manifest-path inone-engine-poc-0.6.0/mobile-mls/mls-client/Cargo.toml -- --test-threads=1
-      - name: Export regenerated MLS client lockfile
+      - name: Resolve MLS client lockfile
+        run: cargo generate-lockfile --manifest-path inone-engine-poc-0.6.0/mobile-mls/mls-client/Cargo.toml
+      - name: Export resolved MLS client lockfile
         uses: actions/upload-artifact@v4
         with:
           name: inone-mls-client-cargo-lock
           path: inone-engine-poc-0.6.0/mobile-mls/mls-client/Cargo.lock
           if-no-files-found: error
+      - name: Check every MLS client target
+        run: cargo check --locked --all-targets --manifest-path inone-engine-poc-0.6.0/mobile-mls/mls-client/Cargo.toml
+      - name: Run MLS client unit and canonical-engine integration tests
+        run: cargo test --locked --no-fail-fast --manifest-path inone-engine-poc-0.6.0/mobile-mls/mls-client/Cargo.toml -- --test-threads=1
 
 
   ios-keychain:
@@ -87,16 +89,19 @@ jobs:
       - name: Verify committed iOS bridge lockfile
         if: steps.bridge.outputs.available == 'true'
         run: test -s mobile/rust/Cargo.lock
-      - name: Build iOS Keychain bridge target
+      - name: Resolve mobile Rust bridge lockfile
         if: steps.bridge.outputs.available == 'true'
-        run: cargo build --target aarch64-apple-ios --manifest-path mobile/rust/Cargo.toml
-      - name: Export Cargo lockfile resolved by the iOS target build
+        run: cargo generate-lockfile --manifest-path mobile/rust/Cargo.toml
+      - name: Export resolved mobile Rust bridge lockfile
         if: steps.bridge.outputs.available == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: inone-mobile-rust-cargo-lock
           path: mobile/rust/Cargo.lock
           if-no-files-found: error
+      - name: Build iOS Keychain bridge target
+        if: steps.bridge.outputs.available == 'true'
+        run: cargo build --locked --target aarch64-apple-ios --manifest-path mobile/rust/Cargo.toml
 
   rust-bridge:
     name: Persistent Flutter Rust bridge host tests
