@@ -25,25 +25,19 @@ class RustMlsSessionBridge implements MlsSessionBridge {
 
   final Future<Directory> Function() _supportDirectory;
   rust.MlsSession? _session;
-
-  // flutter_rust_bridge has one process-wide RustLib entrypoint. Keep its
-  // initialization future static so separate bridge instances (for example,
-  // after closing and resuming a session) never initialize it twice.
-  static Future<void>? _sharedInitialization;
+  Future<void>? _initializing;
 
   Future<void> _ensureInitialized() {
-    final active = _sharedInitialization;
+    final active = _initializing;
     if (active != null) return active;
 
     final operation = RustLib.init();
     late final Future<void> guarded;
     guarded = operation.catchError((Object error, StackTrace stackTrace) {
-      if (identical(_sharedInitialization, guarded)) {
-        _sharedInitialization = null;
-      }
+      if (identical(_initializing, guarded)) _initializing = null;
       Error.throwWithStackTrace(error, stackTrace);
     });
-    _sharedInitialization = guarded;
+    _initializing = guarded;
     return guarded;
   }
 
