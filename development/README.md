@@ -62,7 +62,11 @@ This is a handover area, not a substitute for source code. Work in Git branches 
 
 Read [PROGRESS-BASELINE.md](PROGRESS-BASELINE.md) in full before every implementation task. The owner approved WBS v1.1 on 2026-11-09: Beta 1.0 = 42% implementation / 31% verification; Beta 2.0 = 2% / 0%. Weights, release boundaries and baseline are fixed unless the owner explicitly approves a versioned change. Every report and implementation task must map to this WBS. The root [AGENTS.md](../AGENTS.md) and Copilot instructions require it.
 
-## Current product work — Beta 1.0 UI integration
+## Current product work — Beta 1.0 / A2 FRB reconciliation
+
+- [A2 FRB reconciliation audit — 2026-11-19](reports/2026-11-19-A2-frb-reconciliation-audit.md). Initial source inventory is complete; generated-binding verification and the full platform matrix remain pending.
+
+## Historical UI integration work
 
 - [Full Beta 1.0 / 2.0 audit](reports/2026-11-09-0935-full-beta-audit.md)
 - [UI source import and integration stage](reports/2026-11-09-1015-ui-integration-start.md)
