@@ -626,9 +626,9 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       );
       if (result == null || result.files.isEmpty) return;
       final selected = result.files.single;
-      const maximumBytes = 250 * 1024 * 1024 - 16;
+      const maximumBytes = 50 * 1024 * 1024 - 16;
       if (selected.size <= 0 || selected.size > maximumBytes) {
-        _notice('Размер вложения должен быть от 1 байта до 250 МиБ.');
+        _notice('Размер вложения должен быть от 1 байта до 50 МиБ.');
         return;
       }
       final bytes = await selected.xFile.readAsBytes();
