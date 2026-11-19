@@ -2,7 +2,7 @@
 
 This is an explicit, mutating smoke test for a dedicated staging environment. It creates one uniquely named organization request using the user token, verifies owner/admin/user queue and detail access, confirms that admin and user decisions are rejected with HTTP 403, and closes the fixture by rejecting it with the owner token.
 
-## Required GitHub Actions secrets
+## Required environment variables
 
 - `INONE_STAGING_BASE_URL` — HTTPS origin only, e.g. `https://staging-api.example.test`.
 - `INONE_STAGING_OWNER_TOKEN` — active platform-owner bearer token.
