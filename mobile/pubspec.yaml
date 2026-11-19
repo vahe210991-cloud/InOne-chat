@@ -22,12 +22,5 @@ dev_dependencies:
   flutter_lints: ^5.0.0
   freezed: ^3.2.3
   build_runner: ^2.7.1
-# path_provider_android 2.3.x performs its Context cast through a JNI class
-# lookup that passes a JVM descriptor to Android ClassLoader. Keep the
-# pre-JNI platform-channel implementation until that lookup is fixed upstream
-# and verified on the real Android runtime.
-dependency_overrides:
-  path_provider_android: 2.2.23
-
 flutter:
   uses-material-design: true
