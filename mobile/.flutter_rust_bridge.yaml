@@ -19,7 +19,7 @@ build_runner: true
 auto_upgrade_dependency: false
 dart_fix: false
 dart_format: false
-rust_format: false
+rust_format: true
 add_mod_to_lib: true
 enable_lifetime: false
 full_dep: false

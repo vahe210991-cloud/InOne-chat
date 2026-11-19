@@ -93,10 +93,11 @@ jobs:
             --skip-fvm-install \
             --no-dart-fix \
             --no-dart-format \
-            --no-rust-format \
             --no-auto-upgrade-dependency \
             --no-web \
             --stop-on-error
+          # Web is explicitly disabled; discard the stale web adapter emitted by integration templates.
+          rm -f lib/src/rust/frb_generated.web.dart
 
       - name: Remove Flutter Rust Bridge integration template test
         working-directory: mobile
@@ -130,10 +131,11 @@ jobs:
             --skip-fvm-install \
             --no-dart-fix \
             --no-dart-format \
-            --no-rust-format \
             --no-auto-upgrade-dependency \
             --no-web \
             --stop-on-error
+          # Keep the repeated native-only generation snapshot free of unsupported web glue.
+          rm -f lib/src/rust/frb_generated.web.dart
           diff -ru "$snapshot/hook" hook
           diff -ru "$snapshot/lib-src-rust" lib/src/rust
           diff -u "$snapshot/rust/src/frb_generated.rs" rust/src/frb_generated.rs
