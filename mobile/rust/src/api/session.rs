@@ -577,11 +577,12 @@ mod tests {
         let release_winner = Arc::new(Barrier::new(2));
         let (tx, rx) = mpsc::channel();
 
+        let mut handles = Vec::new();
         for _ in 0..2 {
             let start = start.clone();
             let release_winner = release_winner.clone();
             let tx = tx.clone();
-            std::thread::spawn(move || {
+            handles.push(std::thread::spawn(move || {
                 start.wait();
                 let reservation = reserve_identity(identity);
                 let won = reservation.is_ok();
@@ -590,13 +591,16 @@ mod tests {
                     release_winner.wait();
                     drop(reservation);
                 }
-            });
+            }));
         }
         drop(tx);
         start.wait();
         let outcomes = [rx.recv().unwrap(), rx.recv().unwrap()];
         assert_eq!(outcomes.iter().filter(|won| **won).count(), 1);
         release_winner.wait();
+        for handle in handles {
+            handle.join().unwrap();
+        }
     }
 
     #[test]
