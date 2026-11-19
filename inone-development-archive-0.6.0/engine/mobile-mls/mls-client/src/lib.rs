@@ -299,32 +299,92 @@ impl KeyStore for MemoryKeyStore {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ApiFailureKind {
+    Transport,
+    RetryableHttp,
+    AuthSession,
+    AccessDenied,
+    ResourceDeleted,
+    Contract,
+    Other,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ApiFailure {
+    kind: ApiFailureKind,
+    status: Option<u16>,
+    code: Option<String>,
+}
+
+/// Converts the legacy transport string into a typed API failure at the client boundary.
+/// Callers can branch on status/code without confusing authorization with MLS corruption.
+fn classify_api_failure(error: &str) -> ApiFailure {
+    if error.starts_with("сеть:") {
+        return ApiFailure {
+            kind: ApiFailureKind::Transport,
+            status: None,
+            code: None,
+        };
+    }
+    if error.starts_with("ошибка контракта ответа:") {
+        return ApiFailure {
+            kind: ApiFailureKind::Contract,
+            status: None,
+            code: None,
+        };
+    }
+
+    let Some(separator) = error.find(" -> ") else {
+        return ApiFailure {
+            kind: ApiFailureKind::Other,
+            status: None,
+            code: None,
+        };
+    };
+    let response = &error[separator + 4..];
+    let status_text: String = response
+        .chars()
+        .take_while(|character| character.is_ascii_digit())
+        .collect();
+    let status = status_text.parse::<u16>().ok();
+    let body_code = response.find('{').and_then(|start| {
+        serde_json::from_str::<Value>(&response[start..]).ok().and_then(|body| {
+            body.get("code")
+                .or_else(|| body.get("error"))
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
+    });
+    let kind = match status {
+        Some(401) => ApiFailureKind::AuthSession,
+        Some(403) => ApiFailureKind::AccessDenied,
+        Some(404) => ApiFailureKind::ResourceDeleted,
+        Some(429) | Some(500..=599) => ApiFailureKind::RetryableHttp,
+        _ => ApiFailureKind::Other,
+    };
+    ApiFailure {
+        kind,
+        status,
+        code: body_code,
+    }
+}
+
 /// Ошибка временная (нет сети, 429, 5xx): её имеет смысл повторить позже.
 pub fn is_retryable(err: &str) -> bool {
-    if err.starts_with("сеть:") {
-        return true;
-    }
-    if let Some(pos) = err.find(" -> ") {
-        let code: String = err[pos + 4..]
-            .chars()
-            .take_while(|c| c.is_ascii_digit())
-            .collect();
-        if let Ok(code) = code.parse::<u16>() {
-            return code == 429 || (500..600).contains(&code);
-        }
-    }
-    false
+    matches!(
+        classify_api_failure(err).kind,
+        ApiFailureKind::Transport | ApiFailureKind::RetryableHttp
+    )
 }
 
 fn is_access_failure(err: &str) -> bool {
-    let Some(pos) = err.find(" -> ") else {
-        return false;
-    };
-    let code: String = err[pos + 4..]
-        .chars()
-        .take_while(|c| c.is_ascii_digit())
-        .collect();
-    matches!(code.parse::<u16>(), Ok(401 | 403 | 404))
+    matches!(
+        classify_api_failure(err).kind,
+        ApiFailureKind::AuthSession
+            | ApiFailureKind::AccessDenied
+            | ApiFailureKind::ResourceDeleted
+    )
 }
 
 const MAX_BACKOFF: Duration = Duration::from_secs(300);
@@ -829,7 +889,10 @@ fn membership_commit_fingerprint(
 fn response_error_code(error: &str) -> Option<String> {
     let start = error.find('{')?;
     let body: Value = serde_json::from_str(&error[start..]).ok()?;
-    body.get("code")?.as_str().map(str::to_string)
+    body.get("code")
+        .or_else(|| body.get("error"))
+        .and_then(Value::as_str)
+        .map(str::to_string)
 }
 
 impl Client {
@@ -2983,6 +3046,28 @@ mod retry_tests {
         assert!(!is_retryable("GET /x -> 401 unauthorized"));
         assert!(!is_retryable("POST /z -> 409 conflict"));
         assert!(!is_retryable("неизвестная ошибка"));
+    }
+
+    #[test]
+    fn api_failures_are_typed_by_status_and_server_error_code() {
+        let auth = classify_api_failure("GET /rooms/x/events -> 401 {\\"error\\":\\"device_revoked\\"}");
+        assert_eq!(auth.kind, ApiFailureKind::AuthSession);
+        assert_eq!(auth.status, Some(401));
+        assert_eq!(auth.code.as_deref(), Some("device_revoked"));
+
+        let denied = classify_api_failure("GET /rooms/x/events -> 403 {\\"code\\":\\"permission_denied\\"}");
+        assert_eq!(denied.kind, ApiFailureKind::AccessDenied);
+        assert_eq!(denied.code.as_deref(), Some("permission_denied"));
+
+        let deleted = classify_api_failure("GET /rooms/x/events -> 404 {\\"error\\":\\"room_deleted\\"}");
+        assert_eq!(deleted.kind, ApiFailureKind::ResourceDeleted);
+        assert_eq!(deleted.status, Some(404));
+
+        let refresh = classify_api_failure("POST /token/refresh -> 401 {\\"error\\":\\"refresh_revoked\\"}");
+        assert_eq!(refresh.kind, ApiFailureKind::AuthSession);
+        assert!(!is_retryable("POST /token/refresh -> 401 {\\"error\\":\\"refresh_revoked\\"}"));
+        assert!(is_retryable("GET /rooms/x/events -> 503 {\\"error\\":\\"unavailable\\"}"));
+        assert!(is_retryable("сеть: connection reset"));
     }
 
     #[test]
