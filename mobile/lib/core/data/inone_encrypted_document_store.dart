@@ -153,7 +153,7 @@ class InOneEncryptedDocumentStore {
     required String documentId,
     required String filename,
     required List<int> bytes,
-  }) {
+  }) async {
     _validateIdentity(ownerUserId, requestId, documentId, filename);
     if (bytes.isEmpty) {
       throw ArgumentError.value(bytes, 'bytes', 'Document is empty');
