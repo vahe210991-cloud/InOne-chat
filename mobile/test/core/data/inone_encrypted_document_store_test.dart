@@ -174,6 +174,28 @@ void main() {
     );
   });
 
+  test('purge waits for an in-flight save and cannot leave a resurrected key or file', () async {
+    final save = store.save(
+      ownerUserId: '@owner:inone.test',
+      requestId: 'request-123',
+      documentId: 'document-race',
+      filename: 'race.pdf',
+      bytes: utf8.encode('race document'),
+    );
+    final purge = store.purgeAccount('@owner:inone.test');
+    await save;
+    await purge;
+
+    expect(storedKeys, isEmpty);
+    final ownerDirectory = Directory(
+      '${root.path}${Platform.pathSeparator}InOne'
+      '${Platform.pathSeparator}organization-documents',
+    );
+    if (await ownerDirectory.exists()) {
+      expect(await ownerDirectory.list(recursive: true).toList(), isEmpty);
+    }
+  });
+
   test('purge is idempotent when account has no local documents or key', () async {
     await store.purgeAccount('@empty:inone.test');
     await store.purgeAccount('@empty:inone.test');
