@@ -73,6 +73,27 @@ void main() {
     expect(find.text('Անցնել որոշմանը'), findsOneWidget);
   });
 
+  testWidgets('PS-02 opens a document through the explicit open action', (tester) async {
+    var opened = false;
+    await tester.pumpWidget(MaterialApp(
+      theme: InOneTheme.light(),
+      home: Scaffold(
+        body: InOneDocumentRow(
+          document: const InOneDocument(
+            id: 'document-1',
+            name: 'registration.pdf',
+            typeLabel: 'PDF · 12 КБ',
+            mimeType: 'application/pdf',
+          ),
+          onOpen: () => opened = true,
+        ),
+      ),
+    ));
+    expect(find.text('Բացել'), findsOneWidget);
+    await tester.tap(find.text('Բացել'));
+    expect(opened, isTrue);
+  });
+
   testWidgets('PS-03 asks for confirmation before submitting an owner decision', (tester) async {
     InOneDecision? submittedDecision;
     var completed = false;
