@@ -265,6 +265,13 @@ fn encrypted_inbox_survives_restart_until_explicit_acknowledgement() {
     alice.send_text(ROOM, plaintext).unwrap();
     assert_eq!(texts(&bob.sync().unwrap()), vec![plaintext.to_string()]);
 
+    // A second sync before application ACK must not create a second inbox row.
+    assert!(bob.sync().unwrap().is_empty());
+    let first_pending = bob.pending_incoming().unwrap();
+    let second_pending = bob.pending_incoming().unwrap();
+    assert_eq!(first_pending, second_pending, "pending inbox reads are repeatable");
+    assert_eq!(texts(&second_pending), vec![plaintext.to_string()]);
+
     for suffix in ["", "-wal", "-shm", "-journal"] {
         let path = format!("{bob_db}{suffix}");
         if let Ok(ciphertext) = std::fs::read(path) {
@@ -291,5 +298,18 @@ fn encrypted_inbox_survives_restart_until_explicit_acknowledgement() {
     resumed.acknowledge_incoming(&event_ids).unwrap();
     assert!(resumed.pending_incoming().unwrap().is_empty());
     assert_eq!(texts(&resumed.messages_for_room(ROOM).unwrap()), vec![plaintext.to_string()]);
-    resumed.logout().unwrap();
+    drop(resumed);
+
+    // Simulate a process restart after ACK: the acknowledged item must stay out
+    // of the pending queue while the durable local history remains available.
+    let resumed_after_ack = resume_with_session(&proxy.base, BOB, "B_PHONE", &bob_db, &keys)
+        .expect("restore session after application ACK");
+    assert!(resumed_after_ack.pending_incoming().unwrap().is_empty());
+    assert_eq!(
+        texts(&resumed_after_ack.messages_for_room(ROOM).unwrap()),
+        vec![plaintext.to_string()],
+        "ACK must not delete durable message history"
+    );
+    drop(resumed_after_ack);
+    drop(alice);
 }
