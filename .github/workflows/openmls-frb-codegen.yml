@@ -147,6 +147,9 @@ jobs:
           diff -u "$snapshot/pubspec.yaml" pubspec.yaml
           diff -u "$snapshot/pubspec.lock" pubspec.lock
 
+      - name: Format generated Rust bridge module registration
+        run: cargo fmt --manifest-path mobile/rust/Cargo.toml
+
       - name: Verify Rust formatting without modifying sources
         run: cargo fmt --manifest-path mobile/rust/Cargo.toml -- --check
 
