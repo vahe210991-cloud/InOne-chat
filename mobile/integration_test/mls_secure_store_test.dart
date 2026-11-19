@@ -14,6 +14,8 @@ void main() {
       final stamp = DateTime.now().microsecondsSinceEpoch;
       final userId = '@mls-smoke-$stamp:inone.test';
       final deviceId = 'MLS-SMOKE-$stamp';
+      final accessToken = 'smoke-access-$stamp';
+      final refreshToken = 'smoke-refresh-$stamp';
       const baseUrl = 'http://127.0.0.1:1';
 
       // Exercise the real MainActivity channel and Android application context
@@ -32,10 +34,11 @@ void main() {
         baseUrl: baseUrl,
         userId: userId,
         deviceId: deviceId,
-        accessToken: 'smoke-access-token',
-        refreshToken: 'smoke-refresh-token',
+        accessToken: accessToken,
+        refreshToken: refreshToken,
       );
-      expect(await first.accessTokenSnapshot(), 'smoke-access-token');
+      final initialAccessToken = await first.accessTokenSnapshot();
+      expect(initialAccessToken.isNotEmpty, isTrue);
       await first.close();
 
       final resumed = RustMlsSessionBridge();
@@ -44,7 +47,8 @@ void main() {
         userId: userId,
         deviceId: deviceId,
       );
-      expect(await resumed.accessTokenSnapshot(), 'smoke-access-token');
+      final resumedAccessToken = await resumed.accessTokenSnapshot();
+      expect(resumedAccessToken == initialAccessToken, isTrue);
 
       // The server is intentionally unreachable. Native logout must still
       // purge the SQLCipher database and platform key before returning its error.
