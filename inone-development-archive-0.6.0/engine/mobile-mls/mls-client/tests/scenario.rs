@@ -201,7 +201,10 @@ fn non_utf8_application_payload_is_quarantined_and_durably_acknowledged() {
         .send_text(room, "valid message after invalid payload")
         .unwrap();
     let recovered = bob.sync().expect("the same room remains synchronized");
-    assert_eq!(texts(&recovered), vec!["valid message after invalid payload"]);
+    assert_eq!(
+        texts(&recovered),
+        vec!["valid message after invalid payload"]
+    );
     assert_eq!(unreadable(&recovered), 0);
     assert_eq!(bob.desync_reason(room).unwrap(), None);
 }
