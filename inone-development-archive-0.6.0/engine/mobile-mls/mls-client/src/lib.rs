@@ -2421,26 +2421,17 @@ impl Client {
             if self.processed.contains(&event_id) {
                 continue;
             }
-            // Испорченный base64 — постоянная ошибка этого события, а не причина остановить комнату (аудит, P0.1).
+            // Malformed base64 or TLS payloads are persisted through the same durable
+            // inbox transaction as every other unreadable event.
             let Ok(bytes) = B64.decode(mls_b64) else {
-                self.record_unreadable(room_id, &event_id, "сообщение не разбирается")?;
-                self.mark_processed(&event_id)?;
-                out.push(Incoming::Unreadable {
-                    room_id: room_id.to_string(),
-                    event_id: event_id.clone(),
-                });
+                self.process_event(room_id, &event_id, &[], out)?;
                 continue;
             };
             let parsed = MlsMessageIn::tls_deserialize_exact(&bytes)
                 .ok()
-                .and_then(|m| m.try_into_protocol_message().ok());
+                .and_then(|message| message.try_into_protocol_message().ok());
             let Some(protocol) = parsed else {
-                self.record_unreadable(room_id, &event_id, "сообщение не разбирается")?;
-                self.mark_processed(&event_id)?;
-                out.push(Incoming::Unreadable {
-                    room_id: room_id.to_string(),
-                    event_id: event_id.clone(),
-                });
+                self.process_event(room_id, &event_id, &bytes, out)?;
                 continue;
             };
             pending.push((protocol.epoch().as_u64(), event_id, bytes));
