@@ -12,8 +12,8 @@ const mlsBridge = read('../../../mobile/lib/core/mls/rust_mls_session_bridge.dar
 const mlsClient = read('../../../inone-engine-poc-0.6.0/mobile-mls/mls-client/src/lib.rs');
 
 const routeEvidence = new Map([
-  ['GET /healthz', /req\.method === 'GET' && p === '\/healthz'/u],
-  ['GET /readyz', /req\.method === 'GET' && p === '\/readyz'/u],
+  ['GET /healthz', /req\.method === 'GET' && pathOnly === '\/healthz'/u],
+  ['GET /readyz', /req\.method === 'GET' && pathOnly === '\/readyz'/u],
   ['POST /login', /req\.method === 'POST' && p === '\/login'/u],
   ['POST /logout', /req\.method === 'POST' && p === '\/logout'/u],
   ['GET /profile', /req\.method === 'GET' && p === '\/profile'/u],
