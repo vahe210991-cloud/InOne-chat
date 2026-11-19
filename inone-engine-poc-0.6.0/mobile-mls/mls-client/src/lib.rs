@@ -2015,6 +2015,16 @@ impl Client {
 
     /// Отправляет текст с идентификатором клиента: повтор с тем же идентификатором не создаёт дубля.
     pub fn send_text_with_id(&mut self, room_id: &str, plaintext: &str, client_message_id: &str) -> Result<String, String> {
+        self.send_text_with_id_inner(room_id, plaintext, client_message_id, 2)
+    }
+
+    fn send_text_with_id_inner(
+        &mut self,
+        room_id: &str,
+        plaintext: &str,
+        client_message_id: &str,
+        rebase_attempts: u8,
+    ) -> Result<String, String> {
         self.ensure_writable()?;
         if client_message_id.is_empty()
             || client_message_id.len() > 64
@@ -2110,6 +2120,9 @@ impl Client {
         ) {
             Ok(response) => response,
             Err(error) if error.contains("epoch is outdated") && queued => {
+                if rebase_attempts == 0 {
+                    return Err("queued MLS message could not converge on the server epoch after bounded retries".to_string());
+                }
                 // The server did not accept this operation at the old epoch.
                 // Rebase the local group, discard only the stale cached ciphertext,
                 // then create a fresh message under the same idempotency key.
@@ -2118,7 +2131,12 @@ impl Client {
                     [client_message_id],
                 ).map_err(text)?;
                 self.sync()?;
-                return self.send_text_with_id(room_id, plaintext, client_message_id);
+                return self.send_text_with_id_inner(
+                    room_id,
+                    plaintext,
+                    client_message_id,
+                    rebase_attempts - 1,
+                );
             }
             Err(error) => return Err(error),
         };
