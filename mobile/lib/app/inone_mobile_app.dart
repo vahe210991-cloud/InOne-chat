@@ -4,7 +4,6 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:path_provider/path_provider.dart';
 
 import '../core/data/inone_profile.dart';
 import '../core/data/inone_public_config.dart';
@@ -631,7 +630,12 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         _notice('Размер вложения должен быть от 1 байта до 50 МиБ.');
         return;
       }
-      final bytes = await selected.xFile.readAsBytes();
+      final selectedPath = selected.path;
+      if (selectedPath == null || selectedPath.isEmpty) {
+        _notice('Система не предоставила доступ к выбранному файлу.');
+        return;
+      }
+      final bytes = await File(selectedPath).readAsBytes();
       try {
         if (bytes.isEmpty || bytes.length > maximumBytes) {
           _notice('Файл пустой или превышает допустимый размер.');
@@ -664,16 +668,15 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         }
       }
       final bytes = await _session.downloadMlsAttachment(fileId);
-      final support = await getApplicationSupportDirectory();
-      final directory = Directory('${support.path}/inone/downloads');
-      await directory.create(recursive: true);
       final safeName = (rawName ?? 'attachment')
           .replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
-      final safeId = fileId.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
-      final file = File('${directory.path}/$safeId-$safeName');
-      await file.writeAsBytes(bytes, flush: true);
-      if (mounted) {
-        _notice('Вложение расшифровано и сохранено в защищённом каталоге приложения.');
+      final savedPath = await FilePicker.platform.saveFile(
+        dialogTitle: 'Сохранить расшифрованное вложение',
+        fileName: safeName,
+        bytes: bytes,
+      );
+      if (savedPath != null && mounted) {
+        _notice('Расшифрованное вложение сохранено: $savedPath');
       }
     } catch (error) {
       _notice('Не удалось получить вложение: $error');
