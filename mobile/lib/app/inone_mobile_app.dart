@@ -475,7 +475,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     final directory = await _documentPreviewDirectory();
     final safeName = document.name.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
     final file = File(
-      '${directory.path}${Platform.pathSeparator}${_selectedAdminRequest!.id}_'
+      '${directory.path}${Platform.pathSeparator}${requestId}_'
       '${document.id}_$safeName',
     );
     await file.writeAsBytes(bytes, flush: true);
