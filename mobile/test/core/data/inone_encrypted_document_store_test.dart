@@ -6,16 +6,17 @@ import 'package:inone_mobile/core/data/inone_encrypted_document_store.dart';
 
 void main() {
   late Directory root;
-  late String? storedKey;
+  late Map<String, String> storedKeys;
   late InOneEncryptedDocumentStore store;
 
   setUp(() async {
     root = await Directory.systemTemp.createTemp('inone-documents-');
-    storedKey = null;
+    storedKeys = <String, String>{};
     store = InOneEncryptedDocumentStore(
       rootDirectory: () async => root,
-      readKey: () async => storedKey,
-      writeKey: (value) async => storedKey = value,
+      readKey: (keyName) async => storedKeys[keyName],
+      writeKey: (keyName, value) async => storedKeys[keyName] = value,
+      deleteKey: (keyName) async => storedKeys.remove(keyName),
     );
   });
 
@@ -37,7 +38,7 @@ void main() {
     final ciphertext = await file.readAsBytes();
     expect(base64Encode(ciphertext), isNot(contains(base64Encode(plaintext))));
     expect(ciphertext, isNot(plaintext));
-    expect(storedKey, isNotNull);
+    expect(storedKeys, hasLength(1));
 
     final restored = await store.read(
       ownerUserId: '@owner:inone.test',
@@ -128,6 +129,77 @@ void main() {
       ),
       throwsA(anything),
     );
+  });
+
+
+  test('purges one account key and ciphertext without affecting another account', () async {
+    final first = await store.save(
+      ownerUserId: '@owner:inone.test',
+      requestId: 'request-123',
+      documentId: 'document-1',
+      filename: 'owner.pdf',
+      bytes: utf8.encode('owner private document'),
+    );
+    final second = await store.save(
+      ownerUserId: '@other:inone.test',
+      requestId: 'request-123',
+      documentId: 'document-2',
+      filename: 'other.pdf',
+      bytes: utf8.encode('other private document'),
+    );
+    expect(storedKeys, hasLength(2));
+
+    await store.purgeAccount('@owner:inone.test');
+
+    expect(await first.exists(), isFalse);
+    expect(await second.exists(), isTrue);
+    expect(storedKeys, hasLength(1));
+    await expectLater(
+      store.read(
+        ownerUserId: '@owner:inone.test',
+        requestId: 'request-123',
+        documentId: 'document-1',
+        filename: 'owner.pdf',
+      ),
+      throwsA(anything),
+    );
+    expect(
+      await store.read(
+        ownerUserId: '@other:inone.test',
+        requestId: 'request-123',
+        documentId: 'document-2',
+        filename: 'other.pdf',
+      ),
+      utf8.encode('other private document'),
+    );
+  });
+
+  test('purge waits for an in-flight save and cannot leave a resurrected key or file', () async {
+    final save = store.save(
+      ownerUserId: '@owner:inone.test',
+      requestId: 'request-123',
+      documentId: 'document-race',
+      filename: 'race.pdf',
+      bytes: utf8.encode('race document'),
+    );
+    final purge = store.purgeAccount('@owner:inone.test');
+    await save;
+    await purge;
+
+    expect(storedKeys, isEmpty);
+    final ownerDirectory = Directory(
+      '${root.path}${Platform.pathSeparator}InOne'
+      '${Platform.pathSeparator}organization-documents',
+    );
+    if (await ownerDirectory.exists()) {
+      expect(await ownerDirectory.list(recursive: true).toList(), isEmpty);
+    }
+  });
+
+  test('purge is idempotent when account has no local documents or key', () async {
+    await store.purgeAccount('@empty:inone.test');
+    await store.purgeAccount('@empty:inone.test');
+    expect(storedKeys, isEmpty);
   });
 
   test('rejects path-like identifiers and empty documents', () async {

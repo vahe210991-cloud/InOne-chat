@@ -50,14 +50,14 @@ void main() {
   });
 
   testWidgets('PS-02 exposes decision navigation to owner only', (tester) async {
-    Future<InOneFailure?> noDownload(InOneDocument document) async => null;
+    Future<InOneFailure?> noOpen(InOneDocument document) async => null;
     Widget screen({required bool isOwner}) => MaterialApp(
           theme: InOneTheme.light(),
           home: InOneRequestAdminDetailsScreen(
             request: pending,
             documents: const [],
             isOwner: isOwner,
-            onDownload: noDownload,
+            onOpen: noOpen,
             onDecide: () {},
             onBack: () {},
             onMenu: () {},
@@ -71,6 +71,27 @@ void main() {
     await tester.pumpWidget(screen(isOwner: true));
     await tester.pumpAndSettle();
     expect(find.text('Անցնել որոշմանը'), findsOneWidget);
+  });
+
+  testWidgets('PS-02 opens a document through the explicit open action', (tester) async {
+    var opened = false;
+    await tester.pumpWidget(MaterialApp(
+      theme: InOneTheme.light(),
+      home: Scaffold(
+        body: InOneDocumentRow(
+          document: const InOneDocument(
+            id: 'document-1',
+            name: 'registration.pdf',
+            typeLabel: 'PDF · 12 КБ',
+            mimeType: 'application/pdf',
+          ),
+          onOpen: () => opened = true,
+        ),
+      ),
+    ));
+    expect(find.text('Բացել'), findsOneWidget);
+    await tester.tap(find.text('Բացել'));
+    expect(opened, isTrue);
   });
 
   testWidgets('PS-03 asks for confirmation before submitting an owner decision', (tester) async {

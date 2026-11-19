@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -15,48 +16,81 @@ class InOneEncryptedDocumentStore {
   InOneEncryptedDocumentStore({
     FlutterSecureStorage? secureStorage,
     Future<Directory> Function()? rootDirectory,
-    Future<String?> Function()? readKey,
-    Future<void> Function(String value)? writeKey,
+    Future<String?> Function(String keyName)? readKey,
+    Future<void> Function(String keyName, String value)? writeKey,
+    Future<void> Function(String keyName)? deleteKey,
   })  : _secureStorage = secureStorage ?? const FlutterSecureStorage(),
         _rootDirectory = rootDirectory ?? getApplicationSupportDirectory,
         _readKeyOverride = readKey,
-        _writeKeyOverride = writeKey;
+        _writeKeyOverride = writeKey,
+        _deleteKeyOverride = deleteKey;
 
-  static const _keyName = 'inone.organization_document_key.v1';
+  static const _keyNamePrefix = 'inone.organization_document_key.v1.';
   static const List<int> _magic = [0x49, 0x4e, 0x31, 0x44, 0x4f, 0x43, 0x30, 0x31];
   static const _nonceLength = 12;
   static const _macLength = 16;
 
   final FlutterSecureStorage _secureStorage;
   final Future<Directory> Function() _rootDirectory;
-  final Future<String?> Function()? _readKeyOverride;
-  final Future<void> Function(String value)? _writeKeyOverride;
+  final Future<String?> Function(String keyName)? _readKeyOverride;
+  final Future<void> Function(String keyName, String value)? _writeKeyOverride;
+  final Future<void> Function(String keyName)? _deleteKeyOverride;
   final AesGcm _algorithm = AesGcm.with256bits();
-  Future<SecretKey>? _keyInFlight;
+  final Map<String, Future<SecretKey>> _keyInFlight = {};
+  final Map<String, Future<void>> _ownerQueues = {};
 
-  Future<String?> _readKey() =>
-      _readKeyOverride?.call() ?? _secureStorage.read(key: _keyName);
-
-  Future<void> _writeKey(String value) =>
-      _writeKeyOverride?.call(value) ?? _secureStorage.write(key: _keyName, value: value);
-
-  Future<SecretKey> _loadKey() {
-    final active = _keyInFlight;
-    if (active != null) return active;
-    final operation = _loadKeyOnce();
-    _keyInFlight = operation;
-    return operation.whenComplete(() {
-      if (identical(_keyInFlight, operation)) _keyInFlight = null;
-    });
+  Future<T> _serializeOwner<T>(String ownerUserId, Future<T> Function() operation) async {
+    final previous = _ownerQueues[ownerUserId] ?? Future<void>.value();
+    final completed = Completer<void>();
+    final tail = completed.future;
+    _ownerQueues[ownerUserId] = tail;
+    try {
+      await previous;
+      return await operation();
+    } finally {
+      completed.complete();
+      if (identical(_ownerQueues[ownerUserId], tail)) _ownerQueues.remove(ownerUserId);
+    }
   }
 
-  Future<SecretKey> _loadKeyOnce() async {
-    var encoded = await _readKey();
+  Future<String> _ownerKey(String ownerUserId) async {
+    final digest = await Sha256().hash(utf8.encode(ownerUserId));
+    final hex = digest.bytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
+    return hex;
+  }
+
+  Future<String> _secureKeyName(String ownerUserId) async =>
+      '$_keyNamePrefix${await _ownerKey(ownerUserId)}';
+
+  Future<String?> _readKey(String keyName) =>
+      _readKeyOverride?.call(keyName) ?? _secureStorage.read(key: keyName);
+
+  Future<void> _writeKey(String keyName, String value) =>
+      _writeKeyOverride?.call(keyName, value) ?? _secureStorage.write(key: keyName, value: value);
+
+  Future<void> _deleteKey(String keyName) =>
+      _deleteKeyOverride?.call(keyName) ?? _secureStorage.delete(key: keyName);
+
+  Future<SecretKey> _loadKey(String ownerUserId) async {
+    final keyName = await _secureKeyName(ownerUserId);
+    final active = _keyInFlight[keyName];
+    if (active != null) return active;
+    final operation = _loadKeyOnce(keyName);
+    _keyInFlight[keyName] = operation;
+    try {
+      return await operation;
+    } finally {
+      if (identical(_keyInFlight[keyName], operation)) _keyInFlight.remove(keyName);
+    }
+  }
+
+  Future<SecretKey> _loadKeyOnce(String keyName) async {
+    var encoded = await _readKey(keyName);
     if (encoded == null) {
       final random = Random.secure();
       final bytes = List<int>.generate(32, (_) => random.nextInt(256));
       encoded = base64Encode(bytes);
-      await _writeKey(encoded);
+      await _writeKey(keyName, encoded);
     }
     final bytes = base64Decode(encoded);
     if (bytes.length != 32) {
@@ -93,13 +127,19 @@ class InOneEncryptedDocumentStore {
         'InOne|organization-document|v1|$ownerUserId|$requestId|$documentId|$filename',
       );
 
-  Future<File> _file(String requestId, String documentId) async {
+  Future<Directory> _ownerDirectory(String ownerUserId) async {
     final root = await _rootDirectory();
-    final directory = Directory(
+    final ownerKey = await _ownerKey(ownerUserId);
+    return Directory(
       '${root.path}${Platform.pathSeparator}InOne'
       '${Platform.pathSeparator}organization-documents'
-      '${Platform.pathSeparator}$requestId',
+      '${Platform.pathSeparator}$ownerKey',
     );
+  }
+
+  Future<File> _file(String ownerUserId, String requestId, String documentId) async {
+    final ownerDirectory = await _ownerDirectory(ownerUserId);
+    final directory = Directory('${ownerDirectory.path}${Platform.pathSeparator}$requestId');
     await directory.create(recursive: true);
     return File(
       '${directory.path}${Platform.pathSeparator}$documentId.in1doc',
@@ -113,13 +153,30 @@ class InOneEncryptedDocumentStore {
     required String documentId,
     required String filename,
     required List<int> bytes,
+  }) => _serializeOwner(
+        ownerUserId,
+        () => _save(
+          ownerUserId: ownerUserId,
+          requestId: requestId,
+          documentId: documentId,
+          filename: filename,
+          bytes: bytes,
+        ),
+      );
+
+  Future<File> _save({
+    required String ownerUserId,
+    required String requestId,
+    required String documentId,
+    required String filename,
+    required List<int> bytes,
   }) async {
     _validateIdentity(ownerUserId, requestId, documentId, filename);
     if (bytes.isEmpty) {
       throw ArgumentError.value(bytes, 'bytes', 'Document is empty');
     }
 
-    final secretKey = await _loadKey();
+    final secretKey = await _loadKey(ownerUserId);
     final encrypted = await _algorithm.encrypt(
       bytes,
       secretKey: secretKey,
@@ -132,7 +189,7 @@ class InOneEncryptedDocumentStore {
       ...encrypted.mac.bytes,
       ...encrypted.cipherText,
     ];
-    final file = await _file(requestId, documentId);
+    final file = await _file(ownerUserId, requestId, documentId);
     await file.writeAsBytes(envelope, flush: true);
     return file;
   }
@@ -143,9 +200,24 @@ class InOneEncryptedDocumentStore {
     required String requestId,
     required String documentId,
     required String filename,
+  }) => _serializeOwner(
+        ownerUserId,
+        () => _read(
+          ownerUserId: ownerUserId,
+          requestId: requestId,
+          documentId: documentId,
+          filename: filename,
+        ),
+      );
+
+  Future<List<int>> _read({
+    required String ownerUserId,
+    required String requestId,
+    required String documentId,
+    required String filename,
   }) async {
     _validateIdentity(ownerUserId, requestId, documentId, filename);
-    final file = await _file(requestId, documentId);
+    final file = await _file(ownerUserId, requestId, documentId);
     final envelope = await file.readAsBytes();
     final minimumLength = _magic.length + _nonceLength + _macLength + 1;
     if (envelope.length < minimumLength || !_matchesMagic(envelope)) {
@@ -162,7 +234,7 @@ class InOneEncryptedDocumentStore {
     );
     return _algorithm.decrypt(
       secretBox,
-      secretKey: await _loadKey(),
+      secretKey: await _loadKey(ownerUserId),
       aad: _aad(ownerUserId, requestId, documentId, filename),
     );
   }
@@ -175,6 +247,20 @@ class InOneEncryptedDocumentStore {
   }
 
   Future<void> delete({
+    required String ownerUserId,
+    required String requestId,
+    required String documentId,
+  }) => _serializeOwner(
+        ownerUserId,
+        () => _delete(
+          ownerUserId: ownerUserId,
+          requestId: requestId,
+          documentId: documentId,
+        ),
+      );
+
+  Future<void> _delete({
+    required String ownerUserId,
     required String requestId,
     required String documentId,
   }) async {
@@ -182,7 +268,33 @@ class InOneEncryptedDocumentStore {
     if (!safeId.hasMatch(requestId) || !safeId.hasMatch(documentId)) {
       throw ArgumentError('Invalid organization request or document identifier');
     }
-    final file = await _file(requestId, documentId);
+    final file = await _file(ownerUserId, requestId, documentId);
     if (await file.exists()) await file.delete();
+  }
+
+  /// Irrevocably removes one account's local document files and its encryption key.
+  /// Other accounts on the same installation retain independent keys and files.
+  Future<void> purgeAccount(String ownerUserId) =>
+      _serializeOwner(ownerUserId, () => _purgeAccount(ownerUserId));
+
+  Future<void> _purgeAccount(String ownerUserId) async {
+    if (ownerUserId.trim().isEmpty || ownerUserId.length > 256) {
+      throw ArgumentError.value(ownerUserId, 'ownerUserId', 'Invalid document owner');
+    }
+    final keyName = await _secureKeyName(ownerUserId);
+    final active = _keyInFlight[keyName];
+    if (active != null) {
+      try {
+        await active;
+      } catch (_) {
+        // A failed initialization must not prevent key deletion.
+      }
+    }
+    // Delete the key first: if file cleanup is interrupted, remaining ciphertext
+    // is cryptographically inaccessible rather than recoverable on next login.
+    await _deleteKey(keyName);
+    _keyInFlight.remove(keyName);
+    final directory = await _ownerDirectory(ownerUserId);
+    if (await directory.exists()) await directory.delete(recursive: true);
   }
 }
