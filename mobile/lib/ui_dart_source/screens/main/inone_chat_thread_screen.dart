@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../models/inone_models.dart';
@@ -23,7 +25,7 @@ class InOneChatThreadScreen extends StatefulWidget {
   final List<InOneThreadItem> items;
 
   /// Отправка текста. Пустые сообщения не отправляются.
-  final ValueChanged<String> onSend;
+  final Future<bool> Function(String) onSend;
   final VoidCallback onBack;
   final VoidCallback? onCall;
   final VoidCallback? onMore;
@@ -36,6 +38,7 @@ class InOneChatThreadScreen extends StatefulWidget {
 
 class _InOneChatThreadScreenState extends State<InOneChatThreadScreen> {
   final TextEditingController _input = TextEditingController();
+  bool _sending = false;
 
   @override
   void dispose() {
@@ -43,11 +46,16 @@ class _InOneChatThreadScreenState extends State<InOneChatThreadScreen> {
     super.dispose();
   }
 
-  void _send() {
+  Future<void> _send() async {
     final text = _input.text.trim();
-    if (text.isEmpty) return;
-    widget.onSend(text);
-    _input.clear();
+    if (text.isEmpty || _sending) return;
+    setState(() => _sending = true);
+    try {
+      final accepted = await widget.onSend(text);
+      if (accepted && mounted) _input.clear();
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
   }
 
   @override
@@ -167,7 +175,7 @@ class _InOneChatThreadScreenState extends State<InOneChatThreadScreen> {
             child: TextField(
               controller: _input,
               textInputAction: TextInputAction.send,
-              onSubmitted: (_) => _send(),
+              onSubmitted: (_) => unawaited(_send()),
               cursorColor: c.link,
               textAlignVertical: TextAlignVertical.center,
               style: InOneText.style(13.5, FontWeight.w400, c.text),
@@ -192,7 +200,7 @@ class _InOneChatThreadScreenState extends State<InOneChatThreadScreen> {
           button: true,
           label: 'Send',
           child: GestureDetector(
-            onTap: _send,
+            onTap: () => unawaited(_send()),
             child: Container(
               width: 44,
               height: 44,
