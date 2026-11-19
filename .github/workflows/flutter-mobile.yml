@@ -130,6 +130,12 @@ jobs:
       - name: Remove ephemeral HTML reference assets from the mobile package
         run: rm -rf assets
       - run: flutter pub get
+      - name: Export resolved mobile dependency lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: inone-mobile-pubspec-lock
+          path: mobile/pubspec.lock
+          if-no-files-found: error
       - name: Verify native-only production runtime
         run: node tool/verify_native_runtime.mjs
       - name: Verify committed Rust lockfile
