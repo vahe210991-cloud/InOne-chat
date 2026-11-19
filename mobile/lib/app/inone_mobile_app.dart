@@ -57,6 +57,8 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   bool _initializing = true;
   final Completer<void> _initializationComplete = Completer<void>();
   bool _recoveryLinkInFlight = false;
+  bool _documentViewerHandOffActive = false;
+  Future<void>? _revocationCleanupInFlight;
   final Set<int> _handledRecoveryLinkFingerprints = <int>{};
 
   @override
@@ -108,6 +110,14 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _documentViewerHandOffActive) {
+      _documentViewerHandOffActive = false;
+      unawaited(_clearDocumentPreviewCache());
+    }
+  }
+
+  @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _session.dispose();
@@ -150,11 +160,58 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     );
   }
 
+  Future<void> _handleUnauthorizedSession() {
+    final active = _revocationCleanupInFlight;
+    if (active != null) return active;
+    final operation = _handleUnauthorizedSessionOnce();
+    _revocationCleanupInFlight = operation;
+    return operation.whenComplete(() {
+      if (identical(_revocationCleanupInFlight, operation)) {
+        _revocationCleanupInFlight = null;
+      }
+    });
+  }
+
+  Future<void> _handleUnauthorizedSessionOnce() async {
+    final ownerUserId = _session.userId ?? _profile?.userId;
+    if (ownerUserId == null) return;
+    try {
+      await _documentStore.purgeAccount(ownerUserId);
+    } catch (_) {
+      // Continue with the remaining local cleanup steps.
+    }
+    try {
+      await _clearDocumentPreviewCache();
+    } catch (_) {
+      // App startup retries removal of the private temporary cache.
+    }
+    try {
+      await _session.logout();
+    } catch (_) {
+      // A revoked device cannot necessarily complete a remote logout.
+    }
+    if (mounted) {
+      setState(() {
+        _profile = null;
+        _organizations = const [];
+        _selectedOrganization = null;
+        _selectedAdminRequest = null;
+        _adminRequests = const [];
+        _adminDocuments = const [];
+        _screen = 'login';
+      });
+      _notice('Сессия отозвана. Локальные документы и ключи удалены. Войдите снова.');
+    }
+  }
+
   Future<InOneFailure?> _runApi(Future<Object?> Function() operation) async {
     try {
       await operation();
       return null;
     } catch (error) {
+      if (error is ApiException && error.statusCode == 401) {
+        await _handleUnauthorizedSession();
+      }
       return _toFailure(error);
     }
   }
@@ -290,35 +347,8 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       });
     } catch (error) {
       if (error is ApiException && error.statusCode == 401) {
-        final revokedUserId = _session.userId;
-        if (revokedUserId != null) {
-          try {
-            await _documentStore.purgeAccount(revokedUserId);
-          } catch (_) {
-            // Continue clearing the session even if filesystem cleanup is interrupted.
-          }
-          try {
-            await _clearDocumentPreviewCache();
-          } catch (_) {
-            // A later app start retries the temporary-cache cleanup.
-          }
-          try {
-            await _session.logout();
-          } catch (_) {
-            // A server-revoked session may reject remote logout; local purge is mandatory.
-          }
-          if (mounted) {
-            setState(() {
-              _profile = null;
-              _adminRequests = const [];
-              _adminDocuments = const [];
-              _selectedAdminRequest = null;
-              _screen = 'login';
-            });
-            _notice('Сессия отозвана. Локальные документы и ключи удалены. Войдите снова.');
-          }
-          return;
-        }
+        await _handleUnauthorizedSession();
+        if (_session.userId == null) return;
       }
       if (mounted) setState(() => _screen = 'loadError');
     }
@@ -371,6 +401,10 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         _screen = 'adminRequests';
       });
     } catch (error) {
+      if (error is ApiException && error.statusCode == 401) {
+        await _handleUnauthorizedSession();
+        return;
+      }
       if (!mounted) return;
       final failure = _toFailure(error);
       setState(() => _screen = 'adminRequestsError');
@@ -425,6 +459,10 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         _screen = 'adminRequestDetails';
       });
     } catch (error) {
+      if (error is ApiException && error.statusCode == 401) {
+        await _handleUnauthorizedSession();
+        return;
+      }
       if (!mounted) return;
       final failure = _toFailure(error);
       setState(() => _screen = 'adminRequestsError');
@@ -479,13 +517,22 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       '${document.id}_$safeName',
     );
     await file.writeAsBytes(bytes, flush: true);
-    final result = await OpenFilex.open(file.path, type: document.mimeType);
-    if (result.type != ResultType.done) {
-      throw StateError('Native document viewer failed: ${result.message}');
+    _documentViewerHandOffActive = true;
+    try {
+      final result = await OpenFilex.open(file.path, type: document.mimeType);
+      if (result.type != ResultType.done) {
+        _documentViewerHandOffActive = false;
+        if (await file.exists()) await file.delete();
+        throw StateError('Native document viewer failed: ${result.message}');
+      }
+    } catch (_) {
+      _documentViewerHandOffActive = false;
+      if (await file.exists()) await file.delete();
+      rethrow;
     }
   }
 
-  Future<InOneFailure?> _downloadAdminDocument(InOneDocument document) async {
+  Future<InOneFailure?> _openAdminDocument(InOneDocument document) async {
     final request = _selectedAdminRequest;
     final ownerUserId = _session.userId;
     if (request == null || ownerUserId == null || !(_profile?.canViewPlatformRequests ?? false)) {
@@ -555,6 +602,9 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       if (mounted) _notice('Документ открыт из зашифрованного локального хранилища.');
       return null;
     } catch (error) {
+      if (error is ApiException && error.statusCode == 401) {
+        await _handleUnauthorizedSession();
+      }
       return _toFailure(error);
     }
   }
