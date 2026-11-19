@@ -2390,7 +2390,10 @@ impl Client {
                         return Err(format!("временная ошибка сохранения processed marker: {error}"));
                     }
                     quarantine.commit().map_err(|error| {
-                        format!("временная ошибка фиксации unreadable inbox item: {}", text(error))
+                        format!(
+                            "временная ошибка фиксации unreadable inbox item: {}",
+                            text(error)
+                        )
                     })?;
                     self.processed.insert(event_id.to_string());
                     out.push(incoming);
