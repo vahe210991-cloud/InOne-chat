@@ -228,8 +228,9 @@ impl MlsSession {
         mime_type: String,
         plaintext: Vec<u8>,
     ) -> Result<String, String> {
+        let plaintext = Zeroizing::new(plaintext);
         self.with_client(|client| {
-            client.send_attachment(&room_id, &name, &mime_type, &plaintext)
+            client.send_attachment(&room_id, &name, &mime_type, plaintext.as_slice())
         })
     }
 
