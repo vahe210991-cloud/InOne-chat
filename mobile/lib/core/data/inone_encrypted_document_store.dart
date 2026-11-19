@@ -251,9 +251,14 @@ class InOneEncryptedDocumentStore {
         await for (final entity in directory.list(followLinks: false)) {
           if (entity is! Directory) continue;
           final name = entity.uri.pathSegments.where((part) => part.isNotEmpty).last;
-          // SHA-256 base64url owner scopes are exactly 43 characters. Older
-          // directories were keyed directly by the 1..128-character request ID.
-          if (name.length != 43) {
+          // New owner scopes contain request subdirectories; legacy request
+          // directories contain document files directly. Inspect the shape rather
+          // than relying only on the name length: a legacy request ID can also be
+          // 43 characters long.
+          final children = await entity.list(followLinks: false).toList();
+          final isOwnerScope = name.length == 43 &&
+              children.every((child) => child is Directory);
+          if (!isOwnerScope) {
             try {
               await entity.delete(recursive: true);
             } catch (error) {
