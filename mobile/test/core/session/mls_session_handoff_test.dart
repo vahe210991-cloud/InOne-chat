@@ -586,6 +586,9 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
       ];
 
   @override
+  Future<List<MlsPendingOutgoing>> pendingOutgoing(String roomId) async => const [];
+
+  @override
   Future<void> acknowledgeIncoming(List<String> eventIds) async {
     acknowledgedEventIds = List<String>.from(eventIds);
   }
