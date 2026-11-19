@@ -79,7 +79,6 @@ pub(crate) fn ensure_android_context_initialized() -> Result<(), String> {
     Ok(())
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::validate_android_context_initialized;
