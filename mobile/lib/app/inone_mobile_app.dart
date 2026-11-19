@@ -1,12 +1,14 @@
 import 'dart:async';
-import 'dart:io' show Platform;
+import 'dart:io' show Directory, File, Platform;
 
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../core/data/inone_profile.dart';
 import '../core/data/inone_public_config.dart';
 import '../core/data/inone_organization.dart';
 import '../core/data/inone_encrypted_document_store.dart';
+import '../core/data/inone_document_preview.dart';
 import '../core/data/inone_repositories.dart';
 import '../core/mls/rust_mls_session_bridge.dart';
 import '../core/network/api_environment.dart';
@@ -35,6 +37,9 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   late final InOneSession _session;
   late final InOneRepositories _repositories;
   late final InOneEncryptedDocumentStore _documentStore;
+  late final InOneDocumentPreview _documentPreview;
+  String? _documentOwnerId;
+  bool _wasAuthenticated = false;
 
   String _screen = 'login';
   String _registrationEmail = '';
@@ -72,7 +77,10 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     );
     _repositories = InOneRepositories(_session);
     _documentStore = InOneEncryptedDocumentStore();
+    _documentPreview = InOneDocumentPreview(store: _documentStore);
+    _session.addListener(_handleSessionStateChanged);
     WidgetsBinding.instance.addObserver(this);
+    unawaited(_clearStaleDocumentPreviews());
     final initialRoute = WidgetsBinding.instance.platformDispatcher.defaultRouteName;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_handleRecoveryRoute(initialRoute));
@@ -100,8 +108,46 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _session.removeListener(_handleSessionStateChanged);
+    unawaited(_documentPreview.clear());
     _session.dispose();
     super.dispose();
+  }
+
+  void _handleSessionStateChanged() {
+    if (_session.isAuthenticated) {
+      _wasAuthenticated = true;
+      _documentOwnerId ??= _profile?.userId ?? _session.userId;
+      return;
+    }
+    if (!_wasAuthenticated) return;
+    _wasAuthenticated = false;
+    final owner = _documentOwnerId ?? _profile?.userId ?? _session.userId;
+    _documentOwnerId = null;
+    if (owner != null) unawaited(_purgeOwnerDocuments(owner));
+  }
+
+  Future<void> _clearStaleDocumentPreviews() async {
+    try {
+      await _documentPreview.clear();
+    } catch (_) {
+      // A stale preview is never reused; cleanup is retried on resume/logout.
+    }
+  }
+
+  Future<void> _purgeOwnerDocuments(String ownerUserId) async {
+    try {
+      await _documentPreview.clear();
+    } finally {
+      await _documentStore.purgeOwner(ownerUserId);
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_clearStaleDocumentPreviews());
+    }
   }
 
   InOneFailure _toFailure(Object error) {
@@ -274,6 +320,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       if (!mounted) return;
       setState(() {
         _profile = profile;
+        _documentOwnerId = profile.userId;
         _organizations = organizations;
         _selectedOrganization = organizations.isEmpty ? null : organizations.first;
         _screen = 'messages';
@@ -413,7 +460,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
 
   Future<InOneFailure?> _downloadAdminDocument(InOneDocument document) async {
     final request = _selectedAdminRequest;
-    final ownerUserId = _session.userId;
+    final ownerUserId = _profile?.userId ?? _session.userId;
     if (request == null || ownerUserId == null || !(_profile?.canViewPlatformRequests ?? false)) {
       return const InOneFailure(
         InOneScreenState.error,
@@ -436,7 +483,20 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         filename: document.name,
         bytes: response.bodyBytes,
       );
-      if (mounted) _notice('Документ сохранён в зашифрованном локальном хранилище.');
+      final opened = await _documentPreview.open(
+        ownerUserId: ownerUserId,
+        requestId: request.id,
+        documentId: document.id,
+        filename: document.name,
+        mimeType: document.mimeType ?? responseType ?? 'application/octet-stream',
+      );
+      if (!opened) {
+        return const InOneFailure(
+          InOneScreenState.error,
+          message: 'На устройстве нет приложения для просмотра этого документа.',
+        );
+      }
+      if (mounted) _notice('Документ открыт в системном просмотрщике.');
       return null;
     } catch (error) {
       return _toFailure(error);
@@ -481,17 +541,29 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   }
 
   Future<InOneFailure?> _logout() async {
+    final owner = _documentOwnerId ?? _profile?.userId ?? _session.userId;
+    InOneFailure? failure;
     try {
       await _session.logout();
-      return null;
     } catch (error) {
-      return _toFailure(error);
+      failure = _toFailure(error);
+    } finally {
+      try {
+        await _documentPreview.clear();
+        if (owner != null) await _documentStore.purgeOwner(owner);
+      } catch (error) {
+        failure ??= _toFailure(error);
+      }
+      if (mounted) _finishLogout();
     }
+    return failure;
   }
 
   void _finishLogout() {
     setState(() {
       _profile = null;
+      _documentOwnerId = null;
+      _wasAuthenticated = false;
       _organizations = const [];
       _selectedOrganization = null;
       _systemStatus = null;
