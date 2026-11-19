@@ -83,7 +83,14 @@ jobs:
         run: test -s mobile/rust/Cargo.lock
       - name: Build iOS Keychain bridge target
         if: steps.bridge.outputs.available == 'true'
-        run: cargo build --locked --target aarch64-apple-ios --manifest-path mobile/rust/Cargo.toml
+        run: cargo build --target aarch64-apple-ios --manifest-path mobile/rust/Cargo.toml
+      - name: Export Cargo lockfile resolved by the iOS target build
+        if: steps.bridge.outputs.available == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: inone-mobile-rust-cargo-lock
+          path: mobile/rust/Cargo.lock
+          if-no-files-found: error
 
   rust-bridge:
     name: Persistent Flutter Rust bridge host tests
@@ -113,7 +120,7 @@ jobs:
         run: cargo fmt --manifest-path mobile/rust/Cargo.toml -- --check
       - name: Check bridge crate
         if: steps.bridge.outputs.available == 'true'
-        run: cargo check --locked --all-targets --manifest-path mobile/rust/Cargo.toml
+        run: cargo check --all-targets --manifest-path mobile/rust/Cargo.toml
       - name: Run bridge lifecycle and persistence tests
         if: steps.bridge.outputs.available == 'true'
-        run: cargo test --locked --no-fail-fast --manifest-path mobile/rust/Cargo.toml
+        run: cargo test --no-fail-fast --manifest-path mobile/rust/Cargo.toml
