@@ -245,6 +245,44 @@ fn offline_outbox_survives_process_restart_and_flushes_once() {
 
 
 #[test]
+fn sender_history_is_persisted_in_sqlcipher_and_survives_restart() {
+    let engine = start_engine();
+    let keys = MemoryKeyStore::default();
+    let alice_db = db("alice-sent-history");
+    let (access, refresh) = login_tokens(&engine.base, ALICE, "A_PHONE");
+    let mut alice = connect_with_session(
+        &engine.base, ALICE, "A_PHONE", &access, &refresh, &alice_db, &keys,
+    ).unwrap();
+    let mut bob = connect(&engine.base, BOB, PW, "B_PHONE", &db("bob-sent-history"), &keys).unwrap();
+    bob.ensure_key_packages(1).unwrap();
+    alice.create_room(ROOM).unwrap();
+    alice.invite(ROOM, BOB).unwrap();
+    assert!(bob.sync().unwrap().is_empty());
+
+    alice.enqueue_text(ROOM, "исходящее сообщение").unwrap();
+    assert_eq!(alice.flush_outbox().unwrap(), 1);
+    assert_eq!(
+        texts(&alice.messages_for_room(ROOM).unwrap()),
+        vec!["исходящее сообщение"],
+        "отправитель видит своё принятое сообщение в локальной истории"
+    );
+    drop(alice);
+
+    let resumed = resume_with_session(&engine.base, ALICE, "A_PHONE", &alice_db, &keys)
+        .expect("resume sender session");
+    assert_eq!(
+        texts(&resumed.messages_for_room(ROOM).unwrap()),
+        vec!["исходящее сообщение"],
+        "исходящая история остаётся после перезапуска"
+    );
+    assert_eq!(
+        texts(&bob.sync().unwrap()),
+        vec!["исходящее сообщение"],
+        "получатель получает ровно одно сообщение"
+    );
+}
+
+#[test]
 fn encrypted_inbox_survives_restart_until_explicit_acknowledgement() {
     let engine = start_engine();
     let proxy = start_proxy(&engine.base);
