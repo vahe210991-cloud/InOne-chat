@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -36,6 +37,21 @@ class InOneEncryptedDocumentStore {
   final Future<void> Function(String keyName)? _deleteKeyOverride;
   final AesGcm _algorithm = AesGcm.with256bits();
   final Map<String, Future<SecretKey>> _keyInFlight = {};
+  final Map<String, Future<void>> _ownerQueues = {};
+
+  Future<T> _serializeOwner<T>(String ownerUserId, Future<T> Function() operation) async {
+    final previous = _ownerQueues[ownerUserId] ?? Future<void>.value();
+    final completed = Completer<void>();
+    final tail = completed.future;
+    _ownerQueues[ownerUserId] = tail;
+    try {
+      await previous;
+      return await operation();
+    } finally {
+      completed.complete();
+      if (identical(_ownerQueues[ownerUserId], tail)) _ownerQueues.remove(ownerUserId);
+    }
+  }
 
   Future<String> _ownerKey(String ownerUserId) async {
     final digest = await Sha256().hash(utf8.encode(ownerUserId));
@@ -137,6 +153,23 @@ class InOneEncryptedDocumentStore {
     required String documentId,
     required String filename,
     required List<int> bytes,
+  }) => _serializeOwner(
+        ownerUserId,
+        () => _save(
+          ownerUserId: ownerUserId,
+          requestId: requestId,
+          documentId: documentId,
+          filename: filename,
+          bytes: bytes,
+        ),
+      );
+
+  Future<File> _save({
+    required String ownerUserId,
+    required String requestId,
+    required String documentId,
+    required String filename,
+    required List<int> bytes,
   }) async {
     _validateIdentity(ownerUserId, requestId, documentId, filename);
     if (bytes.isEmpty) {
@@ -163,6 +196,21 @@ class InOneEncryptedDocumentStore {
 
   /// Decrypts only after validating the envelope and authenticating its owner and metadata.
   Future<List<int>> read({
+    required String ownerUserId,
+    required String requestId,
+    required String documentId,
+    required String filename,
+  }) => _serializeOwner(
+        ownerUserId,
+        () => _read(
+          ownerUserId: ownerUserId,
+          requestId: requestId,
+          documentId: documentId,
+          filename: filename,
+        ),
+      );
+
+  Future<List<int>> _read({
     required String ownerUserId,
     required String requestId,
     required String documentId,
@@ -202,6 +250,19 @@ class InOneEncryptedDocumentStore {
     required String ownerUserId,
     required String requestId,
     required String documentId,
+  }) => _serializeOwner(
+        ownerUserId,
+        () => _delete(
+          ownerUserId: ownerUserId,
+          requestId: requestId,
+          documentId: documentId,
+        ),
+      );
+
+  Future<void> _delete({
+    required String ownerUserId,
+    required String requestId,
+    required String documentId,
   }) async {
     final safeId = RegExp(r'^[A-Za-z0-9_-]{1,128}$');
     if (!safeId.hasMatch(requestId) || !safeId.hasMatch(documentId)) {
@@ -213,7 +274,10 @@ class InOneEncryptedDocumentStore {
 
   /// Irrevocably removes one account's local document files and its encryption key.
   /// Other accounts on the same installation retain independent keys and files.
-  Future<void> purgeAccount(String ownerUserId) async {
+  Future<void> purgeAccount(String ownerUserId) =>
+      _serializeOwner(ownerUserId, () => _purgeAccount(ownerUserId));
+
+  Future<void> _purgeAccount(String ownerUserId) async {
     if (ownerUserId.trim().isEmpty || ownerUserId.length > 256) {
       throw ArgumentError.value(ownerUserId, 'ownerUserId', 'Invalid document owner');
     }
