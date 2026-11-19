@@ -229,6 +229,7 @@ void main() {
     expect(incoming, hasLength(1));
     expect(incoming.single.eventId, 'event-in-1');
     expect((await session.mlsMessagesForRoom('room-1')).single.text, 'received');
+    expect(await session.pendingMlsOutbox('room-1'), isEmpty);
     await session.acknowledgeMlsMessages(['event-in-1']);
     expect(bridge.acknowledgedEventIds, ['event-in-1']);
 
