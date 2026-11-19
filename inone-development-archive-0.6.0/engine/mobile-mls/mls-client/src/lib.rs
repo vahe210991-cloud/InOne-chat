@@ -2333,7 +2333,7 @@ impl Client {
                         .execute(
                             "INSERT OR IGNORE INTO client_undecryptable (event_id, room_id, reason)
                              VALUES (?1, ?2, ?3)",
-                            rusqlite::params![event_id, room_id, "MLS message is malformed"],
+                            rusqlite::params![event_id, room_id, "сообщение не разбирается"],
                         )
                         .map_err(text)?;
                     Ok(())
