@@ -13,6 +13,7 @@ if (!baseUrl || !Object.values(credentials).every((value) => typeof value === 's
     'Set INONE_STAGING_BASE_URL and all four INONE_STAGING_*_TOKEN variables; tokens are never printed.',
   );
 }
+assert.equal(new Set(Object.values(credentials)).size, 4, 'staging tokens must belong to four distinct accounts');
 const parsedBase = new URL(baseUrl);
 assert.equal(parsedBase.protocol, 'https:', 'staging authorization smoke test requires HTTPS');
 
