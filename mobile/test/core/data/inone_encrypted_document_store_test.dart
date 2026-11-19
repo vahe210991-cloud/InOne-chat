@@ -228,6 +228,26 @@ void main() {
         reason: 'the cleanup failure must not be reported as successful crypto-erasure');
   });
 
+  test('legacy cleanup removes old ciphertext even when legacy key deletion fails', () async {
+    final legacyDirectory = Directory('${root.path}${Platform.pathSeparator}InOne'
+        '${Platform.pathSeparator}organization-documents'
+        '${Platform.pathSeparator}legacy-request');
+    await legacyDirectory.create(recursive: true);
+    final legacyFile = File('${legacyDirectory.path}${Platform.pathSeparator}old.in1doc');
+    await legacyFile.writeAsBytes([1, 2, 3]);
+    final failingStore = InOneEncryptedDocumentStore(
+      rootDirectory: () async => root,
+      deleteLegacyKey: () async { throw StateError('secure storage unavailable'); },
+    );
+
+    await expectLater(
+      failingStore.purgeLegacyUnscopedData(),
+      throwsA(isA<StateError>()),
+    );
+    expect(await legacyFile.exists(), isFalse,
+        reason: 'legacy ciphertext must be removed even if key deletion cannot be confirmed');
+  });
+
   test('rejects modified ciphertext instead of returning unauthenticated bytes', () async {
     final file = await store.save(
       ownerUserId: '@owner:inone.test',

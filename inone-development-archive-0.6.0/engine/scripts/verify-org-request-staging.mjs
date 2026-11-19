@@ -23,8 +23,11 @@ const tokens = {
   owner: requireValue(ownerToken, 'INONE_STAGING_OWNER_TOKEN'),
   admin: requireValue(adminToken, 'INONE_STAGING_ADMIN_TOKEN'),
   user: requireValue(userToken, 'INONE_STAGING_USER_TOKEN'),
-  ...(outsiderToken ? { outsider: outsiderToken.trim() } : {}),
+  ...(outsiderToken?.trim() ? { outsider: outsiderToken.trim() } : {}),
 };
+if (new Set(Object.values(tokens)).size !== Object.keys(tokens).length) {
+  throw new Error('Each staging role must use a distinct principal token');
+}
 
 async function request(token, method, path, body) {
   const response = await fetch(new URL(path, base), {
