@@ -459,8 +459,6 @@ fn incoming_from_row(
             event_id,
             text: body.ok_or("в сохранённом сообщении отсутствует текст")?,
             mine,
-        
-        mine: false,
         }),
         "attachment" => {
             let body = body.ok_or("в сохранённом вложении отсутствуют метаданные")?;
@@ -477,13 +475,9 @@ fn incoming_from_row(
             let size = value.get("size").and_then(Value::as_u64)
                 .filter(|size| *size > 0 && *size <= 50 * 1024 * 1024 - 16)
                 .ok_or("в метаданных вложения некорректный размер")?;
-            Ok(Incoming::Attachment { room_id, event_id, file_id, name, mime_type, size, mine 
- mine: false,
- })
+            Ok(Incoming::Attachment { room_id, event_id, file_id, name, mime_type, size, mine })
         }
-        "unreadable" => Ok(Incoming::Unreadable { room_id, event_id, mine 
- mine: false,
- }),
+        "unreadable" => Ok(Incoming::Unreadable { room_id, event_id, mine }),
         _ => Err(format!("неизвестный тип локального сообщения: {kind}")),
     }
 }
