@@ -1,6 +1,7 @@
 //! Ядро клиента InOne на Rust: вход, ключевые пакеты, группы MLS, сообщения, догон после отсутствия,
 //! вход нового устройства по подтверждению и удаление отозванных устройств из групп.
 //! База устройства зашифрована (SQLCipher). Ключ передаёт платформа: Keychain на iOS, Keystore на Android.
+use std::borrow::Borrow;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -72,15 +73,33 @@ impl Codec for JsonCodec {
 }
 
 /// Провайдер OpenMLS устройства: криптография в памяти процесса, состояние групп — в зашифрованной базе.
-pub struct DeviceProvider {
-    crypto: RustCrypto,
-    storage: SqliteStorageProvider<JsonCodec, Arc<Connection>>,
+pub struct DeviceProvider<ConnectionRef = Arc<Connection>>
+where
+    ConnectionRef: Borrow<Connection>,
+{
+    crypto: Arc<RustCrypto>,
+    storage: SqliteStorageProvider<JsonCodec, ConnectionRef>,
 }
 
-impl OpenMlsProvider for DeviceProvider {
+impl<ConnectionRef> DeviceProvider<ConnectionRef>
+where
+    ConnectionRef: Borrow<Connection>,
+{
+    fn new(crypto: Arc<RustCrypto>, connection: ConnectionRef) -> Self {
+        Self {
+            crypto,
+            storage: SqliteStorageProvider::new(connection),
+        }
+    }
+}
+
+impl<ConnectionRef> OpenMlsProvider for DeviceProvider<ConnectionRef>
+where
+    ConnectionRef: Borrow<Connection>,
+{
     type CryptoProvider = RustCrypto;
     type RandProvider = RustCrypto;
-    type StorageProvider = SqliteStorageProvider<JsonCodec, Arc<Connection>>;
+    type StorageProvider = SqliteStorageProvider<JsonCodec, ConnectionRef>;
 
     fn storage(&self) -> &Self::StorageProvider {
         &self.storage
@@ -90,6 +109,14 @@ impl OpenMlsProvider for DeviceProvider {
     }
     fn rand(&self) -> &Self::RandProvider {
         &self.crypto
+    }
+}
+
+struct TransactionConnection<'a, 'conn>(&'a rusqlite::Transaction<'conn>);
+
+impl Borrow<Connection> for TransactionConnection<'_, '_> {
+    fn borrow(&self) -> &Connection {
+        self.0
     }
 }
 
@@ -106,7 +133,7 @@ pub struct Client {
     user_id: String,
     device_id: String,
     agent: ureq::Agent,
-    provider: DeviceProvider,
+    provider: DeviceProvider<Arc<Connection>>,
     /// Соединение с той же базой для собственных таблиц клиента (комнаты, обработанные события, метаданные).
     meta: Arc<Connection>,
     signer: SignatureKeyPair,
@@ -135,6 +162,70 @@ fn open_db(path: &str, key: &[u8; 32]) -> Result<Connection, String> {
     })
     .map_err(|_| "неверный ключ базы устройства или файл повреждён".to_string())?;
     Ok(conn)
+}
+
+const MAX_PENDING_INBOX_ITEMS: i64 = 10_000;
+const MAX_PENDING_INBOX_BYTES: i64 = 32 * 1024 * 1024;
+const ACKNOWLEDGED_INBOX_RETENTION_MS: i64 = 30 * 24 * 60 * 60 * 1000;
+
+fn insert_incoming_record(db: &Connection, incoming: &Incoming) -> Result<(), String> {
+    let (event_id, room_id, kind, body): (&str, &str, &str, Option<&str>) = match incoming {
+        Incoming::Text { room_id, event_id, text } => (event_id, room_id, "text", Some(text)),
+        Incoming::Unreadable { room_id, event_id } => (event_id, room_id, "unreadable", None),
+    };
+    let exists: bool = db
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM client_inbox WHERE event_id = ?1)",
+            [event_id],
+            |row| row.get(0),
+        )
+        .map_err(text)?;
+    if exists {
+        return Ok(());
+    }
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64;
+    db.execute(
+        "DELETE FROM client_inbox
+         WHERE acknowledged = 1 AND acknowledged_at IS NOT NULL AND acknowledged_at < ?1",
+        [now - ACKNOWLEDGED_INBOX_RETENTION_MS],
+    )
+    .map_err(text)?;
+
+    let (pending_count, pending_bytes): (i64, i64) = db
+        .query_row(
+            "SELECT COUNT(*), COALESCE(SUM(LENGTH(body)), 0)
+             FROM client_inbox WHERE acknowledged = 0",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .map_err(text)?;
+    let body_bytes = body.map_or(0, |value| value.len()) as i64;
+    if pending_count >= MAX_PENDING_INBOX_ITEMS
+        || pending_bytes.saturating_add(body_bytes) > MAX_PENDING_INBOX_BYTES
+    {
+        return Err("durable inbox capacity reached; event remains unprocessed for retry".to_string());
+    }
+
+    db.execute(
+        "INSERT OR IGNORE INTO client_inbox (event_id, room_id, kind, body, acknowledged, created_at)
+         VALUES (?1, ?2, ?3, ?4, 0, ?5)",
+        rusqlite::params![event_id, room_id, kind, body, now],
+    )
+    .map_err(text)?;
+    Ok(())
+}
+
+fn insert_processed_event(db: &Connection, event_id: &str) -> Result<(), String> {
+    db.execute(
+        "INSERT OR IGNORE INTO client_processed (event_id) VALUES (?1)",
+        [event_id],
+    )
+    .map_err(text)?;
+    Ok(())
 }
 
 fn request(
@@ -400,16 +491,24 @@ fn build_client(
     // One shared connection makes MLS state transitions and their journal rows
     // part of the same SQLite transaction.
     let connection = Arc::new(open_db(db_path, db_key)?);
-    let storage = SqliteStorageProvider::<JsonCodec, Arc<Connection>>::new(Arc::clone(&connection));
-    let provider = DeviceProvider {
-        crypto: RustCrypto::default(),
-        storage,
-    };
+    let provider = DeviceProvider::new(Arc::new(RustCrypto::default()), Arc::clone(&connection));
     let meta = connection;
     meta.execute_batch(
         "CREATE TABLE IF NOT EXISTS client_meta (key TEXT PRIMARY KEY, value BLOB NOT NULL);
          CREATE TABLE IF NOT EXISTS client_rooms (room_id TEXT PRIMARY KEY, join_epoch INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS client_processed (event_id TEXT PRIMARY KEY);
+         CREATE TABLE IF NOT EXISTS client_inbox (
+           seq INTEGER PRIMARY KEY AUTOINCREMENT,
+           event_id TEXT NOT NULL UNIQUE,
+           room_id TEXT NOT NULL,
+           kind TEXT NOT NULL CHECK (kind IN ('text', 'unreadable')),
+           body TEXT,
+           acknowledged INTEGER NOT NULL DEFAULT 0 CHECK (acknowledged IN (0, 1)),
+           created_at INTEGER NOT NULL,
+           acknowledged_at INTEGER,
+           CHECK ((kind = 'text' AND body IS NOT NULL) OR (kind = 'unreadable' AND body IS NULL))
+         );
+         CREATE INDEX IF NOT EXISTS idx_client_inbox_pending ON client_inbox(acknowledged, seq);
          CREATE TABLE IF NOT EXISTS client_undecryptable (event_id TEXT PRIMARY KEY, room_id TEXT NOT NULL, reason TEXT NOT NULL);
          CREATE TABLE IF NOT EXISTS client_desync (room_id TEXT PRIMARY KEY, reason TEXT NOT NULL);
          CREATE TABLE IF NOT EXISTS client_waiting_for_commit (room_id TEXT PRIMARY KEY, expected_epoch INTEGER NOT NULL, event_ids TEXT NOT NULL, updated_at INTEGER NOT NULL);
@@ -682,7 +781,7 @@ fn verify_staged_membership_metadata(
 }
 
 fn membership_commit_fingerprint(
-    provider: &DeviceProvider,
+    provider: &DeviceProvider<Arc<Connection>>,
     room_id: &str,
     operation_id: &str,
     base_epoch: u64,
@@ -2149,70 +2248,122 @@ impl Client {
     ) -> Result<(), String> {
         let parsed = MlsMessageIn::tls_deserialize_exact(bytes)
             .ok()
-            .and_then(|m| m.try_into_protocol_message().ok());
+            .and_then(|message| message.try_into_protocol_message().ok());
         let Some(protocol) = parsed else {
-            self.record_unreadable(room_id, event_id, "сообщение не разбирается")?;
-            self.mark_processed(event_id)?;
-            out.push(Incoming::Unreadable {
+            let incoming = Incoming::Unreadable {
                 room_id: room_id.to_string(),
                 event_id: event_id.to_string(),
-            });
+            };
+            let transaction = self.meta.unchecked_transaction().map_err(text)?;
+            insert_incoming_record(&transaction, &incoming)?;
+            insert_processed_event(&transaction, event_id)?;
+            transaction.commit().map_err(text)?;
+            self.processed.insert(event_id.to_string());
+            out.push(incoming);
             return Ok(());
         };
-        let result = {
+
+        // MLS ratchet state, durable inbox content and processed marker share one
+        // SQLCipher transaction. If the process dies before commit, all three roll back.
+        let transaction = self.meta.unchecked_transaction().map_err(text)?;
+        let transactional_provider = DeviceProvider::new(
+            Arc::clone(&self.provider.crypto),
+            TransactionConnection(&transaction),
+        );
+        let processed_result = {
             let group = self
                 .groups
                 .get_mut(room_id)
                 .ok_or("комната не создана на этом устройстве")?;
-            group.mls.process_message(&self.provider, protocol)
+            group
+                .mls
+                .process_message(&transactional_provider, protocol)
         };
-        match result {
+
+        match processed_result {
             Ok(processed) => {
-                match processed.into_content() {
+                let (incoming, unreadable_reason) = match processed.into_content() {
                     ProcessedMessageContent::ApplicationMessage(app) => {
                         match String::from_utf8(app.into_bytes()) {
-                            Ok(text) => out.push(Incoming::Text {
-                                room_id: room_id.to_string(),
-                                event_id: event_id.to_string(),
-                                text,
-                            }),
-                            Err(_) => {
-                                // The MLS ratchet has already advanced. Treat invalid UTF-8 as
-                                // an unreadable event, not as a room-state failure. Never persist
-                                // the rejected bytes or include them in diagnostics.
-                                self.record_unreadable(
-                                    room_id,
-                                    event_id,
-                                    "application payload is not valid UTF-8",
-                                )?;
-                                out.push(Incoming::Unreadable {
+                            Ok(text) => (
+                                Incoming::Text {
                                     room_id: room_id.to_string(),
                                     event_id: event_id.to_string(),
-                                });
-                            }
+                                    text,
+                                },
+                                None,
+                            ),
+                            Err(_) => (
+                                Incoming::Unreadable {
+                                    room_id: room_id.to_string(),
+                                    event_id: event_id.to_string(),
+                                },
+                                Some("application payload is not valid UTF-8"),
+                            ),
                         }
                     }
-                    _ => {
-                        self.record_unreadable(room_id, event_id, "не сообщение")?;
-                        out.push(Incoming::Unreadable {
+                    _ => (
+                        Incoming::Unreadable {
                             room_id: room_id.to_string(),
                             event_id: event_id.to_string(),
-                        });
-                    }
+                        },
+                        Some("MLS message is not an application message"),
+                    ),
+                };
+
+                if let Err(error) = insert_incoming_record(&transaction, &incoming)
+                    .and_then(|_| insert_processed_event(&transaction, event_id))
+                    .and_then(|_| {
+                        if let Some(reason) = unreadable_reason {
+                            transaction
+                                .execute(
+                                    "INSERT OR IGNORE INTO client_undecryptable (event_id, room_id, reason)
+                                     VALUES (?1, ?2, ?3)",
+                                    rusqlite::params![event_id, room_id, reason],
+                                )
+                                .map_err(text)?;
+                        }
+                        Ok(())
+                    })
+                {
+                    drop(transaction);
+                    self.reload_group(room_id)?;
+                    return Err(error);
                 }
-                self.mark_processed(event_id)?;
+
+                if let Err(error) = transaction.commit() {
+                    self.reload_group(room_id)?;
+                    return Err(format!("не удалось атомарно сохранить MLS inbox: {}", text(error)));
+                }
+                self.processed.insert(event_id.to_string());
+                out.push(incoming);
             }
-            Err(e) => match classify_process_error(&e) {
+            Err(error) => match classify_process_error(&error) {
                 Failure::Transient => {
-                    return Err(format!("временная ошибка обработки, повтор позже: {e}"))
+                    drop(transaction);
+                    self.reload_group(room_id)?;
+                    return Err(format!("временная ошибка обработки, повтор позже: {error}"));
                 }
                 Failure::Permanent(reason) => {
-                    self.record_unreadable(room_id, event_id, reason)?;
-                    out.push(Incoming::Unreadable {
+                    drop(transaction);
+                    self.reload_group(room_id)?;
+                    let incoming = Incoming::Unreadable {
                         room_id: room_id.to_string(),
                         event_id: event_id.to_string(),
-                    });
-                    self.mark_processed(event_id)?;
+                    };
+                    let quarantine = self.meta.unchecked_transaction().map_err(text)?;
+                    insert_incoming_record(&quarantine, &incoming)?;
+                    quarantine
+                        .execute(
+                            "INSERT OR IGNORE INTO client_undecryptable (event_id, room_id, reason)
+                             VALUES (?1, ?2, ?3)",
+                            rusqlite::params![event_id, room_id, reason],
+                        )
+                        .map_err(text)?;
+                    insert_processed_event(&quarantine, event_id)?;
+                    quarantine.commit().map_err(text)?;
+                    self.processed.insert(event_id.to_string());
+                    out.push(incoming);
                 }
             },
         }
@@ -2552,6 +2703,78 @@ impl Client {
             }
         }
         Ok(sent)
+    }
+
+    /// Returns pending incoming events from encrypted SQLCipher storage. Items are not
+    /// consumed; the application must acknowledge them only after durable handoff.
+    pub fn pending_incoming(&self) -> Result<Vec<Incoming>, String> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+        self.meta
+            .execute(
+                "DELETE FROM client_inbox
+                 WHERE acknowledged = 1 AND acknowledged_at IS NOT NULL AND acknowledged_at < ?1",
+                [now - ACKNOWLEDGED_INBOX_RETENTION_MS],
+            )
+            .map_err(text)?;
+        let mut statement = self
+            .meta
+            .prepare(
+                "SELECT event_id, room_id, kind, body
+                 FROM client_inbox WHERE acknowledged = 0 ORDER BY seq",
+            )
+            .map_err(text)?;
+        let rows = statement
+            .query_map([], |row| {
+                let event_id: String = row.get(0)?;
+                let room_id: String = row.get(1)?;
+                let kind: String = row.get(2)?;
+                let body: Option<String> = row.get(3)?;
+                Ok((event_id, room_id, kind, body))
+            })
+            .map_err(text)?;
+        rows.map(|row| {
+            let (event_id, room_id, kind, body) = row.map_err(text)?;
+            match kind.as_str() {
+                "text" => Ok(Incoming::Text {
+                    room_id,
+                    event_id,
+                    text: body.ok_or_else(|| "inbox text row has no body".to_string())?,
+                }),
+                "unreadable" => Ok(Incoming::Unreadable { room_id, event_id }),
+                _ => Err("inbox contains an unsupported record kind".to_string()),
+            }
+        })
+        .collect()
+    }
+
+    /// Acknowledges inbox items after the application has durably accepted them.
+    /// Unknown IDs are harmless; repeated ACKs are idempotent.
+    pub fn acknowledge_incoming(&mut self, event_ids: &[String]) -> Result<(), String> {
+        if event_ids.len() > 500 {
+            return Err("too many inbox acknowledgements in one batch".to_string());
+        }
+        if event_ids.is_empty() {
+            return Ok(());
+        }
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+        let transaction = self.meta.unchecked_transaction().map_err(text)?;
+        for event_id in event_ids {
+            transaction
+                .execute(
+                    "UPDATE client_inbox SET acknowledged = 1, acknowledged_at = ?2
+                     WHERE event_id = ?1 AND acknowledged = 0",
+                    rusqlite::params![event_id, now],
+                )
+                .map_err(text)?;
+        }
+        transaction.commit().map_err(text)?;
+        Ok(())
     }
 
     /// Забирает сообщения, которые пришли при синхронизации из очереди отправки.
