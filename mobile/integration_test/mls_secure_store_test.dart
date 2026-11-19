@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:inone_mobile/core/mls/rust_mls_session_bridge.dart';
 
 void main() {
@@ -12,6 +15,12 @@ void main() {
       final userId = '@mls-smoke-$stamp:inone.test';
       final deviceId = 'MLS-SMOKE-$stamp';
       const baseUrl = 'http://127.0.0.1:1';
+
+      // Exercise the real Android plugin registration and application context
+      // before Rust is entered; no test platform override or fake directory.
+      final supportDirectory = await getApplicationSupportDirectory();
+      expect(FileSystemEntity.isAbsolute(supportDirectory.path), isTrue);
+      expect(await supportDirectory.exists(), isTrue);
 
       final first = RustMlsSessionBridge();
       await first.open(
