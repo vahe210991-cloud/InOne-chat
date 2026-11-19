@@ -816,6 +816,11 @@ class InOneSession extends ChangeNotifier {
     return _requireNativeMlsBridge().messagesForRoom(roomId);
   }
 
+  Future<List<MlsPendingOutgoing>> pendingMlsOutbox(String roomId) {
+    _validateMlsRoomId(roomId);
+    return _requireNativeMlsBridge().pendingOutgoing(roomId);
+  }
+
   /// Call only after the app has accepted the already SQLCipher-persisted messages.
   Future<void> acknowledgeMlsMessages(List<String> eventIds) {
     if (eventIds.any((id) => id.trim().isEmpty || id.length > 128)) {
