@@ -469,7 +469,7 @@ fn incoming_from_row(
                 .filter(|value| !value.trim().is_empty())
                 .ok_or("в метаданных вложения отсутствует MIME type")?.to_string();
             let size = value.get("size").and_then(Value::as_u64)
-                .filter(|size| *size > 0 && *size <= 250 * 1024 * 1024 - 16)
+                .filter(|size| *size > 0 && *size <= 50 * 1024 * 1024 - 16)
                 .ok_or("в метаданных вложения некорректный размер")?;
             Ok(Incoming::Attachment { room_id, event_id, file_id, name, mime_type, size })
         }
@@ -2578,8 +2578,8 @@ impl Client {
         if mime_type.is_empty() || mime_type.len() > 127 || mime_type.chars().any(char::is_control) {
             return Err("invalid attachment MIME type".to_string());
         }
-        if plaintext.is_empty() || plaintext.len() as u64 > 250 * 1024 * 1024 - 16 {
-            return Err("attachment size must be between 1 byte and 250 MiB minus the GCM tag".to_string());
+        if plaintext.is_empty() || plaintext.len() as u64 > 50 * 1024 * 1024 - 16 {
+            return Err("attachment size must be between 1 byte and 50 MiB minus the GCM tag".to_string());
         }
         let operation_id = format!("att_{client_message_id}");
         if let Some(reason) = self.desync_reason(room_id)? {
