@@ -199,12 +199,18 @@ fn messages_written_offline_are_delivered_once_when_back_online() {
     proxy.set_online(false);
     alice.enqueue_text(ROOM, "в метро").unwrap();
     assert_eq!(alice.outbox_len().unwrap(), 1);
+    let pending: serde_json::Value = serde_json::from_str(
+        &alice.pending_outbox_for_room_json(ROOM).unwrap()
+    ).unwrap();
+    assert_eq!(pending[0]["text"], "в метро",
+        "SQLCipher outbox exposes the pending bubble for app restart restoration");
     assert_eq!(alice.flush_outbox().unwrap(), 0, "без связи ничего не отправлено");
     assert_eq!(alice.outbox_len().unwrap(), 1, "сообщение осталось в очереди");
 
     proxy.set_online(true);
     assert_eq!(alice.flush_outbox().unwrap(), 1, "после связи отправлено");
     assert_eq!(alice.outbox_len().unwrap(), 0);
+    assert_eq!(alice.pending_outbox_for_room_json(ROOM).unwrap(), "[]");
     assert_eq!(alice.flush_outbox().unwrap(), 0, "повторный сброс ничего не шлёт");
     assert_eq!(texts(&bob.sync().unwrap()), vec!["в метро"], "у Боба ровно одно сообщение");
 }
