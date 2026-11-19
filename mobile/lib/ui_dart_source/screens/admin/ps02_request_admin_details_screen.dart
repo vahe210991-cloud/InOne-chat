@@ -12,7 +12,7 @@ class InOneRequestAdminDetailsScreen extends StatefulWidget {
     required this.request,
     required this.documents,
     required this.isOwner,
-    required this.onDownload,
+    required this.onOpen,
     required this.onDecide,
     required this.onBack,
     required this.onMenu,
@@ -25,7 +25,7 @@ class InOneRequestAdminDetailsScreen extends StatefulWidget {
   final bool isOwner;
 
   /// GET /org-requests/:id/documents/:docId. `null` — успех.
-  final Future<InOneFailure?> Function(InOneDocument document) onDownload;
+  final Future<InOneFailure?> Function(InOneDocument document) onOpen;
 
   /// «Անցնել որոշմանը» → PS-03.
   final VoidCallback onDecide;
@@ -52,7 +52,7 @@ class _InOneRequestAdminDetailsScreenState extends State<InOneRequestAdminDetail
           InOneDocumentRow(
             document: d,
             busy: isBusy(d.id),
-            onDownload: blocked ? null : () => run(d.id, () => widget.onDownload(d)),
+            onOpen: blocked ? null : () => run(d.id, () => widget.onOpen(d)),
           ),
       ],
       dock: [
