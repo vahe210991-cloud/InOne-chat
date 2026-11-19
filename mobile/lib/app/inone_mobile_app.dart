@@ -598,16 +598,28 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
 
   Future<InOneFailure?> _logout() async {
     final ownerUserId = _session.userId;
+    InOneFailure? failure;
     try {
       await _session.logout();
-      return null;
     } catch (error) {
-      return _toFailure(error);
-    } finally {
-      // Logout is a local data-destruction boundary even when remote logout fails.
-      if (ownerUserId != null) await _documentStore.purgeAccount(ownerUserId);
-      await _clearDocumentPreviewCache();
+      failure = _toFailure(error);
     }
+
+    // Attempt every local cleanup independently. A failed secure-storage delete
+    // must not leave decrypted native-viewer hand-off files behind.
+    if (ownerUserId != null) {
+      try {
+        await _documentStore.purgeAccount(ownerUserId);
+      } catch (error) {
+        failure ??= _toFailure(error);
+      }
+    }
+    try {
+      await _clearDocumentPreviewCache();
+    } catch (error) {
+      failure ??= _toFailure(error);
+    }
+    return failure;
   }
 
   void _finishLogout() {
