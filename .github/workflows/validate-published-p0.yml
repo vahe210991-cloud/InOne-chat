@@ -37,11 +37,24 @@ jobs:
         with:
           toolchain: "1.91"
           components: rustfmt
+      - name: Record Rust toolchain versions
+        run: |
+          rustc --version | tee rust-toolchain.txt
+          cargo --version | tee -a rust-toolchain.txt
       - name: Verify Rust formatting without modifying the PR branch
         working-directory: inone-development-archive-0.6.0/engine/mobile-mls
         run: |
-          cargo fmt --manifest-path mls-client/Cargo.toml -- --check
-          cargo fmt --manifest-path mls-bridge/Cargo.toml -- --check
+          cargo fmt --manifest-path mls-client/Cargo.toml -- --check 2>&1 | tee rust-format.log
+          cargo fmt --manifest-path mls-bridge/Cargo.toml -- --check 2>&1 | tee -a rust-format.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rust-format-${{ github.sha }}
+          path: |
+            rust-toolchain.txt
+            inone-development-archive-0.6.0/engine/mobile-mls/rust-format.log
+          if-no-files-found: warn
+          retention-days: 14
 
   backend-node:
     name: Backend Node suite
@@ -94,8 +107,16 @@ jobs:
           cache-dependency-path: inone-development-archive-0.6.0/engine/package-lock.json
       - run: npm ci
         working-directory: ${{ env.ENGINE_DIR }}
-      - run: node --test test/rooms-mine.test.js
+      - name: Run P0 room-list regression and preserve TAP output
+        run: node --test test/rooms-mine.test.js 2>&1 | tee p0-room-list-test.log
         working-directory: ${{ env.ENGINE_DIR }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p0-room-list-${{ github.sha }}
+          path: inone-development-archive-0.6.0/engine/p0-room-list-test.log
+          if-no-files-found: warn
+          retention-days: 14
 
   postgres-integration:
     name: PostgreSQL integration suite
