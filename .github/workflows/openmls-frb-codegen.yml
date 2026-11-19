@@ -91,7 +91,6 @@ jobs:
           flutter pub get
           flutter_rust_bridge_codegen generate \
             --skip-fvm-install \
-            --skip-tool-install \
             --no-dart-fix \
             --no-dart-format \
             --no-rust-format \
@@ -129,7 +128,6 @@ jobs:
           cp rust/Cargo.toml rust/Cargo.lock pubspec.yaml pubspec.lock "$snapshot/"
           flutter_rust_bridge_codegen generate \
             --skip-fvm-install \
-            --skip-tool-install \
             --no-dart-fix \
             --no-dart-format \
             --no-rust-format \
