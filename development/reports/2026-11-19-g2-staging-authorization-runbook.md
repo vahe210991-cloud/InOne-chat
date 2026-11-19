@@ -4,6 +4,7 @@ This is an explicit, mutating smoke test for a dedicated staging environment. It
 
 ## Required environment variables
 
+- `INONE_STAGING_ALLOW_MUTATIONS=YES` — explicit opt-in after confirming this is a disposable staging tenant; the script refuses to run without it.
 - `INONE_STAGING_BASE_URL` — HTTPS origin only, e.g. `https://staging-api.example.test`.
 - `INONE_STAGING_OWNER_TOKEN` — active platform-owner bearer token.
 - `INONE_STAGING_ADMIN_TOKEN` — active platform-admin bearer token.
@@ -14,7 +15,7 @@ Run the script from the repository root after setting the variables in a protect
 
 `node inone-development-archive-0.6.0/engine/scripts/verify-org-request-staging.mjs`
 
-It does not print tokens. It mutates staging by creating and rejecting a uniquely named request; use a disposable/dedicated staging tenant. Do not place tokens in command-line arguments, source files, or pull-request CI.
+It does not print tokens. It requires explicit mutation opt-in, creates and rejects a uniquely named request, and attempts owner-side rejection in a `finally` cleanup if any assertion fails; use a disposable/dedicated staging tenant. Do not place tokens in command-line arguments, source files, or pull-request CI.
 
 ## Local automated coverage
 
