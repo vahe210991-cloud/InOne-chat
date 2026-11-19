@@ -170,7 +170,11 @@ const ACKNOWLEDGED_INBOX_RETENTION_MS: i64 = 30 * 24 * 60 * 60 * 1000;
 
 fn insert_incoming_record(db: &Connection, incoming: &Incoming) -> Result<(), String> {
     let (event_id, room_id, kind, body): (&str, &str, &str, Option<&str>) = match incoming {
-        Incoming::Text { room_id, event_id, text } => (event_id, room_id, "text", Some(text)),
+        Incoming::Text {
+            room_id,
+            event_id,
+            text,
+        } => (event_id, room_id, "text", Some(text)),
         Incoming::Unreadable { room_id, event_id } => (event_id, room_id, "unreadable", None),
     };
     let exists: bool = db
@@ -207,7 +211,9 @@ fn insert_incoming_record(db: &Connection, incoming: &Incoming) -> Result<(), St
     if pending_count >= MAX_PENDING_INBOX_ITEMS
         || pending_bytes.saturating_add(body_bytes) > MAX_PENDING_INBOX_BYTES
     {
-        return Err("durable inbox capacity reached; event remains unprocessed for retry".to_string());
+        return Err(
+            "durable inbox capacity reached; event remains unprocessed for retry".to_string(),
+        );
     }
 
     db.execute(
@@ -2281,9 +2287,7 @@ impl Client {
                 .groups
                 .get_mut(room_id)
                 .ok_or("комната не создана на этом устройстве")?;
-            group
-                .mls
-                .process_message(&transactional_provider, protocol)
+            group.mls.process_message(&transactional_provider, protocol)
         };
         drop(transactional_provider);
 
