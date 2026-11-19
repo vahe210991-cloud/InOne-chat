@@ -18,6 +18,7 @@ class InOneChatThreadScreen extends StatefulWidget {
     this.onCall,
     this.onMore,
     this.onAttach,
+    this.onDownloadAttachment,
     this.onViewProject,
   });
 
@@ -30,6 +31,7 @@ class InOneChatThreadScreen extends StatefulWidget {
   final VoidCallback? onCall;
   final VoidCallback? onMore;
   final VoidCallback? onAttach;
+  final ValueChanged<String>? onDownloadAttachment;
   final VoidCallback? onViewProject;
 
   @override
@@ -215,8 +217,9 @@ class _InOneChatThreadScreenState extends State<InOneChatThreadScreen> {
 }
 
 class _ThreadItem extends StatelessWidget {
-  const _ThreadItem({required this.item});
+  const _ThreadItem({required this.item, this.onDownloadAttachment});
   final InOneThreadItem item;
+  final ValueChanged<String>? onDownloadAttachment;
 
   static const _maxBubble = 262.0;
   static const _theirs = BorderRadius.only(
@@ -279,13 +282,19 @@ class _ThreadItem extends StatelessWidget {
             child: Column(
               crossAxisAlignment: item.mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
               children: [
-                InOneStripeBox(
-                  width: 170,
-                  height: 120,
-                  radius: 14,
-                  stripe: 6,
-                  child: Center(
-                    child: Text(item.fileLabel ?? '', style: InOneText.style(9, FontWeight.w400, c.muted)),
+                InkWell(
+                  onTap: item.fileId == null || onDownloadAttachment == null
+                      ? null
+                      : () => onDownloadAttachment!(item.fileId!),
+                  borderRadius: BorderRadius.circular(14),
+                  child: InOneStripeBox(
+                    width: 170,
+                    height: 120,
+                    radius: 14,
+                    stripe: 6,
+                    child: Center(
+                      child: Text(item.fileLabel ?? '', style: InOneText.style(9, FontWeight.w400, c.muted)),
+                    ),
                   ),
                 ),
                 if (item.text != null) ...[
