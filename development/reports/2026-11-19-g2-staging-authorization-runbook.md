@@ -10,9 +10,11 @@ This is an explicit, mutating smoke test for a dedicated staging environment. It
 - `INONE_STAGING_USER_TOKEN` — ordinary authenticated user bearer token.
 - `INONE_STAGING_OUTSIDER_TOKEN` — optional second ordinary user; enables cross-applicant queue isolation, details 404, and decision 403 checks.
 
-Run the **G2 staging authorization validation** workflow manually after setting the secrets. The workflow is deliberately `workflow_dispatch` only: staging credentials are never exposed to pull-request code.
+Run the script from the repository root after setting the variables in a protected local shell or secret manager:
 
-The same script can be run from the engine directory with those environment variables set. It does not print tokens. It mutates staging by creating and rejecting a uniquely named request; use a disposable/dedicated staging tenant.
+`node inone-development-archive-0.6.0/engine/scripts/verify-org-request-staging.mjs`
+
+It does not print tokens. It mutates staging by creating and rejecting a uniquely named request; use a disposable/dedicated staging tenant. Do not place tokens in command-line arguments, source files, or pull-request CI.
 
 ## Local automated coverage
 
