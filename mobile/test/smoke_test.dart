@@ -5,6 +5,7 @@ import 'package:inone_mobile/ui_dart_source/inone.dart';
 
 const _secureStorageChannel =
     MethodChannel('plugins.it_nomads.com/flutter_secure_storage');
+const _pathProviderChannel = MethodChannel('plugins.flutter.io/path_provider');
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -42,9 +43,20 @@ void main() {
         }
       },
     );
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      _pathProviderChannel,
+      (call) async {
+        if (call.method == 'getTemporaryDirectory') return '/tmp/inone-smoke-test';
+        throw MissingPluginException('Unsupported path-provider method: ${call.method}');
+      },
+    );
     addTearDown(() {
       tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
         _secureStorageChannel,
+        null,
+      );
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        _pathProviderChannel,
         null,
       );
     });
@@ -60,7 +72,7 @@ void main() {
     // calls. Pump in bounded intervals until the production entry leaves its
     // loading state; a single frame is not enough to complete the channel chain.
     for (var attempt = 0;
-        attempt < 20 && find.byType(InOneLoginScreen).evaluate().isEmpty;
+        attempt < 50 && find.byType(InOneLoginScreen).evaluate().isEmpty;
         attempt++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
