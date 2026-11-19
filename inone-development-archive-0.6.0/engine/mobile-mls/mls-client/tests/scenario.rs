@@ -177,7 +177,9 @@ fn non_utf8_application_payload_is_quarantined_without_poisoning_room() {
         .send_application_payload_with_id(room, &[0xff, 0xfe, 0x80], "invalid-utf8-1")
         .expect("MLS accepts opaque application bytes");
 
-    let unreadable_items = bob.sync().expect("invalid UTF-8 is an event-level content error");
+    let unreadable_items = bob
+        .sync()
+        .expect("invalid UTF-8 is an event-level content error");
     assert_eq!(unreadable(&unreadable_items), 1);
     assert!(matches!(
         unreadable_items.as_slice(),
@@ -190,9 +192,14 @@ fn non_utf8_application_payload_is_quarantined_without_poisoning_room() {
         "invalid application text must not mark the MLS room RecoveryRequired"
     );
 
-    alice.send_text(room, "valid message after invalid payload").unwrap();
+    alice
+        .send_text(room, "valid message after invalid payload")
+        .unwrap();
     let recovered = bob.sync().expect("the same room remains synchronized");
-    assert_eq!(texts(&recovered), vec!["valid message after invalid payload"]);
+    assert_eq!(
+        texts(&recovered),
+        vec!["valid message after invalid payload"]
+    );
     assert_eq!(unreadable(&recovered), 0);
     assert_eq!(bob.desync_reason(room).unwrap(), None);
 }
