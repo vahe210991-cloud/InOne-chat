@@ -451,8 +451,13 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       });
     }
     try {
-      // Rust synchronizes Welcome/Commit state and decrypts incoming events.
-      await _session.syncMlsMessages();
+      // Prefer fresh server state, but never hide the SQLCipher-backed local
+      // history merely because the device is temporarily offline.
+      try {
+        await _session.syncMlsMessages();
+      } catch (error) {
+        _notice('Серверная синхронизация недоступна; показываю локальную MLS-историю: $error');
+      }
       try {
         await _session.flushMlsOutbox();
       } catch (error) {
@@ -521,7 +526,11 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       return;
     }
     try {
-      await _session.syncMlsMessages();
+      try {
+        await _session.syncMlsMessages();
+      } catch (error) {
+        _notice('Показываю локальную историю комнаты; синхронизация повторится позже: $error');
+      }
       try {
         await _session.flushMlsOutbox();
       } catch (error) {
@@ -728,7 +737,11 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     final roomId = _activeMlsRoomId;
     if (roomId == null) return;
     try {
-      await _session.syncMlsMessages();
+      try {
+        await _session.syncMlsMessages();
+      } catch (error) {
+        _notice('Показываю локальную историю; серверная синхронизация повторится позже: $error');
+      }
       try {
         await _session.flushMlsOutbox();
       } catch (error) {
