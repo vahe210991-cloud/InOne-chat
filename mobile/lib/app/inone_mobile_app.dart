@@ -735,6 +735,12 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           onMenu: () => setState(() => _screen = 'workspace'),
         );
       case 'messages':
+        if (_messagesLoading) {
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        }
+        if (_messagesError != null) {
+          return InOneLoadingErrorScreen(onRetry: () => unawaited(_loadMlsRooms()));
+        }
         if (!_session.hasNativeMlsSession) {
           return InOneMessagesScreen(
             chats: const [],
