@@ -2143,6 +2143,11 @@ impl Client {
         let event_id = response["event_id"].as_str()
             .ok_or("сервер не вернул event_id")?.to_string();
 
+        // Mark the accepted event before writing the local history row. If that
+        // history transaction fails, the next sync must not try to decrypt our own
+        // already-consumed sender generation; the durable outbox will retry it.
+        self.mark_processed(&event_id)?;
+
         // Persist the sender's own plaintext in the encrypted inbox only after
         // server acceptance. The durable outbox/ciphertext journal remains until
         // this transaction commits, making a lost local response safely retryable.
