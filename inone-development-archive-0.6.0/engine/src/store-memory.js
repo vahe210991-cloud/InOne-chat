@@ -270,8 +270,11 @@ export function createMemoryStore({ pinPepper }) {
       return [...orgRequests.values()].filter((r) => all || r.applicantId === userId).map((r) => ({ requestId: r.requestId, applicantId: r.applicantId, name: r.name, status: r.status, createdAt: r.createdAt })).sort((a, b) => a.createdAt - b.createdAt);
     },
     addOrgRequestDocument({ docId, requestId, kind, size, sha256, filename, mimeType, objectKey, uploadedBy, createdAt }) {
+      const request = orgRequests.get(requestId);
+      if (!request || request.status !== 'pending') return false;
       orgRequestDocs.set(docId, { docId, requestId, kind, size, sha256, filename, mimeType, objectKey, uploadedBy, createdAt });
       orgRequestLog.push({ requestId, actor: uploadedBy, action: 'document', at: createdAt });
+      return true;
     },
     listOrgRequestDocuments(requestId) {
       return [...orgRequestDocs.values()].filter((x) => x.requestId === requestId).map((x) => ({ docId: x.docId, kind: x.kind, size: x.size, sha256: x.sha256, filename: x.filename, mimeType: x.mimeType, createdAt: x.createdAt })).sort((a, b) => a.createdAt - b.createdAt);
