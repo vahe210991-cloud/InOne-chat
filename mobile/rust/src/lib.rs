@@ -10,6 +10,11 @@ fn validate_android_context_initialized(initialized: bool) -> Result<(), String>
     }
 }
 
+#[cfg(any(target_os = "android", test))]
+fn ffi_panic_boundary(operation: impl FnOnce()) -> bool {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(operation)).is_ok()
+}
+
 #[cfg(target_os = "android")]
 mod android_context {
     use std::ffi::c_void;
@@ -30,34 +35,39 @@ mod android_context {
         _class: JClass,
         context: JObject,
     ) {
-        let state = INITIALIZED.get_or_init(|| Mutex::new(false));
-        let Ok(mut initialized) = state.lock() else {
-            return;
-        };
-        if *initialized {
-            return;
-        }
-
-        let Ok(vm) = env.get_java_vm() else {
-            return;
-        };
-        if APPLICATION_CONTEXT.get().is_none() {
-            let Ok(global) = env.new_global_ref(&context) else {
+        // JNI is a foreign ABI boundary; never allow a Rust unwind to escape
+        // into the Android runtime. The initialized flag remains false on panic,
+        // so native secure storage continues to fail closed.
+        let _ = super::ffi_panic_boundary(|| {
+            let state = INITIALIZED.get_or_init(|| Mutex::new(false));
+            let Ok(mut initialized) = state.lock() else {
                 return;
             };
-            let _ = APPLICATION_CONTEXT.set(global);
-        }
-        let Some(retained) = APPLICATION_CONTEXT.get() else {
-            return;
-        };
+            if *initialized {
+                return;
+            }
 
-        unsafe {
-            ndk_context::initialize_android_context(
-                vm.get_java_vm_pointer() as *mut c_void,
-                retained.as_obj().as_raw() as *mut c_void,
-            );
-        }
-        *initialized = true;
+            let Ok(vm) = env.get_java_vm() else {
+                return;
+            };
+            if APPLICATION_CONTEXT.get().is_none() {
+                let Ok(global) = env.new_global_ref(&context) else {
+                    return;
+                };
+                let _ = APPLICATION_CONTEXT.set(global);
+            }
+            let Some(retained) = APPLICATION_CONTEXT.get() else {
+                return;
+            };
+
+            unsafe {
+                ndk_context::initialize_android_context(
+                    vm.get_java_vm_pointer() as *mut c_void,
+                    retained.as_obj().as_raw() as *mut c_void,
+                );
+            }
+            *initialized = true;
+        });
     }
 
     pub fn ensure_initialized() -> Result<(), String> {
@@ -81,7 +91,15 @@ pub(crate) fn ensure_android_context_initialized() -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::validate_android_context_initialized;
+    use super::{ffi_panic_boundary, validate_android_context_initialized};
+
+    #[test]
+    fn jni_ffi_boundary_contains_unwinding_panics() {
+        assert!(!ffi_panic_boundary(|| panic!(
+            "simulated JNI callback panic"
+        )));
+        assert!(ffi_panic_boundary(|| {}));
+    }
 
     #[test]
     fn native_key_store_context_gate_fails_closed_before_initialization() {

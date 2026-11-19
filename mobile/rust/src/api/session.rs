@@ -1,6 +1,7 @@
+use std::collections::HashSet;
 use std::panic::{catch_unwind, AssertUnwindSafe};
-use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use zeroize::Zeroizing;
 
@@ -21,6 +22,8 @@ pub struct MlsSession {
     database_path: String,
     identity_scope: String,
     keys: Arc<dyn KeyStore>,
+    // Declared after `client`: SQLite/OpenMLS drops before this reservation releases.
+    identity_reservation: Mutex<Option<IdentityReservation>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -35,6 +38,93 @@ pub enum IncomingMessage {
         room_id: String,
         event_id: String,
     },
+}
+
+static ACTIVE_IDENTITIES: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+
+struct IdentityReservation {
+    identity: String,
+}
+
+impl Drop for IdentityReservation {
+    fn drop(&mut self) {
+        let active = ACTIVE_IDENTITIES.get_or_init(|| Mutex::new(HashSet::new()));
+        let mut active = active
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        active.remove(&self.identity);
+    }
+}
+
+fn reserve_identity(identity: &str) -> Result<IdentityReservation, String> {
+    let active = ACTIVE_IDENTITIES.get_or_init(|| Mutex::new(HashSet::new()));
+    let mut active = active
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if !active.insert(identity.to_string()) {
+        return Err("MLS session is already active for this user/device identity".to_string());
+    }
+    Ok(IdentityReservation {
+        identity: identity.to_string(),
+    })
+}
+
+fn validated_identity(user_id: &str, device_id: &str) -> Result<String, String> {
+    for (name, value) in [("user_id", user_id), ("device_id", device_id)] {
+        if value.trim().is_empty() {
+            return Err(format!("{name} is required"));
+        }
+        if (name == "device_id" && value.contains('/')) || value.chars().any(char::is_control) {
+            return Err(format!("{name} contains a forbidden character"));
+        }
+    }
+    Ok(format!("{user_id}/{device_id}"))
+}
+
+fn normalized_database_directory(directory: &str, create: bool) -> Result<String, String> {
+    let path = Path::new(directory);
+    if !path.is_absolute() {
+        return Err("MLS database directory must be an absolute app-private path".to_string());
+    }
+    if create {
+        std::fs::create_dir_all(path)
+            .map_err(|error| format!("создание каталога базы MLS: {error}"))?;
+    }
+    let canonical = std::fs::canonicalize(path)
+        .map_err(|error| format!("проверка каталога базы MLS: {error}"))?;
+    if !canonical.is_dir() {
+        return Err("MLS database path is not a directory".to_string());
+    }
+    Ok(canonical.to_string_lossy().into_owned())
+}
+
+fn purge_database_directory(directory: &str) -> Result<String, String> {
+    let path = Path::new(directory);
+    if !path.is_absolute() {
+        return Err("MLS database directory must be an absolute app-private path".to_string());
+    }
+    match std::fs::canonicalize(path) {
+        Ok(canonical) if canonical.is_dir() => Ok(canonical.to_string_lossy().into_owned()),
+        Ok(_) => Err("MLS database path is not a directory".to_string()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            // Preserve key deletion even if the app-private database directory
+            // itself has already disappeared.
+            Ok(path.to_string_lossy().into_owned())
+        }
+        Err(error) => Err(format!("проверка каталога базы MLS: {error}")),
+    }
+}
+
+fn database_path_for_identity(directory: &str, identity: &str) -> String {
+    let digest = Sha256::digest(identity.as_bytes());
+    let filename = digest
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    PathBuf::from(directory)
+        .join(format!("{filename}.sqlcipher"))
+        .to_string_lossy()
+        .into_owned()
 }
 
 fn map_incoming(items: Vec<Incoming>) -> Vec<IncomingMessage> {
@@ -123,11 +213,13 @@ impl MlsSession {
     }
 
     pub fn send_text(&self, room_id: String, plaintext: String) -> Result<String, String> {
-        self.with_client(|client| client.send_text(&room_id, &plaintext))
+        let plaintext = Zeroizing::new(plaintext);
+        self.with_client(|client| client.send_text(&room_id, plaintext.as_str()))
     }
 
     pub fn enqueue_text(&self, room_id: String, plaintext: String) -> Result<String, String> {
-        self.with_client(|client| client.enqueue_text(&room_id, &plaintext))
+        let plaintext = Zeroizing::new(plaintext);
+        self.with_client(|client| client.enqueue_text(&room_id, plaintext.as_str()))
     }
 
     pub fn sync(&self) -> Result<Vec<IncomingMessage>, String> {
@@ -189,6 +281,13 @@ impl MlsSession {
     /// Logs out remotely when possible, then always destroys local MLS state.
     /// A network error is returned after local database and key cleanup.
     pub fn logout(&self) -> Result<(), String> {
+        let mut reservation = self
+            .identity_reservation
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if reservation.is_none() {
+            return Err("MLS session is closed; logout cannot purge a later session".to_string());
+        }
         // A poisoned lock or a panic in remote logout must never bypass local
         // SQLCipher/key destruction.
         let remote_result = match self.client.lock() {
@@ -216,6 +315,8 @@ impl MlsSession {
             &self.identity_scope,
             self.keys.as_ref(),
         );
+        // Release only after the client handle and local cleanup attempt are complete.
+        reservation.take();
         let mut errors = Vec::new();
         if let Err(error) = cleanup_result {
             errors.push(error);
@@ -233,7 +334,11 @@ impl MlsSession {
     /// Drops the Rust client and releases the encrypted database connection.
     /// It does not revoke the server session; call logout first when required.
     pub fn close(&self) -> Result<(), String> {
-        match self.client.lock() {
+        let mut reservation = self
+            .identity_reservation
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let result = match self.client.lock() {
             Ok(mut guard) => {
                 *guard = None;
                 Ok(())
@@ -243,7 +348,9 @@ impl MlsSession {
                 *guard = None;
                 Err("MLS session lock was poisoned; client was dropped".to_string())
             }
-        }
+        };
+        reservation.take();
+        result
     }
 }
 
@@ -319,19 +426,11 @@ pub fn open_session(
 ) -> Result<MlsSession, String> {
     let access_token = Zeroizing::new(access_token);
     let refresh_token = Zeroizing::new(refresh_token);
+    let identity = validated_identity(&user_id, &device_id)?;
+    let reservation = reserve_identity(&identity)?;
+    let database_directory = normalized_database_directory(&database_directory, true)?;
+    let database_path = database_path_for_identity(&database_directory, &identity);
     let keys: Arc<dyn KeyStore> = Arc::new(PlatformKeyStore::new()?);
-    std::fs::create_dir_all(&database_directory)
-        .map_err(|error| format!("создание каталога базы MLS: {error}"))?;
-    let identity = format!("{user_id}/{device_id}");
-    let digest = Sha256::digest(identity.as_bytes());
-    let filename = digest
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>();
-    let database_path = Path::new(&database_directory)
-        .join(format!("{filename}.sqlcipher"))
-        .to_string_lossy()
-        .into_owned();
     let has_existing_key = keys.has_database_key(&identity)?;
     let database_existed = database_artifacts_exist(&database_path);
     if database_existed && !has_existing_key {
@@ -368,6 +467,7 @@ pub fn open_session(
         database_path,
         identity_scope: identity,
         keys,
+        identity_reservation: Mutex::new(Some(reservation)),
     })
 }
 
@@ -379,17 +479,11 @@ pub fn resume_session(
     device_id: String,
     database_directory: String,
 ) -> Result<MlsSession, String> {
+    let identity = validated_identity(&user_id, &device_id)?;
+    let reservation = reserve_identity(&identity)?;
+    let database_directory = normalized_database_directory(&database_directory, false)?;
+    let database_path = database_path_for_identity(&database_directory, &identity);
     let keys: Arc<dyn KeyStore> = Arc::new(PlatformKeyStore::new()?);
-    let identity = format!("{user_id}/{device_id}");
-    let digest = Sha256::digest(identity.as_bytes());
-    let filename = digest
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>();
-    let database_path = Path::new(&database_directory)
-        .join(format!("{filename}.sqlcipher"))
-        .to_string_lossy()
-        .into_owned();
     let client = resume_with_session(
         &base_url,
         &user_id,
@@ -402,6 +496,7 @@ pub fn resume_session(
         database_path,
         identity_scope: identity,
         keys,
+        identity_reservation: Mutex::new(Some(reservation)),
     })
 }
 
@@ -412,19 +507,10 @@ pub fn purge_local_session(
     device_id: String,
     database_directory: String,
 ) -> Result<(), String> {
-    if user_id.trim().is_empty() || device_id.trim().is_empty() {
-        return Err("user_id и device_id обязательны для очистки MLS-сессии".to_string());
-    }
-    let identity = format!("{user_id}/{device_id}");
-    let digest = Sha256::digest(identity.as_bytes());
-    let filename = digest
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>();
-    let database_path = Path::new(&database_directory)
-        .join(format!("{filename}.sqlcipher"))
-        .to_string_lossy()
-        .into_owned();
+    let identity = validated_identity(&user_id, &device_id)?;
+    let _reservation = reserve_identity(&identity)?;
+    let database_directory = purge_database_directory(&database_directory)?;
+    let database_path = database_path_for_identity(&database_directory, &identity);
     let platform_keys = PlatformKeyStore::new();
     let keys: Result<&dyn KeyStore, String> = match &platform_keys {
         Ok(keys) => Ok(keys),
@@ -478,13 +564,91 @@ mod tests {
         std::fs::write(format!("{}-shm", database.display()), b"shm").unwrap();
         std::fs::write(format!("{}-journal", database.display()), b"journal").unwrap();
         let keys = Arc::new(TestKeyStore::default());
+        let identity_scope = format!("user/{}", root.file_name().unwrap().to_string_lossy());
+        let reservation = reserve_identity(&identity_scope).unwrap();
         let session = MlsSession {
             client: Mutex::new(None),
             database_path: database.to_string_lossy().into_owned(),
-            identity_scope: "user/device".to_string(),
+            identity_scope,
             keys: keys.clone(),
+            identity_reservation: Mutex::new(Some(reservation)),
         };
         (database, keys, session)
+    }
+
+    #[test]
+    fn duplicate_active_identity_reservation_is_rejected_until_release() {
+        let identity = "user/device-a1-reservation";
+        let first = reserve_identity(identity).unwrap();
+        assert!(reserve_identity(identity).is_err());
+        drop(first);
+        assert!(reserve_identity(identity).is_ok());
+    }
+
+    #[test]
+    fn concurrent_reservations_allow_only_one_live_client_per_identity() {
+        use std::sync::{mpsc, Barrier};
+
+        let identity = "user/device-a1-concurrent-reservation";
+        let start = Arc::new(Barrier::new(3));
+        let release_winner = Arc::new(Barrier::new(2));
+        let (tx, rx) = mpsc::channel();
+
+        let mut handles = Vec::new();
+        for _ in 0..2 {
+            let start = start.clone();
+            let release_winner = release_winner.clone();
+            let tx = tx.clone();
+            handles.push(std::thread::spawn(move || {
+                start.wait();
+                let reservation = reserve_identity(identity);
+                let won = reservation.is_ok();
+                tx.send(won).unwrap();
+                if let Ok(reservation) = reservation {
+                    release_winner.wait();
+                    drop(reservation);
+                }
+            }));
+        }
+        drop(tx);
+        start.wait();
+        let outcomes = [rx.recv().unwrap(), rx.recv().unwrap()];
+        assert_eq!(outcomes.iter().filter(|won| **won).count(), 1);
+        release_winner.wait();
+        for handle in handles {
+            handle.join().unwrap();
+        }
+    }
+
+    #[test]
+    fn identity_and_database_directory_inputs_fail_closed() {
+        assert!(validated_identity("", "device").is_err());
+        assert!(validated_identity("user", "device/other").is_err());
+        assert!(validated_identity("user/with/slash", "device").is_ok());
+        assert!(normalized_database_directory("relative/path", true).is_err());
+    }
+
+    #[test]
+    fn purge_can_delete_protected_key_when_database_directory_is_missing() {
+        let root = std::env::temp_dir().join(format!(
+            "inone-mls-missing-purge-dir-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let missing_directory = root.join("missing");
+        let normalized = purge_database_directory(&missing_directory.to_string_lossy()).unwrap();
+        let expected = missing_directory.to_string_lossy().into_owned();
+        assert_eq!(normalized, expected);
+
+        let identity = "user/missing-directory-purge";
+        let database_path = database_path_for_identity(&normalized, identity);
+        let keys = TestKeyStore::default();
+        cleanup_local_session(&database_path, identity, &keys).unwrap();
+        assert!(keys.deleted.load(Ordering::SeqCst));
+        assert!(!missing_directory.exists());
     }
 
     #[test]
@@ -528,6 +692,7 @@ mod tests {
     fn logout_removes_database_sidecars_and_platform_key() {
         let (database, keys, session) = fixture();
         session.logout().unwrap();
+        assert!(reserve_identity(&session.identity_scope).is_ok());
         assert!(!database.exists());
         assert!(!std::path::PathBuf::from(format!("{}-wal", database.display())).exists());
         assert!(!std::path::PathBuf::from(format!("{}-shm", database.display())).exists());
@@ -558,6 +723,7 @@ mod tests {
     fn close_releases_handle_without_deleting_persistent_session() {
         let (database, keys, session) = fixture();
         session.close().unwrap();
+        assert!(reserve_identity(&session.identity_scope).is_ok());
         assert!(database.exists());
         assert!(!keys.deleted.load(Ordering::SeqCst));
         let _ = std::fs::remove_file(&database);
@@ -565,6 +731,15 @@ mod tests {
         let _ = std::fs::remove_file(format!("{}-shm", database.display()));
         let _ = std::fs::remove_file(format!("{}-journal", database.display()));
     }
+    #[test]
+    fn logout_after_close_cannot_purge_a_newer_session() {
+        let (database, _keys, session) = fixture();
+        session.close().unwrap();
+        assert!(database.exists());
+        assert!(session.logout().is_err());
+        assert!(database.exists());
+    }
+
     #[test]
     fn purge_removes_database_even_when_platform_key_store_initialization_fails() {
         let (database, keys, _session) = fixture();
