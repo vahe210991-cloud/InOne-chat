@@ -2,12 +2,12 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 
-import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/material.dart';
 
+import '../core/data/inone_organization.dart';
 import '../core/data/inone_profile.dart';
 import '../core/data/inone_public_config.dart';
-import '../core/data/inone_organization.dart';
 import '../core/data/inone_repositories.dart';
 import '../core/mls/rust_mls_session_bridge.dart';
 import '../core/network/api_environment.dart';
