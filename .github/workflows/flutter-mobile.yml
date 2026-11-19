@@ -26,7 +26,8 @@ concurrency:
 jobs:
   flutter:
     if: github.actor != 'github-actions[bot]' && github.event.pull_request.head.ref != 'feature/stage-4-native-mls-runtime-2026-11-11' && github.ref_name != 'feature/stage-4-native-mls-runtime-2026-11-11'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
     defaults:
       run:
         working-directory: mobile
@@ -145,6 +146,16 @@ jobs:
       - run: flutter test
       - name: Build Android preview APK
         run: flutter build apk --debug
+      - name: Android runtime smoke — Keystore and SQLCipher lifecycle
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -noaudio -no-boot-anim -camera-back none -camera-front none
+          script: flutter drive --driver=test_driver/integration_test.dart --target=integration_test/mls_secure_store_test.dart -d emulator-5554
       - uses: actions/upload-artifact@v4
         with:
           name: inone-beta1-android-preview
