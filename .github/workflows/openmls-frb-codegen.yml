@@ -336,12 +336,40 @@ jobs:
           EOF
           cat "$CARGO_HOME/config.toml"
 
+      - name: Capture Apple toolchain and linker environment
+        working-directory: mobile
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Xcode:"
+          xcodebuild -version
+          echo "Rust:"
+          rustc -vV
+          cargo --version
+          echo "Apple clang and SDK paths:"
+          for sdk in iphoneos iphonesimulator; do
+            echo "$sdk clang: $(xcrun --sdk "$sdk" --find clang)"
+            echo "$sdk SDK: $(xcrun --sdk "$sdk" --show-sdk-path)"
+          done
+          echo "Relevant exported toolchain variables:"
+          env | sort | grep -E '^(CC|CXX|SDKROOT|DEVELOPER_DIR|IPHONEOS_DEPLOYMENT_TARGET|CARGO_TARGET_|RUSTFLAGS|RUSTC_WRAPPER)=' || true
+          echo "Generated Xcode linker/compiler settings:"
+          grep -RniE '(^|[[:space:]])(CC|LD|OTHER_LDFLAGS|IPHONEOS_DEPLOYMENT_TARGET)[[:space:]]*=|%20|clang' ios/Flutter ios/Runner.xcodeproj 2>/dev/null || true
+
       - name: Build iOS simulator target without signing (verbose diagnostics)
         working-directory: mobile
+        env:
+          RUST_BACKTRACE: full
+          RUST_LOG: debug
+          CARGO_TERM_COLOR: never
         run: flutter build ios --simulator --no-codesign --verbose
 
       - name: Build iOS device target without signing (verbose diagnostics)
         working-directory: mobile
+        env:
+          RUST_BACKTRACE: full
+          RUST_LOG: debug
+          CARGO_TERM_COLOR: never
         run: flutter build ios --no-codesign --verbose
 
       - name: Upload unsigned iOS simulator build
