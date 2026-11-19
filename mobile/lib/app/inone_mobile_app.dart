@@ -113,7 +113,13 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && _documentViewerHandOffActive) {
       _documentViewerHandOffActive = false;
-      unawaited(_clearDocumentPreviewCache());
+      unawaited(() async {
+        try {
+          await _clearDocumentPreviewCache();
+        } catch (_) {
+          // Logout and next app startup retry private cache cleanup.
+        }
+      }());
     }
   }
 
