@@ -186,7 +186,8 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
           script: |
-            set -euo pipefail
+            # android-emulator-runner executes script through POSIX sh, not Bash.
+            set -eu
             cd mobile
             diag_dir="$RUNNER_TEMP/inone-android-runtime-diagnostics"
             mkdir -p "$diag_dir"
