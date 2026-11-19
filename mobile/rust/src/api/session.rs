@@ -270,6 +270,26 @@ fn database_artifacts_exist(database_path: &str) -> bool {
         .any(|suffix| Path::new(&format!("{database_path}{suffix}")).exists())
 }
 
+/// Validate the caller-provided private application directory before any filesystem
+/// or platform-key-store operation. In particular, an empty path must never resolve
+/// to the process working directory during local-session purge.
+fn validate_database_directory(database_directory: &str) -> Result<&Path, String> {
+    if database_directory.trim().is_empty() {
+        return Err("каталог базы MLS не задан".to_string());
+    }
+    let directory = Path::new(database_directory);
+    if !directory.is_absolute() {
+        return Err("каталог базы MLS должен быть абсолютным путём приложения".to_string());
+    }
+    if directory
+        .components()
+        .any(|component| matches!(component, std::path::Component::ParentDir))
+    {
+        return Err("каталог базы MLS не должен содержать переходы к родительским каталогам".to_string());
+    }
+    Ok(directory)
+}
+
 fn cleanup_local_session_with_key_store(
     database_path: &str,
     identity_scope: &str,
@@ -317,11 +337,22 @@ pub fn open_session(
     refresh_token: String,
     database_directory: String,
 ) -> Result<MlsSession, String> {
+    let database_directory = validate_database_directory(&database_directory)?;
+    if user_id.trim().is_empty() || device_id.trim().is_empty() {
+        return Err("user_id и device_id обязательны".to_string());
+    }
+    if access_token.is_empty() || refresh_token.is_empty() {
+        return Err("для открытия MLS-сессии нужны access и refresh tokens".to_string());
+    }
     let access_token = Zeroizing::new(access_token);
     let refresh_token = Zeroizing::new(refresh_token);
-    let keys: Arc<dyn KeyStore> = Arc::new(PlatformKeyStore::new()?);
-    std::fs::create_dir_all(&database_directory)
+    std::fs::create_dir_all(database_directory)
         .map_err(|error| format!("создание каталога базы MLS: {error}"))?;
+    let database_directory = validate_database_directory(&database_directory)?;
+    if user_id.trim().is_empty() || device_id.trim().is_empty() {
+        return Err("user_id и device_id обязательны".to_string());
+    }
+    let keys: Arc<dyn KeyStore> = Arc::new(PlatformKeyStore::new()?);
     let identity = format!("{user_id}/{device_id}");
     let digest = Sha256::digest(identity.as_bytes());
     let filename = digest
@@ -412,6 +443,7 @@ pub fn purge_local_session(
     device_id: String,
     database_directory: String,
 ) -> Result<(), String> {
+    let database_directory = validate_database_directory(&database_directory)?;
     if user_id.trim().is_empty() || device_id.trim().is_empty() {
         return Err("user_id и device_id обязательны для очистки MLS-сессии".to_string());
     }
@@ -485,6 +517,17 @@ mod tests {
             keys: keys.clone(),
         };
         (database, keys, session)
+    }
+
+    #[test]
+    fn database_directory_rejects_empty_relative_and_parent_traversal_paths() {
+        for invalid in ["", "   ", ".", "relative/mls", "../outside", "/tmp/../outside"] {
+            assert!(
+                validate_database_directory(invalid).is_err(),
+                "must reject unsafe database directory: {invalid:?}"
+            );
+        }
+        assert!(validate_database_directory(&std::env::temp_dir().to_string_lossy()).is_ok());
     }
 
     #[test]
