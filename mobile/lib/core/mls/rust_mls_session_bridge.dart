@@ -11,7 +11,9 @@ import 'mls_session_bridge.dart';
 const _androidMlsStorageChannel = MethodChannel('com.inone.mls/platform_storage');
 
 Future<Directory> _defaultSupportDirectory() async {
-  if (!Platform.isAndroid) return getApplicationSupportDirectory();
+  if (!Platform.isAndroid) {
+    return getApplicationSupportDirectory();
+  }
 
   final path = await _androidMlsStorageChannel.invokeMethod<String>(
     'applicationSupportDirectory',
