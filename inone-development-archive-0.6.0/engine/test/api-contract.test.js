@@ -77,6 +77,12 @@ test('MLS messages use the native client and backend rejects legacy room-event s
   assert.match(mlsBridge, /enqueueText\(/u);
   assert.match(mlsBridge, /syncJson\(/u);
   assert.match(mlsBridge, /acknowledgeIncoming\(/u);
+  assert.match(mlsBridge, /sendAttachment\(/u);
+  assert.match(mlsBridge, /downloadAttachment\(/u);
+  assert.match(session, /sendMlsAttachment\(/u);
+  assert.match(session, /downloadMlsAttachment\(/u);
+  assert.match(mobileHost, /FilePicker\.platform\.pickFiles/u);
+  assert.match(mobileHost, /InOneChatThreadScreen/u);
   assert.match(server, /mlsMessageRoute && req\.method === 'POST'/u);
   assert.match(server, /messages must be sent through \/mls\/groups\/:id\/messages/u);
   assert.match(server, /req\.method === 'GET' && p === '\/sync'/u);
