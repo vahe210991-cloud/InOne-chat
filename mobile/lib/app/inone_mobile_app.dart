@@ -668,15 +668,19 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         }
       }
       final bytes = await _session.downloadMlsAttachment(fileId);
-      final safeName = (rawName ?? 'attachment')
-          .replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
-      final savedPath = await FilePicker.platform.saveFile(
-        dialogTitle: 'Сохранить расшифрованное вложение',
-        fileName: safeName,
-        bytes: bytes,
-      );
-      if (savedPath != null && mounted) {
-        _notice('Расшифрованное вложение сохранено: $savedPath');
+      try {
+        final safeName = (rawName ?? 'attachment')
+            .replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+        final savedPath = await FilePicker.platform.saveFile(
+          dialogTitle: 'Сохранить расшифрованное вложение',
+          fileName: safeName,
+          bytes: bytes,
+        );
+        if (savedPath != null && mounted) {
+          _notice('Расшифрованное вложение сохранено: $savedPath');
+        }
+      } finally {
+        bytes.fillRange(0, bytes.length, 0);
       }
     } catch (error) {
       _notice('Не удалось получить вложение: $error');
