@@ -80,6 +80,7 @@ test('MLS messages use the native client and backend rejects legacy room-event s
   assert.match(mlsBridge, /sendAttachment\(/u);
   assert.match(mlsBridge, /downloadAttachment\(/u);
   assert.match(mlsBridge, /pendingOutgoing\(/u);
+  assert.match(mlsBridge, /localRoomIds\(/u);
   assert.match(session, /sendMlsAttachment\(/u);
   assert.match(session, /pendingMlsOutbox\(/u);
   assert.match(session, /downloadMlsAttachment\(/u);
