@@ -3054,23 +3054,35 @@ mod retry_tests {
 
     #[test]
     fn api_failures_are_typed_by_status_and_server_error_code() {
-        let auth = classify_api_failure("GET /rooms/x/events -> 401 {\\"error\\":\\"device_revoked\\"}");
+        let auth = classify_api_failure(
+            r#"GET /rooms/x/events -> 401 {"error":"device_revoked"}"#,
+        );
         assert_eq!(auth.kind, ApiFailureKind::AuthSession);
         assert_eq!(auth.status, Some(401));
         assert_eq!(auth.code.as_deref(), Some("device_revoked"));
 
-        let denied = classify_api_failure("GET /rooms/x/events -> 403 {\\"code\\":\\"permission_denied\\"}");
+        let denied = classify_api_failure(
+            r#"GET /rooms/x/events -> 403 {"code":"permission_denied"}"#,
+        );
         assert_eq!(denied.kind, ApiFailureKind::AccessDenied);
         assert_eq!(denied.code.as_deref(), Some("permission_denied"));
 
-        let deleted = classify_api_failure("GET /rooms/x/events -> 404 {\\"error\\":\\"room_deleted\\"}");
+        let deleted = classify_api_failure(
+            r#"GET /rooms/x/events -> 404 {"error":"room_deleted"}"#,
+        );
         assert_eq!(deleted.kind, ApiFailureKind::ResourceDeleted);
         assert_eq!(deleted.status, Some(404));
 
-        let refresh = classify_api_failure("POST /token/refresh -> 401 {\\"error\\":\\"refresh_revoked\\"}");
+        let refresh = classify_api_failure(
+            r#"POST /token/refresh -> 401 {"error":"refresh_revoked"}"#,
+        );
         assert_eq!(refresh.kind, ApiFailureKind::AuthSession);
-        assert!(!is_retryable("POST /token/refresh -> 401 {\\"error\\":\\"refresh_revoked\\"}"));
-        assert!(is_retryable("GET /rooms/x/events -> 503 {\\"error\\":\\"unavailable\\"}"));
+        assert!(!is_retryable(
+            r#"POST /token/refresh -> 401 {"error":"refresh_revoked"}"#
+        ));
+        assert!(is_retryable(
+            r#"GET /rooms/x/events -> 503 {"error":"unavailable"}"#
+        ));
         assert!(is_retryable("сеть: connection reset"));
     }
 
