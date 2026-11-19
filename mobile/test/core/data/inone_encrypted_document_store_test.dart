@@ -194,11 +194,24 @@ void main() {
     await legacyDirectory.create(recursive: true);
     final legacyFile = File('${legacyDirectory.path}${Platform.pathSeparator}old.in1doc');
     await legacyFile.writeAsBytes([1, 2, 3]);
+    // A legacy request ID can have the same length as a new SHA-256 owner scope.
+    final legacyLongId = List<String>.filled(43, 'a').join();
+    final longLegacyDirectory = Directory(
+      '${root.path}${Platform.pathSeparator}InOne'
+      '${Platform.pathSeparator}organization-documents'
+      '${Platform.pathSeparator}$legacyLongId',
+    );
+    await longLegacyDirectory.create(recursive: true);
+    final longLegacyFile = File(
+      '${longLegacyDirectory.path}${Platform.pathSeparator}old.in1doc',
+    );
+    await longLegacyFile.writeAsBytes([4, 5, 6]);
 
     await store.purgeLegacyUnscopedData();
 
     expect(legacyKeyPresent, isFalse);
     expect(await legacyFile.exists(), isFalse);
+    expect(await longLegacyFile.exists(), isFalse);
     expect(await scopedFile.exists(), isTrue);
     expect(keys, hasLength(1));
   });
