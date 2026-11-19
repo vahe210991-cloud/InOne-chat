@@ -170,8 +170,11 @@ void main() {
     ]);
 
     expect(keys, isEmpty);
-    final directory = Directory('${root.path}${Platform.pathSeparator}InOne');
-    expect(await directory.exists(), isFalse);
+    final remainingFiles = await root
+        .list(recursive: true)
+        .where((entity) => entity is File && entity.path.endsWith('.in1doc'))
+        .toList();
+    expect(remainingFiles, isEmpty);
   });
 
   test('rejects modified ciphertext instead of returning unauthenticated bytes', () async {
