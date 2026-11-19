@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
@@ -381,6 +382,62 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       about: null,
       verified: false,
     );
+  }
+
+  Future<String?> _promptMlsInvitee() async {
+    final controller = TextEditingController();
+    try {
+      return await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Новый защищённый чат'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            autocorrect: false,
+            decoration: const InputDecoration(
+              labelText: 'ID пользователя',
+              hintText: '@user:inone.test',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Отмена'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(controller.text.trim()),
+              child: const Text('Создать'),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      controller.dispose();
+    }
+  }
+
+  Future<void> _createMlsRoomAndInvite() async {
+    if (!_session.hasNativeMlsSession) {
+      _notice('Нативная MLS-сессия недоступна.');
+      return;
+    }
+    final invitee = await _promptMlsInvitee();
+    if (invitee == null || invitee.isEmpty) return;
+    try {
+      await _session.ensureMlsKeyPackages(10);
+      final random = math.Random.secure();
+      final suffix = List<int>.generate(16, (_) => random.nextInt(256))
+          .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
+          .join();
+      final roomId = '!$suffix:inone.test';
+      await _session.createMlsRoom(roomId);
+      await _session.inviteMlsMember(roomId, invitee);
+      await _loadMlsRooms();
+      if (mounted) _notice('Защищённая комната создана. MLS-приглашение отправлено.');
+    } catch (error) {
+      _notice('Не удалось создать защищённую комнату: $error');
+    }
   }
 
   Future<void> _loadMlsRooms() async {
@@ -854,7 +911,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
             onSearch: () => _notice('Поиск по содержимому сообщений пока не реализован.'),
             onFilter: () => _notice('Дополнительные фильтры пока недоступны.'),
             onTab: _selectTab,
-            onAdd: () => _notice('Создание групповых комнат пока доступно через приглашение.'),
+            onAdd: () => unawaited(_createMlsRoomAndInvite()),
           );
         }
         return InOneMessagesScreen(
@@ -864,7 +921,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           onSearch: () => _notice('Поиск по содержимому сообщений пока не реализован.'),
           onFilter: () => _notice('Дополнительные фильтры пока недоступны.'),
           onTab: _selectTab,
-          onAdd: () => _notice('Создание групповых комнат пока доступно через приглашение.'),
+          onAdd: () => unawaited(_createMlsRoomAndInvite()),
         );
       case 'chatThread':
         return InOneChatThreadScreen(
