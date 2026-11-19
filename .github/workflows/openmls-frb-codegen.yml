@@ -114,6 +114,21 @@ jobs:
         working-directory: mobile
         run: node tool/prepare_android_mls.mjs
 
+      - name: Configure Maven repositories for Flutter's included Gradle build
+        working-directory: mobile
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.gradle/init.d"
+          install -m 0644 tool/gradle-plugin-repositories.init.gradle "$HOME/.gradle/init.d/inone-flutter-plugin-repositories.gradle"
+          echo "Generated Android Gradle settings:"
+          sed -n '1,80p' android/settings.gradle.kts
+          echo "Generated Gradle wrapper:"
+          cat android/gradle/wrapper/gradle-wrapper.properties
+          flutter_sdk="$(sed -n 's/^flutter.sdk=//p' android/local.properties)"
+          test -n "$flutter_sdk"
+          echo "Flutter included-build settings:"
+          sed -n '1,80p' "$flutter_sdk/packages/flutter_tools/gradle/settings.gradle.kts"
+
       - name: Register iOS recovery deep-link scheme
         working-directory: mobile
         run: node tool/prepare_ios_deep_links.mjs
@@ -310,13 +325,24 @@ jobs:
           flutter pub get --enforce-lockfile
           git diff --exit-code -- pubspec.yaml
 
-      - name: Build iOS device target without signing
+      - name: Configure Rust iOS deployment target
         working-directory: mobile
-        run: flutter build ios --no-codesign
+        run: |
+          set -euo pipefail
+          mkdir -p "$CARGO_HOME"
+          cat > "$CARGO_HOME/config.toml" <<'EOF'
+          [env]
+          IPHONEOS_DEPLOYMENT_TARGET = { value = "15.0", force = true }
+          EOF
+          cat "$CARGO_HOME/config.toml"
 
-      - name: Build iOS simulator target without signing
+      - name: Build iOS simulator target without signing (verbose diagnostics)
         working-directory: mobile
-        run: flutter build ios --simulator --no-codesign
+        run: flutter build ios --simulator --no-codesign --verbose
+
+      - name: Build iOS device target without signing (verbose diagnostics)
+        working-directory: mobile
+        run: flutter build ios --no-codesign --verbose
 
       - name: Upload unsigned iOS simulator build
         uses: actions/upload-artifact@v4
