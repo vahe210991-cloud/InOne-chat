@@ -348,10 +348,6 @@ pub fn open_session(
     let refresh_token = Zeroizing::new(refresh_token);
     std::fs::create_dir_all(database_directory)
         .map_err(|error| format!("создание каталога базы MLS: {error}"))?;
-    let database_directory = validate_database_directory(&database_directory)?;
-    if user_id.trim().is_empty() || device_id.trim().is_empty() {
-        return Err("user_id и device_id обязательны".to_string());
-    }
     let keys: Arc<dyn KeyStore> = Arc::new(PlatformKeyStore::new()?);
     let identity = format!("{user_id}/{device_id}");
     let digest = Sha256::digest(identity.as_bytes());
@@ -410,6 +406,10 @@ pub fn resume_session(
     device_id: String,
     database_directory: String,
 ) -> Result<MlsSession, String> {
+    let database_directory = validate_database_directory(&database_directory)?;
+    if user_id.trim().is_empty() || device_id.trim().is_empty() {
+        return Err("user_id и device_id обязательны".to_string());
+    }
     let keys: Arc<dyn KeyStore> = Arc::new(PlatformKeyStore::new()?);
     let identity = format!("{user_id}/{device_id}");
     let digest = Sha256::digest(identity.as_bytes());
