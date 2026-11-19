@@ -191,6 +191,53 @@ void main() {
     session.dispose();
   });
 
+  test('InOneSession exposes durable MLS messaging only through the adopted Rust bridge', () async {
+    final httpClient = MockClient((request) async {
+      if (request.url.path == '/login') {
+        return http.Response(
+          jsonEncode({'token': 'access-1', 'refreshToken': 'refresh-1'}),
+          200,
+        );
+      }
+      if (request.url.path == '/profile') {
+        return http.Response(jsonEncode({'userId': '@alice:inone.test'}), 200);
+      }
+      return http.Response('{}', 404);
+    });
+    final bridge = _FakeMlsSessionBridge();
+    final session = InOneSession(
+      baseUrl: 'https://api.inone.test',
+      httpClient: httpClient,
+      nativeMlsBridge: bridge,
+      readDeviceId: () async => 'device-1',
+      writeDeviceId: (_) async {},
+      readMlsUserId: () async => null,
+      writeMlsUserId: (_) async {},
+      deleteMlsUserId: () async {},
+    );
+
+    await session.login(email: 'alice@example.test', password: 'not-used-in-test');
+    expect(session.hasNativeMlsSession, isTrue);
+
+    expect(await session.enqueueMlsText('room-1', 'hello'), 'local-1');
+    expect(bridge.enqueueTextCalls, 1);
+    expect(await session.flushMlsOutbox(), 1);
+    expect(bridge.flushOutboxCalls, 1);
+
+    final incoming = await session.syncMlsMessages();
+    expect(incoming, hasLength(1));
+    expect(incoming.single.eventId, 'event-in-1');
+    expect((await session.mlsMessagesForRoom('room-1')).single.text, 'received');
+    await session.acknowledgeMlsMessages(['event-in-1']);
+    expect(bridge.acknowledgedEventIds, ['event-in-1']);
+
+    expect(await session.sendMlsText('room-1', 'direct'), 'event-out-1');
+    expect(bridge.sendTextCalls, 1);
+    expect(await session.mlsLocalEpoch('room-1'), 3);
+    expect(await session.mlsMembersOf('room-1'), ['@alice:inone.test/device-1']);
+    session.dispose();
+  });
+
   test('failed automatic MLS adoption is visible and does not enable fallback messaging', () async {
     final httpClient = MockClient((request) async {
       if (request.url.path == '/login') {
@@ -421,6 +468,10 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
   int purgeCalls = 0;
   int closeCalls = 0;
   int openCalls = 0;
+  int sendTextCalls = 0;
+  int enqueueTextCalls = 0;
+  int flushOutboxCalls = 0;
+  List<String> acknowledgedEventIds = [];
   Completer<void>? openStarted;
   Completer<void>? openGate;
 
@@ -492,34 +543,49 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
   Future<String?> quarantinedCommitReason(String roomId, int epoch) async => null;
 
   @override
-  Future<String> sendText(String roomId, String plaintext) async => 'event-1';
+  Future<String> sendText(String roomId, String plaintext) async {
+    sendTextCalls++;
+    return 'event-out-1';
+  }
 
   @override
-  Future<String> enqueueText(String roomId, String plaintext) async => 'local-1';
+  Future<String> enqueueText(String roomId, String plaintext) async {
+    enqueueTextCalls++;
+    return 'local-1';
+  }
 
   @override
-  Future<List<MlsIncomingMessage>> sync() async => const [];
+  Future<List<MlsIncomingMessage>> sync() async => const [
+        MlsIncomingMessage(roomId: 'room-1', eventId: 'event-in-1', text: 'received'),
+      ];
 
   @override
   Future<List<MlsIncomingMessage>> pendingIncoming() async => const [];
 
   @override
-  Future<List<MlsIncomingMessage>> messagesForRoom(String roomId) async => const [];
+  Future<List<MlsIncomingMessage>> messagesForRoom(String roomId) async => const [
+        MlsIncomingMessage(roomId: 'room-1', eventId: 'event-in-1', text: 'received'),
+      ];
 
   @override
-  Future<void> acknowledgeIncoming(List<String> eventIds) async {}
+  Future<void> acknowledgeIncoming(List<String> eventIds) async {
+    acknowledgedEventIds = List<String>.from(eventIds);
+  }
 
   @override
-  Future<int> flushOutbox() async => 0;
+  Future<int> flushOutbox() async {
+    flushOutboxCalls++;
+    return 1;
+  }
 
   @override
   Future<int> outboxLength() async => 0;
 
   @override
-  Future<int?> localEpoch(String roomId) async => null;
+  Future<int?> localEpoch(String roomId) async => 3;
 
   @override
-  Future<List<String>> membersOf(String roomId) async => const [];
+  Future<List<String>> membersOf(String roomId) async => const ['@alice:inone.test/device-1'];
 
   @override
   Future<void> revokeDevice(String deviceId) async {}
