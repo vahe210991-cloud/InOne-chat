@@ -1,8 +1,7 @@
 import 'dart:async';
-import 'dart:io' show Directory, File, Platform;
+import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
 
 import '../core/data/inone_profile.dart';
 import '../core/data/inone_public_config.dart';
