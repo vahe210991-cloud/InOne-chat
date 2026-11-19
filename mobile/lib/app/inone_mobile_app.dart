@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../core/data/inone_profile.dart';
@@ -538,16 +539,76 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     }
   }
 
+  String _attachmentMimeType(String name) {
+    final extension = name.split('.').last.toLowerCase();
+    return switch (extension) {
+      'pdf' => 'application/pdf',
+      'png' => 'image/png',
+      'jpg' || 'jpeg' => 'image/jpeg',
+      'gif' => 'image/gif',
+      'webp' => 'image/webp',
+      'txt' => 'text/plain',
+      'csv' => 'text/csv',
+      'json' => 'application/json',
+      'zip' => 'application/zip',
+      'doc' => 'application/msword',
+      'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'xls' => 'application/vnd.ms-excel',
+      'xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      _ => 'application/octet-stream',
+    };
+  }
+
+  Future<void> _pickAndSendMlsAttachment() async {
+    final roomId = _activeMlsRoomId;
+    if (roomId == null || !_session.hasNativeMlsSession) return;
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.any,
+        allowMultiple: false,
+      );
+      if (result == null || result.files.isEmpty) return;
+      final selected = result.files.single;
+      const maximumBytes = 250 * 1024 * 1024 - 16;
+      if (selected.size <= 0 || selected.size > maximumBytes) {
+        _notice('Размер вложения должен быть от 1 байта до 250 МиБ.');
+        return;
+      }
+      final bytes = await selected.xFile.readAsBytes();
+      if (bytes.isEmpty || bytes.length > maximumBytes) {
+        _notice('Файл пустой или превышает допустимый размер.');
+        return;
+      }
+      await _session.sendMlsAttachment(
+        roomId,
+        selected.name,
+        _attachmentMimeType(selected.name),
+        bytes,
+      );
+      await _refreshActiveMlsChat();
+      if (mounted) _notice('Вложение отправлено через MLS.');
+    } catch (error) {
+      _notice('Не удалось отправить зашифрованное вложение: $error');
+    }
+  }
+
   Future<void> _downloadMlsAttachment(String fileId) async {
     try {
-      final message = _activeMlsThread.where((item) => item.fileId == fileId).firstOrNull;
+      String? rawName;
+      for (final item in _activeMlsThread) {
+        if (item.fileId == fileId) {
+          rawName = item.fileLabel;
+          break;
+        }
+      }
       final bytes = await _session.downloadMlsAttachment(fileId);
       final support = await getApplicationSupportDirectory();
       final directory = Directory('${support.path}/inone/downloads');
       await directory.create(recursive: true);
-      final rawName = message?.fileLabel ?? 'attachment';
-      final safeName = rawName.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
-      final file = File('${directory.path}/$fileId-$safeName');
+      final safeName = (rawName ?? 'attachment')
+          .replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+      final safeId = fileId.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
+      final file = File('${directory.path}/$safeId-$safeName');
       await file.writeAsBytes(bytes, flush: true);
       if (mounted) {
         _notice('Вложение расшифровано и сохранено в защищённом каталоге приложения.');
@@ -566,12 +627,21 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       final messages = await _session.mlsMessagesForRoom(roomId);
       if (!mounted) return;
       setState(() {
-        _activeMlsThread = messages.map((message) => InOneThreadItem(
-          kind: InOneThreadItemKind.text,
-          text: message.text ?? 'Не удалось расшифровать сообщение',
-          mine: false,
-          meta: message.isReadable ? 'MLS' : 'Не расшифровано',
-        )).toList(growable: false);
+        _activeMlsThread = messages.map((message) => message.isAttachment
+            ? InOneThreadItem(
+                kind: InOneThreadItemKind.file,
+                fileId: message.fileId,
+                fileLabel: message.name ?? 'Вложение',
+                text: '${message.size ?? 0} bytes · ${message.mimeType ?? 'file'}',
+                mine: false,
+                meta: 'MLS',
+              )
+            : InOneThreadItem(
+                kind: InOneThreadItemKind.text,
+                text: message.text ?? 'Не удалось расшифровать сообщение',
+                mine: false,
+                meta: message.isReadable ? 'MLS' : 'Не расшифровано',
+              )).toList(growable: false);
       });
     } catch (error) {
       _notice('Синхронизация MLS не выполнена: $error');
