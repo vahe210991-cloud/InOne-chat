@@ -203,6 +203,31 @@ void main() {
     expect(keys, hasLength(1));
   });
 
+  test('purge removes ciphertext even when secure-key deletion fails', () async {
+    final file = await store.save(
+      ownerUserId: 'owner-1',
+      requestId: 'request-1',
+      documentId: 'document-1',
+      filename: 'private.pdf',
+      bytes: utf8.encode('private data'),
+    );
+    final failingStore = InOneEncryptedDocumentStore(
+      rootDirectory: () async => root,
+      readKey: (scope) async => keys[scope],
+      writeKey: (scope, value) async { keys[scope] = value; },
+      deleteKey: (_) async { throw StateError('secure storage unavailable'); },
+    );
+
+    await expectLater(
+      failingStore.purgeOwner('owner-1'),
+      throwsA(isA<StateError>()),
+    );
+    expect(await file.exists(), isFalse,
+        reason: 'ciphertext must be removed even if key deletion cannot be confirmed');
+    expect(keys, hasLength(1),
+        reason: 'the cleanup failure must not be reported as successful crypto-erasure');
+  });
+
   test('rejects modified ciphertext instead of returning unauthenticated bytes', () async {
     final file = await store.save(
       ownerUserId: '@owner:inone.test',
