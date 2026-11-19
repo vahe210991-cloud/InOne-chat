@@ -31,7 +31,6 @@ void main() {
         deviceId: deviceId,
       );
       expect(await resumed.accessTokenSnapshot(), 'smoke-access-token');
-      await resumed.close();
 
       // The server is intentionally unreachable. Native logout must still
       // purge the SQLCipher database and platform key before returning its error.
