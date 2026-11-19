@@ -899,7 +899,9 @@ impl Client {
     /// Вызов API. Если токен доступа истёк, токен обновляется и запрос повторяется один раз.
     fn call(&self, method: &str, path: &str, body: Option<Value>) -> Result<Value, String> {
         match self.call_once(method, path, body.clone()) {
-            Err(e) if e.contains("token_expired") => {
+            Err(e)
+                if classify_api_failure(&e).code.as_deref() == Some("token_expired") =>
+            {
                 self.renew()?;
                 self.call_once(method, path, body)
             }
@@ -2712,7 +2714,9 @@ impl Client {
                 // Сервер больше не пускает устройство в комнату: это расхождение состава, а не причина остановить все комнаты.
                 Err(e) if e.contains("not a member") => self.check_consistency(&room)?,
                 // Некорректный event identity — ошибка контракта ответа, а не повреждение MLS room.
-                Err(e) if e.starts_with("ошибка контракта ответа:") => {
+                Err(e)
+                    if classify_api_failure(&e).kind == ApiFailureKind::Contract =>
+                {
                     continue
                 }
                 // Сетевые/HTTP и локальные временные ошибки возвращаются вызывающему коду без MLS-карантина.
