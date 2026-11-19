@@ -2,10 +2,33 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/services.dart';
 import 'package:inone_mobile/src/rust/api/session.dart' as rust;
 import 'package:inone_mobile/src/rust/frb_generated.dart';
 import 'package:path_provider/path_provider.dart';
 import 'mls_session_bridge.dart';
+
+const _androidMlsStorageChannel = MethodChannel('com.inone.mls/platform_storage');
+
+Future<Directory> _defaultSupportDirectory() async {
+  if (!Platform.isAndroid) return getApplicationSupportDirectory();
+
+  final path = await _androidMlsStorageChannel.invokeMethod<String>(
+    'applicationSupportDirectory',
+  );
+  if (path == null || path.trim().isEmpty) {
+    throw StateError('Android app-private support directory was not returned');
+  }
+
+  final directory = Directory(path);
+  if (!FileSystemEntity.isAbsolute(directory.path)) {
+    throw StateError('Android app-private support directory is not absolute');
+  }
+  if (!await directory.exists()) {
+    throw StateError('Android app-private support directory does not exist');
+  }
+  return directory;
+}
 
 int _checkedNativeCount(BigInt value, String field) {
   if (value < BigInt.zero || value > BigInt.from(0x7fffffffffffffff)) {
@@ -22,7 +45,7 @@ int _checkedNativeCount(BigInt value, String field) {
 class RustMlsSessionBridge implements MlsSessionBridge {
   RustMlsSessionBridge({
     Future<Directory> Function()? supportDirectory,
-  }) : _supportDirectory = supportDirectory ?? getApplicationSupportDirectory;
+  }) : _supportDirectory = supportDirectory ?? _defaultSupportDirectory;
 
   final Future<Directory> Function() _supportDirectory;
   rust.MlsSession? _session;
