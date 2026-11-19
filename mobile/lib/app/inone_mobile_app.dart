@@ -630,6 +630,13 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         _notice('Размер вложения должен быть от 1 байта до 50 МиБ.');
         return;
       }
+      final safeName = selected.name
+          .replaceAll(RegExp(r'[/\\\x00-\x1F]'), '_');
+      if (safeName.isEmpty) {
+        _notice('У файла недопустимое имя.');
+        return;
+      }
+      final displayName = safeName.length > 255 ? safeName.substring(0, 255) : safeName;
       final selectedPath = selected.path;
       if (selectedPath == null || selectedPath.isEmpty) {
         _notice('Система не предоставила доступ к выбранному файлу.');
@@ -643,8 +650,8 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         }
         await _session.sendMlsAttachment(
           roomId,
-          selected.name,
-          _attachmentMimeType(selected.name),
+          displayName,
+          _attachmentMimeType(displayName),
           bytes,
         );
         await _refreshActiveMlsChat();
