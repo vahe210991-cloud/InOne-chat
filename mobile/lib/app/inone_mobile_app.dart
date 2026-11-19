@@ -136,11 +136,19 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   }
 
   Future<void> _purgeOwnerDocuments(String ownerUserId) async {
+    Object? failure;
     try {
       await _documentPreview.clear();
+    } catch (error) {
+      failure = error;
+    }
+    try {
       await _documentStore.purgeOwner(ownerUserId);
-    } catch (_) {
-      if (mounted) _notice('Не удалось полностью очистить локальные документы. Повторите выход из аккаунта.');
+    } catch (error) {
+      failure ??= error;
+    }
+    if (failure != null && mounted) {
+      _notice('Не удалось полностью очистить локальные документы. Повторите выход из аккаунта.');
     }
   }
 
@@ -559,9 +567,15 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     } finally {
       try {
         await _documentPreview.clear();
-        if (owner != null) await _documentStore.purgeOwner(owner);
       } catch (error) {
         failure ??= _toFailure(error);
+      }
+      if (owner != null) {
+        try {
+          await _documentStore.purgeOwner(owner);
+        } catch (error) {
+          failure ??= _toFailure(error);
+        }
       }
       if (mounted) _finishLogout();
     }
