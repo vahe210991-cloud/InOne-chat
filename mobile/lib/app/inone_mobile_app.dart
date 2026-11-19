@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io' show Directory, File, Platform;
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:open_filex/open_filex.dart';
