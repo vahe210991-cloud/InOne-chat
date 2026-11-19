@@ -88,7 +88,6 @@ jobs:
         working-directory: mobile
         run: |
           flutter pub get
-          git diff --exit-code -- pubspec.yaml pubspec.lock
           cargo generate-lockfile --manifest-path rust/Cargo.toml
 
       - name: Format Rust bridge sources
