@@ -269,18 +269,42 @@ export function createMemoryStore({ pinPepper }) {
     listOrgRequests({ userId, all }) {
       return [...orgRequests.values()].filter((r) => all || r.applicantId === userId).map((r) => ({ requestId: r.requestId, applicantId: r.applicantId, name: r.name, status: r.status, createdAt: r.createdAt })).sort((a, b) => a.createdAt - b.createdAt);
     },
-    addOrgRequestDocument({ docId, requestId, kind, size, sha256, objectKey, uploadedBy, createdAt }) {
-      orgRequestDocs.set(docId, { docId, requestId, kind, size, sha256, objectKey, uploadedBy, createdAt });
+    addOrgRequestDocument({ docId, requestId, kind, size, sha256, filename, mimeType, objectKey, uploadedBy, createdAt }) {
+      const request = orgRequests.get(requestId);
+      if (!request || request.status !== 'pending') return false;
+      orgRequestDocs.set(docId, { docId, requestId, kind, size, sha256, filename, mimeType, objectKey, uploadedBy, createdAt });
       orgRequestLog.push({ requestId, actor: uploadedBy, action: 'document', at: createdAt });
+      return true;
     },
     listOrgRequestDocuments(requestId) {
-      return [...orgRequestDocs.values()].filter((x) => x.requestId === requestId).map((x) => ({ docId: x.docId, kind: x.kind, size: x.size, sha256: x.sha256, createdAt: x.createdAt })).sort((a, b) => a.createdAt - b.createdAt);
+      return [...orgRequestDocs.values()].filter((x) => x.requestId === requestId).map((x) => ({ docId: x.docId, kind: x.kind, size: x.size, sha256: x.sha256, filename: x.filename, mimeType: x.mimeType, createdAt: x.createdAt })).sort((a, b) => a.createdAt - b.createdAt);
     },
     getOrgRequestDocument(docId) { const x = orgRequestDocs.get(docId); return x ? { ...x } : null; },
-    decideOrgRequest({ requestId, status, decidedBy, decidedAt, orgId }) {
-      const r = orgRequests.get(requestId);
-      r.status = status; r.decidedBy = decidedBy; r.decidedAt = decidedAt; r.orgId = orgId;
-      orgRequestLog.push({ requestId, actor: decidedBy, action: status === 'approved' ? 'approve' : 'reject', at: decidedAt });
+    decideOrgRequest({ requestId, decision, decidedBy, decidedAt }) {
+      const request = orgRequests.get(requestId);
+      if (!request) return null;
+      if (request.status !== 'pending') {
+        return { conflict: true, status: request.status, orgId: request.orgId };
+      }
+      const status = decision === 'approve' ? 'approved' : 'rejected';
+      const orgId = decision === 'approve' ? `org-${requestId}` : null;
+      if (orgId) {
+        if (organizations.has(orgId)) throw new Error('organization already exists for pending request');
+        organizations.set(orgId, {
+          orgId,
+          name: request.name,
+          status: 'approved',
+          createdBy: request.applicantId,
+          createdAt: decidedAt,
+        });
+        addOrgMembership(orgId, request.applicantId, 'owner', decidedAt);
+      }
+      request.status = status;
+      request.decidedBy = decidedBy;
+      request.decidedAt = decidedAt;
+      request.orgId = orgId;
+      orgRequestLog.push({ requestId, actor: decidedBy, action: decision, at: decidedAt });
+      return { status, orgId };
     },
     logOrgRequest(requestId, actor, action, at) { orgRequestLog.push({ requestId, actor, action, at }); },
     listOrgRequestLog(requestId) { return orgRequestLog.filter((x) => x.requestId === requestId).map((x) => ({ actor: x.actor, action: x.action, at: x.at })); },

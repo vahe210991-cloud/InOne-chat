@@ -1,3 +1,5 @@
+import 'package:http/http.dart' as http;
+
 import '../session/inone_session.dart';
 import 'inone_profile.dart';
 
@@ -25,6 +27,24 @@ class InOneRepositories {
       session.request('GET', '/approvals');
   Future<Map<String, dynamic>> organizationRequests() =>
       session.request('GET', '/org-requests');
+  Future<Map<String, dynamic>> organizationRequest(String requestId) =>
+      session.request('GET', '/org-requests/${Uri.encodeComponent(requestId)}');
+  Future<http.Response> downloadOrganizationRequestDocument(
+    String requestId,
+    String documentId,
+  ) =>
+      session.download(
+        '/org-requests/${Uri.encodeComponent(requestId)}/documents/${Uri.encodeComponent(documentId)}',
+      );
+  Future<Map<String, dynamic>> decideOrganizationRequest(
+    String requestId, {
+    required String decision,
+  }) =>
+      session.request(
+        'POST',
+        '/org-requests/${Uri.encodeComponent(requestId)}/decision',
+        body: {'decision': decision},
+      );
   Future<Map<String, dynamic>> publicConfig() =>
       session.request('GET', '/config/public', authenticated: false);
 

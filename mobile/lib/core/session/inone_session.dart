@@ -592,6 +592,41 @@ class InOneSession extends ChangeNotifier {
     }
   }
 
+  Future<http.Response> download(
+    String path, {
+    bool authenticated = true,
+  }) async {
+    if (_loggingOut) {
+      throw const ApiException(code: 'session_logging_out', statusCode: 409, retryable: false);
+    }
+    if (authenticated && _localeSyncPending && path != '/profile/locale') {
+      await _syncLocaleAfterAuthentication();
+      if (_localeSyncPending) {
+        throw const ApiException(code: 'locale_sync_pending', statusCode: 503, retryable: true);
+      }
+    }
+    final gate = _handoffGate;
+    if (gate != null) await gate.future;
+    try {
+      return await _client.download(path, authenticated: authenticated);
+    } on ApiException catch (error) {
+      if (_loggingOut) {
+        throw const ApiException(code: 'session_logging_out', statusCode: 409, retryable: false);
+      }
+      if (!authenticated || error.statusCode != 401) rethrow;
+      final native = _mlsBridge;
+      if (native != null) {
+        final token = await _refreshNativeOrInvalidate(native);
+        _accessToken = token;
+        notifyListeners();
+        return _client.download(path, authenticated: true);
+      }
+      if (_refreshToken == null) rethrow;
+      await _refreshOnce();
+      return _client.download(path, authenticated: true);
+    }
+  }
+
   Future<Map<String, dynamic>> request(
     String method,
     String path, {
@@ -636,14 +671,7 @@ class InOneSession extends ChangeNotifier {
 
       final native = _mlsBridge;
       if (native != null) {
-        final token = await _refreshNativeOnce(native);
-        if (token.isEmpty) {
-          throw const ApiException(
-            code: 'mls_session_missing_access_token',
-            statusCode: 502,
-            retryable: false,
-          );
-        }
+        final token = await _refreshNativeOrInvalidate(native);
         _accessToken = token;
         notifyListeners();
         return _client.request(method, path, body: body, authenticated: true);
@@ -652,6 +680,59 @@ class InOneSession extends ChangeNotifier {
       if (_refreshToken == null) rethrow;
       await _refreshOnce();
       return _client.request(method, path, body: body, authenticated: true);
+    }
+  }
+
+  Future<String> _refreshNativeOrInvalidate(MlsSessionBridge bridge) async {
+    try {
+      final token = await _refreshNativeOnce(bridge);
+      if (token.isEmpty) {
+        await _invalidateNativeSession(bridge);
+        throw const ApiException(
+          code: 'mls_session_missing_access_token',
+          statusCode: 502,
+          retryable: false,
+        );
+      }
+      return token;
+    } catch (error) {
+      final revoked = RegExp(
+        r'(?:\b401\b|unauthori[sz]ed|refresh.?token.*revok|session.*revok)',
+        caseSensitive: false,
+      ).hasMatch(error.toString());
+      if (revoked) await _invalidateNativeSession(bridge);
+      rethrow;
+    }
+  }
+
+  Future<void> _invalidateNativeSession(MlsSessionBridge bridge) async {
+    final userId = _savedMlsUserId ?? _userId;
+    final deviceId = _deviceId;
+    try {
+      await bridge.logout();
+    } catch (_) {
+      // Rust logout performs local SQLCipher/key cleanup even if remote logout fails.
+    } finally {
+      if (userId != null && deviceId != null) {
+        try {
+          await bridge.purgeLocalSession(userId: userId, deviceId: deviceId);
+        } catch (_) {
+          // The persisted identity is still removed below so the app cannot resume it.
+        }
+      }
+      try {
+        await bridge.close();
+      } catch (_) {
+        // Preserve the original unauthorized refresh failure.
+      }
+      _mlsBridge = null;
+      _savedMlsUserId = null;
+      try {
+        await _deleteMlsUserId();
+      } catch (_) {
+        // Do not restore an identity that the server has rejected.
+      }
+      _clearSession();
     }
   }
 
