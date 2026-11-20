@@ -10,13 +10,16 @@ enum InOnePushAuthorizationStatus {
   authorized,
   provisional,
   denied,
+  deniedPermanently,
   notDetermined,
 }
 
 abstract interface class InOnePushMessagingClient {
-  Stream<String> get onTokenRefresh;
+  Stream<String> get onRegistered;
+  Stream<String> get onUnregistered;
   Future<InOnePushAuthorizationStatus> requestPermission();
-  Future<String?> getToken();
+  Future<void> register();
+  Future<void> unregister();
   Future<String?> getApnsToken();
 }
 
@@ -26,13 +29,10 @@ class FirebaseInOnePushMessagingClient implements InOnePushMessagingClient {
   final FirebaseMessaging messaging;
 
   @override
+  Stream<String> get onRegistered => messaging.onRegistered;
+
   @override
-  Stream<String> get onTokenRefresh {
-    // The backend stores FCM registration tokens; onRegistered emits FIDs.
-    // Switch only together with the backend storage/sender migration.
-    // ignore: deprecated_member_use
-    return messaging.onTokenRefresh;
-  }
+  Stream<String> get onUnregistered => messaging.onUnregistered;
 
   @override
   Future<InOnePushAuthorizationStatus> requestPermission() async {
@@ -49,22 +49,26 @@ class FirebaseInOnePushMessagingClient implements InOnePushMessagingClient {
       AuthorizationStatus.authorized => InOnePushAuthorizationStatus.authorized,
       AuthorizationStatus.provisional => InOnePushAuthorizationStatus.provisional,
       AuthorizationStatus.denied => InOnePushAuthorizationStatus.denied,
-      AuthorizationStatus.deniedPermanently => InOnePushAuthorizationStatus.denied,
-      AuthorizationStatus.notDetermined => InOnePushAuthorizationStatus.notDetermined,
+      AuthorizationStatus.deniedPermanently =>
+        InOnePushAuthorizationStatus.deniedPermanently,
+      AuthorizationStatus.notDetermined =>
+        InOnePushAuthorizationStatus.notDetermined,
     };
   }
 
   @override
-  // Keep the legacy FCM token API until the backend accepts and sends to FIDs.
-  // ignore: deprecated_member_use
-  Future<String?> getToken() => messaging.getToken();
+  Future<void> register() => messaging.register();
+
+  @override
+  Future<void> unregister() => messaging.unregister();
 
   @override
   Future<String?> getApnsToken() => messaging.getAPNSToken();
 }
 
-/// Synchronizes an FCM token only while this device has an authenticated session.
-/// The token is sent directly to the authenticated API and is never persisted/logged.
+/// Registers a Firebase Installation ID only after this device has an
+/// authenticated InOne session and notification permission. FIDs are held in
+/// memory only and sent through the authenticated current-device API.
 class InOnePushLifecycle {
   InOnePushLifecycle({
     required InOneSession session,
@@ -91,10 +95,13 @@ class InOnePushLifecycle {
   final InOnePushMessagingClient _messaging;
   final bool _isApplePlatform;
 
-  StreamSubscription<String>? _tokenSubscription;
+  StreamSubscription<String>? _registeredSubscription;
+  StreamSubscription<String>? _unregisteredSubscription;
+  Completer<String>? _registrationWaiter;
   Future<void> _pending = Future<void>.value();
   bool _started = false;
   bool _suspending = false;
+  bool _unregisteringFirebase = false;
   late bool _wasAuthenticated;
 
   void start() {
@@ -102,16 +109,36 @@ class InOnePushLifecycle {
     _started = true;
     _wasAuthenticated = _session.isAuthenticated;
     _session.addListener(_onSessionChanged);
-    _tokenSubscription = _messaging.onTokenRefresh.listen(
-      (token) {
-        if (token.isEmpty) return;
-        unawaited(_enqueue(() => _register(token)).catchError((Object _) {}));
-      },
+    _registeredSubscription = _messaging.onRegistered.listen(
+      _onRegistered,
+      onError: (Object _) {},
+    );
+    _unregisteredSubscription = _messaging.onUnregistered.listen(
+      _onUnregistered,
       onError: (Object _) {},
     );
     if (_wasAuthenticated) {
       unawaited(refreshRegistration().catchError((Object _) {}));
     }
+  }
+
+  void _onRegistered(String installationId) {
+    if (installationId.isEmpty) return;
+    final waiter = _registrationWaiter;
+    if (waiter != null) {
+      if (!waiter.isCompleted) waiter.complete(installationId);
+      return;
+    }
+    if (_canRegister) {
+      unawaited(
+        _enqueue(() => _register(installationId)).catchError((Object _) {}),
+      );
+    }
+  }
+
+  void _onUnregistered(String _) {
+    if (_unregisteringFirebase || !_canRegister) return;
+    unawaited(_enqueue(_repository.unregister).catchError((Object _) {}));
   }
 
   void _onSessionChanged() {
@@ -131,53 +158,103 @@ class InOnePushLifecycle {
     return _enqueue(_refreshRegistration);
   }
 
-  Future<void> _register(String token) async {
-    if (token.isEmpty || !_canRegister) return;
-    final permission = await _messaging.requestPermission();
-    if (!_canRegister) return;
-    final permitted = permission == InOnePushAuthorizationStatus.authorized ||
-        permission == InOnePushAuthorizationStatus.provisional;
-    if (!permitted) {
-      await _repository.unregister();
-      return;
-    }
-    if (_isApplePlatform && await _messaging.getApnsToken() == null) return;
-    if (!_canRegister) return;
-    await _repository.register(provider: InOnePushProvider.fcm, token: token);
-  }
-
   Future<void> _refreshRegistration() async {
     if (!_canRegister) return;
     final permission = await _messaging.requestPermission();
     if (!_canRegister) return;
-    final permitted = permission == InOnePushAuthorizationStatus.authorized ||
-        permission == InOnePushAuthorizationStatus.provisional;
-    if (!permitted) {
-      await _repository.unregister();
+    if (!_isPermitted(permission)) {
+      await _removeRegistration();
       return;
     }
-
-    // On Apple platforms APNs registration must exist before requesting FCM.
-    // App resume and subsequent token-refresh events provide retry opportunities.
     if (_isApplePlatform && await _messaging.getApnsToken() == null) return;
     if (!_canRegister) return;
-    final token = await _messaging.getToken();
-    if (token == null || token.isEmpty || !_canRegister) return;
-    await _repository.register(provider: InOnePushProvider.fcm, token: token);
+    final installationId = await _requestInstallationId();
+    if (!_canRegister) return;
+    await _repository.register(
+      provider: InOnePushProvider.fcm,
+      token: installationId,
+    );
   }
+
+  Future<void> _register(String installationId) async {
+    if (installationId.isEmpty || !_canRegister) return;
+    final permission = await _messaging.requestPermission();
+    if (!_canRegister) return;
+    if (!_isPermitted(permission)) {
+      await _removeRegistration();
+      return;
+    }
+    if (_isApplePlatform && await _messaging.getApnsToken() == null) return;
+    if (!_canRegister) return;
+    await _repository.register(
+      provider: InOnePushProvider.fcm,
+      token: installationId,
+    );
+  }
+
+  Future<String> _requestInstallationId() async {
+    final waiter = Completer<String>();
+    _registrationWaiter = waiter;
+    try {
+      await _messaging.register();
+      return await waiter.future.timeout(const Duration(seconds: 30));
+    } finally {
+      if (identical(_registrationWaiter, waiter)) {
+        _registrationWaiter = null;
+      }
+    }
+  }
+
+  bool _isPermitted(InOnePushAuthorizationStatus status) =>
+      status == InOnePushAuthorizationStatus.authorized ||
+      status == InOnePushAuthorizationStatus.provisional;
 
   bool get _canRegister => _started && !_suspending && _session.isAuthenticated;
 
-  /// Runs before logout, while DELETE still has a valid bearer session.
+  Future<void> _unregisterFirebase() async {
+    if (_unregisteringFirebase) return;
+    _unregisteringFirebase = true;
+    try {
+      await _messaging.unregister();
+    } finally {
+      _unregisteringFirebase = false;
+    }
+  }
+
+  Future<void> _removeRegistration() async {
+    Object? firstError;
+    StackTrace? firstStack;
+    try {
+      await _repository.unregister();
+    } catch (error, stackTrace) {
+      firstError = error;
+      firstStack = stackTrace;
+    }
+    try {
+      await _unregisterFirebase();
+    } catch (error, stackTrace) {
+      firstError ??= error;
+      firstStack ??= stackTrace;
+    }
+    if (firstError != null) {
+      Error.throwWithStackTrace(firstError, firstStack!);
+    }
+  }
+
+  /// Removes the server association and FCM registration before logout while
+  /// the bearer session is still valid. Server logout remains a cleanup fallback.
   Future<void> unregisterBeforeLogout() {
     if (!_started) return Future<void>.value();
     _suspending = true;
     return _enqueue(() async {
-      if (_session.isAuthenticated) await _repository.unregister();
+      if (_session.isAuthenticated) {
+        await _removeRegistration();
+      } else {
+        await _unregisterFirebase();
+      }
     });
   }
 
-  /// Lets lifecycle tests wait until session/token callbacks have settled.
   Future<void> waitForPendingOperations() => _pending;
 
   Future<void> _enqueue(Future<void> Function() operation) {
@@ -193,7 +270,9 @@ class InOnePushLifecycle {
     if (!_started) return;
     _started = false;
     _session.removeListener(_onSessionChanged);
-    unawaited(_tokenSubscription?.cancel());
-    _tokenSubscription = null;
+    unawaited(_registeredSubscription?.cancel());
+    unawaited(_unregisteredSubscription?.cancel());
+    _registeredSubscription = null;
+    _unregisteredSubscription = null;
   }
 }

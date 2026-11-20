@@ -27,51 +27,52 @@ void main() {
     session.dispose();
   });
 
-  test('registers the current FCM token only after authentication', () async {
+  test('registers the current Firebase Installation ID only after authentication', () async {
     expect(session.requests, isEmpty);
     session.setAuthenticated(true);
     await lifecycle.waitForPendingOperations();
 
     expect(messaging.permissionRequests, 1);
-    expect(messaging.tokenRequests, 1);
+    expect(messaging.registrationRequests, 1);
     expect(session.requests, [
       {
         'method': 'PUT',
         'path': '/devices/me/push',
         'body': {
           'provider': 'fcm',
-          'token': 'fcm-token-123456789012345678901234567890',
+          'token': 'abcdefghijklmnopqrstuv',
         },
         'authenticated': true,
       },
     ]);
   });
 
-  test('re-registers a refreshed FCM token for the authenticated device', () async {
+  test('updates the server when the Firebase Installation ID changes', () async {
     session.setAuthenticated(true);
     await lifecycle.waitForPendingOperations();
-    messaging.emitToken('fcm-token-refreshed-12345678901234567890');
+    messaging.emitInstallationId('zyxwvutsrqponmlkjihgfe');
     await lifecycle.waitForPendingOperations();
 
     expect(session.requests, hasLength(2));
     expect(session.requests.last['body'], {
       'provider': 'fcm',
-      'token': 'fcm-token-refreshed-12345678901234567890',
+      'token': 'zyxwvutsrqponmlkjihgfe',
     });
   });
 
-  test('does not restore a refreshed token after notification permission is denied', () async {
+  test('does not restore an FID after notification permission is denied', () async {
     session.setAuthenticated(true);
     await lifecycle.waitForPendingOperations();
-    messaging.permission = InOnePushAuthorizationStatus.denied;
-    messaging.emitToken('fcm-token-refresh-denied-123456789012345678');
+    messaging.permission = InOnePushAuthorizationStatus.deniedPermanently;
+    messaging.emitInstallationId('zyxwvutsrqponmlkjihgfe');
     await lifecycle.waitForPendingOperations();
 
     expect(session.requests, hasLength(2));
     expect(session.requests.last['method'], 'DELETE');
+    expect(messaging.unregisterRequests, 1);
   });
 
-  test('unregisters before logout while the bearer session is still valid', () async {
+  test('unregisters Firebase and the server before logout with a valid bearer session', () async {
     session.setAuthenticated(true);
     await lifecycle.waitForPendingOperations();
     await lifecycle.unregisterBeforeLogout();
@@ -82,22 +83,14 @@ void main() {
       'body': null,
       'authenticated': true,
     });
+    expect(messaging.unregisterRequests, 1);
     session.setAuthenticated(false);
-    messaging.emitToken('fcm-token-after-logout-123456789012345678');
+    messaging.emitInstallationId('0123456789abcdefghijkl');
     await lifecycle.waitForPendingOperations();
     expect(session.requests, hasLength(2));
   });
 
-  test('removes a stale server registration when notification permission is denied', () async {
-    messaging.permission = InOnePushAuthorizationStatus.denied;
-    session.setAuthenticated(true);
-    await lifecycle.waitForPendingOperations();
-
-    expect(messaging.tokenRequests, 0);
-    expect(session.requests.single['method'], 'DELETE');
-  });
-
-  test('does not call FCM token APIs on iOS before APNs registration exists', () async {
+  test('does not register an iOS FID before APNs registration exists', () async {
     lifecycle.dispose();
     lifecycle = InOnePushLifecycle(
       session: session,
@@ -110,8 +103,18 @@ void main() {
     await lifecycle.waitForPendingOperations();
 
     expect(messaging.apnsTokenRequests, 1);
-    expect(messaging.tokenRequests, 0);
+    expect(messaging.registrationRequests, 0);
     expect(session.requests, isEmpty);
+  });
+
+  test('removes an old server registration when notification permission is denied', () async {
+    messaging.permission = InOnePushAuthorizationStatus.denied;
+    session.setAuthenticated(true);
+    await lifecycle.waitForPendingOperations();
+
+    expect(messaging.registrationRequests, 0);
+    expect(messaging.unregisterRequests, 1);
+    expect(session.requests.single['method'], 'DELETE');
   });
 }
 
@@ -147,18 +150,24 @@ class _PushTestSession extends InOneSession {
 }
 
 class _FakeMessaging implements InOnePushMessagingClient {
-  final StreamController<String> _tokens =
+  final StreamController<String> _registrations =
+      StreamController<String>.broadcast(sync: true);
+  final StreamController<String> _unregistrations =
       StreamController<String>.broadcast(sync: true);
   InOnePushAuthorizationStatus permission =
       InOnePushAuthorizationStatus.authorized;
-  String? token = 'fcm-token-123456789012345678901234567890';
+  String installationId = 'abcdefghijklmnopqrstuv';
   String? apnsToken = 'apns-token-ready';
   int permissionRequests = 0;
-  int tokenRequests = 0;
+  int registrationRequests = 0;
+  int unregisterRequests = 0;
   int apnsTokenRequests = 0;
 
   @override
-  Stream<String> get onTokenRefresh => _tokens.stream;
+  Stream<String> get onRegistered => _registrations.stream;
+
+  @override
+  Stream<String> get onUnregistered => _unregistrations.stream;
 
   @override
   Future<InOnePushAuthorizationStatus> requestPermission() async {
@@ -167,9 +176,15 @@ class _FakeMessaging implements InOnePushMessagingClient {
   }
 
   @override
-  Future<String?> getToken() async {
-    tokenRequests++;
-    return token;
+  Future<void> register() async {
+    registrationRequests++;
+    _registrations.add(installationId);
+  }
+
+  @override
+  Future<void> unregister() async {
+    unregisterRequests++;
+    _unregistrations.add(installationId);
   }
 
   @override
@@ -178,7 +193,10 @@ class _FakeMessaging implements InOnePushMessagingClient {
     return apnsToken;
   }
 
-  void emitToken(String value) => _tokens.add(value);
+  void emitInstallationId(String value) => _registrations.add(value);
 
-  Future<void> dispose() => _tokens.close();
+  Future<void> dispose() async {
+    await _registrations.close();
+    await _unregistrations.close();
+  }
 }

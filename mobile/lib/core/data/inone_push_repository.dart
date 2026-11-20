@@ -11,16 +11,72 @@ class InOnePushRepository {
 
   final InOneSession session;
 
-  static final RegExp _tokenPattern = RegExp(r'^[A-Za-z0-9:_.-]+$');
+  static final RegExp _fidPattern = RegExp(r'^[A-Za-z0-9_-]{22}
+    final response = await session.request(
+      'PUT',
+      '/devices/me/push',
+      body: {'provider': provider.name, 'token': token},
+    );
+    if (response['registered'] != true) {
+      throw const ApiException(
+        code: 'invalid_response',
+        statusCode: 200,
+        retryable: false,
+      );
+    }
+  }
+
+  Future<void> unregister() async {
+    final response = await session.request('DELETE', '/devices/me/push');
+    if (response['registered'] != false) {
+      throw const ApiException(
+        code: 'invalid_response',
+        statusCode: 200,
+        retryable: false,
+      );
+    }
+  }
+}
+);
+  static final RegExp _legacyTokenPattern = RegExp(r'^[A-Za-z0-9:_.-]+
+    final response = await session.request(
+      'PUT',
+      '/devices/me/push',
+      body: {'provider': provider.name, 'token': token},
+    );
+    if (response['registered'] != true) {
+      throw const ApiException(
+        code: 'invalid_response',
+        statusCode: 200,
+        retryable: false,
+      );
+    }
+  }
+
+  Future<void> unregister() async {
+    final response = await session.request('DELETE', '/devices/me/push');
+    if (response['registered'] != false) {
+      throw const ApiException(
+        code: 'invalid_response',
+        statusCode: 200,
+        retryable: false,
+      );
+    }
+  }
+}
+);
 
   Future<void> register({
     required InOnePushProvider provider,
     required String token,
   }) async {
-    if (token.length < 32 ||
-        token.length > 512 ||
-        !_tokenPattern.hasMatch(token)) {
-      throw ArgumentError('Invalid push token format');
+    final isFirebaseInstallationId =
+        provider == InOnePushProvider.fcm && _fidPattern.hasMatch(token);
+    final isLegacyProviderToken = token.length >= 32 &&
+        token.length <= 512 &&
+        _legacyTokenPattern.hasMatch(token);
+    if (!isFirebaseInstallationId && !isLegacyProviderToken) {
+      throw ArgumentError('Invalid push registration identifier format');
     }
 
     final response = await session.request(

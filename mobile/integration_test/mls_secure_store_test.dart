@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -12,17 +13,21 @@ import 'package:inone_mobile/core/mls/rust_mls_session_bridge.dart';
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('Firebase Core initializes and Android FCM returns a device token', (_) async {
+  testWidgets('Firebase Core initializes and Android FCM registers a FID', (_) async {
     if (Firebase.apps.isEmpty) await Firebase.initializeApp();
-    // The backend currently accepts legacy FCM registration tokens.
-    // Migrate this probe to FIDs with the backend sender/API contract.
-    // ignore: deprecated_member_use
-    final token = await FirebaseMessaging.instance
-        .getToken()
-        .timeout(const Duration(seconds: 45));
-    expect(token, isNotNull);
-    expect(token, isNotEmpty);
-    expect(token!.length, inInclusiveRange(32, 512));
+    final registration = Completer<String>();
+    final subscription = FirebaseMessaging.instance.onRegistered.listen((fid) {
+      if (!registration.isCompleted) registration.complete(fid);
+    });
+    try {
+      final settings = await FirebaseMessaging.instance.requestPermission();
+      expect(settings.authorizationStatus, AuthorizationStatus.authorized);
+      await FirebaseMessaging.instance.register();
+      final fid = await registration.future.timeout(const Duration(seconds: 45));
+      expect(fid, matches(RegExp(r'^[A-Za-z0-9_-]{22}$')));
+    } finally {
+      await subscription.cancel();
+    }
   });
 
   testWidgets(

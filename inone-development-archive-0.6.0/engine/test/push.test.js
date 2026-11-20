@@ -55,6 +55,8 @@ test('регистрация push-токена: провайдер и форма
   const s = await start(recorder());
   try {
     assert.equal((await put(s, s.bob, { provider: 'fcm', token: token('bob-phone') })).status, 200);
+    assert.equal((await put(s, s.bob, { provider: 'fcm', token: 'abcdefghijklmnopqrstuv' })).status, 200, 'Firebase Installation ID');
+    assert.equal((await put(s, s.bob, { provider: 'apns', token: 'abcdefghijklmnopqrstuv' })).status, 400, 'FID is only accepted for FCM');
     assert.equal((await put(s, s.bob, { provider: 'web', token: token('bob-phone') })).status, 400, 'неизвестный провайдер');
     assert.equal((await put(s, s.bob, { provider: 'fcm', token: 'short' })).status, 400, 'короткий токен');
     assert.equal((await put(s, s.bob, { provider: 'fcm', token: 'bad token with spaces 0000000000000000' })).status, 400, 'токен с пробелами');
