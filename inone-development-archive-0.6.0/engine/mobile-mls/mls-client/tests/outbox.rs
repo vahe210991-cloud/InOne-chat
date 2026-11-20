@@ -627,3 +627,112 @@ fn process_crash_immediately_after_inbound_commit_transaction_commit_keeps_epoch
         .iter()
         .any(|member| member == &format!("{CAROL}/C_COMMIT_AFTER_P0")));
 }
+
+
+#[test]
+fn process_crash_at_each_inbox_journal_boundary_preserves_atomic_delivery() {
+    crash_child_sync_if_requested();
+
+    let crash_points = [
+        "after_inbox_insert",
+        "after_processed_marker_insert",
+        "after_application_transaction_commit",
+    ];
+
+    for (index, point) in crash_points.iter().enumerate() {
+        let engine = start_engine();
+        let keys = FixedCrashKeyStore;
+        let alice_db = db(&format!("p0-crash-boundary-{index}-alice"));
+        let bob_db = db(&format!("p0-crash-boundary-{index}-bob"));
+        let mut alice = connect(
+            &engine.base,
+            ALICE,
+            PW,
+            &format!("A_BOUNDARY_{index}"),
+            &alice_db,
+            &keys,
+        )
+        .unwrap();
+        let mut bob = connect(
+            &engine.base,
+            BOB,
+            PW,
+            "B_CRASH_P0",
+            &bob_db,
+            &keys,
+        )
+        .unwrap();
+        bob.ensure_key_packages(2).unwrap();
+
+        let room = format!("!room-p0-inbox-boundary-{index}:inone.test");
+        alice.create_room(&room).unwrap();
+        alice.invite(&room, BOB).unwrap();
+        assert!(bob.sync().unwrap().is_empty());
+
+        let plaintext = format!("crash boundary payload {point}");
+        let event_id = alice.send_text(&room, &plaintext).unwrap();
+        drop(bob);
+
+        let status = run_crash_child(
+            "process_crash_at_each_inbox_journal_boundary_preserves_atomic_delivery",
+            &engine.base,
+            &bob_db,
+            point,
+        );
+        assert!(
+            !status.status.success(),
+            "child must be forcibly terminated at {point}"
+        );
+        assert!(
+            String::from_utf8_lossy(&status.stderr)
+                .contains(&format!("INONE_MLS_TEST_CRASH_POINT_REACHED={point}")),
+            "child did not reach {point}; stderr: {}",
+            String::from_utf8_lossy(&status.stderr)
+        );
+
+        let mut recovered = connect(
+            &engine.base,
+            BOB,
+            PW,
+            "B_CRASH_P0",
+            &bob_db,
+            &keys,
+        )
+        .expect("SQLCipher database remains readable after process death");
+
+        if *point == "after_application_transaction_commit" {
+            assert_eq!(
+                texts(&recovered.pending_incoming().unwrap()),
+                vec![plaintext.clone()],
+                "committed inbox row must survive process death"
+            );
+            assert!(
+                recovered.sync().unwrap().is_empty(),
+                "committed processed marker must prevent server redelivery"
+            );
+        } else {
+            assert!(
+                recovered.pending_incoming().unwrap().is_empty(),
+                "uncommitted inbox insert must roll back at {point}"
+            );
+            assert_eq!(
+                texts(&recovered.sync().unwrap()),
+                vec![plaintext.clone()],
+                "the exact server event must be decrypted after rollback at {point}"
+            );
+            assert!(matches!(
+                recovered.pending_incoming().unwrap().as_slice(),
+                [Incoming::Text { event_id: pending_id, text: pending_text, .. }]
+                    if pending_id == &event_id && pending_text == &plaintext
+            ));
+            assert!(
+                recovered.sync().unwrap().is_empty(),
+                "successfully committed event must not be delivered twice"
+            );
+        }
+
+        assert!(recovered.undecryptable().unwrap().is_empty());
+        recovered.acknowledge_incoming(&[event_id]).unwrap();
+        assert!(recovered.pending_incoming().unwrap().is_empty());
+    }
+}
