@@ -108,7 +108,6 @@ Data allowlist: `type`, `event_id`, `path`. Для фонового отобра
 ### 6. Payload и модель конфиденциальности
 
 Data payload содержит минимальный allowlist полей:
-- `v` — версия схемы;
 - `type` — тип события из allowlist;
 - `event_id` — opaque event identifier;
 - `path` — безопасный относительный route/opaque reference, только если он допустим моделью авторизации.
