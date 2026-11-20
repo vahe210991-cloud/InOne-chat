@@ -43,11 +43,14 @@ class FirebaseInOnePushMessagingClient implements InOnePushMessagingClient {
       AuthorizationStatus.authorized => InOnePushAuthorizationStatus.authorized,
       AuthorizationStatus.provisional => InOnePushAuthorizationStatus.provisional,
       AuthorizationStatus.denied => InOnePushAuthorizationStatus.denied,
+      AuthorizationStatus.deniedPermanently => InOnePushAuthorizationStatus.denied,
       AuthorizationStatus.notDetermined => InOnePushAuthorizationStatus.notDetermined,
     };
   }
 
   @override
+  // Keep the legacy FCM token API until the backend accepts and sends to FIDs.
+  // ignore: deprecated_member_use
   Future<String?> getToken() => messaging.getToken();
 
   @override
