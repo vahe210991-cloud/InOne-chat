@@ -3,7 +3,8 @@ description: InOne Beta 1.0 mobile application shell and screen test host
 publish_to: "none"
 version: 1.0.0+1
 environment:
-  sdk: ">=3.6.0 <4.0.0"
+  sdk: ">=3.13.0 <4.0.0"
+  flutter: ">=3.44.0"
 dependencies:
   flutter:
     sdk: flutter
