@@ -90,6 +90,17 @@ void main() {
     expect(session.requests, hasLength(2));
   });
 
+  test('removes the server association when Firebase unregisters an FID', () async {
+    session.setAuthenticated(true);
+    await lifecycle.waitForPendingOperations();
+    messaging.emitUnregistered('abcdefghijklmnopqrstuv');
+    await lifecycle.waitForPendingOperations();
+
+    expect(session.requests, hasLength(2));
+    expect(session.requests.last['method'], 'DELETE');
+    expect(session.requests.last['path'], '/devices/me/push');
+  });
+
   test('does not register an iOS FID before APNs registration exists', () async {
     lifecycle.dispose();
     lifecycle = InOnePushLifecycle(
@@ -194,6 +205,7 @@ class _FakeMessaging implements InOnePushMessagingClient {
   }
 
   void emitInstallationId(String value) => _registrations.add(value);
+  void emitUnregistered(String value) => _unregistrations.add(value);
 
   Future<void> dispose() async {
     await _registrations.close();
