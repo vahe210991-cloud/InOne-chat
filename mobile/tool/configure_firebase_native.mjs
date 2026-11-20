@@ -45,17 +45,25 @@ function configureAndroid() {
   );
   // Firebase Android Messaging 26.x requires API 24 or newer.
   let appSource = fs.readFileSync(appGradle, 'utf8');
-  const minSdkLine = appSource.match(/^([\t ]*)minSdk\s*=\s*[^\r\n]+/m);
-  if (!minSdkLine) {
-    throw new Error('Generated Android app Gradle file has no minSdk assignment');
-  }
-  if (!/^([\t ]*)minSdk\s*=\s*24$/m.test(appSource)) {
+  const minSdkLine = appSource.match(/^([	 ]*)minSdk(?:Version)?\s*=\s*[^\r\n]+/m);
+  if (minSdkLine) {
     appSource = appSource.replace(
-      /^([\t ]*)minSdk\s*=\s*[^\r\n]+/m,
+      /^([	 ]*)minSdk(?:Version)?\s*=\s*[^\r\n]+/m,
       '$1minSdk = 24',
     );
-    fs.writeFileSync(appGradle, appSource);
+  } else {
+    const defaultConfigIndex = appSource.search(/defaultConfig\s*\{/);
+    if (defaultConfigIndex < 0) {
+      throw new Error('Generated Android app Gradle file has no defaultConfig block');
+    }
+    const configOpen = appSource.indexOf('{', defaultConfigIndex);
+    appSource = appSource.slice(0, configOpen + 1) +
+      '\n        minSdk = 24' + appSource.slice(configOpen + 1);
   }
+  if (!/^([	 ]*)minSdk\s*=\s*24$/m.test(appSource)) {
+    throw new Error('Failed to enforce Android minSdk 24');
+  }
+  fs.writeFileSync(appGradle, appSource);
   let xml = fs.readFileSync(manifest, 'utf8');
   for (const permission of [
     'android.permission.INTERNET',
