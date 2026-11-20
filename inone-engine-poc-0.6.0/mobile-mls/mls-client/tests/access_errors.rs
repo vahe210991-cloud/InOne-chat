@@ -1,5 +1,5 @@
 // Regression coverage for access/session HTTP failures during MLS room sync.
-// This case is included in the current exact-head P0 validation gate.
+// This case is included in the current exact-head P0 validation gate after the P1-05/P1-06 merge.
 // These failures must be returned to the caller without poisoning the local MLS room.
 mod common;
 
