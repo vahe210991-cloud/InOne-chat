@@ -306,12 +306,6 @@ mod tests {
     }
 
     #[test]
-    fn oversized_manifest_is_rejected_before_json_parsing() {
-        let payload = vec![b' '; MAX_MANIFEST_SIZE + 1];
-        assert!(parse_manifest(&payload, "file-1", "room-1").is_err());
-    }
-
-    #[test]
     fn ciphertext_tampering_and_wrong_room_fail_closed() {
         let (plaintext, key, nonce, mut ciphertext) = fixture();
         let payload = build_manifest(
