@@ -628,7 +628,6 @@ fn process_crash_immediately_after_inbound_commit_transaction_commit_keeps_epoch
         .any(|member| member == &format!("{CAROL}/C_COMMIT_AFTER_P0")));
 }
 
-
 #[test]
 fn process_crash_at_each_inbox_journal_boundary_preserves_atomic_delivery() {
     crash_child_sync_if_requested();
@@ -675,11 +674,7 @@ fn process_crash_at_each_inbox_journal_boundary_preserves_atomic_delivery() {
             b"durable inbox boundary payload"
         };
         let event_id = alice
-            .send_application_payload_with_id(
-                &room,
-                payload,
-                &format!("boundary-message-{index}"),
-            )
+            .send_application_payload_with_id(&room, payload, &format!("boundary-message-{index}"))
             .unwrap();
         drop(bob);
 
@@ -705,7 +700,11 @@ fn process_crash_at_each_inbox_journal_boundary_preserves_atomic_delivery() {
 
         if *point == "after_application_transaction_commit" {
             let pending = recovered.pending_incoming().unwrap();
-            assert_eq!(pending.len(), 1, "committed inbox row must survive process death");
+            assert_eq!(
+                pending.len(),
+                1,
+                "committed inbox row must survive process death"
+            );
             if !unreadable_case {
                 assert_eq!(texts(&pending), vec!["durable inbox boundary payload"]);
             }
@@ -738,7 +737,11 @@ fn process_crash_at_each_inbox_journal_boundary_preserves_atomic_delivery() {
 
         if unreadable_case {
             assert!(
-                recovered.undecryptable().unwrap().iter().any(|row| row.0 == event_id),
+                recovered
+                    .undecryptable()
+                    .unwrap()
+                    .iter()
+                    .any(|row| row.0 == event_id),
                 "unreadable diagnostic must be committed with its inbox record"
             );
         } else {
