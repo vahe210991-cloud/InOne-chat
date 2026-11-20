@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   pull_request:
   push:
-    branches: ['**']
+    branches: [main]
     paths:
       - "inone-development-archive-0.6.0/engine/**"
       - "inone-engine-poc-0.6.0/mobile-mls/**"
@@ -17,8 +17,8 @@ permissions:
 # Keep runs for distinct SHAs alive: each job set is a complete, reproducible
 # acceptance run for exactly one PR head, and all independent gates run in parallel.
 concurrency:
-  group: p0-validate-${{ github.event.pull_request.number || github.ref }}-${{ github.sha }}
-  cancel-in-progress: false
+  group: p0-validate-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
 
 env:
   ENGINE_DIR: inone-development-archive-0.6.0/engine
