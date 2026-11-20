@@ -10,7 +10,7 @@ test('FCM sender targets the FID field and sends only allowlisted data', async (
   let sent;
   const sender = createFcmPushSender({ messaging: { send: async (message) => { sent = message; return 'projects/p/messages/1'; } } });
   const result = await sender.send({ fid: target, payload });
-  assert.deepEqual(sent, { fid: target, data: payload });
+  assert.deepEqual(sent, { fid: target, notification: { title: 'InOne', body: 'New message' }, data: payload });
   assert.deepEqual(result, { provider: 'fcm', messageId: 'projects/p/messages/1' });
   assert.equal(Object.hasOwn(sent, 'token'), false);
 });
