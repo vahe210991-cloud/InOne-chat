@@ -964,7 +964,7 @@ export function createMemoryStore({ pinPepper }) {
       const r = rooms.get(roomId);
       const seq = ++counters.eventSeq;
       r.events.push({ event_id: `${seq}`, seq, room_id: roomId, sender, origin_server_ts: nowMs, type, content: structuredClone(content ?? null) });
-      if (afterAppend) return Promise.resolve(afterAppend(null, { seq, roomId, eventId: `${seq}` })).then(() => seq);
+      if (afterAppend) return Promise.resolve(afterAppend(null, { seq, roomId, eventId: `$${seq}` })).then(() => seq);
       return seq;
     },
     roomEventRows(roomId, sinceSeq) {
@@ -1084,7 +1084,7 @@ export function createMemoryStore({ pinPepper }) {
       if (hit?.seq !== null && hit) return { state: 'done', seq: hit.seq };
       if (hit) return { state: 'pending' };
       const seq = this.appendRoomEvent(roomId, sender, type, content, nowMs);
-      if (afterAppend) return Promise.resolve(seq).then((value) => afterAppend(null, { seq: value, roomId, eventId: `${value}` })).then(() => { clientMessages.push({ roomId, userId, clientId, seq }); return { state: 'created', seq }; });
+      if (afterAppend) return Promise.resolve(seq).then((value) => afterAppend(null, { seq: value, roomId, eventId: `$${value}` })).then(() => { clientMessages.push({ roomId, userId, clientId, seq }); return { state: 'created', seq }; });
       clientMessages.push({ roomId, userId, clientId, seq });
       return { state: 'created', seq };
     },
