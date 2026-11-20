@@ -19,7 +19,7 @@ class InOnePushRoute {
     final eventId = data['event_id'] as String;
     final rawPath = data['path'] as String;
     if (eventId.isEmpty || eventId.length > 128 ||
-        eventId.contains('/') || eventId.contains(r'\\')) {
+        eventId.contains('/') || eventId.contains('\\\\') || RegExp(r'[\\x00-\\x1f\\x7f]').hasMatch(eventId)) {
       return null;
     }
 
@@ -44,7 +44,7 @@ class InOnePushRoute {
         roomId.length > 512 ||
         roomId == '.' ||
         roomId == '..' ||
-        roomId.contains('/') ||
+        roomId.contains('/') || roomId.contains('\\\\') || RegExp(r'[\\x00-\\x1f\\x7f]').hasMatch(roomId) ||
         pathEventId != eventId) {
       return null;
     }
@@ -65,22 +65,30 @@ class InOnePushRoute {
 /// fetches room data or decrypts a message; the authenticated app session does.
 class InOnePushReceiveLifecycle {
   InOnePushReceiveLifecycle({
-    required FirebaseMessaging messaging,
+    required Stream<RemoteMessage> foregroundMessages,
+    required Stream<RemoteMessage> openedMessages,
+    required Future<RemoteMessage?> Function() getInitialMessage,
     required this.onForeground,
     required this.onOpen,
-  }) : _messaging = messaging;
+  })  : _foregroundMessages = foregroundMessages,
+        _openedMessages = openedMessages,
+        _getInitialMessage = getInitialMessage;
 
   factory InOnePushReceiveLifecycle.firebase({
     required void Function(InOnePushRoute route) onForeground,
     required Future<void> Function(InOnePushRoute route) onOpen,
   }) =>
       InOnePushReceiveLifecycle(
-        messaging: FirebaseMessaging.instance,
+        foregroundMessages: FirebaseMessaging.onMessage,
+        openedMessages: FirebaseMessaging.onMessageOpenedApp,
+        getInitialMessage: FirebaseMessaging.instance.getInitialMessage,
         onForeground: onForeground,
         onOpen: onOpen,
       );
 
-  final FirebaseMessaging _messaging;
+  final Stream<RemoteMessage> _foregroundMessages;
+  final Stream<RemoteMessage> _openedMessages;
+  final Future<RemoteMessage?> Function() _getInitialMessage;
   final void Function(InOnePushRoute route) onForeground;
   final Future<void> Function(InOnePushRoute route) onOpen;
 
@@ -93,17 +101,17 @@ class InOnePushReceiveLifecycle {
   Future<void> start() async {
     if (_started || _disposed) return;
     _started = true;
-    _foregroundSubscription = FirebaseMessaging.onMessage.listen(
+    _foregroundSubscription = _foregroundMessages.listen(
       _onForeground,
       onError: (Object _) {},
     );
-    _openedSubscription = FirebaseMessaging.onMessageOpenedApp.listen(
+    _openedSubscription = _openedMessages.listen(
       (message) => unawaited(_onOpened(message)),
       onError: (Object _) {},
     );
 
     // Handles a notification that launched the app from a terminated state.
-    final initial = await _messaging.getInitialMessage();
+    final initial = await _getInitialMessage();
     if (!_disposed && initial != null) await _onOpened(initial);
   }
 
