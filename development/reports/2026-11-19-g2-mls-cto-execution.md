@@ -1,3 +1,41 @@
+# Follow-up — 2026-11-20
+
+## PR stack status (verified from GitHub)
+
+- PR #57 is merged (merge commit `77eac10e5a1a8b6b0cce7b6a7fbbbe0681e3b39f`) into `feat/flutter-ui-dart-migration-2026-11-14`, not directly into `main`.
+- PR #58 is merged (merge commit `54313a6672d951f002fa17c919e37b04e6f9eedc`) into the same feature branch. Its description records the dependency on #57.
+- PR #59 remains open and Draft. It targets `feat/flutter-ui-dart-migration-2026-11-14`, not `main`; its head is `01841ab332aae1274a4926128986885a3e1da2dc`. Existing Native MLS and Flutter workflow runs for that exact head succeeded, but the branch is heavily diverged from current `main` and must not be merged wholesale.
+- PR #90 remains open and Draft, targets `main`, and is the controlled G2 integration track. Its original head had failing Flutter mobile and iOS analysis jobs. The main branch has advanced since PR #90 was opened; the PR still needs an explicit base synchronization/conflict-resolution step before mergeability can be accepted.
+
+## Exact-head Flutter fixes committed
+
+Code fixes were committed to this PR branch before this report update (code head: `1782a7845b0a51054fb52d064e44538709590022`):
+
+- Use the `file_picker` 11 static API: `FilePicker.pickFiles()` and `FilePicker.saveFile()`; the old `.platform` API was removed in v11.
+- Request in-memory file bytes from the picker and pass the selected bytes into the encrypted MLS attachment flow, avoiding a path-only read assumption on mobile.
+- Rename the incoming pending inbox collection so it no longer collides with the outgoing SQLCipher outbox variable; acknowledge incoming `eventId` values only from the incoming-message collection.
+- Pass the download callback through to each thread item so attachment downloads are reachable from the UI.
+- Remove two analyzer-reported redundant `dart:typed_data` imports.
+
+## Validation status after these changes
+
+- The previous CI failure logs were reviewed. They showed four compile/analyzer errors plus three analyzer warnings/info items; the changes above address those exact findings.
+- The earlier successful Rust/MLS and backend runs belong to the previous source SHA and are not evidence that the updated SHA passes.
+- No successful test result is claimed for the updated SHA yet. Re-run Flutter mobile, iOS, native MLS and backend workflows on the exact current head. Verify generated FRB bindings remain unchanged or regenerate them using the pinned 2.13.0 toolchain if required.
+- The GitHub connector can commit repository contents but cannot dispatch a workflow directly. Use a normal authenticated Git push or reopen/synchronize the PR to trigger the configured `pull_request` workflows; do not substitute a rerun of the old failed SHA for exact-head validation.
+
+## Next required work
+
+1. Run `flutter analyze`, Flutter unit/widget tests and Android build on the exact updated head.
+2. Run the iOS simulator build and Keychain smoke workflow on that same head.
+3. Run locked Rust format/check/tests, canonical engine attachment integration tests, and backend file authorization regressions.
+4. Inspect all jobs and logs; fix any new failures and rerun until all required checks pass on one SHA.
+5. Synchronize PR #90 with the current `main` (now `e629fd35a53147f8372fc5e2bd52ab042a23e766`) and resolve conflicts without dropping the P0 changes already merged to main. Recheck mergeability afterward.
+6. Keep PR #59 unmerged until its changes are reconciled with the G2 branch. Do not retarget it or merge the 809-commit divergent stack wholesale.
+7. Keep `INONE_MLS_NATIVE_ENABLED=false` until CI and physical Android/iOS acceptance gates pass.
+
+---
+
 # InOne Beta 1.0 — G2 MLS CTO execution
 
 Date: 2026-11-19  
