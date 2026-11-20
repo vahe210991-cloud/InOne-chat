@@ -19,7 +19,7 @@ Code fixes were committed to this PR branch before this report update (code head
 
 ## Validation status after these changes
 
-- The previous CI failure logs were reviewed. They showed four compile/analyzer errors plus three analyzer warnings/info items; the changes above address those exact findings.
+- The previous CI failure logs were reviewed. They showed four compile/analyzer errors plus four analyzer warnings/info items; the changes above address those exact findings.
 - The earlier successful Rust/MLS and backend runs belong to the previous source SHA and are not evidence that the updated SHA passes.
 - No successful test result is claimed for the updated SHA yet. Re-run Flutter mobile, iOS, native MLS and backend workflows on the exact current head. Verify generated FRB bindings remain unchanged or regenerate them using the pinned 2.13.0 toolchain if required.
 - The GitHub connector can commit repository contents but cannot dispatch a workflow directly. Use a normal authenticated Git push or reopen/synchronize the PR to trigger the configured `pull_request` workflows; do not substitute a rerun of the old failed SHA for exact-head validation.
