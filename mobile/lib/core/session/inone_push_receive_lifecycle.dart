@@ -19,7 +19,7 @@ class InOnePushRoute {
     final eventId = data['event_id'] as String;
     final rawPath = data['path'] as String;
     if (eventId.isEmpty || eventId.length > 128 ||
-        eventId.contains('/') || eventId.contains('\\\\') || RegExp(r'[\\x00-\\x1f\\x7f]').hasMatch(eventId)) {
+        eventId.contains('/') || eventId.contains('\\') || RegExp(r'[\x00-\x1f\x7f]').hasMatch(eventId)) {
       return null;
     }
 
