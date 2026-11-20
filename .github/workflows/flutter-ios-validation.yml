@@ -24,7 +24,8 @@ concurrency:
 jobs:
   ios:
     if: github.actor != 'github-actions[bot]'
-    runs-on: macos-15
+    # Firebase iOS SDK 13.1.1 requires Swift tools 6.2; macOS 26 ships Xcode 26.x.
+    runs-on: macos-26
     defaults:
       run:
         working-directory: mobile
