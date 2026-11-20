@@ -83,7 +83,7 @@ jobs:
               const ready = await fetch(`${base}/readyz`, { signal: AbortSignal.timeout(3000) });
               assert.equal(ready.status, 200, "GET /readyz must return HTTP 200 after migrations");
               const readyBody = await ready.json();
-              assert.ok(readyBody && typeof readyBody === "object", "GET /readyz must return JSON");
+              assert.equal(readyBody.status, "ready", "GET /readyz must report status=ready");
 
               console.log("API smoke passed: /healthz and /readyz returned HTTP 200.");
               process.exit(0);
