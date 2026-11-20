@@ -2720,6 +2720,9 @@ impl Client {
                     text(error)
                 ));
             }
+            // A separate-process restart must observe the fully committed epoch.
+            // This failpoint is debug-only and deliberately sits strictly after COMMIT.
+            crash_at_test_failpoint("after_inbound_commit_transaction_commit");
         }
 
         // Опоздавшие события (аудит, P0.3): их эпоха уже пройдена. Внутри окна пробуем расшифровать,
