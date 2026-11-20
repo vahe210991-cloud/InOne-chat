@@ -112,6 +112,15 @@ function configureAndroid() {
   }
 }
 
+function ensurePlistBoolean(plist, key, value) {
+  const expected = '\\t<key>' + key + '</key>\\n\\t<' + (value ? 'true' : 'false') + '/>';
+  const pattern = new RegExp('<key>' + key + '</key>\\\\s*<(?:true|false)\\\\s*/>');
+  if (pattern.test(plist)) return plist.replace(pattern, expected);
+  const rootClose = plist.lastIndexOf('</dict>');
+  if (rootClose < 0) throw new Error('iOS Info.plist root dictionary is missing');
+  return plist.slice(0, rootClose) + expected + '\\n' + plist.slice(rootClose);
+}
+
 function configureIos() {
   const root = path.join(appRoot, 'ios');
   const project = path.join(root, 'Runner.xcodeproj', 'project.pbxproj');
@@ -267,18 +276,8 @@ function configureIos() {
       '\t<key>UIBackgroundModes</key>\n\t<array>\n\t\t<string>fetch</string>\n\t\t<string>remote-notification</string>\n\t</array>\n</dict>',
     );
   }
-  if (!plist.includes('<key>FirebaseMessagingInstallationIdEnabled</key>')) {
-    plist = plist.replace(
-      '</dict>',
-      '\t<key>FirebaseMessagingInstallationIdEnabled</key>\n\t<true/>\n</dict>',
-    );
-  }
-  if (!plist.includes('<key>FirebaseMessagingAutoInitEnabled</key>')) {
-    plist = plist.replace(
-      '</dict>',
-      '\t<key>FirebaseMessagingAutoInitEnabled</key>\n\t<false/>\n</dict>',
-    );
-  }
+  plist = ensurePlistBoolean(plist, 'FirebaseMessagingInstallationIdEnabled', true);
+  plist = ensurePlistBoolean(plist, 'FirebaseMessagingAutoInitEnabled', false);
   fs.writeFileSync(info, plist);
 
   const verified = fs.readFileSync(project, 'utf8');
