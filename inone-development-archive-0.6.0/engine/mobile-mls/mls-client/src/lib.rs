@@ -153,6 +153,7 @@ fn text(e: impl std::fmt::Display) -> String {
 #[cfg(debug_assertions)]
 fn crash_at_test_failpoint(point: &str) {
     if std::env::var("INONE_MLS_TEST_CRASH_POINT").as_deref() == Ok(point) {
+        eprintln!("INONE_MLS_TEST_CRASH_POINT_REACHED={point}");
         std::process::abort();
     }
 }
