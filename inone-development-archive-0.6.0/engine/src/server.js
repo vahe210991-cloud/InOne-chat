@@ -2396,14 +2396,14 @@ if (req.method === 'POST' && p === '/login') {
                 const result = await storage.appendClientMessageEvent(
                   roomId, d.userId, clientMessageId, d.userId, 'm.room.encrypted', eventContent, now(),
                 );
-                if (result.state === 'done') return send(res, 200, { event_id: `${result.seq}` });
+                if (result.state === 'done') return send(res, 200, { event_id: `$${result.seq}` });
                 if (result.state === 'pending') return send(res, 409, { error: 'a legacy pending message requires reconciliation' });
                 seq = result.seq;
               } else {
                 seq = await storage.appendRoomEvent(roomId, d.userId, 'm.room.encrypted', eventContent, now());
               }
-              await notifyNewMessage(roomId, `${seq}`, key(d.userId, d.deviceId));
-              return send(res, 200, { event_id: `${seq}` });
+              await notifyNewMessage(roomId, `$${seq}`, key(d.userId, d.deviceId));
+              return send(res, 200, { event_id: `$${seq}` });
             }
             if (req.method === 'GET' && p === '/mls/removals') {
               const d = await authed(req);
