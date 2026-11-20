@@ -130,23 +130,67 @@ function configureIos() {
     );
   }
 
-  const configPattern = /([A-F0-9]{24} \/\* (Debug|Release|Profile) \*\/ = \{\s*isa = XCBuildConfiguration;\s*buildSettings = \{)([\s\S]*?)(\n\s*\};\s*name = (Debug|Release|Profile);)/g;
+  // Parse PBX objects by balanced braces instead of relying on Xcode's
+  // whitespace/comment formatting for XCBuildConfiguration blocks.
+  const configHeader = /^\\s*[A-F0-9]{24}\\s+\\/\\*\\s*(Debug|Release|Profile)\\s*\\*\\/\\s*=\\s*\\{/gm;
+  const insertions = [];
   let targetConfigs = 0;
-  pbx = pbx.replace(configPattern, (whole, prefix, configName, settings, suffix) => {
-    if (!settings.includes('PRODUCT_BUNDLE_IDENTIFIER = com.inone.app;')) return whole;
-    targetConfigs++;
+  let header;
+  while ((header = configHeader.exec(pbx)) !== null) {
+    const open = pbx.indexOf('{', header.index);
+    let depth = 0;
+    let close = -1;
+    for (let index = open; index < pbx.length; index++) {
+      if (pbx[index] === '{') depth++;
+      if (pbx[index] === '}') {
+        depth--;
+        if (depth === 0) {
+          close = index;
+          break;
+        }
+      }
+    }
+    if (close < 0) throw new Error('Malformed Xcode build configuration object');
+    const block = pbx.slice(header.index, close + 1);
+    configHeader.lastIndex = close + 1;
+    if (!block.includes('isa = XCBuildConfiguration;') ||
+        !/PRODUCT_BUNDLE_IDENTIFIER\\s*=\\s*"?com\\.inone\\.app"?;/.test(block)) {
+      continue;
+    }
+    const settingsStart = block.indexOf('buildSettings = {');
+    if (settingsStart < 0) throw new Error('Runner build settings dictionary is missing');
+    const settingsOpen = block.indexOf('{', settingsStart);
+    let settingsDepth = 0;
+    let settingsClose = -1;
+    for (let index = settingsOpen; index < block.length; index++) {
+      if (block[index] === '{') settingsDepth++;
+      if (block[index] === '}') {
+        settingsDepth--;
+        if (settingsDepth === 0) {
+          settingsClose = index;
+          break;
+        }
+      }
+    }
+    if (settingsClose < 0) throw new Error('Malformed Runner build settings dictionary');
+    const settings = block.slice(settingsOpen + 1, settingsClose);
+    const configName = header[1];
     const aps = configName === 'Release' ? 'production' : 'development';
-    let next = settings;
-    if (!next.includes('CODE_SIGN_ENTITLEMENTS')) {
-      next += '\n                CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;';
+    let additions = '';
+    if (!settings.includes('CODE_SIGN_ENTITLEMENTS')) {
+      additions += '\\n                CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;';
     }
-    if (!next.includes('APS_ENVIRONMENT')) {
-      next += '\n                APS_ENVIRONMENT = ' + aps + ';';
+    if (!settings.includes('APS_ENVIRONMENT')) {
+      additions += '\\n                APS_ENVIRONMENT = ' + aps + ';';
     }
-    return prefix + next + suffix;
-  });
+    if (additions) insertions.push({ index: header.index + settingsClose, text: additions });
+    targetConfigs++;
+  }
+  for (const insertion of insertions.sort((left, right) => right.index - left.index)) {
+    pbx = pbx.slice(0, insertion.index) + insertion.text + pbx.slice(insertion.index);
+  }
   if (targetConfigs !== 3) {
-    throw new Error('Expected 3 Runner build configurations, found ' + targetConfigs);
+    throw new Error('Expected 3 Runner build configurations for com.inone.app, found ' + targetConfigs);
   }
   fs.writeFileSync(project, pbx);
 
