@@ -491,9 +491,12 @@ fn process_crash_after_inbound_commit_merge_rolls_back_epoch_and_retries() {
     alice.create_room(room).unwrap();
     alice.invite(room, BOB).unwrap();
     assert!(bob.sync().unwrap().is_empty());
-    let before_epoch = bob.local_epoch(room);
+    let before_epoch = bob.local_epoch(room).expect("Bob has the invited group");
     alice.invite(room, CAROL).unwrap();
-    assert_eq!(alice.local_epoch(room), before_epoch + 1);
+    assert_eq!(
+        alice.local_epoch(room).expect("Alice has the group"),
+        before_epoch + 1
+    );
     drop(bob);
 
     let status = run_crash_child(
@@ -516,14 +519,17 @@ fn process_crash_after_inbound_commit_merge_rolls_back_epoch_and_retries() {
     let mut recovered = connect(&engine.base, BOB, PW, "B_CRASH_P0", &bob_db, &keys)
         .expect("SQLCipher group state remains readable after process death");
     assert_eq!(
-        recovered.local_epoch(room),
+        recovered.local_epoch(room).expect("recovered group exists"),
         before_epoch,
         "uncommitted epoch must roll back"
     );
     recovered
         .sync()
         .expect("the exact server Commit is retried after restart");
-    assert_eq!(recovered.local_epoch(room), alice.local_epoch(room));
+    assert_eq!(
+        recovered.local_epoch(room),
+        alice.local_epoch(room)
+    );
     recovered.sync().expect("a repeated sync is idempotent");
     assert_eq!(recovered.local_epoch(room), alice.local_epoch(room));
     assert!(recovered
