@@ -186,6 +186,8 @@ try {
   ]);
 
   restoreProtectedFiles();
+  // Resolve dependencies strictly from the committed lockfile. The downstream
+  // iOS artifact consumer must receive exactly the same dependency graph.
   run('flutter', ['pub', 'get', '--enforce-lockfile']);
   run('git', ['diff', '--exit-code', '--', ...protectedPaths]);
 

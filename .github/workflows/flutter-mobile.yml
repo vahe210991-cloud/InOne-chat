@@ -139,7 +139,7 @@ jobs:
         run: node tool/verify_approved_html.mjs
       - name: Remove ephemeral HTML reference assets from the mobile package
         run: rm -rf assets
-      - name: Resolve Flutter dependencies without lockfile drift
+      - name: Verify committed Flutter dependencies for Firebase runtime
         run: |
           flutter pub get --enforce-lockfile
           git diff --exit-code -- pubspec.yaml pubspec.lock
@@ -151,7 +151,7 @@ jobs:
         run: |
           cargo check --locked --all-targets --manifest-path rust/Cargo.toml
           cargo test --locked --no-fail-fast --manifest-path rust/Cargo.toml
-      - run: flutter analyze
+      - run: flutter analyze lib test integration_test
       - run: flutter test
       - name: Build Android preview APK
         run: flutter build apk --debug

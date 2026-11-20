@@ -19,7 +19,7 @@ Canonical backend: `inone-development-archive-0.6.0/engine`.
 
 - `PUT /devices/me/push` and `DELETE /devices/me/push` require the current authenticated device.
 - Registration is gated by `push.enabled`.
-- Accepted providers are `fcm` and `apns`; token syntax/length is validated (32–512 characters).
+- Accepted providers are `fcm` and `apns`; FCM accepts a 22-character Firebase Installation ID (FID) plus legacy 32–512-character tokens, while APNs remains 32–512 characters.
 - One token is stored per device; a new token replaces the previous one.
 - `GET /devices/mine` exposes only `pushRegistered`, not the raw token.
 - Logout deletes the current device's push token.
@@ -129,3 +129,8 @@ Next:
 - Tests are NOT RUN in this audit. No implementation or release acceptance is claimed.
 
 **Current status:** P2 audit started; push mobile/provider integration BLOCKED; general profile editing BLOCKED pending approved scope. No product source changed, no tests rerun, no merge performed.
+
+
+## Follow-up: Firebase Messaging 17 FID integration
+
+The mobile client now uses the supported `register()` / `onRegistered` FID APIs with native auto-init disabled until an authenticated InOne session and notification permission. Both canonical and POC device-registration routes accept 22-character FIDs for `fcm` while retaining legacy token compatibility. The FCM/APNs sender is still not implemented; a future sender must target FIDs through Firebase's FID-capable direct-send API.

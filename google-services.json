@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "687951175916",
+    "project_id": "inone-messenger",
+    "storage_bucket": "inone-messenger.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:687951175916:android:7bb45a64913dd7797c05c9",
+        "android_client_info": {
+          "package_name": "com.inone.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDbPyyu9E6mk24zqAK33IHSs7WLHf2W0CU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

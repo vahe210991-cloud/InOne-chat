@@ -65,7 +65,9 @@ test('every operation declared by the v0.8 approval manifest has a backend handl
 });
 
 test('production Flutter entry uses native Dart UI and keeps MLS disabled by default', () => {
-  assert.ok(mobileHost.includes('runApp(const InOneMobileApp())'));
+  assert.ok(mobileHost.includes('Firebase.initializeApp()'));
+  assert.ok(mobileHost.includes('Platform.isAndroid || Platform.isIOS'));
+  assert.ok(mobileHost.includes('runApp(InOneMobileApp(enablePush: supportsPush))'));
   assert.ok(nativeApp.includes('const _nativeMlsEnabled = bool.fromEnvironment'));
   assert.ok(nativeApp.includes('defaultValue: false'));
   assert.equal(mobilePubspec.includes('webview_flutter:'), false);

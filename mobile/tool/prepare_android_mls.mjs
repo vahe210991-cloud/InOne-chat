@@ -10,7 +10,7 @@ const mainActivity = path.join(
   'kotlin',
   'com',
   'inone',
-  'inone_mobile',
+  'app',
   'MainActivity.kt',
 );
 
@@ -18,7 +18,7 @@ if (!fs.existsSync(mainActivity)) {
   throw new Error(`Flutter Android MainActivity was not generated: ${mainActivity}`);
 }
 
-const source = `package com.inone.inone_mobile
+const source = `package com.inone.app
 
 import android.content.Context
 import android.os.Bundle

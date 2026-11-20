@@ -24,7 +24,8 @@ concurrency:
 jobs:
   ios:
     if: github.actor != 'github-actions[bot]'
-    runs-on: macos-15
+    # Firebase iOS SDK 13.1.1 requires Swift tools 6.2; macOS 26 ships Xcode 26.x.
+    runs-on: macos-26
     defaults:
       run:
         working-directory: mobile
@@ -77,13 +78,13 @@ jobs:
       - name: Configure iOS recovery deep links
         run: node tool/prepare_ios_deep_links.mjs
 
-      - name: Resolve Flutter dependencies without lockfile drift
+      - name: Verify committed Flutter dependencies for Firebase runtime
         run: |
           flutter pub get --enforce-lockfile
           git diff --exit-code -- pubspec.yaml pubspec.lock
 
       - name: Analyze Flutter sources
-        run: flutter analyze
+        run: flutter analyze lib test integration_test
 
       - name: Build unsigned iOS simulator app
         env:
