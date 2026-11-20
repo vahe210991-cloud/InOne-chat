@@ -39,8 +39,10 @@ export function classifyFcmError(error) {
   if ([
     'messaging/registration-token-not-registered',
     'messaging/invalid-registration-token',
-    'messaging/invalid-argument',
   ].includes(code)) return { code: 'invalid_target', retryable: false };
+  if (['messaging/invalid-argument', 'messaging/invalid-payload'].includes(code)) {
+    return { code: 'provider_permanent', retryable: false };
+  }
   if ([
     'messaging/authentication-error',
     'app/invalid-credential',
