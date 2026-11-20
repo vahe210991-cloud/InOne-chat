@@ -137,7 +137,7 @@ pub fn parse_manifest(
 ) -> Result<AttachmentManifestV1, String> {
     if payload.is_empty() || payload.len() > MAX_MANIFEST_SIZE {
         return Err("attachment manifest must be non-empty and no larger than 4 KiB".to_string());
-    
+    }
     let mut guarded_value = ZeroizingJson(
         serde_json::from_slice(payload)
             .map_err(|_| "attachment manifest is not valid JSON".to_string())?
