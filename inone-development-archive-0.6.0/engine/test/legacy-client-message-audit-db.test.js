@@ -10,6 +10,8 @@ postgresTest('PostgreSQL: legacy pending audit runs in a read-only transaction',
   const client = await db.pool.connect();
   try {
     await client.query('BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY');
+    const readOnly = await client.query('SHOW transaction_read_only');
+    assert.equal(readOnly.rows[0].transaction_read_only, 'on');
     const report = await inspectLegacyPendingClientMessages(client);
     await client.query('COMMIT');
     assert.equal(report.mode, 'read-only');
