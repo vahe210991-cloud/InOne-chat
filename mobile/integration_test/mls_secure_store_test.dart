@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:path_provider/path_provider.dart';
@@ -9,6 +11,16 @@ import 'package:inone_mobile/core/mls/rust_mls_session_bridge.dart';
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+
+  testWidgets('Firebase Core initializes and Android FCM returns a device token', (_) async {
+    if (Firebase.apps.isEmpty) await Firebase.initializeApp();
+    final token = await FirebaseMessaging.instance
+        .getToken()
+        .timeout(const Duration(seconds: 45));
+    expect(token, isNotNull);
+    expect(token, isNotEmpty);
+    expect(token!.length, inInclusiveRange(32, 512));
+  });
 
   testWidgets(
     'native platform store persists SQLCipher key across close/resume and purges it on logout',
