@@ -152,7 +152,7 @@ fn text(e: impl std::fmt::Display) -> String {
 // across an actual process boundary. It is absent from optimized production builds.
 #[cfg(debug_assertions)]
 fn crash_at_test_failpoint(point: &str) {
-    if std::env::var("INONE_MLS_TEST_CRASH_POINT").as_deref() == Ok(point) {
+    if std::env::var("INONE_MLS_TEST_CRASH_POINT").ok().as_deref() == Some(point) {
         eprintln!("INONE_MLS_TEST_CRASH_POINT_REACHED={point}");
         std::process::abort();
     }
