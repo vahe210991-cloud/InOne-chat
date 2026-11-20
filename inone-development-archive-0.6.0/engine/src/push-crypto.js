@@ -41,21 +41,26 @@ function decryptBytes(row, key, aad, ciphertextField, ivField, tagField) {
   return Buffer.concat([decipher.update(row[ciphertextField]), decipher.final()]);
 }
 
-export function encryptPushFid(fid, deviceKey, encryptionKey) {
-  if (typeof fid !== 'string' || !FID_PATTERN.test(fid)) throw new Error('invalid Firebase Installation ID');
+export function encryptPushRegistrationId(value, deviceKey, encryptionKey, identifierKind = 'legacy') {
+  if (typeof value !== 'string' || value.length < 1 || value.length > 512) throw new Error('invalid push registration identifier');
   if (typeof deviceKey !== 'string' || deviceKey.length < 1) throw new Error('invalid push device key');
   const key = derivePushKey(encryptionKey, 'fid-encryption');
-  const plain = Buffer.from(fid, 'utf8');
+  const plain = Buffer.from(value, 'utf8');
   try {
     const encrypted = encryptBytes(plain, key, Buffer.from(`inone-push-fid-v1|${deviceKey}`));
-    return { tokenCiphertext: encrypted.ciphertext, tokenIv: encrypted.iv, tokenTag: encrypted.tag, identifierKind: 'fid' };
+    return { tokenCiphertext: encrypted.ciphertext, tokenIv: encrypted.iv, tokenTag: encrypted.tag, identifierKind };
   } finally {
     plain.fill(0);
     key.fill(0);
   }
 }
 
-export function decryptPushFid(row, deviceKey, encryptionKey) {
+export function encryptPushFid(fid, deviceKey, encryptionKey) {
+  if (typeof fid !== 'string' || !FID_PATTERN.test(fid)) throw new Error('invalid Firebase Installation ID');
+  return encryptPushRegistrationId(fid, deviceKey, encryptionKey, 'fid');
+}
+
+export function decryptPushRegistrationId(row, deviceKey, encryptionKey) {
   const key = derivePushKey(encryptionKey, 'fid-encryption');
   const aad = Buffer.from(`inone-push-fid-v1|${deviceKey}`);
   let plain;
@@ -65,13 +70,17 @@ export function decryptPushFid(row, deviceKey, encryptionKey) {
       iv: row.token_iv ?? row.tokenIv,
       tag: row.token_tag ?? row.tokenTag,
     }, key, aad, 'ciphertext', 'iv', 'tag');
-    const fid = plain.toString('utf8');
-    if (!FID_PATTERN.test(fid)) throw new Error('decrypted push registration is invalid');
-    return fid;
+    return plain.toString('utf8');
   } finally {
     plain?.fill(0);
     key.fill(0);
   }
+}
+
+export function decryptPushFid(row, deviceKey, encryptionKey) {
+  const fid = decryptPushRegistrationId(row, deviceKey, encryptionKey);
+  if (!FID_PATTERN.test(fid)) throw new Error('decrypted push registration is not a Firebase Installation ID');
+  return fid;
 }
 
 export function encryptPushPayload(payload, idempotencyHash, encryptionKey) {
