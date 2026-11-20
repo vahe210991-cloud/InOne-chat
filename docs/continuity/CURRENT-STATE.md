@@ -567,3 +567,12 @@ The owner has approved two separate applications:
 This changes the product boundary and future scope classification. It does not itself authorize code changes, PR merges, backend/database separation, or changes to the approved Beta 1.0 UI. Existing screens, APIs, repositories, and roadmap items must be audited and mapped to InOne or InOne Business before implementation is reorganized.
 
 Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone-and-inone-business--2026-11-13).
+
+
+# Beta 1.0 readiness plan — 2026-11-18
+
+**Current main baseline:** `ef626c0d7c125f2f4c761e02992b475d1b2dd2e4` (PR #79 merge). This is a baseline reference, not a claim that all post-merge checks or product acceptance have passed.
+
+The authoritative execution checklist and acceptance gates are now maintained in [Beta 1.0 full readiness checklist](../../development/reports/2026-11-18-beta1-full-readiness-checklist.md). It covers: (1) post-merge Flutter CI, (2) native Dart UI consolidation, (3) MLS mobile pipeline, (4) screen-to-API integration, (5) real mailbox email delivery, (6) Android/iOS and two-device E2E, and (7) branch/documentation cleanup.
+
+Rules: preserve approved HTML as reference only; Dart is the intended production UI. Do not merge legacy branches blindly. Keep MLS fail-closed until its complete security/device gate passes. Record every PASS against an exact SHA and evidence URL. Preserve approved WBS v1.1 weights and calculate progress only from verified criteria. Beta 1.0 is NOT ACCEPTED until the final device tests and owner sign-off are complete.
