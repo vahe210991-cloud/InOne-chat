@@ -130,33 +130,36 @@ function configureIos() {
     );
   }
 
-  // Parse PBX objects by balanced braces instead of relying on Xcode's
-  // whitespace/comment formatting for XCBuildConfiguration blocks.
-  const configHeader = /^\\s*[A-F0-9]{24}\\s+\\/\\*\\s*(Debug|Release|Profile)\\s*\\*\\/\\s*=\\s*\\{/gm;
+  // Locate each XCBuildConfiguration object by its ISA marker. This avoids
+  // depending on Xcode's generated UUID comments or indentation.
   const insertions = [];
   let targetConfigs = 0;
-  let header;
-  while ((header = configHeader.exec(pbx)) !== null) {
-    const open = pbx.indexOf('{', header.index);
+  let cursor = 0;
+  let isaIndex;
+  while ((isaIndex = pbx.indexOf('isa = XCBuildConfiguration;', cursor)) >= 0) {
+    const objectOpen = pbx.lastIndexOf('{', isaIndex);
+    if (objectOpen < 0) throw new Error('Xcode build configuration object has no opening brace');
     let depth = 0;
-    let close = -1;
-    for (let index = open; index < pbx.length; index++) {
+    let objectClose = -1;
+    for (let index = objectOpen; index < pbx.length; index++) {
       if (pbx[index] === '{') depth++;
       if (pbx[index] === '}') {
         depth--;
         if (depth === 0) {
-          close = index;
+          objectClose = index;
           break;
         }
       }
     }
-    if (close < 0) throw new Error('Malformed Xcode build configuration object');
-    const block = pbx.slice(header.index, close + 1);
-    configHeader.lastIndex = close + 1;
-    if (!block.includes('isa = XCBuildConfiguration;') ||
-        !/PRODUCT_BUNDLE_IDENTIFIER\\s*=\\s*"?com\\.inone\\.app"?;/.test(block)) {
+    if (objectClose < 0) throw new Error('Malformed Xcode build configuration object');
+    const block = pbx.slice(objectOpen, objectClose + 1);
+    cursor = objectClose + 1;
+    const nameMatch = block.match(/name\s*=\s*(Debug|Release|Profile);/);
+    if (!nameMatch ||
+        !/PRODUCT_BUNDLE_IDENTIFIER\s*=\s*"?com\.inone\.app"?;/.test(block)) {
       continue;
     }
+
     const settingsStart = block.indexOf('buildSettings = {');
     if (settingsStart < 0) throw new Error('Runner build settings dictionary is missing');
     const settingsOpen = block.indexOf('{', settingsStart);
@@ -174,16 +177,16 @@ function configureIos() {
     }
     if (settingsClose < 0) throw new Error('Malformed Runner build settings dictionary');
     const settings = block.slice(settingsOpen + 1, settingsClose);
-    const configName = header[1];
+    const configName = nameMatch[1];
     const aps = configName === 'Release' ? 'production' : 'development';
     let additions = '';
     if (!settings.includes('CODE_SIGN_ENTITLEMENTS')) {
-      additions += '\\n                CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;';
+      additions += '\n                CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;';
     }
     if (!settings.includes('APS_ENVIRONMENT')) {
-      additions += '\\n                APS_ENVIRONMENT = ' + aps + ';';
+      additions += '\n                APS_ENVIRONMENT = ' + aps + ';';
     }
-    if (additions) insertions.push({ index: header.index + settingsClose, text: additions });
+    if (additions) insertions.push({ index: objectOpen + settingsClose, text: additions });
     targetConfigs++;
   }
   for (const insertion of insertions.sort((left, right) => right.index - left.index)) {
