@@ -7,7 +7,7 @@ on:
       - ".github/workflows/openmls-frb-codegen.yml"
       - "mobile/**"
   push:
-    branches: [main, feature/stage-4-native-mls-runtime-2026-11-11, fix/android-keystore-runtime-smoke-2026-11-19]
+    branches: [main]
     paths:
       - ".github/workflows/openmls-frb-codegen.yml"
       - "mobile/**"
