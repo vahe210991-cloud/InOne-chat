@@ -2419,18 +2419,23 @@ impl Client {
                     ),
                 };
 
+                crash_at_test_failpoint("before_inbox_insert");
                 if let Err(error) = insert_incoming_record(&transaction, &incoming)
                     .and_then(|_| {
                         crash_at_test_failpoint("after_inbox_insert");
                         Ok(())
                     })
-                    .and_then(|_| insert_processed_event(&transaction, event_id))
+                    .and_then(|_| {
+                        crash_at_test_failpoint("before_processed_marker_insert");
+                        insert_processed_event(&transaction, event_id)
+                    })
                     .and_then(|_| {
                         crash_at_test_failpoint("after_processed_marker_insert");
                         Ok(())
                     })
                     .and_then(|_| {
                         if let Some(reason) = unreadable_reason {
+                            crash_at_test_failpoint("before_undecryptable_marker_insert");
                             transaction
                                 .execute(
                                     "INSERT OR IGNORE INTO client_undecryptable (event_id, room_id, reason)
@@ -2438,6 +2443,7 @@ impl Client {
                                     rusqlite::params![event_id, room_id, reason],
                                 )
                                 .map_err(text)?;
+                            crash_at_test_failpoint("after_undecryptable_marker_insert");
                         }
                         Ok(())
                     })
