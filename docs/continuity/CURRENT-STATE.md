@@ -1,3 +1,15 @@
+# Current state — P2 Push and Profile audit (2026-11-20)
+
+- A2 PR #102 is already merged to `main`: `df20bef8df05b3ab2e11b20cb91e8f2bca60eec0`. Do not repeat A2.
+- P2 audit branch: `audit/p2-push-profile-2026-11-20`, created from `main` SHA `974f944d251870ca57fad5124f058b9d65d12a26`.
+- Audit report: [2026-11-20 P2 Push and Profile audit](../../development/reports/2026-11-20-P2-push-profile-audit.md), report commit `acbbe1653046d2f01b1efb6efa5d4a40350b7638`.
+- Backend push routes/store lifecycle and four focused push test cases exist in canonical engine source. Source reviewed only; tests NOT RUN in this audit.
+- Flutter push integration is incomplete: no FCM/APNs token plugin in pubspec, no typed push repository methods, and no production ST-01 registration callbacks found. Backend sender is injected; production provider wiring is not verified.
+- Profile GET and PATCH locale exist. General profile edit route is not present in the reviewed contract/source. Owner decision on editable fields is required.
+- No product code or API contract changed. No tests/builds run. Native MLS/release gates untouched. WBS v1.1 unchanged.
+
+---
+
 # A2 FRB reconciliation — current state (2026-11-19)
 
 - Current `main` HEAD: `c939634288db1e7105cfe8d6a7182d4469da1dc4` (A1 merge, PR #95). Do not repeat A1.

@@ -1,3 +1,19 @@
+# Next execution — P2 Push and Profile (2026-11-20)
+
+Continue on `audit/p2-push-profile-2026-11-20`. Read [the P2 audit report](../../development/reports/2026-11-20-P2-push-profile-audit.md) first. A2 is already merged; do not repeat it.
+
+1. Obtain the owner's explicit list of editable Beta 1.0 profile fields. Do not invent a generic profile update route or add avatar/phone mutation without an approved contract.
+2. Select and pin the Flutter/native FCM + APNs integration; record platform configuration requirements without committing credentials.
+3. Implement typed push registration/unregistration and token-refresh lifecycle in Flutter, using the current authenticated device session.
+4. Connect ST-01 to real permission/token/device state and remove gallery/test placeholders from the production path.
+5. Wire a production push sender using protected configuration; preserve minimal payloads, device/room authorization, invalid-token cleanup and logout/revocation cleanup.
+6. Add/update regressions and run Node, PostgreSQL, Flutter analyze/tests, Android and iOS checks on one exact final SHA.
+7. Update the report/session log and only then prepare a PR for review. No merge until exact-SHA checks pass and owner authorization is explicit.
+
+Current status: audit complete; implementation not accepted. Push mobile/provider integration BLOCKED; profile editing BLOCKED pending owner scope. No tests were run during the audit.
+
+---
+
 # Next execution — A2 FRB reconciliation (2026-11-19)
 
 Continue on `feature/a2-frb-reconciliation-2026-11-19`, created from `main` at A1 merge SHA `c939634288db1e7105cfe8d6a7182d4469da1dc4`. Read [the A2 audit report](../../development/reports/2026-11-19-A2-frb-reconciliation-audit.md) first. Do not repeat A1 or modify `INONE_MLS_NATIVE_ENABLED` / release gate.
