@@ -76,26 +76,38 @@ function configureAndroid() {
       );
     }
   }
-  const applicationClose = xml.lastIndexOf('</application>');
-  if (applicationClose < 0) throw new Error('Android application element is missing');
   const metadata = [
     ['firebase_messaging_installation_id_enabled', 'true'],
     ['firebase_messaging_auto_init_enabled', 'false'],
     ['firebase_analytics_collection_enabled', 'false'],
   ];
   for (const [name, value] of metadata) {
-    if (!xml.includes('android:name="' + name + '"')) {
-      xml = xml.slice(0, xml.lastIndexOf('</application>')) +
-        '    <meta-data android:name="' + name + '" android:value="' + value + '" />\\n' +
-        xml.slice(xml.lastIndexOf('</application>'));
+    const marker = 'android:name="' + name + '"';
+    const markerIndex = xml.indexOf(marker);
+    const expectedTag =
+      '<meta-data android:name="' + name + '" android:value="' + value + '" />';
+    if (markerIndex >= 0) {
+      const tagStart = xml.lastIndexOf('<meta-data', markerIndex);
+      const tagEnd = xml.indexOf('/>', markerIndex);
+      if (tagStart < 0 || tagEnd < 0) {
+        throw new Error('Malformed Android Firebase metadata element: ' + name);
+      }
+      xml = xml.slice(0, tagStart) + expectedTag + xml.slice(tagEnd + 2);
+    } else {
+      const applicationClose = xml.lastIndexOf('</application>');
+      if (applicationClose < 0) {
+        throw new Error('Android application element is missing');
+      }
+      xml = xml.slice(0, applicationClose) +
+        '    ' + expectedTag + '\n' +
+        xml.slice(applicationClose);
     }
   }
   fs.writeFileSync(manifest, xml);
   if (!xml.includes('android.permission.INTERNET') ||
       !xml.includes('android.permission.POST_NOTIFICATIONS') ||
-      !xml.includes('android:name="firebase_messaging_installation_id_enabled"') ||
-      !xml.includes('android:name="firebase_messaging_auto_init_enabled"') ||
-      !xml.includes('android:name="firebase_analytics_collection_enabled"')) {
+      metadata.some(([name, value]) =>
+        !xml.includes('<meta-data android:name="' + name + '" android:value="' + value + '" />'))) {
     throw new Error('Android Firebase FID/auto-init/permission configuration is incomplete');
   }
 }
