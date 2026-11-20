@@ -44,7 +44,7 @@ class InOnePushRoute {
         roomId.length > 512 ||
         roomId == '.' ||
         roomId == '..' ||
-        roomId.contains('/') || roomId.contains('\\\\') || RegExp(r'[\\x00-\\x1f\\x7f]').hasMatch(roomId) ||
+        roomId.contains('/') || roomId.contains('\\') || RegExp(r'[\x00-\x1f\x7f]').hasMatch(roomId) ||
         pathEventId != eventId) {
       return null;
     }
