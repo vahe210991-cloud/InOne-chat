@@ -1,0 +1,60 @@
+name: One-time Cargo lockfile refresh
+
+on:
+  push:
+    branches:
+      - feat/mls-attachment-aead-core-2026-11-15
+      - feat/native-mls-persistent-ffi-2026-11-15
+      - feat/mls-encrypted-attachment-flow-2026-11-15
+    paths:
+      - ".github/workflows/refresh-cargo-lockfiles.yml"
+      - "mobile/rust/Cargo.toml"
+      - "inone-engine-poc-0.6.0/mobile-mls/mls-client/Cargo.toml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cargo-lock-refresh-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.91.0"
+      - name: Regenerate and validate committed lockfiles
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f mobile/rust/Cargo.toml ]; then
+            cargo generate-lockfile --manifest-path mobile/rust/Cargo.toml
+            cargo metadata --locked --format-version 1 --manifest-path mobile/rust/Cargo.toml > /dev/null
+          fi
+          if [ -f inone-engine-poc-0.6.0/mobile-mls/mls-client/Cargo.toml ]; then
+            cargo generate-lockfile --manifest-path inone-engine-poc-0.6.0/mobile-mls/mls-client/Cargo.toml
+            cargo metadata --locked --format-version 1 --manifest-path inone-engine-poc-0.6.0/mobile-mls/mls-client/Cargo.toml > /dev/null
+          fi
+      - name: Commit generated lockfiles and remove one-time workflow
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add mobile/rust/Cargo.lock inone-engine-poc-0.6.0/mobile-mls/mls-client/Cargo.lock 2>/dev/null || true
+          git rm -f .github/workflows/refresh-cargo-lockfiles.yml
+          if git diff --cached --quiet; then
+            echo "No lockfile changes were produced."
+            exit 1
+          fi
+          git commit -m "chore(rust): refresh locked MLS dependency graphs"
+          auth="$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 | tr -d '\n')"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" push origin "HEAD:${GITHUB_REF_NAME}"
