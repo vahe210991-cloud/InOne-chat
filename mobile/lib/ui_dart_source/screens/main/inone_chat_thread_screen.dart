@@ -106,7 +106,10 @@ class _InOneChatThreadScreenState extends State<InOneChatThreadScreen> {
               child: ListView.separated(
                 itemCount: widget.items.length,
                 separatorBuilder: (_, __) => const SizedBox(height: 12),
-                itemBuilder: (context, i) => _ThreadItem(item: widget.items[i]),
+                itemBuilder: (context, i) => _ThreadItem(
+                  item: widget.items[i],
+                  onDownloadAttachment: widget.onDownloadAttachment,
+                ),
               ),
             ),
             const SizedBox(height: 12),
