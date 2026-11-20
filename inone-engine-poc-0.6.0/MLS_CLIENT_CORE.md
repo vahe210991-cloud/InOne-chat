@@ -22,3 +22,11 @@
 - Фоновая синхронизация, уведомления, повторы при потере связи.
 - Удаление отозванного устройства на стороне клиента (сервер уже ведёт список `/mls/removals`).
 - Сборки Android и iOS и проверка на устройствах.
+
+## Durable inbox lifecycle (Beta 1.0)
+
+- `client_inbox` is stored in the device SQLCipher database. The incoming MLS ratchet update, inbox record, unreadable-event diagnostic (when applicable), and processed event marker are committed in one SQLite transaction. A failed inbox write rolls back that transaction and reloads the MLS group state.
+- `pending_incoming()` returns only rows with `acknowledged = 0`, in insertion order. Reading or syncing again does not consume a row. The application must ACK only after it has durably accepted the message.
+- `acknowledge_incoming()` marks the selected event IDs as acknowledged; it does not delete the message. `messages_for_room()` continues to expose acknowledged and pending local history.
+- Unreadable application messages are stored as `Incoming::Unreadable` plus a diagnostic reason. The diagnostic is a fixed error category and must not include decrypted application bytes or secrets.
+- **Current retention limitation:** the client does not automatically delete acknowledged history, pending inbox items, or diagnostics, and it has no configured per-device storage quota or row-count cap. This is intentionally fail-safe against silent message loss, but storage can grow without bound. Do not introduce automatic pruning of unacknowledged rows. A product-approved quota/retention value and explicit user-visible cleanup flow remain required before claiming bounded storage for production scale.

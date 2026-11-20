@@ -3548,4 +3548,95 @@ mod retry_tests {
         assert_eq!(value["public"], 7);
     }
 
+
+    #[test]
+    fn invalid_utf8_application_payload_is_isolated_and_room_remains_usable() {
+        use std::io::BufRead;
+
+        const ROOM: &str = "!room-invalid-utf8:inone.test";
+        const ALICE: &str = "@alice:inone.test";
+        const BOB: &str = "@bob:inone.test";
+        const PASSWORD: &str = "пароль-проверки-1";
+
+        let mut child = std::process::Command::new("node")
+            .arg("tests/engine/start-engine.mjs")
+            .current_dir(env!("CARGO_MANIFEST_DIR"))
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::inherit())
+            .spawn()
+            .expect("start canonical Node engine");
+        let stdin = child.stdin.take();
+        let mut stdout = std::io::BufReader::new(child.stdout.take().expect("engine stdout"));
+        let mut line = String::new();
+        stdout.read_line(&mut line).expect("read engine URL");
+        let base = line.trim().strip_prefix("URL=").expect("engine URL").to_string();
+
+        let keys = MemoryKeyStore::default();
+        let suffix = format!("{}-{}", std::process::id(), std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos());
+        let alice_db = std::env::temp_dir().join(format!("inone-invalid-utf8-alice-{suffix}.db"));
+        let bob_db = std::env::temp_dir().join(format!("inone-invalid-utf8-bob-{suffix}.db"));
+        let mut alice = connect(&base, ALICE, PASSWORD, "A_PHONE", &alice_db.to_string_lossy(), &keys)
+            .expect("Alice login");
+        let mut bob = connect(&base, BOB, PASSWORD, "B_PHONE", &bob_db.to_string_lossy(), &keys)
+            .expect("Bob login");
+
+        bob.ensure_key_packages(1).expect("Bob key packages");
+        alice.create_room(ROOM).expect("create room");
+        alice.invite(ROOM, BOB).expect("invite Bob");
+        assert!(bob.sync().expect("accept Welcome").is_empty());
+
+        // Create a genuine authenticated MLS Application message with bytes that are
+        // not UTF-8. This exercises the post-decryption content path, not malformed TLS.
+        let encoded = {
+            let provider = DeviceProvider::new(&alice.crypto, &alice.meta);
+            let group = alice.groups.get_mut(ROOM).expect("Alice MLS group");
+            let message = group.mls.create_message(&provider, &alice.signer, &[0xff, 0xfe, 0x80])
+                .expect("create binary MLS application message");
+            B64.encode(message.tls_serialize_detached().expect("serialize MLS message"))
+        };
+        alice.call(
+            "POST",
+            &format!("/mls/groups/{}/messages", urlencoding::encode(ROOM)),
+            Some(json!({
+                "message": encoded,
+                "kind": "text",
+                "forwarded": false,
+                "clientMessageId": format!("invalid-utf8-{suffix}")
+            })),
+        ).expect("publish binary MLS application message");
+
+        let unreadable = bob.sync().expect("invalid text payload is an item-level failure");
+        assert_eq!(unreadable.len(), 1);
+        assert!(matches!(
+            &unreadable[0],
+            Incoming::Unreadable { room_id, .. } if room_id == ROOM
+        ));
+        assert_eq!(bob.desync_reason(ROOM).expect("room desync state"), None);
+        let diagnostics = bob.undecryptable().expect("undecryptable diagnostics");
+        assert_eq!(diagnostics.len(), 1);
+        assert!(diagnostics[0].2.contains("not valid UTF-8"));
+        assert!(!diagnostics[0].2.contains("fffe80"));
+
+        alice.send_text(ROOM, "valid message after binary payload")
+            .expect("send valid UTF-8 application message");
+        let next = bob.sync().expect("room remains synchronized");
+        assert_eq!(
+            next.iter().filter_map(|item| match item {
+                Incoming::Text { text, .. } => Some(text.as_str()),
+                Incoming::Unreadable { .. } => None,
+            }).collect::<Vec<_>>(),
+            vec!["valid message after binary payload"]
+        );
+        assert_eq!(bob.desync_reason(ROOM).expect("final room desync state"), None);
+
+        drop(alice);
+        drop(bob);
+        drop(stdin);
+        let _ = child.wait();
+        let _ = std::fs::remove_file(alice_db);
+        let _ = std::fs::remove_file(bob_db);
+    }
+
 }
