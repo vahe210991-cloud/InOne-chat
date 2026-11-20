@@ -122,6 +122,11 @@ class InOnePushLifecycle {
     return _enqueue(_refreshRegistration);
   }
 
+  Future<void> _register(String token) async {
+    if (token.isEmpty || !_canRegister) return;
+    await _repository.register(provider: InOnePushProvider.fcm, token: token);
+  }
+
   Future<void> _refreshRegistration() async {
     if (!_canRegister) return;
     final permission = await _messaging.requestPermission();
