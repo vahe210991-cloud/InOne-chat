@@ -27,17 +27,21 @@ async function put(base, client, body) {
   return { status: response.status, json: await response.json().catch(() => ({})) };
 }
 
-test('PostgreSQL push outbox is atomic, encrypted, idempotent and survives worker restart', async () => {
+test('PostgreSQL push outbox is atomic, encrypted, idempotent, retryable and lease-recoverable', async () => {
   const db = await testDatabase();
   const encryptionKey = randomBytes(32);
   const sent = [];
   let failNext = true;
+  let permanentEventId = null;
   const sender = {
     async send(message) {
       sent.push(message);
       if (failNext) {
         failNext = false;
         throw new FcmPushError('provider_temporary', true);
+      }
+      if (message.payload.event_id === permanentEventId) {
+        throw new FcmPushError('provider_permanent', false);
       }
       return { messageId: `projects/test/messages/${sent.length}` };
     },
@@ -88,7 +92,7 @@ test('PostgreSQL push outbox is atomic, encrypted, idempotent and survives worke
     const duplicate = await alice.raw('POST', `/mls/groups/${enc(ROOM)}/messages`, body);
     assert.equal(duplicate.event_id, first.event_id);
 
-    const queued = (await db.pool.query('SELECT * FROM push_deliveries')).rows;
+    const queued = (await db.pool.query('SELECT * FROM push_deliveries ORDER BY id')).rows;
     assert.equal(queued.length, 1, 'one durable delivery despite duplicate HTTP retry');
     assert.equal(queued[0].status, 'queued');
     const stored = JSON.stringify(queued[0]);
@@ -96,16 +100,52 @@ test('PostgreSQL push outbox is atomic, encrypted, idempotent and survives worke
     assert.equal(stored.includes(`/rooms/${ROOM}/events/`), false);
     assert.equal(sent.length, 0, 'request path does not call provider');
 
+    const secondMessage = await alice.raw('POST', `/mls/groups/${enc(ROOM)}/messages`, {
+      message: mlsMessageAt(ROOM, 1, 'second encrypted event'),
+      kind: 'text', forwarded: false,
+    });
+    const permanentMessage = await alice.raw('POST', `/mls/groups/${enc(ROOM)}/messages`, {
+      message: mlsMessageAt(ROOM, 1, 'third encrypted event'),
+      kind: 'text', forwarded: false,
+    });
+    permanentEventId = permanentMessage.event_id;
+    const deliveryRows = (await db.pool.query('SELECT id FROM push_deliveries ORDER BY id')).rows;
+    assert.equal(deliveryRows.length, 3);
+    await db.pool.query(
+      `UPDATE push_deliveries SET status = 'processing', locked_at = now() - interval '5 minutes',
+       locked_by = 'crashed-worker' WHERE id = $1`,
+      [deliveryRows[1].id],
+    );
+
     await firstWorker.stop();
     const restartedWorker = createPushDelivery({ pool: db.pool, sender, encryptionKey, maxAttempts: 3 });
     try {
       await restartedWorker.tick();
-      assert.equal(sent.length, 1);
+      assert.equal(sent.length, 3, 'restart recovers stale lease and processes queued deliveries');
       assert.equal(sent[0].fid, FID);
       assert.equal(sent[0].payload.event_id, first.event_id);
-      const accepted = (await db.pool.query('SELECT status, provider_message_id FROM push_deliveries')).rows[0];
+      assert.equal(sent[1].payload.event_id, secondMessage.event_id);
+      assert.equal(sent[2].payload.event_id, permanentMessage.event_id);
+
+      const afterFirstAttempt = (await db.pool.query(
+        'SELECT id, status, attempts, provider_message_id FROM push_deliveries ORDER BY id',
+      )).rows;
+      assert.equal(afterFirstAttempt[0].status, 'failed', 'transient provider error schedules a retry');
+      assert.equal(afterFirstAttempt[0].attempts, 1);
+      assert.equal(afterFirstAttempt[1].status, 'provider_accepted', 'expired processing lease is recovered');
+      assert.equal(afterFirstAttempt[2].status, 'dead', 'permanent provider rejection goes to dead-letter status');
+
+      await db.pool.query('UPDATE push_deliveries SET available_at = now() WHERE id = $1', [afterFirstAttempt[0].id]);
+      await restartedWorker.tick();
+      assert.equal(sent.length, 4);
+      assert.equal(sent[3].payload.event_id, first.event_id);
+      const accepted = (await db.pool.query(
+        'SELECT status, attempts, provider_message_id FROM push_deliveries WHERE id = $1',
+        [afterFirstAttempt[0].id],
+      )).rows[0];
       assert.equal(accepted.status, 'provider_accepted');
-      assert.match(accepted.provider_message_id, /messages\//);
+      assert.equal(accepted.attempts, 2);
+      assert.match(accepted.provider_message_id, /messages\\//);
     } finally {
       await restartedWorker.stop();
     }
