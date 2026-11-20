@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
 import pg from 'pg';
+import { pathToFileURL } from 'node:url';
+import { resolve } from 'node:path';
 
 const SAMPLE_LIMIT = 500;
 
@@ -70,7 +72,7 @@ async function main() {
   }
 }
 
-if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   main().catch((error) => {
     process.stderr.write(`legacy pending audit failed: ${error.message}\n`);
     process.exitCode = 1;
