@@ -30,7 +30,7 @@ mod android_context {
     /// reference keeps the Android application context valid for Rust/JNI.
     /// Failed initialization is not cached, so a later call can retry.
     #[no_mangle]
-    pub extern "system" fn Java_com_inone_inone_1mobile_MainActivity_init_1android(
+    pub extern "system" fn Java_com_inone_app_MainActivity_init_1android(
         env: JNIEnv,
         _class: JClass,
         context: JObject,
