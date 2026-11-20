@@ -13,6 +13,7 @@ import '../core/network/api_environment.dart';
 import '../core/network/api_exception.dart';
 import '../core/session/inone_session.dart';
 import '../core/session/inone_push_lifecycle.dart';
+import '../core/session/inone_push_receive_lifecycle.dart';
 import '../core/session/recovery_deep_link.dart';
 import '../ui_dart_source/inone.dart';
 
@@ -38,6 +39,11 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   late final InOneSession _session;
   late final InOneRepositories _repositories;
   InOnePushLifecycle? _pushLifecycle;
+  InOnePushReceiveLifecycle? _pushReceiveLifecycle;
+  InOnePushRoute? _pendingPushRoute;
+  bool _pushRouteInFlight = false;
+  String? _pushRoomId;
+  List<InOneThreadItem> _pushThreadItems = const [];
 
   String _screen = 'login';
   String _registrationEmail = '';
@@ -76,6 +82,11 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         session: _session,
         repository: InOnePushRepository(_session),
       )..start();
+      _pushReceiveLifecycle = InOnePushReceiveLifecycle.firebase(
+        onForeground: _showForegroundPush,
+        onOpen: _openPushRoute,
+      );
+      unawaited(_pushReceiveLifecycle!.start().catchError((Object _) {}));
     }
     WidgetsBinding.instance.addObserver(this);
     final initialRoute = WidgetsBinding.instance.platformDispatcher.defaultRouteName;
@@ -115,6 +126,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _pushLifecycle?.dispose();
+    unawaited(_pushReceiveLifecycle?.dispose() ?? Future<void>.value());
     _session.dispose();
     super.dispose();
   }
@@ -200,6 +212,85 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
 
   void _afterLogin() {
     if (_session.isAuthenticated) unawaited(_loadAuthenticatedData());
+  }
+
+  void _showForegroundPush(InOnePushRoute route) {
+    _messengerKey.currentState?.showSnackBar(
+      SnackBar(
+        content: const Text('Новое сообщение'),
+        action: SnackBarAction(
+          label: 'Открыть',
+          onPressed: () => unawaited(_openPushRoute(route)),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openPushRoute(InOnePushRoute route) async {
+    await _initializationComplete.future;
+    if (!mounted) return;
+    _pendingPushRoute = route;
+    if (!_session.isAuthenticated) {
+      _notice('Войдите в InOne, чтобы открыть новое сообщение.');
+      return;
+    }
+    await _processPendingPushRoute();
+  }
+
+  Future<void> _processPendingPushRoute() async {
+    final route = _pendingPushRoute;
+    if (route == null || _pushRouteInFlight || !_session.isAuthenticated) return;
+    _pushRouteInFlight = true;
+    try {
+      final history = await _session.request(
+        'GET',
+        '/rooms/${Uri.encodeComponent(route.roomId)}/events',
+      );
+      final rawEvents = history['events'];
+      final eventExists = rawEvents is List &&
+          rawEvents.any((entry) =>
+              entry is Map && entry['event_id'] == route.eventId);
+      if (!eventExists) {
+        throw StateError('push event is not available to this device');
+      }
+
+      if (!_session.hasNativeMlsSession) {
+        if (mounted) setState(() => _screen = 'messages');
+        _notice('Уведомление открыто. Для просмотра содержимого требуется активный нативный MLS-сеанс. Зашифрованное сообщение не открывается в обход MLS.');
+        return;
+      }
+
+      await _session.syncMlsMessages();
+      final incoming = await _session.mlsMessagesForRoom(route.roomId);
+      final target = incoming.where((message) => message.eventId == route.eventId);
+      if (target.isEmpty || target.every((message) => !message.isReadable)) {
+        if (mounted) setState(() => _screen = 'messages');
+        _notice('Сообщение ещё не расшифровано на этом устройстве или недоступно.');
+        return;
+      }
+
+      final items = incoming
+          .where((message) => message.isReadable)
+          .map((message) => InOneThreadItem(
+                kind: InOneThreadItemKind.text,
+                text: message.text,
+              ))
+          .toList(growable: false);
+      if (!mounted) return;
+      setState(() {
+        _pushRoomId = route.roomId;
+        _pushThreadItems = items;
+        _screen = 'pushChat';
+      });
+    } catch (_) {
+      if (mounted) {
+        setState(() => _screen = 'messages');
+        _notice('Не удалось безопасно открыть сообщение. Проверьте подключение и членство в комнате.');
+      }
+    } finally {
+      _pendingPushRoute = null;
+      _pushRouteInFlight = false;
+    }
   }
   String _formatActivationTime(String raw) {
     final parsed = DateTime.tryParse(raw)?.toLocal();
@@ -293,6 +384,9 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         _selectedOrganization = organizations.isEmpty ? null : organizations.first;
         _screen = 'messages';
       });
+      if (_pendingPushRoute != null) {
+        unawaited(_processPendingPushRoute());
+      }
     } catch (_) {
       if (mounted) setState(() => _screen = 'loadError');
     }
@@ -358,6 +452,9 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       _selectedOrganization = null;
       _systemStatus = null;
       _registrationEmail = '';
+      _pendingPushRoute = null;
+      _pushRoomId = null;
+      _pushThreadItems = const [];
       _screen = 'login';
     });
   }
@@ -592,6 +689,22 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         return InOneSystemStatusScreen(
           status: _systemStatus!,
           onMenu: () => setState(() => _screen = 'workspace'),
+        );
+      case 'pushChat':
+        return InOneChatThreadScreen(
+          header: InOneThreadHeader(
+            name: _pushRoomId ?? 'InOne chat',
+            statusLabel: 'End-to-end encrypted',
+            online: false,
+          ),
+          items: _pushThreadItems,
+          onSend: (_) => _notice('Отправка сообщений остаётся заблокированной до принятия полного native MLS send pipeline.'),
+          onBack: () => setState(() {
+            _screen = 'messages';
+            _pushRoomId = null;
+            _pushThreadItems = const [];
+          }),
+          onAttach: () => _notice('Вложения доступны только после подключения полного MLS encrypted attachment flow.'),
         );
       case 'messages':
         return InOneMessagesScreen(
