@@ -2614,31 +2614,47 @@ impl Client {
                     return Err(format!("RecoveryRequired: {reason}"));
                 }
             };
-            let processed = {
+            // Commit processing and merge must use the same SQLCipher transaction
+            // as the OpenMLS storage provider. Otherwise a crash can persist the new
+            // epoch while the client has not durably completed the corresponding sync.
+            let transaction = self.meta.unchecked_transaction().map_err(text)?;
+            let transactional_provider = DeviceProvider::new(
+                Arc::clone(&self.provider.crypto),
+                TransactionConnection(&transaction),
+            );
+            let processed_result = {
                 let group = self
                     .groups
                     .get_mut(room_id)
                     .ok_or("комната не создана на этом устройстве")?;
-                group.mls.process_message(&self.provider, protocol)
+                group.mls.process_message(&transactional_provider, protocol)
             };
-            let processed = match processed {
+            let processed = match processed_result {
                 Ok(processed) => processed,
-                Err(error) => match classify_process_error(&error) {
-                    Failure::Transient => {
-                        return Err(format!(
-                            "временная ошибка обработки Commit, повтор позже: {error}"
-                        ))
+                Err(error) => {
+                    drop(transactional_provider);
+                    drop(transaction);
+                    self.reload_group(room_id)?;
+                    match classify_process_error(&error) {
+                        Failure::Transient => {
+                            return Err(format!(
+                                "временная ошибка обработки Commit, повтор позже: {error}"
+                            ));
+                        }
+                        Failure::Permanent(classification) => {
+                            let reason = format!("{classification}: {error}");
+                            self.quarantine_commit(room_id, *commit_epoch, commit, &reason)?;
+                            return Err(format!("RecoveryRequired: {reason}"));
+                        }
                     }
-                    Failure::Permanent(classification) => {
-                        let reason = format!("{classification}: {error}");
-                        self.quarantine_commit(room_id, *commit_epoch, commit, &reason)?;
-                        return Err(format!("RecoveryRequired: {reason}"));
-                    }
-                },
+                }
             };
             let staged = match processed.into_content() {
                 ProcessedMessageContent::StagedCommitMessage(staged) => staged,
                 _ => {
+                    drop(transactional_provider);
+                    drop(transaction);
+                    self.reload_group(room_id)?;
                     let reason = "серверная запись не является MLS StagedCommit";
                     self.quarantine_commit(room_id, *commit_epoch, commit, reason)?;
                     return Err(format!("RecoveryRequired: {reason}"));
@@ -2653,6 +2669,9 @@ impl Client {
                     verify_staged_membership_metadata(&group.mls, staged.as_ref(), metadata)
                 };
                 if let Err(reason) = verification {
+                    drop(transactional_provider);
+                    drop(transaction);
+                    self.reload_group(room_id)?;
                     self.quarantine_commit(room_id, *commit_epoch, commit, &reason)?;
                     return Err(format!("RecoveryRequired: {reason}"));
                 }
@@ -2662,13 +2681,21 @@ impl Client {
                     .groups
                     .get_mut(room_id)
                     .ok_or("комната не создана на этом устройстве")?;
-                group.mls.merge_staged_commit(&self.provider, *staged)
+                group
+                    .mls
+                    .merge_staged_commit(&transactional_provider, *staged)
             };
+            drop(transactional_provider);
             if let Err(error) = merge {
+                drop(transaction);
+                self.reload_group(room_id)?;
                 return Err(format!(
                     "временная ошибка слияния Commit, повтор позже: {error}"
                 ));
             }
+            transaction.commit().map_err(|error| {
+                format!("временная ошибка фиксации MLS Commit, повтор позже: {}", text(error))
+            })?;
         }
 
         // Опоздавшие события (аудит, P0.3): их эпоха уже пройдена. Внутри окна пробуем расшифровать,
