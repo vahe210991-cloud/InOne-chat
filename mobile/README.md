@@ -139,3 +139,10 @@ Tests cover API transport, typed repositories, session locale/logout, MLS handof
 ## Backend deployment note
 
 The current engine deployment guide describes the checked-in server build as development/test, not production-ready. SMTP/domain delivery, SMS where required, deployment/proxy validation, backup/restore and monitoring still need operational acceptance. Use a controlled staging API until those items are closed.
+
+
+## Firebase platform configuration status
+
+The repository-root Firebase client files are validated and copied by `tool/generate_flutter_platforms.sh` into the generated native projects on every run. Android receives `android/app/google-services.json`; iOS receives `ios/Runner/GoogleService-Info.plist`. The helper rejects missing files or mismatched Firebase project/App IDs and package/bundle identifiers before platform builds. See [platform identifier and Firebase configuration details](PLATFORM-IDENTIFIERS.md).
+
+**Important integration boundary:** the current Flutter dependency manifest and application entry point do not yet include Firebase Core or Firebase Messaging initialization, FCM permission/token handling, or automatic calls to the existing `InOnePushRepository`. The copied client files therefore establish native configuration placement only; they do not mean push registration or delivery is active. Do not log FCM/APNs tokens or commit Firebase Admin service-account credentials or APNs private keys. Backend push delivery remains separately gated by the existing `push.enabled` feature flag and provider credentials.
