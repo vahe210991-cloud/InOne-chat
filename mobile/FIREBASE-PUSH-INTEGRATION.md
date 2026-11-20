@@ -1,36 +1,34 @@
 # Firebase Core and Messaging integration
 
-## Runtime flow
+## Runtime lifecycle
 
-1. `lib/main.dart` calls `Firebase.initializeApp()` on Android/iOS. Firebase options are loaded from the native app resources; no service-account credential is embedded in the client.
-2. `InOnePushLifecycle` observes `InOneSession`. It only registers while the current device is authenticated.
-3. The app requests notification permission after authentication. If permission is denied, any existing device registration is deleted.
-4. Android reads the FCM token after permission is granted. iOS waits until `getAPNSToken()` returns a token before calling `getToken()`.
-5. Initial and refreshed FCM tokens are sent only through `InOnePushRepository.register()` to `PUT /devices/me/push`. Raw tokens are not persisted locally or logged.
-6. Before explicit logout, the client attempts `DELETE /devices/me/push` while the bearer token is still valid. Backend logout and device-revocation cleanup are retained as authoritative server-side safeguards.
-7. On app resume, token registration is retried. This covers the case where APNs registration was not ready during the first authenticated startup.
+1. `lib/main.dart` initializes Firebase Core from the generated Android/iOS native configuration.
+2. Firebase Messaging auto-init is disabled in generated native projects. The app does not register an installation or expose its Firebase Installation ID (FID) until the current InOne device has an authenticated session and notification permission.
+3. `InOnePushLifecycle` observes `InOneSession`. After permission is granted, it waits for the APNs device token on iOS, calls `FirebaseMessaging.register()`, receives the FID through `onRegistered`, and registers it through the existing authenticated `PUT /devices/me/push` endpoint.
+4. FID changes from `onRegistered` are synchronized to the same current-device endpoint. The FID is held in memory only; it is not written to local storage or logs.
+5. Denied or permanently denied notification permission removes the server association and unregisters the FCM app instance. Explicit logout does the same before logout while the bearer token is valid; backend logout and device revocation remain authoritative cleanup paths.
+6. On app resume, registration is retried. This covers cases where APNs registration was not ready during the first authenticated startup.
+7. An unexpected `onUnregistered` event removes a stale server association.
 
-## FCM registration identifier compatibility
+## FID API and server contract
 
-The current backend contract `PUT /devices/me/push` stores an FCM registration token and validates the existing 32–512 character token format. Therefore the client currently uses the legacy `getToken()` / `onTokenRefresh` APIs, with deprecated-member warnings intentionally scoped to this adapter and the Android runtime probe.
-
-Firebase Messaging 17 also exposes the newer Firebase Installation ID (FID) flow through `register()` / `onRegistered`. FIDs are the recommended direction and Firebase supports both registration patterns during the transition. Do not replace the current token with a FID in isolation: migrate the backend validation/storage contract and the future sender together, then switch the Flutter client and integration test to FIDs.
+Firebase Messaging 17 uses Firebase Installation IDs for app-instance targeting. The authenticated device API retains its `token` field for compatibility, but accepts a 22-character base64url FID for provider `fcm`; legacy FCM tokens and APNs tokens (32–512 characters) remain accepted for existing clients. The future sender must target FIDs using Firebase's FID-capable direct-send API. A push sender is not implemented by this client change.
 
 ## Native project generation
 
-`tool/generate_flutter_platforms.sh` now runs both Firebase configuration steps:
+`tool/generate_flutter_platforms.sh` runs both Firebase configuration steps:
 
-- `prepare_firebase_platforms.mjs` validates the checked-in client identifiers and copies the Android JSON / iOS plist into the generated projects.
-- `configure_firebase_native.mjs` installs the Google Services Gradle plugin, sets Android minSdk to 24 for Firebase Messaging 26.x, adds network/notification permissions, includes the iOS plist in the Runner bundle, adds the APNs entitlement for Debug/Profile/Release and enables the remote-notification background mode.
+- `prepare_firebase_platforms.mjs` validates the checked-in client identifiers and copies the Android JSON / iOS plist into generated projects.
+- `configure_firebase_native.mjs` installs the Google Services Gradle plugin, sets Android minSdk to 24, adds Android network/notification permissions, enables FID registration while disabling auto-init/Analytics collection until consent, embeds the iOS plist, adds the APNs entitlement, enables FID registration, disables auto-init and configures fetch/remote-notification background modes.
 
-The native scaffold is generated by pinned Flutter 3.47.9, so these changes are reapplied on every clean CI generation rather than relying on untracked local platform folders.
+These changes are reapplied on every clean CI generation rather than relying on untracked local platform folders.
 
 ## External Apple setup and delivery boundary
 
-For actual iOS APNs registration, the Apple Developer App ID for `com.inone.app` must have Push Notifications enabled, a matching provisioning profile must be used for signed builds, and the APNs authentication key must be uploaded in Firebase Console. The source repository does not contain Apple .p8 keys or signing credentials.
+For actual iOS APNs registration, the Apple Developer App ID for `com.inone.app` must have Push Notifications enabled, a matching provisioning profile must be used for signed builds, and the APNs authentication key must be uploaded in Firebase Console. The source repository does not contain Apple signing credentials or APNs keys.
 
-The client registration lifecycle does not implement a push sender. `inone-engine-poc-0.6.0/PUSH.md` remains authoritative: FCM/APNs sending, invalid-token cleanup on provider responses, and end-to-end notification delivery are separate unfinished work. Payloads must remain minimal and must not include message text, sender identity, or other private content.
+The push sender, invalid-FID cleanup on provider responses, and end-to-end notification delivery are separate unfinished work. Payloads must remain minimal and must not include message text, sender identity, or other private content.
 
 ## Validation
 
-`mobile/test/core/session/inone_push_lifecycle_test.dart` covers authentication gating, FCM token refresh, authenticated logout unregister, denied permissions and the iOS APNs-token prerequisite. The Flutter Android/iOS workflows additionally compile the generated native integrations on the exact PR head.
+`mobile/test/core/session/inone_push_lifecycle_test.dart` covers authenticated FID registration, FID refresh, denied permissions, APNs readiness, Firebase unregister and authenticated logout. The Android emulator integration smoke initializes Firebase and obtains a real FID without logging it. Flutter Android/iOS workflows compile generated native integrations on the exact PR head.

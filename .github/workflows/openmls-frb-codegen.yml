@@ -204,7 +204,11 @@ jobs:
           disable-linux-hw-accel: false
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-          script: cd mobile && flutter drive --driver=test_driver/integration_test.dart --target=integration_test/mls_secure_store_test.dart
+          script: |
+            cd mobile
+            adb install -r build/app/outputs/flutter-apk/app-debug.apk
+            adb shell pm grant com.inone.app android.permission.POST_NOTIFICATIONS
+            flutter drive --driver=test_driver/integration_test.dart --target=integration_test/mls_secure_store_test.dart
 
       - name: Upload Android preview APK
         uses: actions/upload-artifact@v4

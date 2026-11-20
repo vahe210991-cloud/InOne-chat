@@ -150,8 +150,8 @@ The repository-root Firebase client files are validated and copied by `tool/gene
 ## Firebase Messaging runtime
 
 - `main.dart` initializes Firebase Core from the generated Android/iOS native configuration before creating the app.
-- After an authenticated session is restored or created, `InOnePushLifecycle` requests notification permission, waits for an APNs token on iOS, obtains the FCM registration token, and registers it through the existing authenticated `InOnePushRepository` (`PUT /devices/me/push`).
-- FCM token refreshes are synchronized to the same current-device endpoint. Explicit logout attempts `DELETE /devices/me/push` before logout; backend logout and device revocation remain authoritative cleanup paths.
+- After an authenticated session is restored or created, `InOnePushLifecycle` requests notification permission, waits for an APNs token on iOS, obtains the Firebase Installation ID (FID), and registers it through the existing authenticated `InOnePushRepository` (`PUT /devices/me/push`).
+- Firebase Installation ID registration refreshes are synchronized to the same current-device endpoint. Explicit logout attempts `DELETE /devices/me/push` before logout; backend logout and device revocation remain authoritative cleanup paths.
 - Tokens are not written to Flutter storage, analytics, or logs. Denied permission removes any prior server registration. iOS registration is retried when the app resumes if APNs registration was not ready.
 - Native generation installs the Google Services Gradle plugin, sets Android minSdk to 24 for Firebase Messaging 26.x and adds Android permissions; on iOS it embeds `GoogleService-Info.plist`, adds the APNs entitlement and remote-notification background mode.
 - iOS delivery still requires an Apple Developer App ID with Push Notifications enabled and the APNs authentication key uploaded to Firebase. The repository's push sender is not implemented yet, so this client work registers devices but does not claim end-to-end notification delivery.

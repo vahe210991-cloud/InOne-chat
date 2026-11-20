@@ -26,3 +26,8 @@
 
 ## Тесты
 `test/push.test.js`: 4 теста в памяти и на PostgreSQL. Поломки: отозванное устройство получает уведомления; уведомление содержит лишнее поле; выход не удаляет токен. Каждая ловится тестом.
+
+
+## Firebase Messaging 17 FID registration
+
+The Flutter client disables Firebase Messaging auto-init until an authenticated InOne session and notification permission exist. It then calls `FirebaseMessaging.register()` and sends the 22-character Firebase Installation ID from `onRegistered` through `PUT /devices/me/push`. The API accepts this FID for provider `fcm` while preserving legacy 32–512-character FCM/APNs token compatibility. Logout and denied notification permission remove the server association and call Firebase Messaging `unregister()`. The future sender must address FIDs using the Firebase FID-capable direct-send API; notification delivery remains unimplemented.
