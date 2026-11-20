@@ -18,6 +18,8 @@ class InOneLoginScreen extends StatefulWidget {
     required this.onForgotPassword,
     this.onSuccess,
     this.onProviderSuccess,
+    this.locale = 'hy',
+    this.onLocaleChanged,
   });
 
   /// POST /login. `null` — успех.
@@ -31,6 +33,8 @@ class InOneLoginScreen extends StatefulWidget {
 
   /// После успешного ответа провайдера (дальше — ввод никнейма, SC-06).
   final VoidCallback? onProviderSuccess;
+  final String locale;
+  final ValueChanged<String>? onLocaleChanged;
 
   @override
   State<InOneLoginScreen> createState() => _InOneLoginScreenState();
@@ -124,6 +128,60 @@ class _InOneLoginScreenState extends State<InOneLoginScreen> with InOneActionSta
             InOneLink(label: 'Մոռացել եմ գաղտնաբառը', onTap: widget.onForgotPassword),
           ],
         ),
+        if (widget.onLocaleChanged != null)
+          Center(
+            child: PopupMenuButton<String>(
+              tooltip: 'Язык писем',
+              onSelected: widget.onLocaleChanged,
+              itemBuilder: (context) => [
+                PopupMenuItem(
+                  value: 'hy',
+                  child: Row(
+                    children: [
+                      const Expanded(child: Text('Հայերեն')),
+                      if (widget.locale == 'hy') const Icon(Icons.check, size: 18),
+                    ],
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'ru',
+                  child: Row(
+                    children: [
+                      const Expanded(child: Text('Русский')),
+                      if (widget.locale == 'ru') const Icon(Icons.check, size: 18),
+                    ],
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'en',
+                  child: Row(
+                    children: [
+                      const Expanded(child: Text('English')),
+                      if (widget.locale == 'en') const Icon(Icons.check, size: 18),
+                    ],
+                  ),
+                ),
+              ],
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.language, size: 18, color: c.muted),
+                    const SizedBox(width: 6),
+                    Text(
+                      switch (widget.locale) {
+                        'ru' => 'Русский',
+                        'en' => 'English',
+                        _ => 'Հայերեն',
+                      },
+                      style: TextStyle(color: c.muted),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }

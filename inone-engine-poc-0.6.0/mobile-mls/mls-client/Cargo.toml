@@ -1,4 +1,4 @@
-# Keep Cargo.lock synchronized; CI checks every target with --locked on Rust 1.91.0.
+# Keep this lockfile committed and validated with --locked on Rust 1.91.0.
 [package]
 name = "mls-client"
 version = "0.1.0"
@@ -22,3 +22,4 @@ aes = { version = "0.8", features = ["zeroize"] }
 ghash = { version = "0.5", features = ["zeroize"] }
 sha2 = "0.10.9"
 zeroize = "1.9.1"
+url = "2"
