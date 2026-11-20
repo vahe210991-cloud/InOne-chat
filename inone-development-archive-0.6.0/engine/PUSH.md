@@ -45,3 +45,15 @@
 - Unit coverage: FID addressing, allowlisted payload, safe provider error classes, encryption/AAD and Admin SDK bootstrap.
 - PostgreSQL coverage: outbox durability across worker restart, encrypted legacy FID backfill, idempotency and provider acceptance.
 - Still required: full Node + PostgreSQL suite on the exact PR SHA, Flutter receive/tap routing tests, native builds, and physical Android/iOS delivery tests. No real-device delivery is claimed until those tests pass.
+
+## Physical-device smoke test
+
+After the APNs key is uploaded to Firebase Console and the backend has its Admin SDK credentials, select an already registered active device by its internal device key. Inject these values through a secret manager or a protected deployment shell (do not put them in source control or CI logs):
+
+- `DATABASE_URL`
+- `INONE_FIREBASE_PROJECT_ID`
+- `INONE_PUSH_ENCRYPTION_KEY`
+- `INONE_FIREBASE_SERVICE_ACCOUNT_JSON` (only when ADC/workload identity is unavailable)
+- `INONE_PUSH_SMOKE_DEVICE_KEY` (the internal `userId|deviceId`, never the FID)
+
+Run `npm run test:push:live` from the engine directory. The script decrypts the selected FID only in memory, sends one generic notification and never prints the FID, device key or provider message ID. Confirm that the physical device actually displays it. Repeat on Android and iOS. This smoke test proves provider acceptance only until the device display is independently observed; the full app-flow test must then send a real MLS room event and open it from the notification.
