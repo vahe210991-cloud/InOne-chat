@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use mls_client::{connect, is_retryable, Incoming, MemoryKeyStore};
+use mls_client::{connect, is_retryable, Incoming, KeyStore, MemoryKeyStore};
 
 const PW: &str = "пароль-проверки-1";
 const ROOM: &str = "!room-outbox:inone.test";
@@ -204,4 +204,156 @@ fn repeated_send_with_the_same_identifier_is_stored_once() {
     let again = alice.send_text_with_id(ROOM, "раз", "send-0001").unwrap();
     assert_eq!(first, again, "повтор вернул первое сообщение");
     assert_eq!(texts(&bob.sync().unwrap()), vec!["раз"]);
+}
+
+#[test]
+fn encrypted_inbox_survives_restart_until_app_ack_and_never_replays_after_ack() {
+    let engine = start_engine();
+    let keys = MemoryKeyStore::default();
+
+    let alice_db = db("alice-durable-inbox");
+    let bob_db = db("bob-durable-inbox");
+    let mut alice = connect(&engine.base, ALICE, PW, "A_INBOX", &alice_db, &keys).unwrap();
+    let mut bob = connect(&engine.base, BOB, PW, "B_INBOX", &bob_db, &keys).unwrap();
+
+    bob.ensure_key_packages(2).unwrap();
+    let room = "!room-durable-inbox:inone.test";
+    alice.create_room(room).unwrap();
+    alice.invite(room, BOB).unwrap();
+    assert!(bob.sync().unwrap().is_empty());
+
+    let plaintext = "persisted before application acknowledgement";
+    let event_id = alice.send_text(room, plaintext).unwrap();
+    assert_eq!(texts(&bob.sync().unwrap()), vec![plaintext.to_string()]);
+
+    let pending = bob.pending_incoming().unwrap();
+    assert_eq!(texts(&pending), vec![plaintext.to_string()]);
+    assert!(matches!(
+        pending.as_slice(),
+        [Incoming::Text { event_id: pending_id, .. }]
+            if pending_id.as_str() == event_id.as_str()
+    ));
+
+    // SQLCipher protects the pending plaintext at rest, including WAL sidecars.
+    for suffix in ["", "-wal", "-shm", "-journal"] {
+        let path = format!("{bob_db}{suffix}");
+        if let Ok(ciphertext) = std::fs::read(path) {
+            if ciphertext.len() >= plaintext.len() {
+                assert!(
+                    !ciphertext
+                        .windows(plaintext.len())
+                        .any(|window| window == plaintext.as_bytes()),
+                    "pending inbox plaintext must not appear in database files"
+                );
+            }
+        }
+    }
+
+    // Simulate app/process restart after decrypt+commit but before the UI ACK.
+    drop(bob);
+    let mut resumed = connect(&engine.base, BOB, PW, "B_INBOX", &bob_db, &keys)
+        .expect("resume device after crash before app acknowledgement");
+    assert_eq!(
+        texts(&resumed.pending_incoming().unwrap()),
+        vec![plaintext.to_string()]
+    );
+
+    // ACK is idempotent and durable.
+    resumed.acknowledge_incoming(&[event_id.clone()]).unwrap();
+    resumed.acknowledge_incoming(&[event_id.clone()]).unwrap();
+    assert!(resumed.pending_incoming().unwrap().is_empty());
+    drop(resumed);
+
+    // Simulate another restart after ACK. Neither the inbox nor a repeated server sync replays it.
+    let mut after_ack = connect(&engine.base, BOB, PW, "B_INBOX", &bob_db, &keys)
+        .expect("resume after acknowledged inbox item");
+    assert!(after_ack.pending_incoming().unwrap().is_empty());
+    assert!(after_ack.sync().unwrap().is_empty());
+    assert!(after_ack.pending_incoming().unwrap().is_empty());
+    after_ack.logout().unwrap();
+}
+
+#[test]
+fn inbox_write_failure_rolls_back_mls_state_and_allows_server_redelivery() {
+    let engine = start_engine();
+    let keys = MemoryKeyStore::default();
+    let alice_db = db("alice-inbox-write-failure");
+    let bob_db = db("bob-inbox-write-failure");
+    let mut alice = connect(&engine.base, ALICE, PW, "A_INBOX_FAIL", &alice_db, &keys).unwrap();
+    let mut bob = connect(&engine.base, BOB, PW, "B_INBOX_FAIL", &bob_db, &keys).unwrap();
+
+    bob.ensure_key_packages(2).unwrap();
+    let room = "!room-inbox-write-failure:inone.test";
+    alice.create_room(room).unwrap();
+    alice.invite(room, BOB).unwrap();
+    assert!(bob.sync().unwrap().is_empty());
+
+    let plaintext = "must be redelivered after a failed inbox transaction";
+    let event_id = alice.send_text(room, plaintext).unwrap();
+
+    // Open the same real SQLCipher database with the device key and inject a
+    // deterministic storage failure at the inbox INSERT boundary.
+    let key = keys.database_key(&format!("{BOB}/B_INBOX_FAIL")).unwrap();
+    let key_hex = key
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    let fault = rusqlite::Connection::open(&bob_db).unwrap();
+    fault
+        .pragma_update(None, "key", format!("x'{key_hex}'"))
+        .unwrap();
+    fault
+        .execute_batch(
+            "CREATE TRIGGER reject_inbox_insert
+             BEFORE INSERT ON client_inbox
+             BEGIN
+               SELECT RAISE(ABORT, 'injected durable inbox write failure');
+             END;",
+        )
+        .unwrap();
+
+    let failed = bob
+        .sync()
+        .expect_err("inbox storage failure must abort event processing");
+    assert!(
+        failed.contains("временная ошибка сохранения MLS inbox"),
+        "unexpected sync error: {failed}"
+    );
+    assert!(
+        bob.pending_incoming().unwrap().is_empty(),
+        "a failed transaction must not expose a partially stored inbox item"
+    );
+
+    // The event must not be marked processed and the in-memory MLS group must
+    // be reloaded from the rolled-back SQLCipher state before retrying.
+    fault
+        .execute_batch("DROP TRIGGER reject_inbox_insert;")
+        .unwrap();
+    drop(fault);
+
+    let redelivered = bob
+        .sync()
+        .expect("the same server event must be processable after rollback");
+    assert_eq!(texts(&redelivered), vec![plaintext.to_string()]);
+    assert!(matches!(
+        bob.pending_incoming().unwrap().as_slice(),
+        [Incoming::Text {
+            event_id: pending_id,
+            text: pending_text,
+            ..
+        }] if pending_id == &event_id && pending_text == plaintext
+    ));
+
+    assert!(
+        bob.sync().unwrap().is_empty(),
+        "the successfully committed event must not be processed twice"
+    );
+    bob.acknowledge_incoming(&[event_id]).unwrap();
+    assert!(bob.pending_incoming().unwrap().is_empty());
+    drop(bob);
+
+    let mut resumed = connect(&engine.base, BOB, PW, "B_INBOX_FAIL", &bob_db, &keys)
+        .expect("the committed inbox and ACK must survive reopening SQLCipher");
+    assert!(resumed.pending_incoming().unwrap().is_empty());
+    assert!(resumed.sync().unwrap().is_empty());
 }
