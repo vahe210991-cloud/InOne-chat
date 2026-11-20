@@ -3257,7 +3257,6 @@ mod classify_tests {
     }
 }
 
-
 #[cfg(test)]
 mod key_store_contract_tests {
     use super::{KeyStore, MemoryKeyStore};
@@ -3270,7 +3269,10 @@ mod key_store_contract_tests {
 
         let created = keys.database_key("user/device").unwrap();
         assert!(keys.has_database_key("user/device").unwrap());
-        assert_eq!(keys.existing_database_key("user/device").unwrap(), Some(created));
+        assert_eq!(
+            keys.existing_database_key("user/device").unwrap(),
+            Some(created)
+        );
         assert_eq!(keys.database_key("user/device").unwrap(), created);
     }
 
