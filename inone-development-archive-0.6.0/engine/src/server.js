@@ -241,7 +241,9 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
     return mailToRecipients([profile?.email ?? userId, backup?.email], subject, text, templateId, variables, transactionClient, localeOverride ?? profile?.locale ?? 'hy');
   };
   const revokeDevice = async (rec) => {
-    await storage.revokeDevice(key(rec.userId, rec.deviceId));
+    const deviceKey = key(rec.userId, rec.deviceId);
+    await storage.revokeDevice(deviceKey);
+    await storage.deletePushToken(deviceKey);
     // Отозванное устройство больше не выдаётся как получатель ключевых пакетов и приветствий.
     await storage.mlsDropDevicePackages(rec.userId, rec.deviceId);
     await storage.mlsRecordDeviceRemovals(rec.userId, rec.deviceId, now());
