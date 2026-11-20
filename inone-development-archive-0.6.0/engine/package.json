@@ -10,7 +10,8 @@
     "start": "node src/main.js",
     "migrate": "node src/migrate.js",
     "test:registration:live": "node scripts/registration-live-smoke.mjs",
-    "audit:legacy-client-messages": "node scripts/audit-legacy-client-messages.mjs"
+    "audit:legacy-client-messages": "node scripts/audit-legacy-client-messages.mjs",
+    "test:push:live": "node scripts/push-live-smoke.mjs"
   },
   "dependencies": {
     "@matrix-org/matrix-sdk-crypto-wasm": "18.9.0",
