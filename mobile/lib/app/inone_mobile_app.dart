@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:io';
+import 'dart:io' show Platform;
 import 'dart:math' as math;
 
 import 'package:file_picker/file_picker.dart';
@@ -587,8 +587,8 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         _activeMlsThread = items;
         _screen = 'chatThread';
       });
-      final pending = await _session.pendingMlsMessages();
-      final accepted = pending
+      final pendingIncoming = await _session.pendingMlsMessages();
+      final accepted = pendingIncoming
           .where((message) => message.roomId == chat.id)
           .map((message) => message.eventId)
           .toList(growable: false);
@@ -674,9 +674,10 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     final roomId = _activeMlsRoomId;
     if (roomId == null || !_session.hasNativeMlsSession) return;
     try {
-      final result = await FilePicker.platform.pickFiles(
+      final result = await FilePicker.pickFiles(
         type: FileType.any,
         allowMultiple: false,
+        withData: true,
       );
       if (result == null || result.files.isEmpty) return;
       final selected = result.files.single;
@@ -692,12 +693,11 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         return;
       }
       final displayName = safeName.length > 255 ? safeName.substring(0, 255) : safeName;
-      final selectedPath = selected.path;
-      if (selectedPath == null || selectedPath.isEmpty) {
-        _notice('Система не предоставила доступ к выбранному файлу.');
+      final bytes = selected.bytes;
+      if (bytes == null || bytes.isEmpty) {
+        _notice('Не удалось прочитать выбранный файл. Выберите его повторно.');
         return;
       }
-      final bytes = await File(selectedPath).readAsBytes();
       try {
         if (bytes.isEmpty || bytes.length > maximumBytes) {
           _notice('Файл пустой или превышает допустимый размер.');
@@ -733,7 +733,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       try {
         final safeName = (rawName ?? 'attachment')
             .replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
-        final savedPath = await FilePicker.platform.saveFile(
+        final savedPath = await FilePicker.saveFile(
           dialogTitle: 'Сохранить расшифрованное вложение',
           fileName: safeName,
           bytes: bytes,
