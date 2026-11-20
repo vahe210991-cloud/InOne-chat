@@ -17,7 +17,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: email-delivery-${{ github.event.pull_request.head.ref || github.ref_name }}
+  group: email-delivery-${{ github.event.pull_request.head.ref || github.ref_name }}-${{ github.event.pull_request.head.sha || github.sha }}
   cancel-in-progress: true
 
 jobs:
