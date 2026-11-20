@@ -18,9 +18,17 @@ jobs:
         with:
           flutter-version: '3.47.9'
           channel: stable
-      - name: Resolve committed Flutter dependency graph
+      - name: Resolve Flutter dependency graph
         working-directory: mobile
         run: flutter pub get
+      - name: Emit exact generated lockfile for commit
+        working-directory: mobile
+        shell: bash
+        run: |
+          echo LOCK_BASE64_BEGIN
+          base64 -w0 pubspec.lock
+          echo
+          echo LOCK_BASE64_END
       - name: Upload generated lockfile
         uses: actions/upload-artifact@v4
         with:
