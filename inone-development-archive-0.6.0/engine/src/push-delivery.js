@@ -247,6 +247,10 @@ export function createPushDelivery({
         );
         await finish(row, 'cancelled', { errorCode: 'invalid_target' });
         logger?.warn('invalid FCM installation removed', { deliveryId: row.id });
+      } else if (code === 'provider_configuration') {
+        // Keep the outbox recoverable while an operator repairs ADC/service-account configuration.
+        await finish(row, 'failed', { errorCode: code, delayMs: MAX_RETRY_MS });
+        logger?.error('push provider configuration requires attention', { deliveryId: row.id, reason: code });
       } else if (error?.retryable === false) {
         await finish(row, 'dead', { errorCode: code });
         logger?.warn('push delivery permanently rejected', { deliveryId: row.id, reason: code });
