@@ -49,7 +49,7 @@ The repository now contains the Stage 4 persistent Rust/OpenMLS client, the Flut
 
 Before enabling the flag, run `.	ool\generate_native_mls.ps1` from PowerShell in this directory. It generates the FRB bindings, native-assets hook, Rust build script and lockfile, then configures Android's application context. The generated files are not yet committed in this source revision, so a clean checkout is not yet buildable with the native flag enabled.
 
-The native session path adopts the authenticated session into Rust, keeps the refresh token and MLS private state in Rust, stores the device database in SQLCipher, and stores the SQLCipher key in Android Keystore / protected iOS Keychain. On restart it attempts to resume the Rust-owned session. If native adoption fails, messaging remains disabled; there is no plaintext or Megolm fallback.
+The native session path adopts the authenticated session into Rust, keeps the refresh token and MLS private state in Rust, stores the device database in SQLCipher, and stores the SQLCipher key in Android Keystore / protected iOS Keychain. After adoption and on restart it publishes replenished KeyPackages, accepts pending Welcomes, syncs known MLS rooms and flushes the Rust-owned text outbox. If native adoption fails, messaging remains disabled; there is no plaintext or Megolm fallback.
 
 This source integration is not yet validated: generated FRB outputs, Flutter analysis/tests, Rust bridge tests, Android Keystore runtime checks, and iOS Protected Keychain device/simulator checks must pass on the same final commit before the flag can be enabled for release.
 
@@ -60,7 +60,7 @@ This source integration is not yet validated: generated FRB outputs, Flutter ana
 - Room list metadata is connected, but message history and sending remain blocked until the native MLS runtime is generated, built and accepted on devices.
 - Never send plaintext messages or use `POST /rooms/:id/events` as a fallback.
 - Recovery deep links, device-approval flows, APNs/FCM registration and notification-feed mapping are not yet enabled.
-- Binary file transport exists, and the Rust AEAD attachment crypto core is in a separate draft PR; attachment upload/encrypted-manifest delivery/SQLCipher key persistence/decryption are not yet connected end-to-end.
+- The Rust attachment pipeline now reserves and uploads ciphertext only, sends the versioned file-key manifest inside MLS, persists the manifest in SQLCipher, and downloads/decrypts only after room/file binding, ciphertext hash, AEAD tag, plaintext size and hash checks. The Dart/Rust API is present, but the chat UI file-picker action is still disabled; Rust attachment integration tests are added but have NOT BEEN RUN.
 - Leads, Kanban and deal detail remain Beta 2.0 placeholders.
 - RQ/PS scope differs between the screen handoff and API contract documents; these screens are not in active Beta 1.0 navigation pending owner resolution.
 - Demo data and gallery callbacks are not production data sources.
