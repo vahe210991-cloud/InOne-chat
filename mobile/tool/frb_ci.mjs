@@ -8,6 +8,7 @@ const protectedPaths = [
   'rust/src/api/mod.rs',
   'rust/src/api/session.rs',
   'pubspec.yaml',
+  'pubspec.lock',
   'rust/Cargo.toml',
   'rust/Cargo.lock',
 ];
@@ -185,9 +186,9 @@ try {
   ]);
 
   restoreProtectedFiles();
-  // Resolve newly introduced direct dependencies and keep the exact lockfile
-  // in this job workspace for the downstream iOS artifact consumer.
-  run('flutter', ['pub', 'get']);
+  // Resolve dependencies strictly from the committed lockfile. The downstream
+  // iOS artifact consumer must receive exactly the same dependency graph.
+  run('flutter', ['pub', 'get', '--enforce-lockfile']);
   run('git', ['diff', '--exit-code', '--', ...protectedPaths]);
 
   run('flutter_rust_bridge_codegen', [
