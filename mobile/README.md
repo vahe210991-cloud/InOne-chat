@@ -28,7 +28,7 @@ To reproduce the generation locally, use the same pinned sequence as `.github/wo
 
 ```sh
 cd mobile
-flutter create --platforms=android,ios --project-name inone_mobile --org com.inone .
+flutter create --platforms=android,ios --project-name app --org com.inone .
 rm -f test/widget_test.dart
 cargo install --locked --version 2.13.0 flutter_rust_bridge_codegen
 cp lib/main.dart /tmp/inone-main.dart
