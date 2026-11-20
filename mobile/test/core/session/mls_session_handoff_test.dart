@@ -1,3 +1,4 @@
+// Exact-head regression coverage for the persistent MLS session handoff.
 import 'dart:async';
 import 'dart:typed_data';
 import 'dart:convert';
