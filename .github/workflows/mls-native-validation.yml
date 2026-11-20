@@ -6,6 +6,7 @@ on:
       - "inone-engine-poc-0.6.0/mobile-mls/**"
       - "mobile/rust/**"
       - ".github/workflows/mls-native-validation.yml"
+      - ".github/workflows/flutter-mobile.yml"
   push:
     branches:
       - main
@@ -13,6 +14,7 @@ on:
       - "inone-engine-poc-0.6.0/mobile-mls/**"
       - "mobile/rust/**"
       - ".github/workflows/mls-native-validation.yml"
+      - ".github/workflows/flutter-mobile.yml"
 
 permissions:
   contents: read
