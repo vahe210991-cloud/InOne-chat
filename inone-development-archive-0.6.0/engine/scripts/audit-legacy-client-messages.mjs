@@ -53,9 +53,10 @@ async function main() {
   }
 
   const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 1 });
-  const client = await pool.connect();
+  let client;
   let transactionOpen = false;
   try {
+    client = await pool.connect();
     await client.query('BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY');
     transactionOpen = true;
     await client.query("SET LOCAL statement_timeout = '15000ms'");
@@ -67,7 +68,7 @@ async function main() {
     if (transactionOpen) await client.query('ROLLBACK').catch(() => {});
     throw error;
   } finally {
-    client.release();
+    client?.release();
     await pool.end();
   }
 }
