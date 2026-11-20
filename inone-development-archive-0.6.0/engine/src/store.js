@@ -985,7 +985,7 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
           'INSERT INTO room_events (seq, room_id, sender, origin_ts, type, content) VALUES ($1, $2, $3, $4, $5, $6::jsonb)',
           [seq, roomId, sender, nowMs, type, JSON.stringify(content ?? null)],
         );
-        if (afterAppend) await afterAppend(c, { seq, roomId, eventId: `${seq}` });
+        if (afterAppend) await afterAppend(c, { seq, roomId, eventId: `$${seq}` });
 
         // A deterministic fault-injection seam used only by PostgreSQL tests.
         // It runs before the idempotency row is completed, inside the transaction.
@@ -1404,7 +1404,7 @@ async mlsPendingRemovalsFor(userId) {
           'INSERT INTO room_events (seq, room_id, sender, origin_ts, type, content) VALUES ($1, $2, $3, $4, $5, $6::jsonb)',
           [seq, roomId, sender, nowMs, type, JSON.stringify(content ?? null)],
         );
-        if (afterAppend) await afterAppend(c, { seq, roomId, eventId: `${seq}` });
+        if (afterAppend) await afterAppend(c, { seq, roomId, eventId: `$${seq}` });
         return seq;
       });
     },
