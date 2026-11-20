@@ -3,7 +3,7 @@
 ## GitHub Codespaces
 
 The Dev Container runs the current backend from
-`inone-development-archive-0.6.0/engine` and an isolated PostgreSQL 18
+`inone-development-archive-0.6.0/engine` and an isolated PostgreSQL 16
 container. The database is named `inone_dev`; its Docker volume is
 `inone-codespaces-db`. It is a disposable development/test database and is
 not the PostgreSQL instance running on a developer's Windows computer.
@@ -34,6 +34,6 @@ or modify a developer's Windows PostgreSQL instance automatically.
 
 ## GitHub Actions
 
-CI creates a fresh ephemeral PostgreSQL 18 service for each workflow run.
+CI creates a fresh ephemeral PostgreSQL 16 service for each workflow run.
 It is used only for automated tests and is not a staging database or a source
 of legacy InOne records.

@@ -30,7 +30,7 @@ jobs:
     timeout-minutes: 45
     services:
       postgres:
-        image: postgres:18
+        image: postgres:16
         env:
           POSTGRES_DB: inone_test
           POSTGRES_USER: postgres
