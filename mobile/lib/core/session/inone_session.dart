@@ -70,7 +70,6 @@ class InOneSession extends ChangeNotifier {
   String? _deviceId;
   String? _userId;
   String? _savedMlsUserId;
-  String? _registrationToken;
   String _locale = 'hy';
   bool _localeSyncPending = false;
   bool _localeSyncInFlight = false;
@@ -313,7 +312,6 @@ class InOneSession extends ChangeNotifier {
 
   Future<Map<String, dynamic>> startEmailRegistration(String email) async {
     await initialize();
-    _registrationToken = null;
     return _client.post('/register/email', authenticated: false,
         body: {'email': email.trim(), 'locale': _locale});
   }
