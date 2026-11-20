@@ -357,3 +357,273 @@ fn inbox_write_failure_rolls_back_mls_state_and_allows_server_redelivery() {
     assert!(resumed.pending_incoming().unwrap().is_empty());
     assert!(resumed.sync().unwrap().is_empty());
 }
+
+// Process-crash tests use a deterministic platform key so a child test process can
+// reopen the exact same SQLCipher file after the parent has prepared the scenario.
+const CRASH_DB_KEY: [u8; 32] = [0x5a; 32];
+const CAROL: &str = "@carol:inone.test";
+
+struct FixedCrashKeyStore;
+
+impl KeyStore for FixedCrashKeyStore {
+    fn database_key(&self, _scope: &str) -> Result<[u8; 32], String> {
+        Ok(CRASH_DB_KEY)
+    }
+}
+
+fn run_crash_child(
+    test_name: &str,
+    base: &str,
+    db_path: &str,
+    point: &str,
+) -> std::process::Output {
+    std::process::Command::new(std::env::current_exe().expect("current test executable"))
+        .args(["--exact", test_name, "--nocapture"])
+        .env("INONE_MLS_CRASH_CHILD_BASE", base)
+        .env("INONE_MLS_CRASH_CHILD_DB", db_path)
+        .env("INONE_MLS_TEST_CRASH_POINT", point)
+        .output()
+        .expect("spawn crash-test child")
+}
+
+fn crash_child_sync_if_requested() {
+    let (Ok(base), Ok(db_path)) = (
+        std::env::var("INONE_MLS_CRASH_CHILD_BASE"),
+        std::env::var("INONE_MLS_CRASH_CHILD_DB"),
+    ) else {
+        return;
+    };
+    let keys = FixedCrashKeyStore;
+    let mut bob = connect(&base, BOB, PW, "B_CRASH_P0", &db_path, &keys)
+        .expect("child reopens the prepared SQLCipher database");
+    let result = bob.sync();
+    panic!("configured crash failpoint did not terminate child; sync result: {result:?}");
+}
+
+#[test]
+fn process_crash_after_application_ratchet_write_rolls_back_and_redelivers() {
+    crash_child_sync_if_requested();
+
+    let engine = start_engine();
+    let keys = FixedCrashKeyStore;
+    let alice_db = db("p0-crash-app-alice");
+    let bob_db = db("p0-crash-app-bob");
+    let mut alice = connect(&engine.base, ALICE, PW, "A_CRASH_P0", &alice_db, &keys).unwrap();
+    let mut bob = connect(&engine.base, BOB, PW, "B_CRASH_P0", &bob_db, &keys).unwrap();
+    bob.ensure_key_packages(2).unwrap();
+
+    let room = "!room-p0-process-crash-app:inone.test";
+    alice.create_room(room).unwrap();
+    alice.invite(room, BOB).unwrap();
+    assert!(bob.sync().unwrap().is_empty());
+    let plaintext = "survives a real process crash before inbox commit";
+    let event_id = alice.send_text(room, plaintext).unwrap();
+    drop(bob);
+
+    let status = run_crash_child(
+        "process_crash_after_application_ratchet_write_rolls_back_and_redelivers",
+        &engine.base,
+        &bob_db,
+        "after_application_mls_write",
+    );
+    assert!(
+        !status.status.success(),
+        "child must be forcibly terminated inside the open transaction"
+    );
+    assert!(
+        String::from_utf8_lossy(&status.stderr)
+            .contains("INONE_MLS_TEST_CRASH_POINT_REACHED=after_application_mls_write"),
+        "child must reach the application ratchet crash point; stderr: {}",
+        String::from_utf8_lossy(&status.stderr)
+    );
+
+    let mut recovered = connect(&engine.base, BOB, PW, "B_CRASH_P0", &bob_db, &keys)
+        .expect("SQLCipher database remains readable after process death");
+    let delivered = recovered
+        .sync()
+        .expect("same event decrypts after rollback and restart");
+    assert_eq!(texts(&delivered), vec![plaintext.to_string()]);
+    assert!(recovered.undecryptable().unwrap().is_empty());
+    assert!(matches!(
+        recovered.pending_incoming().unwrap().as_slice(),
+        [Incoming::Text { event_id: pending_id, text: pending_text, .. }]
+            if pending_id == &event_id && pending_text == plaintext
+    ));
+    assert!(
+        recovered.sync().unwrap().is_empty(),
+        "committed event is not replayed"
+    );
+    recovered.acknowledge_incoming(&[event_id]).unwrap();
+    assert!(recovered.pending_incoming().unwrap().is_empty());
+}
+
+#[test]
+fn process_crash_after_inbound_commit_merge_rolls_back_epoch_and_retries() {
+    crash_child_sync_if_requested();
+
+    let engine = start_engine();
+    let keys = FixedCrashKeyStore;
+    let alice_db = db("p0-crash-commit-alice");
+    let bob_db = db("p0-crash-commit-bob");
+    let mut alice = connect(
+        &engine.base,
+        ALICE,
+        PW,
+        "A_COMMIT_CRASH_P0",
+        &alice_db,
+        &keys,
+    )
+    .unwrap();
+    let mut bob = connect(&engine.base, BOB, PW, "B_CRASH_P0", &bob_db, &keys).unwrap();
+    let mut carol = connect(
+        &engine.base,
+        CAROL,
+        PW,
+        "C_COMMIT_CRASH_P0",
+        &db("p0-crash-commit-carol"),
+        &keys,
+    )
+    .unwrap();
+    bob.ensure_key_packages(2).unwrap();
+    carol.ensure_key_packages(1).unwrap();
+
+    let room = "!room-p0-process-crash-commit:inone.test";
+    alice.create_room(room).unwrap();
+    alice.invite(room, BOB).unwrap();
+    assert!(bob.sync().unwrap().is_empty());
+    let before_epoch = bob.local_epoch(room).expect("Bob has the invited group");
+    alice.invite(room, CAROL).unwrap();
+    assert_eq!(
+        alice.local_epoch(room).expect("Alice has the group"),
+        before_epoch + 1
+    );
+    drop(bob);
+
+    let status = run_crash_child(
+        "process_crash_after_inbound_commit_merge_rolls_back_epoch_and_retries",
+        &engine.base,
+        &bob_db,
+        "after_inbound_commit_merge",
+    );
+    assert!(
+        !status.status.success(),
+        "child must be forcibly terminated after merge but before commit"
+    );
+    assert!(
+        String::from_utf8_lossy(&status.stderr)
+            .contains("INONE_MLS_TEST_CRASH_POINT_REACHED=after_inbound_commit_merge"),
+        "child must reach the Commit merge crash point; stderr: {}",
+        String::from_utf8_lossy(&status.stderr)
+    );
+
+    let mut recovered = connect(&engine.base, BOB, PW, "B_CRASH_P0", &bob_db, &keys)
+        .expect("SQLCipher group state remains readable after process death");
+    assert_eq!(
+        recovered.local_epoch(room).expect("recovered group exists"),
+        before_epoch,
+        "uncommitted epoch must roll back"
+    );
+    recovered
+        .sync()
+        .expect("the exact server Commit is retried after restart");
+    assert_eq!(recovered.local_epoch(room), alice.local_epoch(room));
+    recovered.sync().expect("a repeated sync is idempotent");
+    assert_eq!(recovered.local_epoch(room), alice.local_epoch(room));
+    assert!(recovered
+        .members_of(room)
+        .unwrap()
+        .iter()
+        .any(|member| member == &format!("{CAROL}/C_COMMIT_CRASH_P0")));
+}
+
+#[test]
+fn process_crash_immediately_after_inbound_commit_transaction_commit_keeps_epoch() {
+    crash_child_sync_if_requested();
+
+    let engine = start_engine();
+    let keys = FixedCrashKeyStore;
+    let alice_db = db("p0-crash-commit-after-alice");
+    let bob_db = db("p0-crash-commit-after-bob");
+    let mut alice = connect(
+        &engine.base,
+        ALICE,
+        PW,
+        "A_COMMIT_AFTER_P0",
+        &alice_db,
+        &keys,
+    )
+    .unwrap();
+    let mut bob = connect(&engine.base, BOB, PW, "B_CRASH_P0", &bob_db, &keys).unwrap();
+    let mut carol = connect(
+        &engine.base,
+        CAROL,
+        PW,
+        "C_COMMIT_AFTER_P0",
+        &db("p0-crash-commit-after-carol"),
+        &keys,
+    )
+    .unwrap();
+
+    bob.ensure_key_packages(2).unwrap();
+    carol.ensure_key_packages(1).unwrap();
+
+    let room = "!room-p0-process-crash-commit-after:inone.test";
+    alice.create_room(room).unwrap();
+    alice.invite(room, BOB).unwrap();
+    assert!(bob.sync().unwrap().is_empty());
+    let before_epoch = bob.local_epoch(room).expect("Bob has the invited group");
+
+    alice.invite(room, CAROL).unwrap();
+    let committed_epoch = alice
+        .local_epoch(room)
+        .expect("Alice has the updated group");
+    assert_eq!(committed_epoch, before_epoch + 1);
+    drop(bob);
+
+    let status = run_crash_child(
+        "process_crash_immediately_after_inbound_commit_transaction_commit_keeps_epoch",
+        &engine.base,
+        &bob_db,
+        "after_inbound_commit_transaction_commit",
+    );
+    assert!(
+        !status.status.success(),
+        "child must be forcibly terminated immediately after SQLite COMMIT"
+    );
+    assert!(
+        String::from_utf8_lossy(&status.stderr)
+            .contains("INONE_MLS_TEST_CRASH_POINT_REACHED=after_inbound_commit_transaction_commit"),
+        "child must reach the post-COMMIT crash point; stderr: {}",
+        String::from_utf8_lossy(&status.stderr)
+    );
+
+    let mut recovered = connect(&engine.base, BOB, PW, "B_CRASH_P0", &bob_db, &keys)
+        .expect("committed SQLCipher database remains readable after process death");
+    assert_eq!(
+        recovered.local_epoch(room).expect("recovered group exists"),
+        committed_epoch,
+        "the committed epoch must survive process termination and reopen"
+    );
+    assert!(
+        recovered
+            .members_of(room)
+            .unwrap()
+            .iter()
+            .any(|member| member == &format!("{CAROL}/C_COMMIT_AFTER_P0")),
+        "the membership state committed with the epoch must also survive"
+    );
+
+    recovered
+        .sync()
+        .expect("a subsequent sync after restart must remain healthy");
+    assert_eq!(
+        recovered.local_epoch(room),
+        Some(committed_epoch),
+        "repeated sync must not roll back or double-apply the committed epoch"
+    );
+    assert!(recovered
+        .members_of(room)
+        .unwrap()
+        .iter()
+        .any(|member| member == &format!("{CAROL}/C_COMMIT_AFTER_P0")));
+}

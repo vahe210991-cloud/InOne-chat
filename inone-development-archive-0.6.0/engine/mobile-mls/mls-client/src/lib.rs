@@ -148,6 +148,20 @@ fn text(e: impl std::fmt::Display) -> String {
     e.to_string()
 }
 
+// Debug-build-only process-kill hook used by integration tests to prove rollback
+// across an actual process boundary. It is absent from optimized production builds.
+#[cfg(debug_assertions)]
+fn crash_at_test_failpoint(point: &str) {
+    if std::env::var("INONE_MLS_TEST_CRASH_POINT").ok().as_deref() == Some(point) {
+        eprintln!("INONE_MLS_TEST_CRASH_POINT_REACHED={point}");
+        std::process::abort();
+    }
+}
+
+#[cfg(not(debug_assertions))]
+#[inline(always)]
+fn crash_at_test_failpoint(_: &str) {}
+
 fn hex_encode(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
@@ -2369,6 +2383,9 @@ impl Client {
                 .ok_or("комната не создана на этом устройстве")?;
             group.mls.process_message(&transactional_provider, protocol)
         };
+        // At this point OpenMLS has written the receive-ratchet state, while
+        // the durable inbox and processed marker are deliberately not written yet.
+        crash_at_test_failpoint("after_application_mls_write");
         drop(transactional_provider);
 
         match processed_result {
@@ -2614,31 +2631,47 @@ impl Client {
                     return Err(format!("RecoveryRequired: {reason}"));
                 }
             };
-            let processed = {
+            // Commit processing and merge must use the same SQLCipher transaction
+            // as the OpenMLS storage provider. Otherwise a crash can persist the new
+            // epoch while the client has not durably completed the corresponding sync.
+            let transaction = self.meta.unchecked_transaction().map_err(text)?;
+            let transactional_provider = DeviceProvider::new(
+                Arc::clone(&self.provider.crypto),
+                TransactionConnection(&transaction),
+            );
+            let processed_result = {
                 let group = self
                     .groups
                     .get_mut(room_id)
                     .ok_or("комната не создана на этом устройстве")?;
-                group.mls.process_message(&self.provider, protocol)
+                group.mls.process_message(&transactional_provider, protocol)
             };
-            let processed = match processed {
+            let processed = match processed_result {
                 Ok(processed) => processed,
-                Err(error) => match classify_process_error(&error) {
-                    Failure::Transient => {
-                        return Err(format!(
-                            "временная ошибка обработки Commit, повтор позже: {error}"
-                        ))
+                Err(error) => {
+                    drop(transactional_provider);
+                    drop(transaction);
+                    self.reload_group(room_id)?;
+                    match classify_process_error(&error) {
+                        Failure::Transient => {
+                            return Err(format!(
+                                "временная ошибка обработки Commit, повтор позже: {error}"
+                            ));
+                        }
+                        Failure::Permanent(classification) => {
+                            let reason = format!("{classification}: {error}");
+                            self.quarantine_commit(room_id, *commit_epoch, commit, &reason)?;
+                            return Err(format!("RecoveryRequired: {reason}"));
+                        }
                     }
-                    Failure::Permanent(classification) => {
-                        let reason = format!("{classification}: {error}");
-                        self.quarantine_commit(room_id, *commit_epoch, commit, &reason)?;
-                        return Err(format!("RecoveryRequired: {reason}"));
-                    }
-                },
+                }
             };
             let staged = match processed.into_content() {
                 ProcessedMessageContent::StagedCommitMessage(staged) => staged,
                 _ => {
+                    drop(transactional_provider);
+                    drop(transaction);
+                    self.reload_group(room_id)?;
                     let reason = "серверная запись не является MLS StagedCommit";
                     self.quarantine_commit(room_id, *commit_epoch, commit, reason)?;
                     return Err(format!("RecoveryRequired: {reason}"));
@@ -2653,6 +2686,9 @@ impl Client {
                     verify_staged_membership_metadata(&group.mls, staged.as_ref(), metadata)
                 };
                 if let Err(reason) = verification {
+                    drop(transactional_provider);
+                    drop(transaction);
+                    self.reload_group(room_id)?;
                     self.quarantine_commit(room_id, *commit_epoch, commit, &reason)?;
                     return Err(format!("RecoveryRequired: {reason}"));
                 }
@@ -2662,13 +2698,31 @@ impl Client {
                     .groups
                     .get_mut(room_id)
                     .ok_or("комната не создана на этом устройстве")?;
-                group.mls.merge_staged_commit(&self.provider, *staged)
+                group
+                    .mls
+                    .merge_staged_commit(&transactional_provider, *staged)
             };
+            drop(transactional_provider);
             if let Err(error) = merge {
+                drop(transaction);
+                self.reload_group(room_id)?;
                 return Err(format!(
                     "временная ошибка слияния Commit, повтор позже: {error}"
                 ));
             }
+            // OpenMLS has merged the new epoch inside the still-open transaction.
+            // A forced process exit here must roll the epoch back on disk.
+            crash_at_test_failpoint("after_inbound_commit_merge");
+            if let Err(error) = transaction.commit() {
+                self.reload_group(room_id)?;
+                return Err(format!(
+                    "временная ошибка фиксации MLS Commit, повтор позже: {}",
+                    text(error)
+                ));
+            }
+            // A separate-process restart must observe the fully committed epoch.
+            // This failpoint is debug-only and deliberately sits strictly after COMMIT.
+            crash_at_test_failpoint("after_inbound_commit_transaction_commit");
         }
 
         // Опоздавшие события (аудит, P0.3): их эпоха уже пройдена. Внутри окна пробуем расшифровать,
