@@ -16,6 +16,7 @@ void main() {
         expect(jsonDecode(request.body), {
           'user': 'user-123',
           'token': 'A1_b2-C3',
+          'locale': 'hy',
         });
         return http.Response(jsonEncode({'ok': true}), 200);
       });
