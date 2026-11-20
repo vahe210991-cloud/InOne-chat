@@ -262,14 +262,14 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
 
       await _session.syncMlsMessages();
       final incoming = await _session.mlsMessagesForRoom(route.roomId);
-      final target = incoming.where((message) => message.eventId == route.eventId);
+      final target = incoming.where((message) => message.eventId == route.eventId).toList(growable: false);
       if (target.isEmpty || target.every((message) => !message.isReadable)) {
         if (mounted) setState(() => _screen = 'messages');
         _notice('Сообщение ещё не расшифровано на этом устройстве или недоступно.');
         return;
       }
 
-      final items = incoming
+      final items = target
           .where((message) => message.isReadable)
           .map((message) => InOneThreadItem(
                 kind: InOneThreadItemKind.text,
