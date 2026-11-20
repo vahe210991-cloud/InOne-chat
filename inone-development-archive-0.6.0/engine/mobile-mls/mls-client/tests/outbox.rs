@@ -366,8 +366,22 @@ const CAROL: &str = "@carol:inone.test";
 struct FixedCrashKeyStore;
 
 impl KeyStore for FixedCrashKeyStore {
+    fn has_database_key(&self, _scope: &str) -> Result<bool, String> {
+        Ok(true)
+    }
+
+    fn existing_database_key(&self, _scope: &str) -> Result<Option<[u8; 32]>, String> {
+        Ok(Some(CRASH_DB_KEY))
+    }
+
     fn database_key(&self, _scope: &str) -> Result<[u8; 32], String> {
         Ok(CRASH_DB_KEY)
+    }
+
+    fn delete_database_key(&self, _scope: &str) -> Result<(), String> {
+        // This test-only store deliberately models a stable platform key across
+        // child-process restarts; deletion is not part of these crash scenarios.
+        Ok(())
     }
 }
 
