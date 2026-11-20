@@ -1,3 +1,4 @@
+# Keep Cargo.lock synchronized; CI checks every target with --locked on Rust 1.91.0.
 [package]
 name = "mls-client"
 version = "0.1.0"
@@ -16,3 +17,8 @@ urlencoding = "2"
 openmls_sqlite_storage = "=0.2.0"
 rusqlite = { version = "0.32", features = ["bundled-sqlcipher-vendored-openssl"] }
 serde = "1"
+aes-gcm = { version = "0.10.3", features = ["zeroize"] }
+aes = { version = "0.8", features = ["zeroize"] }
+ghash = { version = "0.5", features = ["zeroize"] }
+sha2 = "0.10.9"
+zeroize = "1.9.1"

@@ -1,0 +1,115 @@
+name: Native MLS client validation
+
+on:
+  pull_request:
+    paths:
+      - "inone-engine-poc-0.6.0/mobile-mls/**"
+      - "mobile/rust/**"
+      - ".github/workflows/mls-native-validation.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "inone-engine-poc-0.6.0/mobile-mls/**"
+      - "mobile/rust/**"
+      - ".github/workflows/mls-native-validation.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-mls-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  INONE_ENGINE_DIR: ${{ github.workspace }}/inone-development-archive-0.6.0/engine
+
+jobs:
+  mls-client:
+    name: OpenMLS attachment and session integration tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: inone-development-archive-0.6.0/engine/package-lock.json
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.91.0"
+          components: rustfmt
+      - name: Install canonical engine dependencies for real-server integration tests
+        run: npm ci
+        working-directory: inone-development-archive-0.6.0/engine
+      - name: Verify committed MLS client lockfile
+        run: test -s inone-engine-poc-0.6.0/mobile-mls/mls-client/Cargo.lock
+      - name: Check every MLS client target
+        run: cargo check --locked --all-targets --manifest-path inone-engine-poc-0.6.0/mobile-mls/mls-client/Cargo.toml
+      - name: Run MLS client unit and canonical-engine integration tests
+        run: cargo test --locked --no-fail-fast --manifest-path inone-engine-poc-0.6.0/mobile-mls/mls-client/Cargo.toml -- --test-threads=1
+
+
+  ios-keychain:
+    name: iOS Keychain native target build
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - name: Detect persistent bridge crate
+        id: bridge
+        run: |
+          if [ -f mobile/rust/Cargo.toml ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: dtolnay/rust-toolchain@master
+        if: steps.bridge.outputs.available == 'true'
+        with:
+          toolchain: "1.91.0"
+          targets: "aarch64-apple-ios"
+      - name: Verify committed iOS bridge lockfile
+        if: steps.bridge.outputs.available == 'true'
+        run: test -s mobile/rust/Cargo.lock
+      - name: Build iOS Keychain bridge target
+        if: steps.bridge.outputs.available == 'true'
+        run: cargo build --locked --target aarch64-apple-ios --manifest-path mobile/rust/Cargo.toml
+
+  rust-bridge:
+    name: Persistent Flutter Rust bridge host tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.91.0"
+          components: rustfmt
+      - name: Detect whether the persistent bridge crate exists on this branch
+        id: bridge
+        run: |
+          if [ -f mobile/rust/Cargo.toml ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Verify committed bridge lockfile
+        if: steps.bridge.outputs.available == 'true'
+        run: test -s mobile/rust/Cargo.lock
+      - name: Verify bridge formatting
+        if: steps.bridge.outputs.available == 'true'
+        run: cargo fmt --manifest-path mobile/rust/Cargo.toml -- --check
+      - name: Check bridge crate
+        if: steps.bridge.outputs.available == 'true'
+        run: cargo check --locked --all-targets --manifest-path mobile/rust/Cargo.toml
+      - name: Run bridge lifecycle and persistence tests
+        if: steps.bridge.outputs.available == 'true'
+        run: cargo test --locked --no-fail-fast --manifest-path mobile/rust/Cargo.toml
