@@ -204,11 +204,9 @@ jobs:
           disable-linux-hw-accel: false
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-          script: |
-            cd mobile
-            adb install -r build/app/outputs/flutter-apk/app-debug.apk
-            adb shell pm grant com.inone.app android.permission.POST_NOTIFICATIONS
-            flutter drive --driver=test_driver/integration_test.dart --target=integration_test/mls_secure_store_test.dart
+          # The emulator action executes script lines in separate shells; keep the
+          # working-directory change and all commands in one shell invocation.
+          script: cd mobile && adb install -r build/app/outputs/flutter-apk/app-debug.apk && adb shell pm grant com.inone.app android.permission.POST_NOTIFICATIONS && flutter drive --driver=test_driver/integration_test.dart --target=integration_test/mls_secure_store_test.dart
 
       - name: Upload Android preview APK
         uses: actions/upload-artifact@v4
@@ -220,7 +218,8 @@ jobs:
     name: iOS native assets compile (unsigned, no secrets)
     needs: generate-and-validate
     if: ${{ always() && needs.generate-and-validate.outputs.generated_artifact_id != '' }}
-    runs-on: macos-15
+    # Firebase iOS SDK 13.1.1 requires Swift tools 6.2; macOS 26 ships Xcode 26.x.
+    runs-on: macos-26
     permissions:
       contents: read
     timeout-minutes: 45
