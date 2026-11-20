@@ -52,7 +52,9 @@ jobs:
 
       - name: Generate Android and iOS platform projects
         working-directory: mobile
-        run: flutter create --platforms=android,ios --project-name inone_mobile --org com.inone .
+        run: flutter create --platforms=android,ios --project-name inone_mobile --org com.inone --no-pub .
+      - name: Verify Flutter project generation preserves dependency manifests
+        run: git diff --exit-code -- mobile/pubspec.yaml mobile/pubspec.lock
 
       - name: Remove generated Flutter template tests
         working-directory: mobile
