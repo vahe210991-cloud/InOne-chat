@@ -2452,7 +2452,9 @@ impl Client {
                 {
                     drop(transaction);
                     self.reload_group(room_id)?;
-                    return Err(format!("временная ошибка сохранения MLS inbox, повтор позже: {error}"));
+                    return Err(format!(
+                        "временная ошибка сохранения MLS inbox, повтор позже: {error}"
+                    ));
                 }
 
                 crash_at_test_failpoint("before_application_transaction_commit");
