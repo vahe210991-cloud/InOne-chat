@@ -146,3 +146,12 @@ The current engine deployment guide describes the checked-in server build as dev
 The repository-root Firebase client files are validated and copied by `tool/generate_flutter_platforms.sh` into the generated native projects on every run. Android receives `android/app/google-services.json`; iOS receives `ios/Runner/GoogleService-Info.plist`. The helper rejects missing files or mismatched Firebase project/App IDs and package/bundle identifiers before platform builds. See [platform identifier and Firebase configuration details](PLATFORM-IDENTIFIERS.md).
 
 **Important integration boundary:** the current Flutter dependency manifest and application entry point do not yet include Firebase Core or Firebase Messaging initialization, FCM permission/token handling, or automatic calls to the existing `InOnePushRepository`. The copied client files therefore establish native configuration placement only; they do not mean push registration or delivery is active. Do not log FCM/APNs tokens or commit Firebase Admin service-account credentials or APNs private keys. Backend push delivery remains separately gated by the existing `push.enabled` feature flag and provider credentials.
+
+## Firebase Messaging runtime
+
+- `main.dart` initializes Firebase Core from the generated Android/iOS native configuration before creating the app.
+- After an authenticated session is restored or created, `InOnePushLifecycle` requests notification permission, waits for an APNs token on iOS, obtains the FCM registration token, and registers it through the existing authenticated `InOnePushRepository` (`PUT /devices/me/push`).
+- FCM token refreshes are synchronized to the same current-device endpoint. Explicit logout attempts `DELETE /devices/me/push` before logout; backend logout and device revocation remain authoritative cleanup paths.
+- Tokens are not written to Flutter storage, analytics, or logs. Denied permission removes any prior server registration. iOS registration is retried when the app resumes if APNs registration was not ready.
+- Native generation installs the Google Services Gradle plugin and Android permissions; on iOS it embeds `GoogleService-Info.plist`, adds the APNs entitlement and remote-notification background mode.
+- iOS delivery still requires an Apple Developer App ID with Push Notifications enabled and the APNs authentication key uploaded to Firebase. The repository's push sender is not implemented yet, so this client work registers devices but does not claim end-to-end notification delivery.

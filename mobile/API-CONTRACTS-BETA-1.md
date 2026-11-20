@@ -46,7 +46,7 @@ Status:
 | PS-02 | `GET /org-requests/:id`; `GET /org-requests/:id/documents/:docId` | Platform view is read-only and journaled | Backend only / host partial |
 | PS-03 | `POST /org-requests/:id/decision` | Platform owner only; admin receives 403 `not_platform_owner`; repeat decision 409 | Backend only; owner-only action and error text pending |
 | SR-01 | `GET /users/search?nickname=...` | Rate limited; returns only userId/nickname/verificationLevel; requires shared org/link | Backend only; typed query/result UI pending |
-| ST-01 | `PUT /devices/me/push`; `DELETE /devices/me/push` | Authenticated current-device push-token lifecycle; feature flag applies | Backend only; native permission/token registration pending |
+| ST-01 | `PUT /devices/me/push`; `DELETE /devices/me/push` | Authenticated current-device push-token lifecycle; feature flag applies | Flutter Firebase Messaging permission, FCM token registration/refresh, logout unregister and iOS APNs readiness are connected; sender delivery remains separate |
 | ST-02 | `GET /config/public`; `GET /config` | Public config unauthenticated; private config authenticated | Backend + host |
 | ST-03 | Shared state and public config | No separate screen-specific mutation | Client/shared host state |
 | CH-01 | `GET /rooms/mine` | Authenticated user's rooms | Screen-scoped Flutter dispatch + typed repository/response validation + safe HTML data binding implemented; new-branch tests NOT RUN and live Flutter→Node E2E NOT RUN |
