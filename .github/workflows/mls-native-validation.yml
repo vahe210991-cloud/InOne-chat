@@ -3,18 +3,18 @@ name: Native MLS client validation
 
 # This workflow validates the persistent MLS bridge and client on the exact PR branch head.
 on:
+  workflow_dispatch:
   pull_request:
     paths:
       - "inone-engine-poc-0.6.0/mobile-mls/**"
+      - "inone-development-archive-0.6.0/engine/mobile-mls/**"
       - "mobile/rust/**"
       - ".github/workflows/mls-native-validation.yml"
   push:
-    branches:
-      - main
-      - fix/email-delivery-test-readiness-2026-11-17
-      - fix/email-delivery-shutdown-and-key-hardening-2026-11-17
+    branches: ['**']
     paths:
       - "inone-engine-poc-0.6.0/mobile-mls/**"
+      - "inone-development-archive-0.6.0/engine/mobile-mls/**"
       - "mobile/rust/**"
       - ".github/workflows/mls-native-validation.yml"
 

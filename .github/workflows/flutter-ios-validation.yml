@@ -1,14 +1,17 @@
 name: Flutter iOS validation
 
 on:
+  workflow_dispatch:
   pull_request:
     paths:
       - 'mobile/**'
+      - 'inone-development-archive-0.6.0/engine/mobile-mls/**'
       - '.github/workflows/flutter-ios-validation.yml'
   push:
-    branches: [main]
+    branches: ['**']
     paths:
       - 'mobile/**'
+      - 'inone-development-archive-0.6.0/engine/mobile-mls/**'
       - '.github/workflows/flutter-ios-validation.yml'
 
 permissions:
