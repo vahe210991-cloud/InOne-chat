@@ -120,8 +120,8 @@ function verifyContract() {
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/^\s*\/\/.*$/gm, '');
   const incomingMessageTypeExposure =
-    /\\b(?:class|mixin|enum|typedef)\\s+IncomingMessage\\b/.test(generatedCode) ||
-    /\\b(?:Future|List|Stream|Iterable|Option)\\s*<[^;\\n]*\\bIncomingMessage\\b/.test(generatedCode);
+    /\b(?:class|mixin|enum|typedef)\s+IncomingMessage\b/.test(generatedCode) ||
+    /\b(?:Future|List|Stream|Iterable|Option)\s*<[^;\n]*\bIncomingMessage\b/.test(generatedCode);
   if (incomingMessageTypeExposure) {
     throw new Error('Generated Dart API still exposes the Rust-only IncomingMessage type');
   }
