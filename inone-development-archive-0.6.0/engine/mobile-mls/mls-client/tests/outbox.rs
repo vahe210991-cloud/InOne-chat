@@ -536,7 +536,6 @@ fn process_crash_after_inbound_commit_merge_rolls_back_epoch_and_retries() {
         .any(|member| member == &format!("{CAROL}/C_COMMIT_CRASH_P0")));
 }
 
-
 #[test]
 fn process_crash_immediately_after_inbound_commit_transaction_commit_keeps_epoch() {
     crash_child_sync_if_requested();
@@ -554,15 +553,7 @@ fn process_crash_immediately_after_inbound_commit_transaction_commit_keeps_epoch
         &keys,
     )
     .unwrap();
-    let mut bob = connect(
-        &engine.base,
-        BOB,
-        PW,
-        "B_CRASH_P0",
-        &bob_db,
-        &keys,
-    )
-    .unwrap();
+    let mut bob = connect(&engine.base, BOB, PW, "B_CRASH_P0", &bob_db, &keys).unwrap();
     let mut carol = connect(
         &engine.base,
         CAROL,
@@ -583,7 +574,9 @@ fn process_crash_immediately_after_inbound_commit_transaction_commit_keeps_epoch
     let before_epoch = bob.local_epoch(room).expect("Bob has the invited group");
 
     alice.invite(room, CAROL).unwrap();
-    let committed_epoch = alice.local_epoch(room).expect("Alice has the updated group");
+    let committed_epoch = alice
+        .local_epoch(room)
+        .expect("Alice has the updated group");
     assert_eq!(committed_epoch, before_epoch + 1);
     drop(bob);
 
@@ -628,11 +621,9 @@ fn process_crash_immediately_after_inbound_commit_transaction_commit_keeps_epoch
         Some(committed_epoch),
         "repeated sync must not roll back or double-apply the committed epoch"
     );
-    assert!(
-        recovered
-            .members_of(room)
-            .unwrap()
-            .iter()
-            .any(|member| member == &format!("{CAROL}/C_COMMIT_AFTER_P0"))
-    );
+    assert!(recovered
+        .members_of(room)
+        .unwrap()
+        .iter()
+        .any(|member| member == &format!("{CAROL}/C_COMMIT_AFTER_P0")));
 }
