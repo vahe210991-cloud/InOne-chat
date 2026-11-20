@@ -22,7 +22,7 @@ const keyed = (pepper, label, value) => createHmac('sha256', pepper).update(`${l
 /** Сравнение хэшей в hex за постоянное время. */
 const sameHex = (a, b) => a.length === b.length && timingSafeEqual(Buffer.from(a, 'hex'), Buffer.from(b, 'hex'));
 
-export function createStore({ pool, pinPepper }) {
+export function createStore({ pool, pinPepper, testHooks = {} }) {
   if (!pinPepper || pinPepper.length < 32) {
     throw new Error('PIN_PEPPER обязателен и не короче 32 символов');
   }
@@ -928,22 +928,63 @@ export function createStore({ pool, pinPepper }) {
     },
 
     async findClientMessage(roomId, userId, clientId) {
-  const { rows } = await pool.query('SELECT seq FROM mls_client_messages WHERE room_id = $1 AND user_id = $2 AND client_message_id = $3 AND seq IS NOT NULL', [roomId, userId, clientId]);
-  return rows[0] ? Number(rows[0].seq) : null;
-},
-async reserveClientMessage(roomId, userId, clientId) {
-  const { rowCount } = await pool.query('INSERT INTO mls_client_messages (room_id, user_id, client_message_id, seq) VALUES ($1, $2, $3, NULL) ON CONFLICT DO NOTHING', [roomId, userId, clientId]);
-  if (rowCount === 1) return { state: 'new' };
-  const { rows } = await pool.query('SELECT seq FROM mls_client_messages WHERE room_id = $1 AND user_id = $2 AND client_message_id = $3', [roomId, userId, clientId]);
-  if (rows.length === 0 || rows[0].seq === null) return { state: 'pending' };
-  return { state: 'done', seq: Number(rows[0].seq) };
-},
-async completeClientMessage(roomId, userId, clientId, seq) {
-  await pool.query('UPDATE mls_client_messages SET seq = $4 WHERE room_id = $1 AND user_id = $2 AND client_message_id = $3', [roomId, userId, clientId, seq]);
-},
-async releaseClientMessage(roomId, userId, clientId) {
-  await pool.query('DELETE FROM mls_client_messages WHERE room_id = $1 AND user_id = $2 AND client_message_id = $3 AND seq IS NULL', [roomId, userId, clientId]);
-},
+      const { rows } = await pool.query('SELECT seq FROM mls_client_messages WHERE room_id = $1 AND user_id = $2 AND client_message_id = $3 AND seq IS NOT NULL', [roomId, userId, clientId]);
+      return rows[0] ? Number(rows[0].seq) : null;
+    },
+
+    /**
+     * Atomically reserves a client message ID, appends its room event and records
+     * the resulting sequence. Concurrent retries serialize on the unique key;
+     * a failed transaction leaves neither a pending reservation nor an event.
+     */
+    async appendClientMessageEvent(roomId, userId, clientId, sender, type, content, nowMs) {
+      return inTransaction(async (c) => {
+        const inserted = await c.query(
+          'INSERT INTO mls_client_messages (room_id, user_id, client_message_id, seq) VALUES ($1, $2, $3, NULL) ON CONFLICT DO NOTHING RETURNING client_message_id',
+          [roomId, userId, clientId],
+        );
+
+        if (inserted.rowCount !== 1) {
+          const existing = await c.query(
+            'SELECT seq FROM mls_client_messages WHERE room_id = $1 AND user_id = $2 AND client_message_id = $3 FOR UPDATE',
+            [roomId, userId, clientId],
+          );
+          if (existing.rows.length === 0 || existing.rows[0].seq === null) return { state: 'pending' };
+          return { state: 'done', seq: Number(existing.rows[0].seq) };
+        }
+
+        const counter = await c.query("UPDATE counters SET value = value + 1 WHERE name = 'event_seq' RETURNING value");
+        const seq = Number(counter.rows[0].value);
+        await c.query(
+          'INSERT INTO room_events (seq, room_id, sender, origin_ts, type, content) VALUES ($1, $2, $3, $4, $5, $6::jsonb)',
+          [seq, roomId, sender, nowMs, type, JSON.stringify(content ?? null)],
+        );
+
+        // A deterministic fault-injection seam used only by PostgreSQL tests.
+        // It runs before the idempotency row is completed, inside the transaction.
+        await testHooks.afterClientMessageEventInsert?.({ roomId, userId, clientId, seq });
+
+        await c.query(
+          'UPDATE mls_client_messages SET seq = $4 WHERE room_id = $1 AND user_id = $2 AND client_message_id = $3',
+          [roomId, userId, clientId, seq],
+        );
+        return { state: 'created', seq };
+      });
+    },
+
+    async reserveClientMessage(roomId, userId, clientId) {
+      const { rowCount } = await pool.query('INSERT INTO mls_client_messages (room_id, user_id, client_message_id, seq) VALUES ($1, $2, $3, NULL) ON CONFLICT DO NOTHING', [roomId, userId, clientId]);
+      if (rowCount === 1) return { state: 'new' };
+      const { rows } = await pool.query('SELECT seq FROM mls_client_messages WHERE room_id = $1 AND user_id = $2 AND client_message_id = $3', [roomId, userId, clientId]);
+      if (rows.length === 0 || rows[0].seq === null) return { state: 'pending' };
+      return { state: 'done', seq: Number(rows[0].seq) };
+    },
+    async completeClientMessage(roomId, userId, clientId, seq) {
+      await pool.query('UPDATE mls_client_messages SET seq = $4 WHERE room_id = $1 AND user_id = $2 AND client_message_id = $3', [roomId, userId, clientId, seq]);
+    },
+    async releaseClientMessage(roomId, userId, clientId) {
+      await pool.query('DELETE FROM mls_client_messages WHERE room_id = $1 AND user_id = $2 AND client_message_id = $3 AND seq IS NULL', [roomId, userId, clientId]);
+    },
 async mlsPendingRemovalsFor(userId) {
       const { rows } = await pool.query('SELECT room_id, device_id FROM mls_device_removals WHERE user_id = $1 AND done_at IS NULL ORDER BY id', [userId]);
       return rows.map((r) => ({ roomId: r.room_id, deviceId: r.device_id }));
