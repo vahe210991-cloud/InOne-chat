@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd /workspace/inone-engine-poc-0.6.0
+cd /workspace/inone-development-archive-0.6.0/engine
 
 if curl --silent --fail http://127.0.0.1:8080/healthz >/dev/null; then
   echo "InOne API is already running at http://127.0.0.1:8080"

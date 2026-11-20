@@ -13,7 +13,7 @@
       "visibility": "private"
     }
   },
-  "postCreateCommand": "cd inone-engine-poc-0.6.0 && npm ci",
+  "postCreateCommand": "cd inone-development-archive-0.6.0/engine && npm ci",
   "postStartCommand": "bash .devcontainer/start-backend.sh",
   "customizations": {
     "vscode": {
