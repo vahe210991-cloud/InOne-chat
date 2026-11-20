@@ -140,10 +140,10 @@ test('отозванное устройство и logout не оставляю�
   try {
     await put(s, s.bob, { provider: 'fcm', token: fid('bob-phone') });
     await put(s, s.bobTab, { provider: 'fcm', token: fid('bob-tab') });
+    await sendMessage(s, 'до отзыва');
     await s.bob.raw('DELETE', `/devices/${enc('B_TAB')}`);
-    await sendMessage(s, 'после отзыва');
     await s.flush();
-    assert.deepEqual(push.sent.map((m) => m.fid), [fid('bob-phone')]);
+    assert.deepEqual(push.sent.map((m) => m.fid), [fid('bob-phone')], 'revocation cancels the already queued delivery for the revoked device');
     await put(s, s.alice, { provider: 'fcm', token: fid('alice-phone') });
     await s.bob.raw('POST', '/logout', {});
     push.sent.length = 0;
