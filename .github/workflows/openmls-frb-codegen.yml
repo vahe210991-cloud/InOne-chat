@@ -52,7 +52,7 @@ jobs:
 
       - name: Generate Android and iOS platform projects
         working-directory: mobile
-        run: flutter create --platforms=android,ios --project-name inone_mobile --org com.inone --no-pub .
+        run: bash tool/generate_flutter_platforms.sh android,ios
       - name: Verify Flutter project generation preserves dependency manifests
         run: git diff --exit-code -- mobile/pubspec.yaml mobile/pubspec.lock
 
@@ -293,7 +293,7 @@ jobs:
       - name: Generate iOS platform project and configure recovery links
         working-directory: mobile
         run: |
-          flutter create --platforms=ios --project-name inone_mobile --org com.inone .
+          bash tool/generate_flutter_platforms.sh ios
           node tool/prepare_ios_deep_links.mjs
 
       - name: Resolve Flutter dependencies without lockfile drift
