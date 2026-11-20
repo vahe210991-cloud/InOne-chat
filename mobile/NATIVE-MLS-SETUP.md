@@ -9,10 +9,11 @@ This branch ports the Stage 4 persistent OpenMLS client into the active native F
 - PlatformKeyStore stores the 32-byte SQLCipher key in Android Keystore or protected iOS Keychain. The key is never returned to Dart.
 - Flutter receives only a short-lived access-token snapshot.
 - A saved user/device identity resumes the Rust session after app restart.
+- After adoption/resume, the app publishes KeyPackages, processes pending Welcomes, syncs known rooms and flushes the Rust-owned text outbox.
 - Logout attempts server logout and always removes local SQLCipher files/sidecars and the platform key.
 - Native MLS is opt-in through INONE_MLS_NATIVE_ENABLED=true; the default remains disabled.
 
-The Rust client also contains the isolated AES-256-GCM attachment crypto core from PR #57. The file-key/nonce manifest is not yet connected to file upload, MLS inbox persistence or download/decryption.
+The Rust client now has an end-to-end attachment path: per-file AES-256-GCM, ciphertext-only upload, MLS-encrypted versioned manifest, SQLCipher persistence and authenticated download/decryption. The Rust integration test exercises two devices, restart persistence and idempotent retries. These changes are still uncompiled/unrun in this environment. The retry journal does not persist plaintext/ciphertext file bytes; a caller-driven retry must resubmit the same clientMessageId and identical plaintext/name/MIME/room. Automatic background resume after process death still requires the file-picker workflow to persist the operation ID and reselect/re-provide the source file.
 
 ## Generate Flutter Rust Bridge files on Windows
 
@@ -49,6 +50,10 @@ After generation, run:
 flutter analyze
 flutter test
 cargo test --locked --manifest-path rust/Cargo.toml
+Push-Location ..\inone-development-archive-0.6.0\engine
+npm ci
+Pop-Location
+$env:INONE_ENGINE_DIR = (Resolve-Path ..\inone-development-archive-0.6.0\engine).Path
 cargo test --locked --manifest-path ..\inone-engine-poc-0.6.0\mobile-mls\mls-client\Cargo.toml -- --test-threads=1
 flutter build apk --debug
 ```

@@ -17,7 +17,7 @@ const GCM_NONCE_LEN: usize = 12;
 const AES256_KEY_LEN: usize = 32;
 const GCM_TAG_LEN: usize = 16;
 const MAX_MANIFEST_SIZE: usize = 4 * 1024;
-const MAX_FILE_SIZE: u64 = 250 * 1024 * 1024;
+const MAX_FILE_SIZE: u64 = 250 * 1024 * 1024 - GCM_TAG_LEN as u64;
 
 /// Encrypt bytes with a fresh per-file AES-256-GCM key and nonce supplied by
 /// the caller's CSPRNG (the MLS provider's random source).
@@ -66,7 +66,8 @@ pub fn build_manifest(
     if mime_type.is_empty() || mime_type.len() > 127 || mime_type.chars().any(char::is_control) {
         return Err("invalid attachment MIME type".to_string());
     }
-    if encrypt(plaintext, key, nonce, room_id)? != ciphertext {
+    let verified_ciphertext = encrypt(plaintext, key, nonce, room_id)?;
+    if verified_ciphertext.as_slice() != ciphertext {
         return Err("ciphertext does not match the supplied plaintext/key/nonce".to_string());
     }
     let mut payload = json!({
@@ -114,6 +115,19 @@ impl Drop for AttachmentManifestV1 {
     }
 }
 
+/// Detect attachment payloads even when the outer event forgot its file reference.
+/// The parsed JSON (which may contain a base64 file key) is zeroized on every path.
+pub fn is_attachment_manifest(payload: &[u8]) -> bool {
+    if payload.len() > MAX_MANIFEST_SIZE {
+        return false;
+    }
+    let Ok(value) = serde_json::from_slice::<Value>(payload) else {
+        return false;
+    };
+    let guarded = ZeroizingJson(value);
+    guarded.0.get("type").and_then(Value::as_str) == Some("inone.attachment")
+}
+
 /// Parse only a supported manifest and bind it to the outer event's file ID
 /// and room. This prevents swapping a valid manifest between file events.
 pub fn parse_manifest(
@@ -122,7 +136,7 @@ pub fn parse_manifest(
     expected_room_id: &str,
 ) -> Result<AttachmentManifestV1, String> {
     if payload.is_empty() || payload.len() > MAX_MANIFEST_SIZE {
-        return Err("attachment manifest exceeds the 4 KiB size limit".to_string());
+        return Err("attachment manifest must be non-empty and no larger than 4 KiB".to_string());
     }
     let mut guarded_value = ZeroizingJson(
         serde_json::from_slice(payload)
@@ -292,12 +306,6 @@ mod tests {
     }
 
     #[test]
-    fn oversized_manifest_is_rejected_before_json_parsing() {
-        let payload = vec![b' '; MAX_MANIFEST_SIZE + 1];
-        assert!(parse_manifest(&payload, "file-1", "room-1").is_err());
-    }
-
-    #[test]
     fn ciphertext_tampering_and_wrong_room_fail_closed() {
         let (plaintext, key, nonce, mut ciphertext) = fixture();
         let payload = build_manifest(
@@ -309,6 +317,13 @@ mod tests {
         assert!(decrypt(&ciphertext, &manifest).is_err());
         let wrong_room_ciphertext = encrypt(&plaintext, &key, &nonce, "room-2").unwrap();
         assert!(decrypt(&wrong_room_ciphertext, &manifest).is_err());
+    }
+
+    #[test]
+    fn oversized_manifest_is_rejected_before_json_parsing() {
+        let oversized = vec![b' '; MAX_MANIFEST_SIZE + 1];
+        assert!(!is_attachment_manifest(&oversized));
+        assert!(parse_manifest(&oversized, "file-1", "room-1").is_err());
     }
 
     #[test]
@@ -348,5 +363,13 @@ mod tests {
             "file-1", "room-1", "document.pdf", "application/pdf",
             &plaintext, &ciphertext, &key, &nonce,
         ).is_err());
+    }
+
+    #[test]
+    fn encrypt_rejects_empty_payload_and_invalid_room_identity() {
+        let key = [0x42; AES256_KEY_LEN];
+        let nonce = [0x24; GCM_NONCE_LEN];
+        assert!(encrypt(&[], &key, &nonce, "room-1").is_err());
+        assert!(encrypt(b"payload", &key, &nonce, "").is_err());
     }
 }

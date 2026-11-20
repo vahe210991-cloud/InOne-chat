@@ -404,8 +404,8 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
     const UPLOAD_TTL_MS = 15 * 60_000;
     const DOWNLOAD_TTL_MS = 5 * 60_000;
     const STALE_UPLOAD_MS = 24 * 3600_000;
-    const signFor = (action, fileId, expires, size = '', sha = '') =>
-      createHmac('sha256', objectSecret).update(`${action}|${fileId}|${expires}|${size}|${sha}`).digest('hex');
+    const signFor = (action, fileId, expires, size = '', sha = '', ownerId = '', ownerDeviceId = '') =>
+      createHmac('sha256', objectSecret).update(`${action}|${fileId}|${expires}|${size}|${sha}|${ownerId}|${ownerDeviceId}`).digest('hex');
     // Download URLs are bound to the exact authenticated account and device.
     // The live access token is still required on every GET, so revocation takes effect immediately.
     const signDownloadFor = (fileId, expires, userId, deviceId) =>
@@ -433,9 +433,11 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
       const file = await storage.getFile(fileId);
       if (!file) return send(res, 404, { error: 'not found' });
       if (req.method === 'PUT') {
-        if (!expires || now() > expires || !sameSig(sig, signFor('PUT', fileId, expires, file.size, file.sha256))) {
+        if (!expires || now() > expires || !file.ownerDeviceId || !sameSig(sig, signFor('PUT', fileId, expires, file.size, file.sha256, file.ownerId, file.ownerDeviceId))) {
           return send(res, 403, { error: 'upload link is invalid or expired' });
         }
+        const ownerDevice = await storage.deviceRecord(key(file.ownerId, file.ownerDeviceId));
+        if (!ownerDevice || ownerDevice.revoked) return send(res, 403, { error: 'uploading device is revoked' });
         if (file.status !== 'pending') return send(res, 409, { error: 'file is not waiting for upload' });
         if (Number(req.headers['content-length']) !== file.size) {
           res.setHeader('Connection', 'close');
@@ -454,7 +456,14 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         const bytes = Buffer.concat(chunks);
         if (bytes.length !== file.size) return send(res, 400, { error: 'incomplete body' });
         if (createHash('sha256').update(bytes).digest('hex') !== file.sha256) return send(res, 422, { error: 'checksum does not match the declaration' });
+        const activeOwnerDevice = await storage.deviceRecord(key(file.ownerId, file.ownerDeviceId));
+        if (!activeOwnerDevice || activeOwnerDevice.revoked) return send(res, 403, { error: 'uploading device is revoked' });
         await objectStore.put(fileId, bytes);
+        const stillActiveOwnerDevice = await storage.deviceRecord(key(file.ownerId, file.ownerDeviceId));
+        if (!stillActiveOwnerDevice || stillActiveOwnerDevice.revoked) {
+          await objectStore.remove(fileId).catch(() => {});
+          return send(res, 403, { error: 'uploading device is revoked' });
+        }
         await storage.markFileUploaded(fileId);
         return send(res, 200, { uploaded: true });
       }
@@ -1174,7 +1183,7 @@ if (req.method === 'POST' && p === '/files') {
   } else if (kind !== 'avatar') return send(res, 400, { error: 'roomId is required for this kind' });
   const fileId = randomBytes(16).toString('hex');
   const reserved = await storage.reserveFile({
-    fileId, ownerId: d.userId, roomId: forRoom ?? null, kind, size, sha256: digest,
+    fileId, ownerId: d.userId, ownerDeviceId: d.deviceId, roomId: forRoom ?? null, kind, size, sha256: digest,
     createdAt: now(), pendingLimit: PENDING_LIMIT, quotaBytes,
   });
   if (!reserved.ok) {
@@ -1187,7 +1196,7 @@ if (req.method === 'POST' && p === '/files') {
     return send(res, 404, { error: 'owner not found' });
   }
   const expires = now() + UPLOAD_TTL_MS;
-  const path = `/objects/${fileId}?expires=${expires}&sig=${signFor('PUT', fileId, expires, size, digest)}`;
+  const path = `/objects/${fileId}?expires=${expires}&sig=${signFor('PUT', fileId, expires, size, digest, d.userId, d.deviceId)}`;
   return send(res, 200, { fileId, uploadUrl: absoluteUrl(req, path), method: 'PUT', headers: { 'content-length': String(size) }, expiresAt: new Date(expires).toISOString() });
 }
 const fileDone = p.match(/^\/files\/([^/]+)\/complete$/);
@@ -1197,6 +1206,7 @@ if (req.method === 'POST' && fileDone) {
   const fileId = decodeURIComponent(fileDone[1]);
   const f = await storage.getFile(fileId);
   if (!f || f.ownerId !== d.userId) return send(res, 404, { error: 'not found' });
+  if (f.ownerDeviceId !== d.deviceId) return send(res, 403, { error: 'file upload belongs to another device' });
   if (!(await storage.markFileReady(fileId, now()))) return send(res, 409, { error: 'file is not uploaded yet' });
   return send(res, 200, { fileId, status: 'ready' });
 }

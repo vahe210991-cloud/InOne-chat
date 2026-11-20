@@ -382,6 +382,7 @@ CREATE TABLE refresh_tokens (
 CREATE TABLE files (
   file_id TEXT PRIMARY KEY,
   owner_id TEXT NOT NULL,
+  owner_device_id TEXT NOT NULL DEFAULT '',
   room_id TEXT REFERENCES rooms (room_id) ON DELETE CASCADE,
   kind TEXT NOT NULL,
   size BIGINT NOT NULL,

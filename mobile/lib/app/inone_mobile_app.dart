@@ -481,10 +481,22 @@ class _InOneMobileAppState extends State<InOneMobileApp>
       final messages = await _session.mlsMessagesForRoom(roomId);
       if (!mounted) return;
       setState(() {
-        _threadItems = messages.map((message) => InOneThreadItem(
-          kind: InOneThreadItemKind.text,
-          text: message.text ?? 'Не удалось расшифровать сообщение',
-        )).toList(growable: false);
+        _threadItems = messages.map((message) {
+          if (message.isAttachment) {
+            final size = message.size ?? 0;
+            final sizeLabel = size >= 1024 * 1024
+                ? '${(size / (1024 * 1024)).toStringAsFixed(1)} МБ'
+                : '${(size / 1024).ceil()} КБ';
+            return InOneThreadItem(
+              kind: InOneThreadItemKind.file,
+              fileLabel: '${message.name ?? 'Файл'} · $sizeLabel',
+            );
+          }
+          return InOneThreadItem(
+            kind: InOneThreadItemKind.text,
+            text: message.text ?? 'Не удалось расшифровать сообщение',
+          );
+        }).toList(growable: false);
         _chatLoading = false;
       });
       final acceptedIds = pending
@@ -789,13 +801,17 @@ class _InOneMobileAppState extends State<InOneMobileApp>
             InOneChatThreadScreen(
               header: InOneThreadHeader(
                 name: chat.name,
-                statusLabel: _session.hasNativeMlsSession ? 'MLS · зашифровано' : 'MLS недоступен',
+                statusLabel: !_session.hasNativeMlsSession
+                    ? 'MLS недоступен'
+                    : _session.mlsError == null
+                        ? 'MLS · зашифровано'
+                        : 'MLS · требуется синхронизация',
                 online: false,
               ),
               items: _threadItems,
               onSend: (text) => unawaited(_sendChatMessage(text)),
               onBack: () => setState(() => _screen = 'messages'),
-              onAttach: () => _notice('Зашифрованная отправка файлов ещё не подключена.'),
+              onAttach: () => _notice('Выбор файла пока не подключён. Нативный MLS API шифрования и передачи готов в коде, но ещё не прошёл тесты на устройстве.'),
             ),
             if (_chatLoading)
               const Positioned(

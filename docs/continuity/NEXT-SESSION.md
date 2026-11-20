@@ -370,3 +370,12 @@ Next: resolve GitHub Actions runner/job provisioning failure, then run Node/Post
 4. Implement and verify recovery confirmation deep links for accounts with a confirmed phone. First confirm the canonical backend token/code and redirect contract, SMS provider, app-link domain and Android/iOS association requirements; do not invent a production domain or mark the flow complete without a real association test.
 5. Reconcile PR #42: it targets the POC Node server rather than canonical inone-development-archive-0.6.0/engine. Keep it separate until the owner approves a target/rebase.
 6. Keep PR #54 and #56 merged in the active feature branch only; main is untouched and no deployment has occurred. PR #57 and #58 remain Draft/open and stacked; tests remain NOT RUN.
+
+## Next actions — updated after PR #59
+
+1. Generate FRB bindings on Windows using mobile/tool/generate_native_mls.ps1; commit generated Dart/Rust outputs and lockfiles. Install canonical engine dependencies (npm ci), set INONE_ENGINE_DIR to inone-development-archive-0.6.0/engine, then run Rust bridge tests, mls-client tests including attachments.rs, Flutter analyze/tests, Android build + Keystore runtime tests, and iOS device/simulator + protected Keychain tests. Record exact SHA and results.
+2. Finish attachment UX: connect a vetted file picker to sendMlsAttachment using a persisted clientMessageId; add user-triggered download/save/open flow using downloadMlsAttachment. Keep all file bytes encrypted before upload; no plaintext fallback. Add file-size/type UX and cancellation/progress.
+3. Verify two-device text and attachment flows, restart persistence, idempotent retries, tamper/wrong-room rejection, device revocation and room-member removal against the canonical backend.
+4. Complete recovery confirmation deep links for accounts with confirmed phones. First verify the canonical recovery code/token/redirect contract, SMS provider, app-link domain and Android/iOS association files. Do not invent a production domain.
+5. Reconcile PR #42, which targets the POC Node server rather than canonical inone-development-archive-0.6.0/engine.
+6. PR #54/#56 are merged into the active feature branch only; main is untouched. PR #57, #58 and #59 remain Draft/open and stacked. No tests have been run and native MLS remains disabled.
