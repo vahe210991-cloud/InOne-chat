@@ -148,6 +148,19 @@ fn text(e: impl std::fmt::Display) -> String {
     e.to_string()
 }
 
+// Debug-build-only process-kill hook used by integration tests to prove rollback
+// across an actual process boundary. It is absent from optimized production builds.
+#[cfg(debug_assertions)]
+fn crash_at_test_failpoint(point: &str) {
+    if std::env::var("INONE_MLS_TEST_CRASH_POINT").as_deref() == Ok(point) {
+        std::process::abort();
+    }
+}
+
+#[cfg(not(debug_assertions))]
+#[inline(always)]
+fn crash_at_test_failpoint(_: &str) {}
+
 fn hex_encode(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
@@ -2369,6 +2382,9 @@ impl Client {
                 .ok_or("комната не создана на этом устройстве")?;
             group.mls.process_message(&transactional_provider, protocol)
         };
+        // At this point OpenMLS has written the receive-ratchet state, while
+        // the durable inbox and processed marker are deliberately not written yet.
+        crash_at_test_failpoint("after_application_mls_write");
         drop(transactional_provider);
 
         match processed_result {
@@ -2693,6 +2709,9 @@ impl Client {
                     "временная ошибка слияния Commit, повтор позже: {error}"
                 ));
             }
+            // OpenMLS has merged the new epoch inside the still-open transaction.
+            // A forced process exit here must roll the epoch back on disk.
+            crash_at_test_failpoint("after_inbound_commit_merge");
             if let Err(error) = transaction.commit() {
                 self.reload_group(room_id)?;
                 return Err(format!(
