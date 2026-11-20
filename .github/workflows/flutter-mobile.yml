@@ -139,13 +139,10 @@ jobs:
         run: node tool/verify_approved_html.mjs
       - name: Remove ephemeral HTML reference assets from the mobile package
         run: rm -rf assets
-      - name: Resolve Flutter dependencies for Firebase runtime
+      - name: Verify committed Flutter dependencies for Firebase runtime
         run: |
-          flutter pub get
-          git diff --exit-code -- pubspec.yaml
-          echo '--- BEGIN GENERATED PUBSPEC LOCK ---'
-          cat pubspec.lock
-          echo '--- END GENERATED PUBSPEC LOCK ---'
+          flutter pub get --enforce-lockfile
+          git diff --exit-code -- pubspec.yaml pubspec.lock
       - name: Verify native-only production runtime
         run: node tool/verify_native_runtime.mjs
       - name: Verify committed Rust lockfile
