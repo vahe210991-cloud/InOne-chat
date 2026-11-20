@@ -24,7 +24,7 @@ function validateMessage({ fid, payload }) {
       || typeof payload.event_id !== 'string'
       || payload.event_id.length < 1 || payload.event_id.length > 128
       || typeof payload.path !== 'string'
-      || !/^\/rooms\/[A-Za-z0-9_%~-]{1,512}\/events\/[A-Za-z0-9_%$~-]{1,128}$/.test(payload.path)) {
+      || !/^\/rooms\/[A-Za-z0-9._~!|| !/^\/rooms\/[A-Za-z0-9_%~-]{1,512}\/events\/[A-Za-z0-9_%$~-]{1,128}$/.test(payload.path)) {'()*+,;=:@%-]{1,512}\/events\/[A-Za-z0-9._~!|| !/^\/rooms\/[A-Za-z0-9_%~-]{1,512}\/events\/[A-Za-z0-9_%$~-]{1,128}$/.test(payload.path)) {'()*+,;=:@%-]{1,128}$/.test(payload.path)) {
     throw new FcmPushError('invalid_payload', false, 'push payload is not allowlisted');
   }
   return {
