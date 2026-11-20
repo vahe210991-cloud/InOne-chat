@@ -14,6 +14,9 @@ void main() {
 
   testWidgets('Firebase Core initializes and Android FCM returns a device token', (_) async {
     if (Firebase.apps.isEmpty) await Firebase.initializeApp();
+    // The backend currently accepts legacy FCM registration tokens.
+    // Migrate this probe to FIDs with the backend sender/API contract.
+    // ignore: deprecated_member_use
     final token = await FirebaseMessaging.instance
         .getToken()
         .timeout(const Duration(seconds: 45));
