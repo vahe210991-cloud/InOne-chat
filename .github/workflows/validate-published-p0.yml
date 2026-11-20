@@ -131,7 +131,7 @@ jobs:
     timeout-minutes: 35
     services:
       postgres:
-        image: postgres:16
+        image: postgres:18
         env:
           POSTGRES_DB: inone_test
           POSTGRES_USER: inone
@@ -154,11 +154,11 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: inone-development-archive-0.6.0/engine/package-lock.json
-      - name: Install PostgreSQL 16 client
+      - name: Install PostgreSQL 18 client
         run: |
           sudo apt-get update
-          sudo apt-get install -y postgresql-client-16
-          /usr/lib/postgresql/16/bin/pg_dump --version
+          sudo apt-get install -y postgresql-client-18
+          /usr/lib/postgresql/18/bin/pg_dump --version
       - run: npm ci
         working-directory: ${{ env.ENGINE_DIR }}
       - name: Record PostgreSQL and Node toolchain versions
