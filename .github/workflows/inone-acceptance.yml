@@ -43,28 +43,28 @@ jobs:
             const changed = pattern => paths.some(path => pattern.test(path));
             const expected = new Set();
 
-            const workflowConfigChanged = changed(/^\.github\/workflows\//);
-            if (workflowConfigChanged ||
+            const workflowChanged = file => paths.includes(`.github/workflows/${file}`);
+            if (workflowChanged("validate-published-p0.yml") ||
                 changed(/^(inone-development-archive-0\.6\.0\/engine\/|inone-engine-poc-0\.6\.0\/mobile-mls\/|mobile\/rust\/)/)) {
               expected.add("Validate recovered InOne P0 source");
             }
-            if (workflowConfigChanged ||
+            if (workflowChanged("mls-native-validation.yml") ||
                 changed(/^(inone-engine-poc-0\.6\.0\/mobile-mls\/|inone-development-archive-0\.6\.0\/engine\/mobile-mls\/|mobile\/rust\/)/)) {
               expected.add("Native MLS client validation");
             }
-            if (workflowConfigChanged ||
+            if ((workflowChanged("flutter-mobile.yml") || workflowChanged("flutter-ios-validation.yml")) ||
                 changed(/^mobile\//) ||
                 changed(/^inone-development-archive-0\.6\.0\/engine\/mobile-mls\//)) {
               expected.add("Flutter mobile validation");
               expected.add("Flutter iOS validation");
             }
-            if (workflowConfigChanged || changed(/^mobile\//)) {
+            if (workflowChanged("openmls-frb-codegen.yml") || changed(/^mobile\//)) {
               expected.add("OpenMLS Flutter Rust Bridge generation");
             }
-            if (workflowConfigChanged || changed(/^inone-development-archive-0\.6\.0\/engine\//)) {
+            if (workflowChanged("email-delivery-validation.yml") || changed(/^inone-development-archive-0\.6\.0\/engine\//)) {
               expected.add("Email delivery and PostgreSQL validation");
             }
-            if (workflowConfigChanged ||
+            if (workflowChanged("devcontainer-runtime.yml") ||
                 changed(/^\.devcontainer\//) ||
                 changed(/^inone-development-archive-0\.6\.0\/engine\//)) {
               expected.add("Dev Container Compose runtime validation");
