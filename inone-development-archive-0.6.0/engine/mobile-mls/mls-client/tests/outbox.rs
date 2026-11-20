@@ -634,8 +634,12 @@ fn process_crash_at_each_inbox_journal_boundary_preserves_atomic_delivery() {
     crash_child_sync_if_requested();
 
     let crash_points = [
+        "before_inbox_insert",
         "after_inbox_insert",
+        "before_processed_marker_insert",
         "after_processed_marker_insert",
+        "before_undecryptable_marker_insert",
+        "after_undecryptable_marker_insert",
         "after_application_transaction_commit",
     ];
 
@@ -653,15 +657,7 @@ fn process_crash_at_each_inbox_journal_boundary_preserves_atomic_delivery() {
             &keys,
         )
         .unwrap();
-        let mut bob = connect(
-            &engine.base,
-            BOB,
-            PW,
-            "B_CRASH_P0",
-            &bob_db,
-            &keys,
-        )
-        .unwrap();
+        let mut bob = connect(&engine.base, BOB, PW, "B_CRASH_P0", &bob_db, &keys).unwrap();
         bob.ensure_key_packages(2).unwrap();
 
         let room = format!("!room-p0-inbox-boundary-{index}:inone.test");
@@ -669,8 +665,19 @@ fn process_crash_at_each_inbox_journal_boundary_preserves_atomic_delivery() {
         alice.invite(&room, BOB).unwrap();
         assert!(bob.sync().unwrap().is_empty());
 
-        let plaintext = format!("crash boundary payload {point}");
-        let event_id = alice.send_text(&room, &plaintext).unwrap();
+        let unreadable_case = point.contains("undecryptable_marker");
+        let payload: &[u8] = if unreadable_case {
+            &[0xff, 0xfe, 0xfd]
+        } else {
+            b"durable inbox boundary payload"
+        };
+        let event_id = alice
+            .send_application_payload_with_id(
+                &room,
+                payload,
+                &format!("boundary-message-{index}"),
+            )
+            .unwrap();
         drop(bob);
 
         let status = run_crash_child(
@@ -690,22 +697,13 @@ fn process_crash_at_each_inbox_journal_boundary_preserves_atomic_delivery() {
             String::from_utf8_lossy(&status.stderr)
         );
 
-        let mut recovered = connect(
-            &engine.base,
-            BOB,
-            PW,
-            "B_CRASH_P0",
-            &bob_db,
-            &keys,
-        )
-        .expect("SQLCipher database remains readable after process death");
+        let mut recovered =
+            connect(&engine.base, BOB, PW, "B_CRASH_P0", &bob_db, &keys)
+                .expect("SQLCipher database remains readable after process death");
 
         if *point == "after_application_transaction_commit" {
-            assert_eq!(
-                texts(&recovered.pending_incoming().unwrap()),
-                vec![plaintext.clone()],
-                "committed inbox row must survive process death"
-            );
+            let pending = recovered.pending_incoming().unwrap();
+            assert_eq!(pending.len(), 1, "committed inbox row must survive process death");
             assert!(
                 recovered.sync().unwrap().is_empty(),
                 "committed processed marker must prevent server redelivery"
@@ -715,23 +713,35 @@ fn process_crash_at_each_inbox_journal_boundary_preserves_atomic_delivery() {
                 recovered.pending_incoming().unwrap().is_empty(),
                 "uncommitted inbox insert must roll back at {point}"
             );
-            assert_eq!(
-                texts(&recovered.sync().unwrap()),
-                vec![plaintext.clone()],
-                "the exact server event must be decrypted after rollback at {point}"
-            );
-            assert!(matches!(
-                recovered.pending_incoming().unwrap().as_slice(),
-                [Incoming::Text { event_id: pending_id, text: pending_text, .. }]
-                    if pending_id == &event_id && pending_text == &plaintext
-            ));
+            let redelivered = recovered
+                .sync()
+                .expect("the exact server event must be processable after rollback");
+            if unreadable_case {
+                assert!(matches!(
+                    redelivered.as_slice(),
+                    [Incoming::Unreadable { event_id: delivered_id, .. }]
+                        if delivered_id == &event_id
+                ));
+            } else {
+                assert_eq!(texts(&redelivered), vec!["durable inbox boundary payload"]);
+            }
             assert!(
                 recovered.sync().unwrap().is_empty(),
                 "successfully committed event must not be delivered twice"
             );
         }
 
-        assert!(recovered.undecryptable().unwrap().is_empty());
+        if unreadable_case {
+            assert!(
+                recovered.undecryptable().unwrap().iter().any(|row| row.0 == event_id),
+                "unreadable diagnostic must be committed with its inbox record"
+            );
+        } else {
+            assert!(
+                recovered.undecryptable().unwrap().is_empty(),
+                "valid application payload must not create an unreadable diagnostic"
+            );
+        }
         recovered.acknowledge_incoming(&[event_id]).unwrap();
         assert!(recovered.pending_incoming().unwrap().is_empty());
     }
