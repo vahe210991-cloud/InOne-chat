@@ -143,6 +143,9 @@ jobs:
         run: |
           flutter pub get
           git diff --exit-code -- pubspec.yaml
+          echo '--- BEGIN GENERATED PUBSPEC LOCK ---'
+          cat pubspec.lock
+          echo '--- END GENERATED PUBSPEC LOCK ---'
       - name: Verify native-only production runtime
         run: node tool/verify_native_runtime.mjs
       - name: Verify committed Rust lockfile
