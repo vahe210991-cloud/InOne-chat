@@ -2420,7 +2420,15 @@ impl Client {
                 };
 
                 if let Err(error) = insert_incoming_record(&transaction, &incoming)
+                    .and_then(|_| {
+                        crash_at_test_failpoint("after_inbox_insert");
+                        Ok(())
+                    })
                     .and_then(|_| insert_processed_event(&transaction, event_id))
+                    .and_then(|_| {
+                        crash_at_test_failpoint("after_processed_marker_insert");
+                        Ok(())
+                    })
                     .and_then(|_| {
                         if let Some(reason) = unreadable_reason {
                             transaction
@@ -2446,6 +2454,7 @@ impl Client {
                         text(error)
                     ));
                 }
+                crash_at_test_failpoint("after_application_transaction_commit");
                 self.processed.insert(event_id.to_string());
                 out.push(incoming);
             }
