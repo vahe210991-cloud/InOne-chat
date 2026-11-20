@@ -13,13 +13,13 @@ const ALICE = '@alice:inone.test';
 const enc = encodeURIComponent;
 const b64 = (text) => Buffer.from(text, 'utf8').toString('base64');
 
-async function start() {
-  const db = await storeForTest(PEPPER);
+async function start(storeOptions = {}) {
+  const db = await storeForTest(PEPPER, storeOptions);
   const srv = createServer({ defaultOrgAutoJoin: true, registrationMode: 'open', requirePhone: false, pinPepper: PEPPER, store: db?.store });
   await new Promise((resolve) => srv.server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${srv.server.address().port}`;
   const alice = await ChatClient.create(base, ALICE, 'A_PHONE', PW);
-  return { base, alice, stop: async () => { await new Promise((r) => srv.server.close(r)); await db?.close(); } };
+  return { base, alice, db, stop: async () => { await new Promise((r) => srv.server.close(r)); await db?.close(); } };
 }
 
 test('повтор с тем же clientMessageId возвращает первое сообщение и не создаёт второе', async () => {
@@ -52,9 +52,9 @@ test('параллельные повторы с одним clientMessageId со
       const id = `race-${i}`;
       const results = await Promise.allSettled([1, 2, 3].map(() => s.alice.raw('POST', `/mls/groups/${enc(ROOM2)}/messages`, { message, kind: 'text', forwarded: false, clientMessageId: id })));
       const accepted = results.filter((r) => r.status === 'fulfilled').map((r) => r.value.event_id);
-      assert.ok(accepted.length >= 1, 'хотя бы один запрос принят');
-      assert.equal(new Set(accepted).size, 1, `все принятые ответы — одно событие (${id})`);
-      for (const r of results) if (r.status === 'rejected') assert.equal(r.reason.status, 409, 'отказ только «уже отправляется»');
+      assert.equal(accepted.length, 3, 'все конкурентные повторы получают результат после сериализации транзакцией');
+      assert.equal(new Set(accepted).size, 1, `все ответы указывают на одно событие (${id})`);
+      assert.equal(results.filter((r) => r.status === 'rejected').length, 0, 'конкурентные повторы не получают временный 409');
     }
     const events = (await s.alice.raw('GET', `/rooms/${enc(ROOM2)}/events`)).events.filter((e) => e.type === 'm.room.encrypted');
     assert.equal(events.length, attempts, 'по одному сообщению на каждый идентификатор');
@@ -155,6 +155,46 @@ test('epoch_outdated is structured and does not reserve the operation ID', async
       ...stale, epoch: 1, commit: b64('REBASED-AFTER-EXPLICIT-REJECTION'),
     });
     assert.equal(accepted.epoch, 2);
+  } finally {
+    await s.stop();
+  }
+});
+
+const postgresTest = process.env.DATABASE_URL ? test : test.skip;
+
+postgresTest('PostgreSQL: сбой после INSERT события откатывает событие и reservation; retry создаёт ровно одно событие', async () => {
+  let failOnce = true;
+  const s = await start({
+    testHooks: {
+      afterClientMessageEventInsert() {
+        if (failOnce) {
+          failOnce = false;
+          throw new Error('injected failure between event insert and idempotency completion');
+        }
+      },
+    },
+  });
+  try {
+    await s.alice.createRoom('!idem-rollback:inone.test', [ALICE]);
+    await s.alice.raw('POST', `/mls/groups/${enc('!idem-rollback:inone.test')}/commits`, { epoch: 0, commit: b64('FIRST'), changes: { adds: [], removes: [] } });
+    const message = mlsMessageAt('!idem-rollback:inone.test', 1, 'atomic rollback');
+    const send = () => s.alice.raw('POST', `/mls/groups/${enc('!idem-rollback:inone.test')}/messages`, {
+      message, kind: 'text', forwarded: false, clientMessageId: 'atomic-fault-0001',
+    });
+
+    await assert.rejects(send(), (error) => error.status === 500);
+    assert.equal(await s.db.store.findClientMessage('!idem-rollback:inone.test', ALICE, 'atomic-fault-0001'), null,
+      'failed transaction must not leave a pending or completed reservation');
+    const afterFailure = (await s.alice.raw('GET', `/rooms/${enc('!idem-rollback:inone.test')}/events`)).events;
+    assert.equal(afterFailure.filter((event) => event.type === 'm.room.encrypted').length, 0,
+      'failed transaction must not leave a room event');
+
+    const accepted = await send();
+    const replay = await send();
+    assert.equal(replay.event_id, accepted.event_id, 'retry and replay return the same event ID');
+    const finalEvents = (await s.alice.raw('GET', `/rooms/${enc('!idem-rollback:inone.test')}/events`)).events;
+    assert.equal(finalEvents.filter((event) => event.type === 'm.room.encrypted').length, 1,
+      'retry creates exactly one event');
   } finally {
     await s.stop();
   }
