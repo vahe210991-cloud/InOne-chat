@@ -45,13 +45,13 @@ function configureAndroid() {
   );
   // Firebase Android Messaging 26.x requires API 24 or newer.
   let appSource = fs.readFileSync(appGradle, 'utf8');
-  const minSdkLine = appSource.match(/^([\\t ]*)minSdk\\s*=\\s*[^\\r\\n]+/m);
+  const minSdkLine = appSource.match(/^([\t ]*)minSdk\s*=\s*[^\r\n]+/m);
   if (!minSdkLine) {
     throw new Error('Generated Android app Gradle file has no minSdk assignment');
   }
-  if (!/^([\\t ]*)minSdk\\s*=\\s*24$/m.test(appSource)) {
+  if (!/^([\t ]*)minSdk\s*=\s*24$/m.test(appSource)) {
     appSource = appSource.replace(
-      /^([\\t ]*)minSdk\\s*=\\s*[^\\r\\n]+/m,
+      /^([\t ]*)minSdk\s*=\s*[^\r\n]+/m,
       '$1minSdk = 24',
     );
     fs.writeFileSync(appGradle, appSource);
