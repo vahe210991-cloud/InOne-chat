@@ -1,3 +1,17 @@
+## 2026-11-14 — InOne engine stabilization and source reconciliation
+
+- Worked only on `feat/flutter-ui-dart-migration-2026-11-14`; `main` unchanged. At handoff, branch compare confirmed ahead of main / behind 0; latest code/test commit `24ed7477ed308f82d5e61c97bba5aac3f5f2da65`.
+- Reconciled backend ownership: canonical Node/PostgreSQL P0 source is `inone-development-archive-0.6.0/engine/`; `inone-engine-poc-0.6.0/` is not a production server. POC Node startup now refuses production even with a DB pool; persistent OpenMLS client is retained.
+- Canonical backend production startup now requires PostgreSQL; added regression test. Phone verification defaults off; production config refuses SMS/phone-required until a real SMS provider is integrated. Added placeholder rejection for secrets, PostgreSQL URL, public URL and SMTP credentials, plus request timeout/file quota validation tests.
+- Matrix crypto package moved to devDependencies in canonical backend lockfile; server cleanup interval and SMTP transport now close on graceful shutdown.
+- Fixed duplicate `push` key in Flutter workflow; hardened Rust formatter push step against untrusted PR ref; added active branch to P0 CI push trigger.
+- Static checks: package/lock JSON and dependency parity PASS; single Flutter push key PASS; canonical server storage call inventory 177/177 names found in both Postgres and memory stores; static route/store comparison confirms P0 backend is ahead of POC. These checks do not replace runtime tests.
+- Flutter workflow run #43571536430 failed before steps; logs unavailable (BlobNotFound). No new test suite is claimed as executed. P0 push run could not be independently read through the available PR-only run listing.
+- Full report: `development/reports/2026-11-14-engine-stability-audit.md`. Exact next steps: `docs/continuity/NEXT-SESSION.md`.
+- No merge, deployment, secret use, destructive deletion or main-branch change.
+
+---
+
 ## 2026-11-11 — Conservative repository file cleanup
 
 - Inspected the complete recursive Git tree on the current base (964 entries / 853 files; response not truncated) and grouped exact duplicate blobs by SHA.
@@ -298,3 +312,40 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Static local checks: devcontainer JSON parsed; Compose and GitHub workflow YAML parsed; Stage 0 environment shell script passed `bash -n`. Redocly semantic lint and Codespaces container startup were not run.
 
 - CI verification follow-up: first contract workflow run #40 and its rerun both failed. GitHub's job-log download returned 404, so the failure cause is unknown. Simplified the job to GitHub-hosted Ubuntu + pinned setup-node Node 26 (instead of a job-level Node container) and left the CI gate unchecked pending a new exact-head result.
+
+## 2026-11-14 — Engine hardening follow-up
+
+- Revalidated the working branch and canonical engine path. Branch head before follow-up was `a24ade78e6051d8f61fd54f985a9287aaf9f2769`; main was unchanged.
+- Removed write permissions and automated branch push from the P0 Rust formatting job. CI now checks formatting only.
+- Added a PostgreSQL readiness probe for the explicit `INONE_RUN_MIGRATIONS=false` startup mode. Server startup now fails before HTTP listen if the database is unavailable.
+- Added two regression tests in `engine/test/main.test.js` for the successful probe and DB-unavailable failure.
+- Commits: `e3ef907ed9fec1383d4d3900e1f47f52495622d6`, `bb26bf80a6072b0e0d48527b041960651aa7b816`, `58fafebe5566ea5b6f6afbadd8942fe5e166b62f`.
+- Tests were not run. Flutter run #632 failed before steps and had no retrievable logs; this is not evidence of a Flutter source failure. P0 matrix on the exact SHA remains unverified.
+- PR #52 remains Draft/open with base `stage0/identity-engineering-readiness-2026-11-13`. No merge, retarget, deployment, or main-branch change was performed.
+
+## 2026-11-14 — Engine security hardening follow-up
+
+- Fixed PostgreSQL refresh rotation so consumption of the old token and insertion of the new access/refresh pair occur in one transaction, with device-first locking and a revocation recheck. Memory store mirrors the route contract.
+- Added concurrent refresh replay coverage, fake transaction rollback coverage, and included `sessions.test.js` in `npm run test:db`.
+- Fixed signed file URL origin: production uses configured `INONE_PUBLIC_URL` instead of untrusted request Host and socket TLS detection. Added Host-header poisoning regression test.
+- Changed restore script to use `pg_restore --single-transaction`; added a regression assertion.
+- Earlier in this session: removed write permissions/automatic push from Rust format job; added PostgreSQL readiness probe before HTTP listen when migrations are disabled.
+- Latest engine code SHA before docs: `133a8c8dc3d28fa3c923288354dbf98821e90afb`. P0 run #43591312640 on exact SHA failed before steps in all six jobs; step arrays were empty and logs unavailable. No local tests were run; no test PASS is claimed.
+- `main` untouched; branch 376 ahead / 0 behind. PR #52 remains Draft/open with base `stage0/identity-engineering-readiness-2026-11-13`; no merge or retarget.
+
+## 2026-11-14 — Exact-head engine verification
+
+- Latest branch head: `dff9ebf9c69ac6ae08f6a91f7df3213652c3c87b`; branch 381 ahead / 0 behind main.
+- Static source checks confirmed the readiness probe, atomic refresh rotation, trusted production file URL origin, transactional DB restore, regression tests and PostgreSQL suite inclusion.
+- P0 run #43591433401 and Flutter run #43591437303 on exact head failed before any steps. P0's six jobs have empty step arrays; logs unavailable. No tests are confirmed as executed; no PASS claimed.
+- PR #52 remains Draft/open, base `stage0/identity-engineering-readiness-2026-11-13`. No merge, retarget, deployment or main-branch change.
+
+## 2026-11-15 — merge of authenticated file transport PRs and native MLS continuation
+
+- Merged PR #54 into feat/flutter-ui-dart-migration-2026-11-14 (merge commit 99a126c): canonical backend file downloads now require an active bearer session, requester-bound signed URL, current room membership/private-file ownership, and current device validity. Device revocation and room-member removal revoke downloads immediately. Anonymous file-existence probing is blocked before storage lookup.
+- Merged PR #56 into the same active Flutter branch (merge commit 4e22d5f): mobile binary downloads send the active bearer token only to the same origin; signed ciphertext uploads do not send bearer credentials; redirects are disabled. This is transport only, not attachment E2EE.
+- PR #57 is Draft/open: feat/mls-attachment-aead-core-2026-11-15. It adds AES-256-GCM primitives, versioned MLS manifest validation, room/file binding, SHA-256 integrity checks and key-buffer zeroization. It is not yet wired into upload, MLS send/sync, SQLCipher manifest persistence or decryption. Rust tests NOT RUN.
+- PR #58 is Draft/open and stacked on #57: feat/native-mls-persistent-ffi-2026-11-15. It ports the Stage 4 persistent OpenMLS client, adds the FRB 2.13.0 Rust crate, Android Keystore/iOS protected Keychain SQLCipher key store, Dart adapter, restart resume, Rust-owned refresh rotation, logout cleanup, handoff regression tests, and native-only chat text send/sync wiring. The native flag INONE_MLS_NATIVE_ENABLED remains false by default.
+- Generated FRB outputs are absent. mobile/tool/generate_native_mls.ps1 generates them on a machine with Flutter 3.47+, Rust 1.91+, Cargo and Node.js. Flutter analyze/tests, Rust tests, Android Keystore runtime tests and iOS Protected Keychain checks are NOT RUN. No Actions workflow was manually dispatched.
+- PR #54/#56 are merged only into the active feature branch, not main. No deployment occurred.
+- Remaining priority: complete attachment send/upload/MLS-manifest/SQLCipher persistence/download/decrypt on top of the persistent client; generate FRB outputs and validate the exact SHA; then complete recovery deep links for confirmed-phone accounts and reconcile PR #42's POC/canonical-backend target.

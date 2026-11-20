@@ -2,6 +2,7 @@
 // прикрепление только готового файла, лимит незавершённых загрузок, очистка брошенных загрузок.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { request as nodeRequest } from 'node:http';
 import { createHash, randomBytes } from 'node:crypto';
 import { createServer } from '../src/server.js';
 import { ChatClient, DEFAULT_PASSWORD as PW } from '../src/client.js';
@@ -34,9 +35,9 @@ async function http(base, method, path, { token, body, headers = {} } = {}) {
 const jsonBody = (value) => JSON.stringify(value);
 const JSON_HEADERS = { 'content-type': 'application/json' };
 
-async function start() {
+async function start({ fileBaseUrl = null, quotaBytes = null } = {}) {
   const db = await storeForTest(PEPPER);
-  const srv = createServer({ defaultOrgAutoJoin: true, registrationMode: 'open', requirePhone: false, pinPepper: PEPPER, store: db?.store, objectSecret: 'test-object-secret-0123456789abcdef' });
+  const srv = createServer({ defaultOrgAutoJoin: true, registrationMode: 'open', requirePhone: false, pinPepper: PEPPER, store: db?.store, objectSecret: 'test-object-secret-0123456789abcdef', quotaBytes, ...(fileBaseUrl ? { fileBaseUrl } : {}) });
   await new Promise((resolve) => srv.server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${srv.server.address().port}`;
   const alice = await ChatClient.create(base, ALICE, 'A_PHONE', PW);
@@ -81,11 +82,43 @@ test('полный путь: загрузка по подписанному ад
     const link = (await http(s.base, 'GET', `/files/${enc(created.fileId)}/url`, { token: s.bob.token })).json;
     assert.ok(link, 'участник получил ссылку');
     const u = new URL(link.downloadUrl);
-    const got = await http(u.origin, 'GET', u.pathname + u.search);
+    const got = await http(u.origin, 'GET', u.pathname + u.search, { token: s.bob.token });
     assert.equal(got.status, 200);
     assert.ok(got.buffer.equals(bytes), 'байты совпадают');
     assert.equal(got.headers.get('content-disposition'), 'attachment', 'файл не открывается в браузере');
     assert.equal(got.headers.get('x-content-type-options'), 'nosniff');
+  } finally {
+    await s.stop();
+  }
+});
+
+test('ссылка скачивания привязана к активному устройству и текущему членству в комнате', async () => {
+  const s = await start();
+  try {
+    const fileId = await uploadReady(s, s.alice.token, randomBytes(400));
+
+    const bobOld = await ChatClient.loginFromNewDevice(s.base, BOB, PW, 'B_OLD', s.bob);
+    const oldDeviceLink = (await http(s.base, 'GET', `/files/${enc(fileId)}/url`, { token: bobOld.token })).json;
+    const oldDeviceUrl = new URL(oldDeviceLink.downloadUrl);
+
+    assert.equal((await http(oldDeviceUrl.origin, 'GET', oldDeviceUrl.pathname + oldDeviceUrl.search)).status, 401,
+      'подписанная ссылка без действующей сессии не даёт доступ');
+    assert.equal((await http(oldDeviceUrl.origin, 'GET', oldDeviceUrl.pathname + oldDeviceUrl.search, { token: s.bob.token })).status, 403,
+      'ссылка не работает с токеном другого устройства');
+    assert.equal((await http(oldDeviceUrl.origin, 'GET', oldDeviceUrl.pathname + oldDeviceUrl.search, { token: bobOld.token })).status, 200,
+      'ссылка работает с токеном выдавшего её устройства');
+
+    await s.bob.raw('DELETE', `/devices/${enc('B_OLD')}`);
+    assert.equal((await http(oldDeviceUrl.origin, 'GET', oldDeviceUrl.pathname + oldDeviceUrl.search, { token: bobOld.token })).status, 401,
+      'отзыв устройства немедленно блокирует ранее выданную ссылку');
+
+    const currentDeviceLink = (await http(s.base, 'GET', `/files/${enc(fileId)}/url`, { token: s.bob.token })).json;
+    const currentDeviceUrl = new URL(currentDeviceLink.downloadUrl);
+    assert.equal((await http(currentDeviceUrl.origin, 'GET', currentDeviceUrl.pathname + currentDeviceUrl.search, { token: s.bob.token })).status, 200);
+
+    await s.alice.raw('DELETE', `/rooms/${enc(ROOM)}/members/${enc(BOB)}`);
+    assert.equal((await http(currentDeviceUrl.origin, 'GET', currentDeviceUrl.pathname + currentDeviceUrl.search, { token: s.bob.token })).status, 403,
+      'удаление участника немедленно блокирует ранее выданную ссылку');
   } finally {
     await s.stop();
   }
@@ -198,6 +231,54 @@ test('очистка: брошенные загрузки старше суто�
     await s.alice.renewSession(); // сутки прошли: сессия обновляется, как в приложении
     assert.equal((await http(s.base, 'GET', `/files/${enc(abandoned)}/url`, { token: s.alice.token })).status, 404, 'брошенная пропала');
     assert.equal((await http(s.base, 'GET', `/files/${enc(kept)}/url`, { token: s.alice.token })).status, 200, 'готовая осталась');
+  } finally {
+    await s.stop();
+  }
+});
+test('подписанные ссылки не используют подменённый Host заголовок', async () => {
+  const s = await start({ fileBaseUrl: 'https://files.inone.test' });
+  try {
+    const bytes = randomBytes(128);
+    const body = jsonBody({ kind: 'file', size: bytes.length, sha256: sha(bytes), roomId: ROOM });
+    const address = new URL(s.base);
+    const created = await new Promise((resolve, reject) => {
+      const req = nodeRequest({
+        hostname: address.hostname,
+        port: Number(address.port),
+        method: 'POST',
+        path: '/files',
+        headers: {
+          authorization: `Bearer ${s.alice.token}`,
+          'content-type': 'application/json',
+          'content-length': String(Buffer.byteLength(body)),
+          host: 'wrong-host.invalid',
+        },
+      }, (res) => {
+        const chunks = [];
+        res.on('data', (chunk) => chunks.push(chunk));
+        res.on('end', () => {
+          const text = Buffer.concat(chunks).toString('utf8');
+          resolve({ status: res.statusCode, json: text ? JSON.parse(text) : {} });
+        });
+      });
+      req.on('error', reject);
+      req.end(body);
+    });
+    assert.equal(created.status, 200);
+    assert.equal(new URL(created.json.uploadUrl).origin, 'https://files.inone.test');
+  } finally {
+    await s.stop();
+  }
+});
+test('concurrent upload reservations cannot exceed the per-owner storage quota', async () => {
+  const s = await start({ quotaBytes: 10 });
+  try {
+    const bytes = randomBytes(8);
+    const attempts = await Promise.all([
+      announce(s, s.alice.token, bytes),
+      announce(s, s.alice.token, bytes),
+    ]);
+    assert.deepEqual(attempts.map((r) => r.status).sort(), [200, 413]);
   } finally {
     await s.stop();
   }

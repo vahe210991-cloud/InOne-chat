@@ -164,21 +164,6 @@ fn request(
     }
 }
 
-fn register(agent: &ureq::Agent, base: &str, user_id: &str, password: &str) -> Result<(), String> {
-    match request(
-        agent,
-        base,
-        "",
-        "POST",
-        "/register",
-        Some(json!({ "userId": user_id, "password": password })),
-    ) {
-        Ok(_) => Ok(()),
-        Err(e) if e.contains("-> 409") => Ok(()),
-        Err(e) => Err(e),
-    }
-}
-
 /// Ключ базы устройства. Платформа хранит его в Keychain (iOS) или Keystore (Android); ядро его не сохраняет.
 pub trait KeyStore {
     fn database_key(&self, scope: &str) -> Result<[u8; 32], String>;
@@ -263,7 +248,6 @@ pub fn connect(
     keys: &dyn KeyStore,
 ) -> Result<Client, String> {
     let agent = ureq::AgentBuilder::new().build();
-    register(&agent, base, user_id, password)?;
     let login = request(
         &agent,
         base,
@@ -304,7 +288,6 @@ pub fn connect_with_approval(
     approver: &Client,
 ) -> Result<Client, String> {
     let agent = ureq::AgentBuilder::new().build();
-    register(&agent, base, user_id, password)?;
     let login = request(
         &agent,
         base,

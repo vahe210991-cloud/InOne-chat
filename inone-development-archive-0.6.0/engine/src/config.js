@@ -1,6 +1,6 @@
 // Настройки сервера из переменных окружения. Неверная конфигурация останавливает запуск до открытия порта.
 import { DEFAULT_PHONE_COUNTRIES } from './phone-international.js';
-const TEST_PEPPER_MARKERS = ['test-pepper', 'change-me', 'example', 'dev-only'];
+const TEST_SECRET_MARKERS = ['test-pepper', 'change-me', 'example', 'dev-only', 'replace-with'];
 
 export function loadConfig(env = process.env) {
   const nodeEnv = env.NODE_ENV ?? 'development';
@@ -16,8 +16,9 @@ export function loadConfig(env = process.env) {
     registrationMode: env.INONE_REGISTRATION_MODE ?? 'verified',
     trustProxy: env.INONE_TRUST_PROXY === 'true',
     filesDir: env.INONE_FILES_DIR ?? '',
-  docsSecret: env.INONE_DOCS_SECRET ?? '',
-  testUi: env.INONE_TEST_UI === '1',
+    docsSecret: env.INONE_DOCS_SECRET ?? '',
+    objectSecret: env.INONE_OBJECT_SECRET ?? '',
+    testUi: env.INONE_TEST_UI === '1',
     fileQuotaBytes: env.INONE_FILE_QUOTA_BYTES ? Number(env.INONE_FILE_QUOTA_BYTES) : null,
     bodyLimitBytes: Number(env.INONE_BODY_LIMIT_BYTES ?? 4 * 1024 * 1024),
     requestTimeoutMs: Number(env.INONE_REQUEST_TIMEOUT_MS ?? 30000),
@@ -32,25 +33,44 @@ export function loadConfig(env = process.env) {
     smtpUser: env.INONE_SMTP_USER ?? '',
     smtpPassword: env.INONE_SMTP_PASSWORD ?? '',
     smtpFrom: env.INONE_SMTP_FROM ?? '',
-        requirePhone: env.INONE_REQUIRE_PHONE !== 'false',
-        smsEnabled: env.INONE_SMS_ENABLED === 'true',
-        phoneBlockedCountries: (env.INONE_PHONE_BLOCKED_COUNTRIES ?? '').split(',').map((c) => c.trim().toUpperCase()).filter(Boolean),
+    requirePhone: env.INONE_REQUIRE_PHONE === 'true',
+    smsEnabled: env.INONE_SMS_ENABLED === 'true',
+    phoneBlockedCountries: (env.INONE_PHONE_BLOCKED_COUNTRIES ?? '').split(',').map((c) => c.trim().toUpperCase()).filter(Boolean),
     phoneAllowedCountries: (env.INONE_PHONE_ALLOWED_COUNTRIES ?? DEFAULT_PHONE_COUNTRIES.join(',')).split(',').map((c) => c.trim().toUpperCase()).filter(Boolean),
   };
   const errors = [];
   if (!config.databaseUrl) errors.push('DATABASE_URL is required');
+  else {
+    try {
+      const database = new URL(config.databaseUrl);
+      if (!['postgres:', 'postgresql:'].includes(database.protocol) || database.hostname.toLowerCase() === 'host' || database.hostname.toLowerCase().includes('example') || ['change-me', 'replace-with'].some((marker) => database.username.toLowerCase().includes(marker) || database.password.toLowerCase().includes(marker))) errors.push('DATABASE_URL must be a valid PostgreSQL URL, not a placeholder');
+    } catch {
+      errors.push('DATABASE_URL must be a valid PostgreSQL URL');
+    }
+  }
   if (!['verified', 'open'].includes(config.registrationMode)) errors.push('INONE_REGISTRATION_MODE must be verified or open');
   if (!Number.isInteger(config.port) || config.port < 0 || config.port > 65535) errors.push('PORT must be a port number');
   if (!Number.isInteger(config.bodyLimitBytes) || config.bodyLimitBytes < 1024) errors.push('INONE_BODY_LIMIT_BYTES must be at least 1024');
+  if (!Number.isInteger(config.requestTimeoutMs) || config.requestTimeoutMs < 1000 || config.requestTimeoutMs > 300000) errors.push('INONE_REQUEST_TIMEOUT_MS must be between 1000 and 300000');
+  if (config.fileQuotaBytes !== null && (!Number.isSafeInteger(config.fileQuotaBytes) || config.fileQuotaBytes <= 0)) errors.push('INONE_FILE_QUOTA_BYTES must be a positive safe integer');
   if (production) {
     if (config.registrationMode === 'open') errors.push('open registration is not allowed in production');
     if (config.pinPepper.length < 32) errors.push('INONE_PIN_PEPPER must be at least 32 characters in production');
-    if (TEST_PEPPER_MARKERS.some((m) => config.pinPepper.includes(m))) errors.push('INONE_PIN_PEPPER looks like a test or example value');
+    if (TEST_SECRET_MARKERS.some((m) => config.pinPepper.toLowerCase().includes(m))) errors.push('INONE_PIN_PEPPER looks like a test or example value');
+    if (TEST_SECRET_MARKERS.some((m) => config.docsSecret.toLowerCase().includes(m))) errors.push('INONE_DOCS_SECRET looks like a test or example value');
+    if (config.objectSecret.length < 32) errors.push('INONE_OBJECT_SECRET must be at least 32 characters in production');
+    if (TEST_SECRET_MARKERS.some((m) => config.objectSecret.toLowerCase().includes(m))) errors.push('INONE_OBJECT_SECRET looks like a test or example value');
     if (!config.publicUrl.startsWith('https://')) errors.push('INONE_PUBLIC_URL must start with https:// in production');
-    // Коды подтверждения должны уходить на почту. В этой сборке реального транспорта нет: продакшен не стартует молча.
+    if (config.publicUrl.toLowerCase().includes('example')) errors.push('INONE_PUBLIC_URL must not use an example domain');
+    // Production verification codes must use a real SMTP transport; memory mail is test-only.
     if (config.mailTransport !== 'smtp') errors.push('production needs a real mail transport: set INONE_MAIL_TRANSPORT=smtp');
+    if (config.smsEnabled) errors.push('production SMS provider is not integrated; INONE_SMS_ENABLED must remain false');
+    if (config.requirePhone) errors.push('INONE_REQUIRE_PHONE must remain false until a production SMS provider is integrated');
     if (config.mailTransport === 'smtp' && !config.smtpRequireTls) errors.push('production SMTP must require TLS (INONE_SMTP_REQUIRE_TLS)');
-        if (!config.filesDir) errors.push('INONE_FILES_DIR is required in production: files kept in memory are lost on restart');
+    if (config.smtpHost.toLowerCase().includes('example')) errors.push('INONE_SMTP_HOST must not use an example host');
+    if (config.smtpFrom.toLowerCase().includes('example')) errors.push('INONE_SMTP_FROM must not use an example address');
+    if (config.smtpUser.toLowerCase().includes('replace-with') || config.smtpUser.toLowerCase().includes('change-me') || config.smtpPassword.toLowerCase().includes('replace-with') || config.smtpPassword.toLowerCase().includes('change-me')) errors.push('SMTP credentials still contain placeholder values');
+    if (!config.filesDir) errors.push('INONE_FILES_DIR is required in production: files kept in memory are lost on restart');
     if (config.docsSecret.length < 32) errors.push('INONE_DOCS_SECRET must be at least 32 characters in production');
     if (config.testUi) errors.push('INONE_TEST_UI must not be set in production');
   } else if (!config.pinPepper) {

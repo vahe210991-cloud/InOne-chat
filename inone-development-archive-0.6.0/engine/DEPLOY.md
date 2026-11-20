@@ -1,68 +1,81 @@
-# Развёртывание сервера InOne
+# Развёртывание серверного движка InOne
 
-Сборка: 0.6.0-alpha.30. Сервер в этой сборке не запускается в продакшене: нет почтового транспорта (см. `REMAINING_WORK.md`). Режим разработки и проверка на базе работают.
+Статус: P0 backend candidate. Серверный API и PostgreSQL store прошли P0 CI acceptance на зафиксированном PR head; это не является сертификатом production readiness. Мобильная Flutter/OpenMLS интеграция, реальные устройства, эксплуатационные backup/restore, мониторинг и независимый аудит проверяются отдельно.
 
-## Что нужно
+## Требования
 
-- Node.js 22 или новее, PostgreSQL 16.
-- HTTPS-прокси перед сервером (nginx, Caddy или облачный балансировщик).
-- Секреты: пароль базы и перец PIN (`INONE_PIN_PEPPER`, 32 символа и больше, случайный).
+- Node.js 22 или новее.
+- PostgreSQL 16.
+- HTTPS reverse proxy (nginx, Caddy или облачный балансировщик).
+- Постоянный каталог `INONE_FILES_DIR`.
+- Secret manager для `DATABASE_URL`, `INONE_PIN_PEPPER`, `INONE_DOCS_SECRET` и SMTP credentials.
 
-## Настройки
+## Конфигурация
 
-Все настройки — в переменных окружения. Образец — `.env.example`.
+Шаблон — `.env.example`. Значения `change-me` и `replace-with-...` являются только placeholders. До запуска замените их реальными значениями из secret manager.
 
-| Переменная | Что делает | По умолчанию |
+| Переменная | Назначение | Production |
 |---|---|---|
-| `DATABASE_URL` | адрес базы PostgreSQL | обязательна |
-| `INONE_PIN_PEPPER` | перец для хэшей PIN и кодов | обязательна в продакшене |
-| `INONE_PUBLIC_URL` | публичный адрес за прокси, https в продакшене | — |
-| `INONE_REGISTRATION_MODE` | `verified` (с проверкой почты) или `open` | `verified` |
-| `INONE_TRUST_PROXY` | доверять заголовкам прокси про адрес клиента | `false` |
-| `INONE_BODY_LIMIT_BYTES` | максимальный размер тела запроса | 4 МБ |
-| `INONE_REQUEST_TIMEOUT_MS` | время на запрос | 30 с |
-| `LOG_LEVEL` | уровень журнала | `info` |
-| `INONE_RUN_MIGRATIONS` | применять миграции при старте | `true` |
-| `INONE_MAIL_TRANSPORT` | почтовый транспорт: `smtp` или `memory` (только разработка) | `memory` |
-| `INONE_SMTP_HOST` | адрес SMTP-сервера (своего или провайдера) | обязательна для `smtp` |
-| `INONE_SMTP_PORT` | порт: 587 (STARTTLS) или 465 (вместе с `INONE_SMTP_SECURE=true`) | 587 |
-| `INONE_SMTP_SECURE` | `true` для порта 465 | `false` |
-| `INONE_SMTP_REQUIRE_TLS` | требовать шифрование соединения; в продакшене должно быть `true` | `true` |
-| `INONE_SMTP_USER` / `INONE_SMTP_PASSWORD` | логин и пароль ящика; пароль не пишется в журнал | — |
-| `INONE_SMTP_FROM` | адрес отправителя, например `InOne <noreply@домен>` | обязательна для `smtp` |
+| `DATABASE_URL` | PostgreSQL connection string | обязательно |
+| `INONE_PIN_PEPPER` | HMAC pepper для PIN и кодов | случайный секрет, не менее 32 символов |
+| `INONE_DOCS_SECRET` | секрет защищённых служебных документов | случайный секрет, не менее 32 символов |
+| `INONE_OBJECT_SECRET` | постоянный HMAC-секрет подписанных upload/download URL | случайный секрет, не менее 32 символов; одинаковый на всех экземплярах сервера |
+| `INONE_PUBLIC_URL` | публичный URL сервиса | только `https://` |
+| `INONE_FILES_DIR` | постоянное файловое хранилище | обязательно |
+| `INONE_REGISTRATION_MODE` | `verified` или `open` | только `verified` |
+| `INONE_REQUIRE_PHONE` | требовать телефон при регистрации | по умолчанию `false`; включать только с рабочим SMS provider |
+| `INONE_SMS_ENABLED` | включить SMS flow | по умолчанию `false` |
+| `INONE_TRUST_PROXY` | доверять forwarded headers | `true` только за настроенным доверенным proxy |
+| `INONE_BODY_LIMIT_BYTES` | максимальный размер тела запроса | по умолчанию 4 MiB |
+| `INONE_REQUEST_TIMEOUT_MS` | тайм-аут запроса | по умолчанию 30 s |
+| `INONE_RUN_MIGRATIONS` | миграции при старте | `true` по умолчанию; production rollout должен иметь backup и план отката |
+| `INONE_MAIL_TRANSPORT` | транспорт почты | `smtp` |
+| `INONE_SMTP_HOST`, `INONE_SMTP_PORT` | SMTP host/port | обязательно |
+| `INONE_SMTP_SECURE` | implicit TLS (обычно порт 465) | зависит от провайдера |
+| `INONE_SMTP_REQUIRE_TLS` | требовать STARTTLS | обязательно `true` |
+| `INONE_SMTP_USER`, `INONE_SMTP_PASSWORD` | SMTP credentials | если требует провайдер |
+| `INONE_SMTP_FROM` | адрес отправителя | обязательно |
 
-Неверная настройка останавливает запуск до открытия порта и называет причину.
+Production-конфигурация отклоняется без HTTPS URL, PostgreSQL URL, сильных секретов (включая отдельный `INONE_OBJECT_SECRET`), SMTP с TLS, постоянного файлового каталога и выключенного test UI. Production startup через `src/main.js` дополнительно запрещает запуск без PostgreSQL pool. Телефон не требуется по умолчанию, пока SMS provider не подключён.
 
 ## Первый запуск
 
-1. Создать базу: `CREATE DATABASE inone OWNER inone;`
-2. Установить зависимости: `npm ci --omit=dev`
-3. Создать схему: `DATABASE_URL=... npm run migrate`
-4. Запустить: `DATABASE_URL=... npm start`
-
-## Проверки
-
-- `GET /healthz` — 200, если процесс жив.
-- `GET /readyz` — 200, если база отвечает; 503 иначе.
+1. Создать отдельную PostgreSQL database и пользователя с минимальными необходимыми правами.
+2. Настроить секреты и переменные окружения по `.env.example`.
+3. Установить production dependencies: `npm ci --omit=dev`.
+4. Снять резервную копию (для новой пустой базы — зафиксировать начальную точку).
+5. Применить миграции: `npm run migrate`.
+6. Запустить: `npm start` (через supervisor/container orchestration).
+7. Проверить `GET /healthz` и `GET /readyz` с внутренней и внешней сторон proxy.
 
 ## Обновление
 
-1. Сделать резервную копию базы.
-2. Остановить старую версию сигналом `SIGTERM`: сервер перестаёт принимать новые соединения, дожидается текущих запросов и закрывает базу.
-3. Запустить `npm run migrate` с новой версией. Миграции применяются по одной, каждая в транзакции. Уже применённые не выполняются повторно.
-4. Запустить новую версию.
+1. Проверить точный release SHA и успешные обязательные CI jobs.
+2. Снять backup PostgreSQL и проверить доступность восстановления в отдельной среде.
+3. Выполнить rollout на staging copy и применить миграции.
+4. Проверить целостность данных и критические API сценарии.
+5. Выполнить production rollout с планом rollback. Не запускать миграции одновременно из нескольких независимых deployment jobs; встроенная advisory lock сериализует migration runner.
+6. Проверить health/readiness, журналы и ошибки после запуска.
 
-## Журнал
+## TLS, журналы и наблюдаемость
 
-Одна строка JSON на событие: запуск, остановка, миграции и каждый запрос (метод, путь без строки запроса, код ответа, время). В журнал не попадают тела запросов, пароли, PIN, токены, ключи, содержимое сообщений и файлов.
+TLS завершается на доверенном HTTPS proxy. Включайте `INONE_TRUST_PROXY=true` только если proxy перезаписывает клиентские forwarded headers и доступ к приложению извне proxy закрыт. Сами настройки proxy и TLS должны быть проверены в целевой среде.
 
-## Ограничения этой сборки
+Приложение пишет структурированные JSON события. Не добавляйте в журналы тела запросов, пароли, PIN, токены, ключи, содержимое сообщений или файлов. Не передавайте секреты в query string.
 
-- Почта: SMTP-адаптер готов и проверен на локальном тестовом сервере. Боевой запуск ждёт домена и почтового ящика на нём, а также проверки доставки на реальном адресе (SPF, DKIM, DMARC).
-- Продакшен не стартует без `INONE_MAIL_TRANSPORT=smtp` с TLS и адресом отправителя.
-- Зависимости почты: `nodemailer` 10.2.1 и `smtp-server` 3.21.1 (тестовый сервер, только для разработки). Лицензия MIT-0 у обеих (проверено по npm), уязвимостей по `npm audit` нет.
-- SMS не подключён: восстановление доступа по телефону недоступно.
-- Файлы оформления хранятся в базе данных.
-- Криптографический движок временный (`@matrix-org/matrix-sdk-crypto-wasm`), собственный не собран.
-- Docker-образ и `docker-compose.yml` не собраны и не проверены: в этой среде Docker недоступен.
-- Резервное копирование, очистка устаревших записей и мониторинг не автоматизированы.
+Health endpoints подтверждают состояние процесса и доступность базы, но не заменяют мониторинг, метрики, алерты и backup verification.
+
+## Криптография и границы выпуска
+
+Серверный P0 использует MLS API и PostgreSQL persistence. Legacy `TemporaryMatrixEngine` на Matrix Olm/Megolm относится к старому Node test client и не является production crypto path. Rust/OpenMLS client с SQLCipher storage и текущий FFI bridge — разные компоненты: bridge пока хранит состояние в памяти. Не выпускайте мобильную MLS-интеграцию, пока Flutter не подключён к durable SQLCipher client и platform Keychain/Keystore и пока не пройдены реальные device tests.
+
+## Обязательные внешние проверки
+
+- PostgreSQL backup и restore на отдельной базе.
+- Реальная SMTP доставка и SPF/DKIM/DMARC.
+- TLS/proxy, сетевые ограничения и trust proxy.
+- iOS Keychain / Android Keystore, перезапуск и восстановление MLS state.
+- Нагрузочные и multi-instance проверки.
+- Threat model review и независимый security/crypto audit.
+
+До закрытия этих проверок production deployment не считается утверждённым.

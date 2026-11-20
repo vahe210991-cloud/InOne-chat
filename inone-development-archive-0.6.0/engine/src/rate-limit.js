@@ -9,6 +9,9 @@ const DAY_MS = 24 * HOUR_MS;
 export const DEFAULT_RATE_LIMITS = {
   registrationsPerAddress: [{ windowMs: HOUR_MS, limit: 10 }, { windowMs: DAY_MS, limit: 50 }],
   recoveryPerAddress: [{ windowMs: HOUR_MS, limit: 10 }],
+  recoveryCompletePerAddress: [{ windowMs: HOUR_MS, limit: 20 }],
+  recoveryCompletePerAccount: [{ windowMs: HOUR_MS, limit: 10 }],
+  identityCodePerAccount: [{ windowMs: HOUR_MS, limit: 3 }],
   smsPerPhone: [{ windowMs: DAY_MS, limit: 5 }],
   emailCodePerEmail: [{ windowMs: HOUR_MS, limit: 3 }, { windowMs: DAY_MS, limit: 10 }],
   emailCodePerAddress: [{ windowMs: HOUR_MS, limit: 10 }],

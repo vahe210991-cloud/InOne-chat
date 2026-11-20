@@ -1,6 +1,6 @@
 // ============================================================================
-// Память PoC: тот же интерфейс, что у store.js (PostgreSQL), но без базы.
-// Операции синхронные: JavaScript не чередует их, поэтому гонок нет.
+// Memory adapter for tests/local development only; production must use the PostgreSQL store.
+// Operations are synchronous, so the test adapter does not model database concurrency.
 // Правила PIN совпадают с store.js (verifyPin). Токены лежат как ключевые хэши, как и в базе.
 // ============================================================================
 import { channelNameKey } from './room-names.js';
@@ -8,7 +8,7 @@ import { MLS_REGULAR_MAX_AGE_MS, MLS_LAST_RESORT_MAX_AGE_MS } from './mls-rules.
 import { DEFAULT_ADMIN_CAPABILITIES, DEFAULT_MEMBER_CAPABILITIES } from './room-permissions.js';
 import { createHmac, randomBytes } from 'node:crypto';
 import { decideLogin } from './login-throttle.js';
-import { freshRecovery } from './recovery-rules.js';
+import { cancelWindow, checkCode as checkRecoveryCode, closeWindowIfDue, completeRecovery as applyRecoveryCompletion, freshRecovery, windowOpen } from './recovery-rules.js';
 import { freshPhone } from './phone-rules.js';
 import { applyHit } from './rate-limit.js';
 import { freshEmailCode } from './email-code-rules.js';
@@ -129,6 +129,38 @@ export function createMemoryStore({ pinPepper }) {
     createFile({ fileId, ownerId, roomId, kind, size, sha256, createdAt }) {
       files.set(fileId, { fileId, ownerId, roomId, kind, size, sha256, status: 'pending', createdAt, completedAt: null });
     },
+    reserveFile({ fileId, ownerId, roomId, kind, size, sha256, createdAt, pendingLimit, quotaBytes }) {
+      if (!accounts.has(ownerId)) return { ok: false, reason: 'owner' };
+      let orgId = null;
+      if (roomId !== null) {
+        const room = rooms.get(roomId);
+        if (!room) return { ok: false, reason: 'room' };
+        if (!room.members.has(ownerId)) return { ok: false, reason: 'membership' };
+        if (room.owner !== ownerId && !(room.capabilities.get(ownerId) ?? []).includes('send_messages')) {
+          return { ok: false, reason: 'capability' };
+        }
+        orgId = room.orgId ?? null;
+      }
+      const ownerFiles = [...files.values()].filter((f) => f.ownerId === ownerId);
+      if (ownerFiles.filter((f) => ['pending', 'uploaded'].includes(f.status)).length >= pendingLimit) {
+        return { ok: false, reason: 'pending_limit' };
+      }
+      const ownerBytes = ownerFiles.filter((f) => ['pending', 'uploaded', 'ready'].includes(f.status)).reduce((sum, f) => sum + f.size, 0);
+      if (quotaBytes !== null && ownerBytes + size > quotaBytes) return { ok: false, reason: 'owner_quota' };
+      if (orgId !== null) {
+        const orgQuota = orgSettingsMap.get(orgId)?.fileQuotaBytes ?? null;
+        if (orgQuota !== null) {
+          let orgBytes = 0;
+          for (const f of files.values()) {
+            const room = rooms.get(f.roomId);
+            if (room?.orgId === orgId && ['pending', 'uploaded', 'ready'].includes(f.status)) orgBytes += f.size;
+          }
+          if (orgBytes + size > orgQuota) return { ok: false, reason: 'org_quota' };
+        }
+      }
+      files.set(fileId, { fileId, ownerId, roomId, kind, size, sha256, status: 'pending', createdAt, completedAt: null });
+      return { ok: true };
+    },
     getFile(fileId) {
       const f = files.get(fileId);
       return f ? { ...f } : null;
@@ -239,6 +271,22 @@ export function createMemoryStore({ pinPepper }) {
       if (organizations.has(orgId)) throw new Error('organization exists');
       organizations.set(orgId, { orgId, name, status, createdBy: createdBy ?? null, createdAt });
     },
+    addOrgMemberWithAudit({ orgId, userId, role, actorId, at }) {
+      if (!ORG_ROLES.includes(role)) return { ok: false, reason: 'invalid_role' };
+      const org = organizations.get(orgId);
+      if (!org) return { ok: false, reason: 'not_found' };
+      if (org.status !== 'approved') return { ok: false, reason: 'not_approved' };
+      const members = orgMembers.get(orgId) ?? new Map();
+      const actorRole = members.get(actorId)?.role;
+      if (actorRole !== 'owner' && actorRole !== 'admin') return { ok: false, reason: 'forbidden' };
+      if (actorRole === 'admin' && role !== 'member') return { ok: false, reason: 'forbidden' };
+      if (members.has(userId)) return { ok: false, reason: 'already_member' };
+      if (!accounts.has(userId)) return { ok: false, reason: 'unknown_user' };
+      members.set(userId, { role, joinedAt: at });
+      orgMembers.set(orgId, members);
+      adminActions.push({ orgId, actor: actorId, action: 'member_add', target: userId, detail: role, at });
+      return { ok: true };
+    },
     addOrgMember(orgId, userId, role, joinedAt) {
       return addOrgMembership(orgId, userId, role, joinedAt);
     },
@@ -270,22 +318,76 @@ export function createMemoryStore({ pinPepper }) {
       return [...orgRequests.values()].filter((r) => all || r.applicantId === userId).map((r) => ({ requestId: r.requestId, applicantId: r.applicantId, name: r.name, status: r.status, createdAt: r.createdAt })).sort((a, b) => a.createdAt - b.createdAt);
     },
     addOrgRequestDocument({ docId, requestId, kind, size, sha256, objectKey, uploadedBy, createdAt }) {
+      const request = orgRequests.get(requestId);
+      if (!request || request.applicantId !== uploadedBy) return { ok: false, reason: 'not_found' };
+      if (request.status !== 'pending') return { ok: false, reason: 'already_decided' };
       orgRequestDocs.set(docId, { docId, requestId, kind, size, sha256, objectKey, uploadedBy, createdAt });
       orgRequestLog.push({ requestId, actor: uploadedBy, action: 'document', at: createdAt });
+      return { ok: true };
     },
     listOrgRequestDocuments(requestId) {
       return [...orgRequestDocs.values()].filter((x) => x.requestId === requestId).map((x) => ({ docId: x.docId, kind: x.kind, size: x.size, sha256: x.sha256, createdAt: x.createdAt })).sort((a, b) => a.createdAt - b.createdAt);
     },
     getOrgRequestDocument(docId) { const x = orgRequestDocs.get(docId); return x ? { ...x } : null; },
     decideOrgRequest({ requestId, status, decidedBy, decidedAt, orgId }) {
+      if (platformRoles.get(decidedBy) !== 'owner') return { ok: false, reason: 'forbidden' };
       const r = orgRequests.get(requestId);
+      if (!r) return { ok: false, reason: 'not_found' };
+      if (r.status !== 'pending') return { ok: false, reason: 'already_decided' };
       r.status = status; r.decidedBy = decidedBy; r.decidedAt = decidedAt; r.orgId = orgId;
       orgRequestLog.push({ requestId, actor: decidedBy, action: status === 'approved' ? 'approve' : 'reject', at: decidedAt });
+      return { ok: true };
+    },
+    approveOrgRequest({ requestId, decidedBy, decidedAt }) {
+      if (platformRoles.get(decidedBy) !== 'owner') return { ok: false, reason: 'forbidden' };
+      const r = orgRequests.get(requestId);
+      if (!r) return { ok: false, reason: 'not_found' };
+      if (r.status !== 'pending') return { ok: false, reason: 'already_decided' };
+      const orgId = `org-${requestId}`;
+      organizations.set(orgId, { orgId, name: r.name, status: 'approved', createdBy: r.applicantId, createdAt: decidedAt });
+      const members = orgMembers.get(orgId) ?? new Map();
+      members.set(r.applicantId, { role: 'owner', joinedAt: decidedAt });
+      orgMembers.set(orgId, members);
+      r.status = 'approved'; r.decidedBy = decidedBy; r.decidedAt = decidedAt; r.orgId = orgId;
+      orgRequestLog.push({ requestId, actor: decidedBy, action: 'approve', at: decidedAt });
+      return { ok: true, orgId };
     },
     logOrgRequest(requestId, actor, action, at) { orgRequestLog.push({ requestId, actor, action, at }); },
     listOrgRequestLog(requestId) { return orgRequestLog.filter((x) => x.requestId === requestId).map((x) => ({ actor: x.actor, action: x.action, at: x.at })); },
     listOrgMembers(orgId) {
       return [...(orgMembers.get(orgId) ?? new Map()).entries()].map(([userId, m]) => ({ userId, role: m.role })).sort((a, b) => a.userId.localeCompare(b.userId));
+    },
+    changeOrgMemberRole({ orgId, userId, actorId, role, at }) {
+      if (!['owner', 'admin', 'member'].includes(role)) return { ok: false, reason: 'invalid_role' };
+      if (!organizations.has(orgId)) return { ok: false, reason: 'not_found' };
+      const members = orgMembers.get(orgId) ?? new Map();
+      if (members.get(actorId)?.role !== 'owner') return { ok: false, reason: 'forbidden' };
+      const current = members.get(userId)?.role;
+      if (!current) return { ok: false, reason: 'not_found' };
+      const ownerCount = [...members.values()].filter((m) => m.role === 'owner').length;
+      if (current === 'owner' && role !== 'owner' && ownerCount <= 1) return { ok: false, reason: 'last_owner' };
+      members.get(userId).role = role;
+      adminActions.push({ orgId, actor: actorId, action: 'role_change', target: userId, detail: current + '->' + role, at });
+      return { ok: true, current };
+    },
+    removeOrgMemberWithAudit({ orgId, userId, actorId, at, leave = false }) {
+      if (!organizations.has(orgId)) return { ok: false, reason: 'not_found' };
+      const members = orgMembers.get(orgId) ?? new Map();
+      const actorRole = members.get(actorId)?.role;
+      const targetRole = members.get(userId)?.role;
+      if (!targetRole) return { ok: false, reason: leave ? 'not_member' : 'not_found' };
+      if (leave) {
+        if (actorId !== userId) return { ok: false, reason: 'forbidden' };
+      } else if (!(actorRole === 'owner' || (actorRole === 'admin' && targetRole === 'member'))) {
+        return { ok: false, reason: 'forbidden' };
+      }
+      const ownerCount = [...members.values()].filter((m) => m.role === 'owner').length;
+      if (targetRole === 'owner' && ownerCount <= 1) return { ok: false, reason: 'last_owner' };
+      if ([...rooms.values()].some((room) => room.orgId === orgId && room.owner === userId)) return { ok: false, reason: 'owns_rooms' };
+      for (const room of rooms.values()) if (room.orgId === orgId) { room.members.delete(userId); room.admins.delete(userId); }
+      members.delete(userId);
+      adminActions.push({ orgId, actor: actorId, action: leave ? 'member_leave' : 'member_remove', target: userId, detail: targetRole, at });
+      return { ok: true, targetRole };
     },
     setOrgMemberRole(orgId, userId, role) {
       const m = orgMembers.get(orgId)?.get(userId);
@@ -321,11 +423,17 @@ export function createMemoryStore({ pinPepper }) {
       return s ? { ...s } : { maxGroupMembers: null, channelsEnabled: true, fileQuotaBytes: null };
     },
     setOrgSetting({ orgId, field, value, actor, at }) {
+      if (!['maxGroupMembers', 'channelsEnabled', 'fileQuotaBytes'].includes(field)) return { ok: false, reason: 'invalid_field' };
+      if (!organizations.has(orgId)) return { ok: false, reason: 'not_found' };
+      const actorRole = orgMembers.get(orgId)?.get(actor)?.role;
+      if (!['owner', 'admin'].includes(actorRole)) return { ok: false, reason: 'forbidden' };
       const cur = { maxGroupMembers: null, channelsEnabled: true, fileQuotaBytes: null, ...(orgSettingsMap.get(orgId) ?? {}) };
       const old = cur[field];
       cur[field] = value;
       orgSettingsMap.set(orgId, cur);
       orgSettingsLog.push({ orgId, actor, field, old, new: value, at });
+      adminActions.push({ orgId, actor, action: 'setting_change', target: field, detail: JSON.stringify(value), at });
+      return { ok: true };
     },
     listOrgSettingsLog(orgId) {
       return orgSettingsLog.filter((e) => e.orgId === orgId).map((e) => ({ actor: e.actor, field: e.field, old: e.old, new: e.new, at: e.at }));
@@ -338,14 +446,22 @@ export function createMemoryStore({ pinPepper }) {
     createOrgLink({ linkId, proposingOrg, otherOrg, proposedBy, createdAt }) {
       const a = proposingOrg < otherOrg ? proposingOrg : otherOrg;
       const b = proposingOrg < otherOrg ? otherOrg : proposingOrg;
+      const orgA = organizations.get(a);
+      const orgB = organizations.get(b);
+      if (!orgA || !orgB) return { ok: false, reason: 'not_found' };
+      if (orgA.status !== 'approved' || orgB.status !== 'approved') return { ok: false, reason: 'not_approved' };
+      const actorRole = orgMembers.get(proposingOrg)?.get(proposedBy)?.role;
+      if (actorRole !== 'owner' && actorRole !== 'admin') return { ok: false, reason: 'forbidden' };
       for (const l of [...orgLinks.values()]) {
         if (l.orgA === a && l.orgB === b) {
-          if (l.status !== 'revoked') return false;
+          if (l.status !== 'revoked') return { ok: false, reason: 'already_exists' };
           orgLinks.delete(l.linkId);
         }
       }
       orgLinks.set(linkId, { linkId, orgA: a, orgB: b, status: 'proposed', proposingOrg, proposedBy, decidedBy: null, createdAt, decidedAt: null });
-      return true;
+      adminActions.push({ orgId: proposingOrg, actor: proposedBy, action: 'link_propose', target: otherOrg, detail: linkId, at: createdAt });
+      adminActions.push({ orgId: otherOrg, actor: proposedBy, action: 'link_propose', target: proposingOrg, detail: linkId, at: createdAt });
+      return { ok: true };
     },
     getOrgLink(linkId) {
       const l = orgLinks.get(linkId);
@@ -355,13 +471,31 @@ export function createMemoryStore({ pinPepper }) {
       const l = orgLinks.get(linkId);
       l.status = status; l.decidedBy = decidedBy; l.decidedAt = decidedAt;
     },
-    transitionOrgLinkStatus({ linkId, fromStatus, status, decidedBy, decidedAt }) {
+    transitionOrgLinkStatus({ linkId, fromStatus, status, decidedBy, decidedAt, orgId }) {
+      if (!organizations.has(orgId)) return { ok: false, reason: 'not_found' };
       const l = orgLinks.get(linkId);
-      if (!l || l.status !== fromStatus) return false;
+      if (!l || (l.orgA !== orgId && l.orgB !== orgId)) return { ok: false, reason: 'not_found' };
+      if (l.status !== fromStatus) return { ok: false, reason: 'state_changed' };
+      if (status === 'active' && l.proposingOrg === orgId) return { ok: false, reason: 'wrong_side' };
+      const actorRole = orgMembers.get(orgId)?.get(decidedBy)?.role;
+      if (actorRole !== 'owner' && actorRole !== 'admin') return { ok: false, reason: 'forbidden' };
       l.status = status;
       l.decidedBy = decidedBy;
       l.decidedAt = decidedAt;
-      return true;
+      if (status === 'revoked') {
+        const inOrg = (org, u) => orgMembers.get(org)?.has(u) ?? false;
+        for (const r of rooms.values()) {
+          if (r.orgId !== l.orgA && r.orgId !== l.orgB) continue;
+          const other = r.orgId === l.orgA ? l.orgB : l.orgA;
+          for (const u of [...r.members]) if (inOrg(other, u) && !inOrg(r.orgId, u)) { r.members.delete(u); r.admins.delete(u); }
+        }
+      }
+      const action = status === 'active' ? 'link_accept' : status === 'revoked' ? 'link_revoke' : null;
+      if (action) {
+        adminActions.push({ orgId: l.orgA, actor: decidedBy, action, target: l.orgB, detail: linkId, at: decidedAt });
+        adminActions.push({ orgId: l.orgB, actor: decidedBy, action, target: l.orgA, detail: linkId, at: decidedAt });
+      }
+      return { ok: true };
     },
     activeLinkBetween(x, y) {
       const a = x < y ? x : y;
@@ -394,9 +528,29 @@ export function createMemoryStore({ pinPepper }) {
       p.nickname = nickname;
       profiles.set(userId, p);
     },
-    revokeDevice(dk) {
+    revokeDevice(dk, nowMs = Date.now()) {
       const d = devices.get(dk);
-      if (d) d.revoked = true;
+      if (d) {
+        d.revoked = true;
+        for (const [hash, token] of tokens) if (token.deviceKey === dk) tokens.delete(hash);
+        for (const [hash, token] of refreshes) if (token.deviceKey === dk) refreshes.delete(hash);
+        signingKeys.delete(dk);
+        for (let i = mlsPackages.length - 1; i >= 0; i--) {
+          const item = mlsPackages[i];
+          if (item.userId === d.userId && item.deviceId === d.deviceId && item.consumedAt === null) mlsPackages.splice(i, 1);
+        }
+        for (let i = mlsWelcomes.length - 1; i >= 0; i--) {
+          const item = mlsWelcomes[i];
+          if (item.userId === d.userId && item.deviceId === d.deviceId && item.ackedAt === null) mlsWelcomes.splice(i, 1);
+        }
+        for (const [roomId, epoch] of mlsGroups) {
+          const room = rooms.get(roomId);
+          if (epoch > 0 && room?.members.has(d.userId)
+              && !deviceRemovals.some((item) => item.roomId === roomId && item.userId === d.userId && item.deviceId === d.deviceId)) {
+            deviceRemovals.push({ roomId, userId: d.userId, deviceId: d.deviceId, createdAt: nowMs, doneAt: null });
+          }
+        }
+      }
       deviceKeys.delete(dk);
       oneTimeKeys.delete(dk);
       inbox.delete(dk);
@@ -419,6 +573,26 @@ export function createMemoryStore({ pinPepper }) {
       const t = tokens.get(keyed('token', raw));
       if (!t) return 'unknown';
       return t.expiresAt > nowMs ? 'valid' : 'expired';
+    },
+    refreshTokenDevice(raw, nowMs) {
+      const t = refreshes.get(keyed('refresh', raw));
+      return t && t.usedAt === null && t.expiresAt > nowMs ? t.deviceKey : null;
+    },
+    rotateSession(raw, nowMs, accessTtlMs, refreshTtlMs) {
+      const t = refreshes.get(keyed('refresh', raw));
+      if (!t) return { state: 'unknown' };
+      const device = devices.get(t.deviceKey);
+      if (!device || device.revoked) return { state: 'revoked', deviceKey: t.deviceKey };
+      if (t.usedAt !== null) return { state: 'reused', deviceKey: t.deviceKey };
+      if (t.expiresAt <= nowMs) return { state: 'expired' };
+      const accessToken = randomBytes(16).toString('hex');
+      const refreshToken = randomBytes(16).toString('hex');
+      const accessExpiresAt = nowMs + accessTtlMs;
+      const refreshExpiresAt = nowMs + refreshTtlMs;
+      t.usedAt = nowMs;
+      tokens.set(keyed('token', accessToken), { deviceKey: t.deviceKey, expiresAt: accessExpiresAt });
+      refreshes.set(keyed('refresh', refreshToken), { deviceKey: t.deviceKey, expiresAt: refreshExpiresAt, usedAt: null });
+      return { state: 'ok', deviceKey: t.deviceKey, accessToken, accessExpiresAt, refreshToken, refreshExpiresAt };
     },
     consumeRefreshToken: (raw, nowMs) => {
       const t = refreshes.get(keyed('refresh', raw));
@@ -503,6 +677,64 @@ export function createMemoryStore({ pinPepper }) {
       const { next, result } = change(cur ? structuredClone(cur) : freshRecovery());
       recovery.set(userId, structuredClone(next));
       return result;
+    },
+    completeRecoveryAtomic(userId, { codeHash, nowMs, passwordHash, cancelCodeHash }) {
+      if (!accounts.has(userId)) return { status: 'none' };
+      const current = structuredClone(recovery.get(userId) ?? freshRecovery());
+      const checked = checkRecoveryCode(current, {
+        nowMs,
+        codeOk: !!current.reqCodeHash && current.reqCodeHash === codeHash,
+      });
+      if (checked.outcome !== 'ok') {
+        recovery.set(userId, structuredClone(checked.next));
+        return { status: checked.outcome };
+      }
+      const next = applyRecoveryCompletion(current, { nowMs, previousHash: accounts.get(userId) });
+      next.reqCodeHash = null;
+      next.reqLinkHash = null;
+      next.reqLinkConfirmed = false;
+      next.reqAttempts = 0;
+      accounts.set(userId, passwordHash);
+      recovery.set(userId, structuredClone(next));
+      recoveryCancels.set(userId, { codeHash: cancelCodeHash, expiresAt: next.windowKeyResetAt });
+      return { status: 'ok', keyResetAt: next.windowKeyResetAt };
+    },
+    finalizeRecoveryDevices(userId, nowMs) {
+      const current = recovery.get(userId) ?? freshRecovery();
+      const closed = closeWindowIfDue(current, nowMs);
+      if (closed.dueSince === null) return { dueSince: null, revoked: 0 };
+      recovery.set(userId, structuredClone(closed.next));
+      let revoked = 0;
+      for (const [deviceKey, device] of devices) {
+        if (device.userId === userId && !device.revoked && device.createdAt < closed.dueSince) {
+          this.revokeDevice(deviceKey, nowMs);
+          revoked += 1;
+        }
+      }
+      return { dueSince: closed.dueSince, revoked };
+    },
+    cancelRecoveryAtomic(userId, { nowMs, actorDeviceId = null, cancelCodeHash = null }) {
+      if (!accounts.has(userId)) return { status: 'none' };
+      const current = structuredClone(recovery.get(userId) ?? freshRecovery());
+      if (!windowOpen(current, nowMs)) return { status: 'none' };
+      if (actorDeviceId !== null) {
+        const device = devices.get(`${userId}|${actorDeviceId}`);
+        if (!device || device.revoked || device.createdAt >= current.windowStartedAt) return { status: 'forbidden' };
+      } else {
+        const saved = recoveryCancels.get(userId);
+        if (!saved || nowMs > saved.expiresAt || saved.codeHash !== cancelCodeHash) return { status: 'wrong_code' };
+      }
+      if (current.windowPreviousHash) accounts.set(userId, current.windowPreviousHash);
+      let revoked = 0;
+      for (const [deviceKey, device] of devices) {
+        if (device.userId === userId && !device.revoked && device.createdAt >= current.windowStartedAt) {
+          this.revokeDevice(deviceKey, nowMs);
+          revoked += 1;
+        }
+      }
+      recovery.set(userId, structuredClone(cancelWindow(current)));
+      recoveryCancels.delete(userId);
+      return { status: 'ok', revoked };
     },
     recoveryHashes() {
       return Object.fromEntries([...recovery]

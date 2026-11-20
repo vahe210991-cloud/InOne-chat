@@ -76,7 +76,7 @@ export function completeRecovery(r, { nowMs, previousHash, rules = RECOVERY_RULE
     ...r,
     reqStatus: 'completed',
     windowStartedAt: open ? r.windowStartedAt : r.reqStartedAt,
-    windowKeyResetAt: nowMs + rules.keyResetMs,
+    windowKeyResetAt: open ? r.windowKeyResetAt : nowMs + rules.keyResetMs,
     windowPreviousHash: open ? r.windowPreviousHash : previousHash,
     identityCheck: true,
     identityCodeHash: null,

@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, randomBytes } from 'node:crypto';
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createServer } from '../src/server.js';
@@ -47,6 +47,7 @@ test('хранилище на диске: объект называется св
     const store = createFsObjectStore(dir);
     const id = randomBytes(16).toString('hex');
     await store.put(id, Buffer.from('шифротекст'));
+    if (process.platform !== 'win32') assert.equal(statSync(dir).mode & 0o777, 0o700, 'каталог объектов закрыт от других пользователей');
     assert.deepEqual(readdirSync(dir), [id], 'на диске только идентификатор');
     assert.equal((await store.get(id)).toString('utf8'), 'шифротекст');
     await store.remove(id);
@@ -71,7 +72,7 @@ test('файл из комнаты сохраняется на диске и о�
     assert.ok(readFileSync(path.join(dir, created.fileId)).equals(bytes), 'байты на диске те же');
     const link = (await http(s.base, 'GET', `/files/${enc(created.fileId)}/url`, { token: s.bob.token })).json;
     const g = new URL(link.downloadUrl);
-    const got = await http(g.origin, 'GET', g.pathname + g.search);
+    const got = await http(g.origin, 'GET', g.pathname + g.search, { token: s.bob.token });
     assert.equal(got.status, 200);
     assert.ok(got.buffer.equals(bytes), 'участник получает те же байты');
   } finally {

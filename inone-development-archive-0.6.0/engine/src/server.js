@@ -1,6 +1,6 @@
 // ============================================================================
-// ВРЕМЕННЫЙ сервер для проверки протокола. Всё хранится в памяти.
-// Для продакшена нужны PostgreSQL, TLS, настоящая почта и SMS, журналирование.
+// HTTP/API слой InOne. Постоянное хранилище передаётся через store из src/main.js.
+// createMemoryStore оставлен только для тестов и локальной разработки; production запускается через main.js.
 //
 // Что проверяется здесь:
 //  - вход по паролю; токен привязан к устройству;
@@ -27,7 +27,7 @@ import { readFileSync } from 'node:fs';
 import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, randomInt, randomUUID, scryptSync, timingSafeEqual, createPublicKey, createVerify } from 'node:crypto';
 import { createMemoryStore } from './store-memory.js';
 import { LOGIN_POLICY } from './login-throttle.js';
-import { windowOpen, requestCode, confirmLink, checkCode, completeRecovery, cancelWindow, issueIdentity, checkIdentity, closeWindowIfDue } from './recovery-rules.js';
+import { windowOpen, requestCode, confirmLink, issueIdentity, checkIdentity } from './recovery-rules.js';
 import { createMemorySms } from './sms.js';
 import { isPhone, requestPhoneCode, checkPhoneCode } from './phone-rules.js';
 import { normalizePhone } from './phone-international.js';
@@ -135,7 +135,7 @@ const TEST_UI_FILES = {
   'common/state.mjs': { dir: 'client-screens', name: 'common/state.mjs', type: 'text/javascript; charset=utf-8' },
   'common/device.mjs': { dir: 'client-screens', name: 'common/device.mjs', type: 'text/javascript; charset=utf-8' },
 };
-export function createServer({ pinPepper, mailer: externalMailer, store, trustProxy = false, sms, requirePhone = false, registrationMode = 'verified', sessionTtl = {}, objectStore, objectSecret = randomBytes(32).toString('hex'), filesDir = null, quotaBytes = null, pushSender = null, docsSecret = null, defaultOrgAutoJoin = false, testUi = false, providers = {}, providerKeysSource = null, publicUrl = 'https://inone.test', rateLimits = {}, bodyLimit = 4 * 1024 * 1024, logger = null, wireLogLimit = 2000, smsEnabled = true, phoneBlockedCountries = [], phoneAllowedCountries = [], devEmailCode = '' } = {}) {
+export function createServer({ pinPepper, mailer: externalMailer, store, trustProxy = false, sms, requirePhone = false, registrationMode = 'verified', sessionTtl = {}, objectStore, objectSecret = randomBytes(32).toString('hex'), filesDir = null, quotaBytes = null, pushSender = null, docsSecret = null, defaultOrgAutoJoin = false, testUi = false, providers = {}, providerKeysSource = null, publicUrl = 'https://inone.test', fileBaseUrl = null, rateLimits = {}, bodyLimit = 4 * 1024 * 1024, logger = null, wireLogLimit = 2000, smsEnabled = true, phoneBlockedCountries = [], phoneAllowedCountries = [], devEmailCode = '' } = {}) {
   // Аккаунты и PIN: в базе (store.js) или в памяти по умолчанию (store-memory.js).
   const storage = store ?? createMemoryStore({ pinPepper });
   // SMS-поставщик подключается снаружи; по умолчанию сообщения складываются в список (для тестов).
@@ -214,10 +214,8 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
     if (backup) await mailTo(backup.email, subject, text);
   };
   const revokeDevice = async (rec) => {
-    await storage.revokeDevice(key(rec.userId, rec.deviceId));
-    // Отозванное устройство больше не выдаётся как получатель ключевых пакетов и приветствий.
-    await storage.mlsDropDevicePackages(rec.userId, rec.deviceId);
-    await storage.mlsRecordDeviceRemovals(rec.userId, rec.deviceId, now());
+    // Credential revocation, pending MLS cleanup and group-removal markers are one store transaction.
+    await storage.revokeDevice(key(rec.userId, rec.deviceId), now());
   };
   // Код восстановления хранится только как ключевой хэш; сам код есть лишь в письме (C-08).
   const recoveryCodeHash = (userId, code) => keyedHash(pinPepper, `recovery:${userId}`, code);
@@ -332,16 +330,9 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
   // Через 48 часов после восстановления старые устройства отключаются, если их не отменили (D5, D8).
   // Окно хранится в базе: переживает перезапуск сервера.
   const finalizeRecoveryIfDue = async (userId) => {
-    const current = await storage.recoveryGet(userId);
-    if (current.windowKeyResetAt === null || now() < current.windowKeyResetAt) return;
-    const dueSince = await storage.recoveryUpdate(userId, (r) => {
-      const out = closeWindowIfDue(r, now());
-      return { next: out.next, result: out.dueSince };
-    });
-    if (dueSince === null) return;
-    for (const rec of await storage.devicesOfUser(userId)) {
-      if (!rec.revoked && rec.createdAt < dueSince) await revokeDevice(rec);
-    }
+    if (!userId) return;
+    const result = await storage.finalizeRecoveryDevices(userId, now());
+    if (result.dueSince === null) return;
     await mail(userId, 'Старые устройства отключены', 'Прошло 48 часов после восстановления. Устройства, существовавшие до восстановления, отключены.');
   };
   const authed = async (req) => {
@@ -415,18 +406,30 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
     const STALE_UPLOAD_MS = 24 * 3600_000;
     const signFor = (action, fileId, expires, size = '', sha = '') =>
       createHmac('sha256', objectSecret).update(`${action}|${fileId}|${expires}|${size}|${sha}`).digest('hex');
+    // Download URLs are bound to the exact authenticated account and device.
+    // The live access token is still required on every GET, so revocation takes effect immediately.
+    const signDownloadFor = (fileId, expires, userId, deviceId) =>
+      createHmac('sha256', objectSecret).update(`GET|${fileId}|${expires}|${userId}|${deviceId}`).digest('hex');
     const sameSig = (a, b) => {
       const x = Buffer.from(String(a));
       const y = Buffer.from(String(b));
       return x.length === y.length && timingSafeEqual(x, y);
     };
-    const absoluteUrl = (req, path) => `${req.socket.encrypted ? 'https' : 'http'}://${req.headers.host}${path}`;
+    // Signed object URLs must use the configured public origin, never the untrusted Host header.
+    // The fallback is retained only for direct in-memory test/development servers.
+    const absoluteUrl = (req, path) => fileBaseUrl
+      ? new URL(path, fileBaseUrl).toString()
+      : `${req.socket.encrypted ? 'https' : 'http'}://${req.headers.host}${path}`;
 
     async function handleObjectRequest(req, res) {
       const url = new URL(req.url, 'http://localhost');
       const fileId = decodeURIComponent(url.pathname.slice('/objects/'.length));
       const expires = Number(url.searchParams.get('expires'));
       const sig = url.searchParams.get('sig') ?? '';
+      // Authenticate before looking up the object so anonymous callers cannot
+      // distinguish existing file IDs from missing ones.
+      const downloadSession = req.method === 'GET' ? await authed(req) : null;
+      if (req.method === 'GET' && !downloadSession) return send(res, 401, { error: 'unauthorized' });
       const file = await storage.getFile(fileId);
       if (!file) return send(res, 404, { error: 'not found' });
       if (req.method === 'PUT') {
@@ -456,7 +459,18 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         return send(res, 200, { uploaded: true });
       }
       if (req.method === 'GET') {
-        if (!expires || now() > expires || !sameSig(sig, signFor('GET', fileId, expires))) return send(res, 403, { error: 'download link is invalid or expired' });
+        // A signed URL alone is not an authorization grant. Re-authenticate the active
+        // device and re-check current room membership on every download request.
+        const d = downloadSession;
+        if (!expires || now() > expires || !sameSig(sig, signDownloadFor(fileId, expires, d.userId, d.deviceId))) {
+          return send(res, 403, { error: 'download link is invalid, expired, or bound to another device' });
+        }
+        if (file.roomId) {
+          const room = await storage.getRoom(file.roomId);
+          if (!room || !room.members.includes(d.userId)) return send(res, 403, { error: 'not a member' });
+        } else if (file.ownerId !== d.userId) {
+          return send(res, 403, { error: 'not the owner' });
+        }
         if (file.status !== 'ready') return send(res, 404, { error: 'not ready' });
         const bytes = await objectStore.get(fileId);
         if (!bytes) return send(res, 404, { error: 'not found' });
@@ -1105,18 +1119,27 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         return send(res, 200, { ok: true, deviceId: match.deviceId });
       }
       if (req.method === 'POST' && p === '/token/refresh') {
-  const raw = typeof body.refreshToken === 'string' ? body.refreshToken : '';
-  const r = raw ? await storage.consumeRefreshToken(raw, now()) : { state: 'unknown' };
-  if (r.state === 'ok') {
-    let rec = await storage.deviceRecord(r.deviceKey);
-    if (rec) {
-      await finalizeRecoveryIfDue(rec.userId);
-      rec = await storage.deviceRecord(r.deviceKey);
-    }
-    if (!rec || rec.revoked) return send(res, 401, { error: 'device revoked', code: 'device_revoked' });
-    return send(res, 200, sessionBody(await issueSession(r.deviceKey), rec.deviceId));
-  }
-  if (r.state === 'reused') {
+        const raw = typeof body.refreshToken === 'string' ? body.refreshToken : '';
+        // Complete recovery actions before consuming the refresh token. The store then
+        // rotates both tokens atomically and rechecks device revocation under a row lock.
+        const deviceKey = raw ? await storage.refreshTokenDevice(raw, now()) : null;
+        if (deviceKey) {
+          const before = await storage.deviceRecord(deviceKey);
+          if (before) await finalizeRecoveryIfDue(before.userId);
+        }
+        const r = raw
+          ? await storage.rotateSession(raw, now(), ACCESS_TTL_MS, REFRESH_TTL_MS)
+          : { state: 'unknown' };
+        if (r.state === 'ok') {
+          const rec = await storage.deviceRecord(r.deviceKey);
+          if (!rec || rec.revoked) {
+            await storage.endSession(r.deviceKey);
+            return send(res, 401, { error: 'device revoked', code: 'device_revoked' });
+          }
+          return send(res, 200, sessionBody(r, rec.deviceId));
+        }
+        if (r.state === 'revoked') return send(res, 401, { error: 'device revoked', code: 'device_revoked' });
+        if (r.state === 'reused') {
     // Повтор старого токена обновления: сессия устройства отзывается целиком, событие уходит в журнал.
     const rec = await storage.deviceRecord(r.deviceKey);
     if (rec) await revokeDevice(rec);
@@ -1149,16 +1172,20 @@ if (req.method === 'POST' && p === '/files') {
     if (!r.members.includes(d.userId)) return send(res, 403, { error: 'not a member' });
     if (!hasCapability(r, d.userId, 'send_messages')) return send(res, 403, { error: 'missing capability: send_messages' });
   } else if (kind !== 'avatar') return send(res, 400, { error: 'roomId is required for this kind' });
-  if ((await storage.countPendingFiles(d.userId)) >= PENDING_LIMIT) return send(res, 429, { error: 'too many unfinished uploads' });
-  // Квота по объёму: механизм есть; значение задаёт владелец (по умолчанию не задано).
-  if (quotaBytes !== null && (await storage.bytesForOwner(d.userId)) + size > quotaBytes) return send(res, 413, { error: 'storage quota exceeded' });
-  if (forRoom !== undefined) {
-    const fileOrg = await storage.roomOrg(forRoom);
-    const orgQuota = (await storage.orgSettings(fileOrg)).fileQuotaBytes;
-    if (orgQuota !== null && (await storage.bytesForOrg(fileOrg)) + size > orgQuota) return send(res, 413, { error: 'organization storage quota exceeded', code: 'org_quota_exceeded' });
-  }
   const fileId = randomBytes(16).toString('hex');
-  await storage.createFile({ fileId, ownerId: d.userId, roomId: forRoom ?? null, kind, size, sha256: digest, createdAt: now() });
+  const reserved = await storage.reserveFile({
+    fileId, ownerId: d.userId, roomId: forRoom ?? null, kind, size, sha256: digest,
+    createdAt: now(), pendingLimit: PENDING_LIMIT, quotaBytes,
+  });
+  if (!reserved.ok) {
+    if (reserved.reason === 'pending_limit') return send(res, 429, { error: 'too many unfinished uploads' });
+    if (reserved.reason === 'owner_quota') return send(res, 413, { error: 'storage quota exceeded' });
+    if (reserved.reason === 'org_quota') return send(res, 413, { error: 'organization storage quota exceeded', code: 'org_quota_exceeded' });
+    if (reserved.reason === 'membership') return send(res, 403, { error: 'not a member' });
+    if (reserved.reason === 'capability') return send(res, 403, { error: 'missing capability: send_messages' });
+    if (reserved.reason === 'room') return send(res, 404, { error: 'room not found' });
+    return send(res, 404, { error: 'owner not found' });
+  }
   const expires = now() + UPLOAD_TTL_MS;
   const path = `/objects/${fileId}?expires=${expires}&sig=${signFor('PUT', fileId, expires, size, digest)}`;
   return send(res, 200, { fileId, uploadUrl: absoluteUrl(req, path), method: 'PUT', headers: { 'content-length': String(size) }, expiresAt: new Date(expires).toISOString() });
@@ -1186,7 +1213,8 @@ if (req.method === 'GET' && fileLink) {
   } else if (f.ownerId !== d.userId) return send(res, 403, { error: 'not the owner' });
   if (f.status !== 'ready') return send(res, 409, { error: 'file is not ready' });
   const expires = now() + DOWNLOAD_TTL_MS;
-  return send(res, 200, { downloadUrl: absoluteUrl(req, `/objects/${fileId}?expires=${expires}&sig=${signFor('GET', fileId, expires)}`), expiresAt: new Date(expires).toISOString() });
+  const signature = signDownloadFor(fileId, expires, d.userId, d.deviceId);
+  return send(res, 200, { downloadUrl: absoluteUrl(req, `/objects/${fileId}?expires=${expires}&sig=${signature}`), expiresAt: new Date(expires).toISOString() });
 }
 if (req.method === 'GET' && p === '/devices/mine') {
   const d = await authed(req);
@@ -1271,7 +1299,17 @@ if (req.method === 'POST' && orgReqDocs) {
   if (!docsKey) return send(res, 503, { error: 'document storage is not configured' });
   const objectKey = randomBytes(16).toString('hex');
   await objectStore.put(objectKey, encryptDoc(content));
-  await storage.addOrgRequestDocument({ docId, requestId, kind, size: content.length, sha256: createHash('sha256').update(content).digest('hex'), objectKey, uploadedBy: d.userId, createdAt: now() });
+  try {
+    const saved = await storage.addOrgRequestDocument({ docId, requestId, kind, size: content.length, sha256: createHash('sha256').update(content).digest('hex'), objectKey, uploadedBy: d.userId, createdAt: now() });
+    if (!saved.ok) {
+      await objectStore.remove(objectKey).catch(() => {});
+      if (saved.reason === 'already_decided') return send(res, 409, { error: 'request is already decided' });
+      return send(res, 404, { error: 'not found' });
+    }
+  } catch (error) {
+    await objectStore.remove(objectKey).catch(() => {});
+    throw error;
+  }
   return send(res, 200, { docId, kind, size: content.length });
 }
 if (req.method === 'GET' && orgReqDoc) {
@@ -1303,14 +1341,21 @@ if (req.method === 'POST' && orgReqDecision) {
   if (r.status !== 'pending') return send(res, 409, { error: 'request is already decided' });
   if (body.decision !== 'approve' && body.decision !== 'reject') return send(res, 400, { error: 'decision must be approve or reject' });
   if (body.decision === 'reject') {
-    await storage.decideOrgRequest({ requestId, status: 'rejected', decidedBy: d.userId, decidedAt: now(), orgId: null });
+    const rejected = await storage.decideOrgRequest({ requestId, status: 'rejected', decidedBy: d.userId, decidedAt: now(), orgId: null });
+    if (!rejected.ok) {
+      if (rejected.reason === 'forbidden') return send(res, 403, { error: 'only the platform owner decides', code: 'not_platform_owner' });
+      if (rejected.reason === 'not_found') return send(res, 404, { error: 'not found' });
+      return send(res, 409, { error: 'request was already decided' });
+    }
     return send(res, 200, { status: 'rejected' });
   }
-  const orgId = `org-${requestId}`;
-  await storage.createOrganization({ orgId, name: r.name, status: 'approved', createdBy: r.applicantId, createdAt: now() });
-  await storage.addOrgMember(orgId, r.applicantId, 'owner', now());
-  await storage.decideOrgRequest({ requestId, status: 'approved', decidedBy: d.userId, decidedAt: now(), orgId });
-  return send(res, 200, { status: 'approved', orgId });
+  const approved = await storage.approveOrgRequest({ requestId, decidedBy: d.userId, decidedAt: now() });
+  if (!approved.ok) {
+    if (approved.reason === 'forbidden') return send(res, 403, { error: 'only the platform owner decides', code: 'not_platform_owner' });
+    if (approved.reason === 'not_found') return send(res, 404, { error: 'not found' });
+    return send(res, 409, { error: 'request was already decided' });
+  }
+  return send(res, 200, { status: 'approved', orgId: approved.orgId });
 }
 // Управление организацией (шаг 5.4). Роли: владелец, администратор, участник. Владелец меняет роли;
 // владелец и администратор добавляют и удаляют участников (администратор — только обычных); выход снимает доступ к комнатам организации.
@@ -1329,19 +1374,18 @@ if (req.method === 'POST' && orgMembersRoute) {
   const d = await authed(req);
   if (!d) return send(res, 401, { error: 'unauthorized' });
   const orgId = decodeURIComponent(orgMembersRoute[1]);
-  const status = await storage.orgStatus(orgId);
-  if (status === null) return send(res, 404, { error: 'not found' });
-  if (status !== 'approved') return send(res, 403, { error: 'organization is not approved', code: 'org_not_approved' });
-  const myRole = await storage.orgRoleOf(orgId, d.userId);
-  if (myRole !== 'owner' && myRole !== 'admin') return send(res, 403, { error: 'only owners and admins add members', code: 'org_role_required' });
   const userId = typeof body.userId === 'string' ? body.userId : '';
   const role = typeof body.role === 'string' ? body.role : 'member';
   if (!['owner', 'admin', 'member'].includes(role)) return send(res, 400, { error: 'role must be owner, admin or member' });
-  if (myRole === 'admin' && role !== 'member') return send(res, 403, { error: 'admins add only members', code: 'org_role_required' });
-  if (!(await storage.hasAccount(userId))) return send(res, 404, { error: 'unknown user' });
-  if (await storage.orgRoleOf(orgId, userId)) return send(res, 409, { error: 'already a member' });
-  await storage.addOrgMember(orgId, userId, role, now());
-  await storage.logAdminAction({ orgId, actor: d.userId, action: 'member_add', target: userId, detail: role, at: now() });
+  const added = await storage.addOrgMemberWithAudit({ orgId, userId, role, actorId: d.userId, at: now() });
+  if (!added.ok) {
+    if (added.reason === 'not_found') return send(res, 404, { error: 'organization not found' });
+    if (added.reason === 'not_approved') return send(res, 403, { error: 'organization is not approved', code: 'org_not_approved' });
+    if (added.reason === 'unknown_user') return send(res, 404, { error: 'unknown user' });
+    if (added.reason === 'already_member') return send(res, 409, { error: 'already a member' });
+    if (added.reason === 'invalid_role') return send(res, 400, { error: 'role must be owner, admin or member' });
+    return send(res, 403, { error: 'org role required to add this member', code: 'org_role_required' });
+  }
   return send(res, 200, { userId, role });
 }
 if (req.method === 'POST' && orgRoleRoute) {
@@ -1349,14 +1393,15 @@ if (req.method === 'POST' && orgRoleRoute) {
   if (!d) return send(res, 401, { error: 'unauthorized' });
   const orgId = decodeURIComponent(orgRoleRoute[1]);
   const userId = decodeURIComponent(orgRoleRoute[2]);
-  if ((await storage.orgRoleOf(orgId, d.userId)) !== 'owner') return send(res, 403, { error: 'only owners change roles', code: 'org_role_required' });
   const role = body.role;
   if (!['owner', 'admin', 'member'].includes(role)) return send(res, 400, { error: 'role must be owner, admin or member' });
-  const current = await storage.orgRoleOf(orgId, userId);
-  if (!current) return send(res, 404, { error: 'not found' });
-  if (current === 'owner' && role !== 'owner' && (await storage.countOrgOwners(orgId)) <= 1) return send(res, 409, { error: 'the last owner cannot be demoted', code: 'last_owner' });
-  await storage.setOrgMemberRole(orgId, userId, role);
-  await storage.logAdminAction({ orgId, actor: d.userId, action: 'role_change', target: userId, detail: current + '->' + role, at: now() });
+  const changed = await storage.changeOrgMemberRole({ orgId, userId, actorId: d.userId, role, at: now() });
+  if (!changed.ok) {
+    if (changed.reason === 'not_found') return send(res, 404, { error: 'organization or member not found' });
+    if (changed.reason === 'last_owner') return send(res, 409, { error: 'the last owner cannot be demoted', code: 'last_owner' });
+    if (changed.reason === 'forbidden') return send(res, 403, { error: 'only owners change roles', code: 'org_role_required' });
+    return send(res, 400, { error: 'invalid role' });
+  }
   return send(res, 200, { userId, role });
 }
 if (req.method === 'DELETE' && orgMemberRoute) {
@@ -1365,26 +1410,26 @@ if (req.method === 'DELETE' && orgMemberRoute) {
   const orgId = decodeURIComponent(orgMemberRoute[1]);
   const userId = decodeURIComponent(orgMemberRoute[2]);
   if (userId === d.userId) return send(res, 400, { error: 'use leave to leave the organization' });
-  const myRole = await storage.orgRoleOf(orgId, d.userId);
-  const targetRole = await storage.orgRoleOf(orgId, userId);
-  if (!targetRole) return send(res, 404, { error: 'not found' });
-  if (myRole !== 'owner' && !(myRole === 'admin' && targetRole === 'member')) return send(res, 403, { error: 'org role required to remove this member', code: 'org_role_required' });
-  if (targetRole === 'owner' && (await storage.countOrgOwners(orgId)) <= 1) return send(res, 409, { error: 'the last owner cannot be removed', code: 'last_owner' });
-  if ((await storage.countOwnedRoomsInOrg(orgId, userId)) > 0) return send(res, 409, { error: 'transfer ownership of the rooms first', code: 'owns_rooms' });
-  await storage.removeOrgMember(orgId, userId);
-  await storage.logAdminAction({ orgId, actor: d.userId, action: 'member_remove', target: userId, detail: targetRole, at: now() });
+  const removed = await storage.removeOrgMemberWithAudit({ orgId, userId, actorId: d.userId, at: now() });
+  if (!removed.ok) {
+    if (removed.reason === 'not_found') return send(res, 404, { error: 'not found' });
+    if (removed.reason === 'last_owner') return send(res, 409, { error: 'the last owner cannot be removed', code: 'last_owner' });
+    if (removed.reason === 'owns_rooms') return send(res, 409, { error: 'transfer ownership of the rooms first', code: 'owns_rooms' });
+    return send(res, 403, { error: 'org role required to remove this member', code: 'org_role_required' });
+  }
   return send(res, 200, { removed: true });
 }
 if (req.method === 'POST' && orgLeaveRoute) {
   const d = await authed(req);
   if (!d) return send(res, 401, { error: 'unauthorized' });
   const orgId = decodeURIComponent(orgLeaveRoute[1]);
-  const myRole = await storage.orgRoleOf(orgId, d.userId);
-  if (!myRole) return send(res, 404, { error: 'not found' });
-  if (myRole === 'owner' && (await storage.countOrgOwners(orgId)) <= 1) return send(res, 409, { error: 'the last owner cannot leave', code: 'last_owner' });
-  if ((await storage.countOwnedRoomsInOrg(orgId, d.userId)) > 0) return send(res, 409, { error: 'transfer ownership of the rooms first', code: 'owns_rooms' });
-  await storage.removeOrgMember(orgId, d.userId);
-  await storage.logAdminAction({ orgId, actor: d.userId, action: 'member_leave', target: d.userId, detail: myRole, at: now() });
+  const left = await storage.removeOrgMemberWithAudit({ orgId, userId: d.userId, actorId: d.userId, at: now(), leave: true });
+  if (!left.ok) {
+    if (left.reason === 'not_found' || left.reason === 'not_member') return send(res, 404, { error: 'not found' });
+    if (left.reason === 'last_owner') return send(res, 409, { error: 'the last owner cannot leave', code: 'last_owner' });
+    if (left.reason === 'owns_rooms') return send(res, 409, { error: 'transfer ownership of the rooms first', code: 'owns_rooms' });
+    return send(res, 403, { error: 'cannot leave this organization' });
+  }
   return send(res, 200, { left: true });
 }
 // Настройки организации (шаг 5.5): меняют владелец и администратор; каждое изменение пишется в журнал.
@@ -1414,8 +1459,11 @@ if (req.method === 'POST' && orgSettingsRoute) {
   if (field === 'maxGroupMembers' && value !== null && (!Number.isInteger(value) || value < 2 || value > globalMax)) return send(res, 400, { error: `maxGroupMembers must be 2..${globalMax} or null` });
   if (field === 'channelsEnabled' && typeof value !== 'boolean') return send(res, 400, { error: 'channelsEnabled must be true or false' });
   if (field === 'fileQuotaBytes' && value !== null && (!Number.isInteger(value) || value < 1)) return send(res, 400, { error: 'fileQuotaBytes must be a positive integer or null' });
-  await storage.setOrgSetting({ orgId, field, value, actor: d.userId, at: now() });
-  await storage.logAdminAction({ orgId, actor: d.userId, action: 'setting_change', target: field, detail: JSON.stringify(value), at: now() });
+  const updated = await storage.setOrgSetting({ orgId, field, value, actor: d.userId, at: now() });
+  if (!updated.ok) {
+    if (updated.reason === 'not_found') return send(res, 404, { error: 'not found' });
+    return send(res, 403, { error: 'only owners and admins change settings', code: 'org_role_required' });
+  }
   return send(res, 200, { settings: await storage.orgSettings(orgId) });
 }
 if (req.method === 'GET' && orgSettingsLogRoute) {
@@ -1448,9 +1496,12 @@ if (req.method === 'POST' && orgLinksRoute) {
   if ((await storage.orgStatus(orgId)) !== 'approved' || (await storage.orgStatus(target)) !== 'approved') return send(res, 403, { error: 'both organizations must be approved', code: 'org_not_approved' });
   const linkId = randomBytes(12).toString('hex');
   const created = await storage.createOrgLink({ linkId, proposingOrg: orgId, otherOrg: target, proposedBy: d.userId, createdAt: now() });
-  if (!created) return send(res, 409, { error: 'a link already exists', code: 'link_exists' });
-  await storage.logAdminAction({ orgId, actor: d.userId, action: 'link_propose', target, detail: linkId, at: now() });
-  await storage.logAdminAction({ orgId: target, actor: d.userId, action: 'link_propose', target: orgId, detail: linkId, at: now() });
+  if (!created.ok) {
+    if (created.reason === 'already_exists') return send(res, 409, { error: 'a link already exists', code: 'link_exists' });
+    if (created.reason === 'not_found') return send(res, 404, { error: 'organization not found' });
+    if (created.reason === 'not_approved') return send(res, 403, { error: 'both organizations must be approved', code: 'org_not_approved' });
+    return send(res, 403, { error: 'only owners and admins propose links', code: 'org_role_required' });
+  }
   return send(res, 200, { linkId, status: 'proposed' });
 }
 if (req.method === 'POST' && orgLinkActRoute) {
@@ -1467,22 +1518,25 @@ if (req.method === 'POST' && orgLinkActRoute) {
     if (link.status !== 'proposed') return send(res, 409, { error: 'link is not waiting for acceptance' });
     if (link.proposingOrg === orgId) return send(res, 403, { error: 'the proposing side cannot accept its own link', code: 'link_own_side' });
     const transitioned = await storage.transitionOrgLinkStatus({
-      linkId, fromStatus: 'proposed', status: 'active', decidedBy: d.userId, decidedAt: now(),
+      linkId, orgId, fromStatus: 'proposed', status: 'active', decidedBy: d.userId, decidedAt: now(),
     });
-    if (!transitioned) return send(res, 409, { error: 'link is not waiting for acceptance' });
-    await storage.logAdminAction({ orgId, actor: d.userId, action: 'link_accept', target: link.proposingOrg, detail: linkId, at: now() });
-    await storage.logAdminAction({ orgId: link.proposingOrg, actor: d.userId, action: 'link_accept', target: orgId, detail: linkId, at: now() });
+    if (!transitioned.ok) {
+      if (transitioned.reason === 'forbidden') return send(res, 403, { error: 'only owners and admins decide links', code: 'org_role_required' });
+      if (transitioned.reason === 'not_found') return send(res, 404, { error: 'not found' });
+      if (transitioned.reason === 'wrong_side') return send(res, 403, { error: 'the proposing side cannot accept its own link', code: 'link_own_side' });
+      return send(res, 409, { error: 'link is not waiting for acceptance' });
+    }
     return send(res, 200, { status: 'active' });
   }
   if (link.status === 'revoked') return send(res, 409, { error: 'link is already revoked' });
-  const other = link.orgA === orgId ? link.orgB : link.orgA;
   const transitioned = await storage.transitionOrgLinkStatus({
-    linkId, fromStatus: link.status, status: 'revoked', decidedBy: d.userId, decidedAt: now(),
+    linkId, orgId, fromStatus: link.status, status: 'revoked', decidedBy: d.userId, decidedAt: now(),
   });
-  if (!transitioned) return send(res, 409, { error: 'link state changed; reload and retry' });
-  await storage.removeCrossOrgMemberships(orgId, other);
-  await storage.logAdminAction({ orgId, actor: d.userId, action: 'link_revoke', target: other, detail: linkId, at: now() });
-  await storage.logAdminAction({ orgId: other, actor: d.userId, action: 'link_revoke', target: orgId, detail: linkId, at: now() });
+  if (!transitioned.ok) {
+    if (transitioned.reason === 'forbidden') return send(res, 403, { error: 'only owners and admins decide links', code: 'org_role_required' });
+    if (transitioned.reason === 'not_found') return send(res, 404, { error: 'not found' });
+    return send(res, 409, { error: 'link state changed; reload and retry' });
+  }
   return send(res, 200, { status: 'revoked' });
 }
 // Журнал действий администраторов (шаг 5.7): читают владелец и администратор организации. Содержимое комнат сюда не попадает.
@@ -1553,6 +1607,12 @@ if (req.method === 'POST' && p === '/login') {
         }
         if (!existing && rec.identityCheck) {
           if (identityCode === undefined) {
+            // Repeated login requests must not bypass the five-attempt code lock by
+            // issuing unlimited fresh six-digit identity codes.
+            const identityRate = await checkRate('identityCodePerAccount', userId);
+            if (!identityRate.allowed) {
+              return send(res, 429, { error: 'too many identity codes, try later', retryAt: new Date(identityRate.retryAt).toISOString() });
+            }
             const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
             await storage.recoveryUpdate(userId, (r) => ({ next: issueIdentity(r, { codeHash: identityCodeHash(userId, code) }), result: null }));
             await mail(userId, 'Подтверждение входа после восстановления',
@@ -2725,23 +2785,15 @@ if (req.method === 'POST' && p === '/login') {
       }
 
       if (req.method === 'POST' && p === '/recovery/cancel-by-code') {
-        // Отмена восстановления кодом из письма: нужна, если устройств для отмены нет (решение владельца).
         const email = normalizeEmail(body.email);
         const perEmail = await checkRate('recoveryCancelPerEmail', email);
         if (!perEmail.allowed) return send(res, 429, { error: 'too many attempts, try later' });
         const userId = await storage.userIdByEmail(email);
-        const r = userId ? await storage.recoveryGet(userId) : null;
-        const saved = userId ? await storage.recoveryCancelGet(userId) : null;
         const code = typeof body.code === 'string' ? body.code : '';
-        const ok = !!r && windowOpen(r, now()) && !!saved && now() <= saved.expiresAt && sameHex(recoveryCancelHash(userId, code), saved.codeHash);
-        if (!ok) return send(res, 403, { error: 'wrong code' });
-        // Вернуть прежний пароль и отключить устройства, появившиеся после запроса. PIN не меняется.
-        if (r.windowPreviousHash) await storage.setPasswordHash(userId, r.windowPreviousHash);
-        for (const rec of await storage.devicesOfUser(userId)) {
-          if (!rec.revoked && rec.createdAt >= r.windowStartedAt) await revokeDevice(rec);
-        }
-        await storage.recoveryUpdate(userId, (cur) => ({ next: cancelWindow(cur), result: null }));
-        await storage.recoveryCancelClear(userId);
+        const result = userId
+          ? await storage.cancelRecoveryAtomic(userId, { nowMs: now(), cancelCodeHash: recoveryCancelHash(userId, code) })
+          : { status: 'wrong_code' };
+        if (result.status !== 'ok') return send(res, 403, { error: 'wrong code' });
         await mail(userId, 'Восстановление отменено', 'Восстановление отменено кодом отмены. Прежний пароль возвращён.');
         await alertDevices(userId, { kind: 'recovery_cancelled' });
         return send(res, 200, { ok: true });
@@ -2749,16 +2801,9 @@ if (req.method === 'POST' && p === '/login') {
       if (req.method === 'POST' && p === '/recovery/cancel') {
         const d = await authed(req);
         if (!d) return send(res, 401, { error: 'unauthorized' });
-        const r = await storage.recoveryGet(d.userId);
-        if (!windowOpen(r, now())) return send(res, 404, { error: 'no active recovery' });
-        // Отменить могут только устройства, существовавшие до запроса восстановления (D8).
-        if (!(d.createdAt < r.windowStartedAt)) return send(res, 403, { error: 'only devices that existed before the recovery can cancel' });
-        // Вернуть прежний пароль и отключить устройства, появившиеся после запроса. PIN не меняется.
-        if (r.windowPreviousHash) await storage.setPasswordHash(d.userId, r.windowPreviousHash);
-        for (const rec of await storage.devicesOfUser(d.userId)) {
-          if (!rec.revoked && rec.createdAt >= r.windowStartedAt) await revokeDevice(rec);
-        }
-        await storage.recoveryUpdate(d.userId, (cur) => ({ next: cancelWindow(cur), result: null }));
+        const result = await storage.cancelRecoveryAtomic(d.userId, { nowMs: now(), actorDeviceId: d.deviceId });
+        if (result.status === 'none') return send(res, 404, { error: 'no active recovery' });
+        if (result.status === 'forbidden') return send(res, 403, { error: 'only devices that existed before the recovery can cancel' });
         await mail(d.userId, 'Восстановление отменено',
           'Восстановление отменено с устройства, которое существовало до запроса. Прежний пароль возвращён.');
         await alertDevices(d.userId, { kind: 'recovery_cancelled' });
@@ -2767,46 +2812,38 @@ if (req.method === 'POST' && p === '/login') {
 
       if (req.method === 'POST' && p === '/recovery/complete') {
         const { code, pin, newPassword } = body;
-        // Восстановление по почте: адрес вместо идентификатора (без входа идентификатора не знают).
         const userId = body.userId ?? (typeof body.email === 'string' ? await storage.userIdByEmail(normalizeEmail(body.email)) : null);
+        if (!userId || !(await storage.hasAccount(userId))) return send(res, 404, { error: 'no active recovery' });
+        const perAddress = await checkRate('recoveryCompletePerAddress', clientIp(req));
+        const perAccount = await checkRate('recoveryCompletePerAccount', userId);
+        if (!perAddress.allowed || !perAccount.allowed) return send(res, 429, { error: 'too many recovery completion attempts, try later' });
         if ((await storage.providerLinksOf(userId)).length > 0) return send(res, 409, { error: 'password recovery is disabled for accounts linked to Google or Apple' });
-        const check = await storage.recoveryUpdate(userId, (r) => {
-          const out = checkCode(r, {
-            nowMs: now(),
-            codeOk: typeof code === 'string' && !!r.reqCodeHash && sameHex(recoveryCodeHash(userId, code), r.reqCodeHash),
-          });
-          return { next: out.next, result: out.outcome };
-        });
-        if (check === 'none') return send(res, 404, { error: 'no active recovery' });
-        if (check === 'expired') return send(res, 410, { error: 'recovery expired' });
-        if (check === 'unconfirmed') return send(res, 403, { error: 'confirm the link from the email first' });
-        if (check === 'wrong' || check === 'locked') {
-          if (check === 'locked') await alertDevices(userId, { kind: 'recovery_locked' });
-          return send(res, 403, { error: 'wrong code' });
-        }
-        if (await storage.hasPin(userId)) {
-          // PIN не снимается восстановлением (D1): без него восстановление не проходит.
-          if (typeof pin !== 'string' || pin === '') return send(res, 403, { error: 'PIN required' });
-          const r = await verifyPin(userId, pin);
-          if (!r.ok) return pinError(res, r);
-        }
         if (typeof newPassword !== 'string' || newPassword.length < MIN_PASSWORD_LENGTH) {
           return send(res, 400, { error: `newPassword required (min ${MIN_PASSWORD_LENGTH} chars)` });
         }
-        // Новый пароль сразу (D1). Окно открывается; если уже открыто, не сдвигается (D8).
-        const previousHash = await storage.accountHash(userId);
-        await storage.setPasswordHash(userId, hashPassword(newPassword));
-        const keyResetAt = await storage.recoveryUpdate(userId, (r) => {
-          const next = completeRecovery(r, { nowMs: now(), previousHash });
-          return { next, result: next.windowKeyResetAt };
-        });
-        // Код отмены: для аккаунта без устройств тоже. Действует, пока открыто окно (D8).
+        if (await storage.hasPin(userId)) {
+          if (typeof pin !== 'string' || pin === '') return send(res, 403, { error: 'PIN required' });
+          const checkedPin = await verifyPin(userId, pin);
+          if (!checkedPin.ok) return pinError(res, checkedPin);
+        }
         const cancelCode = String(randomInt(0, 1_000_000)).padStart(6, '0');
-        await storage.recoveryCancelSet(userId, recoveryCancelHash(userId, cancelCode), keyResetAt);
+        const result = await storage.completeRecoveryAtomic(userId, {
+          codeHash: typeof code === 'string' ? recoveryCodeHash(userId, code) : '',
+          nowMs: now(),
+          passwordHash: hashPassword(newPassword),
+          cancelCodeHash: recoveryCancelHash(userId, cancelCode),
+        });
+        if (result.status === 'none') return send(res, 404, { error: 'no active recovery' });
+        if (result.status === 'expired') return send(res, 410, { error: 'recovery expired' });
+        if (result.status === 'unconfirmed') return send(res, 403, { error: 'confirm the link from the email first' });
+        if (result.status === 'wrong' || result.status === 'locked') {
+          if (result.status === 'locked') await alertDevices(userId, { kind: 'recovery_locked' });
+          return send(res, 403, { error: 'wrong code' });
+        }
         await mail(userId, 'Восстановление выполнено',
           `Пароль изменён. Вход с новых устройств откроется через 48 часов. Отменить можно с устройства, существовавшего до запроса, или кодом отмены: ${cancelCode}.`);
-        await alertDevices(userId, { kind: 'recovery_completed', keyResetAt: new Date(keyResetAt).toISOString() });
-        return send(res, 200, { ok: true, keyResetAt: new Date(keyResetAt).toISOString() });
+        await alertDevices(userId, { kind: 'recovery_completed', keyResetAt: new Date(result.keyResetAt).toISOString() });
+        return send(res, 200, { ok: true, keyResetAt: new Date(result.keyResetAt).toISOString() });
       }
 
       return send(res, 404, { error: 'not found' });

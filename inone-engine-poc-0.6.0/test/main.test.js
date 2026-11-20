@@ -18,6 +18,19 @@ const CONFIG = {
   runMigrations: false,
 };
 
+test('дублирующий POC-сервер запрещён для production даже с PostgreSQL', async () => {
+  const productionConfig = { ...CONFIG, nodeEnv: 'production', production: true };
+  const logger = createLogger({ level: 'error', write: () => {} });
+  await assert.rejects(
+    startServer({ config: productionConfig, logger }),
+    /inone-engine-poc is not a production backend/,
+  );
+  await assert.rejects(
+    startServer({ config: productionConfig, logger, pool: {} }),
+    /inone-engine-poc is not a production backend/,
+  );
+});
+
 test('сервер поднимается, отвечает и останавливается', async () => {
   const app = await startServer({ config: CONFIG, logger: createLogger({ level: 'error', write: () => {} }) });
   const base = `http://127.0.0.1:${app.port}`;

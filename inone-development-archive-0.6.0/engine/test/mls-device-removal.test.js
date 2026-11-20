@@ -31,6 +31,11 @@ test('отозванное устройство остаётся в списке
     const bobOld = await ChatClient.loginFromNewDevice(s.base, BOB, PW, 'B_OLD', s.bob);
     assert.equal(bobOld.token !== undefined, true);
     await s.bob.raw('DELETE', `/devices/${enc('B_OLD')}`);
+    const refresh = await fetch(`${s.base}/token/refresh`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ refreshToken: bobOld.refreshToken }),
+    });
+    assert.equal(refresh.status, 401, 'отзыв устройства также удаляет refresh-сессию');
     assert.deepEqual((await s.bob.raw('GET', '/mls/removals')).removals, [{ roomId: ROOM, deviceId: 'B_OLD' }], 'свои устройства видят отозванное');
     assert.deepEqual((await s.alice.raw('GET', '/mls/removals')).removals, [], 'чужие не видят');
     await assert.rejects(s.bob.raw('POST', `/mls/groups/${enc(ROOM)}/commits`, { epoch: 1, commit: b64('X'), changes: { adds: [], removes: [], removeDevices: ['GHOST'] } }), (e) => e.status === 400, 'нельзя удалить то, что не ждёт удаления');

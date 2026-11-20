@@ -2,12 +2,12 @@
 
 **Статус:** рабочая каноническая карта Stage 3; не является заявлением о production readiness.  
 **Backend source:** `inone-development-archive-0.6.0/engine/src/server.js`  
-**Mobile host:** `mobile/lib/main.dart`, `mobile/lib/claude_ui_bridge.dart`, `mobile/lib/core/network/api_client.dart`  
-**Экранные источники:** `mobile/assets/ui-approval/screen-manifest.json` и `mobile/lib/claude_screen_catalog.dart`.
+**Mobile host:** `mobile/lib/main.dart`, `mobile/lib/app/inone_mobile_app.dart`, `mobile/lib/core/network/api_client.dart`, `mobile/lib/core/session/inone_session.dart`  
+**Экранные источники:** `mobile/lib/ui_dart_source/`; прежние HTML-пакеты сохранены только в `мусорный ящик/`.
 
 ## 1. Contract rules
 
-1. Flutter owns HTTP. HTML/WebView sends a typed bridge message; it never receives access/refresh tokens, MLS secrets or arbitrary network access.
+1. Native Flutter owns HTTP through typed repositories and the shared session. There is no HTML/WebView production host or JavaScript bridge; archived HTML is reference material only.
 2. The backend is authoritative for membership, roles, feature flags, ownership and capabilities. Hiding a button in the UI is not authorization.
 3. Route existence does not mean the operation is connected to Flutter. The bridge allowlist is intentionally narrower than the backend.
 4. Generic screen probes are GET-only. Mutations require dedicated typed operations, payload validation, confirmation where appropriate, and tests.
@@ -50,7 +50,7 @@ Status:
 | ST-02 | `GET /config/public`; `GET /config` | Public config unauthenticated; private config authenticated | Backend + host |
 | ST-03 | Shared state and public config | No separate screen-specific mutation | Client/shared host state |
 | CH-01 | `GET /rooms/mine` | Authenticated user's rooms | Backend + host; screen data binding pending |
-| CH-02 | `GET /rooms/:id/events`; `GET /mls/groups/:id/commits?since=N`; `GET /mls/welcomes`; `POST /mls/welcomes/:id/ack`; `POST /mls/groups/:id/messages`; `GET /sync?since=N&signal_since=M`; `POST /rooms/:id/read` | Room event history is ciphertext only; MLS commits/messages are epoch-checked; membership checked | Backend + protocol integration pending; no WebView direct send |
+| CH-02 | `GET /rooms/:id/events`; `GET /mls/groups/:id/commits?since=N`; `GET /mls/welcomes`; `POST /mls/welcomes/:id/ack`; `POST /mls/groups/:id/messages`; `GET /sync?since=N&signal_since=M`; `POST /rooms/:id/read` | Room event history is ciphertext only; MLS commits/messages are epoch-checked; membership checked | Native Flutter + protocol integration pending; no direct event POST |
 | GR-01 | `GET /rooms/mine` | Authenticated user's rooms/groups | Backend + host; group-specific presentation pending |
 | GR-02 | `POST /rooms` | `roomId`, `kind`, optional `name`, members and org/feature gates | Backend only; typed create form and validation pending |
 | GR-04 | `GET /rooms/:id/members`; `POST /rooms/:id/settings`; `PUT /rooms/:id/name`; roles/capabilities/owner endpoints as allowed by action | Per-capability authorization; owner/admin restrictions | Backend only; map each control to one explicit action |
@@ -79,7 +79,7 @@ All room, organization, profile, device, push, approvals, file, sync and MLS ope
 - A member without the relevant capability cannot send messages, invite/remove members or change settings.
 - An organization admin cannot make a platform-owner decision.
 - A user cannot read another applicant's private documents.
-- A WebView event cannot select an arbitrary HTTP method/path.
+- No archived HTML/JavaScript asset can invoke a production API or access session credentials.
 - No legacy/plaintext message POST may bypass MLS.
 
 ## 4. CH-02 — authoritative message flow
@@ -94,7 +94,7 @@ The current backend flow is:
 6. For offline clients, consume room events in epoch order and apply intervening commits before later-epoch messages.
 7. Acknowledge to-device and signal streams on the next `GET /sync?since=N&signal_since=M` request. The server caps each acknowledgement at the highest sequence actually delivered to that device. `POST /rooms/:id/read` separately advances the room read marker (`upTo` event ID); it is not a delivery-queue ACK and not an MLS cryptographic ACK.
 
-**Forbidden fallback:** `POST /rooms/:id/events` returns HTTP 409 and directs the caller to `/mls/groups/:id/messages`. The WebView must not send plaintext or invent a legacy encrypted-event payload.
+**Forbidden fallback:** `POST /rooms/:id/events` returns HTTP 409 and directs the caller to `/mls/groups/:id/messages`. The Flutter client must not send plaintext or invent a legacy encrypted-event payload.
 
 The server does not decrypt MLS ciphertext. Cryptographic verification and local durable MLS state remain native-client responsibilities and belong to Stage 4.
 
@@ -108,15 +108,15 @@ The engine's `npm test` suite already includes dedicated suites for:
 - files, push, configuration and secret-log hygiene.
 
 The following test files are the primary integration evidence:
-- `engine/test/mls-messages.test.js`
-- `engine/test/mls-offline.test.js`
-- `engine/test/sync-ack.test.js`
-- `engine/test/org-requests.test.js`
-- `engine/test/org-access.test.js`
-- `engine/test/org-isolation-matrix.test.js`
-- `engine/test/room-permissions.test.js`
-- `engine/test/sessions.test.js`
-- `mobile/test/claude_ui_bridge_test.dart`
+- `inone-development-archive-0.6.0/engine/test/mls-messages.test.js`
+- `inone-development-archive-0.6.0/engine/test/mls-offline.test.js`
+- `inone-development-archive-0.6.0/engine/test/sync-ack.test.js`
+- `inone-development-archive-0.6.0/engine/test/org-requests.test.js`
+- `inone-development-archive-0.6.0/engine/test/org-access.test.js`
+- `inone-development-archive-0.6.0/engine/test/org-isolation-matrix.test.js`
+- `inone-development-archive-0.6.0/engine/test/room-permissions.test.js`
+- `inone-development-archive-0.6.0/engine/test/sessions.test.js`
+- `mobile/test/core/data/inone_repositories_test.dart`
 - `mobile/test/core/network/api_client_test.dart`
 
 A source-contract regression test is added alongside these suites to prevent screen-declared routes from silently drifting away from server handlers and to keep the legacy room-event POST blocked.
@@ -127,7 +127,7 @@ The following items are **outside Stage 3 acceptance** and remain assigned to th
 - Production endpoint, deployment, SMTP/SMS operations, monitoring and backup/restore are not certified by this source contract.
 - No end-to-end Flutter flow is accepted solely because its backend route exists.
 - Native MLS FFI, secure local message database, offline restart recovery and native token ownership are Stage 4.
-- Full typed WebView bridge expansion, file picking and screen-level API binding are Stage 2.
+- Native Flutter screen/API binding, file picking and screen-level acceptance remain separate implementation work.
 - Physical Android/iOS device visual acceptance is Stage 1.
 - Stage 3 PostgreSQL concurrency acceptance is complete on PR #44 code head `3d288777135d0c12145f18407e8768a02ae80a9f`; the DB-backed workflow result is recorded in the repository Stage 3 acceptance report.
 
@@ -161,3 +161,10 @@ Code-validation head: `3d288777135d0c12145f18407e8768a02ae80a9f`.
 See [Stage 3 API / Backend acceptance report](../development/reports/2026-11-11-stage-3-api-backend-audit.md) and PR [#44](https://github.com/vahe210991-cloud/InOne-chat/pull/44) for exact run references and scope boundaries.
 
 The fixes are independently implemented against the committed repository source. The original untransferred Codespaces working tree was not available; this branch does not claim to contain the original unpublished agent diff.
+
+
+## 9. Runtime migration note — 2026-11-14
+
+This document's earlier references to a WebView host, JavaScript bridge, HTML screen catalog and the old mobile test host describe the previous implementation and are superseded for runtime purposes. The current application entry point is the native Flutter `InOneMobileApp`; the old HTML bundles and bridge support files have been archived under `мусорный ящик/`.
+
+Use [DART-BACKEND-INTEGRATION.md](DART-BACKEND-INTEGRATION.md) as the current per-screen implementation status. It distinguishes routes that are connected from backend-only routes, Beta 2.0 placeholders, and security/protocol blockers. The backend contract and security invariants in this document remain applicable.

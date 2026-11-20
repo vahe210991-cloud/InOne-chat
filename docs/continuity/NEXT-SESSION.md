@@ -1,3 +1,18 @@
+# Immediate next steps — 2026-11-14 (engine stabilization)
+
+1. Verify exact current branch HEAD and clean worktree: `feat/flutter-ui-dart-migration-2026-11-14`; expected code/test commit `24ed7477ed308f82d5e61c97bba5aac3f5f2da65`. Do not modify `main`.
+2. Inspect GitHub Actions for the current branch after the P0 workflow trigger update. Confirm Node 22, PostgreSQL 16, Rust 1.91 format/check/test jobs on one exact SHA. The available connector view previously returned only PR-triggered runs, so push-run status was not independently confirmed here.
+3. If CI fails, inspect the actual failing step/log before changing code. Do not infer a failure from the older Flutter workflow run #43573883217: it failed before steps and logs were unavailable (BlobNotFound).
+4. Run backend tests on a controlled environment: `npm ci`, `npm test`, clean PostgreSQL migration, `npm run test:db`, upgrade migration on a copy, and verify data integrity.
+5. Run Rust persistent OpenMLS client tests and FFI integration checks; confirm SQLCipher DB key is supplied by iOS Keychain / Android Keystore, not MemoryKeyStore.
+6. Run Flutter `dart format`, `flutter analyze`, `flutter test`, Android/iOS builds and physical-device MLS tests. Until these pass, keep message send/receive fail-closed and do not enable native MLS.
+7. On target infrastructure, verify SMTP delivery, TLS/proxy, backup/restore, multi-instance behavior, monitoring and alerts.
+8. Preserve POC source history; do not move the entire `inone-engine-poc-0.6.0/` directory to trash because its persistent OpenMLS client is still needed. Its duplicate Node server is blocked from production.
+
+Evidence: [engine stability audit](../../development/reports/2026-11-14-engine-stability-audit.md). No PR merge is authorized by this handoff.
+
+---
+
 # Immediate next steps — 2026-11-09 12:11 Europe/Tallinn
 
 1. Run Flutter CI independently on post-import PR #36 head `cb09a4058719576df6d589f1f8b59be517b592b5`; verify the exact candidate SHA.
@@ -284,3 +299,74 @@ Review PR: [#51 — Identity Stage 0](https://github.com/vahe210991-cloud/InOne-
 
 
 Identity Stage 0 environment: create a Codespace on branch `stage0/identity-engineering-readiness-2026-11-13` using `.devcontainer/identity/devcontainer.json`. GitHub CLI command: `gh codespace create -r vahe210991-cloud/InOne-chat -b stage0/identity-engineering-readiness-2026-11-13 --devcontainer-path .devcontainer/identity/devcontainer.json`. Then run `bash .devcontainer/identity/scripts/verify-stage0-environment.sh`. Record exact output; do not mark environment/contract validation PASS until it succeeds.
+
+## Engine hardening — next session continuation (2026-11-14)
+
+Current branch: `feat/flutter-ui-dart-migration-2026-11-14`; latest audited SHA: `58fafebe5566ea5b6f6afbadd8942fe5e166b62f`.
+
+Changes already committed:
+- P0 workflow no longer has a write-enabled Rust formatting job or auto-commits/pushes formatting changes; it only checks formatting.
+- Canonical engine startup now probes PostgreSQL with `SELECT 1` before binding the HTTP port when migrations are explicitly disabled.
+- Two regression tests cover successful probe and startup refusal on DB failure. They have NOT been run.
+
+Important repository state:
+- PR #52 is still Draft/open, with base `stage0/identity-engineering-readiness-2026-11-13`; do not retarget or merge without owner authorization.
+- Branch was 358 commits ahead of main and 0 behind; main untouched.
+- Flutter workflow run #632 failed before any job steps. Logs/steps are unavailable; do not infer an application test failure or pass.
+- P0 Node/PostgreSQL/Rust matrix has not been confirmed on this exact SHA.
+
+Next actions:
+1. Read current exact branch HEAD before editing.
+2. Verify the P0 workflow run for the exact SHA (including push-triggered run); run Node, PostgreSQL, Rust/OpenMLS checks.
+3. Continue focused read-only audit of auth/session/OTP, object-store isolation and limits, backup/restore, and Flutter MLS FFI/key lifecycle.
+4. Make only evidence-backed changes and add tests. Do not touch main, merge PR, change its base, deploy, or claim tests passed unless actually verified.
+5. Keep runtime/production certification separate from source-level readiness.
+
+## Engine hardening continuation — 2026-11-14
+
+Latest audited engine code SHA: `133a8c8dc3d28fa3c923288354dbf98821e90afb` on `feat/flutter-ui-dart-migration-2026-11-14`.
+
+Completed source changes:
+- P0 Rust format job is read-only and no longer commits/pushes formatting changes.
+- Startup probes PostgreSQL before HTTP listen when migrations are disabled.
+- Refresh-token rotation and issuance of the replacement pair are one PostgreSQL transaction; device row is locked before refresh row, and the memory adapter mirrors the API.
+- Recovery finalization is run before token consumption; the atomic rotation rechecks revocation.
+- Tests added for DB readiness, concurrent refresh replay, transaction rollback on replacement-token insert failure, Host-header poisoning, and transactional restore command. `sessions.test.js` is now included in `test:db`.
+- Production signed object URLs use configured `INONE_PUBLIC_URL`, not request Host.
+- `restore-db.sh` uses `pg_restore --single-transaction`.
+
+Verification status:
+- P0 run #43591312640 was created for exact SHA `133a8c8dc3d28fa3c923288354dbf98821e90afb`; all six jobs failed before any steps (empty step arrays, logs unavailable). No tests can be considered executed.
+- Local Node/PostgreSQL/Rust/Flutter tests were NOT RUN.
+- Branch was 376 commits ahead of main, 0 behind. `main` unchanged.
+- PR #52 remains Draft/open and targets `stage0/identity-engineering-readiness-2026-11-13`. Do not retarget or merge without owner approval.
+
+Next: diagnose GitHub Actions job provisioning failure, run the exact-head P0 suite, then continue focused audit of account/session revocation, OTP throttling, object-store/backup consistency and Flutter MLS FFI. Do not claim production readiness before runtime validation.
+
+## Engine hardening — exact latest state (2026-11-14)
+
+Latest branch HEAD: `dff9ebf9c69ac6ae08f6a91f7df3213652c3c87b` on `feat/flutter-ui-dart-migration-2026-11-14`.
+
+Code changes now present:
+- P0 Rust format job is read-only and cannot auto-commit/push.
+- Server startup probes PostgreSQL before listen when migrations are disabled.
+- Refresh token rotation and replacement token insertion are atomic in PostgreSQL; device-first row locking and revocation checks are used. Memory adapter mirrors the method.
+- Recovery finalization is performed before token consumption. Concurrent replay regression and rollback-on-insert-failure tests added.
+- `sessions.test.js` included in `test:db`.
+- Production signed file URLs use configured `INONE_PUBLIC_URL`; a raw HTTP Host-header override regression test is included.
+- Restore uses `pg_restore --single-transaction` with a regression assertion.
+
+Exact-head CI: P0 run #43591433401 and Flutter run #43591437303 both failed before steps on SHA `dff9ebf9c69ac6ae08f6a91f7df3213652c3c87b`. P0 has six jobs, each with an empty step array; logs unavailable. No code tests ran or were verified. Local tests NOT RUN.
+
+Branch compare: 381 ahead of main, 0 behind. PR #52 remains Draft/open, base `stage0/identity-engineering-readiness-2026-11-13`. Do not retarget or merge. `main` unchanged.
+
+Next: resolve GitHub Actions runner/job provisioning failure, then run Node/PostgreSQL/Rust/Flutter checks on exact head. Continue focused audit of account/session revocation, OTP rate limiting, object storage/backup file archive safety, and MLS FFI. Production certification remains blocked pending runtime and security validation.
+
+## Next actions — updated 2026-11-15
+
+1. Finish encrypted attachment flow in the persistent Rust client: reserve a file, encrypt bytes with per-file AES-256-GCM, upload ciphertext only, send the key/nonce/metadata only inside an MLS-encrypted versioned manifest, verify outer fileId/roomId binding on sync, persist manifest/key in SQLCipher in the same durable inbox transaction, and expose Rust download/decrypt with hash/tag/size verification. Add two-device, restart, tamper, wrong-room, revoked-device and membership-removal tests.
+2. Generate FRB bindings on a real Windows development machine using mobile/tool/generate_native_mls.ps1; commit generated Dart/Rust outputs and lockfiles. Then run cargo fmt/test, cargo test for mls-client, flutter analyze/test, Android build + Keystore runtime smoke, and iOS device/simulator + protected Keychain validation. Record exact SHA and actual results; do not enable INONE_MLS_NATIVE_ENABLED until all gates pass.
+3. Verify the Rust-owned text send/sync flow through the actual chat screen on two devices. Confirm offline outbox, inbox acknowledgement, restart persistence, epoch changes and device revocation. Do not introduce plaintext fallback.
+4. Implement and verify recovery confirmation deep links for accounts with a confirmed phone. First confirm the canonical backend token/code and redirect contract, SMS provider, app-link domain and Android/iOS association requirements; do not invent a production domain or mark the flow complete without a real association test.
+5. Reconcile PR #42: it targets the POC Node server rather than canonical inone-development-archive-0.6.0/engine. Keep it separate until the owner approves a target/rebase.
+6. Keep PR #54 and #56 merged in the active feature branch only; main is untouched and no deployment has occurred. PR #57 and #58 remain Draft/open and stacked; tests remain NOT RUN.

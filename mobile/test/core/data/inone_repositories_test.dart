@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:inone_mobile/core/data/inone_profile.dart';
+import 'package:inone_mobile/core/data/inone_organization.dart';
+import 'package:inone_mobile/core/data/inone_public_config.dart';
 import 'package:inone_mobile/core/data/inone_repositories.dart';
 import 'package:inone_mobile/core/network/api_exception.dart';
 import 'package:inone_mobile/core/session/inone_session.dart';
@@ -25,6 +27,52 @@ void main() {
     expect(profile, isA<InOneProfile>());
     expect(profile.nickname, 'Test User');
     expect(profile.verificationLevel, 1);
+    session.dispose();
+  });
+
+  test('requests own organizations and parses membership fields', () async {
+    final session = _ProfileSession({
+      'orgs': [
+        {
+          'orgId': 'org-opaque-1',
+          'name': 'North Workspace',
+          'status': 'approved',
+          'role': 'admin',
+        },
+      ],
+    });
+
+    final orgs = await InOneRepositories(session).myOrganizations();
+
+    expect(session.method, 'GET');
+    expect(session.path, '/orgs/mine');
+    expect(session.authenticated, isTrue);
+    expect(orgs, hasLength(1));
+    expect(orgs.single, isA<InOneOrganization>());
+    expect(orgs.single.name, 'North Workspace');
+    expect(orgs.single.status, 'approved');
+    expect(orgs.single.role, 'admin');
+    session.dispose();
+  });
+
+  test('reads only public system configuration without authentication', () async {
+    final session = _ProfileSession({
+      'version': 7,
+      'flags': {
+        'maintenance.enabled': false,
+        'app.minVersion': '1.2.3',
+      },
+    });
+
+    final config = await InOneRepositories(session).publicConfig();
+
+    expect(session.method, 'GET');
+    expect(session.path, '/config/public');
+    expect(session.authenticated, isFalse);
+    expect(config, isA<InOnePublicConfig>());
+    expect(config.configVersion, 7);
+    expect(config.minimumAppVersion, '1.2.3');
+    expect(config.maintenanceEnabled, isFalse);
     session.dispose();
   });
 

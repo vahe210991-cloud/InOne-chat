@@ -1,6 +1,6 @@
 // ============================================================================
-// Хранилище PoC на PostgreSQL (версия 0.6.0-alpha.1).
-// Сервер пока работает в памяти; эти операции — фундамент порта маршрутов.
+// Постоянное PostgreSQL-хранилище серверного движка InOne.
+// Серверный запуск передаёт этот адаптер через src/main.js; in-memory store используется отдельно для тестов и локальной разработки.
 // Там, где возможна гонка, защита либо блокировка строки (PIN, одноразовые ключи),
 // либо уникальный ключ (дедупликация отправок, одна запись на пользователя в очереди).
 // Каждая защита проверяется тестами на реальной базе: test/db.test.js.
@@ -10,7 +10,7 @@ import { MLS_REGULAR_MAX_AGE_MS, MLS_LAST_RESORT_MAX_AGE_MS } from './mls-rules.
 import { DEFAULT_ADMIN_CAPABILITIES, DEFAULT_MEMBER_CAPABILITIES } from './room-permissions.js';
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { decideLogin } from './login-throttle.js';
-import { freshRecovery } from './recovery-rules.js';
+import { cancelWindow, checkCode as checkRecoveryCode, closeWindowIfDue, completeRecovery as applyRecoveryCompletion, freshRecovery, windowOpen } from './recovery-rules.js';
 import { freshPhone } from './phone-rules.js';
 import { applyHit } from './rate-limit.js';
 
@@ -198,6 +198,24 @@ export function createStore({ pool, pinPepper }) {
     async createOrganization({ orgId, name, status, createdBy, createdAt }) {
       await pool.query('INSERT INTO organizations (org_id, name, status, created_by, created_at) VALUES ($1, $2, $3, $4, $5)', [orgId, name, status, createdBy ?? null, createdAt]);
     },
+    async addOrgMemberWithAudit({ orgId, userId, role, actorId, at }) {
+      if (!['owner', 'admin', 'member'].includes(role)) return { ok: false, reason: 'invalid_role' };
+      return inTransaction(async (c) => {
+        const { rows } = await c.query('SELECT user_id, role FROM org_members WHERE org_id = $1 ORDER BY user_id FOR UPDATE', [orgId]);
+        const { rows: orgRows } = await c.query('SELECT status FROM organizations WHERE org_id = $1 FOR UPDATE', [orgId]);
+        if (!orgRows[0]) return { ok: false, reason: 'not_found' };
+        if (orgRows[0].status !== 'approved') return { ok: false, reason: 'not_approved' };
+        const actorRole = rows.find((row) => row.user_id === actorId)?.role;
+        if (actorRole !== 'owner' && actorRole !== 'admin') return { ok: false, reason: 'forbidden' };
+        if (actorRole === 'admin' && role !== 'member') return { ok: false, reason: 'forbidden' };
+        if (rows.some((row) => row.user_id === userId)) return { ok: false, reason: 'already_member' };
+        const { rowCount: accountCount } = await c.query('SELECT 1 FROM accounts WHERE user_id = $1', [userId]);
+        if (accountCount !== 1) return { ok: false, reason: 'unknown_user' };
+        await c.query('INSERT INTO org_members (org_id, user_id, role, joined_at) VALUES ($1, $2, $3, $4)', [orgId, userId, role, at]);
+        await c.query("INSERT INTO admin_action_log (org_id, actor, action, target, detail, at) VALUES ($1, $2, 'member_add', $3, $4, $5)", [orgId, actorId, userId, role, at]);
+        return { ok: true };
+      });
+    },
     async addOrgMember(orgId, userId, role, joinedAt) {
       const { rowCount } = await pool.query('INSERT INTO org_members (org_id, user_id, role, joined_at) VALUES ($1, $2, $3, $4) ON CONFLICT (org_id, user_id) DO NOTHING', [orgId, userId, role, joinedAt]);
       return rowCount === 1;
@@ -226,8 +244,10 @@ export function createStore({ pool, pinPepper }) {
       return rows[0]?.role ?? null;
     },
     async createOrgRequest({ requestId, applicantId, name, createdAt }) {
-      await pool.query('INSERT INTO org_requests (request_id, applicant_id, name, status, created_at) VALUES ($1, $2, $3, $4, $5)', [requestId, applicantId, name, 'pending', createdAt]);
-      await pool.query("INSERT INTO org_request_log (request_id, actor, action, at) VALUES ($1, $2, 'created', $3)", [requestId, applicantId, createdAt]);
+      await inTransaction(async (c) => {
+        await c.query('INSERT INTO org_requests (request_id, applicant_id, name, status, created_at) VALUES ($1, $2, $3, $4, $5)', [requestId, applicantId, name, 'pending', createdAt]);
+        await c.query("INSERT INTO org_request_log (request_id, actor, action, at) VALUES ($1, $2, 'created', $3)", [requestId, applicantId, createdAt]);
+      });
     },
     async getOrgRequest(requestId) {
       const { rows } = await pool.query('SELECT request_id, applicant_id, name, status, org_id, created_at, decided_at, decided_by FROM org_requests WHERE request_id = $1', [requestId]);
@@ -242,8 +262,15 @@ export function createStore({ pool, pinPepper }) {
       return rows.map((r) => ({ requestId: r.request_id, applicantId: r.applicant_id, name: r.name, status: r.status, createdAt: Number(r.created_at) }));
     },
     async addOrgRequestDocument({ docId, requestId, kind, size, sha256, objectKey, uploadedBy, createdAt }) {
-      await pool.query('INSERT INTO org_request_documents (doc_id, request_id, kind, size, sha256, object_key, uploaded_by, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)', [docId, requestId, kind, size, sha256, objectKey, uploadedBy, createdAt]);
-      await pool.query("INSERT INTO org_request_log (request_id, actor, action, at) VALUES ($1, $2, 'document', $3)", [requestId, uploadedBy, createdAt]);
+      return inTransaction(async (c) => {
+        const { rows } = await c.query('SELECT applicant_id, status FROM org_requests WHERE request_id = $1 FOR UPDATE', [requestId]);
+        const request = rows[0];
+        if (!request || request.applicant_id !== uploadedBy) return { ok: false, reason: 'not_found' };
+        if (request.status !== 'pending') return { ok: false, reason: 'already_decided' };
+        await c.query('INSERT INTO org_request_documents (doc_id, request_id, kind, size, sha256, object_key, uploaded_by, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)', [docId, requestId, kind, size, sha256, objectKey, uploadedBy, createdAt]);
+        await c.query("INSERT INTO org_request_log (request_id, actor, action, at) VALUES ($1, $2, 'document', $3)", [requestId, uploadedBy, createdAt]);
+        return { ok: true };
+      });
     },
     async listOrgRequestDocuments(requestId) {
       const { rows } = await pool.query('SELECT doc_id, kind, size, sha256, created_at FROM org_request_documents WHERE request_id = $1 ORDER BY created_at', [requestId]);
@@ -256,8 +283,39 @@ export function createStore({ pool, pinPepper }) {
       return { docId: r.doc_id, requestId: r.request_id, kind: r.kind, size: Number(r.size), sha256: r.sha256, objectKey: r.object_key };
     },
     async decideOrgRequest({ requestId, status, decidedBy, decidedAt, orgId }) {
-      await pool.query('UPDATE org_requests SET status = $2, decided_by = $3, decided_at = $4, org_id = $5 WHERE request_id = $1', [requestId, status, decidedBy, decidedAt, orgId]);
-      await pool.query('INSERT INTO org_request_log (request_id, actor, action, at) VALUES ($1, $2, $3, $4)', [requestId, decidedBy, status === 'approved' ? 'approve' : 'reject', decidedAt]);
+      return inTransaction(async (c) => {
+        const { rows: roleRows } = await c.query('SELECT role FROM platform_roles WHERE user_id = $1 FOR UPDATE', [decidedBy]);
+        if (roleRows[0]?.role !== 'owner') return { ok: false, reason: 'forbidden' };
+        const { rows } = await c.query('SELECT status FROM org_requests WHERE request_id = $1 FOR UPDATE', [requestId]);
+        if (!rows[0]) return { ok: false, reason: 'not_found' };
+        if (rows[0].status !== 'pending') return { ok: false, reason: 'already_decided' };
+        const { rowCount } = await c.query(
+          "UPDATE org_requests SET status = $2, decided_by = $3, decided_at = $4, org_id = $5 WHERE request_id = $1 AND status = 'pending'",
+          [requestId, status, decidedBy, decidedAt, orgId],
+        );
+        if (rowCount !== 1) return { ok: false, reason: 'already_decided' };
+        await c.query('INSERT INTO org_request_log (request_id, actor, action, at) VALUES ($1, $2, $3, $4)', [requestId, decidedBy, status === 'approved' ? 'approve' : 'reject', decidedAt]);
+        return { ok: true };
+      });
+    },
+    async approveOrgRequest({ requestId, decidedBy, decidedAt }) {
+      return inTransaction(async (c) => {
+        const { rows: roleRows } = await c.query('SELECT role FROM platform_roles WHERE user_id = $1 FOR UPDATE', [decidedBy]);
+        if (roleRows[0]?.role !== 'owner') return { ok: false, reason: 'forbidden' };
+        const { rows } = await c.query('SELECT applicant_id, name, status FROM org_requests WHERE request_id = $1 FOR UPDATE', [requestId]);
+        const request = rows[0];
+        if (!request) return { ok: false, reason: 'not_found' };
+        if (request.status !== 'pending') return { ok: false, reason: 'already_decided' };
+        const orgId = `org-${requestId}`;
+        await c.query(
+          "INSERT INTO organizations (org_id, name, status, created_by, created_at) VALUES ($1, $2, 'approved', $3, $4) ON CONFLICT (org_id) DO NOTHING",
+          [orgId, request.name, request.applicant_id, decidedAt],
+        );
+        await c.query("INSERT INTO org_members (org_id, user_id, role, joined_at) VALUES ($1, $2, 'owner', $3) ON CONFLICT (org_id, user_id) DO NOTHING", [orgId, request.applicant_id, decidedAt]);
+        await c.query("UPDATE org_requests SET status = 'approved', decided_by = $2, decided_at = $3, org_id = $4 WHERE request_id = $1 AND status = 'pending'", [requestId, decidedBy, decidedAt, orgId]);
+        await c.query("INSERT INTO org_request_log (request_id, actor, action, at) VALUES ($1, $2, 'approve', $3)", [requestId, decidedBy, decidedAt]);
+        return { ok: true, orgId };
+      });
     },
     async logOrgRequest(requestId, actor, action, at) {
       await pool.query('INSERT INTO org_request_log (request_id, actor, action, at) VALUES ($1, $2, $3, $4)', [requestId, actor, action, at]);
@@ -269,6 +327,47 @@ export function createStore({ pool, pinPepper }) {
     async listOrgMembers(orgId) {
       const { rows } = await pool.query('SELECT user_id, role FROM org_members WHERE org_id = $1 ORDER BY user_id', [orgId]);
       return rows.map((r) => ({ userId: r.user_id, role: r.role }));
+    },
+    async changeOrgMemberRole({ orgId, userId, actorId, role, at }) {
+      if (!['owner', 'admin', 'member'].includes(role)) return { ok: false, reason: 'invalid_role' };
+      return inTransaction(async (c) => {
+        const { rows } = await c.query('SELECT user_id, role FROM org_members WHERE org_id = $1 ORDER BY user_id FOR UPDATE', [orgId]);
+        const { rowCount: orgCount } = await c.query('SELECT org_id FROM organizations WHERE org_id = $1 FOR UPDATE', [orgId]);
+        if (orgCount !== 1) return { ok: false, reason: 'not_found' };
+        const roles = new Map(rows.map((row) => [row.user_id, row.role]));
+        if (roles.get(actorId) !== 'owner') return { ok: false, reason: 'forbidden' };
+        const current = roles.get(userId);
+        if (!current) return { ok: false, reason: 'not_found' };
+        const ownerCount = rows.filter((row) => row.role === 'owner').length;
+        if (current === 'owner' && role !== 'owner' && ownerCount <= 1) return { ok: false, reason: 'last_owner' };
+        await c.query('UPDATE org_members SET role = $3 WHERE org_id = $1 AND user_id = $2', [orgId, userId, role]);
+        await c.query("INSERT INTO admin_action_log (org_id, actor, action, target, detail, at) VALUES ($1, $2, 'role_change', $3, $4, $5)", [orgId, actorId, userId, current + '->' + role, at]);
+        return { ok: true, current };
+      });
+    },
+    async removeOrgMemberWithAudit({ orgId, userId, actorId, at, leave = false }) {
+      return inTransaction(async (c) => {
+        const { rows } = await c.query('SELECT user_id, role FROM org_members WHERE org_id = $1 ORDER BY user_id FOR UPDATE', [orgId]);
+        const { rowCount: orgCount } = await c.query('SELECT org_id FROM organizations WHERE org_id = $1 FOR UPDATE', [orgId]);
+        if (orgCount !== 1) return { ok: false, reason: 'not_found' };
+        const roles = new Map(rows.map((row) => [row.user_id, row.role]));
+        const actorRole = roles.get(actorId);
+        const targetRole = roles.get(userId);
+        if (!targetRole) return { ok: false, reason: leave ? 'not_member' : 'not_found' };
+        if (leave) {
+          if (actorId !== userId) return { ok: false, reason: 'forbidden' };
+        } else if (!(actorRole === 'owner' || (actorRole === 'admin' && targetRole === 'member'))) {
+          return { ok: false, reason: 'forbidden' };
+        }
+        const ownerCount = rows.filter((row) => row.role === 'owner').length;
+        if (targetRole === 'owner' && ownerCount <= 1) return { ok: false, reason: 'last_owner' };
+        const { rows: owned } = await c.query('SELECT COUNT(*)::int AS n FROM rooms WHERE org_id = $1 AND owner = $2', [orgId, userId]);
+        if (owned[0].n > 0) return { ok: false, reason: 'owns_rooms' };
+        await c.query('DELETE FROM room_members WHERE user_id = $2 AND room_id IN (SELECT room_id FROM rooms WHERE org_id = $1)', [orgId, userId]);
+        await c.query('DELETE FROM org_members WHERE org_id = $1 AND user_id = $2', [orgId, userId]);
+        await c.query('INSERT INTO admin_action_log (org_id, actor, action, target, detail, at) VALUES ($1, $2, $3, $4, $5, $6)', [orgId, actorId, leave ? 'member_leave' : 'member_remove', userId, targetRole, at]);
+        return { ok: true, targetRole };
+      });
     },
     async setOrgMemberRole(orgId, userId, role) {
       await pool.query('UPDATE org_members SET role = $3 WHERE org_id = $1 AND user_id = $2', [orgId, userId, role]);
@@ -305,11 +404,20 @@ export function createStore({ pool, pinPepper }) {
     },
     async setOrgSetting({ orgId, field, value, actor, at }) {
       const column = { maxGroupMembers: 'max_group_members', channelsEnabled: 'channels_enabled', fileQuotaBytes: 'file_quota_bytes' }[field];
-      const { rows } = await pool.query('SELECT max_group_members, channels_enabled, file_quota_bytes FROM org_settings WHERE org_id = $1', [orgId]);
-      const r = rows[0];
-      const old = !r ? { maxGroupMembers: null, channelsEnabled: true, fileQuotaBytes: null }[field] : { maxGroupMembers: r.max_group_members, channelsEnabled: r.channels_enabled, fileQuotaBytes: r.file_quota_bytes === null ? null : Number(r.file_quota_bytes) }[field];
-      await pool.query(`INSERT INTO org_settings (org_id, ${column}) VALUES ($1, $2) ON CONFLICT (org_id) DO UPDATE SET ${column} = EXCLUDED.${column}`, [orgId, value]);
-      await pool.query('INSERT INTO org_settings_log (org_id, actor, field, old_value, new_value, at) VALUES ($1, $2, $3, $4, $5, $6)', [orgId, actor, field, JSON.stringify(old), JSON.stringify(value), at]);
+      if (!column) return { ok: false, reason: 'invalid_field' };
+      return inTransaction(async (c) => {
+        const { rows: actorRows } = await c.query('SELECT role FROM org_members WHERE org_id = $1 AND user_id = $2 FOR UPDATE', [orgId, actor]);
+        const { rowCount: orgCount } = await c.query('SELECT org_id FROM organizations WHERE org_id = $1 FOR UPDATE', [orgId]);
+        if (orgCount !== 1) return { ok: false, reason: 'not_found' };
+        if (!['owner', 'admin'].includes(actorRows[0]?.role)) return { ok: false, reason: 'forbidden' };
+        const { rows } = await c.query('SELECT max_group_members, channels_enabled, file_quota_bytes FROM org_settings WHERE org_id = $1', [orgId]);
+        const r = rows[0];
+        const old = !r ? { maxGroupMembers: null, channelsEnabled: true, fileQuotaBytes: null }[field] : { maxGroupMembers: r.max_group_members, channelsEnabled: r.channels_enabled, fileQuotaBytes: r.file_quota_bytes === null ? null : Number(r.file_quota_bytes) }[field];
+        await c.query(`INSERT INTO org_settings (org_id, ${column}) VALUES ($1, $2) ON CONFLICT (org_id) DO UPDATE SET ${column} = EXCLUDED.${column}`, [orgId, value]);
+        await c.query('INSERT INTO org_settings_log (org_id, actor, field, old_value, new_value, at) VALUES ($1, $2, $3, $4, $5, $6)', [orgId, actor, field, JSON.stringify(old), JSON.stringify(value), at]);
+        await c.query("INSERT INTO admin_action_log (org_id, actor, action, target, detail, at) VALUES ($1, $2, 'setting_change', $3, $4, $5)", [orgId, actor, field, JSON.stringify(value), at]);
+        return { ok: true };
+      });
     },
     async listOrgSettingsLog(orgId) {
       const { rows } = await pool.query('SELECT actor, field, old_value, new_value, at FROM org_settings_log WHERE org_id = $1 ORDER BY id', [orgId]);
@@ -322,11 +430,21 @@ export function createStore({ pool, pinPepper }) {
     async createOrgLink({ linkId, proposingOrg, otherOrg, proposedBy, createdAt }) {
       const a = proposingOrg < otherOrg ? proposingOrg : otherOrg;
       const b = proposingOrg < otherOrg ? otherOrg : proposingOrg;
-      const existing = await pool.query('SELECT status FROM org_links WHERE org_a = $1 AND org_b = $2', [a, b]);
-      if (existing.rows[0] && existing.rows[0].status !== 'revoked') return false;
-      if (existing.rows[0]) await pool.query('DELETE FROM org_links WHERE org_a = $1 AND org_b = $2', [a, b]);
-      await pool.query("INSERT INTO org_links (link_id, org_a, org_b, proposed_by_org, status, proposed_by, created_at) VALUES ($1, $2, $3, $4, 'proposed', $5, $6)", [linkId, a, b, proposingOrg, proposedBy, createdAt]);
-      return true;
+      return inTransaction(async (c) => {
+        const { rows: actorRows } = await c.query('SELECT role FROM org_members WHERE org_id = $1 AND user_id = $2 FOR UPDATE', [proposingOrg, proposedBy]);
+        if (!['owner', 'admin'].includes(actorRows[0]?.role)) return { ok: false, reason: 'forbidden' };
+        const { rows: orgRows } = await c.query('SELECT org_id, status FROM organizations WHERE org_id = ANY($1::text[]) ORDER BY org_id FOR UPDATE', [[a, b]]);
+        if (orgRows.length !== 2) return { ok: false, reason: 'not_found' };
+        if (orgRows.some((org) => org.status !== 'approved')) return { ok: false, reason: 'not_approved' };
+        const { rowCount } = await c.query(
+          "INSERT INTO org_links (link_id, org_a, org_b, proposed_by_org, status, proposed_by, created_at) VALUES ($1, $2, $3, $4, 'proposed', $5, $6) ON CONFLICT (org_a, org_b) DO UPDATE SET link_id = EXCLUDED.link_id, proposed_by_org = EXCLUDED.proposed_by_org, status = 'proposed', proposed_by = EXCLUDED.proposed_by, created_at = EXCLUDED.created_at, decided_by = NULL, decided_at = NULL WHERE org_links.status = 'revoked' RETURNING link_id",
+          [linkId, a, b, proposingOrg, proposedBy, createdAt],
+        );
+        if (rowCount !== 1) return { ok: false, reason: 'already_exists' };
+        await c.query("INSERT INTO admin_action_log (org_id, actor, action, target, detail, at) VALUES ($1, $2, 'link_propose', $3, $4, $5)", [proposingOrg, proposedBy, otherOrg, linkId, createdAt]);
+        await c.query("INSERT INTO admin_action_log (org_id, actor, action, target, detail, at) VALUES ($1, $2, 'link_propose', $3, $4, $5)", [otherOrg, proposedBy, proposingOrg, linkId, createdAt]);
+        return { ok: true };
+      });
     },
     async getOrgLink(linkId) {
       const { rows } = await pool.query('SELECT link_id, org_a, org_b, status, proposed_by_org FROM org_links WHERE link_id = $1', [linkId]);
@@ -336,12 +454,39 @@ export function createStore({ pool, pinPepper }) {
     async setOrgLinkStatus({ linkId, status, decidedBy, decidedAt }) {
       await pool.query('UPDATE org_links SET status = $2, decided_by = $3, decided_at = $4 WHERE link_id = $1', [linkId, status, decidedBy, decidedAt]);
     },
-    async transitionOrgLinkStatus({ linkId, fromStatus, status, decidedBy, decidedAt }) {
-      const { rowCount } = await pool.query(
-        'UPDATE org_links SET status = $3, decided_by = $4, decided_at = $5 WHERE link_id = $1 AND status = $2',
-        [linkId, fromStatus, status, decidedBy, decidedAt],
-      );
-      return rowCount === 1;
+    async transitionOrgLinkStatus({ linkId, fromStatus, status, decidedBy, decidedAt, orgId }) {
+      return inTransaction(async (c) => {
+        const { rows: actorRows } = await c.query('SELECT role FROM org_members WHERE org_id = $1 AND user_id = $2 FOR UPDATE', [orgId, decidedBy]);
+        if (!['owner', 'admin'].includes(actorRows[0]?.role)) return { ok: false, reason: 'forbidden' };
+        const { rowCount: orgCount } = await c.query('SELECT org_id FROM organizations WHERE org_id = $1 FOR UPDATE', [orgId]);
+        if (orgCount !== 1) return { ok: false, reason: 'not_found' };
+        const { rows } = await c.query('SELECT org_a, org_b, proposed_by_org, status FROM org_links WHERE link_id = $1 FOR UPDATE', [linkId]);
+        const link = rows[0];
+        if (!link || (link.org_a !== orgId && link.org_b !== orgId)) return { ok: false, reason: 'not_found' };
+        if (link.status !== fromStatus) return { ok: false, reason: 'state_changed' };
+        if (status === 'active' && link.proposed_by_org === orgId) return { ok: false, reason: 'wrong_side' };
+        const { rowCount } = await c.query(
+          'UPDATE org_links SET status = $3, decided_by = $4, decided_at = $5 WHERE link_id = $1 AND status = $2',
+          [linkId, fromStatus, status, decidedBy, decidedAt],
+        );
+        if (rowCount !== 1) return { ok: false, reason: 'state_changed' };
+        if (status === 'revoked') {
+          await c.query(`DELETE FROM room_members rm USING rooms r
+            WHERE rm.room_id = r.room_id AND r.org_id = $1
+              AND rm.user_id IN (SELECT user_id FROM org_members WHERE org_id = $2)
+              AND rm.user_id NOT IN (SELECT user_id FROM org_members WHERE org_id = $1)`, [link.org_a, link.org_b]);
+          await c.query(`DELETE FROM room_members rm USING rooms r
+            WHERE rm.room_id = r.room_id AND r.org_id = $2
+              AND rm.user_id IN (SELECT user_id FROM org_members WHERE org_id = $1)
+              AND rm.user_id NOT IN (SELECT user_id FROM org_members WHERE org_id = $2)`, [link.org_a, link.org_b]);
+        }
+        const action = status === 'active' ? 'link_accept' : status === 'revoked' ? 'link_revoke' : null;
+        if (action) {
+          await c.query('INSERT INTO admin_action_log (org_id, actor, action, target, detail, at) VALUES ($1, $2, $3, $4, $5, $6)', [link.org_a, decidedBy, action, link.org_b, linkId, decidedAt]);
+          await c.query('INSERT INTO admin_action_log (org_id, actor, action, target, detail, at) VALUES ($1, $2, $3, $4, $5, $6)', [link.org_b, decidedBy, action, link.org_a, linkId, decidedAt]);
+        }
+        return { ok: true };
+      });
     },
     async activeLinkBetween(x, y) {
       const a = x < y ? x : y;
@@ -423,17 +568,49 @@ export function createStore({ pool, pinPepper }) {
       return Number(rows[0].expires_at) > nowMs ? 'valid' : 'expired';
     },
 
-    /** Погашает токен обновления: 'ok' (он был одноразовым), 'reused', 'expired' или 'unknown'. */
-    async consumeRefreshToken(raw, nowMs) {
+    /** Возвращает устройство refresh-токена без изменения его состояния (для recovery preflight). */
+    async refreshTokenDevice(raw, nowMs) {
+      const { rows } = await pool.query(
+        'SELECT device_key FROM refresh_tokens WHERE token_hash = $1 AND used_at IS NULL AND expires_at > $2',
+        [keyed(pinPepper, 'refresh', raw), nowMs],
+      );
+      return rows[0]?.device_key ?? null;
+    },
+
+    /**
+     * Одноразовая ротация refresh-токена и выпуск новой пары в одной транзакции.
+     * Сначала блокируется устройство, затем refresh row — тот же порядок, что при отзыве устройства.
+     * Сбой вставки новой пары откатывает и погашение старого токена.
+     */
+    async rotateSession(raw, nowMs, accessTtlMs, refreshTtlMs) {
       const hash = keyed(pinPepper, 'refresh', raw);
-      const { rows } = await pool.query('SELECT device_key, expires_at, used_at FROM refresh_tokens WHERE token_hash = $1', [hash]);
-      if (rows.length === 0) return { state: 'unknown' };
-      const row = rows[0];
-      if (row.used_at !== null) return { state: 'reused', deviceKey: row.device_key };
-      if (Number(row.expires_at) <= nowMs) return { state: 'expired' };
-      const { rowCount } = await pool.query('UPDATE refresh_tokens SET used_at = $2 WHERE token_hash = $1 AND used_at IS NULL', [hash, nowMs]);
-      if (rowCount === 0) return { state: 'reused', deviceKey: row.device_key };
-      return { state: 'ok', deviceKey: row.device_key };
+      const accessToken = randomBytes(16).toString('hex');
+      const refreshToken = randomBytes(16).toString('hex');
+      const accessExpiresAt = nowMs + accessTtlMs;
+      const refreshExpiresAt = nowMs + refreshTtlMs;
+      return inTransaction(async (c) => {
+        const initial = await c.query('SELECT device_key FROM refresh_tokens WHERE token_hash = $1', [hash]);
+        if (initial.rows.length === 0) return { state: 'unknown' };
+        const deviceKey = initial.rows[0].device_key;
+        const device = await c.query('SELECT revoked FROM devices WHERE device_key = $1 FOR UPDATE', [deviceKey]);
+        if (device.rows.length === 0 || device.rows[0].revoked) return { state: 'revoked', deviceKey };
+        const { rows } = await c.query(
+          'SELECT device_key, expires_at, used_at FROM refresh_tokens WHERE token_hash = $1 AND device_key = $2 FOR UPDATE',
+          [hash, deviceKey],
+        );
+        if (rows.length === 0) return { state: 'unknown' };
+        const row = rows[0];
+        if (row.used_at !== null) return { state: 'reused', deviceKey };
+        if (Number(row.expires_at) <= nowMs) return { state: 'expired' };
+        const consumed = await c.query(
+          'UPDATE refresh_tokens SET used_at = $2 WHERE token_hash = $1 AND used_at IS NULL',
+          [hash, nowMs],
+        );
+        if (consumed.rowCount !== 1) return { state: 'reused', deviceKey };
+        await c.query('INSERT INTO tokens (token_hash, device_key, expires_at) VALUES ($1, $2, $3)', [keyed(pinPepper, 'token', accessToken), deviceKey, accessExpiresAt]);
+        await c.query('INSERT INTO refresh_tokens (token_hash, device_key, expires_at, used_at) VALUES ($1, $2, $3, NULL)', [keyed(pinPepper, 'refresh', refreshToken), deviceKey, refreshExpiresAt]);
+        return { state: 'ok', deviceKey, accessToken, accessExpiresAt, refreshToken, refreshExpiresAt };
+      });
     },
 
     /** Завершает сессии устройства: токены доступа и обновления удаляются. Само устройство остаётся. */
@@ -510,6 +687,53 @@ export function createStore({ pool, pinPepper }) {
     async createFile({ fileId, ownerId, roomId, kind, size, sha256, createdAt }) {
       await pool.query('INSERT INTO files (file_id, owner_id, room_id, kind, size, sha256, status, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)', [fileId, ownerId, roomId, kind, size, sha256, 'pending', createdAt]);
     },
+    /**
+     * Reserve quota and pending-upload capacity under row locks before creating metadata.
+     * Owner and organization usage checks can no longer race across concurrent uploads.
+     */
+    async reserveFile({ fileId, ownerId, roomId, kind, size, sha256, createdAt, pendingLimit, quotaBytes }) {
+      return inTransaction(async (c) => {
+        const owner = await c.query('SELECT user_id FROM accounts WHERE user_id = $1 FOR UPDATE', [ownerId]);
+        if (owner.rows.length === 0) return { ok: false, reason: 'owner' };
+        let orgId = null;
+        if (roomId !== null) {
+          const room = await c.query('SELECT owner, org_id FROM rooms WHERE room_id = $1 FOR UPDATE', [roomId]);
+          if (!room.rows[0]) return { ok: false, reason: 'room' };
+          const member = await c.query('SELECT capabilities FROM room_members WHERE room_id = $1 AND user_id = $2 FOR UPDATE', [roomId, ownerId]);
+          if (!member.rows[0]) return { ok: false, reason: 'membership' };
+          const canSend = room.rows[0].owner === ownerId || (member.rows[0].capabilities ?? []).includes('send_messages');
+          if (!canSend) return { ok: false, reason: 'capability' };
+          orgId = room.rows[0].org_id;
+        }
+        const usage = await c.query(
+          `SELECT COUNT(*) FILTER (WHERE status IN ('pending', 'uploaded'))::int AS pending,
+                  COALESCE(SUM(size) FILTER (WHERE status IN ('pending', 'uploaded', 'ready')), 0)::bigint AS bytes
+             FROM files WHERE owner_id = $1`,
+          [ownerId],
+        );
+        if (Number(usage.rows[0].pending) >= pendingLimit) return { ok: false, reason: 'pending_limit' };
+        if (quotaBytes !== null && Number(usage.rows[0].bytes) + size > quotaBytes) return { ok: false, reason: 'owner_quota' };
+        if (orgId !== null) {
+          await c.query('SELECT org_id FROM organizations WHERE org_id = $1 FOR UPDATE', [orgId]);
+          const settings = await c.query('SELECT file_quota_bytes FROM org_settings WHERE org_id = $1', [orgId]);
+          const orgQuota = settings.rows[0]?.file_quota_bytes == null ? null : Number(settings.rows[0].file_quota_bytes);
+          if (orgQuota !== null) {
+            const orgUsage = await c.query(
+              `SELECT COALESCE(SUM(f.size), 0)::bigint AS bytes
+                 FROM files f JOIN rooms r ON r.room_id = f.room_id
+                WHERE r.org_id = $1 AND f.status IN ('pending', 'uploaded', 'ready')`,
+              [orgId],
+            );
+            if (Number(orgUsage.rows[0].bytes) + size > orgQuota) return { ok: false, reason: 'org_quota' };
+          }
+        }
+        await c.query(
+          'INSERT INTO files (file_id, owner_id, room_id, kind, size, sha256, status, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+          [fileId, ownerId, roomId, kind, size, sha256, 'pending', createdAt],
+        );
+        return { ok: true };
+      });
+    },
     async getFile(fileId) {
       const { rows } = await pool.query('SELECT file_id, owner_id, room_id, kind, size, sha256, status, created_at, completed_at FROM files WHERE file_id = $1', [fileId]);
       const r = rows[0];
@@ -567,14 +791,10 @@ export function createStore({ pool, pinPepper }) {
       const { rows } = await pool.query('SELECT old_value, new_value, actor, reason, changed_at FROM flag_changes WHERE key = $1 ORDER BY id', [key]);
       return rows; // имена столбцов как в таблице: так читает журнал команда scripts/set-flag.mjs
     },
-    async revokeDevice(deviceKey) {
-      // Отключённое устройство теряет ключи, одноразовые ключи и очередь доставки.
+    async revokeDevice(deviceKey, nowMs = Date.now()) {
       await inTransaction(async (c) => {
-        await c.query('UPDATE devices SET revoked = TRUE WHERE device_key = $1', [deviceKey]);
-        await c.query('DELETE FROM device_keys WHERE device_key = $1', [deviceKey]);
-        await c.query('DELETE FROM one_time_keys WHERE device_key = $1', [deviceKey]);
-        await c.query('DELETE FROM inbox WHERE device_key = $1', [deviceKey]);
-        await c.query('DELETE FROM push_tokens WHERE device_key = $1', [deviceKey]);
+        const { rows } = await c.query('SELECT user_id, device_id FROM devices WHERE device_key = $1 FOR UPDATE', [deviceKey]);
+        if (rows[0]) await revokeDeviceInTransaction(c, deviceKey, rows[0], nowMs);
       });
     },
 
@@ -715,7 +935,111 @@ export function createStore({ pool, pinPepper }) {
         return result;
       });
     },
+    /**
+     * One-time recovery completion: validate/consume the code, replace password,
+     * open the 48h window and save the cancellation hash in one DB transaction.
+     */
+    async completeRecoveryAtomic(userId, { codeHash, nowMs, passwordHash, cancelCodeHash }) {
+      return inTransaction(async (c) => {
+        const account = await c.query('SELECT password_hash FROM accounts WHERE user_id = $1 FOR UPDATE', [userId]);
+        if (account.rows.length === 0) return { status: 'none' };
+        await c.query('INSERT INTO recovery (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING', [userId]);
+        const { rows } = await c.query('SELECT * FROM recovery WHERE user_id = $1 FOR UPDATE', [userId]);
+        const current = fromRecoveryRow(rows[0]);
+        const checked = checkRecoveryCode(current, {
+          nowMs,
+          codeOk: !!current.reqCodeHash && sameHex(current.reqCodeHash, codeHash),
+        });
+        if (checked.outcome !== 'ok') {
+          const next = checked.next;
+          await c.query(
+            `UPDATE recovery SET req_status = $2, req_started_at = $3, req_expires_at = $4, req_code_hash = $5,
+               req_attempts = $6, window_started_at = $7, window_key_reset_at = $8, window_previous_hash = $9,
+               identity_check = $10, identity_code_hash = $11, identity_attempts = $12, locked_until = $13, starts = $14, req_link_hash = $15, req_link_confirmed = $16
+             WHERE user_id = $1`,
+            [userId, next.reqStatus, next.reqStartedAt, next.reqExpiresAt, next.reqCodeHash, next.reqAttempts,
+             next.windowStartedAt, next.windowKeyResetAt, next.windowPreviousHash, next.identityCheck,
+             next.identityCodeHash, next.identityAttempts, next.lockedUntil, JSON.stringify(next.starts), next.reqLinkHash, next.reqLinkConfirmed],
+          );
+          return { status: checked.outcome };
+        }
+        const next = applyRecoveryCompletion(current, { nowMs, previousHash: account.rows[0].password_hash });
+        next.reqCodeHash = null;
+        next.reqLinkHash = null;
+        next.reqLinkConfirmed = false;
+        next.reqAttempts = 0;
+        await c.query('UPDATE accounts SET password_hash = $2 WHERE user_id = $1', [userId, passwordHash]);
+        await c.query(
+          `UPDATE recovery SET req_status = $2, req_started_at = $3, req_expires_at = $4, req_code_hash = $5,
+             req_attempts = $6, window_started_at = $7, window_key_reset_at = $8, window_previous_hash = $9,
+             identity_check = $10, identity_code_hash = $11, identity_attempts = $12, locked_until = $13, starts = $14, req_link_hash = $15, req_link_confirmed = $16
+           WHERE user_id = $1`,
+          [userId, next.reqStatus, next.reqStartedAt, next.reqExpiresAt, next.reqCodeHash, next.reqAttempts,
+           next.windowStartedAt, next.windowKeyResetAt, next.windowPreviousHash, next.identityCheck,
+           next.identityCodeHash, next.identityAttempts, next.lockedUntil, JSON.stringify(next.starts), next.reqLinkHash, next.reqLinkConfirmed],
+        );
+        await c.query(
+          `INSERT INTO recovery_cancel_codes (user_id, code_hash, expires_at) VALUES ($1, $2, $3)
+           ON CONFLICT (user_id) DO UPDATE SET code_hash = EXCLUDED.code_hash, expires_at = EXCLUDED.expires_at`,
+          [userId, cancelCodeHash, next.windowKeyResetAt],
+        );
+        return { status: 'ok', keyResetAt: next.windowKeyResetAt };
+      });
+    },
 
+    /** Close the 48h window and revoke every pre-recovery device in the same transaction. */
+    async finalizeRecoveryDevices(userId, nowMs) {
+      return inTransaction(async (c) => {
+        await c.query('INSERT INTO recovery (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING', [userId]);
+        const { rows } = await c.query('SELECT * FROM recovery WHERE user_id = $1 FOR UPDATE', [userId]);
+        const current = fromRecoveryRow(rows[0]);
+        const closed = closeWindowIfDue(current, nowMs);
+        if (closed.dueSince === null) return { dueSince: null, revoked: 0 };
+        await persistRecoveryRow(c, userId, closed.next);
+        const devices = await c.query(
+          'SELECT device_key, user_id, device_id FROM devices WHERE user_id = $1 AND NOT revoked AND created_at < $2 ORDER BY device_key FOR UPDATE',
+          [userId, closed.dueSince],
+        );
+        for (const device of devices.rows) await revokeDeviceInTransaction(c, device.device_key, device, nowMs);
+        return { dueSince: closed.dueSince, revoked: devices.rows.length };
+      });
+    },
+
+    /** Cancel recovery with either a pre-existing device or the one-time email cancellation code. */
+    async cancelRecoveryAtomic(userId, { nowMs, actorDeviceId = null, cancelCodeHash = null }) {
+      return inTransaction(async (c) => {
+        const account = await c.query('SELECT password_hash FROM accounts WHERE user_id = $1 FOR UPDATE', [userId]);
+        if (account.rows.length === 0) return { status: 'none' };
+        await c.query('INSERT INTO recovery (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING', [userId]);
+        const { rows } = await c.query('SELECT * FROM recovery WHERE user_id = $1 FOR UPDATE', [userId]);
+        const current = fromRecoveryRow(rows[0]);
+        if (!windowOpen(current, nowMs)) return { status: 'none' };
+        if (actorDeviceId !== null) {
+          const device = await c.query(
+            'SELECT created_at, revoked FROM devices WHERE device_key = $1 AND user_id = $2 FOR UPDATE',
+            [`${userId}|${actorDeviceId}`, userId],
+          );
+          if (!device.rows[0] || device.rows[0].revoked || Number(device.rows[0].created_at) >= current.windowStartedAt) {
+            return { status: 'forbidden' };
+          }
+        } else {
+          const saved = await c.query('SELECT code_hash, expires_at FROM recovery_cancel_codes WHERE user_id = $1 FOR UPDATE', [userId]);
+          if (!saved.rows[0] || nowMs > Number(saved.rows[0].expires_at)
+              || !sameHex(saved.rows[0].code_hash, cancelCodeHash ?? '')) return { status: 'wrong_code' };
+        }
+        if (current.windowPreviousHash) {
+          await c.query('UPDATE accounts SET password_hash = $2 WHERE user_id = $1', [userId, current.windowPreviousHash]);
+        }
+        const devices = await c.query(
+          'SELECT device_key, user_id, device_id FROM devices WHERE user_id = $1 AND NOT revoked AND created_at >= $2 ORDER BY device_key FOR UPDATE',
+          [userId, current.windowStartedAt],
+        );
+        for (const device of devices.rows) await revokeDeviceInTransaction(c, device.device_key, device, nowMs);
+        await persistRecoveryRow(c, userId, cancelWindow(current));
+        await c.query('DELETE FROM recovery_cancel_codes WHERE user_id = $1', [userId]);
+        return { status: 'ok', revoked: devices.rows.length };
+      });
+    },
     /** Только хэши кодов и статусы: для снимка состояния в тестах. */
     async recoveryHashes() {
       const { rows } = await pool.query('SELECT user_id, req_status, req_code_hash FROM recovery WHERE req_code_hash IS NOT NULL');
@@ -1673,6 +1997,42 @@ async mlsPendingRemovalsFor(userId) {
 
 function numOrNull(v) {
   return v === null || v === undefined ? null : Number(v);
+}
+
+
+async function persistRecoveryRow(c, userId, next) {
+  await c.query(
+    `UPDATE recovery SET req_status = $2, req_started_at = $3, req_expires_at = $4, req_code_hash = $5,
+       req_attempts = $6, window_started_at = $7, window_key_reset_at = $8, window_previous_hash = $9,
+       identity_check = $10, identity_code_hash = $11, identity_attempts = $12, locked_until = $13, starts = $14, req_link_hash = $15, req_link_confirmed = $16
+     WHERE user_id = $1`,
+    [userId, next.reqStatus, next.reqStartedAt, next.reqExpiresAt, next.reqCodeHash, next.reqAttempts,
+     next.windowStartedAt, next.windowKeyResetAt, next.windowPreviousHash, next.identityCheck,
+     next.identityCodeHash, next.identityAttempts, next.lockedUntil, JSON.stringify(next.starts), next.reqLinkHash, next.reqLinkConfirmed],
+  );
+}
+
+async function revokeDeviceInTransaction(c, deviceKey, device, nowMs) {
+  await c.query('UPDATE devices SET revoked = TRUE WHERE device_key = $1', [deviceKey]);
+  await c.query('DELETE FROM tokens WHERE device_key = $1', [deviceKey]);
+  await c.query('DELETE FROM refresh_tokens WHERE device_key = $1', [deviceKey]);
+  await c.query('DELETE FROM device_keys WHERE device_key = $1', [deviceKey]);
+  await c.query('DELETE FROM one_time_keys WHERE device_key = $1', [deviceKey]);
+  await c.query('DELETE FROM inbox WHERE device_key = $1', [deviceKey]);
+  await c.query('DELETE FROM push_tokens WHERE device_key = $1', [deviceKey]);
+  await c.query('DELETE FROM device_signing_keys WHERE device_key = $1', [deviceKey]);
+  await c.query(
+    'DELETE FROM mls_key_packages WHERE user_id = $1 AND device_id = $2 AND consumed_at IS NULL',
+    [device.user_id, device.device_id],
+  );
+  await c.query(
+    'DELETE FROM mls_welcomes WHERE user_id = $1 AND device_id = $2 AND acked_at IS NULL',
+    [device.user_id, device.device_id],
+  );
+  await c.query(
+    "INSERT INTO mls_device_removals (room_id, user_id, device_id, created_at) SELECT g.room_id, $1, $2, $3 FROM mls_groups g JOIN room_members m ON m.room_id = g.room_id WHERE m.user_id = $1 AND g.epoch > 0 ON CONFLICT (room_id, user_id, device_id) DO NOTHING",
+    [device.user_id, device.device_id, nowMs],
+  );
 }
 
 function fromRecoveryRow(r) {

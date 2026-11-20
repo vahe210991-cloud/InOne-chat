@@ -98,3 +98,19 @@ test('выход завершает сессию: токены перестаю�
     await s.stop();
   }
 });
+test('две одновременные ротации одного refresh-токена дают один успех и выявляют повтор', async () => {
+  const s = await start();
+  try {
+    const results = await Promise.all([
+      call(s.base, 'POST', '/token/refresh', null, { refreshToken: s.login.refreshToken }),
+      call(s.base, 'POST', '/token/refresh', null, { refreshToken: s.login.refreshToken }),
+    ]);
+    assert.deepEqual(results.map((r) => r.status).sort(), [200, 401]);
+    const success = results.find((r) => r.status === 200);
+    assert.ok(success?.body.token);
+    assert.equal((await call(s.base, 'GET', '/mls/key-packages/count', success.body.token)).status, 401,
+      'обнаруженный повтор отзывает всю сессию, включая новую пару');
+  } finally {
+    await s.stop();
+  }
+});

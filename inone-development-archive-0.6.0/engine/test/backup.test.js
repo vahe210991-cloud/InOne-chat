@@ -4,7 +4,7 @@ import { randomBytes } from 'node:crypto';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, readdirSync, copyFileSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -42,6 +42,12 @@ dbTest('копия восстанавливается в пустую базу �
   const srcUrl = withDatabase(process.env.DATABASE_URL, srcName);
   await admin(`CREATE DATABASE ${srcName}`);
   try {
+    const objectsDir = path.join(dir, 'source-objects');
+    const restoredObjectsDir = path.join(dir, 'restored-objects');
+    const objectId = randomBytes(16).toString('hex');
+    const objectBytes = randomBytes(128);
+    mkdirSync(objectsDir);
+    writeFileSync(path.join(objectsDir, objectId), objectBytes);
     const pool = new pg.Pool({ connectionString: srcUrl });
     try {
       await migrate(pool);
@@ -51,14 +57,17 @@ dbTest('копия восстанавливается в пустую базу �
     } finally {
       await pool.end();
     }
-    const dumpPath = execFileSync('bash', [path.join(root, 'scripts/backup-db.sh')], {
-      env: { ...process.env, DATABASE_URL: srcUrl, BACKUP_DIR: dir },
+    const backups = execFileSync('bash', [path.join(root, 'scripts/backup-db.sh')], {
+      env: { ...process.env, DATABASE_URL: srcUrl, FILES_DIR: objectsDir, BACKUP_DIR: dir },
       encoding: 'utf8',
-    }).trim();
+    }).trim().split('\n');
+    const [dumpPath, filesArchive] = backups;
+    assert.ok(filesArchive, 'создан отдельный архив object store');
 
     await admin(`CREATE DATABASE ${dstName}`);
     const dstUrl = withDatabase(process.env.DATABASE_URL, dstName);
-    execFileSync('bash', [path.join(root, 'scripts/restore-db.sh'), dumpPath, dstUrl], { encoding: 'utf8' });
+    execFileSync('bash', [path.join(root, 'scripts/restore-db.sh'), dumpPath, dstUrl, filesArchive, restoredObjectsDir], { encoding: 'utf8' });
+    assert.deepEqual(readFileSync(path.join(restoredObjectsDir, objectId)), objectBytes, 'объект восстановлен без изменения байтов');
     const verified = execFileSync('node', [path.join(root, 'scripts/verify-restore.mjs'), srcUrl, dstUrl], { encoding: 'utf8' });
     assert.match(verified, /сверка пройдена/);
     const dstPool = new pg.Pool({ connectionString: dstUrl });
@@ -100,4 +109,13 @@ dbTest('хранение: остаются последние копии, ста
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+test('restore-db validates object archives and stages files before committing restore', () => {
+  const script = readFileSync(path.join(root, 'scripts/restore-db.sh'), 'utf8');
+  assert.match(script, /pg_restore --single-transaction .*--exit-on-error/);
+  assert.match(script, /validate_files_archive/);
+  assert.match(script, /mode != "-" /);
+  assert.match(script, /length\(key\) != 32/);
+  assert.match(script, /mktemp -d/);
+  assert.match(script, /mv "\$files_stage" "\$files_target"/);
 });

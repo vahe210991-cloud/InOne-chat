@@ -25,6 +25,8 @@ test('продакшен со всеми настройками проходит
   assert.equal(config.registrationMode, 'verified');
   assert.equal(config.bodyLimitBytes, 4 * 1024 * 1024);
   assert.equal(config.runMigrations, true);
+  assert.equal(config.requirePhone, false, 'phone must remain optional unless explicitly enabled');
+  assert.equal(config.smsEnabled, false, 'SMS remains disabled until a provider is configured');
 });
 
 test('без базы данных сервер не стартует', () => {

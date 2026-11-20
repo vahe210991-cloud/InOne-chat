@@ -71,11 +71,19 @@ export async function migrate(pool, { logger = null } = {}) {
         await client.query('COMMIT');
         logger?.info('database created from schema', { version: SCHEMA_VERSION });
       } else {
-        // Старая база без таблицы миграций: отмечаем то, что уже есть по структуре.
-        for (const version of listMigrations()) {
-          const { rows: found } = await client.query(`SELECT ${MARKERS[version] ?? 'false'} AS present`);
-          if (!found[0].present) break;
-          await client.query('INSERT INTO schema_migrations (version) VALUES ($1)', [version]);
+        // Старая база без таблицы миграций: обнаружение и запись маркеров должны быть атомарны.
+        // Если процесс упадёт посередине, повторный запуск снова проверит всю структуру.
+        await client.query('BEGIN');
+        try {
+          for (const version of listMigrations()) {
+            const { rows: found } = await client.query(`SELECT ${MARKERS[version] ?? 'false'} AS present`);
+            if (!found[0].present) break;
+            await client.query('INSERT INTO schema_migrations (version) VALUES ($1)', [version]);
+          }
+          await client.query('COMMIT');
+        } catch (error) {
+          await client.query('ROLLBACK');
+          throw error;
         }
       }
     }

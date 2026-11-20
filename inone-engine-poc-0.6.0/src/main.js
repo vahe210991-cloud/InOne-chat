@@ -10,6 +10,11 @@ import { createSmtpMailer } from './mail-smtp.js';
 
 /** Запускает сервер. pool = null — память (только для тестов и разработки). */
 export async function startServer({ config, logger = createLogger({ level: config.logLevel }), pool = null }) {
+  // This tree is retained for the persistent OpenMLS client and historical tests.
+  // Its duplicate Node server is behind the canonical P0 backend and must never be deployed.
+  if (config.production === true || config.nodeEnv === 'production') {
+    throw new Error('inone-engine-poc is not a production backend; use inone-development-archive-0.6.0/engine');
+  }
   let store;
   if (pool) {
     if (config.runMigrations) await migrate(pool, { logger });

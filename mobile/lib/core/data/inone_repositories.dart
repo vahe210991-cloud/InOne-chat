@@ -1,8 +1,10 @@
 import '../session/inone_session.dart';
 import 'inone_profile.dart';
+import 'inone_organization.dart';
+import 'inone_public_config.dart';
 import 'inone_room.dart';
 
-/// Typed read repositories shared by approved screens and the test-screen host.
+/// Typed backend repositories used by the native Flutter application.
 class InOneRepositories {
   const InOneRepositories(this.session);
 
@@ -16,16 +18,16 @@ class InOneRepositories {
       InOneProfile.fromJson(await session.request('GET', '/profile'));
   Future<List<InOneRoom>> myRooms() async =>
       InOneRoomList.fromJson(await session.request('GET', '/rooms/mine')).rooms;
-  Future<Map<String, dynamic>> myOrganizations() =>
-      session.request('GET', '/orgs/mine');
+  Future<List<InOneOrganization>> myOrganizations() async =>
+      InOneOrganizationList.fromJson(await session.request('GET', '/orgs/mine')).orgs;
   Future<Map<String, dynamic>> myDevices() =>
       session.request('GET', '/devices/mine');
   Future<Map<String, dynamic>> loginApprovals() =>
       session.request('GET', '/approvals');
   Future<Map<String, dynamic>> organizationRequests() =>
       session.request('GET', '/org-requests');
-  Future<Map<String, dynamic>> publicConfig() =>
-      session.request('GET', '/config/public', authenticated: false);
+  Future<InOnePublicConfig> publicConfig() async =>
+      InOnePublicConfig.fromJson(await session.request('GET', '/config/public', authenticated: false));
 
   Future<Map<String, dynamic>> get(
     String path, {

@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -40,6 +42,92 @@ void main() {
 
     final response = await client.get('/config/public', authenticated: false);
     expect(response['status'], 'ok');
+    client.close();
+  });
+
+  test('downloads binary bytes with the current device bearer token', () async {
+    final expected = <int>[0, 1, 2, 127, 128, 255];
+    final mock = MockClient((request) async {
+      expect(request.method, 'GET');
+      expect(request.url.path, '/objects/file-1');
+      expect(request.url.queryParameters['sig'], 'signed');
+      expect(request.headers['authorization'], 'Bearer access-token');
+      expect(request.headers['accept'], 'application/octet-stream');
+      expect(request.followRedirects, isFalse);
+      return http.Response.bytes(expected, 200);
+    });
+    final client = ApiClient(
+      baseUrl: 'https://api.inone.test',
+      accessTokenProvider: () => 'access-token',
+      httpClient: mock,
+    );
+
+    final result = await client.getBytes(
+      'https://api.inone.test/objects/file-1?expires=123&sig=signed',
+    );
+    expect(result, expected);
+    client.close();
+  });
+
+  test('uploads ciphertext to the signed URL without forwarding a bearer token', () async {
+    final expected = <int>[0, 4, 8, 127, 128, 255];
+    final mock = MockClient((request) async {
+      expect(request.method, 'PUT');
+      expect(request.url.path, '/objects/file-1');
+      expect(request.headers['content-type'], 'application/octet-stream');
+      expect(request.headers.containsKey('authorization'), isFalse);
+      expect(request.followRedirects, isFalse);
+      expect(request.bodyBytes, expected);
+      return http.Response('{"uploaded":true}', 200);
+    });
+    final client = ApiClient(
+      baseUrl: 'https://api.inone.test',
+      accessTokenProvider: () => 'must-not-be-sent',
+      httpClient: mock,
+    );
+
+    await client.putBytes(
+      'https://api.inone.test/objects/file-1?expires=123&sig=upload',
+      Uint8List.fromList(expected),
+    );
+    client.close();
+  });
+
+  test('never sends bearer credentials to a different download origin', () async {
+    var sent = false;
+    final mock = MockClient((request) async {
+      sent = true;
+      return http.Response.bytes([], 200);
+    });
+    final client = ApiClient(
+      baseUrl: 'https://api.inone.test',
+      accessTokenProvider: () => 'access-token',
+      httpClient: mock,
+    );
+
+    await expectLater(
+      client.getBytes('https://attacker.example/objects/file-1?sig=stolen'),
+      throwsA(isA<ArgumentError>()),
+    );
+    expect(sent, isFalse);
+    client.close();
+  });
+
+  test('does not follow redirects for authenticated file downloads', () async {
+    final mock = MockClient((request) async {
+      expect(request.followRedirects, isFalse);
+      return http.Response('', 302, headers: {'location': 'https://attacker.example/file'});
+    });
+    final client = ApiClient(
+      baseUrl: 'https://api.inone.test',
+      accessTokenProvider: () => 'access-token',
+      httpClient: mock,
+    );
+
+    await expectLater(
+      client.getBytes('https://api.inone.test/objects/file-1?sig=signed'),
+      throwsA(isA<ApiException>().having((error) => error.statusCode, 'statusCode', 302)),
+    );
     client.close();
   });
 

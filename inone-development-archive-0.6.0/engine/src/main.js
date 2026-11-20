@@ -10,9 +10,20 @@ import { createSmtpMailer } from './mail-smtp.js';
 
 /** Запускает сервер. pool = null — память (только для тестов и разработки). */
 export async function startServer({ config, logger = createLogger({ level: config.logLevel }), pool = null }) {
+  // Production must never fall back to process memory: accounts, sessions and MLS state
+  // must remain durable across restarts and shared across server instances.
+  if ((config.production === true || config.nodeEnv === 'production') && !pool) {
+    throw new Error('production server requires PostgreSQL; refusing to start with the in-memory store');
+  }
   let store;
   if (pool) {
-    if (config.runMigrations) await migrate(pool, { logger });
+    if (config.runMigrations) {
+      await migrate(pool, { logger });
+    } else {
+      // Even when schema changes are managed externally, fail before binding HTTP
+      // if PostgreSQL is unavailable; otherwise /healthz could report a false start.
+      await pool.query('SELECT 1');
+    }
     store = createStore({ pool, pinPepper: config.pinPepper });
   }
   const mailer = config.mailTransport === 'smtp'
@@ -32,6 +43,7 @@ export async function startServer({ config, logger = createLogger({ level: confi
   const app = createServer({
     pinPepper: config.pinPepper,
     docsSecret: config.docsSecret || null,
+    objectSecret: config.objectSecret || undefined,
     testUi: config.testUi,
     store,
     trustProxy: config.trustProxy,
@@ -39,6 +51,7 @@ export async function startServer({ config, logger = createLogger({ level: confi
     quotaBytes: config.fileQuotaBytes ?? null,
     registrationMode: config.registrationMode,
     publicUrl: config.publicUrl,
+    fileBaseUrl: config.publicUrl,
     bodyLimit: config.bodyLimitBytes,
         requirePhone: config.requirePhone,
     mailer,
@@ -53,11 +66,11 @@ export async function startServer({ config, logger = createLogger({ level: confi
   await new Promise((resolve, reject) => {
     app.server.once('error', reject);
     app.server.listen(config.port, config.host, resolve);
-    const cleanupTimer = setInterval(() => {
-      app.sweepExpired().catch(() => {});
-    }, 10 * 60_000);
-    cleanupTimer.unref();
   });
+  const cleanupTimer = setInterval(() => {
+    app.sweepExpired().catch(() => {});
+  }, 10 * 60_000);
+  cleanupTimer.unref();
   const port = app.server.address().port;
   logger.info('server started', { port, environment: config.nodeEnv });
   if (config.devEmailCode) logger.warn('development email code is enabled: never use this in production', { environment: config.nodeEnv });
@@ -65,7 +78,9 @@ export async function startServer({ config, logger = createLogger({ level: confi
   const stop = () => {
     stopping ??= (async () => {
       logger.info('shutting down');
+      clearInterval(cleanupTimer);
       await new Promise((resolve) => app.server.close(resolve));
+      mailer?.close?.();
       if (pool) await pool.end();
       logger.info('stopped');
     })();

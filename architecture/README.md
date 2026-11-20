@@ -14,6 +14,7 @@ This directory is the architectural entry point for the platform. It describes t
 4. [Domain model and access](DOMAIN-MODEL-AND-ACCESS.md) — organizations, employees, roles, permissions and key business objects.
 5. [Architecture laws](ARCHITECTURE-LAWS.md) — rules all implementation must follow.
 6. [Open owner decisions](OPEN-OWNER-DECISIONS.md) — questions that must be answered before the related design is frozen.
+7. [Mobile client technology decision — ADR-MOBILE-CLIENT-001](ADR-MOBILE-CLIENT-001.md) — Flutter/Dart as the primary iOS and Android client, with selective native Swift/Kotlin modules and performance-validation gates.
 
 ## Companion development plan
 

@@ -1,30 +1,88 @@
-# InOne platform
+# InOne UI (Flutter)
 
-InOne is a product platform built around three connected but distinct products:
+Согласованные экраны InOne в виде нативных Flutter-виджетов. Скругление убрано только у фона экрана;
+внутренние элементы — как в макете. Зависимостей, кроме Flutter SDK, нет (Dart 3 / Flutter 3.10+).
 
-- **Propo** — marketplace and classifieds in Armenia.
-- **InOne Business** — the professional back office and team workspace for organizations selling through Propo.
-- **InOne** — personal and social communication for individuals.
+## Подключение
 
-The product vision and technical boundaries are documented in the architecture directory. The implementation plan is in development/architecture.
+```dart
+MaterialApp(
+  theme: InOneTheme.light(),
+  darkTheme: InOneTheme.dark(),   // тёмные экраны D02…D50 — это та же вёрстка в тёмной теме
+  themeMode: ThemeMode.system,
+  home: ...,
+);
+```
 
-## Start here
+Глобальные состояния (нет сети, техработы, 429) задаются один раз:
 
-1. [Product vision](architecture/PRODUCT-VISION.md)
-2. [Product boundaries](architecture/PRODUCT-BOUNDARIES.md)
-3. [System architecture](architecture/SYSTEM-ARCHITECTURE.md)
-4. [Domain model and organization permissions](architecture/DOMAIN-MODEL-AND-ACCESS.md)
-5. [Architecture laws](architecture/ARCHITECTURE-LAWS.md)
-6. [Open decisions for the owner](architecture/OPEN-OWNER-DECISIONS.md)
-7. [Development roadmap](development/architecture/DEVELOPMENT-ROADMAP.md)
+```dart
+InOneStatusScope(state: InOneScreenState.offline, child: ...)
+```
 
-## Project status
+Экраны показывают баннер и блокируют кнопки сами.
 
-The architecture documents are version 0.1 drafts based on the owner's product direction and previously inspected repository structure. The owner must approve unresolved decisions before implementation. Existing repository code, branches, screens, tests and CI records are historical technical references; they are not assumed complete or production-accepted for this restart.
+## Шрифты
 
-## Development rules and continuity
+В `pubspec.yaml` добавьте Noto Sans и Noto Sans Armenian (TTF из Google Fonts):
 
-- Read development/README.md and development/WORKING-RULES.md before development.
-- Read docs/continuity/README.md for durable project decisions and handoff.
-- GitHub is the durable source of truth. Never rely on chat memory or local-only files.
-- Do not merge PRs, run deployments, expose services or change product code without the required owner authorization.
+```yaml
+flutter:
+  fonts:
+    - family: NotoSans
+      fonts:
+        - asset: assets/fonts/NotoSans-Regular.ttf
+        - asset: assets/fonts/NotoSans-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/NotoSans-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/NotoSans-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/NotoSans-ExtraBold.ttf
+          weight: 800
+    - family: NotoSansArmenian
+      fonts:
+        - asset: assets/fonts/NotoSansArmenian-Regular.ttf
+        - asset: assets/fonts/NotoSansArmenian-Bold.ttf
+          weight: 700
+```
+
+## Структура
+
+- `theme/` — токены light/dark (`InOneColors`), `InOneTheme`.
+- `state/` — состояния экрана, `InOneFailure`, миксин `InOneActionState`.
+- `widgets/` — общие виджеты; `inone_bottom_nav.dart` — нижняя навигация
+  **Лента · Звонки · + · Сообщения · Профиль** (`+` — добавить публикацию).
+- `models/` — модели представления (без HTTP).
+- `screens/` — по одному файлу на экран.
+- `screens/calendar/` — календарь: месяц, неделя, день, карточка события, новое событие, доступность участников (Screen 60–65 / D60–D65).
+- `demo/` — демо-данные и галерея экранов (только для предпросмотра).
+
+## Контракт экранов
+
+Экраны не знают про HTTP и навигацию. Действия — колбэки `Future<InOneFailure?> Function(...)`
+(`null` = успех), переходы — `VoidCallback`/`ValueChanged`. Тексты ошибок приходят из каталога
+ERROR_TEXT через `InOneFailure.message`.
+
+## Что учтено из решений по экранам
+
+- SC-01 принят для беты; кнопки Google и Apple — отдельные, с логотипами, под строками формы.
+- SC-05 как отдельный экран не создаётся; «Назад» на SC-06 ведёт на SC-01.
+- SC-09: блок про сброс ключей — заглушка до утверждения текста (D8), передаётся через `keyResetWarning`.
+- Экраны без разделов в нижней навигации (организация, воркспейс, уведомления) показывают её без активного пункта.
+- Статус-бар и индикатор жестов из макетов не рисуются: их отдаёт ОС.
+
+## Календарь
+
+- Подписи — `InOneCalendarLabels` (`hy` по умолчанию, `ru`, `en`); экраны принимают `labels`, язык задаётся настройками приложения.
+- Даты — настоящие `DateTime`; пересекающиеся события делят ширину сетки (`inOneLaneLayout`).
+- Выбор участников и повторения — колбэки хоста (`onEditParticipants`, `onPickRepeat`); даты и время — стандартные пикеры Material.
+- Сохранение и ответ на приглашение — `Future<InOneFailure?> Function(...)`, как на остальных экранах.
+- Дополнение к макету: выбранный день подсвечивается зелёным кругом, а «сегодня» без выбора — цветом числа.
+
+## Известные допущения
+
+- Иконки — Material Icons через `InOneIcons`; для кастомного набора замените значения в одном файле.
+- Логотип Google — упрощённый (`InOneGoogleLogo`); для публикации в сторах используйте официальный SVG.
+- `Icons.apple` требует актуального Flutter SDK.
+- Код проверен разбором синтаксиса и перекрёстной проверкой имён/параметров; `flutter analyze` и тесты не запускались.

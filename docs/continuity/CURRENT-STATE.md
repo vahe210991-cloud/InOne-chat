@@ -1,3 +1,5 @@
+> **ENGINE STABILIZATION UPDATE — 2026-11-14:** Рабочая ветка `feat/flutter-ui-dart-migration-2026-11-14`, latest code/test commit `24ed7477ed308f82d5e61c97bba5aac3f5f2da65`; latest audit report commit `45f2fceb48e6ca58fc8d9ca8668aa9652953d217`; `main` не изменялся; рабочая ветка ahead of main, behind 0. `main` не изменялся. Canonical Node/PostgreSQL backend — `inone-development-archive-0.6.0/engine/`; duplicate POC Node server теперь запрещён для production, но POC persistent OpenMLS client сохранён. Добавлены production PostgreSQL guard, email-first/SMS fail-closed config, placeholder rejection, lifecycle cleanup, CI fixes и API-doc path reconciliation. **Новые тесты ещё не запускались на exact SHA.** Flutter native MLS/FFI и device persistence остаются заблокированными. Полный отчёт: [2026-11-14 engine stability audit](../../development/reports/2026-11-14-engine-stability-audit.md). Исторический статус ниже не заменяет этот latest status.
+
 > **UI SOURCE IMPORT UPDATE — 2026-11-09 12:11 (UTC+3):** Owner-provided `Ui.zip` is now present on the PR #36 task branch at `mobile/assets/ui-approval/`. CI run [#42586579987](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42586579987) passed all 15 steps: archive SHA verification, nested package import, 73-screen gallery check, Flutter pub get/analyze/tests, Android preview APK build and artifact upload. Run event SHA: `478cad39bc39e8002e55293e3015e72b68e26c8c`; import bot advanced branch head to `cb09a4058719576df6d589f1f8b59be517b592b5`. Remote tree contains 31 screen HTML files, 32 HTML including index, and 5 WOFF2 fonts. PR #36 remains draft/open/unmerged. Runtime WebView rendering, live bridge/API integration and device acceptance are NOT YET VERIFIED. WBS v1.1 unchanged. See [stage report](../../development/reports/2026-11-09-1211-ui-archive-import-ci.md).
 
 # InOne — текущее состояние проекта
@@ -415,3 +417,35 @@ Identity Stage 0 environment addendum: added `.devcontainer/identity/devcontaine
 
 
 CI verification update: first Identity contract workflow run #40 failed. The job log archive could not be retrieved (GitHub returned 404); failure cause remains unknown. Workflow now uses GitHub-hosted Ubuntu with pinned Node 26 setup rather than a job-level container. Latest-head rerun is not yet confirmed; CI remains NOT PASS.
+
+## Engine hardening update — 2026-11-14
+
+Канонический backend остаётся в `inone-development-archive-0.6.0/engine/`. В рабочей ветке `feat/flutter-ui-dart-migration-2026-11-14` на SHA `58fafebe5566ea5b6f6afbadd8942fe5e166b62f` внесены два точечных исправления: P0 Rust-format workflow переведён в read-only check без автоматического push; startup при отключённых миграциях теперь проверяет PostgreSQL через `SELECT 1` до открытия HTTP-порта. Для DB readiness добавлены два регрессионных теста, но запуск тестов ещё не выполнен.
+
+PR #52 открыт как Draft и направлен в `stage0/identity-engineering-readiness-2026-11-13`; не менять base и не сливать без отдельного решения владельца. Ветка на момент записи ahead of main на 358 commits, behind на 0. `main` не менялся.
+
+Flutter run #632 на exact SHA завершился failure до steps; доступных job steps/logs нет. Не трактовать это как failure тестов приложения. P0 matrix на exact SHA пока не подтверждён. Следующая сессия должна продолжить read-only аудит engine auth/session/OTP, object storage, backup/restore и MLS FFI, затем выполнить реальные тесты в контролируемом окружении.
+
+## Engine security hardening update — 2026-11-14
+
+В каноническом backend `inone-development-archive-0.6.0/engine/` выполнены дополнительные исправления: refresh token rotation теперь атомарна вместе с выпуском новой пары и повторно проверяет статус устройства под блокировкой; тесты сессий добавлены в PostgreSQL integration suite; подписанные file URLs в production формируются из доверенного `INONE_PUBLIC_URL`, а не из Host header; восстановление PostgreSQL выполняется в одной транзакции через `pg_restore --single-transaction`.
+
+Текущий engine code SHA на момент фиксации отчёта: `133a8c8dc3d28fa3c923288354dbf98821e90afb`. P0 run #43591312640 на exact SHA завершился до steps во всех шести jobs; GitHub не предоставил logs. Это не даёт ни PASS, ни результатов тестов. Локальные тесты не запускались.
+
+`main` не изменялся. PR #52 остаётся Draft/open и направлен в `stage0/identity-engineering-readiness-2026-11-13`; не менять base и не сливать без отдельного решения владельца.
+
+## Engine status — exact-head verification 2026-11-14
+
+Latest branch head: `dff9ebf9c69ac6ae08f6a91f7df3213652c3c87b`. Source-level static checks confirmed the latest hardening is present: DB readiness when migrations are disabled; atomic refresh rotation in PostgreSQL and memory stores; trusted configured origin for production signed file URLs; transactional database restore; regression tests and DB-suite inclusion. These checks do not substitute for test execution.
+
+P0 run #43591433401 and Flutter run #43591437303 both failed before any steps on the exact SHA; all P0 jobs have empty step arrays and logs are unavailable. No test result is established. Branch is 381 ahead / 0 behind main. `main` is untouched. PR #52 remains Draft/open and targets `stage0/identity-engineering-readiness-2026-11-13`.
+
+## Native MLS / file transport update — 2026-11-15
+
+PR #54 and PR #56 are merged into feat/flutter-ui-dart-migration-2026-11-14. The backend now authorizes each file download against the active user/device session and current room membership/private-file ownership. Mobile binary download/upload transport is present, with bearer credentials confined to same-origin authenticated downloads and redirects disabled for both directions. This does not mean attachment E2EE is complete.
+
+PR #57 (Draft) adds the AES-256-GCM attachment crypto core and a versioned MLS manifest contract. The crypto core is not yet connected to file reservation/upload/completion, MLS message send/sync, SQLCipher manifest/key persistence, or download/decryption.
+
+PR #58 (Draft, stacked on #57) ports the persistent Stage 4 Rust/OpenMLS client and Flutter Rust Bridge integration into the active native Flutter branch. Rust owns MLS state and refresh-token rotation after handoff; SQLCipher key material is stored in Android Keystore / protected iOS Keychain; app restart can resume the Rust session. The Flutter chat thread now has a native-MLS-only text send/sync path. The build flag remains disabled by default.
+
+Generated FRB outputs are still absent. Run mobile/tool/generate_native_mls.ps1 to generate bindings and build files. No Rust/Flutter tests or Android/iOS runtime checks were run. Keep native MLS disabled until generation and same-SHA validation pass. Recovery deep links remain unfinished.

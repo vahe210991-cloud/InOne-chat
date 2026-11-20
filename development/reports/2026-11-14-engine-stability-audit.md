@@ -1,0 +1,213 @@
+# InOne — углублённый аудит и стабилизация движка
+
+**Дата:** 2026-11-14  
+**Рабочая ветка:** `feat/flutter-ui-dart-migration-2026-11-14`  
+**Статус:** source-level stabilization in progress; production readiness НЕ подтверждена.
+
+## 1. Цель и принципы
+
+Установить единственную поддерживаемую серверную реализацию, исключить скрытый memory fallback в production, отделить legacy криптографию от MLS, защитить production-конфигурацию от тестовых значений и сохранить историю исходников.
+
+Не удалять исторические каталоги, пока в них есть уникальные компоненты, тесты или provenance. Не считать статический аудит заменой Node/PostgreSQL/Rust/Flutter runtime тестам. `main` не изменялся.
+
+## 2. Установленная карта исходников
+
+### Канонический серверный backend
+
+Поддерживаемый Node.js/PostgreSQL backend находится в:
+
+`inone-development-archive-0.6.0/engine/`
+
+Это опубликованный P0 source, принятый в PR #25. Историческая P0 приёмка прошла шесть CI jobs на exact PR head; см. `development/recovered-source/P0-CLOSURE-2026-11-08.md`. Это доказательство относится к тому SHA, а не к новым изменениям этого аудита.
+
+### Второе дерево — не production сервер
+
+`inone-engine-poc-0.6.0/` содержит отдельную копию Node server и отдельный persistent OpenMLS client.
+
+Статическое сравнение файлов на этой ветке показало:
+
+- в серверных файлах есть 58 общих route path literals;
+- canonical P0 backend дополнительно содержит `/rooms/mine`;
+- PostgreSQL store canonical backend содержит 186 async operations, POC store — 181;
+- пять операций присутствуют только в canonical backend: `joinPublicRoomOpen`, `mlsCommitOperation`, `mlsReleaseKeyPackageClaim`, `roomsOfUser`, `transitionOrgLinkStatus`;
+- canonical migrator указывает schema version `0028`, POC snapshot — `0024`.
+
+Это статическое сравнение текста и имён операций, не runtime contract test. Оно достаточно, чтобы не считать два серверных дерева равноправными и не использовать POC Node server как production backend.
+
+### Криптографические компоненты
+
+- `inone-development-archive-0.6.0/engine/src/crypto-engine.js` и `src/client.js` — legacy/test-only Matrix Olm/Megolm Node client. Production entrypoint `src/main.js` его не импортирует.
+- `inone-development-archive-0.6.0/engine/mobile-mls/mls-bridge/` — демонстрационный OpenMLS bridge с состоянием в памяти. Он не является durable mobile runtime.
+- `inone-engine-poc-0.6.0/mobile-mls/mls-client/` — отдельный persistent OpenMLS client с SQLCipher storage и интерфейсом для platform KeyStore. Он не равен Flutter FFI интеграции.
+- Активный `mobile/pubspec.yaml` содержит Flutter, HTTP и secure-storage зависимости, но не подключает Rust/FRB пакет. В Beta 1.0 отправка и получение сообщений правильно остаются заблокированными до native MLS + durable local storage.
+
+Не включать Megolm в production, не использовать in-memory bridge как постоянное хранилище и не добавлять plaintext fallback.
+
+## 3. Найденные проблемы и выполненные исправления
+
+### Production persistence
+
+- В каноническом `src/main.js` production мог запускаться без PostgreSQL pool и использовать память.
+- Добавлен fail-closed guard: production startup без PostgreSQL отклоняется до открытия HTTP порта.
+- В `test/main.test.js` добавлен регрессионный тест.
+- Комментарии `src/server.js` и `src/store.js` приведены в соответствие с фактической архитектурой: PostgreSQL — постоянный store, memory store — только тесты/локальная разработка.
+
+### Конфигурация телефона и SMS
+
+- `INONE_REQUIRE_PHONE` по умолчанию теперь `false`; включение возможно только явным `true`.
+- `INONE_SMS_ENABLED` остаётся `false` по умолчанию.
+- В канонической сборке нет production SMS provider injection: сервер по умолчанию создаёт memory SMS adapter для тестов.
+- Поэтому production config теперь запрещает `INONE_SMS_ENABLED=true` и `INONE_REQUIRE_PHONE=true`, пока настоящий провайдер не будет реализован и проверен.
+- Добавлены тесты для email-first defaults и fail-closed SMS поведения.
+
+### Production secrets и environment template
+
+- `.env.example` исправлен: DATABASE_URL больше не содержит поясняющий текст внутри значения; добавлены SMTP, docs secret, files path, phone/SMS flags и production defaults.
+- Production config теперь отвергает известные placeholder markers в PIN pepper, docs secret, PostgreSQL username/password и SMTP credentials; example host/address/public URL; placeholder PostgreSQL hostname.
+- Добавлена проверка корректного PostgreSQL URL, диапазона request timeout и положительной безопасной file quota.
+- Все значения в `.env.example` остаются placeholders; их нельзя использовать как реальные секреты.
+
+### Legacy криптография и зависимости
+
+- Matrix crypto package используется старым Node test client, а не production HTTP server.
+- `@matrix-org/matrix-sdk-crypto-wasm` перемещён из runtime dependencies в devDependencies; package-lock согласован с package.json.
+- Production backend не импортирует `src/client.js` / `TemporaryMatrixEngine`.
+
+### Жизненный цикл сервера
+
+- Cleanup interval раньше создавался до успешного listen и не очищался при shutdown.
+- Теперь interval создаётся после успешного bind и очищается при остановке.
+- SMTP transport закрывается при graceful shutdown.
+
+### Дублирующий POC server
+
+- `inone-engine-poc-0.6.0/src/main.js` теперь отклоняет любой production запуск, даже если передан PostgreSQL pool.
+- Добавлен тест, что POC server остаётся доступен тестам/разработке, но не может быть развёрнут как production backend.
+- README и DEPLOY POC каталога помечены: Node server не использовать; persistent OpenMLS client сохраняется как отдельный артефакт.
+
+### Транзакционная целостность организационного модуля
+
+- Создание заявки, загрузка документа + запись журнала, решение заявки + журнал выполняются транзакционно.
+- Одобрение заявки теперь одной транзакцией проверяет platform owner, блокирует pending request, создаёт организацию, назначает заявителя owner, меняет статус заявки и записывает журнал.
+- Добавление участника + audit, смена роли + audit, удаление/выход + удаление room memberships + audit выполняются транзакционно.
+- Проверка последнего owner находится внутри транзакции. PostgreSQL блокирует membership rows в стабильном порядке; добавлен DB race test для двух одновременных demotions.
+- Изменение org settings повторно проверяет роль внутри транзакции и записывает settings log + admin audit atomically.
+- Создание org link — UPSERT по паре организаций, с повторной проверкой ролей/статусов и двумя audit rows в одной транзакции.
+- Accept/revoke link повторно проверяет роль и сторону, сериализует state transition; при revoke cross-org room memberships и обе audit записи удаляются/добавляются в одной транзакции.
+- Lock order организационных write paths приведён к membership-first, чтобы не создавать цикл с открытым join; PostgreSQL race test F-02 обновлён под реальный lock query.
+- При ошибке записи metadata документа удаляется уже загруженный object-store blob; при ошибке atomic file rename удаляется временный файл.
+
+### CI и мобильные контракты
+
+- В `.github/workflows/flutter-mobile.yml` устранён повторный ключ `push`; правила запуска для feature branch и main объединены в один блок.
+- В `.github/workflows/validate-published-p0.yml` добавлена текущая рабочая ветка в push trigger, чтобы запускать P0 Node/PostgreSQL/Rust matrix на её изменениях.
+- Rust formatting workflow больше не вставляет untrusted PR branch ref прямо в shell; ref передаётся через env, push ограничен same-repository PR.
+- Beta 1.0 API integration docs переведены на canonical P0 backend source path.
+
+## 4. Статические проверки, выполненные после изменений
+
+- JSON parse для canonical `package.json` и `package-lock.json`: PASS.
+- Root lockfile dependencies совпадают с `package.json`: PASS.
+- Legacy Matrix crypto package присутствует только в devDependencies и помечен dev в lockfile: PASS.
+- В Flutter workflow остался один `push` block: PASS.
+- В P0 workflow добавлен trigger для текущей ветки: PASS.
+- Production PostgreSQL guard и новые regression tests присутствуют в исходниках: PASS.
+- Статическая инвентаризация: 173 уникальных `storage.<method>()` вызовов в canonical server; все имена найдены в PostgreSQL store и memory store. Это проверка наличия интерфейсных имён, а не доказательство корректности SQL/транзакций.
+- Сравнение route path literals и store operation names двух серверных деревьев завершено; результаты приведены в разделе 2.
+- SQL static scan: 328 `.query()` call sites; обнаружены только две interpolated SQL templates, обе используют allowlist-значения колонок (`setOrgSetting` и `setRoomAppearance`); string-concatenated SQL queries не обнаружены.
+- В `npm test` включены `migrate-runner.test.js` и `store-atomicity.test.js`; добавлены fake-client rollback tests для settings, request approval, member add/remove/role, link create/revoke; добавлен PostgreSQL race test для одновременных owner demotions и test concurrent duplicate link proposals. Это исходники тестов, не выполненный результат.
+
+## 5. CI и runtime evidence
+
+- Исторический P0 CI на exact SHA из P0 closure report: 6/6 jobs PASS.
+- После новых изменений полный Node/PostgreSQL/Rust suite здесь не запускался.
+- Последний видимый Flutter workflow run #43573883217 (job #132383812030) завершился failure до выполнения steps; получение job logs вернуло BlobNotFound. Steps отсутствуют, поэтому Flutter tests не стартовали. Поэтому это не является ни тестовым провалом приложения, ни успешной проверкой.
+- Доступный workflow-runs wrapper показывает только PR-triggered runs; push run текущей ветки этим способом не подтверждён.
+- Локальные `npm test`, `npm run test:db`, `cargo test`, `flutter analyze` и `flutter test` не запускались.
+
+## 6. Что сохранено, а что отправлено в архив
+
+- Исторические HTML/WebView материалы остаются в `мусорный ящик/` согласно ранее принятому переходу на Flutter.
+- Канонический P0 backend сохранён в существующем пути, чтобы не ломать provenance и ссылки.
+- POC каталог не перемещён целиком: его Node server теперь заблокирован для production, но persistent OpenMLS client и тестовые материалы нужны для дальнейшей FFI работы.
+- Никакие уникальные engine source files или миграции не удалялись.
+
+## 7. Открытые блокеры до утверждения постоянного и безопасного движка
+
+1. Успешный полный CI на точном текущем SHA: Node 22, PostgreSQL 16, Rust 1.91, Flutter.
+2. Проверка миграций на пустой БД и upgrade copy с сохранением данных.
+3. Реальный PostgreSQL backup и restore drill.
+4. Реальная SMTP доставка с домена, SPF/DKIM/DMARC.
+5. TLS reverse proxy, trust proxy, firewall/network isolation и эксплуатационные тайм-ауты.
+6. Нагрузочные и multi-instance проверки, наблюдаемость и alerting.
+7. Подключение persistent OpenMLS client к Flutter через поддерживаемый FFI.
+8. SQLCipher database key из iOS Keychain / Android Keystore; lifecycle, restart, offline sync, device revoke/recovery.
+9. Полные физические iOS/Android tests и end-to-end с двумя и более устройствами.
+10. Threat model review и независимый security/crypto audit.
+
+**Итог:** серверный P0 backend имеет постоянный PostgreSQL path и принятую историческую P0 CI базу; новые fail-closed исправления внесены в рабочую ветку. Дублирующий POC server исключён из production. Клиентский MLS путь ещё не интегрирован с активным Flutter runtime. До прохождения текущего CI и оставшихся эксплуатационных/мобильных проверок весь движок нельзя объявлять сертифицированным production-safe.
+
+## 8. Follow-up hardening — 2026-11-14
+
+Текущая проверенная ветка: `feat/flutter-ui-dart-migration-2026-11-14`; итоговый SHA этого набора изменений: `58fafebe5566ea5b6f6afbadd8942fe5e166b62f`.
+
+### Исправления, внесённые после первичного аудита
+
+- `.github/workflows/validate-published-p0.yml`: убраны job-level права `contents: write`, автоматическое форматирование с последующим commit/push в PR. Rust job теперь выполняет только `cargo fmt -- --check` для обоих Rust manifests; применяется наследуемое read-only разрешение workflow.
+- `engine/src/main.js`: если `runMigrations=false`, перед созданием HTTP-сервера выполняется `pool.query('SELECT 1')`. Недоступная PostgreSQL теперь останавливает startup до открытия порта.
+- `engine/test/main.test.js`: добавлены проверки вызова DB readiness probe и отказа запуска при ошибке PostgreSQL в режиме без миграций.
+
+### Статус проверки
+
+- Изменения записаны в GitHub в рабочую ветку; `main` не изменялся, merge не выполнялся.
+- Тесты Node, PostgreSQL, Rust и Flutter после этих изменений не запускались из этой сессии. Добавленные тесты пока являются непроверенными запуском.
+- Flutter workflow run #632 на SHA `58fafebe5566ea5b6f6afbadd8942fe5e166b62f` завершился failure до выполнения steps; у job нет списка steps и доступных logs. Это не подтверждает ошибку Flutter-кода и не подтверждает успешную сборку.
+- P0 PR workflow не следует считать подтверждённым на exact SHA только по результату Flutter workflow. Нужна отдельная проверка полного P0 matrix.
+- PR #52 остаётся Draft/open и направлен в `stage0/identity-engineering-readiness-2026-11-13`, а не в `main`. Не менять target и не сливать без отдельного решения владельца.
+
+### Следующие технические проверки
+
+1. Проверить exact-head P0 CI: Node suite, PostgreSQL integration, Rust/OpenMLS client и bridge.
+2. Выполнить `npm test` и `npm run test:db` в контролируемой среде.
+3. Продолжить аудит auth/session/OTP lifecycle, object storage, backup/restore и MLS Flutter FFI; исправлять только подтверждённые дефекты с регрессионными тестами.
+4. Проверить, что новая DB readiness ветка покрывает pool error и не меняет режим миграций.
+5. Не объявлять движок production-ready до runtime/backup/restore/SMTP/TLS/MLS и независимого security review.
+
+## 9. Follow-up hardening — session rotation, file URLs and restore atomicity
+
+Проверенный engine/code head до обновления документации: `133a8c8dc3d28fa3c923288354dbf98821e90afb`.
+
+### Исправления
+
+- **Refresh rotation:** ранее PostgreSQL сначала отдельным запросом помечал refresh token использованным, а затем другой транзакцией выпускал новую пару. Ошибка между этими действиями могла оставить пользователя без рабочей сессии. Добавлены `refreshTokenDevice` (read-only preflight) и `rotateSession`: новая ротация выполняет device-first row lock, затем блокирует refresh row, проверяет expiry/reuse/revocation, погашает старый токен и записывает access+refresh в одной транзакции. Ошибка вставки откатывает весь переход.
+- Маршрут `/token/refresh` выполняет due recovery до погашения токена и использует только `rotateSession`; PostgreSQL и memory adapters имеют одинаковый контракт.
+- Добавлены тесты конкурентной ротации, rollback при сбое вставки и включение `sessions.test.js` в `test:db` (раньше DB integration suite не запускал тесты сессий).
+- **Signed file URLs:** upload/download URL теперь в production строятся от настроенного `INONE_PUBLIC_URL` (`fileBaseUrl`), а не из недоверенного `Host` header и локального socket TLS state. Это устраняет host-header poisoning и ошибочную схему HTTP за TLS reverse proxy. Добавлен regression test с подменённым Host.
+- **DB restore:** `pg_restore` запускается с `--single-transaction`, чтобы SQL restore failure не оставлял частично восстановленную схему. Добавлена проверка этого требования.
+
+### Проверка и CI
+
+- Изменения закоммичены только в рабочую ветку. `main` не менялся.
+- Полный P0 workflow запущен на exact code SHA `133a8c8dc3d28fa3c923288354dbf98821e90afb`, run #43591312640. Все 6 jobs завершились failure примерно за 3–4 секунды; GitHub API показывает пустые `steps` для каждой job, а logs недоступны (BlobNotFound). Это означает, что ни Node, ни PostgreSQL, ни Rust checks не дали исполнимого результата; нельзя трактовать это как подтверждённые ошибки тестов или как PASS.
+- `npm test`, `npm run test:db`, Rust и Flutter команды локально в этой сессии не запускались.
+- PR #52 остаётся Draft/open, base — `stage0/identity-engineering-readiness-2026-11-13`; merge и retarget не выполнялись.
+
+### Следующие действия
+
+1. Восстановить доступность GitHub Actions runner / выяснить причину job-level failure до steps; затем повторить полный P0 matrix на актуальном SHA.
+2. Проверить реальные PostgreSQL tests конкурентной ротации и транзакционного rollback.
+3. Продолжить аудит account/session revocation, OTP rate limits, object storage recovery/consistency, backup file archive safety и MLS FFI.
+4. Не объявлять engine production-ready без runtime/restore/SMTP/TLS/MLS validation и независимого security review.
+
+## 10. Exact-head follow-up verification — 2026-11-14
+
+Latest branch HEAD after code and test changes: `dff9ebf9c69ac6ae08f6a91f7df3213652c3c87b`.
+
+Static source verification on this exact branch confirmed: PostgreSQL readiness probe exists; production `fileBaseUrl` is passed from `INONE_PUBLIC_URL`; object URL builder uses configured origin; refresh route uses preflight + atomic `rotateSession`; both stores implement rotation; concurrent refresh, rollback, Host-header and restore regression tests are present; `sessions.test.js` is included in `test:db`; P0 workflow no longer contains `contents: write` or auto-push. These are source-presence checks only, not execution results.
+
+Exact-head CI evidence:
+- P0 run #43591433401 (`push`) for SHA `dff9ebf9c69ac6ae08f6a91f7df3213652c3c87b`: failure. All six jobs completed within seconds with empty step arrays; logs are unavailable.
+- Flutter run #43591437303 (`pull_request`) for the same SHA: failure before steps; job step array is empty and logs are unavailable.
+- Therefore neither Node/PostgreSQL/Rust nor Flutter commands produced test results. Do not attribute these failures to source code and do not mark the checks PASS.
+
+Branch compare: 381 ahead of `main`, 0 behind. PR #52 remains Draft/open, base `stage0/identity-engineering-readiness-2026-11-13`. `main` untouched; no merge, retarget or deployment.

@@ -103,3 +103,18 @@ test('выход из организации снимает доступ к её
     await s.stop();
   }
 });
+
+test('F-03 PostgreSQL: concurrent owner demotions cannot leave an organization without an owner', { skip: !process.env.DATABASE_URL }, async () => {
+  const s = await start();
+  try {
+    await s.store.addOrgMember(ORG, EVE, 'owner', 5);
+    const [demoteEve, demoteAnna] = await Promise.all([
+      call(s.base, 'POST', `/orgs/${ORG}/members/${enc(EVE)}/role`, s.anna.token, { role: 'member' }),
+      call(s.base, 'POST', `/orgs/${ORG}/members/${enc(ANNA)}/role`, s.eve.token, { role: 'member' }),
+    ]);
+    assert.equal([demoteEve.status, demoteAnna.status].filter((status) => status === 200).length, 1);
+    assert.equal(await s.store.countOrgOwners(ORG), 1, 'exactly one owner remains after concurrent role changes');
+  } finally {
+    await s.stop();
+  }
+});
