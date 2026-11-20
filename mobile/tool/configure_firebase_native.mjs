@@ -43,6 +43,19 @@ function configureAndroid() {
     'com.google.gms.google-services',
     'id("com.google.gms.google-services")',
   );
+  // Firebase Android Messaging 26.x requires API 24 or newer.
+  let appSource = fs.readFileSync(appGradle, 'utf8');
+  if (!/minSdk\\s*=\\s*24/.test(appSource)) {
+    const defaultConfig = appSource.match(/defaultConfig\\s*\\{[\\s\\S]*?\\n\\s*\\}/);
+    if (!defaultConfig || !/minSdk\\s*=\\s*flutter\\.minSdkVersion/.test(defaultConfig[0])) {
+      throw new Error('Cannot safely set Android minSdk to 24 in generated defaultConfig');
+    }
+    appSource = appSource.replace(
+      /minSdk\\s*=\\s*flutter\\.minSdkVersion/,
+      'minSdk = 24',
+    );
+    fs.writeFileSync(appGradle, appSource);
+  }
   let xml = fs.readFileSync(manifest, 'utf8');
   for (const permission of [
     'android.permission.INTERNET',
