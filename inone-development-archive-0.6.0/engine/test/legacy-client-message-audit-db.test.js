@@ -7,18 +7,20 @@ const postgresTest = process.env.DATABASE_URL ? test : test.skip;
 
 postgresTest('PostgreSQL: legacy pending audit runs in a read-only transaction', async () => {
   const db = await testDatabase();
+  const client = await db.pool.connect();
   try {
-    await db.pool.query('BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY');
-    const report = await inspectLegacyPendingClientMessages(db.pool);
-    await db.pool.query('COMMIT');
+    await client.query('BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY');
+    const report = await inspectLegacyPendingClientMessages(client);
+    await client.query('COMMIT');
     assert.equal(report.mode, 'read-only');
     assert.equal(report.pendingCount, 0);
     assert.equal(report.sampledCount, 0);
     assert.equal(report.automaticResolution, 'none');
   } catch (error) {
-    await db.pool.query('ROLLBACK').catch(() => {});
+    await client.query('ROLLBACK').catch(() => {});
     throw error;
   } finally {
+    client.release();
     await db.close();
   }
 });
