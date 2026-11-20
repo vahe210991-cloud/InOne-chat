@@ -1,7 +1,7 @@
 // Настройки сервера из переменных окружения. Неверная конфигурация останавливает запуск до открытия порта.
 import { DEFAULT_PHONE_COUNTRIES } from './phone-international.js';
 const TEST_PEPPER_MARKERS = ['test-pepper', 'change-me', 'example', 'dev-only'];
-const isValidEmailEncryptionKey = (value) => {
+const isValidAes256Key = (value) => {
   if (typeof value !== 'string') return false;
   if (/^[a-f0-9]{64}$/i.test(value)) return true;
   if (!/^[A-Za-z0-9+/]+={0,2}$/.test(value)) return false;
@@ -42,6 +42,11 @@ export function loadConfig(env = process.env) {
     smtpPassword: env.INONE_SMTP_PASSWORD ?? '',
     smtpFrom: env.INONE_SMTP_FROM ?? '',
     emailEncryptionKey: env.INONE_EMAIL_ENCRYPTION_KEY ?? '',
+    firebaseProjectId: env.INONE_FIREBASE_PROJECT_ID ?? '',
+    firebaseServiceAccountJson: env.INONE_FIREBASE_SERVICE_ACCOUNT_JSON ?? '',
+    pushEncryptionKey: env.INONE_PUSH_ENCRYPTION_KEY ?? '',
+    pushWorkerPollMs: Number(env.INONE_PUSH_WORKER_POLL_MS ?? 1000),
+    pushMaxAttempts: Number(env.INONE_PUSH_MAX_ATTEMPTS ?? 8),
     emailWorkerPollMs: Number(env.INONE_EMAIL_WORKER_POLL_MS ?? 1000),
     emailMaxAttempts: Number(env.INONE_EMAIL_MAX_ATTEMPTS ?? 8),
     requirePhone: env.INONE_REQUIRE_PHONE !== 'false',
@@ -64,6 +69,8 @@ export function loadConfig(env = process.env) {
     if (config.mailTransport !== 'smtp') errors.push('production needs a real mail transport: set INONE_MAIL_TRANSPORT=smtp');
     if (config.mailTransport === 'smtp' && !config.smtpRequireTls) errors.push('production SMTP must require TLS (INONE_SMTP_REQUIRE_TLS)');
     if (!config.filesDir) errors.push('INONE_FILES_DIR is required in production: files kept in memory are lost on restart');
+    if (!config.firebaseProjectId) errors.push('INONE_FIREBASE_PROJECT_ID is required in production');
+    if (!isValidAes256Key(config.pushEncryptionKey)) errors.push('INONE_PUSH_ENCRYPTION_KEY must be 32 bytes (64 hex characters or canonical base64)');
     if (config.docsSecret.length < 32) errors.push('INONE_DOCS_SECRET must be at least 32 characters in production');
     if (config.testUi) errors.push('INONE_TEST_UI must not be set in production');
   } else if (!config.pinPepper) {
@@ -74,6 +81,12 @@ export function loadConfig(env = process.env) {
     // Фиксированный код подтверждения почты: только для разработки, в продакшене запрещён.
     if (production) errors.push('INONE_DEV_EMAIL_CODE is not allowed in production');
     if (!/^\d{6}$/.test(config.devEmailCode)) errors.push('INONE_DEV_EMAIL_CODE must be 6 digits');
+  }
+  if (config.firebaseProjectId || config.pushEncryptionKey || config.firebaseServiceAccountJson) {
+    if (!config.firebaseProjectId) errors.push('INONE_FIREBASE_PROJECT_ID is required when push is configured');
+    if (!isValidAes256Key(config.pushEncryptionKey)) errors.push('INONE_PUSH_ENCRYPTION_KEY must be 32 bytes (64 hex characters or canonical base64)');
+    if (!Number.isInteger(config.pushWorkerPollMs) || config.pushWorkerPollMs < 250 || config.pushWorkerPollMs > 60000) errors.push('INONE_PUSH_WORKER_POLL_MS must be 250..60000');
+    if (!Number.isInteger(config.pushMaxAttempts) || config.pushMaxAttempts < 1 || config.pushMaxAttempts > 20) errors.push('INONE_PUSH_MAX_ATTEMPTS must be 1..20');
   }
   if (config.mailTransport === 'smtp') {
     if (!config.smtpHost || [...config.smtpHost].some((ch) => ch <= ' ')) errors.push('INONE_SMTP_HOST is required and must not contain whitespace');
