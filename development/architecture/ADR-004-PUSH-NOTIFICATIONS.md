@@ -26,18 +26,9 @@
 
 ### 1. FCM FID — официальный целевой механизм
 
-Использовать Firebase Admin Node.js SDK `getMessaging().send(message)` с полем `fid`:
+Использовать Firebase Admin Node.js SDK `getMessaging().send(message)` с полем `fid`. Реализация использует отдельный production bootstrap `createFirebaseAdminPushSender` и adapter `createFcmPushSender`.
 
-```js
-await getMessaging().send({
-  fid: installationId,
-  data: {
-    type: 'message',
-    event_id: eventId,
-    path: safeOpaquePath,
-  },
-});
-```
+Data allowlist: `type`, `event_id`, `path`. Для фонового отображения разрешён только фиксированный нейтральный notification envelope `title=InOne`, `body=New message`; в нём нет имени отправителя, названия комнаты или содержимого. Никакие приватные значения в notification title/body не передаются.
 
 Официальная документация Firebase прямо поддерживает адресацию FID в Admin SDK и рекомендует `fid`; поле `token` устаревает, хотя в период миграции принимает FID. Не передавать 22-символьный FID как обычный registration token и не вызывать API, который принимает только классические FCM tokens.
 
@@ -67,10 +58,13 @@ await getMessaging().send({
 
 ### 3. Единая бизнес-служба и transport adapter
 
-Ввести внутренний контракт `PushNotificationService`:
-- `enqueueDevice(deviceKey, event, options)`;
-- `enqueueUser(userId, event, options)`;
-- `enqueueUsers(actor, userIds, event, options)` — только после проверки существующего capability/permission на стороне backend;
+Текущая реализация использует внутренний контракт `createPushDelivery`:
+- `encryptRegistrationId(fid, deviceKey)`;
+- `backfillLegacyRegistrations()`;
+- `enqueueRoomEvent(transaction, { roomId, eventId, excludeDeviceKey })` — вызывается только из транзакции записи реального MLS room event;
+- `start()`, `tick()`, `stop()` для worker lifecycle.
+
+Расширение до user/group bulk enqueue допускается только после отдельного подтверждения реальных event producers и capability/permission на стороне backend.
 - подавление по пользовательским настройкам, системной готовности и актуальному состоянию устройства;
 - отмена ещё не отправленных задач;
 - безопасный результат по каждому получателю.
@@ -102,9 +96,8 @@ await getMessaging().send({
 ### 5. Статусы и модель результата
 
 Разделять состояния:
-- `created` — событие/запись сформированы;
 - `queued` — durable запись готова к обработке;
-- `sending` — worker получил lease;
+- `processing` — worker получил lease;
 - `provider_accepted` — FCM вернул message ID;
 - `failed` — временная ошибка, ожидается retry;
 - `dead` — окончательная ошибка / исчерпаны попытки;
@@ -114,11 +107,13 @@ await getMessaging().send({
 
 ### 6. Payload и модель конфиденциальности
 
-Только data payload, без notification title/body, содержащих приватную информацию. Минимальный allowlist полей:
+Data payload содержит минимальный allowlist полей:
 - `v` — версия схемы;
 - `type` — тип события из allowlist;
 - `event_id` — opaque event identifier;
 - `path` — безопасный относительный route/opaque reference, только если он допустим моделью авторизации.
+
+FCM также получает фиксированный нейтральный системный notification envelope (`InOne` / `New message`) для отображения ОС в background/terminated состоянии. Он не содержит приватной информации и не заменяет data allowlist.
 
 Не передавать:
 - MLS plaintext, имя/текст сообщения, preview, вложения;
@@ -150,12 +145,7 @@ await getMessaging().send({
 
 Ответ/упоминание, звонки, приглашения и организации добавлять только после подтверждения реальных event producers и прав доступа. Не создавать фиктивные события.
 
-Пользовательские настройки хранятся на сервере отдельно от системного разрешения ОС:
-- master push enabled;
-- allowlist/category preferences;
-- optional per-room mute, если room settings позволяют это без дублирования существующего контракта.
-
-Эффективное решение вычисляется на сервере: server preference AND active device registration AND OS permission/readiness signal (последнее — advisory, поскольку сервер не может сам достоверно читать текущее разрешение ОС). Изменения синхронизируются между устройствами.
+В текущем срезе enqueue управляется существующим глобальным feature flag `push.enabled`, активной FID-регистрацией устройства и OS permission/readiness lifecycle на клиенте. Полные серверные category preferences и per-room mute пока не реализованы и остаются отдельным acceptance item; не считать их завершёнными. OS permission остаётся advisory для backend, поскольку сервер не может достоверно читать текущее разрешение ОС.
 
 ### 9. Flutter receive и routing
 
@@ -188,16 +178,16 @@ Apple/Firebase setup:
 
 Metrics: queue depth/age, send success/error classes, retries, dead letters, invalid registrations, worker lease recovery. Доступ к operational details ограничить серверными правами.
 
-## План реализации
+## План реализации и фактическое состояние
 
-1. Проверить транзакционную границу MLS event, текущую push-token schema, server startup/config, mail worker lifecycle и Android/iOS native capabilities.
-2. Добавить миграции и безопасное шифрование существующих регистраций.
-3. Реализовать PostgreSQL push outbox/worker и FCM Admin sender с FID.
-4. Перенести существующий message notification producer на enqueue без изменения MLS event semantics.
-5. Реализовать настройки и синхронизацию устройства.
-6. Реализовать Flutter receive, tap routing и session/MLS-safe fetch.
-7. Подключить APNs credentials в Firebase и выполнить реальные физические smoke tests.
-8. Запустить полные тесты/CI на одном точном SHA; открыть PR, не выполнять merge до полного acceptance.
+1. [x] Проверена транзакционная граница MLS event и server startup/config; push outbox callback встроен в транзакции обычного и `clientMessageId` пути.
+2. [x] Добавлена миграция 0032, AES-256-GCM шифрование FID/payload и startup backfill legacy identifiers.
+3. [x] Добавлен FCM Admin sender с FID addressing и отдельный PostgreSQL worker/outbox.
+4. [x] Message notification producer перенесён с HTTP request path в transactional enqueue.
+5. [ ] Полные category/per-room user preferences и cross-device synchronization.
+6. [x] Добавлены Flutter foreground/background/tap/terminated handlers и authenticated, MLS-gated navigation. Реальное открытие содержимого зависит от включённого native MLS session.
+7. [x] Сгенерируемая iOS конфигурация включает APNs entitlement/background mode; APNs .p8 upload, Apple signing и физические smoke tests требуют owner credentials/device.
+8. [ ] Полные Node/PostgreSQL/Flutter/native CI проверки должны пройти на одном точном SHA; после этого физические Android/iOS delivery tests. PR остаётся draft до полного acceptance.
 
 ## Acceptance gates
 
