@@ -23,7 +23,16 @@ For actual iOS delivery, enable Push Notifications for App ID `com.inone.app`, u
 
 ## Receive and navigation
 
-The registration lifecycle above is not the receive/tap pipeline. Foreground/background/terminated handlers, `onMessageOpenedApp`, `getInitialMessage()`, authenticated event fetch, session restoration, deduplication and safe navigation remain to be implemented and tested before the receive stage is accepted. A push must never bypass room ACLs, session checks or MLS processing.
+- FirebaseMessaging.onBackgroundMessage is registered from main.dart; the OS displays the generic notification and the background callback performs no content access.
+- InOnePushReceiveLifecycle handles foreground messages, onMessageOpenedApp taps and getInitialMessage() for terminated launches. It accepts only the exact message data allowlist and same-origin /rooms/:id/events/:eventId route.
+- Foreground delivery shows a generic in-app "New message" action. Taps are held until the InOne session has initialized and authenticated.
+- Before navigation, the app fetches the target room event through the authenticated API (server ACL check). If a native MLS session is active, it syncs through Rust and displays only messages returned as decrypted by the native client. If native MLS is not active, the app returns to Chats and explains that encrypted content cannot be opened yet.
+- The push route never contains plaintext or bypasses room membership, session restoration, MLS processing or attachment encryption.
+- The thread composer remains disabled until the full native MLS send pipeline is accepted; receiving a push does not enable plaintext sending.
+
+## Receive validation
+
+mobile/test/core/session/inone_push_receive_lifecycle_test.dart covers route allowlisting, external URL rejection, event/path mismatch, foreground receive, opened-app handling, terminated launch and duplicate tap suppression.
 
 ## Validation
 
