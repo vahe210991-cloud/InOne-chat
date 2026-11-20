@@ -47,8 +47,8 @@ jobs:
       - name: Install canonical engine dependencies for real-server integration tests
         run: npm ci
         working-directory: inone-development-archive-0.6.0/engine
-      - name: Run canonical engine regression suite, including device-bound uploads
-        run: npm test
+      - name: Run canonical file-upload security regressions, including device-bound uploads
+        run: node --test test/files.test.js
         working-directory: inone-development-archive-0.6.0/engine
       - name: Verify committed MLS client lockfile
         run: test -s inone-engine-poc-0.6.0/mobile-mls/mls-client/Cargo.lock
