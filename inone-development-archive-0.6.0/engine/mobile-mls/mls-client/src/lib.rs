@@ -2693,9 +2693,13 @@ impl Client {
                     "временная ошибка слияния Commit, повтор позже: {error}"
                 ));
             }
-            transaction.commit().map_err(|error| {
-                format!("временная ошибка фиксации MLS Commit, повтор позже: {}", text(error))
-            })?;
+            if let Err(error) = transaction.commit() {
+                self.reload_group(room_id)?;
+                return Err(format!(
+                    "временная ошибка фиксации MLS Commit, повтор позже: {}",
+                    text(error)
+                ));
+            }
         }
 
         // Опоздавшие события (аудит, P0.3): их эпоха уже пройдена. Внутри окна пробуем расшифровать,
