@@ -47,7 +47,7 @@ jobs:
           cache: true
       - run: flutter --version
       - name: Generate Android and iOS platform projects
-        run: flutter create --platforms=android,ios --project-name inone_mobile --org com.inone --no-pub .
+        run: bash tool/generate_flutter_platforms.sh android,ios
       - name: Verify Flutter project generation preserves dependency manifests
         run: git diff --exit-code -- pubspec.yaml pubspec.lock
       - name: Remove generated template test
