@@ -54,7 +54,7 @@ jobs:
 
       - name: Install locked engine dependencies and apply database migrations
         run: |
-          docker compose -f .devcontainer/docker-compose.yml exec -T app bash -lc '
+          docker compose -f .devcontainer/docker-compose.yml exec -T --user root app bash -lc '
             set -euo pipefail
             cd /workspace/inone-development-archive-0.6.0/engine
             npm ci
@@ -68,7 +68,7 @@ jobs:
             cd /workspace/inone-development-archive-0.6.0/engine
             nohup npm start >/tmp/inone-backend-runtime.log 2>&1 </dev/null &
           '
-          docker compose -f .devcontainer/docker-compose.yml exec -T app node --input-type=module <<'NODE'
+          docker compose -f .devcontainer/docker-compose.yml exec -T --user root app node --input-type=module <<'NODE'
           import assert from "node:assert/strict";
 
           const base = "http://127.0.0.1:8080";
@@ -102,7 +102,7 @@ jobs:
           mkdir -p "${RUNNER_TEMP}/inone-compose-diagnostics"
           docker compose -f .devcontainer/docker-compose.yml ps --all > "${RUNNER_TEMP}/inone-compose-diagnostics/compose-ps.txt" 2>&1 || true
           docker compose -f .devcontainer/docker-compose.yml logs --no-color > "${RUNNER_TEMP}/inone-compose-diagnostics/compose.log" 2>&1 || true
-          docker compose -f .devcontainer/docker-compose.yml exec -T app bash -lc 'cat /tmp/inone-backend-runtime.log 2>/dev/null || true' > "${RUNNER_TEMP}/inone-compose-diagnostics/backend.log" 2>&1 || true
+          docker compose -f .devcontainer/docker-compose.yml exec -T --user root app bash -lc 'cat /tmp/inone-backend-runtime.log 2>/dev/null || true' > "${RUNNER_TEMP}/inone-compose-diagnostics/backend.log" 2>&1 || true
           docker --version > "${RUNNER_TEMP}/inone-compose-diagnostics/docker-version.txt" 2>&1 || true
           docker compose version >> "${RUNNER_TEMP}/inone-compose-diagnostics/docker-version.txt" 2>&1 || true
 
