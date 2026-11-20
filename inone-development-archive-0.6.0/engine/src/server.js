@@ -434,6 +434,9 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
     const STALE_UPLOAD_MS = 24 * 3600_000;
     const signFor = (action, fileId, expires, size = '', sha = '', ownerId = '', ownerDeviceId = '') =>
       createHmac('sha256', objectSecret).update(`${action}|${fileId}|${expires}|${size}|${sha}|${ownerId}|${ownerDeviceId}`).digest('hex');
+    // Signed download URLs are bound to the live authenticated account and device.
+    const signDownloadFor = (fileId, expires, userId, deviceId) =>
+      createHmac('sha256', objectSecret).update(`GET|${fileId}|${expires}|${userId}|${deviceId}`).digest('hex');
     const sameSig = (a, b) => {
       const x = Buffer.from(String(a));
       const y = Buffer.from(String(b));
@@ -446,6 +449,8 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
       const fileId = decodeURIComponent(url.pathname.slice('/objects/'.length));
       const expires = Number(url.searchParams.get('expires'));
       const sig = url.searchParams.get('sig') ?? '';
+      const downloadSession = req.method === 'GET' ? await authed(req) : null;
+      if (req.method === 'GET' && !downloadSession) return send(res, 401, { error: 'unauthorized' });
       const file = await storage.getFile(fileId);
       if (!file) return send(res, 404, { error: 'not found' });
       if (req.method === 'PUT') {
@@ -484,7 +489,16 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         return send(res, 200, { uploaded: true });
       }
       if (req.method === 'GET') {
-        if (!expires || now() > expires || !sameSig(sig, signFor('GET', fileId, expires))) return send(res, 403, { error: 'download link is invalid or expired' });
+        const d = downloadSession;
+        if (!expires || now() > expires || !sameSig(sig, signDownloadFor(fileId, expires, d.userId, d.deviceId))) {
+          return send(res, 403, { error: 'download link is invalid, expired, or bound to another device' });
+        }
+        if (file.roomId) {
+          const room = await storage.getRoom(file.roomId);
+          if (!room || !room.members.includes(d.userId)) return send(res, 403, { error: 'not a member' });
+        } else if (file.ownerId !== d.userId) {
+          return send(res, 403, { error: 'not the owner' });
+        }
         if (file.status !== 'ready') return send(res, 404, { error: 'not ready' });
         const bytes = await objectStore.get(fileId);
         if (!bytes) return send(res, 404, { error: 'not found' });
@@ -1226,7 +1240,8 @@ if (req.method === 'GET' && fileLink) {
   } else if (f.ownerId !== d.userId) return send(res, 403, { error: 'not the owner' });
   if (f.status !== 'ready') return send(res, 409, { error: 'file is not ready' });
   const expires = now() + DOWNLOAD_TTL_MS;
-  return send(res, 200, { downloadUrl: absoluteUrl(req, `/objects/${fileId}?expires=${expires}&sig=${signFor('GET', fileId, expires)}`), expiresAt: new Date(expires).toISOString() });
+  const signature = signDownloadFor(fileId, expires, d.userId, d.deviceId);
+  return send(res, 200, { downloadUrl: absoluteUrl(req, `/objects/${fileId}?expires=${expires}&sig=${signature}`), expiresAt: new Date(expires).toISOString() });
 }
 if (req.method === 'GET' && p === '/devices/mine') {
   const d = await authed(req);
@@ -1338,19 +1353,16 @@ if (req.method === 'POST' && orgReqDecision) {
   const role = await storage.platformRoleOf(d.userId);
   if (role !== 'owner') return send(res, 403, { error: 'only the platform owner decides', code: 'not_platform_owner' });
   const requestId = decodeURIComponent(orgReqDecision[1]);
-  const r = await storage.getOrgRequest(requestId);
-  if (!r) return send(res, 404, { error: 'not found' });
-  if (r.status !== 'pending') return send(res, 409, { error: 'request is already decided' });
   if (body.decision !== 'approve' && body.decision !== 'reject') return send(res, 400, { error: 'decision must be approve or reject' });
-  if (body.decision === 'reject') {
-    await storage.decideOrgRequest({ requestId, status: 'rejected', decidedBy: d.userId, decidedAt: now(), orgId: null });
-    return send(res, 200, { status: 'rejected' });
-  }
-  const orgId = `org-${requestId}`;
-  await storage.createOrganization({ orgId, name: r.name, status: 'approved', createdBy: r.applicantId, createdAt: now() });
-  await storage.addOrgMember(orgId, r.applicantId, 'owner', now());
-  await storage.decideOrgRequest({ requestId, status: 'approved', decidedBy: d.userId, decidedAt: now(), orgId });
-  return send(res, 200, { status: 'approved', orgId });
+  const result = await storage.decideOrgRequest({
+    requestId,
+    decision: body.decision,
+    decidedBy: d.userId,
+    decidedAt: now(),
+  });
+  if (!result) return send(res, 404, { error: 'not found' });
+  if (result.conflict) return send(res, 409, { error: 'request is already decided' });
+  return send(res, 200, { status: result.status, ...(result.orgId ? { orgId: result.orgId } : {}) });
 }
 // Управление организацией (шаг 5.4). Роли: владелец, администратор, участник. Владелец меняет роли;
 // владелец и администратор добавляют и удаляют участников (администратор — только обычных); выход снимает доступ к комнатам организации.

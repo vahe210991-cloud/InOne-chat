@@ -188,3 +188,34 @@ A2 is **NOT ACCEPTED**. No merge, native MLS enablement, release-gate change or 
 5. Add regression coverage for the Rust-to-generated-Dart-to-adapter contract, then run Rust, Flutter, Android Keystore and iOS device/simulator checks on one exact final SHA.
 
 **No source/API/workflow changes are made by this audit report.**
+
+
+## 13. Exact-head follow-up — 2026-11-20
+
+The baseline audit branch `feature/a2-frb-reconciliation-2026-11-19` remains an audit/baseline PR and is not accepted A2. Its exact head for the evidence below is `3b20f4e557a994918be474a65aa20eb24e0f6d17`.
+
+### Verified evidence on that exact head
+
+- FRB generation completed and repeated generation produced no output drift.
+- The generated artifact `inone-mls-frb-generated` carries the exact source SHA and all 11 entries in `SHA256SUMS` verified.
+- Android native-assets APK and Android Keystore runtime smoke passed; the lifecycle integration test reported `All tests passed!`.
+- The separate Flutter mobile workflow passed analyze, tests and Android APK build.
+- The separate iOS validation workflow passed unsigned simulator and device builds with `IPHONEOS_DEPLOYMENT_TARGET=15.0`.
+- The same-artifact iOS simulator build passed after downloading the generated artifact and verifying its source SHA. The same-artifact iOS device build was still in progress at this report update.
+
+### Corrected FFI inventory
+
+The live interface has 26 abstract Future methods and the production adapter has 26 matching overrides. The generated artifact initially exposed 26 MlsSession methods, but three were unused by the adapter: `sync_`, `pendingIncoming`, and `welcomeReceiptStatusJson`. The typed `sync` and `pending_incoming` helpers duplicate the JSON DTO methods consumed by Dart; `welcome_receipt_status_json` has no Dart consumer. The reconciliation branch marks these three Rust helpers `#[frb(ignore)]` and adds a deterministic verifier that requires exact generated/export/adapter method sets and checks BigInt/nullability signatures.
+
+### Pipeline corrections on the reconciliation branch
+
+- One shared `mobile/tool/frb_ci.mjs` owns FRB integration/generation flags for Android, iOS and the dedicated artifact workflow.
+- It snapshots/restores manually maintained entrypoints/manifests, uses `flutter pub get --enforce-lockfile`, checks tracked lock/manifests remain unchanged, removes generated sample/web glue and verifies the generated Dart contract.
+- Repeated generation runs the same pinned flags and verifies the contract again.
+- The iOS artifact consumer compares `pubspec.lock` as well as Cargo and pubspec manifests before copying the artifact.
+- The duplicate Flutter mobile workflow uses the same Maven repository init script as the dedicated Android workflow; the earlier Kotlin 2.2.21 failure was not a version incompatibility. A later APK build passed without the init script, so transient Plugin Portal artifact availability remains the likely cause; explicit Google Maven/Maven Central repositories are retained as deterministic fallback.
+- The duplicate iOS workflow now uses the same FRB generation script, immutable SHA check, enforced lockfile, deployment-target configuration before both builds, verbose linker output and Apple toolchain capture.
+
+### Current acceptance status
+
+A2 remains OPEN until the reconciliation branch passes its own exact-head workflows, including Android APK/runtime smoke, same-artifact iOS simulator/device builds, lockfile immutability, Rust bridge tests and the exact generated Dart adapter contract. PR #90 and PR #94 remain separate, open, and 31 commits behind current main; their overlapping attachment/file-picker changes are not silently included here. No release gate, branch protection, registration, recovery or SMS policy has been changed.
