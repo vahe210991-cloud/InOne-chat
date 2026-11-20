@@ -2383,29 +2383,25 @@ if (req.method === 'POST' && p === '/login') {
                 fileRef = f.fileId;
               }
               const clientMessageId = body.clientMessageId;
-              if (clientMessageId !== undefined) {
-                if (typeof clientMessageId !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(clientMessageId)) return send(res, 400, { error: 'clientMessageId: 1-64 letters, digits, _ or -' });
-                const known = await storage.findClientMessage(roomId, d.userId, clientMessageId);
-                if (known !== null) return send(res, 200, { event_id: `$${known}` });
+              if (clientMessageId !== undefined && (typeof clientMessageId !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(clientMessageId))) {
+                return send(res, 400, { error: 'clientMessageId: 1-64 letters, digits, _ or -' });
               }
               const epoch = await storage.mlsGroupEpoch(roomId);
               if (epoch === 0) return send(res, 409, { error: 'group has no epoch yet' });
               if (header.value.epoch !== epoch) return send(res, 409, { error: 'epoch is outdated', currentEpoch: epoch });
-              let reserved = false;
-              if (clientMessageId !== undefined) {
-                const claim = await storage.reserveClientMessage(roomId, d.userId, clientMessageId);
-                if (claim.state === 'done') return send(res, 200, { event_id: `$${claim.seq}` });
-                if (claim.state === 'pending') return send(res, 409, { error: 'a message with this clientMessageId is being sent: retry later' });
-                reserved = true;
-              }
+
+              const eventContent = { mls: body.message, kind, forwarded: body.forwarded === true, ...(fileRef ? { file: fileRef } : {}) };
               let seq;
-              try {
-                seq = await storage.appendRoomEvent(roomId, d.userId, 'm.room.encrypted', { mls: body.message, kind, forwarded: body.forwarded === true, ...(fileRef ? { file: fileRef } : {}) }, now());
-              } catch (error) {
-                if (reserved) await storage.releaseClientMessage(roomId, d.userId, clientMessageId);
-                throw error;
+              if (clientMessageId !== undefined) {
+                const result = await storage.appendClientMessageEvent(
+                  roomId, d.userId, clientMessageId, d.userId, 'm.room.encrypted', eventContent, now(),
+                );
+                if (result.state === 'done') return send(res, 200, { event_id: `$${result.seq}` });
+                if (result.state === 'pending') return send(res, 409, { error: 'a legacy pending message requires reconciliation' });
+                seq = result.seq;
+              } else {
+                seq = await storage.appendRoomEvent(roomId, d.userId, 'm.room.encrypted', eventContent, now());
               }
-              if (reserved) await storage.completeClientMessage(roomId, d.userId, clientMessageId, seq);
               await notifyNewMessage(roomId, `$${seq}`, key(d.userId, d.deviceId));
               return send(res, 200, { event_id: `$${seq}` });
             }
