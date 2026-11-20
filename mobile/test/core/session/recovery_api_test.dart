@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import 'package:inone_mobile/core/network/api_exception.dart';
 import 'package:inone_mobile/core/session/inone_session.dart';
 
 void main() {
@@ -16,7 +17,6 @@ void main() {
         expect(jsonDecode(request.body), {
           'user': 'user-123',
           'token': 'A1_b2-C3',
-          'locale': 'hy',
         });
         return http.Response(jsonEncode({'ok': true}), 200);
       });
@@ -39,7 +39,7 @@ void main() {
       session.dispose();
     });
 
-    test('completes a confirmed-phone recovery by user id and carries locale', () async {
+    test('completes confirmed-phone recovery by user id and uses the saved locale', () async {
       final client = MockClient((request) async {
         expect(request.method, 'POST');
         expect(request.url.path, '/recovery/complete');
@@ -60,6 +60,7 @@ void main() {
         readMlsUserId: () async => null,
         writeMlsUserId: (_) async {},
         deleteMlsUserId: () async {},
+        readLocale: () async => 'ru',
       );
 
       final result = await session.completeRecovery(
@@ -67,14 +68,13 @@ void main() {
         code: '123456',
         newPassword: 'new-password-123',
         pin: '1234',
-        locale: 'ru',
       );
 
       expect(result['ok'], isTrue);
       session.dispose();
     });
 
-    test('rejects ambiguous recovery identity and unsupported locale before network I/O', () {
+    test('rejects a missing recovery identity and unsupported saved locale', () async {
       final session = InOneSession(
         baseUrl: 'https://api.inone.test',
         httpClient: MockClient((_) async => http.Response('{}', 200)),
@@ -85,24 +85,20 @@ void main() {
         deleteMlsUserId: () async {},
       );
 
-      expect(
-        () => session.completeRecovery(
-          email: 'a@example.test',
-          userId: 'user-123',
+      await expectLater(
+        session.completeRecovery(
           code: '123456',
           newPassword: 'new-password-123',
         ),
-        throwsArgumentError,
-      );
-      expect(
-        () => session.completeRecovery(
-          userId: 'user-123',
-          code: '123456',
-          newPassword: 'new-password-123',
-          locale: 'fr',
+        throwsA(
+          isA<ApiException>().having(
+            (error) => error.code,
+            'code',
+            'recovery_identity_required',
+          ),
         ),
-        throwsArgumentError,
       );
+      await expectLater(session.setLocale('fr'), throwsArgumentError);
       session.dispose();
     });
   });
