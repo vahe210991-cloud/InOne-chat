@@ -37,13 +37,13 @@ This design uses the pinned crate's public `Borrow<Connection>` provider contrac
 ## Required verification before acceptance
 
 - [ ] Compile the canonical `mls-client` crate and native bridge with the pinned lockfile.
-- [ ] Application message: inject process termination after OpenMLS ratchet/storage writes and before inbox/event-marker writes; restart a separate process against the same SQLCipher database and key; verify the exact ciphertext is decryptable once and no unreadable record is created.
-- [ ] Application message: inject a normal journal-write failure; verify transaction rollback and exact-event redelivery.
-- [ ] Commit: inject process termination after staged Commit merge writes and before transaction commit; restart and verify the prior epoch remains loadable and the same Commit can be applied exactly once.
-- [ ] Commit: verify successful merge and associated epoch state survive restart together.
-- [ ] Exercise crash points immediately before and after transaction commit.
-- [ ] Run tests against real SQLCipher files, including WAL/reopen behavior.
-- [ ] Run all canonical MLS client, Rust bridge, Android and iOS checks.
+- [x] Application message: inject process termination after OpenMLS ratchet/storage writes and before inbox/event-marker writes; restart a separate process against the same SQLCipher database and key; verify the exact ciphertext is decryptable once and no unreadable record is created (covered by process_crash_after_application_ratchet_write_rolls_back_and_redelivers).
+- [x] Application message: inject a normal journal-write failure; verify transaction rollback and exact-event redelivery (covered by inbox_write_failure_rolls_back_mls_state_and_allows_server_redelivery).
+- [x] Commit: inject process termination after staged Commit merge writes and before transaction commit; restart and verify the prior epoch remains loadable and the same Commit can be applied exactly once (covered by process_crash_after_inbound_commit_merge_rolls_back_epoch_and_retries).
+- [x] Commit: verify successful merge and associated epoch state survive restart together (covered by the post-crash retry assertions in process_crash_after_inbound_commit_merge_rolls_back_epoch_and_retries).
+- [ ] Exercise crash points immediately before and after transaction commit (pre-COMMIT is covered; post-COMMIT coverage is added by process_crash_immediately_after_inbound_commit_transaction_commit_keeps_epoch and awaits CI execution on this revision).
+- [x] Run process-kill/reopen tests against real SQLCipher database files with the same device key. The client currently uses SQLite's default journal mode; WAL is not enabled by this PR and is not claimed as tested.
+- [ ] Run all canonical MLS client, Rust bridge, Android and iOS checks on the final head SHA (previous SHA passed; rerun is required after this revision).
 - [ ] CTO review approves the transaction boundary, failure semantics, and migration/backward-compatibility story.
 
 ## Current implementation note
@@ -53,3 +53,9 @@ The P0 branch changes inbound Commit processing and staged-Commit merge to use a
 ## Explicitly not claimed
 
 A rollback test triggered by a SQL INSERT failure is not a process-crash test. A successful unit/integration suite is not a substitute for terminating a child process while the SQLCipher transaction is open. This ADR does not claim that outbound commit lifecycle, Welcome materialization, or Flutter/native acknowledgement lifecycle are already proven atomic.
+
+## Backward-compatibility evidence
+
+This PR does not add, remove, or alter a client-owned SQL table, index, column, constraint, or OpenMLS storage dependency. The build_client SQL DDL block in mls-client/src/lib.rs is byte-for-byte identical to the PR base commit b877d883f8ad8c731c784b82729e18f7d5523fc9 (3,212 bytes); the crate Cargo.toml is also byte-for-byte identical to that base. The change is limited to transaction ownership for inbound Commit processing, debug-only failpoints, and integration tests. Existing database files are opened using the same SQLCipher key path and the same migration-before-shared-connection sequence. No data migration is introduced. This is an explicit unchanged-schema compatibility statement, not a claim that every historical database fixture has been independently replayed.
+
+The database open helper does not enable WAL; these tests therefore claim SQLCipher file crash/reopen coverage in the configured default journal mode only. WAL-specific behavior is intentionally not claimed.
