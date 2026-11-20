@@ -590,3 +590,15 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Important: this decision defines product boundaries only. It does not automatically decide separate/shared identity, backend, databases, repositories, or infrastructure.
 - No application code, UI, API, backend, database, CI workflow, PR state, or branch topology changed. No Actions were started and no PR was merged.
 - Next: inventory and classify existing screens, routes, repositories, APIs, and navigation into InOne, InOne Business, shared platform, or unresolved; prepare an impact map for owner review before code changes.
+
+
+## 2026-11-20 — P2 Push and Profile audit started
+
+- Confirmed A2 PR #102 is already merged to main as `df20bef8df05b3ab2e11b20cb91e8f2bca60eec0`; no duplicate merge or A2 edits.
+- Created isolated audit branch `audit/p2-push-profile-2026-11-20` from main SHA `974f944d251870ca57fad5124f058b9d65d12a26`.
+- Reviewed canonical backend push routes/store lifecycle, existing `engine/test/push.test.js`, Flutter ST-01 screen, profile DTO/repository/session, pubspec and API contract.
+- Findings: backend push token registration/removal and privacy-oriented notification payload are present in source; backend push tests exist but were NOT RUN in this audit. Flutter has no declared FCM/APNs token plugin, no typed push register/unregister repository, and no production ST-01 callback flow. Production push sender is injected, not wired by the inspected default server construction.
+- Profile GET and locale synchronization exist. General profile editing has no documented/verified write route; no route was invented. Owner decision is required for editable fields.
+- Added report `development/reports/2026-11-20-P2-push-profile-audit.md`, commit `acbbe1653046d2f01b1efb6efa5d4a40350b7638`.
+- No product code/API contract changed. No tests/builds run. No merge. WBS v1.1 and readiness percentages unchanged.
+- Next: obtain approved profile editable-field list; select/pin FCM/APNs mobile integration; implement typed token lifecycle and production ST-01 wiring; wire protected provider sender; run exact-SHA Node/PostgreSQL/Flutter/Android/iOS checks.
