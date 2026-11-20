@@ -117,8 +117,8 @@ function verifyContract() {
   // Only executable Dart declarations/references are evidence that the DTO leaked into
   // the generated bridge contract; comments must not cause a false-positive failure.
   const generatedCode = generatedSource
-    .replace(/\\/\\*[\\s\\S]*?\\*\\//g, '')
-    .replace(/^\\s*\\/\\/.*$/gm, '');
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
   const incomingMessageTypeExposure =
     /\\b(?:class|mixin|enum|typedef)\\s+IncomingMessage\\b/.test(generatedCode) ||
     /\\b(?:Future|List|Stream|Iterable|Option)\\s*<[^;\\n]*\\bIncomingMessage\\b/.test(generatedCode);
