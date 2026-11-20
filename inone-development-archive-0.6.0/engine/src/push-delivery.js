@@ -1,6 +1,6 @@
 import { randomBytes, randomInt } from 'node:crypto';
 import {
-  decryptPushFid, decryptPushPayload, encryptPushFid, encryptPushPayload, parsePushEncryptionKey, pushIdempotencyHash,
+  decryptPushFid, decryptPushPayload, encryptPushFid, encryptPushPayload, encryptPushRegistrationId, parsePushEncryptionKey, pushIdempotencyHash,
 } from './push-crypto.js';
 
 const LEASE_MS = 120_000;
@@ -50,7 +50,7 @@ export function createPushDelivery({
         const isFid = row.provider === 'fcm' && /^[A-Za-z0-9_-]{22}$/.test(row.token);
         const encrypted = isFid
           ? encryptPushFid(row.token, row.device_key, masterKey)
-          : (await import('./push-crypto.js')).encryptPushRegistrationId(row.token, row.device_key, masterKey, 'legacy');
+          : encryptPushRegistrationId(row.token, row.device_key, masterKey, 'legacy');
         await client.query(
           `UPDATE push_tokens
            SET token = NULL, token_ciphertext = $2, token_iv = $3, token_tag = $4, identifier_kind = $5
