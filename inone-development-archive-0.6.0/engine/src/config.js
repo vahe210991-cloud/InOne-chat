@@ -97,7 +97,7 @@ export function loadConfig(env = process.env) {
     if (!!config.smtpUser !== !!config.smtpPassword) errors.push('INONE_SMTP_USER and INONE_SMTP_PASSWORD must be configured together');
     if (!Number.isInteger(config.emailWorkerPollMs) || config.emailWorkerPollMs < 250 || config.emailWorkerPollMs > 60000) errors.push('INONE_EMAIL_WORKER_POLL_MS must be 250..60000');
     if (!Number.isInteger(config.emailMaxAttempts) || config.emailMaxAttempts < 1 || config.emailMaxAttempts > 20) errors.push('INONE_EMAIL_MAX_ATTEMPTS must be 1..20');
-    if (!isValidEmailEncryptionKey(config.emailEncryptionKey)) errors.push('INONE_EMAIL_ENCRYPTION_KEY must be 32 bytes (64 hex characters or canonical base64)');
+    if (!isValidAes256Key(config.emailEncryptionKey)) errors.push('INONE_EMAIL_ENCRYPTION_KEY must be 32 bytes (64 hex characters or canonical base64)');
   }
   if (errors.length > 0) {
     const error = new Error(`invalid configuration: ${errors.join('; ')}`);
