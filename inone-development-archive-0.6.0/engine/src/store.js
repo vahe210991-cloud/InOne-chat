@@ -633,6 +633,12 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
         await c.query('DELETE FROM one_time_keys WHERE device_key = $1', [deviceKey]);
         await c.query('DELETE FROM inbox WHERE device_key = $1', [deviceKey]);
         await c.query('DELETE FROM push_tokens WHERE device_key = $1', [deviceKey]);
+        await c.query(
+          `UPDATE push_deliveries SET status = 'cancelled', locked_at = NULL, locked_by = NULL,
+           last_error_code = 'device_revoked', updated_at = now()
+           WHERE device_key = $1 AND status IN ('queued', 'failed', 'processing')`,
+          [deviceKey],
+        );
       });
     },
 
