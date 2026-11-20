@@ -50,7 +50,7 @@ jobs:
           flutter --version
 
       - name: Generate iOS platform project
-        run: flutter create --platforms=android,ios --project-name inone_mobile --org com.inone --no-pub .
+        run: bash tool/generate_flutter_platforms.sh ios
       - name: Verify Flutter project generation preserves dependency manifests
         run: git diff --exit-code -- pubspec.yaml pubspec.lock
 
