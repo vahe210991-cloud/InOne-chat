@@ -52,10 +52,14 @@ jobs:
                 changed(/^(inone-engine-poc-0\.6\.0\/mobile-mls\/|inone-development-archive-0\.6\.0\/engine\/mobile-mls\/|mobile\/rust\/)/)) {
               expected.add("Native MLS client validation");
             }
-            if ((workflowChanged("flutter-mobile.yml") || workflowChanged("flutter-ios-validation.yml")) ||
+            if (workflowChanged("flutter-mobile.yml") ||
                 changed(/^mobile\//) ||
                 changed(/^inone-development-archive-0\.6\.0\/engine\/mobile-mls\//)) {
               expected.add("Flutter mobile validation");
+            }
+            if (workflowChanged("flutter-ios-validation.yml") ||
+                changed(/^mobile\//) ||
+                changed(/^inone-development-archive-0\.6\.0\/engine\/mobile-mls\//)) {
               expected.add("Flutter iOS validation");
             }
             if (workflowChanged("openmls-frb-codegen.yml") || changed(/^mobile\//)) {
