@@ -3,17 +3,18 @@ name: Native MLS client validation
 
 # This workflow validates the persistent MLS bridge and client on the exact PR branch head.
 on:
+  workflow_dispatch:
   pull_request:
     paths:
       - "inone-engine-poc-0.6.0/mobile-mls/**"
-      - "inone-engine-poc-0.6.0/MLS_CLIENT_CORE.md"
+      - "inone-development-archive-0.6.0/engine/mobile-mls/**"
       - "mobile/rust/**"
       - ".github/workflows/mls-native-validation.yml"
   push:
-    branches: ["**"]
+    branches: ['**']
     paths:
       - "inone-engine-poc-0.6.0/mobile-mls/**"
-      - "inone-engine-poc-0.6.0/MLS_CLIENT_CORE.md"
+      - "inone-development-archive-0.6.0/engine/mobile-mls/**"
       - "mobile/rust/**"
       - ".github/workflows/mls-native-validation.yml"
 
@@ -36,6 +37,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Verify exact source SHA
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$EXPECTED_SHA"
+          echo "Validated source SHA: $actual"
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -50,25 +59,10 @@ jobs:
         working-directory: inone-development-archive-0.6.0/engine
       - name: Verify committed MLS client lockfile
         run: test -s inone-engine-poc-0.6.0/mobile-mls/mls-client/Cargo.lock
-      - name: Record MLS client toolchain versions
-        run: |
-          rustc --version | tee mls-client-environment.txt
-          cargo --version | tee -a mls-client-environment.txt
-          node --version | tee -a mls-client-environment.txt
-          npm --version | tee -a mls-client-environment.txt
       - name: Check every MLS client target
         run: cargo check --locked --all-targets --manifest-path inone-engine-poc-0.6.0/mobile-mls/mls-client/Cargo.toml
       - name: Run MLS client unit and canonical-engine integration tests
-        run: cargo test --locked --no-fail-fast --manifest-path inone-engine-poc-0.6.0/mobile-mls/mls-client/Cargo.toml -- --test-threads=1 2>&1 | tee mls-client-test.log
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: mls-client-${{ github.sha }}
-          path: |
-            mls-client-environment.txt
-            mls-client-test.log
-          if-no-files-found: warn
-          retention-days: 14
+        run: cargo test --locked --no-fail-fast --manifest-path inone-engine-poc-0.6.0/mobile-mls/mls-client/Cargo.toml -- --test-threads=1
 
 
   ios-keychain:
@@ -79,6 +73,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Verify exact source SHA
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$EXPECTED_SHA"
+          echo "Validated source SHA: $actual"
       - name: Detect persistent bridge crate
         id: bridge
         run: |
@@ -107,6 +109,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Verify exact source SHA
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$EXPECTED_SHA"
+          echo "Validated source SHA: $actual"
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: "1.91.0"
@@ -128,20 +138,6 @@ jobs:
       - name: Check bridge crate
         if: steps.bridge.outputs.available == 'true'
         run: cargo check --locked --all-targets --manifest-path mobile/rust/Cargo.toml
-      - name: Record persistent bridge toolchain versions
-        if: steps.bridge.outputs.available == 'true'
-        run: |
-          rustc --version | tee persistent-bridge-environment.txt
-          cargo --version | tee -a persistent-bridge-environment.txt
       - name: Run bridge lifecycle and persistence tests
         if: steps.bridge.outputs.available == 'true'
-        run: cargo test --locked --no-fail-fast --manifest-path mobile/rust/Cargo.toml 2>&1 | tee persistent-bridge-test.log
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: persistent-bridge-${{ github.sha }}
-          path: |
-            persistent-bridge-environment.txt
-            persistent-bridge-test.log
-          if-no-files-found: warn
-          retention-days: 14
+        run: cargo test --locked --no-fail-fast --manifest-path mobile/rust/Cargo.toml
