@@ -25,8 +25,8 @@ export async function testDatabase() {
 }
 
 /** Хранилище на отдельной схеме PostgreSQL для одного теста, если задан DATABASE_URL. Иначе null: тест идёт в памяти. */
-export async function storeForTest(pinPepper) {
+export async function storeForTest(pinPepper, storeOptions = {}) {
   if (!process.env.DATABASE_URL) return null;
   const db = await testDatabase();
-  return { store: createStore({ pool: db.pool, pinPepper }), pool: db.pool, close: () => db.close() };
+  return { store: createStore({ pool: db.pool, pinPepper, ...storeOptions }), pool: db.pool, close: () => db.close() };
 }
