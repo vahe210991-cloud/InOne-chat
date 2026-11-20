@@ -35,6 +35,7 @@ done
 # Install only the checked-in, validated Firebase client config for each requested
 # native platform. This runs after scaffold generation and before any build step.
 node "$app_root/tool/prepare_firebase_platforms.mjs" "$platforms" "$repo_root" "$app_root"
+node "$app_root/tool/configure_firebase_native.mjs" "$platforms" "$app_root"
 
 # Scaffold generation must never modify dependency manifests or lockfiles.
 git -C "$repo_root" diff --exit-code -- mobile/pubspec.yaml mobile/pubspec.lock
