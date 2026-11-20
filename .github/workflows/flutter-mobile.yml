@@ -49,7 +49,7 @@ jobs:
       - name: Generate Android and iOS platform projects
         run: flutter create --platforms=android,ios --project-name inone_mobile --org com.inone --no-pub .
       - name: Verify Flutter project generation preserves dependency manifests
-        run: git diff --exit-code -- mobile/pubspec.yaml mobile/pubspec.lock
+        run: git diff --exit-code -- pubspec.yaml pubspec.lock
       - name: Remove generated template test
         run: rm -f test/widget_test.dart
 
