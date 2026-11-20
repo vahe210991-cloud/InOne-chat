@@ -1180,7 +1180,7 @@ if ((req.method === 'PUT' || req.method === 'DELETE') && p === '/devices/me/push
   const { provider, token } = body;
   if (!['fcm', 'apns'].includes(provider)) return send(res, 400, { error: 'provider must be fcm or apns' });
   const isFid = provider === 'fcm' && typeof token === 'string' && /^[A-Za-z0-9_-]{22}$/.test(token);
-  const isLegacyProviderToken = typeof token === 'string' && token.length >= 32 && token.length <= 512 && /^[A-Za-z0-9:_.\\-]+$/.test(token);
+  const isLegacyProviderToken = typeof token === 'string' && token.length >= 32 && token.length <= 512 && /^[A-Za-z0-9:_.-]+$/.test(token);
   if (!isFid && !isLegacyProviderToken) return send(res, 400, { error: 'registration identifier has an invalid form' });
   await storage.setPushToken(key(d.userId, d.deviceId), provider, token, now());
   return send(res, 200, { registered: true });
