@@ -376,13 +376,13 @@ fn run_crash_child(
     base: &str,
     db_path: &str,
     point: &str,
-) -> std::process::ExitStatus {
+) -> std::process::Output {
     std::process::Command::new(std::env::current_exe().expect("current test executable"))
         .args(["--exact", test_name, "--nocapture"])
         .env("INONE_MLS_CRASH_CHILD_BASE", base)
         .env("INONE_MLS_CRASH_CHILD_DB", db_path)
         .env("INONE_MLS_TEST_CRASH_POINT", point)
-        .status()
+        .output()
         .expect("spawn crash-test child")
 }
 
@@ -427,8 +427,14 @@ fn process_crash_after_application_ratchet_write_rolls_back_and_redelivers() {
         "after_application_mls_write",
     );
     assert!(
-        !status.success(),
+        !status.status.success(),
         "child must be forcibly terminated inside the open transaction"
+    );
+    assert!(
+        String::from_utf8_lossy(&status.stderr)
+            .contains("INONE_MLS_TEST_CRASH_POINT_REACHED=after_application_mls_write"),
+        "child must reach the application ratchet crash point; stderr: {}",
+        String::from_utf8_lossy(&status.stderr)
     );
 
     let mut recovered = connect(&engine.base, BOB, PW, "B_CRASH_P0", &bob_db, &keys)
@@ -497,8 +503,14 @@ fn process_crash_after_inbound_commit_merge_rolls_back_epoch_and_retries() {
         "after_inbound_commit_merge",
     );
     assert!(
-        !status.success(),
+        !status.status.success(),
         "child must be forcibly terminated after merge but before commit"
+    );
+    assert!(
+        String::from_utf8_lossy(&status.stderr)
+            .contains("INONE_MLS_TEST_CRASH_POINT_REACHED=after_inbound_commit_merge"),
+        "child must reach the Commit merge crash point; stderr: {}",
+        String::from_utf8_lossy(&status.stderr)
     );
 
     let mut recovered = connect(&engine.base, BOB, PW, "B_CRASH_P0", &bob_db, &keys)
