@@ -1,3 +1,13 @@
+## 2026-11-19 — A2 FRB reconciliation audit started
+
+- Verified `main` remains at A1 merge commit `c939634288db1e7105cfe8d6a7182d4469da1dc4`; A1 PR #95 is merged. Post-merge runs #44519837539, #44519837547 and #44519837614 were not all terminal/successful at inspection; see the A2 report for job-level states.
+- Created task branch `feature/a2-frb-reconciliation-2026-11-19` from the exact A1 merge commit. Initial audit report: [2026-11-19 A2 FRB reconciliation audit](reports/2026-11-19-A2-frb-reconciliation-audit.md), report commit `3f6270d54880cc621745b6f67204ab7587f51f5e`.
+- Inventoried 30 Rust public functions and found all 25 `MlsSessionBridge` methods overridden by `RustMlsSessionBridge`. Generated bindings are absent from the main source tree, so generated symbol/type/error mapping is not yet verified.
+- Confirmed current main `pubspec.lock` omits the declared FRB packages; open PR #90 adds FRB/hooks 2.13.0 but is 30 commits behind main. PRs #90/#94 also modify A2-owned Rust/Dart/workflow paths; those paths were left untouched.
+- Static pipeline review found divergent FRB integrate flags, mutable branch checkout in the artifact workflow, mixed PR SHA conventions across workflows, and lockfile regeneration without lock enforcement. Priorities and exact evidence are in the report.
+- No source/API/workflow code changed. No local tests/codegen/builds ran: GitHub DNS access from the container failed and Rust/Cargo/Flutter/Dart/Xcode are unavailable. A2 remains NOT ACCEPTED; native MLS and release gate unchanged; WBS v1.1 remains 42% implementation / 31% verification.
+- Next: obtain terminal A1 run results; reconcile #90/#94; retrieve generated artifacts from CI; verify actual bindings; then implement deterministic generation and regression coverage on one immutable SHA.
+
 ### 2026-11-16 — CI findings after first repair run
 
 - Backend Node suite on PR #67 executed 395 tests: 391 passed, 1 failed, 3 skipped. The remaining failure was an error-message compatibility assertion in `config.test.js`; strict shared key validation was correct, but its message did not preserve the established phrase `must be 32 bytes`. Updated the message without weakening validation.

@@ -1,0 +1,14 @@
+// Add Maven Central and Google's Maven repository to plugin resolution for
+// Flutter's included Gradle build (packages/flutter_tools/gradle).
+//
+// The app's generated settings.gradle.kts already declares these repositories,
+// but included builds have independent pluginManagement repositories. Without
+// this init hook, Kotlin DSL's transitive Kotlin 2.2.x artifacts can be resolved
+// from Gradle Plugin Portal only and fail before the Android project configures.
+gradle.beforeSettings { settings ->
+    settings.pluginManagement.repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}

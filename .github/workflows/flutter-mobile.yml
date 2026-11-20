@@ -36,6 +36,14 @@ jobs:
         with:
           # PR validation must run on the writable head branch, not GitHub's synthetic merge ref.
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Verify exact source SHA
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$EXPECTED_SHA"
+          echo "Validated source SHA: $actual"
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.47.9'
@@ -43,7 +51,9 @@ jobs:
           cache: true
       - run: flutter --version
       - name: Generate Android and iOS platform projects
-        run: flutter create --platforms=android,ios --project-name inone_mobile --org com.inone .
+        run: bash tool/generate_flutter_platforms.sh android,ios
+      - name: Verify Flutter project generation preserves dependency manifests
+        run: git diff --exit-code -- pubspec.yaml pubspec.lock
       - name: Remove generated template test
         run: rm -f test/widget_test.dart
 
@@ -57,31 +67,9 @@ jobs:
       - name: Install Flutter Rust Bridge code generator
         run: cargo install --locked --version 2.13.0 flutter_rust_bridge_codegen
 
-      - name: Integrate Native Assets for Flutter Rust bridge
-        timeout-minutes: 15
-        env:
-          RUST_LOG: debug
-        run: |
-          cp lib/main.dart "$RUNNER_TEMP/inone-main.dart"
-          cp rust/src/api/mod.rs "$RUNNER_TEMP/inone-api-mod.rs"
-          flutter_rust_bridge_codegen integrate \
-            --rust-crate-dir rust \
-            --rust-crate-name inone_mls_frb \
-            --integration-backend native-assets \
-            --platforms android,ios \
-            --skip-fvm-install \
-            --no-dart-fix \
-            --no-dart-format \
-            --no-integration-test
-          cp "$RUNNER_TEMP/inone-main.dart" lib/main.dart
-          cp "$RUNNER_TEMP/inone-api-mod.rs" rust/src/api/mod.rs
-          rm -f rust/src/api/simple.rs lib/src/rust/api/simple.dart
-
-      - name: Generate typed Dart bindings
-        timeout-minutes: 15
-        env:
-          RUST_LOG: debug
-        run: flutter_rust_bridge_codegen generate --skip-fvm-install
+      - name: Run deterministic FRB generation and contract verification
+        timeout-minutes: 30
+        run: node tool/frb_ci.mjs
 
       - name: Prepare Android NDK context for native secure storage
         run: node tool/prepare_android_mls.mjs
@@ -151,7 +139,10 @@ jobs:
         run: node tool/verify_approved_html.mjs
       - name: Remove ephemeral HTML reference assets from the mobile package
         run: rm -rf assets
-      - run: flutter pub get
+      - name: Resolve Flutter dependencies without lockfile drift
+        run: |
+          flutter pub get --enforce-lockfile
+          git diff --exit-code -- pubspec.yaml pubspec.lock
       - name: Verify native-only production runtime
         run: node tool/verify_native_runtime.mjs
       - name: Verify committed Rust lockfile

@@ -1,3 +1,15 @@
+# A2 FRB reconciliation — current state (2026-11-19)
+
+- Current `main` HEAD: `c939634288db1e7105cfe8d6a7182d4469da1dc4` (A1 merge, PR #95). Do not repeat A1.
+- A2 task branch: `feature/a2-frb-reconciliation-2026-11-19`; initial audit report commit: `3f6270d54880cc621745b6f67204ab7587f51f5e`.
+- Source inventory: 30 Rust public functions; 25/25 Dart interface methods overridden by the production adapter. Generated FRB files are absent by documented design; actual generated binding/type/error verification is pending.
+- Current-main lockfile mismatch: `pubspec.yaml` declares FRB and hooks, while `pubspec.lock` omits both. Open PR #90 adds both packages at 2.13.0 but is 30 commits behind current main; PR #94 is stacked on #90. Both modify A2 target files and must be reconciled before those paths are edited.
+- Pipeline audit: mutable branch refs in the dedicated artifact workflow, inconsistent SHA conventions across workflows, divergent FRB integrate flags, and lockfile regeneration without enforced locks. See the full report for P1/P2 classification and API mapping.
+- A1 post-merge runs #44519837539 / #44519837547 / #44519837614 were still queued or in progress at the latest check; none had a confirmed successful conclusion. Exact job states are in the report.
+- No source code or release gate changed. A2 is NOT ACCEPTED. Native MLS remains disabled. Approved WBS v1.1 baseline remains 42% implementation / 31% verification.
+
+---
+
 # Screen API integration update — 2026-11-12
 
 New implementation branch: `feature/beta1-screen-api-integration-2026-11-12`.
