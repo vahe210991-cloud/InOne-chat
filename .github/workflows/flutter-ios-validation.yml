@@ -83,7 +83,7 @@ jobs:
           git diff --exit-code -- pubspec.yaml pubspec.lock
 
       - name: Analyze Flutter sources
-        run: flutter analyze
+        run: flutter analyze lib test integration_test
 
       - name: Build unsigned iOS simulator app
         env:
