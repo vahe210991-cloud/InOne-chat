@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - fix/p1-mls-access-error-regressions-2026-11-19
+      - fix/p1-mls-resilience-tests-2026-11-19
+      - fix/p1-canonical-mls-utf8-inbox-2026-11-19
     paths:
       - ".github/workflows/merge-main-once.yml"
 
@@ -21,6 +23,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
+          fetch-depth: 0
           persist-credentials: false
       - name: Merge current main into the PR branch
         env:
