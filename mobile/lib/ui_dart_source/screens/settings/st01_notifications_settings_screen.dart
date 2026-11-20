@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../state/inone_state.dart';
 import '../../widgets/inone_widgets.dart';
 
-enum InOnePushProvider { fcm, apns }
+enum InOnePushProvider { fcm }
 
 /// ST-01 · Ծանուցումներ: включение push-уведомлений устройства.
 class InOneNotificationsSettingsScreen extends StatefulWidget {
@@ -60,15 +60,7 @@ class _InOneNotificationsSettingsScreenState extends State<InOneNotificationsSet
         ),
         if (_enabled) ...[
           const InOneLabel('Մատակարար'),
-          InOneChips<InOnePushProvider>(
-            bottom: 14,
-            selected: _provider,
-            onChanged: disabled ? null : (v) => setState(() => _provider = v),
-            options: const [
-              InOneChipOption(InOnePushProvider.fcm, 'FCM'),
-              InOneChipOption(InOnePushProvider.apns, 'APNs'),
-            ],
-          ),
+          const InOneNote('FCM · Android և iOS (iOS delivery через APNs)'),
         ],
         if (widget.isTestEnvironment) const InOneNote('Հասանելի չէ թեստային էկրանում'),
       ],
