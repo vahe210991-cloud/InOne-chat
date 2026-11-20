@@ -26,6 +26,13 @@ void main() {
       httpClient: httpClient,
       readDeviceId: () async => 'device-1',
       writeDeviceId: (_) async {},
+      readMlsUserId: () async => null,
+      writeMlsUserId: (_) async {},
+      deleteMlsUserId: () async {},
+      readLocale: () async => null,
+      writeLocale: (_) async {},
+      readLocaleSyncPending: () async => 'false',
+      writeLocaleSyncPending: (_) async {},
     );
 
     final result = await session.login(
@@ -434,7 +441,7 @@ void main() {
 
     final response = await session.request('GET', '/protected');
     expect(response['status'], 'ok');
-    expect(bridge.closeCalls, 0);
+    expect(bridge.closeCalls, 1);
     session.dispose();
   });
 
