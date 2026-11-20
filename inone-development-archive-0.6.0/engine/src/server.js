@@ -442,7 +442,20 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
       const y = Buffer.from(String(b));
       return x.length === y.length && timingSafeEqual(x, y);
     };
-    const absoluteUrl = (req, path) => `${req.socket.encrypted ? 'https' : 'http'}://${req.headers.host}${path}`;
+    const absoluteUrl = (req, path) => {
+      const localAddress = req.socket.localAddress || '127.0.0.1';
+      const localHost = localAddress.includes(':') ? `[${localAddress}]` : localAddress;
+      const localPort = req.socket.localPort;
+      const localAuthority = `${localHost}${localPort ? `:${localPort}` : ''}`.toLowerCase();
+      const requestAuthority = String(req.headers.host || '').toLowerCase();
+      // Accept Host only when it exactly identifies the socket's local endpoint
+      // (the direct loopback test/dev case). Proxied/public requests use configured
+      // publicUrl; an attacker-controlled Host header is never reflected.
+      const origin = requestAuthority === localAuthority
+        ? `${req.socket.encrypted ? 'https' : 'http'}://${localAuthority}`
+        : new URL(publicUrl).origin;
+      return new URL(path, origin).toString();
+    };
 
     async function handleObjectRequest(req, res) {
       const url = new URL(req.url, 'http://localhost');
