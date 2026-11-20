@@ -69,7 +69,11 @@ export function createFcmPushSender({ messaging } = {}) {
     async send({ fid, payload }) {
       const data = validateMessage({ fid, payload });
       try {
-        const messageId = await messaging.send({ fid, data });
+        const messageId = await messaging.send({
+          fid,
+          notification: { title: 'InOne', body: 'New message' },
+          data,
+        });
         if (typeof messageId !== 'string' || messageId.length === 0) {
           throw new FcmPushError('provider_invalid_response', true, 'FCM returned an invalid response');
         }
