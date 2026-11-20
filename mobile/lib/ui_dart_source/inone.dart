@@ -1,4 +1,6 @@
-// InOne UI: согласованные экраны, тема (light/dark) и общие виджеты.
+/// InOne UI: согласованные экраны, тема (light/dark) и общие виджеты.
+library;
+
 export 'models/inone_models.dart';
 export 'state/inone_state.dart';
 export 'theme/inone_colors.dart';

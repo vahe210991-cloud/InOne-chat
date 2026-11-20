@@ -10,9 +10,12 @@ import '../core/data/inone_room.dart';
 import '../core/network/api_environment.dart';
 import '../core/network/api_exception.dart';
 import '../core/session/inone_session.dart';
+import '../core/session/recovery_deep_link.dart';
+import '../core/mls/rust_mls_session_bridge.dart';
 import '../ui_dart_source/inone.dart';
 
 const _configuredApiBaseUrl = String.fromEnvironment('INONE_API_BASE_URL');
+const _nativeMlsEnabled = bool.fromEnvironment('INONE_MLS_NATIVE_ENABLED', defaultValue: false);
 
 class InOneMobileApp extends StatefulWidget {
   const InOneMobileApp({super.key});
@@ -21,7 +24,8 @@ class InOneMobileApp extends StatefulWidget {
   State<InOneMobileApp> createState() => _InOneMobileAppState();
 }
 
-class _InOneMobileAppState extends State<InOneMobileApp> {
+class _InOneMobileAppState extends State<InOneMobileApp>
+    with WidgetsBindingObserver {
   final _messengerKey = GlobalKey<ScaffoldMessengerState>();
   late final InOneSession _session;
   late final InOneRepositories _repositories;
@@ -35,11 +39,18 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
   String _waitingActivateAt = '';
   InOneProfile? _profile;
   List<InOneRoom> _rooms = const [];
+  InOneChatPreview? _selectedChat;
+  List<InOneThreadItem> _threadItems = const [];
+  bool _chatLoading = false;
   List<InOneOrganization> _organizations = const [];
   InOneOrganization? _selectedOrganization;
   InOneSystemStatus? _systemStatus;
   bool _darkMode = false;
   bool _initializing = true;
+  RecoveryDeepLinkPayload? _pendingRecoveryLink;
+  String? _recoveryUserId;
+  String? _recoveryLinkLocale;
+  bool _recoveryLinkInFlight = false;
 
   @override
   void initState() {
@@ -48,8 +59,19 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
       configured: _configuredApiBaseUrl,
       isAndroid: Platform.isAndroid,
     );
-    _session = InOneSession(baseUrl: baseUrl);
+    _session = InOneSession(
+      baseUrl: baseUrl,
+      nativeMlsBridge: _nativeMlsEnabled ? RustMlsSessionBridge() : null,
+    );
     _repositories = InOneRepositories(_session);
+    WidgetsBinding.instance.addObserver(this);
+    _pendingRecoveryLink = RecoveryDeepLink.parse(
+      WidgetsBinding.instance.platformDispatcher.defaultRouteName,
+    );
+    if (_pendingRecoveryLink case final payload?) {
+      _recoveryUserId = payload.userId;
+      _recoveryLinkLocale = payload.locale;
+    }
     unawaited(_initialize());
   }
 
@@ -61,11 +83,83 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
     }
     if (!mounted) return;
     setState(() => _initializing = false);
+    final pendingRecoveryLink = _pendingRecoveryLink;
+    if (pendingRecoveryLink != null) {
+      try {
+        await _session.setLocale(pendingRecoveryLink.locale);
+      } catch (_) {
+        // Recovery completion still sends the locale from the signed link.
+      }
+      setState(() => _screen = 'recoveryLinkConfirm');
+      return;
+    }
     if (_session.isAuthenticated) await _loadAuthenticatedData();
   }
 
   @override
+  Future<bool> didPushRoute(String route) => _handleRecoveryRoute(route);
+
+  Future<bool> _handleRecoveryRoute(String route) async {
+    final payload = RecoveryDeepLink.parse(route);
+    if (payload == null) return false;
+    final current = _pendingRecoveryLink;
+    if (current?.userId == payload.userId && current?.token == payload.token) {
+      return true;
+    }
+    if (_recoveryLinkInFlight) return true;
+    _recoveryLinkInFlight = true;
+    try {
+      try {
+        await _session.setLocale(payload.locale);
+      } catch (_) {
+        // The recovery request carries this locale even if profile sync is offline.
+      }
+      _recoveryUserId = payload.userId;
+      _recoveryLinkLocale = payload.locale;
+      if (mounted) {
+        setState(() {
+          _pendingRecoveryLink = payload;
+          _screen = 'recoveryLinkConfirm';
+        });
+      } else {
+        _pendingRecoveryLink = payload;
+      }
+    } finally {
+      _recoveryLinkInFlight = false;
+    }
+    return true;
+  }
+
+  Future<InOneFailure?> _confirmRecoveryLink() async {
+    final payload = _pendingRecoveryLink;
+    if (payload == null) {
+      return const InOneFailure(
+        InOneScreenState.error,
+        message: 'Ссылка восстановления недействительна. Запросите её повторно.',
+      );
+    }
+    try {
+      await _session.confirmRecoveryLink(
+        userId: payload.userId,
+        token: payload.token,
+      );
+      return null;
+    } catch (error) {
+      return _toFailure(error);
+    }
+  }
+
+  void _onRecoveryLinkConfirmed() {
+    setState(() {
+      _pendingRecoveryLink = null;
+      _screen = 'recoveryPassword';
+    });
+    _notice('Ссылка подтверждена. Введите код из SMS и задайте новый пароль.');
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _session.dispose();
     super.dispose();
   }
@@ -201,6 +295,9 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
   }
 
   Future<InOneFailure?> _startRecovery(String email) async {
+    _recoveryUserId = null;
+    _recoveryLinkLocale = null;
+    _pendingRecoveryLink = null;
     _recoveryEmail = email.trim();
     try {
       await _session.startRecovery(_recoveryEmail);
@@ -213,10 +310,12 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
   Future<InOneFailure?> _completeRecovery(String code, String newPassword, String pin) async {
     try {
       await _session.completeRecovery(
-        email: _recoveryEmail,
+        email: _recoveryUserId == null ? _recoveryEmail : null,
+        userId: _recoveryUserId,
         code: code,
         newPassword: newPassword,
         pin: pin,
+        locale: _recoveryLinkLocale,
       );
       return null;
     } catch (error) {
@@ -236,6 +335,9 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
   void _finishRecovery() {
     setState(() {
       _recoveryEmail = '';
+      _recoveryUserId = null;
+      _recoveryLinkLocale = null;
+      _pendingRecoveryLink = null;
       _screen = 'login';
     });
     _notice('Восстановление завершено. Теперь войдите с новым паролем.');
@@ -340,8 +442,77 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
     });
   }
 
+  Future<void> _changeLocale(String locale) async {
+    try {
+      await _session.setLocale(locale);
+      if (mounted) setState(() {});
+      _notice(switch (locale) {
+        'ru' => 'Язык писем установлен: Русский.',
+        'en' => 'Email language set to English.',
+        _ => 'Լեզուն ընտրված է՝ Հայերեն։',
+      });
+    } catch (_) {
+      _notice('Не удалось сохранить язык. Попробуйте ещё раз.');
+    }
+  }
+
   void _notice(String message) {
     _messengerKey.currentState?.showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _openChat(InOneChatPreview chat) async {
+    if (!_session.hasNativeMlsSession) {
+      _notice('Нативный MLS-клиент не активен. Сообщение не отправлено; открытие чата без шифрования запрещено.');
+      return;
+    }
+    setState(() {
+      _selectedChat = chat;
+      _threadItems = const [];
+      _chatLoading = true;
+      _screen = 'chatThread';
+    });
+    await _refreshChat(chat.id);
+  }
+
+  Future<void> _refreshChat(String roomId) async {
+    try {
+      await _session.syncMlsMessages();
+      final pending = await _session.pendingMlsMessages();
+      final messages = await _session.mlsMessagesForRoom(roomId);
+      if (!mounted) return;
+      setState(() {
+        _threadItems = messages.map((message) => InOneThreadItem(
+          kind: InOneThreadItemKind.text,
+          text: message.text ?? 'Не удалось расшифровать сообщение',
+        )).toList(growable: false);
+        _chatLoading = false;
+      });
+      final acceptedIds = pending
+          .where((message) => message.roomId == roomId)
+          .map((message) => message.eventId)
+          .toList(growable: false);
+      if (acceptedIds.isNotEmpty) {
+        await _session.acknowledgeMlsMessages(acceptedIds);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _chatLoading = false);
+      _notice('Не удалось синхронизировать зашифрованную переписку.');
+    }
+  }
+
+  Future<void> _sendChatMessage(String text) async {
+    final chat = _selectedChat;
+    if (chat == null || !_session.hasNativeMlsSession) {
+      _notice('MLS-сессия недоступна. Сообщение не отправлено.');
+      return;
+    }
+    try {
+      await _session.sendMlsText(chat.id, text);
+      await _refreshChat(chat.id);
+    } catch (_) {
+      _notice('Не удалось отправить зашифрованное сообщение. Повторите попытку.');
+    }
   }
 
   List<InOneChatPreview> get _chatPreviews => _rooms.map((room) {
@@ -482,6 +653,8 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
           onRegister: () => setState(() => _screen = 'registerEmail'),
           onForgotPassword: () => setState(() => _screen = 'recoveryStart'),
           onSuccess: _afterLogin,
+          locale: _session.locale,
+          onLocaleChanged: _changeLocale,
         );
       case 'identityCode':
         return InOneEmailCodeScreen(
@@ -502,6 +675,11 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
           onSubmit: _startRecovery,
           onBack: () => setState(() => _screen = 'login'),
           onEnterCode: () => setState(() => _screen = 'recoveryPassword'),
+        );
+      case 'recoveryLinkConfirm':
+        return InOneRecoveryConfirmScreen(
+          onConfirm: _confirmRecoveryLink,
+          onDone: _onRecoveryLinkConfirmed,
         );
       case 'recoveryPassword':
         return InOneNewPasswordScreen(
@@ -595,13 +773,38 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
         return InOneMessagesScreen(
           chats: _chatPreviews,
           unreadCountsAvailable: false,
-          onOpenChat: (_) => _notice(
-            'История и отправка сообщений заблокированы до подключения нативного MLS-клиента и зашифрованного локального хранилища. Сообщение не отправлено.',
-          ),
+          onOpenChat: (chat) => unawaited(_openChat(chat)),
           onSearch: () => _notice('Поиск по содержимому сообщений пока не реализован.'),
           onFilter: () => _notice('Дополнительные фильтры пока недоступны.'),
           onTab: _selectTab,
           onAdd: () => _notice('Создание публикаций не входит в Beta 1.0.'),
+        );
+      case 'chatThread':
+        final chat = _selectedChat;
+        if (chat == null) {
+          return InOneLoadingErrorScreen(onRetry: () => setState(() => _screen = 'messages'));
+        }
+        return Stack(
+          children: [
+            InOneChatThreadScreen(
+              header: InOneThreadHeader(
+                name: chat.name,
+                statusLabel: _session.hasNativeMlsSession ? 'MLS · зашифровано' : 'MLS недоступен',
+                online: false,
+              ),
+              items: _threadItems,
+              onSend: (text) => unawaited(_sendChatMessage(text)),
+              onBack: () => setState(() => _screen = 'messages'),
+              onAttach: () => _notice('Зашифрованная отправка файлов ещё не подключена.'),
+            ),
+            if (_chatLoading)
+              const Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: LinearProgressIndicator(minHeight: 2),
+              ),
+          ],
         );
       case 'profile':
         if (_profile == null) {
@@ -646,6 +849,8 @@ class _InOneMobileAppState extends State<InOneMobileApp> {
           onRegister: () => setState(() => _screen = 'registerEmail'),
           onForgotPassword: () => _notice('Восстановление пароля пока недоступно.'),
           onSuccess: _afterLogin,
+          locale: _session.locale,
+          onLocaleChanged: _changeLocale,
         );
     }
   }

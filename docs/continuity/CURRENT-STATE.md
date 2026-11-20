@@ -439,3 +439,13 @@ Flutter run #632 на exact SHA завершился failure до steps; дос�
 Latest branch head: `dff9ebf9c69ac6ae08f6a91f7df3213652c3c87b`. Source-level static checks confirmed the latest hardening is present: DB readiness when migrations are disabled; atomic refresh rotation in PostgreSQL and memory stores; trusted configured origin for production signed file URLs; transactional database restore; regression tests and DB-suite inclusion. These checks do not substitute for test execution.
 
 P0 run #43591433401 and Flutter run #43591437303 both failed before any steps on the exact SHA; all P0 jobs have empty step arrays and logs are unavailable. No test result is established. Branch is 381 ahead / 0 behind main. `main` is untouched. PR #52 remains Draft/open and targets `stage0/identity-engineering-readiness-2026-11-13`.
+
+## Native MLS / file transport update — 2026-11-15
+
+PR #54 and PR #56 are merged into feat/flutter-ui-dart-migration-2026-11-14. The backend now authorizes each file download against the active user/device session and current room membership/private-file ownership. Mobile binary download/upload transport is present, with bearer credentials confined to same-origin authenticated downloads and redirects disabled for both directions. This does not mean attachment E2EE is complete.
+
+PR #57 (Draft) adds the AES-256-GCM attachment crypto core and a versioned MLS manifest contract. The crypto core is not yet connected to file reservation/upload/completion, MLS message send/sync, SQLCipher manifest/key persistence, or download/decryption.
+
+PR #58 (Draft, stacked on #57) ports the persistent Stage 4 Rust/OpenMLS client and Flutter Rust Bridge integration into the active native Flutter branch. Rust owns MLS state and refresh-token rotation after handoff; SQLCipher key material is stored in Android Keystore / protected iOS Keychain; app restart can resume the Rust session. The Flutter chat thread now has a native-MLS-only text send/sync path. The build flag remains disabled by default.
+
+Generated FRB outputs are still absent. Run mobile/tool/generate_native_mls.ps1 to generate bindings and build files. No Rust/Flutter tests or Android/iOS runtime checks were run. Keep native MLS disabled until generation and same-SHA validation pass. Recovery deep links remain unfinished.
