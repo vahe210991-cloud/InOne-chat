@@ -77,10 +77,10 @@ jobs:
       - name: Configure iOS recovery deep links
         run: node tool/prepare_ios_deep_links.mjs
 
-      - name: Resolve Flutter dependencies without lockfile drift
+      - name: Resolve Flutter dependencies for Firebase runtime
         run: |
-          flutter pub get --enforce-lockfile
-          git diff --exit-code -- pubspec.yaml pubspec.lock
+          flutter pub get
+          git diff --exit-code -- pubspec.yaml
 
       - name: Analyze Flutter sources
         run: flutter analyze

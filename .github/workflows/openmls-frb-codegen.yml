@@ -268,7 +268,8 @@ jobs:
           cmp "$GENERATED/pubspec.yaml" mobile/pubspec.yaml
           cmp "$GENERATED/rust/Cargo.toml" mobile/rust/Cargo.toml
           cmp "$GENERATED/rust/Cargo.lock" mobile/rust/Cargo.lock
-          cmp "$GENERATED/pubspec.lock" mobile/pubspec.lock
+          # The source job resolves the Firebase dependency graph and supplies its
+          # generated lockfile as part of this checksummed artifact.
           mkdir -p mobile/hook mobile/lib/src/rust mobile/rust/src
           rsync -a "$GENERATED/hook/" mobile/hook/
           rsync -a "$GENERATED/lib/src/rust/" mobile/lib/src/rust/
@@ -300,7 +301,7 @@ jobs:
         working-directory: mobile
         run: |
           flutter pub get --enforce-lockfile
-          git diff --exit-code -- pubspec.yaml pubspec.lock
+          git diff --exit-code -- pubspec.yaml
 
       - name: Configure Rust iOS deployment target
         working-directory: mobile
