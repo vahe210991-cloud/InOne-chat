@@ -124,6 +124,16 @@ class InOnePushLifecycle {
 
   Future<void> _register(String token) async {
     if (token.isEmpty || !_canRegister) return;
+    final permission = await _messaging.requestPermission();
+    if (!_canRegister) return;
+    final permitted = permission == InOnePushAuthorizationStatus.authorized ||
+        permission == InOnePushAuthorizationStatus.provisional;
+    if (!permitted) {
+      await _repository.unregister();
+      return;
+    }
+    if (_isApplePlatform && await _messaging.getApnsToken() == null) return;
+    if (!_canRegister) return;
     await _repository.register(provider: InOnePushProvider.fcm, token: token);
   }
 

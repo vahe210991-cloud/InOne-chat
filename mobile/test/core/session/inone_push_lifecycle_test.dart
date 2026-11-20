@@ -60,6 +60,17 @@ void main() {
     });
   });
 
+  test('does not restore a refreshed token after notification permission is denied', () async {
+    session.setAuthenticated(true);
+    await lifecycle.waitForPendingOperations();
+    messaging.permission = InOnePushAuthorizationStatus.denied;
+    messaging.emitToken('fcm-token-refresh-denied-123456789012345678');
+    await lifecycle.waitForPendingOperations();
+
+    expect(session.requests, hasLength(2));
+    expect(session.requests.last['method'], 'DELETE');
+  });
+
   test('unregisters before logout while the bearer session is still valid', () async {
     session.setAuthenticated(true);
     await lifecycle.waitForPendingOperations();
