@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { createServer } from '../src/server.js';
 import { createStore } from '../src/store.js';
 import { createPushDelivery } from '../src/push-delivery.js';
+import { FcmPushError } from '../src/fcm-push-sender.js';
 import { decryptPushRegistrationId } from '../src/push-crypto.js';
 import { ChatClient, DEFAULT_PASSWORD as PW } from '../src/client.js';
 import { testDatabase } from './helpers.js';
@@ -30,9 +31,14 @@ test('PostgreSQL push outbox is atomic, encrypted, idempotent and survives worke
   const db = await testDatabase();
   const encryptionKey = randomBytes(32);
   const sent = [];
+  let failNext = true;
   const sender = {
     async send(message) {
       sent.push(message);
+      if (failNext) {
+        failNext = false;
+        throw new FcmPushError('provider_temporary', true);
+      }
       return { messageId: `projects/test/messages/${sent.length}` };
     },
   };
