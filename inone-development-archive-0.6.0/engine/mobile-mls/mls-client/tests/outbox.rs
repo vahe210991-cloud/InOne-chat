@@ -634,12 +634,15 @@ fn process_crash_at_each_inbox_journal_boundary_preserves_atomic_delivery() {
     crash_child_sync_if_requested();
 
     let crash_points = [
+        "before_inbox_retention_cleanup",
+        "after_inbox_retention_cleanup",
         "before_inbox_insert",
         "after_inbox_insert",
         "before_processed_marker_insert",
         "after_processed_marker_insert",
         "before_undecryptable_marker_insert",
         "after_undecryptable_marker_insert",
+        "before_application_transaction_commit",
         "after_application_transaction_commit",
     ];
 
@@ -697,13 +700,15 @@ fn process_crash_at_each_inbox_journal_boundary_preserves_atomic_delivery() {
             String::from_utf8_lossy(&status.stderr)
         );
 
-        let mut recovered =
-            connect(&engine.base, BOB, PW, "B_CRASH_P0", &bob_db, &keys)
-                .expect("SQLCipher database remains readable after process death");
+        let mut recovered = connect(&engine.base, BOB, PW, "B_CRASH_P0", &bob_db, &keys)
+            .expect("SQLCipher database remains readable after process death");
 
         if *point == "after_application_transaction_commit" {
             let pending = recovered.pending_incoming().unwrap();
             assert_eq!(pending.len(), 1, "committed inbox row must survive process death");
+            if !unreadable_case {
+                assert_eq!(texts(&pending), vec!["durable inbox boundary payload"]);
+            }
             assert!(
                 recovered.sync().unwrap().is_empty(),
                 "committed processed marker must prevent server redelivery"
