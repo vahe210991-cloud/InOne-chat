@@ -8,7 +8,7 @@ on:
       - 'inone-development-archive-0.6.0/engine/mobile-mls/**'
       - '.github/workflows/flutter-ios-validation.yml'
   push:
-    branches: ['**']
+    branches: [main]
     paths:
       - 'mobile/**'
       - 'inone-development-archive-0.6.0/engine/mobile-mls/**'
@@ -18,7 +18,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: flutter-ios-${{ github.event.pull_request.number || github.ref }}
+  group: flutter-ios-${{ github.event.pull_request.head.ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
