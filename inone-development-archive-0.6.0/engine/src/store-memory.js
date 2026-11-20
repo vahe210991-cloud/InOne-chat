@@ -1075,26 +1075,34 @@ export function createMemoryStore({ pinPepper }) {
       }
     },
     findClientMessage(roomId, userId, clientId) {
-  const hit = clientMessages.find((m) => m.roomId === roomId && m.userId === userId && m.clientId === clientId && m.seq !== null);
-  return hit ? hit.seq : null;
-},
-reserveClientMessage(roomId, userId, clientId) {
-  const hit = clientMessages.find((m) => m.roomId === roomId && m.userId === userId && m.clientId === clientId);
-  if (!hit) {
-    clientMessages.push({ roomId, userId, clientId, seq: null });
-    return { state: 'new' };
-  }
-  if (hit.seq === null) return { state: 'pending' };
-  return { state: 'done', seq: hit.seq };
-},
-completeClientMessage(roomId, userId, clientId, seq) {
-  const hit = clientMessages.find((m) => m.roomId === roomId && m.userId === userId && m.clientId === clientId);
-  if (hit) hit.seq = seq;
-},
-releaseClientMessage(roomId, userId, clientId) {
-  const i = clientMessages.findIndex((m) => m.roomId === roomId && m.userId === userId && m.clientId === clientId && m.seq === null);
-  if (i >= 0) clientMessages.splice(i, 1);
-},
+      const hit = clientMessages.find((m) => m.roomId === roomId && m.userId === userId && m.clientId === clientId && m.seq !== null);
+      return hit ? hit.seq : null;
+    },
+    appendClientMessageEvent(roomId, userId, clientId, sender, type, content, nowMs) {
+      const hit = clientMessages.find((m) => m.roomId === roomId && m.userId === userId && m.clientId === clientId);
+      if (hit?.seq !== null && hit) return { state: 'done', seq: hit.seq };
+      if (hit) return { state: 'pending' };
+      const seq = this.appendRoomEvent(roomId, sender, type, content, nowMs);
+      clientMessages.push({ roomId, userId, clientId, seq });
+      return { state: 'created', seq };
+    },
+    reserveClientMessage(roomId, userId, clientId) {
+      const hit = clientMessages.find((m) => m.roomId === roomId && m.userId === userId && m.clientId === clientId);
+      if (!hit) {
+        clientMessages.push({ roomId, userId, clientId, seq: null });
+        return { state: 'new' };
+      }
+      if (hit.seq === null) return { state: 'pending' };
+      return { state: 'done', seq: hit.seq };
+    },
+    completeClientMessage(roomId, userId, clientId, seq) {
+      const hit = clientMessages.find((m) => m.roomId === roomId && m.userId === userId && m.clientId === clientId);
+      if (hit) hit.seq = seq;
+    },
+    releaseClientMessage(roomId, userId, clientId) {
+      const i = clientMessages.findIndex((m) => m.roomId === roomId && m.userId === userId && m.clientId === clientId && m.seq === null);
+      if (i >= 0) clientMessages.splice(i, 1);
+    },
 mlsPendingRemovalsFor(userId) {
       return deviceRemovals.filter((r) => r.userId === userId && r.doneAt === null).map((r) => ({ roomId: r.roomId, deviceId: r.deviceId }));
     },
