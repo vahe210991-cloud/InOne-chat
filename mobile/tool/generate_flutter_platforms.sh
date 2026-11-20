@@ -17,7 +17,7 @@ trap 'rm -rf "$scaffold_root"' EXIT
 generated_app="$scaffold_root/inone_mobile"
 flutter create \
   --platforms="$platforms" \
-  --project-name inone_mobile \
+  --project-name app \
   --org com.inone \
   --no-pub \
   "$generated_app"
