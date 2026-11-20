@@ -526,10 +526,7 @@ fn process_crash_after_inbound_commit_merge_rolls_back_epoch_and_retries() {
     recovered
         .sync()
         .expect("the exact server Commit is retried after restart");
-    assert_eq!(
-        recovered.local_epoch(room),
-        alice.local_epoch(room)
-    );
+    assert_eq!(recovered.local_epoch(room), alice.local_epoch(room));
     recovered.sync().expect("a repeated sync is idempotent");
     assert_eq!(recovered.local_epoch(room), alice.local_epoch(room));
     assert!(recovered
