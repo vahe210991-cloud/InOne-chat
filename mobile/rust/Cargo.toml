@@ -1,4 +1,4 @@
-# Keep this lockfile committed and validated with --locked on Rust 1.91.0.
+# Keep Cargo.lock synchronized; CI checks every bridge target with --locked on Rust 1.91.0.
 [package]
 name = "inone_mls_frb"
 version = "0.1.0"
