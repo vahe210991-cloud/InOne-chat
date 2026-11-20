@@ -1,6 +1,6 @@
 # InOne — постоянная точка продолжения
 
-**Обновлено:** 2026-11-08 12:00 (UTC+3)  
+**Обновлено:** 2026-11-19 15:00 (UTC+3)  
 **Репозиторий:** `vahe210991-cloud/InOne-chat`  
 **Основная ветка документации:** `main`
 
@@ -33,6 +33,7 @@
 |---|---|
 | 2026-11-08 08:25 | Создана постоянная папка continuity; зафиксированы состояние проекта, решения, источники и handoff-инструкции. |
 | 2026-11-08 12:00 | Добавлен P0 GitHub recovery status: branch `recovery/p0-wave3-applied`, SHA `7ebdeac`; функциональные suites PASS, rustfmt FAIL, source-integrity audit остаётся открытым. |
+| 2026-11-19 15:00 | Добавлен A2 FRB reconciliation audit: Rust API inventory, generated-output gap, lockfile/workflow findings, параллельные PR #90/#94 и точные следующие действия. |
 
 
 ## Owner-approved cumulative baseline — 2026-11-09

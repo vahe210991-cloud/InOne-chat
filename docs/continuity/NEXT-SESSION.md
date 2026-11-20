@@ -1,3 +1,17 @@
+# Next execution — A2 FRB reconciliation (2026-11-19)
+
+Continue on `feature/a2-frb-reconciliation-2026-11-19`, created from `main` at A1 merge SHA `c939634288db1e7105cfe8d6a7182d4469da1dc4`. Read [the A2 audit report](../../development/reports/2026-11-19-A2-frb-reconciliation-audit.md) first. Do not repeat A1 or modify `INONE_MLS_NATIVE_ENABLED` / release gate.
+
+1. Re-fetch A1 post-merge runs #44519837539, #44519837547 and #44519837614. Require `conclusion: success` for each; on failure fetch the failing job logs and isolate the exact cause.
+2. Reconcile PR #90 and stacked PR #94 with current main. Both are 30 commits behind and change Rust session API, Dart adapter/interface, lockfiles and FRB workflows. Do not overwrite their work; rebase/review the exact diffs before editing overlapping paths.
+3. Obtain the generated artifact from a successful clean-checkout FRB run. Inspect generated `session.dart`, `frb_generated.dart`, Rust `frb_generated.rs`, hook and lockfiles. Replace expected-name assumptions in the report with verified generated symbols and types.
+4. Normalize generation around an immutable source SHA, pinned toolchains and enforced lockfiles. Align integrate flags and produce a checksum manifest; run generation twice from clean workspaces and require no unexplained diff.
+5. Add contract regression coverage for the Rust-to-generated-Dart-to-adapter contract, then run Rust host tests, Flutter analyze/tests, Android native build + Keystore smoke, and iOS device/simulator builds on one exact final SHA.
+
+A2 is NOT ACCEPTED until every criterion in the owner request is satisfied. No merge without separate owner approval. Keep Beta 1.0 WBS v1.1 unchanged (42% implementation / 31% verification) and native MLS disabled.
+
+---
+
 # Next execution — continue screen/API integration (2026-11-12)
 
 Read first:

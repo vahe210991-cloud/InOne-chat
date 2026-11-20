@@ -1,14 +1,14 @@
 name: Validate recovered InOne P0 source
 
 on:
+  workflow_dispatch:
   pull_request:
-    paths:
-      - "inone-development-archive-0.6.0/engine/**"
-      - ".github/workflows/validate-published-p0.yml"
   push:
-    branches: [main, fix/email-delivery-shutdown-and-key-hardening-2026-11-17]
+    branches: ['**']
     paths:
       - "inone-development-archive-0.6.0/engine/**"
+      - "inone-engine-poc-0.6.0/mobile-mls/**"
+      - "mobile/rust/**"
       - ".github/workflows/validate-published-p0.yml"
 
 permissions:
@@ -37,11 +37,22 @@ jobs:
         with:
           toolchain: "1.91"
           components: rustfmt
+      - name: Record Rust format toolchain versions
+        run: |
+          rustc --version | tee "$RUNNER_TEMP/rust-format-toolchain.txt"
+          cargo --version | tee -a "$RUNNER_TEMP/rust-format-toolchain.txt"
       - name: Verify Rust formatting without modifying the PR branch
         working-directory: inone-development-archive-0.6.0/engine/mobile-mls
         run: |
           cargo fmt --manifest-path mls-client/Cargo.toml -- --check
           cargo fmt --manifest-path mls-bridge/Cargo.toml -- --check
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rust-format-evidence
+          path: ${{ runner.temp }}/rust-format-toolchain.txt
+          if-no-files-found: warn
+          retention-days: 14
 
   backend-node:
     name: Backend Node suite
@@ -58,11 +69,28 @@ jobs:
           cache-dependency-path: inone-development-archive-0.6.0/engine/package-lock.json
       - run: npm ci
         working-directory: ${{ env.ENGINE_DIR }}
+      - name: Record Node and npm toolchain versions
+        run: |
+          node --version | tee "$RUNNER_TEMP/toolchain.txt"
+          npm --version | tee -a "$RUNNER_TEMP/toolchain.txt"
       - name: Audit production and development dependencies
         run: npm audit --audit-level=high
         working-directory: ${{ env.ENGINE_DIR }}
-      - run: npm test
+      - name: Run Node suite with retained log
+        shell: bash
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee "$RUNNER_TEMP/backend-node-test.log"
         working-directory: ${{ env.ENGINE_DIR }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-node-test-evidence
+          path: |
+            ${{ runner.temp }}/backend-node-test.log
+            ${{ runner.temp }}/toolchain.txt
+          if-no-files-found: warn
+          retention-days: 14
 
   p0-room-list:
     name: P0 room-list regression
@@ -79,8 +107,23 @@ jobs:
           cache-dependency-path: inone-development-archive-0.6.0/engine/package-lock.json
       - run: npm ci
         working-directory: ${{ env.ENGINE_DIR }}
-      - run: node --test test/rooms-mine.test.js
+      - name: Record room-list Node toolchain
+        run: node --version | tee "$RUNNER_TEMP/room-list-toolchain.txt"
+      - name: Run room-list regression with retained log
+        shell: bash
+        run: |
+          set -o pipefail
+          node --test test/rooms-mine.test.js 2>&1 | tee "$RUNNER_TEMP/room-list-test.log"
         working-directory: ${{ env.ENGINE_DIR }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: room-list-test-evidence
+          path: |
+            ${{ runner.temp }}/room-list-test.log
+            ${{ runner.temp }}/room-list-toolchain.txt
+          if-no-files-found: warn
+          retention-days: 14
 
   postgres-integration:
     name: PostgreSQL integration suite
@@ -118,8 +161,26 @@ jobs:
           /usr/lib/postgresql/16/bin/pg_dump --version
       - run: npm ci
         working-directory: ${{ env.ENGINE_DIR }}
-      - run: npm run test:db
+      - name: Record PostgreSQL and Node toolchain versions
+        run: |
+          node --version | tee "$RUNNER_TEMP/db-toolchain.txt"
+          npm --version | tee -a "$RUNNER_TEMP/db-toolchain.txt"
+          psql --version | tee -a "$RUNNER_TEMP/db-toolchain.txt"
+      - name: Run PostgreSQL suite with retained log
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run test:db 2>&1 | tee "$RUNNER_TEMP/postgres-test.log"
         working-directory: ${{ env.ENGINE_DIR }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: postgres-integration-evidence
+          path: |
+            ${{ runner.temp }}/postgres-test.log
+            ${{ runner.temp }}/db-toolchain.txt
+          if-no-files-found: warn
+          retention-days: 14
 
   openmls-client:
     name: OpenMLS client check and tests
@@ -139,12 +200,29 @@ jobs:
           toolchain: "1.91"
       - run: npm ci
         working-directory: ${{ env.ENGINE_DIR }}
+      - name: Record OpenMLS toolchain versions
+        run: |
+          node --version | tee "$RUNNER_TEMP/openmls-toolchain.txt"
+          rustc --version | tee -a "$RUNNER_TEMP/openmls-toolchain.txt"
+          cargo --version | tee -a "$RUNNER_TEMP/openmls-toolchain.txt"
       - name: Check all OpenMLS client targets
         working-directory: inone-development-archive-0.6.0/engine/mobile-mls/mls-client
         run: cargo check --locked --all-targets
-      - name: Run all OpenMLS client tests
+      - name: Run all OpenMLS client tests with retained log
+        shell: bash
         working-directory: inone-development-archive-0.6.0/engine/mobile-mls/mls-client
-        run: cargo test --locked --no-fail-fast
+        run: |
+          set -o pipefail
+          cargo test --locked --no-fail-fast 2>&1 | tee "$RUNNER_TEMP/openmls-client-test.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: openmls-client-test-evidence
+          path: |
+            ${{ runner.temp }}/openmls-client-test.log
+            ${{ runner.temp }}/openmls-toolchain.txt
+          if-no-files-found: warn
+          retention-days: 14
 
   rust-bridge:
     name: Rust bridge check and tests
@@ -157,11 +235,27 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: "1.91"
+      - name: Record Rust bridge toolchain versions
+        run: |
+          rustc --version | tee "$RUNNER_TEMP/rust-bridge-toolchain.txt"
+          cargo --version | tee -a "$RUNNER_TEMP/rust-bridge-toolchain.txt"
       - name: Check all bridge targets
         working-directory: inone-development-archive-0.6.0/engine/mobile-mls/mls-bridge
         run: cargo check --locked --all-targets
-      - name: Run bridge tests
+      - name: Run bridge tests with retained log
+        shell: bash
         working-directory: inone-development-archive-0.6.0/engine/mobile-mls/mls-bridge
-        run: cargo test --locked --no-fail-fast
+        run: |
+          set -o pipefail
+          cargo test --locked --no-fail-fast 2>&1 | tee "$RUNNER_TEMP/rust-bridge-test.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rust-bridge-test-evidence
+          path: |
+            ${{ runner.temp }}/rust-bridge-test.log
+            ${{ runner.temp }}/rust-bridge-toolchain.txt
+          if-no-files-found: warn
+          retention-days: 14
 
 # Exact-head P0 validation is enabled for this stacked PR branch.
