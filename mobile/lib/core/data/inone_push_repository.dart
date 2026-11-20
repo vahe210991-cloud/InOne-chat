@@ -20,7 +20,7 @@ class InOnePushRepository {
     if (token.length < 32 ||
         token.length > 512 ||
         !_tokenPattern.hasMatch(token)) {
-      throw ArgumentError.value(token, 'token', 'Invalid push token format');
+      throw ArgumentError('Invalid push token format');
     }
 
     final response = await session.request(
