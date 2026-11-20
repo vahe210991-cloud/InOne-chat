@@ -15,4 +15,18 @@ The repository helper `tool/generate_flutter_platforms.sh` copies the generated 
 
 Android's Rust bootstrap writes `MainActivity.kt` under `android/app/src/main/kotlin/com/inone/app/` with package `com.inone.app`. iOS uses the generated `PRODUCT_BUNDLE_IDENTIFIER = com.inone.app` setting.
 
-Firebase app registrations must use these exact identifiers. The Firebase configuration files are environment/project-specific and must be downloaded from the Firebase Console; never create placeholder `google-services.json` or `GoogleService-Info.plist` files.
+## Firebase client configuration
+
+The verified Firebase client files are stored at repository root:
+
+- `/google-services.json` — Android client config
+- `/GoogleService-Info.plist` — iOS client config
+
+The platform generator validates project ID `inone-messenger`, sender ID `687951175916`, the platform-specific Firebase App ID, and the canonical package/bundle identifier before copying:
+
+- Android: `android/app/google-services.json`
+- iOS: `ios/Runner/GoogleService-Info.plist`
+
+The copy is performed on every generation run, so deleting generated native directories and regenerating them restores the correct configuration. Do not place either file in the mobile root, Android project root, iOS project root, or another target.
+
+These are Firebase client configuration files, not service-account credentials. Never commit Firebase Admin service-account JSON, APNs `.p8` keys, signing keys, or other private credentials. Do not create placeholder Firebase configuration files. Firebase SDK initialization and Messaging token registration are separate runtime integration steps; presence of these files alone does not mean push notifications are active.
