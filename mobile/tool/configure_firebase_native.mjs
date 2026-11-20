@@ -113,12 +113,12 @@ function configureAndroid() {
 }
 
 function ensurePlistBoolean(plist, key, value) {
-  const expected = '\\t<key>' + key + '</key>\\n\\t<' + (value ? 'true' : 'false') + '/>';
-  const pattern = new RegExp('<key>' + key + '</key>\\\\s*<(?:true|false)\\\\s*/>');
+  const expected = '\t<key>' + key + '</key>\n\t<' + (value ? 'true' : 'false') + '/>';
+  const pattern = new RegExp('<key>' + key + '</key>\\s*<(?:true|false)\\s*/>');
   if (pattern.test(plist)) return plist.replace(pattern, expected);
   const rootClose = plist.lastIndexOf('</dict>');
   if (rootClose < 0) throw new Error('iOS Info.plist root dictionary is missing');
-  return plist.slice(0, rootClose) + expected + '\\n' + plist.slice(rootClose);
+  return plist.slice(0, rootClose) + expected + '\n' + plist.slice(rootClose);
 }
 
 function configureIos() {
