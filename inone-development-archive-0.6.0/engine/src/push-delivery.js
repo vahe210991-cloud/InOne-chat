@@ -273,7 +273,7 @@ export function createPushDelivery({
       await pool.query(
         `UPDATE push_deliveries SET status = 'dead', locked_at = NULL, locked_by = NULL,
          last_error_code = 'expired', updated_at = now()
-         WHERE status IN ('queued', 'failed') AND expires_at <= now() + interval '15 seconds'`,
+         WHERE status IN ('queued', 'failed', 'processing') AND expires_at <= now() + interval '15 seconds'`,
       );
       await pool.query("DELETE FROM push_deliveries WHERE status IN ('provider_accepted', 'dead', 'cancelled') AND updated_at < now() - interval '30 days'");
       lastCleanupAt = Date.now();
