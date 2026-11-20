@@ -151,7 +151,7 @@ jobs:
         run: |
           cargo check --locked --all-targets --manifest-path rust/Cargo.toml
           cargo test --locked --no-fail-fast --manifest-path rust/Cargo.toml
-      - run: flutter analyze
+      - run: flutter analyze lib test integration_test
       - run: flutter test
       - name: Build Android preview APK
         run: flutter build apk --debug
