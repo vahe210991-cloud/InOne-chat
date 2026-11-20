@@ -26,7 +26,13 @@ class FirebaseInOnePushMessagingClient implements InOnePushMessagingClient {
   final FirebaseMessaging messaging;
 
   @override
-  Stream<String> get onTokenRefresh => messaging.onTokenRefresh;
+  @override
+  Stream<String> get onTokenRefresh {
+    // The backend stores FCM registration tokens; onRegistered emits FIDs.
+    // Switch only together with the backend storage/sender migration.
+    // ignore: deprecated_member_use
+    return messaging.onTokenRefresh;
+  }
 
   @override
   Future<InOnePushAuthorizationStatus> requestPermission() async {
