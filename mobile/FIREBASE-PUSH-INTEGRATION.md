@@ -10,6 +10,12 @@
 6. Before explicit logout, the client attempts `DELETE /devices/me/push` while the bearer token is still valid. Backend logout and device-revocation cleanup are retained as authoritative server-side safeguards.
 7. On app resume, token registration is retried. This covers the case where APNs registration was not ready during the first authenticated startup.
 
+## FCM registration identifier compatibility
+
+The current backend contract `PUT /devices/me/push` stores an FCM registration token and validates the existing 32–512 character token format. Therefore the client currently uses the legacy `getToken()` / `onTokenRefresh` APIs, with deprecated-member warnings intentionally scoped to this adapter and the Android runtime probe.
+
+Firebase Messaging 17 also exposes the newer Firebase Installation ID (FID) flow through `register()` / `onRegistered`. FIDs are the recommended direction and Firebase supports both registration patterns during the transition. Do not replace the current token with a FID in isolation: migrate the backend validation/storage contract and the future sender together, then switch the Flutter client and integration test to FIDs.
+
 ## Native project generation
 
 `tool/generate_flutter_platforms.sh` now runs both Firebase configuration steps:
