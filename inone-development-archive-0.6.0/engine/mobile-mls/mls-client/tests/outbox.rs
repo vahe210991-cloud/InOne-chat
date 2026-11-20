@@ -358,7 +358,6 @@ fn inbox_write_failure_rolls_back_mls_state_and_allows_server_redelivery() {
     assert!(resumed.sync().unwrap().is_empty());
 }
 
-
 // Process-crash tests use a deterministic platform key so a child test process can
 // reopen the exact same SQLCipher file after the parent has prepared the scenario.
 const CRASH_DB_KEY: [u8; 32] = [0x5a; 32];
@@ -372,7 +371,12 @@ impl KeyStore for FixedCrashKeyStore {
     }
 }
 
-fn run_crash_child(test_name: &str, base: &str, db_path: &str, point: &str) -> std::process::ExitStatus {
+fn run_crash_child(
+    test_name: &str,
+    base: &str,
+    db_path: &str,
+    point: &str,
+) -> std::process::ExitStatus {
     std::process::Command::new(std::env::current_exe().expect("current test executable"))
         .args(["--exact", test_name, "--nocapture"])
         .env("INONE_MLS_CRASH_CHILD_BASE", base)
@@ -422,11 +426,16 @@ fn process_crash_after_application_ratchet_write_rolls_back_and_redelivers() {
         &bob_db,
         "after_application_mls_write",
     );
-    assert!(!status.success(), "child must be forcibly terminated inside the open transaction");
+    assert!(
+        !status.success(),
+        "child must be forcibly terminated inside the open transaction"
+    );
 
     let mut recovered = connect(&engine.base, BOB, PW, "B_CRASH_P0", &bob_db, &keys)
         .expect("SQLCipher database remains readable after process death");
-    let delivered = recovered.sync().expect("same event decrypts after rollback and restart");
+    let delivered = recovered
+        .sync()
+        .expect("same event decrypts after rollback and restart");
     assert_eq!(texts(&delivered), vec![plaintext.to_string()]);
     assert!(recovered.undecryptable().unwrap().is_empty());
     assert!(matches!(
@@ -434,7 +443,10 @@ fn process_crash_after_application_ratchet_write_rolls_back_and_redelivers() {
         [Incoming::Text { event_id: pending_id, text: pending_text, .. }]
             if pending_id == &event_id && pending_text == plaintext
     ));
-    assert!(recovered.sync().unwrap().is_empty(), "committed event is not replayed");
+    assert!(
+        recovered.sync().unwrap().is_empty(),
+        "committed event is not replayed"
+    );
     recovered.acknowledge_incoming(&[event_id]).unwrap();
     assert!(recovered.pending_incoming().unwrap().is_empty());
 }
@@ -447,9 +459,25 @@ fn process_crash_after_inbound_commit_merge_rolls_back_epoch_and_retries() {
     let keys = FixedCrashKeyStore;
     let alice_db = db("p0-crash-commit-alice");
     let bob_db = db("p0-crash-commit-bob");
-    let mut alice = connect(&engine.base, ALICE, PW, "A_COMMIT_CRASH_P0", &alice_db, &keys).unwrap();
+    let mut alice = connect(
+        &engine.base,
+        ALICE,
+        PW,
+        "A_COMMIT_CRASH_P0",
+        &alice_db,
+        &keys,
+    )
+    .unwrap();
     let mut bob = connect(&engine.base, BOB, PW, "B_CRASH_P0", &bob_db, &keys).unwrap();
-    let mut carol = connect(&engine.base, CAROL, PW, "C_COMMIT_CRASH_P0", &db("p0-crash-commit-carol"), &keys).unwrap();
+    let mut carol = connect(
+        &engine.base,
+        CAROL,
+        PW,
+        "C_COMMIT_CRASH_P0",
+        &db("p0-crash-commit-carol"),
+        &keys,
+    )
+    .unwrap();
     bob.ensure_key_packages(2).unwrap();
     carol.ensure_key_packages(1).unwrap();
 
@@ -468,14 +496,27 @@ fn process_crash_after_inbound_commit_merge_rolls_back_epoch_and_retries() {
         &bob_db,
         "after_inbound_commit_merge",
     );
-    assert!(!status.success(), "child must be forcibly terminated after merge but before commit");
+    assert!(
+        !status.success(),
+        "child must be forcibly terminated after merge but before commit"
+    );
 
     let mut recovered = connect(&engine.base, BOB, PW, "B_CRASH_P0", &bob_db, &keys)
         .expect("SQLCipher group state remains readable after process death");
-    assert_eq!(recovered.local_epoch(room), before_epoch, "uncommitted epoch must roll back");
-    recovered.sync().expect("the exact server Commit is retried after restart");
+    assert_eq!(
+        recovered.local_epoch(room),
+        before_epoch,
+        "uncommitted epoch must roll back"
+    );
+    recovered
+        .sync()
+        .expect("the exact server Commit is retried after restart");
     assert_eq!(recovered.local_epoch(room), alice.local_epoch(room));
     recovered.sync().expect("a repeated sync is idempotent");
     assert_eq!(recovered.local_epoch(room), alice.local_epoch(room));
-    assert!(recovered.members_of(room).unwrap().iter().any(|member| member == &format!("{CAROL}/C_COMMIT_CRASH_P0")));
+    assert!(recovered
+        .members_of(room)
+        .unwrap()
+        .iter()
+        .any(|member| member == &format!("{CAROL}/C_COMMIT_CRASH_P0")));
 }
