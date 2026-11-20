@@ -33,8 +33,13 @@
 | `INONE_EMAIL_ENCRYPTION_KEY` | независимый 32-байтовый ключ AES-256-GCM для шифрования очереди (64 hex или канонический Base64; сгенерировать: `openssl rand -hex 32`) | обязателен для `smtp` |
 | `INONE_EMAIL_WORKER_POLL_MS` | интервал опроса durable queue, 250–60000 мс | 1000 |
 | `INONE_EMAIL_MAX_ATTEMPTS` | максимальное число попыток доставки, 1–20 | 8 |
+| `INONE_FIREBASE_PROJECT_ID` | Firebase project для Admin SDK | обязателен в продакшене |
+| `INONE_FIREBASE_SERVICE_ACCOUNT_JSON` | service-account JSON из secret manager; при отсутствии используется ADC/workload identity | необязателен при ADC |
+| `INONE_PUSH_ENCRYPTION_KEY` | отдельный 32-байтовый AES-256-GCM ключ для FID и push outbox; не переиспользовать PIN/email keys | обязателен в продакшене |
+| `INONE_PUSH_WORKER_POLL_MS` | интервал worker, 250–60000 мс | 1000 |
+| `INONE_PUSH_MAX_ATTEMPTS` | число повторов временных ошибок, 1–20 | 8 |
 
-Неверная настройка останавливает запуск до открытия порта и называет причину.
+Неверная настройка останавливает запуск до открытия порта и называет причину. При старте push worker выполняет шифрование старых регистраций; незавершённый backfill блокирует запуск, чтобы не оставить plaintext FID в базе.
 
 ## Первый запуск
 
@@ -59,11 +64,20 @@
 
 Одна строка JSON на событие: запуск, остановка, миграции и каждый запрос (метод, путь без строки запроса, код ответа, время). В журнал не попадают тела запросов, пароли, PIN, токены, ключи, содержимое сообщений и файлов.
 
+## Push delivery
+
+- `firebase-admin` отправляет по FID через `fid`; iOS использует тот же FCM путь, который Firebase маршрутизирует через APNs.
+- PostgreSQL `push_deliveries` — отдельный durable outbox, не таблица Email Delivery. MLS event и outbox запись фиксируются одной транзакцией, включая путь `clientMessageId`.
+- FID и минимальный push payload зашифрованы AES-256-GCM. Legacy identifiers шифруются при backfill, но не отправляются; клиент должен зарегистрировать актуальный FID.
+- `provider_accepted` означает принятие FCM, а не подтверждённую доставку/показ на устройстве.
+- Для iOS нужны APNs `.p8`, Key ID, Team ID, Bundle ID и корректные entitlements/provisioning. Секреты не коммитить.
+
 ## Ограничения этой сборки
 
 - Почта: SMTP transport и durable encrypted queue реализованы в исходниках; добавлены миграции, worker, идемпотентность, expiry, retry/dead-letter, HY/RU/EN templates, локализация по выбранному языку интерфейса и safe logs. Новые тесты добавлены, но на текущем SHA ещё NOT RUN. До acceptance нужны Node + PostgreSQL suite, SMTP integration, restart/retry/shutdown tests и реальная проверка доставки.
 - Продакшен не стартует без `INONE_MAIL_TRANSPORT=smtp` с TLS и адресом отправителя.
 - Зависимости почты по текущему `package.json`: `nodemailer` 10.3.1 и `smtp-server` 3.21.3 (только тестовый сервер). Проверку `npm audit` на этом SHA ещё не выполняли.
+- Push receive/tap navigation и реальные Android/iOS delivery smoke tests остаются отдельными acceptance gates.
 - SMS не подключён: восстановление доступа по телефону недоступно.
 - Файлы оформления хранятся в базе данных.
 - Криптографический движок временный (`@matrix-org/matrix-sdk-crypto-wasm`), собственный не собран.
