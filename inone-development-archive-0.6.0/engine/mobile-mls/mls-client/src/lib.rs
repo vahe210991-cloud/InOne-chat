@@ -57,10 +57,21 @@ pub enum Incoming {
         room_id: String,
         event_id: String,
         text: String,
+        mine: bool,
+    },
+    Attachment {
+        room_id: String,
+        event_id: String,
+        file_id: String,
+        name: String,
+        mime_type: String,
+        size: u64,
+        mine: bool,
     },
     Unreadable {
         room_id: String,
         event_id: String,
+        mine: bool,
     },
 }
 
@@ -199,13 +210,38 @@ const MAX_PENDING_INBOX_BYTES: i64 = 32 * 1024 * 1024;
 const ACKNOWLEDGED_INBOX_RETENTION_MS: i64 = 30 * 24 * 60 * 60 * 1000;
 
 fn insert_incoming_record(db: &Connection, incoming: &Incoming) -> Result<(), String> {
-    let (event_id, room_id, kind, body): (&str, &str, &str, Option<&str>) = match incoming {
+    let (event_id, room_id, kind, body): (&str, &str, &str, Option<String>) = match incoming {
         Incoming::Text {
             room_id,
             event_id,
             text,
-        } => (event_id, room_id, "text", Some(text)),
-        Incoming::Unreadable { room_id, event_id } => (event_id, room_id, "unreadable", None),
+            ..
+        } => (event_id, room_id, "text", Some(text.clone())),
+        Incoming::Attachment {
+            room_id,
+            event_id,
+            file_id,
+            name,
+            mime_type,
+            size,
+            ..
+        } => (
+            event_id,
+            room_id,
+            "text",
+            Some(
+                serde_json::to_string(&json!({
+                    "fileId": file_id,
+                    "name": name,
+                    "mimeType": mime_type,
+                    "size": size,
+                }))
+                .map_err(text)?,
+            ),
+        ),
+        Incoming::Unreadable {
+            room_id, event_id, ..
+        } => (event_id, room_id, "unreadable", None),
     };
     let exists: bool = db
         .query_row(
@@ -239,7 +275,7 @@ fn insert_incoming_record(db: &Connection, incoming: &Incoming) -> Result<(), St
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .map_err(text)?;
-    let body_bytes = body.map_or(0, |value| value.len()) as i64;
+    let body_bytes = body.as_ref().map_or(0, |value| value.len()) as i64;
     if pending_count >= MAX_PENDING_INBOX_ITEMS
         || pending_bytes.saturating_add(body_bytes) > MAX_PENDING_INBOX_BYTES
     {
@@ -257,6 +293,132 @@ fn insert_incoming_record(db: &Connection, incoming: &Incoming) -> Result<(), St
     .map_err(text)?;
     crash_at_test_failpoint("after_inbox_insert");
     Ok(())
+}
+
+fn insert_attachment_manifest(
+    db: &Connection,
+    incoming: &Incoming,
+    manifest: &[u8],
+    direction: &str,
+    client_message_id: Option<&str>,
+) -> Result<(), String> {
+    let Incoming::Attachment {
+        room_id,
+        event_id,
+        file_id,
+        ..
+    } = incoming
+    else {
+        return Err("attachment manifest requires an attachment inbox item".to_string());
+    };
+    if !matches!(direction, "incoming" | "outgoing") {
+        return Err("invalid attachment direction".to_string());
+    }
+    let created_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64;
+    db.execute(
+        "INSERT INTO client_attachments
+         (file_id, room_id, event_id, manifest, direction, client_message_id, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+         ON CONFLICT(file_id) DO UPDATE SET
+           direction = excluded.direction,
+           client_message_id = excluded.client_message_id
+         WHERE client_attachments.room_id = excluded.room_id
+           AND client_attachments.event_id = excluded.event_id
+           AND client_attachments.manifest = excluded.manifest",
+        rusqlite::params![
+            file_id,
+            room_id,
+            event_id,
+            manifest,
+            direction,
+            client_message_id,
+            created_at
+        ],
+    )
+    .map_err(text)?;
+    let stored: (String, String, Vec<u8>, String, Option<String>) = db
+        .query_row(
+            "SELECT room_id, event_id, manifest, direction, client_message_id
+             FROM client_attachments WHERE file_id = ?1",
+            [file_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+        )
+        .map_err(text)?;
+    if stored.0 != *room_id
+        || stored.1 != *event_id
+        || stored.2.as_slice() != manifest
+        || stored.3 != direction
+        || stored.4.as_deref() != client_message_id
+    {
+        return Err("attachment fileId is already bound to a different local event".to_string());
+    }
+    Ok(())
+}
+
+fn incoming_from_row(
+    event_id: String,
+    room_id: String,
+    kind: String,
+    body: Option<String>,
+    client_message_id: Option<String>,
+    file_id: Option<String>,
+) -> Result<Incoming, String> {
+    let mine = client_message_id.is_some();
+    if let Some(file_id) = file_id {
+        let body = body.ok_or("в сохранённом вложении отсутствуют метаданные")?;
+        let value: Value = serde_json::from_str(&body).map_err(text)?;
+        let stored_file_id = value
+            .get("fileId")
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .ok_or("в метаданных вложения отсутствует fileId")?;
+        let name = value
+            .get("name")
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .ok_or("в метаданных вложения отсутствует имя")?
+            .to_string();
+        let mime_type = value
+            .get("mimeType")
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .ok_or("в метаданных вложения отсутствует MIME type")?
+            .to_string();
+        let size = value
+            .get("size")
+            .and_then(Value::as_u64)
+            .filter(|size| *size > 0 && *size <= 50 * 1024 * 1024 - 16)
+            .ok_or("в метаданных вложения некорректный размер")?;
+        if kind != "text" || stored_file_id != file_id {
+            return Err("локальные метаданные вложения не совпадают с manifest index".to_string());
+        }
+        return Ok(Incoming::Attachment {
+            room_id,
+            event_id,
+            file_id,
+            name,
+            mime_type,
+            size,
+            mine,
+        });
+    }
+    match kind.as_str() {
+        "text" => Ok(Incoming::Text {
+            room_id,
+            event_id,
+            text: body.ok_or("в сохранённом сообщении отсутствует текст")?,
+            mine,
+        }),
+        "unreadable" => Ok(Incoming::Unreadable {
+            room_id,
+            event_id,
+            mine,
+        }),
+        _ => Err(format!("неизвестный тип локального сообщения: {kind}")),
+    }
 }
 
 fn insert_processed_event(db: &Connection, event_id: &str) -> Result<(), String> {
