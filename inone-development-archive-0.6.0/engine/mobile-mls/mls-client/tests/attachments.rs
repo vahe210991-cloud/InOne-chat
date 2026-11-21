@@ -117,9 +117,19 @@ fn attachment_retry_reuses_the_exact_mls_message_after_server_commit() {
 
     // The server accepts the encrypted message, but the local commit is forced
     // to fail. The durable outbox must retain the exact MLS ciphertext.
-    assert!(alice.send_attachment_with_id(
-        ROOM, "retry.txt", "text/plain", &plaintext, client_message_id
-    ).is_err());
+    let first_attempt_error = alice
+        .send_attachment_with_id(
+            ROOM,
+            "retry.txt",
+            "text/plain",
+            &plaintext,
+            client_message_id,
+        )
+        .expect_err("the injected local attachment persistence failure must abort the first attempt");
+    assert!(
+        first_attempt_error.contains("simulated local persistence failure"),
+        "the first attempt must reach the post-server-acceptance local transaction; got: {first_attempt_error}"
+    );
 
     let read_persisted_message = || {
         let connection = open_encrypted_db(&alice_db, &database_key);
