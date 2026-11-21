@@ -242,6 +242,8 @@ impl MlsSession {
         self.with_client(|client| client.send_text(&room_id, plaintext.as_str()))
     }
 
+    /// Encrypts and uploads an attachment inside the persistent Rust client.
+    /// Plaintext never crosses the object-storage HTTP boundary.
     pub fn send_attachment(
         &self,
         room_id: String,
@@ -262,6 +264,7 @@ impl MlsSession {
         })
     }
 
+    /// Downloads ciphertext and returns plaintext only after manifest/hash verification.
     pub fn download_attachment(&self, file_id: String) -> Result<Vec<u8>, String> {
         self.with_client(|client| client.download_attachment(&file_id))
             .map(|bytes| Zeroizing::new(bytes).to_vec())

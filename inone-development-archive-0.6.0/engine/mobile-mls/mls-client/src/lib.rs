@@ -309,15 +309,22 @@ fn insert_attachment_record(
     )
     .map_err(text)?;
     crash_at_test_failpoint("after_attachment_manifest_insert");
-    let (stored_room, stored_event, stored_bytes): (String, String, Vec<u8>) = db
+    let (stored_room, stored_event, stored_bytes, stored_direction, stored_client_message_id):
+        (String, String, Vec<u8>, String, Option<String>) = db
         .query_row(
-            "SELECT room_id, event_id, manifest FROM client_attachments WHERE file_id = ?1",
+            "SELECT room_id, event_id, manifest, direction, client_message_id
+             FROM client_attachments WHERE file_id = ?1",
             [file_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
         )
         .map_err(text)?;
     let stored_bytes = Zeroizing::new(stored_bytes);
-    if stored_room != room_id || stored_event != event_id || stored_bytes.as_slice() != manifest {
+    if stored_room != room_id
+        || stored_event != event_id
+        || stored_bytes.as_slice() != manifest
+        || stored_direction != direction
+        || stored_client_message_id.as_deref() != client_message_id
+    {
         return Err("attachment fileId is already bound to a different room/event/manifest".to_string());
     }
     Ok(())
@@ -354,11 +361,16 @@ fn incoming_from_inbox_row(
                     size: manifest.size,
                 })
             } else {
-                Ok(Incoming::Text {
-                    room_id,
-                    event_id,
-                    text: body.ok_or_else(|| "inbox text row has no body".to_string())?,
-                })
+                let text = body.ok_or_else(|| "inbox text row has no body".to_string())?;
+                if text.is_empty() {
+                    Ok(Incoming::Unreadable { room_id, event_id })
+                } else {
+                    Ok(Incoming::Text {
+                        room_id,
+                        event_id,
+                        text,
+                    })
+                }
             }
         }
         "unreadable" => Ok(Incoming::Unreadable { room_id, event_id }),
