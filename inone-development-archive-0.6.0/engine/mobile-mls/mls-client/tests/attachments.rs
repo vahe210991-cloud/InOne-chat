@@ -248,6 +248,12 @@ fn attachment_is_mls_encrypted_uploaded_and_persisted_for_both_devices() {
 
     let sender_messages = alice.messages_for_room(ROOM).unwrap();
     assert!(matches!(sender_messages.as_slice(), [Incoming::Attachment { mine: true, .. }]));
+    assert!(
+        alice.pending_incoming().unwrap().iter().all(|item| {
+            !matches!(item, Incoming::Attachment { mine: true, .. })
+        }),
+        "a sender's already accepted attachment must not be re-delivered as pending incoming"
+    );
     let sender_history = attachments(&sender_messages);
     assert_eq!(sender_history.len(), 1);
     assert_eq!(sender_history[0].0, *file_id);
