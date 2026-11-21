@@ -2958,7 +2958,7 @@ impl Client {
                     error
                 }
             })?;
-        let mut pending: Vec<(u64, String, Vec<u8>)> = Vec::new();
+        let mut pending: Vec<(u64, String, Vec<u8>, Option<String>)> = Vec::new();
         for ev in events["events"].as_array().cloned().unwrap_or_default() {
             let event_id = ev
                 .get("event_id")
@@ -2969,6 +2969,19 @@ impl Client {
                     "ошибка контракта ответа: event_id отсутствует, не строка или пустой"
                         .to_string()
                 })?;
+            let outer_file_id = match ev
+                .get("content")
+                .and_then(Value::as_object)
+                .and_then(|content| content.get("file"))
+            {
+                Some(Value::String(file_id)) if !file_id.trim().is_empty() => {
+                    Some(file_id.clone())
+                }
+                Some(_) => {
+                    return Err("ошибка контракта ответа: event content.file не строка или пустой".to_string())
+                }
+                None => None,
+            };
             let Some(mls_b64) = ev["content"]["mls"].as_str() else {
                 continue;
             };
@@ -2978,17 +2991,17 @@ impl Client {
             // Malformed base64 or TLS payloads are persisted through the same durable
             // inbox transaction as every other unreadable event.
             let Ok(bytes) = B64.decode(mls_b64) else {
-                self.process_event(room_id, &event_id, &[], out)?;
+                self.process_event(room_id, &event_id, &[], outer_file_id.as_deref(), out)?;
                 continue;
             };
             let parsed = MlsMessageIn::tls_deserialize_exact(&bytes)
                 .ok()
                 .and_then(|message| message.try_into_protocol_message().ok());
             let Some(protocol) = parsed else {
-                self.process_event(room_id, &event_id, &bytes, out)?;
+                self.process_event(room_id, &event_id, &bytes, outer_file_id.as_deref(), out)?;
                 continue;
             };
-            pending.push((protocol.epoch().as_u64(), event_id, bytes));
+            pending.push((protocol.epoch().as_u64(), event_id, bytes, outer_file_id));
         }
         let current = self
             .groups
@@ -3034,8 +3047,8 @@ impl Client {
         let join_epoch = self.groups[room_id].join_epoch;
         let before_join: Vec<String> = pending
             .iter()
-            .filter(|(e, _, _)| *e < join_epoch)
-            .map(|(_, id, _)| id.clone())
+            .filter(|(e, _, _, _)| *e < join_epoch)
+            .map(|(_, id, _, _)| id.clone())
             .collect();
         for event_id in before_join {
             self.mark_processed(&event_id)?;
@@ -3044,11 +3057,11 @@ impl Client {
             let epoch = self.groups[room_id].mls.epoch().as_u64();
             let ready: Vec<(String, Vec<u8>)> = pending
                 .iter()
-                .filter(|(e, id, _)| *e == epoch && !self.processed.contains(id))
-                .map(|(_, id, b)| (id.clone(), b.clone()))
+                .filter(|(e, id, _, _)| *e == epoch && !self.processed.contains(id))
+                .map(|(_, id, b, file_id)| (id.clone(), b.clone(), file_id.clone()))
                 .collect();
-            for (event_id, bytes) in ready {
-                self.process_event(room_id, &event_id, &bytes, out)?;
+            for (event_id, bytes, file_id) in ready {
+                self.process_event(room_id, &event_id, &bytes, file_id.as_deref(), out)?;
             }
             let Some((commit_epoch, commit, metadata)) =
                 commits.iter().find(|(e, _, _)| *e == epoch + 1)
@@ -3172,12 +3185,12 @@ impl Client {
         // Опоздавшие события (аудит, P0.3): их эпоха уже пройдена. Внутри окна пробуем расшифровать,
         // за пределами окна — явная постоянная ошибка с причиной, а не молчаливый пропуск.
         let final_epoch = self.groups[room_id].mls.epoch().as_u64();
-        let late: Vec<(String, Vec<u8>, u64)> = pending
+        let late: Vec<(String, Vec<u8>, u64, Option<String>)> = pending
             .iter()
-            .filter(|(e, id, _)| *e < final_epoch && !self.processed.contains(id))
-            .map(|(e, id, b)| (id.clone(), b.clone(), *e))
+            .filter(|(e, id, _, _)| *e < final_epoch && !self.processed.contains(id))
+            .map(|(e, id, b, file_id)| (id.clone(), b.clone(), *e, file_id.clone()))
             .collect();
-        for (event_id, bytes, epoch) in late {
+        for (event_id, bytes, epoch, file_id) in late {
             if final_epoch - epoch > MAX_PAST_EPOCHS as u64 {
                 self.record_unreadable(
                     room_id,
@@ -3190,7 +3203,7 @@ impl Client {
                     event_id: event_id.clone(),
                 });
             } else {
-                self.process_event(room_id, &event_id, &bytes, out)?;
+                self.process_event(room_id, &event_id, &bytes, file_id.as_deref(), out)?;
             }
         }
 
@@ -3198,10 +3211,10 @@ impl Client {
         // Commit. Persist this room-scoped state and retry it on the next sync.
         let future_event_ids: Vec<String> = pending
             .iter()
-            .filter(|(epoch, event_id, _)| {
+            .filter(|(epoch, event_id, _, _)| {
                 *epoch > final_epoch && !self.processed.contains(event_id)
             })
-            .map(|(_, event_id, _)| event_id.clone())
+            .map(|(_, event_id, _, _)| event_id.clone())
             .collect();
         if !future_event_ids.is_empty() {
             self.set_waiting_for_commit(room_id, final_epoch.saturating_add(1), &future_event_ids)?;
@@ -3327,15 +3340,7 @@ impl Client {
         let mut incoming = Vec::new();
         for row in rows {
             let (event_id, room_id, kind, body) = row.map_err(text)?;
-            let item = match kind.as_str() {
-                "text" => Incoming::Text {
-                    room_id,
-                    event_id,
-                    text: body.ok_or_else(|| "inbox text row has no body".to_string())?,
-                },
-                "unreadable" => Incoming::Unreadable { room_id, event_id },
-                _ => return Err(format!("inbox contains an unsupported record kind: {kind}")),
-            };
+            let item = incoming_from_inbox_row(&self.meta, event_id, room_id, kind, body)?;
             incoming.push(item);
         }
         Ok(incoming)
@@ -3373,15 +3378,7 @@ impl Client {
             .map_err(text)?;
         rows.map(|row| {
             let (event_id, room_id, kind, body) = row.map_err(text)?;
-            match kind.as_str() {
-                "text" => Ok(Incoming::Text {
-                    room_id,
-                    event_id,
-                    text: body.ok_or_else(|| "inbox text row has no body".to_string())?,
-                }),
-                "unreadable" => Ok(Incoming::Unreadable { room_id, event_id }),
-                _ => Err("inbox contains an unsupported record kind".to_string()),
-            }
+            incoming_from_inbox_row(&self.meta, event_id, room_id, kind, body)
         })
         .collect()
     }
