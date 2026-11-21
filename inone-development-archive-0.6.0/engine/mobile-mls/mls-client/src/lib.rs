@@ -130,12 +130,6 @@ struct Group {
 
 struct SessionTokens(String, String);
 
-impl SessionTokens {
-    fn into_tuple(mut self) -> (String, String) {
-        (std::mem::take(&mut self.0), std::mem::take(&mut self.1))
-    }
-}
-
 impl Drop for SessionTokens {
     fn drop(&mut self) {
         self.0.zeroize();
@@ -517,7 +511,7 @@ pub fn connect(
         "/login",
         Some(json!({ "userId": user_id, "password": password, "deviceId": device_id })),
     )?;
-    let tokens = (
+    let tokens = SessionTokens(
         login["token"]
             .as_str()
             .ok_or("сервер не вернул токен: нужно подтверждение с другого устройства")?
@@ -527,6 +521,7 @@ pub fn connect(
             .ok_or("сервер не вернул токен обновления")?
             .to_string(),
     );
+    let db_key = keys.database_key(&format!("{user_id}/{device_id}"))?;
     build_client(
         agent,
         base,
@@ -534,7 +529,7 @@ pub fn connect(
         user_id,
         device_id,
         db_path,
-        &keys.database_key(&format!("{user_id}/{device_id}"))?,
+        &db_key,
     )
 }
 
@@ -615,6 +610,8 @@ pub fn connect_with_approval(
             )
         }
     };
+    let tokens = SessionTokens(tokens.0, tokens.1);
+    let db_key = keys.database_key(&format!("{user_id}/{device_id}"))?;
     build_client(
         agent,
         base,
@@ -622,7 +619,7 @@ pub fn connect_with_approval(
         user_id,
         device_id,
         db_path,
-        &keys.database_key(&format!("{user_id}/{device_id}"))?,
+        &db_key,
     )
 }
 
@@ -706,6 +703,7 @@ pub fn connect_with_session(
     let scope = format!("{user_id}/{device_id}");
     let database_exists = Path::new(db_path).is_file();
     let has_key = keys.has_database_key(&scope)?;
+    let tokens = SessionTokens(access_token.to_string(), refresh_token.to_string());
     let db_key = if has_key {
         keys.existing_database_key(&scope)?
             .ok_or_else(|| "защищённое хранилище сообщило о ключе, но не вернуло его".to_string())?
@@ -719,7 +717,7 @@ pub fn connect_with_session(
     build_client(
         agent,
         base.trim(),
-        (access_token.to_string(), refresh_token.to_string()),
+        tokens,
         user_id,
         device_id,
         db_path,
@@ -764,7 +762,7 @@ pub fn resume_with_session(
     build_client(
         agent,
         base.trim(),
-        tokens.into_tuple(),
+        tokens,
         user_id,
         device_id,
         db_path,
@@ -775,7 +773,7 @@ pub fn resume_with_session(
 fn build_client(
     agent: ureq::Agent,
     base: &str,
-    tokens: (String, String),
+    tokens: SessionTokens,
     user_id: &str,
     device_id: &str,
     db_path: &str,
@@ -905,12 +903,11 @@ fn build_client(
     }
     drop(stmt);
 
-    let session_tokens = SessionTokens(tokens.0, tokens.1);
-    store_session_tokens(&meta, &session_tokens)?;
+    store_session_tokens(&meta, &tokens)?;
 
     Ok(Client {
         base: base.to_string(),
-        tokens: Mutex::new(session_tokens),
+        tokens: Mutex::new(tokens),
         user_id: user_id.to_string(),
         device_id: device_id.to_string(),
         agent,
