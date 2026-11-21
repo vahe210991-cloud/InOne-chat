@@ -3365,7 +3365,7 @@ impl Client {
                     error
                 }
             })?;
-        let mut pending: Vec<(u64, String, Vec<u8>)> = Vec::new();
+        let mut pending: Vec<(u64, String, Vec<u8>, Option<String>)> = Vec::new();
         for ev in events["events"].as_array().cloned().unwrap_or_default() {
             let event_id = ev
                 .get("event_id")
@@ -3376,6 +3376,10 @@ impl Client {
                     "ошибка контракта ответа: event_id отсутствует, не строка или пустой"
                         .to_string()
                 })?;
+            let outer_file_id = ev["content"]["fileId"]
+                .as_str()
+                .filter(|file_id| !file_id.trim().is_empty())
+                .map(str::to_string);
             let Some(mls_b64) = ev["content"]["mls"].as_str() else {
                 continue;
             };
@@ -3385,17 +3389,17 @@ impl Client {
             // Malformed base64 or TLS payloads are persisted through the same durable
             // inbox transaction as every other unreadable event.
             let Ok(bytes) = B64.decode(mls_b64) else {
-                self.process_event(room_id, &event_id, &[], out)?;
+                self.process_event(room_id, &event_id, &[], outer_file_id.as_deref(), out)?;
                 continue;
             };
             let parsed = MlsMessageIn::tls_deserialize_exact(&bytes)
                 .ok()
                 .and_then(|message| message.try_into_protocol_message().ok());
             let Some(protocol) = parsed else {
-                self.process_event(room_id, &event_id, &bytes, out)?;
+                self.process_event(room_id, &event_id, &bytes, outer_file_id.as_deref(), out)?;
                 continue;
             };
-            pending.push((protocol.epoch().as_u64(), event_id, bytes));
+            pending.push((protocol.epoch().as_u64(), event_id, bytes, outer_file_id));
         }
         let current = self
             .groups
@@ -3441,21 +3445,21 @@ impl Client {
         let join_epoch = self.groups[room_id].join_epoch;
         let before_join: Vec<String> = pending
             .iter()
-            .filter(|(e, _, _)| *e < join_epoch)
-            .map(|(_, id, _)| id.clone())
+            .filter(|(e, _, _, _)| *e < join_epoch)
+            .map(|(_, id, _, _)| id.clone())
             .collect();
         for event_id in before_join {
             self.mark_processed(&event_id)?;
         }
         loop {
             let epoch = self.groups[room_id].mls.epoch().as_u64();
-            let ready: Vec<(String, Vec<u8>)> = pending
+            let ready: Vec<(String, Vec<u8>, Option<String>)> = pending
                 .iter()
-                .filter(|(e, id, _)| *e == epoch && !self.processed.contains(id))
-                .map(|(_, id, b)| (id.clone(), b.clone()))
+                .filter(|(e, id, _, _)| *e == epoch && !self.processed.contains(id))
+                .map(|(_, id, bytes, file_id)| (id.clone(), bytes.clone(), file_id.clone()))
                 .collect();
-            for (event_id, bytes) in ready {
-                self.process_event(room_id, &event_id, &bytes, out)?;
+            for (event_id, bytes, outer_file_id) in ready {
+                self.process_event(room_id, &event_id, &bytes, outer_file_id.as_deref(), out)?;
             }
             let Some((commit_epoch, commit, metadata)) =
                 commits.iter().find(|(e, _, _)| *e == epoch + 1)
