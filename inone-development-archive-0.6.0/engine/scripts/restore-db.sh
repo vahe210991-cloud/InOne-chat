@@ -58,7 +58,7 @@ validate_files_archive() {
         return 1
         ;;
     esac
-  done < <(tar -tvzf "$archive" --quoting-style=c)
+  done < <(tar -tvzf "$archive")
 }
 
 check_sum "$dump" "копия базы"
