@@ -522,15 +522,7 @@ pub fn connect(
             .to_string(),
     );
     let db_key = keys.database_key(&format!("{user_id}/{device_id}"))?;
-    build_client(
-        agent,
-        base,
-        tokens,
-        user_id,
-        device_id,
-        db_path,
-        &db_key,
-    )
+    build_client(agent, base, tokens, user_id, device_id, db_path, &db_key)
 }
 
 /// Вход нового устройства аккаунта: подтверждается существующим устройством `approver`.
@@ -3697,10 +3689,7 @@ mod session_persistence_tests {
         insert_incoming_record(&client.meta, &other_room_event).unwrap();
 
         client
-            .acknowledge_incoming(&[
-                "$history-1".to_string(),
-                "$history-2".to_string(),
-            ])
+            .acknowledge_incoming(&["$history-1".to_string(), "$history-2".to_string()])
             .unwrap();
         assert!(client.pending_incoming().unwrap().is_empty());
         assert_eq!(
