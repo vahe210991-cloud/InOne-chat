@@ -3317,7 +3317,7 @@ impl Client {
                 ..
             } = item
             {
-                if queued_event_id == &event_id {
+                if queued_event_id.as_str() == event_id.as_str() {
                     *mine = true;
                 }
             }
