@@ -538,7 +538,7 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
     String plaintext,
     String clientMessageId,
   ) async => clientMessageId;
-  
+
   @override
   Future<List<MlsPendingOutboxItem>> pendingOutbox(String roomId) async => const [];
 
