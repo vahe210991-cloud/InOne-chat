@@ -3,9 +3,9 @@
 //! База устройства зашифрована (SQLCipher). Ключ передаёт платформа: Keychain на iOS, Keystore на Android.
 use std::borrow::Borrow;
 use std::collections::{BTreeSet, HashMap, HashSet};
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use std::path::Path;
 use zeroize::{Zeroize, Zeroizing};
 
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
@@ -350,8 +350,13 @@ pub struct MemoryKeyStore {
 
 impl Drop for MemoryKeyStore {
     fn drop(&mut self) {
-        let keys = match self.keys.get_mut() { Ok(keys) => keys, Err(poisoned) => poisoned.into_inner() };
-        for key in keys.values_mut() { key.zeroize(); }
+        let keys = match self.keys.get_mut() {
+            Ok(keys) => keys,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        for key in keys.values_mut() {
+            key.zeroize();
+        }
     }
 }
 
@@ -373,7 +378,9 @@ impl KeyStore for MemoryKeyStore {
     }
 
     fn delete_database_key(&self, scope: &str) -> Result<(), String> {
-        if let Some(mut key) = self.keys.lock().map_err(text)?.remove(scope) { key.zeroize(); }
+        if let Some(mut key) = self.keys.lock().map_err(text)?.remove(scope) {
+            key.zeroize();
+        }
         Ok(())
     }
 }
@@ -622,9 +629,18 @@ pub fn connect_with_approval(
 fn validate_session_base(base: &str) -> Result<(), String> {
     let base = base.trim();
     let local_http = cfg!(debug_assertions)
-        && (base.starts_with("http://127.0.0.1:") || base.starts_with("http://localhost:") || base.starts_with("http://[::1]:"));
-    if !(base.starts_with("https://") || local_http) || base.contains('@') || base.contains('#') || base.contains('?') {
-        return Err("адрес MLS API должен быть HTTPS (HTTP разрешён только для loopback в debug) и не содержать credentials/query/fragment".to_string());
+        && (base.starts_with("http://127.0.0.1:")
+            || base.starts_with("http://localhost:")
+            || base.starts_with("http://[::1]:"));
+    if !(base.starts_with("https://") || local_http)
+        || base.contains('@')
+        || base.contains('#')
+        || base.contains('?')
+    {
+        return Err(
+            "адрес MLS API должен быть HTTPS (HTTP разрешён только для loopback в debug) и не содержать credentials/query/fragment"
+                .to_string(),
+        );
     }
     Ok(())
 }
@@ -633,7 +649,8 @@ fn store_session_tokens(meta: &Connection, tokens: &SessionTokens) -> Result<(),
     if tokens.0.is_empty() || tokens.1.is_empty() {
         return Err("пара токенов сессии не может быть пустой".to_string());
     }
-    let serialized = Zeroizing::new(serde_json::to_vec(&(tokens.0.as_str(), tokens.1.as_str())).map_err(text)?);
+    let serialized =
+        Zeroizing::new(serde_json::to_vec(&(tokens.0.as_str(), tokens.1.as_str())).map_err(text)?);
     meta.execute(
         "INSERT INTO client_meta (key, value) VALUES ('session_tokens', ?1) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
         [serialized.as_slice()],
@@ -642,9 +659,14 @@ fn store_session_tokens(meta: &Connection, tokens: &SessionTokens) -> Result<(),
 }
 
 fn load_session_tokens(meta: &Connection) -> Result<SessionTokens, String> {
-    let serialized: Zeroizing<Vec<u8>> = Zeroizing::new(meta.query_row(
-        "SELECT value FROM client_meta WHERE key = 'session_tokens'", [], |row| row.get(0)
-    ).map_err(|_| "в базе нет сохранённой MLS-сессии; выполните вход заново".to_string())?);
+    let serialized: Zeroizing<Vec<u8>> = Zeroizing::new(
+        meta.query_row(
+            "SELECT value FROM client_meta WHERE key = 'session_tokens'",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|_| "в базе нет сохранённой MLS-сессии; выполните вход заново".to_string())?,
+    );
     let (access, refresh): (String, String) = serde_json::from_slice(serialized.as_slice())
         .map_err(|_| "сохранённая сессия повреждена; выполните вход заново".to_string())?;
     if access.is_empty() || refresh.is_empty() {
@@ -664,18 +686,28 @@ fn zeroize_json_value(value: &mut Value) {
 
 /// Adopts an already authenticated mobile session without resetting MLS state.
 pub fn connect_with_session(
-    base: &str, user_id: &str, device_id: &str, access_token: &str, refresh_token: &str,
-    db_path: &str, keys: &dyn KeyStore,
+    base: &str,
+    user_id: &str,
+    device_id: &str,
+    access_token: &str,
+    refresh_token: &str,
+    db_path: &str,
+    keys: &dyn KeyStore,
 ) -> Result<Client, String> {
     validate_session_base(base)?;
-    if user_id.trim().is_empty() || device_id.trim().is_empty() || access_token.is_empty() || refresh_token.is_empty() {
+    if user_id.trim().is_empty()
+        || device_id.trim().is_empty()
+        || access_token.is_empty()
+        || refresh_token.is_empty()
+    {
         return Err("user_id, device_id, access_token и refresh_token обязательны".to_string());
     }
     let scope = format!("{user_id}/{device_id}");
     let database_exists = Path::new(db_path).is_file();
     let has_key = keys.has_database_key(&scope)?;
     let db_key = if has_key {
-        keys.existing_database_key(&scope)?.ok_or_else(|| "защищённое хранилище сообщило о ключе, но не вернуло его".to_string())?
+        keys.existing_database_key(&scope)?
+            .ok_or_else(|| "защищённое хранилище сообщило о ключе, но не вернуло его".to_string())?
     } else {
         if database_exists {
             return Err("файл SQLCipher существует, но защищённый ключ отсутствует; автоматическая генерация нового ключа запрещена".to_string());
@@ -683,12 +715,24 @@ pub fn connect_with_session(
         keys.database_key(&scope)?
     };
     let agent = ureq::AgentBuilder::new().redirects(0).build();
-    build_client(agent, base.trim(), (access_token.to_string(), refresh_token.to_string()), user_id, device_id, db_path, &db_key)
+    build_client(
+        agent,
+        base.trim(),
+        (access_token.to_string(), refresh_token.to_string()),
+        user_id,
+        device_id,
+        db_path,
+        &db_key,
+    )
 }
 
 /// Reopens an existing SQLCipher session. It never creates a replacement database key.
 pub fn resume_with_session(
-    base: &str, user_id: &str, device_id: &str, db_path: &str, keys: &dyn KeyStore,
+    base: &str,
+    user_id: &str,
+    device_id: &str,
+    db_path: &str,
+    keys: &dyn KeyStore,
 ) -> Result<Client, String> {
     validate_session_base(base)?;
     if user_id.trim().is_empty() || device_id.trim().is_empty() {
@@ -698,18 +742,33 @@ pub fn resume_with_session(
         return Err("сохранённая MLS-сессия не найдена на этом устройстве".to_string());
     }
     let scope = format!("{user_id}/{device_id}");
-    let db_key = Zeroizing::new(keys.existing_database_key(&scope)?.ok_or_else(||
-        "ключ SQLCipher сохранённой MLS-сессии отсутствует; создание нового ключа запрещено".to_string()
-    )?);
+    let db_key = Zeroizing::new(keys.existing_database_key(&scope)?.ok_or_else(|| {
+        "ключ SQLCipher сохранённой MLS-сессии отсутствует; создание нового ключа запрещено"
+            .to_string()
+    })?);
     let meta = open_db(db_path, &db_key)?;
-    let has_meta: bool = meta.query_row(
-        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'client_meta')", [], |row| row.get(0)
-    ).map_err(text)?;
-    if !has_meta { return Err("в базе нет сохранённой MLS-сессии".to_string()); }
+    let has_meta: bool = meta
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'client_meta')",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(text)?;
+    if !has_meta {
+        return Err("в базе нет сохранённой MLS-сессии".to_string());
+    }
     let tokens = load_session_tokens(&meta)?;
     drop(meta);
     let agent = ureq::AgentBuilder::new().redirects(0).build();
-    build_client(agent, base.trim(), tokens.into_tuple(), user_id, device_id, db_path, &db_key)
+    build_client(
+        agent,
+        base.trim(),
+        tokens.into_tuple(),
+        user_id,
+        device_id,
+        db_path,
+        &db_key,
+    )
 }
 
 fn build_client(
@@ -1093,16 +1152,28 @@ impl Client {
     fn renew(&self) -> Result<(), String> {
         // Serialize rotations so concurrent 401 responses cannot spend one refresh token twice.
         let mut tokens = self.tokens.lock().map_err(text)?;
-        if tokens.1.is_empty() { return Err("сессия MLS завершена; требуется повторный вход".to_string()); }
+        if tokens.1.is_empty() {
+            return Err("сессия MLS завершена; требуется повторный вход".to_string());
+        }
         let refresh = Zeroizing::new(tokens.1.clone());
         let mut response = request(
-            &self.agent, &self.base, "", "POST", "/token/refresh",
+            &self.agent,
+            &self.base,
+            "",
+            "POST",
+            "/token/refresh",
             Some(json!({ "refreshToken": refresh.as_str() })),
         )?;
         let next_pair = (|| -> Result<SessionTokens, String> {
             Ok(SessionTokens(
-                response["token"].as_str().ok_or("сервер не вернул токен")?.to_string(),
-                response["refreshToken"].as_str().ok_or("сервер не вернул токен обновления")?.to_string(),
+                response["token"]
+                    .as_str()
+                    .ok_or("сервер не вернул токен")?
+                    .to_string(),
+                response["refreshToken"]
+                    .as_str()
+                    .ok_or("сервер не вернул токен обновления")?
+                    .to_string(),
             ))
         })();
         zeroize_json_value(&mut response);
@@ -1116,7 +1187,9 @@ impl Client {
 
     pub fn access_token_snapshot(&self) -> Result<String, String> {
         let tokens = self.tokens.lock().map_err(text)?;
-        if tokens.0.is_empty() { return Err("сессия MLS завершена; требуется повторный вход".to_string()); }
+        if tokens.0.is_empty() {
+            return Err("сессия MLS завершена; требуется повторный вход".to_string());
+        }
         Ok(tokens.0.clone())
     }
 
@@ -1128,11 +1201,17 @@ impl Client {
     /// Logout always clears the persisted and in-memory token pair, even if the server is offline.
     pub fn logout(&self) -> Result<(), String> {
         let server_result = match self.call("POST", "/logout", Some(json!({}))) {
-            Ok(mut response) => { zeroize_json_value(&mut response); Ok(()) },
+            Ok(mut response) => {
+                zeroize_json_value(&mut response);
+                Ok(())
+            }
             Err(error) => Err(error),
         };
-        let local_result = self.meta.execute("DELETE FROM client_meta WHERE key = 'session_tokens'", [])
-            .map(|_| ()).map_err(text);
+        let local_result = self
+            .meta
+            .execute("DELETE FROM client_meta WHERE key = 'session_tokens'", [])
+            .map(|_| ())
+            .map_err(text);
         let empty = SessionTokens(String::new(), String::new());
         match self.tokens.lock() {
             Ok(mut tokens) => *tokens = empty,
@@ -1140,9 +1219,15 @@ impl Client {
         }
         match (server_result, local_result) {
             (Ok(()), Ok(())) => Ok(()),
-            (Err(server), Ok(())) => Err(format!("ошибка выхода на сервере; локальные токены очищены: {server}")),
-            (Ok(()), Err(local)) => Err(format!("выход на сервере выполнен; не удалось удалить локальные токены: {local}")),
-            (Err(server), Err(local)) => Err(format!("ошибка выхода на сервере: {server}; не удалось удалить локальные токены: {local}")),
+            (Err(server), Ok(())) => Err(format!(
+                "ошибка выхода на сервере; локальные токены очищены: {server}"
+            )),
+            (Ok(()), Err(local)) => Err(format!(
+                "выход на сервере выполнен; не удалось удалить локальные токены: {local}"
+            )),
+            (Err(server), Err(local)) => Err(format!(
+                "ошибка выхода на сервере: {server}; не удалось удалить локальные токены: {local}"
+            )),
         }
     }
 
@@ -3385,7 +3470,6 @@ mod classify_tests {
     }
 }
 
-
 #[cfg(test)]
 mod session_persistence_tests {
     use super::*;
@@ -3420,13 +3504,15 @@ mod session_persistence_tests {
         let address = listener.local_addr().expect("refresh test server address");
         let server = thread::spawn(move || {
             let (mut stream, _) = listener.accept().expect("accept refresh request");
-            stream.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
+            stream
+                .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+                .unwrap();
             let mut request = [0u8; 4096];
             let _ = stream.read(&mut request);
             let body = r#"{"token":"rotated-access-token","refreshToken":"rotated-refresh-token"}"#;
             write!(
                 stream,
-                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                "HTTP/1.1 200 OK\\r\\nContent-Type: application/json\\r\\nContent-Length: {}\\r\\nConnection: close\\r\\n\\r\\n{}",
                 body.len(),
                 body
             )
@@ -3434,21 +3520,35 @@ mod session_persistence_tests {
         });
         let base = format!("http://{address}");
         let client = connect_with_session(
-            &base, "user-session", "device-session", "initial-access-token",
-            "initial-refresh-token", &database, &keys,
-        ).expect("adopt authenticated session");
-        assert_eq!(client.access_token_snapshot().unwrap(), "initial-access-token");
+            &base,
+            "user-session",
+            "device-session",
+            "initial-access-token",
+            "initial-refresh-token",
+            &database,
+            &keys,
+        )
+        .expect("adopt authenticated session");
+        assert_eq!(
+            client.access_token_snapshot().unwrap(),
+            "initial-access-token"
+        );
         assert_eq!(client.refresh_session().unwrap(), "rotated-access-token");
         server.join().expect("refresh server thread");
 
         drop(client);
-        let resumed = resume_with_session(
-            &base, "user-session", "device-session", &database, &keys,
-        ).expect("resume persisted SQLCipher session");
-        assert_eq!(resumed.access_token_snapshot().unwrap(), "rotated-access-token");
+        let resumed =
+            resume_with_session(&base, "user-session", "device-session", &database, &keys)
+                .expect("resume persisted SQLCipher session");
+        assert_eq!(
+            resumed.access_token_snapshot().unwrap(),
+            "rotated-access-token"
+        );
 
-        let key = keys.existing_database_key("user-session/device-session")
-            .unwrap().expect("persisted database key");
+        let key = keys
+            .existing_database_key("user-session/device-session")
+            .unwrap()
+            .expect("persisted database key");
         let connection = open_db(&database, &key).expect("open encrypted database");
         let tokens = load_session_tokens(&connection).expect("read rotated token pair");
         assert_eq!(tokens.0, "rotated-access-token");
@@ -3460,7 +3560,9 @@ mod session_persistence_tests {
         let ciphertext = std::fs::read(&database).expect("read encrypted database file");
         for secret in ["rotated-access-token", "rotated-refresh-token"] {
             assert!(
-                !ciphertext.windows(secret.len()).any(|window| window == secret.as_bytes()),
+                !ciphertext
+                    .windows(secret.len())
+                    .any(|window| window == secret.as_bytes()),
                 "session credentials must not be visible in the SQLCipher file"
             );
         }
@@ -3474,12 +3576,19 @@ mod session_persistence_tests {
         let keys = MemoryKeyStore::default();
 
         let error = resume_with_session(
-            "https://api.example.invalid", "user-missing-key", "device-missing-key",
-            &database, &keys,
-        ).err().expect("resume must fail closed without the original SQLCipher key");
+            "https://api.example.invalid",
+            "user-missing-key",
+            "device-missing-key",
+            &database,
+            &keys,
+        )
+        .err()
+        .expect("resume must fail closed without the original SQLCipher key");
 
         assert!(error.contains("ключ SQLCipher"));
-        assert!(!keys.has_database_key("user-missing-key/device-missing-key").unwrap());
+        assert!(!keys
+            .has_database_key("user-missing-key/device-missing-key")
+            .unwrap());
         remove_db(&database);
     }
 
@@ -3490,12 +3599,21 @@ mod session_persistence_tests {
         let keys = MemoryKeyStore::default();
 
         let error = connect_with_session(
-            "https://api.example.invalid", "user-existing-db", "device-existing-db",
-            "access", "refresh", &database, &keys,
-        ).err().expect("an existing database without its platform key must not be re-keyed");
+            "https://api.example.invalid",
+            "user-existing-db",
+            "device-existing-db",
+            "access",
+            "refresh",
+            &database,
+            &keys,
+        )
+        .err()
+        .expect("an existing database without its platform key must not be re-keyed");
 
         assert!(error.contains("защищённый ключ отсутствует"));
-        assert!(!keys.has_database_key("user-existing-db/device-existing-db").unwrap());
+        assert!(!keys
+            .has_database_key("user-existing-db/device-existing-db")
+            .unwrap());
         remove_db(&database);
     }
 
@@ -3504,21 +3622,34 @@ mod session_persistence_tests {
         let database = temp_db("logout");
         let keys = MemoryKeyStore::default();
         let client = connect_with_session(
-            "http://127.0.0.1:1", "user-logout", "device-logout",
-            "logout-access", "logout-refresh", &database, &keys,
-        ).expect("adopt session for logout test");
+            "http://127.0.0.1:1",
+            "user-logout",
+            "device-logout",
+            "logout-access",
+            "logout-refresh",
+            &database,
+            &keys,
+        )
+        .expect("adopt session for logout test");
 
-        let error = client.logout().expect_err("unavailable server must be reported");
+        let error = client
+            .logout()
+            .expect_err("unavailable server must be reported");
         assert!(error.contains("локальные токены очищены"));
         assert!(client.access_token_snapshot().is_err());
 
-        let key = keys.existing_database_key("user-logout/device-logout")
-            .unwrap().expect("database key remains until FFI cleanup");
+        let key = keys
+            .existing_database_key("user-logout/device-logout")
+            .unwrap()
+            .expect("database key remains until FFI cleanup");
         let connection = open_db(&database, &key).expect("open database after logout");
-        let count: i64 = connection.query_row(
-            "SELECT COUNT(*) FROM client_meta WHERE key = 'session_tokens'", [],
-            |row| row.get(0),
-        ).unwrap();
+        let count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM client_meta WHERE key = 'session_tokens'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert_eq!(count, 0, "logout must delete the persisted refresh token");
         drop(connection);
         drop(client);
