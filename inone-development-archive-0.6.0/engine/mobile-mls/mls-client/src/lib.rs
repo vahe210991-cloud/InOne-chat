@@ -978,8 +978,9 @@ fn build_client(
     migration_storage.run_migrations().map_err(text)?;
     drop(migration_storage);
 
-    // One shared connection makes MLS state transitions and their journal rows
-    // part of the same SQLite transaction.
+    // Keep the long-lived OpenMLS provider connection owned by Client (not Arc-shared),
+    // so the persistent client can satisfy Flutter Rust Bridge Send/Sync requirements.
+    // Atomic ratchet + journal mutations use a transaction-bound provider borrowing `meta`.
     let provider_connection = open_db(db_path, db_key)?;
     let meta = open_db(db_path, db_key)?;
     let provider = DeviceProvider::new(Arc::new(RustCrypto::default()), provider_connection);
