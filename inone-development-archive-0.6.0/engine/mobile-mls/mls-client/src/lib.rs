@@ -322,10 +322,38 @@ fn insert_attachment_record(
     if stored_room != room_id
         || stored_event != event_id
         || stored_bytes.as_slice() != manifest
-        || stored_direction != direction
-        || stored_client_message_id.as_deref() != client_message_id
     {
         return Err("attachment fileId is already bound to a different room/event/manifest".to_string());
+    }
+    match (
+        stored_direction.as_str(),
+        direction,
+        stored_client_message_id.as_deref(),
+        client_message_id,
+    ) {
+        ("incoming", "outgoing", None, Some(operation_id)) => {
+            crash_at_test_failpoint("before_attachment_direction_upgrade");
+            let changed = db
+                .execute(
+                    "UPDATE client_attachments
+                     SET direction = 'outgoing', client_message_id = ?2
+                     WHERE file_id = ?1 AND direction = 'incoming' AND client_message_id IS NULL",
+                    rusqlite::params![file_id, operation_id],
+                )
+                .map_err(text)?;
+            if changed != 1 {
+                return Err("attachment direction changed during outgoing retry reconciliation".to_string());
+            }
+            crash_at_test_failpoint("after_attachment_direction_upgrade");
+        }
+        ("outgoing", "incoming", Some(_), None) => {
+            // The sender may sync its own event before retrying the persisted outbox operation.
+        }
+        (stored, requested, stored_id, requested_id)
+            if stored == requested && stored_id == requested_id => {}
+        _ => {
+            return Err("attachment fileId is already bound to a different direction or operation".to_string());
+        }
     }
     Ok(())
 }

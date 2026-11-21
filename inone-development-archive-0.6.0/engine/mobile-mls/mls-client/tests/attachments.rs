@@ -132,21 +132,26 @@ fn attachment_retry_reuses_the_exact_mls_message_after_server_commit() {
     let first_message = read_persisted_message();
     assert!(!first_message.is_empty());
 
-    // A second uncertain retry receives the server's original event ID. It
-    // must not consume another sender ratchet generation or change the bytes.
-    assert!(alice.send_attachment_with_id(
-        ROOM, "retry.txt", "text/plain", &plaintext, client_message_id
-    ).is_err());
-    let second_message = read_persisted_message();
-    assert_eq!(first_message, second_message);
-
-    let connection = open_encrypted_db(&alice_db, &database_key);
-    connection.execute_batch("DROP TRIGGER fail_outgoing_attachment_insert;").unwrap();
-    drop(connection);
+    // The sender may sync its own accepted event before the UI retries.
+    // The incoming row must reconcile with the persisted outgoing operation.
+    let replayed = alice.sync().unwrap();
+    let replayed_event_id = replayed
+        .iter()
+        .find_map(|item| match item {
+            Incoming::Attachment { event_id, .. } => Some(event_id.clone()),
+            _ => None,
+        })
+        .expect("sender sync should recover its own accepted attachment event");
+    assert_eq!(first_message, read_persisted_message());
 
     let event_id = alice.send_attachment_with_id(
         ROOM, "retry.txt", "text/plain", &plaintext, client_message_id
     ).unwrap();
+    assert_eq!(event_id, replayed_event_id);
+
+    let connection = open_encrypted_db(&alice_db, &database_key);
+    connection.execute_batch("DROP TRIGGER fail_outgoing_attachment_insert;").unwrap();
+    drop(connection);
     let received = bob.sync().unwrap();
     assert_eq!(received.iter().filter(|item| matches!(item, Incoming::Attachment { .. })).count(), 1);
     assert!(received.iter().any(|item| matches!(item, Incoming::Attachment { event_id: id, .. } if id == &event_id)));
