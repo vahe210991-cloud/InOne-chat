@@ -800,15 +800,10 @@ mod tests {
     #[test]
     fn logout_still_cleans_local_state_when_client_lock_is_poisoned() {
         let (database, keys, session) = fixture();
-        let session = std::thread::spawn(move || {
-            let _ = catch_unwind(AssertUnwindSafe(|| {
-                let _guard = session.client.lock().unwrap();
-                panic!("poison the client lock for the regression test");
-            }));
-            session
-        })
-        .join()
-        .expect("return the poisoned session to the test thread");
+        let _ = catch_unwind(AssertUnwindSafe(|| {
+            let _guard = session.client.lock().unwrap();
+            panic!("poison the client lock for the regression test");
+        }));
 
         assert!(session.logout().is_err());
         assert!(!database.exists());
