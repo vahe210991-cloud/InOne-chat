@@ -3783,8 +3783,6 @@ impl Client {
         }
 
         let server_epoch = self.server_epoch(room_id)?;
-        let expected_epoch = i64::try_from(server_epoch)
-            .map_err(|_| "MLS epoch exceeds the persistent attachment journal range".to_string())?;
         let persisted_message: (Option<Vec<u8>>, Option<i64>) = self
             .meta
             .query_row(
@@ -3799,7 +3797,7 @@ impl Client {
                 "attachment outbox disappeared before MLS message persistence".to_string()
             })?;
         let mls_message = match persisted_message {
-            (Some(bytes), Some(_)) if !bytes.is_empty() => Zeroizing::new(bytes),
+            (Some(bytes), Some(epoch)) if !bytes.is_empty() && epoch >= 0 => Zeroizing::new(bytes),
             (None, None) => Zeroizing::new(self.create_and_persist_attachment_mls_message(
                 room_id,
                 operation_id.as_str(),
