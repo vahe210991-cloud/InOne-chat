@@ -457,8 +457,8 @@ void main() {
     expect(bridge.lastAttachmentClientMessageId, 'retry-001');
     // A retry after background sync keeps the same operation identity.
 
-    await expectLater(
-      session.downloadMlsAttachment(''),
+    expect(
+      () => session.downloadMlsAttachment(''),
       throwsArgumentError,
     );
     bridge.downloadResult = Uint8List.fromList([9, 8, 7]);
