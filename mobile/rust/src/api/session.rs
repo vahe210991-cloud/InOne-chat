@@ -734,13 +734,12 @@ mod tests {
     #[test]
     fn logout_still_cleans_local_state_when_client_lock_is_poisoned() {
         let (database, keys, session) = fixture();
-        std::thread::scope(|scope| {
-            let handle = scope.spawn(|| {
-                let _guard = session.client.lock().unwrap();
-                panic!("poison the client lock for the regression test");
-            });
-            assert!(handle.join().is_err());
-        });
+        let poison_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = session.client.lock().unwrap();
+            panic!("poison the client lock for the regression test");
+        }));
+        assert!(poison_result.is_err());
+        assert!(session.client.is_poisoned());
 
         assert!(session.logout().is_err());
         assert!(!database.exists());
