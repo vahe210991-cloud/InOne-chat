@@ -19,7 +19,7 @@ on:
       - ".github/workflows/mls-native-validation.yml"
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: native-mls-${{ github.event.pull_request.head.ref || github.ref_name }}-${{ github.event.pull_request.head.sha || github.sha }}
@@ -64,20 +64,24 @@ jobs:
           cargo test --locked --no-fail-fast --manifest-path inone-development-archive-0.6.0/engine/mobile-mls/mls-client/Cargo.toml -- --test-threads=1
           cargo check --locked --all-targets --manifest-path mobile/rust/Cargo.toml
           cargo test --locked --no-fail-fast --manifest-path mobile/rust/Cargo.toml
-      - name: Commit formatting and lockfile updates
-        id: commit
-        env:
-          HEAD_REF: ${{ github.event.pull_request.head.ref || github.ref_name }}
+      - name: Package formatted Rust sources and regenerated lockfiles
         run: |
           set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if ! git diff --quiet; then
-            git add inone-development-archive-0.6.0/engine/mobile-mls/mls-client mobile/rust
-            git commit -m "fix(ci): format MLS Rust and refresh Cargo lockfiles"
-            git push origin "HEAD:${HEAD_REF}"
-          fi
-          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          artifact="$RUNNER_TEMP/inone-mls-rust-repair"
+          mkdir -p "$artifact/engine/mls-client" "$artifact/mobile/rust"
+          cp -a inone-development-archive-0.6.0/engine/mobile-mls/mls-client/src "$artifact/engine/mls-client/src"
+          cp inone-development-archive-0.6.0/engine/mobile-mls/mls-client/Cargo.lock "$artifact/engine/mls-client/Cargo.lock"
+          cp -a mobile/rust/src "$artifact/mobile/rust/src"
+          cp mobile/rust/Cargo.lock "$artifact/mobile/rust/Cargo.lock"
+      - name: Upload generated repair artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: inone-mls-rust-repair
+          path: ${{ runner.temp }}/inone-mls-rust-repair
+          if-no-files-found: error
+      - name: Publish validated source SHA
+        id: commit
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   mls-client:
     needs: prepare
@@ -125,6 +129,16 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Download generated MLS Rust repair artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: inone-mls-rust-repair
+          path: ${{ runner.temp }}/inone-mls-rust-repair
+      - name: Apply generated formatting and lockfiles
+        run: |
+          set -euo pipefail
+          cp -a "$RUNNER_TEMP/inone-mls-rust-repair/engine/mls-client/." inone-development-archive-0.6.0/engine/mobile-mls/mls-client/
+          cp -a "$RUNNER_TEMP/inone-mls-rust-repair/mobile/rust/." mobile/rust/
       - name: Verify exact source SHA
         env:
           EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -163,6 +177,16 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Download generated MLS Rust repair artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: inone-mls-rust-repair
+          path: ${{ runner.temp }}/inone-mls-rust-repair
+      - name: Apply generated formatting and lockfiles
+        run: |
+          set -euo pipefail
+          cp -a "$RUNNER_TEMP/inone-mls-rust-repair/engine/mls-client/." inone-development-archive-0.6.0/engine/mobile-mls/mls-client/
+          cp -a "$RUNNER_TEMP/inone-mls-rust-repair/mobile/rust/." mobile/rust/
       - name: Verify exact source SHA
         env:
           EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -200,6 +224,16 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Download generated MLS Rust repair artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: inone-mls-rust-repair
+          path: ${{ runner.temp }}/inone-mls-rust-repair
+      - name: Apply generated formatting and lockfiles
+        run: |
+          set -euo pipefail
+          cp -a "$RUNNER_TEMP/inone-mls-rust-repair/engine/mls-client/." inone-development-archive-0.6.0/engine/mobile-mls/mls-client/
+          cp -a "$RUNNER_TEMP/inone-mls-rust-repair/mobile/rust/." mobile/rust/
       - name: Verify exact source SHA
         env:
           EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
