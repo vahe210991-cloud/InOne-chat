@@ -3288,6 +3288,18 @@ pub fn download_attachment(&self, file_id: &str) -> Result<Vec<u8>, String> {
         outer_file_id: Option<&str>,
         out: &mut Vec<Incoming>,
     ) -> Result<(), String> {
+        // The sender already advanced its own MLS ratchet when creating this
+        // application message. Reconcile an exact persisted attachment outbox
+        // entry before attempting to process the sender's own event as incoming.
+        if let Some(file_id) = outer_file_id {
+            if let Some(incoming) =
+                self.reconcile_outgoing_attachment_event(room_id, event_id, file_id, bytes)?
+            {
+                out.push(incoming);
+                return Ok(());
+            }
+        }
+
         let parsed = MlsMessageIn::tls_deserialize_exact(bytes)
             .ok()
             .and_then(|message| message.try_into_protocol_message().ok());
