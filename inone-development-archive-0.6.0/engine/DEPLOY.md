@@ -1,6 +1,6 @@
 # Развёртывание сервера InOne
 
-Сборка: 0.6.0-alpha.30. В исходниках подключён SMTP transport и PostgreSQL-backed encrypted email queue. Production acceptance остаётся BLOCKED до выполнения runtime-тестов, настройки домена/провайдера и проверки SPF/DKIM/DMARC.
+Сборка: 0.6.0-alpha.30. В исходниках подключён SMTP transport и PostgreSQL-backed encrypted email queue. Production acceptance остаётся BLOCKED до выполнения production runtime-тестов, настройки домена/провайдера и проверки SPF/DKIM/DMARC.
 
 ## Что нужно
 
@@ -33,15 +33,32 @@
 | `INONE_EMAIL_ENCRYPTION_KEY` | независимый 32-байтовый ключ AES-256-GCM для шифрования очереди (64 hex или канонический Base64; сгенерировать: `openssl rand -hex 32`) | обязателен для `smtp` |
 | `INONE_EMAIL_WORKER_POLL_MS` | интервал опроса durable queue, 250–60000 мс | 1000 |
 | `INONE_EMAIL_MAX_ATTEMPTS` | максимальное число попыток доставки, 1–20 | 8 |
-| `INONE_FIREBASE_PROJECT_ID` | Firebase project для Admin SDK | обязателен в продакшене |
-| `INONE_FIREBASE_SERVICE_ACCOUNT_JSON` | service-account JSON из secret manager; при отсутствии используется ADC/workload identity | необязателен при ADC |
-| `INONE_PUSH_ENCRYPTION_KEY` | отдельный 32-байтовый AES-256-GCM ключ для FID и push outbox; не переиспользовать PIN/email keys | обязателен в продакшене |
-| `INONE_PUSH_WORKER_POLL_MS` | интервал worker, 250–60000 мс | 1000 |
-| `INONE_PUSH_MAX_ATTEMPTS` | число повторов временных ошибок, 1–20 | 8 |
 
-Неверная настройка останавливает запуск до открытия порта и называет причину. При старте push worker выполняет шифрование старых регистраций; незавершённый backfill блокирует запуск, чтобы не оставить plaintext FID в базе.
+Неверная настройка останавливает запуск до открытия порта и называет причину.
 
-## Первый запуск
+## Локальный запуск через Docker Compose
+
+Корневой `docker-compose.yml` этого каталога — development-профиль, не production deployment. Он запускает PostgreSQL 16 и Backend, применяет миграции при старте, сохраняет данные в named volumes и публикует порт 8080.
+
+1. Создать локальный файл `.env` в этом каталоге. Минимальные значения:
+
+   ```dotenv
+   POSTGRES_DB=inone
+   POSTGRES_USER=inone
+   POSTGRES_PASSWORD=UseAnAlphanumericLocalPassword
+   INONE_PIN_PEPPER=replace-with-at-least-32-random-characters
+   ```
+
+   Для пароля базы используйте URL-safe буквы и цифры, поскольку он включается в `DATABASE_URL`. Не используйте эти локальные значения в production.
+2. Проверить конфигурацию: `docker compose config --quiet`.
+3. Собрать и запустить: `docker compose up -d --build --wait`.
+4. Проверить `http://localhost:8080/healthz`, `/readyz` и `/config/public`.
+5. Посмотреть диагностику: `docker compose logs --tail=200`.
+6. Остановить сервисы: `docker compose down`. Для полного удаления локальной базы и файлов используйте `docker compose down --volumes`.
+
+CI workflow `.github/workflows/backend-compose-acceptance.yml` выполняет сборку образа, запуск PostgreSQL и Backend, проверку health/readiness, публичного API и последней миграции. Результат должен оцениваться только по конкретному SHA PR.
+
+## Первый production запуск без Compose
 
 1. Создать базу: `CREATE DATABASE inone OWNER inone;`
 2. Установить зависимости: `npm ci --omit=dev`
@@ -64,8 +81,18 @@
 
 Одна строка JSON на событие: запуск, остановка, миграции и каждый запрос (метод, путь без строки запроса, код ответа, время). В журнал не попадают тела запросов, пароли, PIN, токены, ключи, содержимое сообщений и файлов.
 
-## Push delivery
+## Ограничения этой сборки
 
+- Почта: SMTP transport и durable encrypted queue реализованы в исходниках; добавлены миграции, worker, идемпотентность, expiry, retry/dead-letter, HY/RU/EN templates, локализация по выбранному языку интерфейса и safe logs. Для acceptance нужны Node + PostgreSQL suite, SMTP integration, restart/retry/shutdown tests и реальная проверка доставки.
+- Продакшен не стартует без `INONE_MAIL_TRANSPORT=smtp` с TLS и адресом отправителя.
+- Зависимости почты по текущему `package.json`: `nodemailer` 10.3.1 и `smtp-server` 3.21.3 (только тестовый сервер). Проверку `npm audit` на соответствующем SHA следует выполнять отдельно.
+- SMS не подключён: восстановление доступа по телефону недоступно.
+- Файлы оформления хранятся в базе данных.
+- Криптографический движок временный (`@matrix-org/matrix-sdk-crypto-wasm`), собственный не собран.
+- Docker Compose profile is development-only; passing its CI smoke test does not constitute production deployment acceptance.
+- Резервное копирование, очистка устаревших записей и мониторинг не автоматизированы.
+
+## Push delivery
 - `firebase-admin` отправляет по FID через `fid`; iOS использует тот же FCM путь, который Firebase маршрутизирует через APNs.
 - PostgreSQL `push_deliveries` — отдельный durable outbox, не таблица Email Delivery. MLS event и outbox запись фиксируются одной транзакцией, включая путь `clientMessageId`.
 - FID и минимальный push payload зашифрованы AES-256-GCM. Legacy identifiers шифруются при backfill, но не отправляются; клиент должен зарегистрировать актуальный FID.
