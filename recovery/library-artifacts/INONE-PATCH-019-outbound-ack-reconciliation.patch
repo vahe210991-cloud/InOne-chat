@@ -1,0 +1,131 @@
+--- a/mobile-mls/mls-client/src/lib.rs
++++ b/mobile-mls/mls-client/src/lib.rs
+@@ -523,6 +523,7 @@
+              event_id TEXT,
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+          );
++         CREATE INDEX IF NOT EXISTS client_outbound_pending_ciphertext ON client_outbound_messages(room_id, ciphertext) WHERE ciphertext IS NOT NULL AND event_id IS NULL;
+          CREATE TABLE IF NOT EXISTS client_remote_config (id INTEGER PRIMARY KEY CHECK (id = 1), etag TEXT NOT NULL, body TEXT NOT NULL, fetched_at INTEGER NOT NULL);",
+     )
+     .map_err(text)?;
+@@ -1569,6 +1570,33 @@
+         tx.commit().map_err(|e| format!("временная ошибка фиксации входящего события: {e}"))
+     }
+ 
++    /// Восстанавливает ACK исходящего сообщения по точному ciphertext из серверной истории.
++    /// Это закрывает окно: сервер уже записал событие, но HTTP-ответ потерян до локальной фиксации event_id.
++    fn mark_outbound_event_seen(&mut self, room_id: &str, event_id: &str, ciphertext: &str) -> Result<bool, String> {
++        use rusqlite::OptionalExtension;
++        let client_message_id: Option<String> = self.meta.query_row(
++            "SELECT client_message_id FROM client_outbound_messages
++             WHERE room_id = ?1 AND ciphertext = ?2 AND event_id IS NULL",
++            (room_id, ciphertext),
++            |row| row.get(0),
++        ).optional().map_err(text)?;
++        let Some(client_message_id) = client_message_id else { return Ok(false) };
++
++        let tx = self.meta.unchecked_transaction().map_err(|e| format!("временная ошибка хранилища: {e}"))?;
++        let changed = tx.execute(
++            "UPDATE client_outbound_messages SET event_id = ?1, ciphertext = NULL
++             WHERE client_message_id = ?2 AND room_id = ?3 AND ciphertext = ?4 AND event_id IS NULL",
++            (event_id, &client_message_id, room_id, ciphertext),
++        ).map_err(text)?;
++        if changed != 1 {
++            return Err("не удалось связать серверное событие с ожидающим исходящим сообщением".to_string());
++        }
++        tx.execute("INSERT OR IGNORE INTO client_processed (event_id) VALUES (?1)", [event_id]).map_err(text)?;
++        tx.commit().map_err(|e| format!("временная ошибка фиксации восстановленного ACK: {e}"))?;
++        self.processed.insert(event_id.to_string());
++        Ok(true)
++    }
++
+     fn parse_commit_page(&mut self, room_id: &str, fallback_epoch: u64, response: &Value) -> Result<Vec<(u64, Vec<u8>, Value)>, String> {
+         let rows = response["commits"].as_array().cloned().unwrap_or_default();
+         let mut commits = Vec::with_capacity(rows.len());
+@@ -1605,6 +1633,9 @@
+             if self.processed.contains(&event_id) {
+                 continue;
+             }
++            if self.mark_outbound_event_seen(room_id, &event_id, mls_b64)? {
++                continue;
++            }
+             // Испорченный base64 — постоянная ошибка этого события, а не причина остановить комнату (аудит, P0.1).
+             let Ok(bytes) = B64.decode(mls_b64) else {
+                 let incoming = Incoming::Unreadable { room_id: room_id.to_string(), event_id: event_id.clone() };
+--- a/mobile-mls/mls-client/tests/engine/start-engine.mjs
++++ b/mobile-mls/mls-client/tests/engine/start-engine.mjs
+@@ -17,6 +17,7 @@
+ const hidden = new Set();
+ let failNextCommitResponse = false;
+ let failNextKeyPackageClaimResponse = false;
++let failNextMessageResponse = false;
+ const originalReserveKeyPackages = store.mlsReserveKeyPackages.bind(store);
+ store.mlsReserveKeyPackages = async (...args) => {
+   const result = await originalReserveKeyPackages(...args);
+@@ -26,6 +27,15 @@
+   }
+   return result;
+ };
++const originalAppendClientMessage = store.appendClientMessage.bind(store);
++store.appendClientMessage = (...args) => {
++  const result = originalAppendClientMessage(...args);
++  if (failNextMessageResponse && result.state === 'created') {
++    failNextMessageResponse = false;
++    throw new Error('injected response loss after encrypted message persistence');
++  }
++  return result;
++};
+ const originalApplyCommit = store.mlsApplyCommit.bind(store);
+ store.mlsApplyCommit = (...args) => {
+   const result = originalApplyCommit(...args);
+@@ -73,6 +83,11 @@
+     console.log('OK');
+     return;
+   }
++  if (parts[0] === 'FAIL_MESSAGE_RESPONSE') {
++    failNextMessageResponse = true;
++    console.log('OK');
++    return;
++  }
+   if (parts[0] === 'ADD_MEMBER' || parts[0] === 'REMOVE_MEMBER') {
+     try {
+       if (parts[0] === 'ADD_MEMBER') await store.addRoomMember(parts[1], parts[2]);
+--- a/mobile-mls/mls-client/tests/membership_outbox.rs
++++ b/mobile-mls/mls-client/tests/membership_outbox.rs
+@@ -255,3 +255,36 @@
+     assert!(members.iter().any(|member| member == "@bob:inone.test/B_PHONE"));
+     assert!(members.iter().any(|member| member == "@bob:inone.test/B_NEW"));
+ }
++
++
++#[test]
++fn accepted_message_with_lost_response_is_reconciled_from_history_before_retry() {
++    let mut engine = Engine::start();
++    let keys = MemoryKeyStore::default();
++    let mut alice = connect(&engine.base, ALICE, PW, "A_PHONE", &db("message-ack-alice"), &keys).unwrap();
++    let mut bob = connect(&engine.base, BOB, PW, "B_PHONE", &db("message-ack-bob"), &keys).unwrap();
++    bob.ensure_key_packages(1).unwrap();
++    alice.create_room(ROOM).unwrap();
++    alice.invite(ROOM, BOB).unwrap();
++    bob.sync().unwrap();
++
++    alice.enqueue_text(ROOM, "accepted once").unwrap();
++    engine.command("FAIL_MESSAGE_RESPONSE");
++    assert_eq!(alice.flush_outbox().unwrap(), 0, "потерянный ответ оставляет outbox на месте");
++    assert_eq!(alice.outbox_len().unwrap(), 1);
++
++    // sync sees the event already committed by the server. It must reconcile it with
++    // the exact durable ciphertext, not try to decrypt/re-deliver Alice's own message.
++    assert!(alice.sync().unwrap().is_empty(), "собственное отправленное сообщение не попадает во входящий inbox");
++    assert_eq!(alice.pending_incoming().unwrap().len(), 0);
++    assert_eq!(alice.flush_outbox().unwrap(), 1, "повтор использует восстановленный event_id");
++    assert_eq!(alice.outbox_len().unwrap(), 0);
++
++    let received = bob.sync().unwrap();
++    let texts: Vec<String> = received.iter().filter_map(|item| match item {
++        Incoming::Text { text, .. } => Some(text.clone()),
++        _ => None,
++    }).collect();
++    assert_eq!(texts, vec!["accepted once"]);
++    assert!(bob.sync().unwrap().is_empty(), "повторная синхронизация не создаёт дубликат");
++}

@@ -1,0 +1,418 @@
+diff --git a/mobile-mls/mls-client/src/lib.rs b/mobile-mls/mls-client/src/lib.rs
+index e5e1ee0..262eb25 100644
+--- a/mobile-mls/mls-client/src/lib.rs
++++ b/mobile-mls/mls-client/src/lib.rs
+@@ -502,6 +502,18 @@ fn build_client(agent: ureq::Agent, base: &str, tokens: (String, String), user_i
+              reason TEXT NOT NULL,
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+          );
++         CREATE TABLE IF NOT EXISTS client_key_package_intents (
++             client_operation_id TEXT PRIMARY KEY,
++             room_id TEXT NOT NULL,
++             target_user_id TEXT NOT NULL,
++             existing_device_ids TEXT NOT NULL,
++             claim_id TEXT,
++             packages TEXT,
++             state TEXT NOT NULL DEFAULT 'claim_pending',
++             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
++         );
++         CREATE UNIQUE INDEX IF NOT EXISTS client_key_package_intents_target
++             ON client_key_package_intents(room_id, target_user_id) WHERE state != 'release_pending';
+          CREATE INDEX IF NOT EXISTS client_membership_commits_room ON client_membership_commits(room_id, created_at);
+          CREATE TABLE IF NOT EXISTS client_outbound_messages (
+              client_message_id TEXT PRIMARY KEY,
+@@ -866,6 +878,122 @@ impl Client {
+         Ok(count as usize)
+     }
+ 
++    /// Число незавершённых KeyPackage claim intent, включая отложенное освобождение claim.
++    pub fn pending_key_package_intents(&self) -> Result<usize, String> {
++        let count: i64 = self.meta.query_row("SELECT COUNT(*) FROM client_key_package_intents", [], |row| row.get(0)).map_err(text)?;
++        Ok(count as usize)
++    }
++
++    /// Снимок roster уже состоящих в комнате устройств целевого пользователя.
++    fn existing_device_ids_in_room(&self, room_id: &str, target_user_id: &str) -> Result<Vec<String>, String> {
++        let group = self.groups.get(room_id).ok_or("комната не создана на этом устройстве")?;
++        let prefix = format!("{target_user_id}/");
++        let mut devices = BTreeSet::new();
++        for member in group.mls.members() {
++            let identity = mls_credential_identity(member.credential.serialized_content())?;
++            if let Some(device_id) = identity.strip_prefix(&prefix) {
++                if device_id.is_empty() {
++                    return Err("MLS credential contains an empty device ID".to_string());
++                }
++                devices.insert(device_id.to_string());
++            }
++        }
++        Ok(devices.into_iter().collect())
++    }
++
++    /// Создаёт intent до сетевого claim либо возвращает прежний intent после перезапуска.
++    fn load_or_create_key_package_intent(&mut self, room_id: &str, target_user_id: &str) -> Result<(String, Vec<String>, Option<String>, Option<Value>), String> {
++        use rusqlite::OptionalExtension;
++        let existing = self.meta.query_row(
++            "SELECT client_operation_id, existing_device_ids, claim_id, packages
++             FROM client_key_package_intents WHERE room_id = ?1 AND target_user_id = ?2 AND state != 'release_pending'
++             ORDER BY created_at LIMIT 1",
++            (room_id, target_user_id),
++            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, Option<String>>(2)?, row.get::<_, Option<String>>(3)?)),
++        ).optional().map_err(text)?;
++        if let Some((operation_id, roster_json, claim_id, packages_json)) = existing {
++            let roster = serde_json::from_str(&roster_json).map_err(text)?;
++            let packages = packages_json.map(|raw| serde_json::from_str(&raw).map_err(text)).transpose()?;
++            return Ok((operation_id, roster, claim_id, packages));
++        }
++        let operation_id = self.new_membership_operation_id()?;
++        let existing_device_ids = self.existing_device_ids_in_room(room_id, target_user_id)?;
++        let roster_json = serde_json::to_string(&existing_device_ids).map_err(text)?;
++        let tx = self.meta.unchecked_transaction().map_err(|e| format!("временная ошибка хранилища: {e}"))?;
++        tx.execute(
++            "INSERT INTO client_key_package_intents (client_operation_id, room_id, target_user_id, existing_device_ids) VALUES (?1, ?2, ?3, ?4)",
++            (&operation_id, room_id, target_user_id, roster_json),
++        ).map_err(text)?;
++        tx.commit().map_err(|e| format!("не удалось зафиксировать KeyPackage intent до сетевого запроса: {e}"))?;
++        Ok((operation_id, existing_device_ids, None, None))
++    }
++
++    /// Возобновляет pre-claim intents, у которых ещё нет отправленного membership Commit.
++    /// Вызывается после синхронизации комнат, чтобы не строить Commit на устаревшей эпохе.
++    fn resume_pending_key_package_invites(&mut self) -> Result<usize, String> {
++        let pending: Vec<(String, String)> = {
++            let mut stmt = self.meta.prepare(
++                "SELECT i.room_id, i.target_user_id FROM client_key_package_intents i
++                 WHERE i.state != 'release_pending'
++                   AND NOT EXISTS (SELECT 1 FROM client_membership_commits c WHERE c.client_operation_id = i.client_operation_id)
++                 ORDER BY i.created_at, i.client_operation_id",
++            ).map_err(text)?;
++            let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?))).map_err(text)?;
++            rows.collect::<Result<Vec<_>, _>>().map_err(text)?
++        };
++        let mut resumed = 0;
++        for (room_id, target_user_id) in pending {
++            // WaitingForCommit, RecoveryRequired and maintenance are not writable states.
++            // Keep the durable intent; a later sync can resume it after room recovery.
++            match self.ensure_writable(&room_id) {
++                Ok(()) => {}
++                Err(error)
++                    if error.starts_with("WaitingForCommit:")
++                        || error.starts_with("комната требует восстановления")
++                        || error == remote_config::MAINTENANCE_MESSAGE => continue,
++                Err(error) => return Err(error),
++            }
++            self.invite(&room_id, &target_user_id)?;
++            resumed += 1;
++        }
++        Ok(resumed)
++    }
++
++    /// Фиксирует необходимость освобождения claim перед сетевым вызовом; сбой release безопасно повторяется.
++    fn release_key_package_intent(&self, operation_id: &str) -> Result<(), String> {
++        self.meta.execute(
++            "UPDATE client_key_package_intents SET state = 'release_pending' WHERE client_operation_id = ?1 AND claim_id IS NOT NULL",
++            [operation_id],
++        ).map_err(text)?;
++        self.flush_pending_key_package_releases()?;
++        Ok(())
++    }
++
++    /// Повторяет освобождение claims, для которых сервер однозначно отклонил Commit.
++    fn flush_pending_key_package_releases(&self) -> Result<usize, String> {
++        let mut stmt = self.meta.prepare(
++            "SELECT client_operation_id, claim_id FROM client_key_package_intents WHERE state = 'release_pending' AND claim_id IS NOT NULL ORDER BY created_at",
++        ).map_err(text)?;
++        let rows = stmt.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))).map_err(text)?;
++        let pending = rows.collect::<Result<Vec<_>, _>>().map_err(text)?;
++        drop(stmt);
++        let mut released = 0;
++        for (operation_id, claim_id) in pending {
++            let path = format!("/mls/key-packages/claims/{}/release", urlencoding::encode(&claim_id));
++            match self.call("POST", &path, Some(json!({}))) {
++                Ok(_) => {}
++                Err(error) if http_status_code(&error) == Some(404) => {} // истёкший/уже освобождённый claim
++                Err(error) => return Err(format!("claim {claim_id} ожидает освобождения: {error}")),
++            }
++            self.meta.execute(
++                "DELETE FROM client_key_package_intents WHERE client_operation_id = ?1",
++                [&operation_id],
++            ).map_err(text)?;
++            released += 1;
++        }
++        Ok(released)
++    }
++
+     pub fn membership_failures(&self) -> Result<Vec<(String, String, String)>, String> {
+         let mut stmt = self.meta.prepare(
+             "SELECT client_operation_id, room_id, reason FROM client_membership_failures ORDER BY created_at, client_operation_id",
+@@ -932,6 +1060,14 @@ impl Client {
+                         self.reload_group(&room_id)?;
+                         return Err(text(error));
+                     }
++                    if let Err(error) = tx.execute(
++                        "DELETE FROM client_key_package_intents WHERE client_operation_id = ?1",
++                        [&operation_id],
++                    ) {
++                        drop(tx);
++                        self.reload_group(&room_id)?;
++                        return Err(text(error));
++                    }
+                     if let Err(error) = tx.commit() {
+                         self.reload_group(&room_id)?;
+                         return Err(format!("временная ошибка фиксации подтверждения membership commit: {error}"));
+@@ -973,6 +1109,14 @@ impl Client {
+                         self.reload_group(&room_id)?;
+                         return Err(text(db_error));
+                     }
++                    if let Err(db_error) = tx.execute(
++                        "UPDATE client_key_package_intents SET state = 'release_pending' WHERE client_operation_id = ?1 AND claim_id IS NOT NULL",
++                        [&operation_id],
++                    ) {
++                        drop(tx);
++                        self.reload_group(&room_id)?;
++                        return Err(text(db_error));
++                    }
+                     if let Err(db_error) = tx.commit() {
+                         self.reload_group(&room_id)?;
+                         return Err(format!("временная ошибка фиксации отмены membership commit: {db_error}"));
+@@ -982,6 +1126,7 @@ impl Client {
+                 Err(error) => return Err(error),
+             }
+         }
++        self.flush_pending_key_package_releases()?;
+         if !rejected_operations.is_empty() {
+             return Err(format!("membership_rejected: {}", rejected_operations.join("; ")));
+         }
+@@ -1029,39 +1174,97 @@ impl Client {
+         Ok(())
+     }
+ 
+-    /// Приглашает пользователя: забирает его ключевые пакеты (все устройства), делает коммит и приветствия.
++    /// Приглашает пользователя через устойчивый idempotent KeyPackage claim.
++    /// Intent и operation ID фиксируются до HTTP; после сбоя повторяется тот же claim и тот же набор пакетов.
+     pub fn invite(&mut self, room_id: &str, user_id: &str) -> Result<(), String> {
+         self.ensure_writable(room_id)?;
+         self.flush_pending_membership_commits()?;
+-        let claimed = self.call("GET", &format!("/mls/key-packages/{}", urlencoding::encode(user_id)), None)?;
+-        let packages = claimed["packages"].as_array().ok_or("нет поля packages")?.clone();
+-        if packages.is_empty() {
+-            return Err(format!("у {user_id} нет ключевых пакетов"));
++        self.flush_pending_key_package_releases()?;
++
++        let (operation_id, existing_device_ids, mut claim_id, mut packages) =
++            self.load_or_create_key_package_intent(room_id, user_id)?;
++        let adds_room_member = existing_device_ids.is_empty();
++
++        if packages.is_none() {
++            let claim_path = format!("/mls/key-packages/{}/claim", urlencoding::encode(user_id));
++            let claim = match self.call("POST", &claim_path, Some(json!({
++                "roomId": room_id,
++                "clientOperationId": operation_id,
++                "existingDeviceIds": existing_device_ids,
++            }))) {
++                Ok(claim) => claim,
++                Err(error) => {
++                    // A definitive 4xx means no usable claim was returned. Preserve only
++                    // transient/ambiguous outcomes so the same operation ID can be replayed.
++                    if http_status_code(&error).is_some_and(|code| (400..500).contains(&code) && code != 429) {
++                        self.meta.execute(
++                            "DELETE FROM client_key_package_intents WHERE client_operation_id = ?1",
++                            [&operation_id],
++                        ).map_err(text)?;
++                    }
++                    return Err(error);
++                }
++            };
++            let id = claim["claimId"].as_str().ok_or("сервер не вернул claimId")?.to_string();
++            let package_list = claim["packages"].as_array().ok_or("сервер не вернул packages для KeyPackage claim")?.clone();
++            if package_list.is_empty() {
++                self.release_key_package_intent(&operation_id)?;
++                return Err(format!("у {user_id} нет новых устройств с доступными ключевыми пакетами"));
++            }
++            let packages_json = serde_json::to_string(&Value::Array(package_list.clone())).map_err(text)?;
++            self.meta.execute(
++                "UPDATE client_key_package_intents SET claim_id = ?2, packages = ?3, state = 'claimed' WHERE client_operation_id = ?1",
++                (&operation_id, &id, packages_json),
++            ).map_err(text)?;
++            claim_id = Some(id);
++            packages = Some(Value::Array(package_list));
+         }
++
++        let claim_id = claim_id.ok_or("KeyPackage intent has packages but no claim ID")?;
++        let packages = packages.and_then(|value| value.as_array().cloned()).ok_or("KeyPackage intent packages are invalid")?;
+         let mut key_packages = Vec::with_capacity(packages.len());
+         let mut devices = Vec::with_capacity(packages.len());
+-        for p in &packages {
+-            let bytes = B64.decode(p["package"].as_str().ok_or("пакет не строка")?).map_err(text)?;
+-            let kp = KeyPackageIn::tls_deserialize_exact(&bytes).map_err(text)?.validate(self.provider.crypto(), ProtocolVersion::Mls10).map_err(text)?;
+-            key_packages.push(kp);
+-            devices.push(p["deviceId"].as_str().ok_or("нет deviceId")?.to_string());
++        let mut claimed_device_ids = BTreeSet::new();
++        for package in &packages {
++            let parsed: Result<(KeyPackageIn, String), String> = (|| {
++                let package_b64 = package["package"].as_str().ok_or("KeyPackage package is not a base64 string")?;
++                let device_id = package["deviceId"].as_str().ok_or("KeyPackage claim item has no deviceId")?.to_string();
++                if device_id.is_empty() || !claimed_device_ids.insert(device_id.clone()) {
++                    return Err("KeyPackage claim contains an empty or duplicate device ID".to_string());
++                }
++                let bytes = B64.decode(package_b64).map_err(text)?;
++                let key_package = KeyPackageIn::tls_deserialize_exact(&bytes).map_err(text)?
++                    .validate(self.provider.crypto(), ProtocolVersion::Mls10).map_err(text)?;
++                Ok((key_package, device_id))
++            })();
++            match parsed {
++                Ok((key_package, device_id)) => {
++                    key_packages.push(key_package);
++                    devices.push(device_id);
++                }
++                Err(error) => {
++                    self.release_key_package_intent(&operation_id)?;
++                    return Err(format!("KeyPackage claim validation failed; claim released: {error}"));
++                }
++            }
+         }
+-        let operation_id = self.new_membership_operation_id()?;
+         self.stage_membership_commit(room_id, &operation_id, |group, provider, signer| {
+             let epoch_before = group.epoch().as_u64();
+             let (commit, welcome, _) = group.add_members(provider, signer, &key_packages).map_err(text)?;
+             let commit_b64 = B64.encode(commit.tls_serialize_detached().map_err(text)?);
+             let welcome_b64 = B64.encode(welcome.tls_serialize_detached().map_err(text)?);
+-            let welcomes: Vec<Value> = devices.iter().map(|d| json!({ "userId": user_id, "deviceId": d, "welcome": welcome_b64 })).collect();
++            let welcomes: Vec<Value> = devices.iter().map(|device_id| json!({ "userId": user_id, "deviceId": device_id, "welcome": welcome_b64 })).collect();
+             Ok(json!({
+                 "epoch": epoch_before,
+                 "commit": commit_b64,
+-                "changes": { "adds": [user_id], "removes": [] },
++                "changes": { "adds": if adds_room_member { vec![user_id] } else { Vec::<&str>::new() }, "removes": [] },
+                 "welcomes": welcomes,
+-                "clientOperationId": operation_id
++                "clientOperationId": operation_id,
++                "keyPackageClaimId": claim_id
+             }))
+         })?;
+         self.flush_pending_membership_commits()?;
++        self.flush_pending_key_package_releases()?;
+         Ok(())
+     }
+ 
+@@ -1572,6 +1775,9 @@ impl Client {
+                 Err(e) => self.record_desync(&room, &format!("требуется восстановление состояния: {e}"))?,
+             }
+         }
++        // A process may have stopped after reserving KeyPackages but before staging the MLS
++        // Commit. Resume that explicit user intent only after every writable room is synced.
++        self.resume_pending_key_package_invites()?;
+         Ok(out)
+     }
+ 
+diff --git a/mobile-mls/mls-client/tests/engine/start-engine.mjs b/mobile-mls/mls-client/tests/engine/start-engine.mjs
+index fd81771..1d74b60 100644
+--- a/mobile-mls/mls-client/tests/engine/start-engine.mjs
++++ b/mobile-mls/mls-client/tests/engine/start-engine.mjs
+@@ -16,6 +16,16 @@ await new Promise((resolve) => srv.server.listen(0, '127.0.0.1', resolve));
+ console.log(`URL=http://127.0.0.1:${srv.server.address().port}`);
+ const hidden = new Set();
+ let failNextCommitResponse = false;
++let failNextKeyPackageClaimResponse = false;
++const originalReserveKeyPackages = store.mlsReserveKeyPackages.bind(store);
++store.mlsReserveKeyPackages = async (...args) => {
++  const result = await originalReserveKeyPackages(...args);
++  if (failNextKeyPackageClaimResponse) {
++    failNextKeyPackageClaimResponse = false;
++    throw new Error('injected response loss after KeyPackage claim persistence');
++  }
++  return result;
++};
+ const originalApplyCommit = store.mlsApplyCommit.bind(store);
+ store.mlsApplyCommit = (...args) => {
+   const result = originalApplyCommit(...args);
+@@ -58,6 +68,11 @@ rl.on('line', async (line) => {
+     console.log('OK');
+     return;
+   }
++  if (parts[0] === 'FAIL_KEY_PACKAGE_CLAIM_RESPONSE') {
++    failNextKeyPackageClaimResponse = true;
++    console.log('OK');
++    return;
++  }
+   if (parts[0] === 'ADD_MEMBER' || parts[0] === 'REMOVE_MEMBER') {
+     try {
+       if (parts[0] === 'ADD_MEMBER') await store.addRoomMember(parts[1], parts[2]);
+diff --git a/mobile-mls/mls-client/tests/membership_outbox.rs b/mobile-mls/mls-client/tests/membership_outbox.rs
+index 80b643a..558643f 100644
+--- a/mobile-mls/mls-client/tests/membership_outbox.rs
++++ b/mobile-mls/mls-client/tests/membership_outbox.rs
+@@ -80,6 +80,7 @@ fn invite_replays_identical_commit_after_server_accepts_but_response_is_lost() {
+     assert_eq!(alice.pending_membership_commits().unwrap(), 1, "journal пережил перезапуск процесса");
+     alice.sync().expect("повтор membership commit должен получить исходный ACK");
+     assert_eq!(alice.pending_membership_commits().unwrap(), 0, "ACK удаляет запись из journal");
++    assert_eq!(alice.pending_key_package_intents().unwrap(), 0, "ACK removes the claim intent in the same SQLite transaction");
+     assert_eq!(alice.local_epoch(ROOM), Some(1), "после ACK локальный pending commit объединён");
+     assert!(bob.sync().unwrap().is_empty());
+     let members = bob.members_of(ROOM).expect("welcome должен создать группу");
+@@ -161,6 +162,7 @@ fn stale_epoch_clears_only_the_unaccepted_pending_commit_and_allows_sync() {
+     let stale = alice.invite(ROOM, "@dave:inone.test").expect_err("server must reject the stale base epoch");
+     assert!(stale.starts_with("membership_rejected:"), "explicit stale rejection is classified: {stale}");
+     assert_eq!(alice.pending_membership_commits().unwrap(), 0, "rejected journal row is removed after safe rollback");
++    assert_eq!(alice.pending_key_package_intents().unwrap(), 0, "rejected claim is released and its intent cleared");
+     assert_eq!(alice.local_epoch(ROOM), Some(1), "clear_pending_commit restores the pre-stage epoch");
+     let failures = alice.membership_failures().unwrap();
+     assert!(failures.iter().any(|(_, room, reason)| room == ROOM && reason.contains("сервер явно отклонил")));
+@@ -173,3 +175,58 @@ fn stale_epoch_clears_only_the_unaccepted_pending_commit_and_allows_sync() {
+     assert!(!members.iter().any(|member| member == "@dave:inone.test/D_PHONE"));
+     alice.send_text(ROOM, "sync recovered").unwrap();
+ }
++
++
++#[test]
++fn key_package_claim_replays_same_operation_after_response_loss_and_process_restart() {
++    let mut engine = Engine::start();
++    let keys = MemoryKeyStore::default();
++    let alice_db = db("claim-alice");
++    let mut alice = connect(&engine.base, ALICE, PW, "A_PHONE", &alice_db, &keys).unwrap();
++    let mut bob = connect(&engine.base, BOB, PW, "B_PHONE", &db("claim-bob"), &keys).unwrap();
++    bob.ensure_key_packages(1).unwrap();
++    alice.create_room(ROOM).unwrap();
++
++    // The server reserves the packages and then loses the HTTP response. The local
++    // intent must already be durable, so retry after restart reuses the same op ID.
++    engine.command("FAIL_KEY_PACKAGE_CLAIM_RESPONSE");
++    let first = alice.invite(ROOM, BOB).expect_err("claim response must be lost");
++    assert!(first.contains("500"), "expected injected claim response loss: {first}");
++    assert_eq!(alice.pending_key_package_intents().unwrap(), 1);
++    assert_eq!(alice.pending_membership_commits().unwrap(), 0, "MLS staging starts only after claim bytes are durably stored");
++    assert_eq!(alice.local_epoch(ROOM), Some(0));
++
++    drop(alice);
++    let mut alice = connect(&engine.base, ALICE, PW, "A_PHONE", &alice_db, &keys).unwrap();
++    assert_eq!(alice.pending_key_package_intents().unwrap(), 1, "pre-claim intent survives process restart");
++    alice.sync().expect("sync must resume the same claim operation and replay byte-identical KeyPackages");
++    assert_eq!(alice.pending_key_package_intents().unwrap(), 0, "server ACK atomically completes the intent");
++    assert_eq!(alice.pending_membership_commits().unwrap(), 0);
++    assert_eq!(alice.local_epoch(ROOM), Some(1));
++    bob.sync().unwrap();
++    assert!(bob.members_of(ROOM).unwrap().iter().any(|member| member == "@bob:inone.test/B_PHONE"));
++}
++
++#[test]
++fn inviting_existing_room_member_claims_only_the_new_device() {
++    use mls_client::connect_with_approval;
++
++    let mut engine = Engine::start();
++    let keys = MemoryKeyStore::default();
++    let mut alice = connect(&engine.base, ALICE, PW, "A_PHONE", &db("existing-alice"), &keys).unwrap();
++    let mut bob_phone = connect(&engine.base, BOB, PW, "B_PHONE", &db("existing-bob-phone"), &keys).unwrap();
++    bob_phone.ensure_key_packages(1).unwrap();
++    alice.create_room(ROOM).unwrap();
++    alice.invite(ROOM, BOB).unwrap();
++    bob_phone.sync().unwrap();
++
++    let mut bob_new = connect_with_approval(
++        &engine.base, BOB, PW, "B_NEW", &db("existing-bob-new"), &keys, &bob_phone,
++    ).unwrap();
++    bob_new.ensure_key_packages(1).unwrap();
++    alice.invite(ROOM, BOB).expect("existing member's new device should receive a Welcome");
++    bob_new.sync().unwrap();
++    let members = bob_new.members_of(ROOM).unwrap();
++    assert!(members.iter().any(|member| member == "@bob:inone.test/B_PHONE"));
++    assert!(members.iter().any(|member| member == "@bob:inone.test/B_NEW"));
++}

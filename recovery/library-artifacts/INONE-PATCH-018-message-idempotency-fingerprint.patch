@@ -1,0 +1,166 @@
+--- a/src/server.js
++++ b/src/server.js
+@@ -2311,7 +2311,9 @@
+               let seq;
+               if (clientMessageId !== undefined) {
+                 // Дубликат проверяется внутри атомарной операции до проверки актуальности эпохи.
+-                const result = await storage.appendClientMessage(roomId, d.userId, clientMessageId, content, now(), header.value.epoch);
++                const requestHash = sha(JSON.stringify(content));
++                const result = await storage.appendClientMessage(roomId, d.userId, clientMessageId, requestHash, content, now(), header.value.epoch);
++                if (result.state === 'conflict') return send(res, 409, { error: 'clientMessageId was already used for a different message payload', code: 'message_id_reused' });
+                 if (result.state === 'pending') return send(res, 409, { error: 'a message with this clientMessageId is being sent: retry later' });
+                 if (result.state === 'stale') {
+                   if (result.epoch === 0) return send(res, 409, { error: 'group has no epoch yet' });
+--- a/src/store.js
++++ b/src/store.js
+@@ -816,19 +816,21 @@
+      * Резервирование ключа, выделение seq, вставка события и фиксация seq
+      * находятся в одной транзакции: не может остаться orphan/pending после crash.
+      */
+-    async appendClientMessage(roomId, userId, clientId, content, nowMs, expectedEpoch) {
++    async appendClientMessage(roomId, userId, clientId, requestHash, content, nowMs, expectedEpoch) {
+       return inTransaction(async (c) => {
+         const claim = await c.query(
+-          `INSERT INTO mls_client_messages (room_id, user_id, client_message_id, seq)
+-           VALUES ($1, $2, $3, NULL) ON CONFLICT DO NOTHING RETURNING client_message_id`,
+-          [roomId, userId, clientId],
++          `INSERT INTO mls_client_messages (room_id, user_id, client_message_id, request_hash, seq)
++           VALUES ($1, $2, $3, $4, NULL) ON CONFLICT DO NOTHING RETURNING client_message_id`,
++          [roomId, userId, clientId, requestHash],
+         );
+         if (claim.rowCount === 0) {
+           const existing = await c.query(
+-            'SELECT seq FROM mls_client_messages WHERE room_id = $1 AND user_id = $2 AND client_message_id = $3 FOR UPDATE',
++            'SELECT seq, request_hash FROM mls_client_messages WHERE room_id = $1 AND user_id = $2 AND client_message_id = $3 FOR UPDATE',
+             [roomId, userId, clientId],
+           );
+           if (!existing.rows.length || existing.rows[0].seq === null) return { state: 'pending' };
++          // Legacy rows have NULL request_hash and retain their historical replay behavior.
++          if (existing.rows[0].request_hash !== null && existing.rows[0].request_hash !== requestHash) return { state: 'conflict' };
+           return { state: 'done', seq: Number(existing.rows[0].seq) };
+         }
+ 
+--- a/src/store-memory.js
++++ b/src/store-memory.js
+@@ -1010,16 +1010,20 @@
+       }
+     },
+     /** Атомарный эквивалент PostgreSQL-операции в однопоточном memory store. */
+-    appendClientMessage(roomId, userId, clientId, content, nowMs, expectedEpoch) {
++    appendClientMessage(roomId, userId, clientId, requestHash, content, nowMs, expectedEpoch) {
+       const hit = clientMessages.find((m) => m.roomId === roomId && m.userId === userId && m.clientId === clientId);
+-      if (hit) return hit.seq === null ? { state: 'pending' } : { state: 'done', seq: hit.seq };
++      if (hit) {
++        if (hit.seq === null) return { state: 'pending' };
++        if (hit.requestHash !== undefined && hit.requestHash !== requestHash) return { state: 'conflict' };
++        return { state: 'done', seq: hit.seq };
++      }
+       const currentEpoch = mlsGroups.get(roomId) ?? 0;
+       if (currentEpoch !== expectedEpoch || currentEpoch === 0) return { state: 'stale', epoch: currentEpoch };
+       const room = rooms.get(roomId);
+       if (!room) throw new Error('room not found');
+       const seq = ++counters.eventSeq;
+       room.events.push({ event_id: `$${seq}`, seq, room_id: roomId, sender: userId, origin_server_ts: nowMs, type: 'm.room.encrypted', content: structuredClone(content ?? null) });
+-      clientMessages.push({ roomId, userId, clientId, seq });
++      clientMessages.push({ roomId, userId, clientId, requestHash, seq });
+       return { state: 'created', seq };
+     },
+ mlsPendingRemovalsFor(userId) {
+--- a/src/schema.sql
++++ b/src/schema.sql
+@@ -401,6 +401,7 @@
+   room_id TEXT NOT NULL REFERENCES rooms (room_id) ON DELETE CASCADE,
+   user_id TEXT NOT NULL,
+   client_message_id TEXT NOT NULL,
++  request_hash TEXT CHECK (request_hash IS NULL OR length(request_hash) = 64),
+   seq BIGINT NOT NULL,
+   PRIMARY KEY (room_id, user_id, client_message_id)
+ );
+--- a/src/migrate.js
++++ b/src/migrate.js
+@@ -10,7 +10,7 @@
+ export const SCHEMA_FILE = path.join(here, 'schema.sql');
+ export const MIGRATIONS_DIR = path.join(here, '..', 'migrations');
+ /** Последняя миграция, уже включённая в schema.sql. Обновляется вместе с каждой новой миграцией. */
+-export const SCHEMA_VERSION = '0027-mls-key-package-claims';
++export const SCHEMA_VERSION = '0028-mls-message-idempotency-fingerprint';
+ const LOCK_KEY = 727001;
+ 
+ /** Признак того, что миграция уже применена в базе, созданной до появления таблицы миграций. */
+@@ -41,6 +41,7 @@
+   '0025-mls-commit-idempotency': "to_regclass('mls_client_commits') IS NOT NULL",
+   '0026-mls-commit-change-metadata': "EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'mls_commits' AND column_name = 'changes') AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'mls_commits' AND column_name = 'changes_verified')",
+   '0027-mls-key-package-claims': "to_regclass('mls_key_package_claims') IS NOT NULL AND to_regclass('mls_key_package_claim_items') IS NOT NULL AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'mls_key_packages' AND column_name = 'claim_id') AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'mls_key_package_claims' AND column_name = 'existing_device_ids')",
++  '0028-mls-message-idempotency-fingerprint': "EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'mls_client_messages' AND column_name = 'request_hash')",
+ };
+ 
+ export function listMigrations() {
+--- a/test/mls-idempotency.test.js
++++ b/test/mls-idempotency.test.js
+@@ -28,12 +28,19 @@
+     await s.alice.createRoom(ROOM, [ALICE]);
+     await s.alice.raw('POST', `/mls/groups/${enc(ROOM)}/commits`, { epoch: 0, commit: b64('FIRST'), changes: { adds: [], removes: [] } });
+     const message = mlsMessageAt(ROOM, 1, 'раз');
+-    const send = (id) => s.alice.raw('POST', `/mls/groups/${enc(ROOM)}/messages`, { message, kind: 'text', forwarded: false, clientMessageId: id });
++    const send = (id, payload = message) => s.alice.raw('POST', `/mls/groups/${enc(ROOM)}/messages`, { message: payload, kind: 'text', forwarded: false, clientMessageId: id });
+     const first = await send('msg-0001');
+-    assert.equal((await send('msg-0001')).event_id, first.event_id, 'тот же идентификатор события');
++    // Повтор уже принятого сообщения должен возвращать прежний event_id даже после смены эпохи.
++    await s.alice.raw('POST', `/mls/groups/${enc(ROOM)}/commits`, { epoch: 1, commit: b64('SECOND'), changes: { adds: [], removes: [] } });
++    assert.equal((await send('msg-0001')).event_id, first.event_id, 'тот же идентификатор события после смены эпохи');
++    await assert.rejects(
++      send('msg-0001', mlsMessageAt(ROOM, 2, 'другой текст с тем же ID')),
++      (error) => error.status === 409 && error.message.includes('message_id_reused'),
++      'один clientMessageId нельзя повторно использовать для другого шифротекста',
++    );
+     const events = (await s.alice.raw('GET', `/rooms/${enc(ROOM)}/events`)).events.filter((e) => e.type === 'm.room.encrypted');
+     assert.equal(events.length, 1, 'одно сообщение в ленте');
+-    assert.notEqual((await send('msg-0002')).event_id, first.event_id, 'новый идентификатор — новое сообщение');
++    assert.notEqual((await send('msg-0002', mlsMessageAt(ROOM, 2, 'новое'))).event_id, first.event_id, 'новый идентификатор — новое сообщение');
+     await assert.rejects(send('плохой id!'), (e) => e.status === 400, 'неверный идентификатор отклоняется');
+   } finally {
+     await s.stop();
+--- a/migrations/0028-mls-message-idempotency-fingerprint.sql
++++ b/migrations/0028-mls-message-idempotency-fingerprint.sql
+@@ -0,0 +1,5 @@
++-- Bind each client message ID to the exact encrypted application payload.
++-- Existing rows remain NULL for backward-compatible replay of already accepted messages.
++ALTER TABLE mls_client_messages
++  ADD COLUMN IF NOT EXISTS request_hash TEXT
++  CHECK (request_hash IS NULL OR length(request_hash) = 64);
+--- a/test/mls-message-idempotency-store.test.js
++++ b/test/mls-message-idempotency-store.test.js
+@@ -0,0 +1,33 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { createMemoryStore } from '../src/store-memory.js';
++
++const ROOM = '!message-idempotency:test';
++const ALICE = '@alice:test';
++
++test('clientMessageId is bound to one exact encrypted payload', () => {
++  const store = createMemoryStore({ pinPepper: 'p'.repeat(32) });
++  store.createRoom(ROOM, ALICE, [ALICE]);
++  const committed = store.mlsApplyCommit(ROOM, 0, {
++    senderId: ALICE,
++    senderDeviceId: 'A_PHONE',
++    commit: Buffer.from('opaque-commit'),
++    welcomes: [],
++    changes: { adds: [], removes: [] },
++  }, 1);
++  assert.equal(committed.ok, true);
++  assert.equal(committed.epoch, 1);
++
++  const firstContent = { mls: 'ciphertext-one', kind: 'text', forwarded: false };
++  const first = store.appendClientMessage(ROOM, ALICE, 'stable-message-1', 'a'.repeat(64), firstContent, 2, 1);
++  const replay = store.appendClientMessage(ROOM, ALICE, 'stable-message-1', 'a'.repeat(64), firstContent, 3, 1);
++  const conflict = store.appendClientMessage(
++    ROOM, ALICE, 'stable-message-1', 'b'.repeat(64),
++    { ...firstContent, mls: 'ciphertext-two' }, 4, 1,
++  );
++
++  assert.deepEqual(first, { state: 'created', seq: 1 });
++  assert.deepEqual(replay, { state: 'done', seq: 1 });
++  assert.deepEqual(conflict, { state: 'conflict' });
++  assert.equal(store.roomEventRows(ROOM, 0).length, 1, 'payload conflict must not create another event');
++});
