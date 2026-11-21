@@ -29,17 +29,61 @@ env:
   INONE_ENGINE_DIR: ${{ github.workspace }}/inone-development-archive-0.6.0/engine
 
 jobs:
+  prepare:
+    name: Verify exact-head MLS sources without mutation
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    outputs:
+      sha: ${{ steps.commit.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.91.0"
+          components: rustfmt
+      - name: Verify committed lockfiles and Rust formatting without modifying the checkout
+        run: |
+          set -euo pipefail
+          test -s inone-development-archive-0.6.0/engine/mobile-mls/mls-client/Cargo.lock
+          test -s mobile/rust/Cargo.lock
+          cargo fmt --manifest-path inone-development-archive-0.6.0/engine/mobile-mls/mls-client/Cargo.toml -- --check
+          cargo fmt --manifest-path mobile/rust/Cargo.toml -- --check
+      - name: Install canonical engine dependencies for real-server MLS tests
+        run: npm ci
+        working-directory: inone-development-archive-0.6.0/engine
+      - name: Run locked canonical MLS and persistent bridge validation
+        run: |
+          set -euo pipefail
+          cargo check --locked --all-targets --manifest-path inone-development-archive-0.6.0/engine/mobile-mls/mls-client/Cargo.toml
+          cargo test --locked --no-fail-fast --manifest-path inone-development-archive-0.6.0/engine/mobile-mls/mls-client/Cargo.toml -- --test-threads=1
+          cargo check --locked --all-targets --manifest-path mobile/rust/Cargo.toml
+          cargo test --locked --no-fail-fast --manifest-path mobile/rust/Cargo.toml
+      - name: Assert validation did not modify tracked or untracked source files
+        run: |
+          set -euo pipefail
+          git diff --exit-code
+          git diff --cached --exit-code
+          test -z "$(git status --porcelain)"
+      - name: Publish validated source SHA
+        id: commit
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
   mls-client:
+    needs: prepare
     name: OpenMLS attachment and session integration tests
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ needs.prepare.outputs.sha }}
       - name: Verify exact source SHA
         env:
-          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          EXPECTED_SHA: ${{ needs.prepare.outputs.sha }}
         run: |
           set -euo pipefail
           actual="$(git rev-parse HEAD)"
@@ -66,16 +110,17 @@ jobs:
 
 
   canonical-mls-client:
+    needs: prepare
     name: Canonical B MLS client regression tests
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ needs.prepare.outputs.sha }}
       - name: Verify exact source SHA
         env:
-          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          EXPECTED_SHA: ${{ needs.prepare.outputs.sha }}
         run: |
           set -euo pipefail
           actual="$(git rev-parse HEAD)"
@@ -103,16 +148,17 @@ jobs:
         run: cargo test --locked --no-fail-fast --manifest-path inone-development-archive-0.6.0/engine/mobile-mls/mls-client/Cargo.toml -- --test-threads=1
 
   ios-keychain:
+    needs: prepare
     name: iOS Keychain native target build
     runs-on: macos-15
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ needs.prepare.outputs.sha }}
       - name: Verify exact source SHA
         env:
-          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          EXPECTED_SHA: ${{ needs.prepare.outputs.sha }}
         run: |
           set -euo pipefail
           actual="$(git rev-parse HEAD)"
@@ -139,16 +185,17 @@ jobs:
         run: cargo build --locked --target aarch64-apple-ios --manifest-path mobile/rust/Cargo.toml
 
   rust-bridge:
+    needs: prepare
     name: Persistent Flutter Rust bridge host tests
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ needs.prepare.outputs.sha }}
       - name: Verify exact source SHA
         env:
-          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          EXPECTED_SHA: ${{ needs.prepare.outputs.sha }}
         run: |
           set -euo pipefail
           actual="$(git rev-parse HEAD)"

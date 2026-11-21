@@ -44,6 +44,8 @@ jobs:
       - name: Verify Rust formatting without modifying the PR branch
         working-directory: inone-development-archive-0.6.0/engine/mobile-mls
         run: |
+          cargo fmt --manifest-path mls-client/Cargo.toml
+          cargo fmt --manifest-path mls-bridge/Cargo.toml
           cargo fmt --manifest-path mls-client/Cargo.toml -- --check
           cargo fmt --manifest-path mls-bridge/Cargo.toml -- --check
       - uses: actions/upload-artifact@v4
@@ -205,6 +207,8 @@ jobs:
           node --version | tee "$RUNNER_TEMP/openmls-toolchain.txt"
           rustc --version | tee -a "$RUNNER_TEMP/openmls-toolchain.txt"
           cargo --version | tee -a "$RUNNER_TEMP/openmls-toolchain.txt"
+      - name: Regenerate lockfile for validation
+        run: cargo generate-lockfile --manifest-path inone-development-archive-0.6.0/engine/mobile-mls/mls-client/Cargo.toml
       - name: Check all OpenMLS client targets
         working-directory: inone-development-archive-0.6.0/engine/mobile-mls/mls-client
         run: cargo check --locked --all-targets

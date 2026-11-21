@@ -48,6 +48,10 @@ jobs:
                 changed(/^(inone-development-archive-0\.6\.0\/engine\/|inone-engine-poc-0\.6\.0\/mobile-mls\/|mobile\/rust\/)/)) {
               expected.add("Validate recovered InOne P0 source");
             }
+            if (changed(/^inone-development-archive-0\.6\.0\/engine\//)) {
+              expected.add("Backend Docker Compose runtime acceptance");
+            }
+
             if (workflowChanged("mls-native-validation.yml") ||
                 changed(/^(inone-engine-poc-0\.6\.0\/mobile-mls\/|inone-development-archive-0\.6\.0\/engine\/mobile-mls\/|mobile\/rust\/)/)) {
               expected.add("Native MLS client validation");

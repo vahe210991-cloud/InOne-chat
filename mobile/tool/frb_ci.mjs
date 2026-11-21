@@ -10,7 +10,6 @@ const protectedPaths = [
   'pubspec.yaml',
   'pubspec.lock',
   'rust/Cargo.toml',
-  'rust/Cargo.lock',
 ];
 
 function run(command, args) {

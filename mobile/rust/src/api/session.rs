@@ -16,7 +16,15 @@ use crate::secure_store::PlatformKeyStore;
 
 /// Rust-owned persistent OpenMLS session. The refresh token and SQLCipher
 /// database key never have getters in the Dart-facing API.
+/// The client is serialized behind this mutex; its rusqlite connection is owned,
+/// never shared through `Arc<Connection>` (which would incorrectly require Sync).
 #[frb(opaque)]
+// Keep the FRB opaque-handle thread-safety contract explicit at compile time.
+const _: fn() = || {
+    fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<MlsSession>();
+};
+
 pub struct MlsSession {
     client: Mutex<Option<Client>>,
     database_path: String,
@@ -33,6 +41,14 @@ pub enum IncomingMessage {
         room_id: String,
         event_id: String,
         text: String,
+    },
+    Attachment {
+        room_id: String,
+        event_id: String,
+        file_id: String,
+        name: String,
+        mime_type: String,
+        size: u64,
     },
     Unreadable {
         room_id: String,
@@ -140,6 +156,21 @@ fn map_incoming(items: Vec<Incoming>) -> Vec<IncomingMessage> {
                 event_id,
                 text,
             },
+            Incoming::Attachment {
+                room_id,
+                event_id,
+                file_id,
+                name,
+                mime_type,
+                size,
+            } => IncomingMessage::Attachment {
+                room_id,
+                event_id,
+                file_id,
+                name,
+                mime_type,
+                size,
+            },
             Incoming::Unreadable { room_id, event_id } => {
                 IncomingMessage::Unreadable { room_id, event_id }
             }
@@ -217,6 +248,37 @@ impl MlsSession {
     pub fn send_text(&self, room_id: String, plaintext: String) -> Result<String, String> {
         let plaintext = Zeroizing::new(plaintext);
         self.with_client(|client| client.send_text(&room_id, plaintext.as_str()))
+    }
+
+    /// Encrypts and uploads an attachment inside the persistent Rust client.
+    /// Plaintext never crosses the object-storage HTTP boundary. The caller must
+    /// reuse client_message_id when retrying an uncertain network operation. If
+    /// sync observes the accepted event first, Rust reconciles it from the outbox.
+    pub fn send_attachment(
+        &self,
+        room_id: String,
+        name: String,
+        mime_type: String,
+        plaintext: Vec<u8>,
+        client_message_id: String,
+    ) -> Result<String, String> {
+        let plaintext = Zeroizing::new(plaintext);
+        self.with_client(|client| {
+            client.send_attachment_with_id(
+                &room_id,
+                &name,
+                &mime_type,
+                plaintext.as_slice(),
+                &client_message_id,
+            )
+        })
+    }
+
+    /// Downloads ciphertext and returns plaintext only after manifest/hash verification.
+    /// The returned bytes are intended for the requesting device only.
+    pub fn download_attachment(&self, file_id: String) -> Result<Vec<u8>, String> {
+        self.with_client(|client| client.download_attachment(&file_id))
+            .map(|bytes| Zeroizing::new(bytes).to_vec())
     }
 
     pub fn enqueue_text(&self, room_id: String, plaintext: String) -> Result<String, String> {
@@ -680,13 +742,12 @@ mod tests {
     #[test]
     fn logout_still_cleans_local_state_when_client_lock_is_poisoned() {
         let (database, keys, session) = fixture();
-        std::thread::scope(|scope| {
-            let handle = scope.spawn(|| {
-                let _guard = session.client.lock().unwrap();
-                panic!("poison the client lock for the regression test");
-            });
-            assert!(handle.join().is_err());
-        });
+        let poison_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = session.client.lock().unwrap();
+            panic!("poison the client lock for the regression test");
+        }));
+        assert!(poison_result.is_err());
+        assert!(session.client.is_poisoned());
 
         assert!(session.logout().is_err());
         assert!(!database.exists());
