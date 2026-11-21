@@ -4728,12 +4728,14 @@ impl Client {
         // Опоздавшие события (аудит, P0.3): их эпоха уже пройдена. Внутри окна пробуем расшифровать,
         // за пределами окна — явная постоянная ошибка с причиной, а не молчаливый пропуск.
         let final_epoch = self.groups[room_id].mls.epoch().as_u64();
-        let late: Vec<(String, Vec<u8>, u64)> = pending
+        let late: Vec<(String, Vec<u8>, u64, Option<String>)> = pending
             .iter()
-            .filter(|(e, id, _)| *e < final_epoch && !self.processed.contains(id))
-            .map(|(e, id, b)| (id.clone(), b.clone(), *e))
+            .filter(|(epoch, id, _, _)| *epoch < final_epoch && !self.processed.contains(id))
+            .map(|(epoch, id, bytes, file_id)| {
+                (id.clone(), bytes.clone(), *epoch, file_id.clone())
+            })
             .collect();
-        for (event_id, bytes, epoch) in late {
+        for (event_id, bytes, epoch, outer_file_id) in late {
             if final_epoch - epoch > MAX_PAST_EPOCHS as u64 {
                 self.record_unreadable(
                     room_id,
@@ -4744,9 +4746,10 @@ impl Client {
                 out.push(Incoming::Unreadable {
                     room_id: room_id.to_string(),
                     event_id: event_id.clone(),
+                    mine: false,
                 });
             } else {
-                self.process_event(room_id, &event_id, &bytes, out)?;
+                self.process_event(room_id, &event_id, &bytes, outer_file_id.as_deref(), out)?;
             }
         }
 
@@ -4754,10 +4757,10 @@ impl Client {
         // Commit. Persist this room-scoped state and retry it on the next sync.
         let future_event_ids: Vec<String> = pending
             .iter()
-            .filter(|(epoch, event_id, _)| {
+            .filter(|(epoch, event_id, _, _)| {
                 *epoch > final_epoch && !self.processed.contains(event_id)
             })
-            .map(|(_, event_id, _)| event_id.clone())
+            .map(|(_, event_id, _, _)| event_id.clone())
             .collect();
         if !future_event_ids.is_empty() {
             self.set_waiting_for_commit(room_id, final_epoch.saturating_add(1), &future_event_ids)?;
