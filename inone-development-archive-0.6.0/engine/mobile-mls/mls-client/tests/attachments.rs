@@ -130,6 +130,11 @@ fn attachment_retry_reuses_the_exact_mls_message_after_server_commit() {
         first_attempt_error.contains("simulated local persistence failure"),
         "the first attempt must reach the post-server-acceptance local transaction; got: {first_attempt_error}"
     );
+    // The trigger simulates a one-time local write failure. Remove it before
+    // sync so the recovery transaction can persist the outgoing attachment row.
+    let connection = open_encrypted_db(&alice_db, &database_key);
+    connection.execute_batch("DROP TRIGGER fail_outgoing_attachment_insert;").unwrap();
+    drop(connection);
 
     let read_persisted_message = || {
         let connection = open_encrypted_db(&alice_db, &database_key);
@@ -167,9 +172,6 @@ fn attachment_retry_reuses_the_exact_mls_message_after_server_commit() {
     ).unwrap();
     assert_eq!(event_id, replayed_event_id);
 
-    let connection = open_encrypted_db(&alice_db, &database_key);
-    connection.execute_batch("DROP TRIGGER fail_outgoing_attachment_insert;").unwrap();
-    drop(connection);
     let received = bob.sync().unwrap();
     assert_eq!(received.iter().filter(|item| matches!(item, Incoming::Attachment { .. })).count(), 1);
     assert!(received.iter().any(|item| matches!(item, Incoming::Attachment { event_id: id, .. } if id == &event_id)));
