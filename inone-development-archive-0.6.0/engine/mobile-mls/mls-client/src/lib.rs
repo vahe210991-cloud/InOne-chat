@@ -2994,6 +2994,23 @@ impl Client {
             return Ok(event_id);
         }
 
+        if let Some(reason) = self.desync_reason(room_id)? {
+            return Err(format!("комната рассинхронизирована и требует восстановления: {reason}"));
+        }
+        let initial_server_epoch = self.server_epoch(room_id)?;
+        let initial_local_epoch = self
+            .groups
+            .get(room_id)
+            .ok_or("комната не создана на этом устройстве")?
+            .mls
+            .epoch()
+            .as_u64();
+        if initial_local_epoch != initial_server_epoch {
+            return Err(format!(
+                "устройство на эпохе {initial_local_epoch}, сервер на {initial_server_epoch}: сначала синхронизация"
+            ));
+        }
+
         let existing: Option<(String, String, Vec<u8>, String, i64, bool)> = self
             .meta
             .query_row(
@@ -3574,23 +3591,6 @@ impl Client {
             return Err("attachment size must be between 1 byte and 50 MiB minus the GCM tag".to_string());
         }
         let operation_id = format!("att_{client_message_id}");
-        if let Some(reason) = self.desync_reason(room_id)? {
-            return Err(format!("комната рассинхронизирована и требует восстановления: {reason}"));
-        }
-        let initial_server_epoch = self.server_epoch(room_id)?;
-        let initial_local_epoch = self
-            .groups
-            .get(room_id)
-            .ok_or("комната не создана на этом устройстве")?
-            .mls
-            .epoch()
-            .as_u64();
-        if initial_local_epoch != initial_server_epoch {
-            return Err(format!(
-                "устройство на эпохе {initial_local_epoch}, сервер на {initial_server_epoch}: сначала синхронизация"
-            ));
-        }
-
         let file_id: String;
         let mut upload_url: Option<String> = None;
         let manifest_payload: Zeroizing<Vec<u8>>;
@@ -3799,16 +3799,15 @@ impl Client {
                 "attachment outbox disappeared before MLS message persistence".to_string()
             })?;
         let mls_message = match persisted_message {
-            (Some(bytes), Some(epoch)) if !bytes.is_empty() && epoch == expected_epoch => {
-                Zeroizing::new(bytes)
-            }
-            _ => Zeroizing::new(self.create_and_persist_attachment_mls_message(
+            (Some(bytes), Some(_)) if !bytes.is_empty() => Zeroizing::new(bytes),
+            (None, None) => Zeroizing::new(self.create_and_persist_attachment_mls_message(
                 room_id,
                 operation_id.as_str(),
                 &file_id,
                 manifest_payload.as_slice(),
                 server_epoch,
             )?),
+            _ => return Err("attachment outbox has an incomplete MLS message/epoch pair".to_string()),
         };
         let encrypted_manifest = B64.encode(mls_message.as_slice());
         let response = self.call(
