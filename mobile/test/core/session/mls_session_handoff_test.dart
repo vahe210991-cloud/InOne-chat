@@ -430,8 +430,8 @@ void main() {
     );
     await session.initialize();
     final bytes = Uint8List.fromList([1, 2, 3, 4]);
-    await expectLater(
-      session.sendMlsAttachment(
+    expect(
+      () => session.sendMlsAttachment(
         'room-1',
         'photo.jpg',
         'image/jpeg',
