@@ -3476,7 +3476,7 @@ mod session_persistence_tests {
         let error = resume_with_session(
             "https://api.example.invalid", "user-missing-key", "device-missing-key",
             &database, &keys,
-        ).expect_err("resume must fail closed without the original SQLCipher key");
+        ).err().expect("resume must fail closed without the original SQLCipher key");
 
         assert!(error.contains("ключ SQLCipher"));
         assert!(!keys.has_database_key("user-missing-key/device-missing-key").unwrap());
@@ -3492,7 +3492,7 @@ mod session_persistence_tests {
         let error = connect_with_session(
             "https://api.example.invalid", "user-existing-db", "device-existing-db",
             "access", "refresh", &database, &keys,
-        ).expect_err("an existing database without its platform key must not be re-keyed");
+        ).err().expect("an existing database without its platform key must not be re-keyed");
 
         assert!(error.contains("защищённый ключ отсутствует"));
         assert!(!keys.has_database_key("user-existing-db/device-existing-db").unwrap());
