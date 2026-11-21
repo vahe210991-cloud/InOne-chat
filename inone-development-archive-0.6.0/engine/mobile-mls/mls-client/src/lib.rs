@@ -3258,11 +3258,15 @@ impl Client {
         self.inbox.retain_mut(|item| {
             if let Incoming::Attachment {
                 event_id: queued_event_id,
+                file_id: queued_file_id,
                 mine,
                 ..
             } = item
             {
-                if queued_event_id == &event_id {
+                // A recovery sync can enqueue the same uploaded object before the
+                // idempotent send retry returns its canonical event ID. The durable
+                // file ID is stable across that handoff, so reconcile on either key.
+                if queued_event_id == &event_id || queued_file_id == &file_id {
                     if handoff_present {
                         return false;
                     }
