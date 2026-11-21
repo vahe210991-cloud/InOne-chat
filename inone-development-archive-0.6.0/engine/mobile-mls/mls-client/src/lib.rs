@@ -3234,7 +3234,6 @@ pub fn download_attachment(&self, file_id: &str) -> Result<Vec<u8>, String> {
             )
             .optional()
             .map_err(text)?;
-        eprintln!("MLS_ATTACHMENT_TRACE reconcile room={room_id} event={event_id} file={file_id} outbox_found={}", pending.is_some());
         let Some((operation_id, manifest_bytes, stored_message)) = pending else {
             return Ok(None);
         };
@@ -3296,18 +3295,6 @@ pub fn download_attachment(&self, file_id: &str) -> Result<Vec<u8>, String> {
         outer_file_id: Option<&str>,
         out: &mut Vec<Incoming>,
     ) -> Result<(), String> {
-        // The sender already advanced its own MLS ratchet when creating this
-        // application message. Reconcile an exact persisted attachment outbox
-        // entry before attempting to process the sender's own event as incoming.
-        if let Some(file_id) = outer_file_id {
-            if let Some(incoming) =
-                self.reconcile_outgoing_attachment_event(room_id, event_id, file_id, bytes)?
-            {
-                out.push(incoming);
-                return Ok(());
-            }
-        }
-
         let parsed = MlsMessageIn::tls_deserialize_exact(bytes)
             .ok()
             .and_then(|message| message.try_into_protocol_message().ok());
@@ -3577,7 +3564,6 @@ pub fn download_attachment(&self, file_id: &str) -> Result<Vec<u8>, String> {
                 self.process_event(room_id, &event_id, &[], outer_file_id.as_deref(), out)?;
                 continue;
             };
-            eprintln!("MLS_ATTACHMENT_TRACE sync room={room_id} event={event_id} outer_file_id={outer_file_id:?} processed={}", self.processed.contains(&event_id));
             if let Some(file_id) = outer_file_id.as_deref() {
                 if let Some(incoming) = self.reconcile_outgoing_attachment_event(
                     room_id,
