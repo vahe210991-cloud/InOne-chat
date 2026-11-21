@@ -28,7 +28,7 @@ The separate `inone-engine-poc-0.6.0/mobile-mls/mls-client/` remains the canonic
 
 - Updated canonical backend `package.json` name to `inone-backend` and removed the temporary Variant A description.
 - Updated `package-lock.json` root name and `packages[""].name` to match; dependencies and resolved package versions were not intentionally changed.
-- Replaced the stale engine README with current ownership, install/run, validation and change-boundary instructions.
+- Added a canonical identity/source-of-truth banner to the engine README while preserving its 7.9 KB of legacy implementation notes as explicitly historical context; the legacy Variant A statements are not authoritative.
 - Corrected the mobile setup guide to launch the canonical backend path and explicitly distinguish the POC tree's Rust MLS client.
 - Added `test/backend-identity.test.js` and included it in `npm test`. It checks package identity, description and package-lock synchronization.
 - Added ADR-004 and `docs/continuity/BACKEND-SOURCE-OF-TRUTH.md`.
