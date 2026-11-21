@@ -4857,7 +4857,12 @@ impl Client {
     pub fn outbox_len(&self) -> Result<u64, String> {
         let n: i64 = self
             .meta
-            .query_row("SELECT COUNT(*) FROM client_outbox", [], |r| r.get(0))
+            .query_row(
+                "SELECT (SELECT COUNT(*) FROM client_outbox)
+                      + (SELECT COUNT(*) FROM client_attachment_outbox)",
+                [],
+                |row| row.get(0),
+            )
             .map_err(text)?;
         Ok(n as u64)
     }
@@ -4879,7 +4884,11 @@ impl Client {
                 .map_err(text)?;
             rows.collect::<Result<_, _>>().map_err(text)?
         };
-        if items.is_empty() {
+        let attachment_count: i64 = self
+            .meta
+            .query_row("SELECT COUNT(*) FROM client_attachment_outbox", [], |row| row.get(0))
+            .map_err(text)?;
+        if items.is_empty() && attachment_count == 0 {
             return Ok(0);
         }
         match self.sync() {
@@ -4904,6 +4913,60 @@ impl Client {
                 }
                 Err(e) if is_retryable(&e) => break,
                 Err(e) => return Err(e),
+            }
+        }
+        sent += self.flush_attachment_outbox()?;
+        Ok(sent)
+    }
+
+    /// Retries durable attachment uploads from ciphertext stored in SQLCipher.
+    /// The original plaintext file is reconstructed only in zeroizing memory.
+    fn flush_attachment_outbox(&mut self) -> Result<usize, String> {
+        let items: Vec<(String, String, String, Vec<u8>, String, i64, Vec<u8>)> = {
+            let mut statement = self.meta.prepare(
+                "SELECT client_message_id, room_id, file_id, manifest, ciphertext_sha256,
+                        ciphertext_size, ciphertext
+                 FROM client_attachment_outbox ORDER BY created_at, client_message_id",
+            ).map_err(text)?;
+            let rows = statement.query_map([], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                ))
+            }).map_err(text)?;
+            rows.collect::<Result<_, _>>().map_err(text)?
+        };
+        let mut sent = 0;
+        for (operation_id, room_id, file_id, manifest_bytes, stored_hash, stored_size, ciphertext) in items {
+            let Some(client_message_id) = operation_id.strip_prefix("att_") else {
+                return Err("attachment outbox contains an invalid operation ID".to_string());
+            };
+            let manifest_bytes = Zeroizing::new(manifest_bytes);
+            let manifest = attachment_crypto::parse_manifest(&manifest_bytes, &file_id, &room_id)?;
+            if attachment_crypto::sha256_hex(&ciphertext) != stored_hash
+                || ciphertext.len() as i64 != stored_size
+                || manifest.ciphertext_size != stored_size as u64
+                || manifest.ciphertext_sha256 != stored_hash
+            {
+                return Err("encrypted attachment outbox failed its ciphertext integrity check".to_string());
+            }
+            let plaintext = Zeroizing::new(attachment_crypto::decrypt(&ciphertext, &manifest)?);
+            match self.send_attachment_with_id(
+                &room_id,
+                &manifest.name,
+                &manifest.mime_type,
+                plaintext.as_slice(),
+                client_message_id,
+            ) {
+                Ok(_) => sent += 1,
+                Err(error) if is_retryable(&error) => break,
+                Err(error) if error.contains("комната рассинхронизирована") => continue,
+                Err(error) => return Err(error),
             }
         }
         Ok(sent)
