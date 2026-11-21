@@ -179,7 +179,6 @@ fn client_adopts_flutter_session_and_keeps_refresh_token_in_rust() {
     resumed.logout().unwrap();
 }
 
-
 #[test]
 fn resume_never_regenerates_a_missing_sqlcipher_key() {
     let engine = start_engine("1500");
