@@ -4622,8 +4622,7 @@ impl Client {
             })
             .map_err(text)?;
         rows.map(|row| {
-            let (event_id, room_id, kind, body, client_message_id, file_id) =
-                row.map_err(text)?;
+            let (event_id, room_id, kind, body, client_message_id, file_id) = row.map_err(text)?;
             incoming_from_row(event_id, room_id, kind, body, client_message_id, file_id)
         })
         .collect()
@@ -4654,8 +4653,7 @@ impl Client {
             })
             .map_err(text)?;
         rows.map(|row| {
-            let (event_id, room_id, kind, body, client_message_id, file_id) =
-                row.map_err(text)?;
+            let (event_id, room_id, kind, body, client_message_id, file_id) = row.map_err(text)?;
             incoming_from_row(event_id, room_id, kind, body, client_message_id, file_id)
         })
         .collect()
