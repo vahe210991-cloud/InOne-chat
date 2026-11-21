@@ -171,6 +171,14 @@ pub struct Client {
     inbox: Vec<Incoming>,
 }
 
+// SAFETY: rusqlite::Connection is Send but not Sync. Client's connection Arcs
+// are private implementation details: every alias (the OpenMLS provider,
+// metadata handle, and transaction-scoped providers) stays inside this Client
+// and is accessed only during one exclusive Client operation. Client is not
+// Sync, so shared concurrent access is impossible. The Flutter bridge stores
+// Client only behind MlsSession::client's Mutex, which serializes every call.
+unsafe impl Send for Client {}
+
 fn text(e: impl std::fmt::Display) -> String {
     e.to_string()
 }
