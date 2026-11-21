@@ -613,4 +613,4 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Branch: `fix/canonical-backend-identity-2026-11-21`. No source tree move/rewrite, no Rust dependency change and no merge to main.
 - Runtime tests and CI are not yet evidenced; inspect exact-head checks before accepting or merging.
 
-- Draft PR #120 is open against `main`, latest inspected head `f81c2a37b54dee2593fa14c3eb9dead441cccaa9`; not merged. P0, Email/PostgreSQL, Flutter and iOS runs `44871378564`, `44871379518`, `44871378516`, `44871378501` belong to previous head `1741651a3212057b0d6b8feb4b30ad7e7212c826` and remain queued; no exact-final-head CI or test execution is evidenced.
+- Draft PR #120 remains open against `main`, not merged. The backend README was corrected to preserve legacy notes under a clear canonical-source banner; fresh exact-head CI is required for this final follow-up.
