@@ -344,7 +344,15 @@ fn insert_attachment_manifest(
             "SELECT room_id, event_id, manifest, direction, client_message_id
              FROM client_attachments WHERE file_id = ?1",
             [file_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            },
         )
         .map_err(text)?;
     if stored.0 != *room_id
@@ -1109,8 +1117,10 @@ fn build_client(
         )
         .map_err(text)?;
     if !has_attachment_created_at {
-        meta.execute_batch("ALTER TABLE client_attachment_outbox ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0")
-            .map_err(text)?;
+        meta.execute_batch(
+            "ALTER TABLE client_attachment_outbox ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0",
+        )
+        .map_err(text)?;
     }
     let has_outbox_mls_message: bool = meta
         .query_row(
@@ -1503,10 +1513,8 @@ impl Client {
                         .read_to_end(&mut bytes)
                         .map_err(text)?;
                     if bytes.len() as u64 > max_bytes {
-                        return Err(
-                            "signed file download exceeded the manifest ciphertext size"
-                                .to_string(),
-                        );
+                        return Err("signed file download exceeded the manifest ciphertext size"
+                            .to_string());
                     }
                     return Ok(bytes);
                 }
@@ -2873,11 +2881,14 @@ impl Client {
         {
             return Err("invalid attachment display name".to_string());
         }
-        if mime_type.is_empty() || mime_type.len() > 127 || mime_type.chars().any(char::is_control) {
+        if mime_type.is_empty() || mime_type.len() > 127 || mime_type.chars().any(char::is_control)
+        {
             return Err("invalid attachment MIME type".to_string());
         }
         if plaintext.is_empty() || plaintext.len() as u64 > 50 * 1024 * 1024 - 16 {
-            return Err("attachment size must be between 1 byte and 50 MiB minus the GCM tag".to_string());
+            return Err(
+                "attachment size must be between 1 byte and 50 MiB minus the GCM tag".to_string(),
+            );
         }
 
         let operation_id = format!("att_{client_message_id}");
@@ -2885,7 +2896,9 @@ impl Client {
             self.sync()?;
         }
         if let Some(reason) = self.desync_reason(room_id)? {
-            return Err(format!("комната рассинхронизирована и требует восстановления: {reason}"));
+            return Err(format!(
+                "комната рассинхронизирована и требует восстановления: {reason}"
+            ));
         }
 
         let completed: Option<(String, String, String, Vec<u8>)> = self
@@ -2914,13 +2927,18 @@ impl Client {
                 || manifest.size != plaintext.len() as u64
                 || manifest.sha256 != attachment_crypto::sha256_hex(plaintext)
             {
-                return Err("clientMessageId retry payload does not match the completed attachment".to_string());
+                return Err(
+                    "clientMessageId retry payload does not match the completed attachment"
+                        .to_string(),
+                );
             }
             return Ok(event_id);
         }
 
         if let Some(reason) = self.desync_reason(room_id)? {
-            return Err(format!("комната рассинхронизирована и требует восстановления: {reason}"));
+            return Err(format!(
+                "комната рассинхронизирована и требует восстановления: {reason}"
+            ));
         }
         let initial_server_epoch = self.server_epoch(room_id)?;
         let initial_local_epoch = self
@@ -2962,7 +2980,15 @@ impl Client {
         let ciphertext: Zeroizing<Vec<u8>>;
         let mut already_uploaded = false;
 
-        if let Some((stored_room, stored_file_id, stored_manifest, stored_hash, stored_size, uploaded)) = existing {
+        if let Some((
+            stored_room,
+            stored_file_id,
+            stored_manifest,
+            stored_hash,
+            stored_size,
+            uploaded,
+        )) = existing
+        {
             if stored_room != room_id {
                 return Err("clientMessageId is already reserved for a different room".to_string());
             }
@@ -2977,7 +3003,10 @@ impl Client {
                 || parsed.size != plaintext.len() as u64
                 || parsed.sha256 != attachment_crypto::sha256_hex(plaintext)
             {
-                return Err("clientMessageId retry payload does not match the persisted attachment".to_string());
+                return Err(
+                    "clientMessageId retry payload does not match the persisted attachment"
+                        .to_string(),
+                );
             }
             ciphertext = Zeroizing::new(attachment_crypto::encrypt(
                 plaintext,
@@ -2988,7 +3017,10 @@ impl Client {
             if attachment_crypto::sha256_hex(ciphertext.as_slice()) != stored_hash
                 || ciphertext.len() as i64 != stored_size
             {
-                return Err("persisted attachment retry ciphertext does not match its SQLCipher journal".to_string());
+                return Err(
+                    "persisted attachment retry ciphertext does not match its SQLCipher journal"
+                        .to_string(),
+                );
             }
             if uploaded {
                 file_id = stored_file_id;
@@ -3026,7 +3058,9 @@ impl Client {
                     )
                     .map_err(text)?;
                 if changed != 1 {
-                    return Err("attachment retry journal changed during upload reservation".to_string());
+                    return Err(
+                        "attachment retry journal changed during upload reservation".to_string()
+                    );
                 }
                 file_id = new_file_id;
                 upload_url = Some(new_upload_url);
@@ -3036,10 +3070,7 @@ impl Client {
             let key = Zeroizing::new(self.provider.rand().random_array::<32>().map_err(text)?);
             let nonce = Zeroizing::new(self.provider.rand().random_array::<12>().map_err(text)?);
             ciphertext = Zeroizing::new(attachment_crypto::encrypt(
-                plaintext,
-                &key,
-                &nonce,
-                room_id,
+                plaintext, &key, &nonce, room_id,
             )?);
             let ciphertext_hash = attachment_crypto::sha256_hex(ciphertext.as_slice());
             let (reserved_file_id, reserved_upload_url) =
@@ -3135,7 +3166,9 @@ impl Client {
             )
             .optional()
             .map_err(text)?
-            .ok_or_else(|| "attachment outbox disappeared before MLS message persistence".to_string())?;
+            .ok_or_else(|| {
+                "attachment outbox disappeared before MLS message persistence".to_string()
+            })?;
         let mls_message = match persisted_message {
             (Some(bytes), Some(epoch)) if !bytes.is_empty() && epoch == expected_epoch => {
                 Zeroizing::new(bytes)
@@ -3241,7 +3274,9 @@ impl Client {
             )
             .optional()
             .map_err(text)?
-            .ok_or_else(|| "attachment manifest is not available in the encrypted local inbox".to_string())?;
+            .ok_or_else(|| {
+                "attachment manifest is not available in the encrypted local inbox".to_string()
+            })?;
         let manifest_bytes = Zeroizing::new(manifest_bytes);
         let manifest =
             attachment_crypto::parse_manifest(manifest_bytes.as_slice(), file_id, &room_id)?;
@@ -3809,12 +3844,13 @@ impl Client {
 
         match processed_result {
             Ok(processed) => {
-                let (incoming, unreadable_reason, attachment_manifest) =
-                    match processed.into_content() {
-                        ProcessedMessageContent::ApplicationMessage(app) => {
-                            let payload = Zeroizing::new(app.into_bytes());
-                            if attachment_crypto::is_attachment_manifest(payload.as_slice()) {
-                                match outer_file_id {
+                let (incoming, unreadable_reason, attachment_manifest) = match processed
+                    .into_content()
+                {
+                    ProcessedMessageContent::ApplicationMessage(app) => {
+                        let payload = Zeroizing::new(app.into_bytes());
+                        if attachment_crypto::is_attachment_manifest(payload.as_slice()) {
+                            match outer_file_id {
                                     Some(file_id) => match attachment_crypto::parse_manifest(
                                         payload.as_slice(),
                                         file_id,
@@ -3853,8 +3889,8 @@ impl Client {
                                         None,
                                     ),
                                 }
-                            } else if outer_file_id.is_some() {
-                                (
+                        } else if outer_file_id.is_some() {
+                            (
                                     Incoming::Unreadable {
                                         room_id: room_id.to_string(),
                                         event_id: event_id.to_string(),
@@ -3863,40 +3899,40 @@ impl Client {
                                     Some("outer file reference is not bound to an MLS attachment manifest"),
                                     None,
                                 )
-                            } else {
-                                match String::from_utf8(payload.to_vec()) {
-                                    Ok(text) => (
-                                        Incoming::Text {
-                                            room_id: room_id.to_string(),
-                                            event_id: event_id.to_string(),
-                                            text,
-                                            mine: false,
-                                        },
-                                        None,
-                                        None,
-                                    ),
-                                    Err(_) => (
-                                        Incoming::Unreadable {
-                                            room_id: room_id.to_string(),
-                                            event_id: event_id.to_string(),
-                                            mine: false,
-                                        },
-                                        Some("application payload is not valid UTF-8"),
-                                        None,
-                                    ),
-                                }
+                        } else {
+                            match String::from_utf8(payload.to_vec()) {
+                                Ok(text) => (
+                                    Incoming::Text {
+                                        room_id: room_id.to_string(),
+                                        event_id: event_id.to_string(),
+                                        text,
+                                        mine: false,
+                                    },
+                                    None,
+                                    None,
+                                ),
+                                Err(_) => (
+                                    Incoming::Unreadable {
+                                        room_id: room_id.to_string(),
+                                        event_id: event_id.to_string(),
+                                        mine: false,
+                                    },
+                                    Some("application payload is not valid UTF-8"),
+                                    None,
+                                ),
                             }
                         }
-                        _ => (
-                            Incoming::Unreadable {
-                                room_id: room_id.to_string(),
-                                event_id: event_id.to_string(),
-                                mine: false,
-                            },
-                            Some("MLS message is not an application message"),
-                            None,
-                        ),
-                    };
+                    }
+                    _ => (
+                        Incoming::Unreadable {
+                            room_id: room_id.to_string(),
+                            event_id: event_id.to_string(),
+                            mine: false,
+                        },
+                        Some("MLS message is not an application message"),
+                        None,
+                    ),
+                };
 
                 if let Err(error) = insert_incoming_record(&transaction, &incoming)
                     .and_then(|_| {
@@ -4015,19 +4051,29 @@ impl Client {
             let content = ev
                 .get("content")
                 .and_then(Value::as_object)
-                .ok_or_else(|| "ошибка контракта ответа: event content отсутствует или не объект".to_string())?;
+                .ok_or_else(|| {
+                    "ошибка контракта ответа: event content отсутствует или не объект".to_string()
+                })?;
             let file_ref = content.get("file");
             let legacy_file_ref = content.get("fileId");
             if let (Some(Value::String(file)), Some(Value::String(legacy))) =
                 (file_ref, legacy_file_ref)
             {
                 if file != legacy {
-                    return Err("ошибка контракта ответа: file и fileId содержат разные идентификаторы".to_string());
+                    return Err(
+                        "ошибка контракта ответа: file и fileId содержат разные идентификаторы"
+                            .to_string(),
+                    );
                 }
             }
             let outer_file_id = match file_ref.or(legacy_file_ref) {
                 Some(Value::String(file_id)) if !file_id.trim().is_empty() => Some(file_id.clone()),
-                Some(_) => return Err("ошибка контракта ответа: event content.file должен быть непустой строкой".to_string()),
+                Some(_) => {
+                    return Err(
+                        "ошибка контракта ответа: event content.file должен быть непустой строкой"
+                            .to_string(),
+                    )
+                }
                 None => None,
             };
             let Some(mls_b64) = ev["content"]["mls"].as_str() else {
@@ -4236,9 +4282,7 @@ impl Client {
         let late: Vec<(String, Vec<u8>, u64, Option<String>)> = pending
             .iter()
             .filter(|(epoch, id, _, _)| *epoch < final_epoch && !self.processed.contains(id))
-            .map(|(epoch, id, bytes, file_id)| {
-                (id.clone(), bytes.clone(), *epoch, file_id.clone())
-            })
+            .map(|(epoch, id, bytes, file_id)| (id.clone(), bytes.clone(), *epoch, file_id.clone()))
             .collect();
         for (event_id, bytes, epoch, outer_file_id) in late {
             if final_epoch - epoch > MAX_PAST_EPOCHS as u64 {
@@ -4436,7 +4480,9 @@ impl Client {
         };
         let attachment_count: i64 = self
             .meta
-            .query_row("SELECT COUNT(*) FROM client_attachment_outbox", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM client_attachment_outbox", [], |row| {
+                row.get(0)
+            })
             .map_err(text)?;
         if items.is_empty() && attachment_count == 0 {
             return Ok(0);
@@ -4473,26 +4519,40 @@ impl Client {
     /// The original plaintext file is reconstructed only in zeroizing memory.
     fn flush_attachment_outbox(&mut self) -> Result<usize, String> {
         let items: Vec<(String, String, String, Vec<u8>, String, i64, Vec<u8>)> = {
-            let mut statement = self.meta.prepare(
-                "SELECT client_message_id, room_id, file_id, manifest, ciphertext_sha256,
+            let mut statement = self
+                .meta
+                .prepare(
+                    "SELECT client_message_id, room_id, file_id, manifest, ciphertext_sha256,
                         ciphertext_size, ciphertext
                  FROM client_attachment_outbox ORDER BY created_at, client_message_id",
-            ).map_err(text)?;
-            let rows = statement.query_map([], |row| {
-                Ok((
-                    row.get(0)?,
-                    row.get(1)?,
-                    row.get(2)?,
-                    row.get(3)?,
-                    row.get(4)?,
-                    row.get(5)?,
-                    row.get(6)?,
-                ))
-            }).map_err(text)?;
+                )
+                .map_err(text)?;
+            let rows = statement
+                .query_map([], |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                        row.get(6)?,
+                    ))
+                })
+                .map_err(text)?;
             rows.collect::<Result<_, _>>().map_err(text)?
         };
         let mut sent = 0;
-        for (operation_id, room_id, file_id, manifest_bytes, stored_hash, stored_size, ciphertext) in items {
+        for (
+            operation_id,
+            room_id,
+            file_id,
+            manifest_bytes,
+            stored_hash,
+            stored_size,
+            ciphertext,
+        ) in items
+        {
             let Some(client_message_id) = operation_id.strip_prefix("att_") else {
                 return Err("attachment outbox contains an invalid operation ID".to_string());
             };
@@ -4503,7 +4563,9 @@ impl Client {
                 || manifest.ciphertext_size != stored_size as u64
                 || manifest.ciphertext_sha256 != stored_hash
             {
-                return Err("encrypted attachment outbox failed its ciphertext integrity check".to_string());
+                return Err(
+                    "encrypted attachment outbox failed its ciphertext integrity check".to_string(),
+                );
             }
             let plaintext = Zeroizing::new(attachment_crypto::decrypt(&ciphertext, &manifest)?);
             match self.send_attachment_with_id(
@@ -4515,7 +4577,9 @@ impl Client {
             ) {
                 Ok(_) => sent += 1,
                 Err(error) if is_retryable(&error) => break,
-                Err(error) if error.contains("комната рассинхронизирована") => continue,
+                Err(error) if error.contains("комната рассинхронизирована") => {
+                    continue
+                }
                 Err(error) => return Err(error),
             }
         }
