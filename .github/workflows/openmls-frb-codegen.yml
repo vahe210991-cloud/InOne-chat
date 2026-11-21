@@ -168,7 +168,11 @@ jobs:
           cp -a mobile/hook "$artifact/hook"
           mkdir -p "$artifact/lib/src"
           cp -a mobile/lib/src/rust "$artifact/lib/src/rust"
-          cp mobile/rust/Cargo.toml mobile/rust/Cargo.lock "$artifact/rust/"
+          cp mobile/rust/Cargo.toml "$artifact/rust/Cargo.toml"
+          # Ship the exact Cargo.lock blob from the validated source SHA. This
+          # avoids platform checkout filters or Cargo tooling rewriting the
+          # working-tree copy between generation and artifact packaging.
+          git show "$EXPECTED_SHA:mobile/rust/Cargo.lock" > "$artifact/rust/Cargo.lock"
           cp mobile/rust/src/lib.rs mobile/rust/src/frb_generated.rs "$artifact/rust/src/"
           cp mobile/pubspec.yaml mobile/pubspec.lock "$artifact/"
           printf '%s\n' "$EXPECTED_SHA" > "$artifact/source.sha"
@@ -276,7 +280,9 @@ jobs:
           # Integration must not silently change manually maintained manifests.
           cmp "$GENERATED/pubspec.yaml" mobile/pubspec.yaml
           cmp "$GENERATED/rust/Cargo.toml" mobile/rust/Cargo.toml
-          cmp "$GENERATED/rust/Cargo.lock" mobile/rust/Cargo.lock
+          # Compare the artifact with the exact Git blob, not a platform-
+          # materialized working-tree file that may have different line endings.
+          git show "$EXPECTED_SHA:mobile/rust/Cargo.lock" | cmp - "$GENERATED/rust/Cargo.lock"
           # The source job resolves the Firebase dependency graph and supplies its
           # generated lockfile as part of this checksummed artifact.
           mkdir -p mobile/hook mobile/lib/src/rust mobile/rust/src
