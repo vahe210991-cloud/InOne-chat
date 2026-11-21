@@ -244,7 +244,14 @@ fn insert_incoming_record(db: &Connection, incoming: &Incoming) -> Result<(), St
 
     let (pending_count, pending_bytes): (i64, i64) = db
         .query_row(
-            "SELECT COUNT(*), COALESCE(SUM(LENGTH(CAST(body AS BLOB))), 0)
+            "SELECT COUNT(*),
+                    COALESCE(SUM(LENGTH(CAST(body AS BLOB))), 0) +
+                    COALESCE((
+                      SELECT SUM(LENGTH(a.manifest))
+                      FROM client_attachments a
+                      INNER JOIN client_inbox i ON i.event_id = a.event_id
+                      WHERE i.acknowledged = 0
+                    ), 0)
              FROM client_inbox WHERE acknowledged = 0",
             [],
             |row| Ok((row.get(0)?, row.get(1)?)),
@@ -3504,7 +3511,7 @@ pub fn download_attachment(&self, file_id: &str) -> Result<Vec<u8>, String> {
         }
         loop {
             let epoch = self.groups[room_id].mls.epoch().as_u64();
-            let ready: Vec<(String, Vec<u8>)> = pending
+            let ready: Vec<(String, Vec<u8>, Option<String>)> = pending
                 .iter()
                 .filter(|(e, id, _, _)| *e == epoch && !self.processed.contains(id))
                 .map(|(_, id, b, file_id)| (id.clone(), b.clone(), file_id.clone()))
