@@ -116,6 +116,23 @@ fn db(name: &str) -> String {
     path.to_string_lossy().to_string()
 }
 
+fn open_encrypted_db(path: &str, key: &[u8; 32]) -> rusqlite::Connection {
+    let connection = rusqlite::Connection::open(path).expect("open SQLCipher database");
+    let key_hex = key
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    connection
+        .pragma_update(None, "key", format!("x'{key_hex}'"))
+        .expect("unlock SQLCipher database");
+    connection
+        .query_row("SELECT count(*) FROM sqlite_master", [], |row| {
+            row.get::<_, i64>(0)
+        })
+        .expect("verify SQLCipher key");
+    connection
+}
+
 fn texts(items: &[Incoming]) -> Vec<String> {
     items
         .iter()
@@ -204,6 +221,85 @@ fn repeated_send_with_the_same_identifier_is_stored_once() {
     let again = alice.send_text_with_id(ROOM, "раз", "send-0001").unwrap();
     assert_eq!(first, again, "повтор вернул первое сообщение");
     assert_eq!(texts(&bob.sync().unwrap()), vec!["раз"]);
+}
+
+#[test]
+fn uncertain_send_reuses_exact_mls_ciphertext_and_keeps_sender_history() {
+    let engine = start_engine();
+    let keys = MemoryKeyStore::default();
+    let alice_db = db("alice-exact-retry");
+    let bob_db = db("bob-exact-retry");
+    let mut alice = connect(&engine.base, ALICE, PW, "A_EXACT", &alice_db, &keys).unwrap();
+    let mut bob = connect(&engine.base, BOB, PW, "B_EXACT", &bob_db, &keys).unwrap();
+    bob.ensure_key_packages(1).unwrap();
+    alice.create_room(ROOM).unwrap();
+    alice.invite(ROOM, BOB).unwrap();
+    assert!(bob.sync().unwrap().is_empty());
+
+    let database_key = keys
+        .existing_database_key(&format!("{ALICE}/A_EXACT"))
+        .unwrap()
+        .expect("sender SQLCipher key");
+    let connection = open_encrypted_db(&alice_db, &database_key);
+    connection
+        .execute_batch(
+            "CREATE TRIGGER fail_outgoing_history_insert
+             BEFORE INSERT ON client_inbox
+             WHEN NEW.direction = 'outgoing'
+             BEGIN
+               SELECT RAISE(ABORT, 'simulated local history failure');
+             END;",
+        )
+        .unwrap();
+    drop(connection);
+
+    // The server commits the first request, but the local history transaction
+    // fails. The exact MLS ciphertext must remain in the durable SQLCipher outbox.
+    assert!(alice
+        .send_text_with_id(ROOM, "retry-safe text", "stable-send-0001")
+        .is_err());
+    let read_persisted_message = || {
+        let connection = open_encrypted_db(&alice_db, &database_key);
+        connection
+            .query_row(
+                "SELECT mls_message FROM client_outbox WHERE local_id = ?1",
+                ["stable-send-0001"],
+                |row| row.get::<_, Vec<u8>>(0),
+            )
+            .expect("durable MLS message")
+    };
+    let first_message = read_persisted_message();
+    assert!(!first_message.is_empty());
+
+    // A second uncertain retry must not advance the sender ratchet or alter bytes.
+    assert!(alice
+        .send_text_with_id(ROOM, "retry-safe text", "stable-send-0001")
+        .is_err());
+    assert_eq!(first_message, read_persisted_message());
+
+    let connection = open_encrypted_db(&alice_db, &database_key);
+    connection
+        .execute_batch("DROP TRIGGER fail_outgoing_history_insert;")
+        .unwrap();
+    drop(connection);
+
+    let event_id = alice
+        .send_text_with_id(ROOM, "retry-safe text", "stable-send-0001")
+        .unwrap();
+    assert_eq!(
+        alice
+            .send_text_with_id(ROOM, "retry-safe text", "stable-send-0001")
+            .unwrap(),
+        event_id,
+        "completed operation IDs return the original event without creating another MLS message"
+    );
+    assert_eq!(texts(&bob.sync().unwrap()), vec!["retry-safe text"]);
+
+    let sender_history = texts(&alice.messages_for_room(ROOM).unwrap());
+    assert_eq!(sender_history, vec!["retry-safe text"]);
+
+    alice.send_text_with_id(ROOM, "message after retry", "stable-send-0002").unwrap();
+    assert_eq!(texts(&bob.sync().unwrap()), vec!["message after retry"]);
 }
 
 #[test]
