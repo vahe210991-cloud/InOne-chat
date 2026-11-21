@@ -62,7 +62,7 @@ The work is isolated to `fix/canonical-backend-identity-2026-11-21`. It must be 
 
 ## Pull request and CI status
 
-- Draft PR: [#120 — canonical InOne backend identity](https://github.com/vahe210991-cloud/InOne-chat/pull/120), base `main`, latest inspected head `f81c2a37b54dee2593fa14c3eb9dead441cccaa9`.
+- Draft PR: [#120 — canonical InOne backend identity](https://github.com/vahe210991-cloud/InOne-chat/pull/120), base `main`; exact latest head must be re-read after these follow-up documentation corrections.
 - The PR is open and draft; it is not merged. Mergeability must be rechecked after GitHub recalculates the latest head.
 - Workflow runs `44871378564` (P0), `44871379518` (Email/PostgreSQL), `44871378516` (Flutter) and `44871378501` (iOS) were created for the previous head `1741651a3212057b0d6b8feb4b30ad7e7212c826`, not the latest documentation-updated head.
 - Those previous-head jobs were still `queued`; no pass/fail result or test execution is evidenced. `fetch_commit_workflow_runs` returned no runs for latest head `f81c2a37b54dee2593fa14c3eb9dead441cccaa9` at the time of inspection.
