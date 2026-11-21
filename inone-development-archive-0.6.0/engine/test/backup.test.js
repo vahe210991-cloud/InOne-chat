@@ -4,7 +4,7 @@ import { randomBytes } from 'node:crypto';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, readdirSync, copyFileSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,6 +25,16 @@ function withDatabase(url, name) {
 
 async function admin(sql) {
   const c = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await c.connect();
+  try {
+    await c.query(sql);
+  } finally {
+    await c.end();
+  }
+}
+
+async function queryDatabase(url, sql) {
+  const c = new pg.Client({ connectionString: url });
   await c.connect();
   try {
     await c.query(sql);
@@ -73,7 +83,6 @@ dbTest('копия восстанавливается в пустую базу �
     const data = readFileSync(dumpPath);
     data[Math.floor(data.length / 2)] ^= 0xff;
     writeFileSync(bad, data);
-    // Контрольная сумма повреждённой копии должна называть свой файл, а не исходный дамп.
     writeFileSync(`${bad}.sha256`, readFileSync(`${dumpPath}.sha256`, 'utf8').split(path.basename(dumpPath)).join(path.basename(bad)));
     await admin(`CREATE DATABASE ${badName}`);
     const refused = spawnSync('bash', [path.join(root, 'scripts/restore-db.sh'), bad, withDatabase(process.env.DATABASE_URL, badName)], { encoding: 'utf8' });
@@ -82,6 +91,33 @@ dbTest('копия восстанавливается в пустую базу �
   } finally {
     for (const name of [srcName, dstName, badName]) await admin(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`).catch(() => {});
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+dbTest('сверка восстановления запрещает сравнение базы самой с собой', async () => {
+  const url = process.env.DATABASE_URL;
+  const result = spawnSync('node', [path.join(root, 'scripts/verify-restore.mjs'), url, url], { encoding: 'utf8' });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /две разные базы/);
+});
+
+dbTest('сверка восстановления отклоняет две базы без schema_migrations', async () => {
+  const tag = `${process.pid}_${randomBytes(4).toString('hex')}`;
+  const sourceName = `inone_backup_nomig_src_${tag}`;
+  const targetName = `inone_backup_nomig_dst_${tag}`;
+  const sourceUrl = withDatabase(process.env.DATABASE_URL, sourceName);
+  const targetUrl = withDatabase(process.env.DATABASE_URL, targetName);
+  await admin(`CREATE DATABASE ${sourceName}`);
+  await admin(`CREATE DATABASE ${targetName}`);
+  try {
+    await queryDatabase(sourceUrl, 'CREATE TABLE probe (id integer PRIMARY KEY); INSERT INTO probe VALUES (1)');
+    await queryDatabase(targetUrl, 'CREATE TABLE probe (id integer PRIMARY KEY); INSERT INTO probe VALUES (1)');
+    const result = spawnSync('node', [path.join(root, 'scripts/verify-restore.mjs'), sourceUrl, targetUrl], { encoding: 'utf8' });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /schema_migrations отсутствует/);
+  } finally {
+    await admin(`DROP DATABASE IF EXISTS ${sourceName} WITH (FORCE)`).catch(() => {});
+    await admin(`DROP DATABASE IF EXISTS ${targetName} WITH (FORCE)`).catch(() => {});
   }
 });
 

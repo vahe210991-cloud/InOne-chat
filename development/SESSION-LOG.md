@@ -602,3 +602,15 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Added report `development/reports/2026-11-20-P2-push-profile-audit.md`, commit `acbbe1653046d2f01b1efb6efa5d4a40350b7638`.
 - No product code/API contract changed. No tests/builds run. No merge. WBS v1.1 and readiness percentages unchanged.
 - Next: obtain approved profile editable-field list; select/pin FCM/APNs mobile integration; implement typed token lifecycle and production ST-01 wiring; wire protected provider sender; run exact-SHA Node/PostgreSQL/Flutter/Android/iOS checks.
+
+
+## 2026-11-21 — canonical Backend identity remediation
+
+- Confirmed that `inone-development-archive-0.6.0/engine/` is the canonical Node.js Beta 1.0 backend, while `inone-engine-poc-0.6.0/mobile-mls/mls-client/` remains the canonical Flutter-connected persistent Rust MLS client.
+- Reconciled package metadata and npm lockfile to `inone-backend`; removed the temporary Variant A package description.
+- Replaced the stale backend README, corrected the mobile setup guide's backend working directory, and added `test/backend-identity.test.js` to the Node suite.
+- Added ADR-004, backend source-of-truth map and detailed audit report.
+- Branch: `fix/canonical-backend-identity-2026-11-21`. No source tree move/rewrite, no Rust dependency change and no merge to main.
+- Runtime tests and CI are not yet evidenced; inspect exact-head checks before accepting or merging.
+
+- Draft PR #120 remains open against `main`, not merged. The backend README was corrected to preserve legacy notes under a clear canonical-source banner; fresh exact-head CI is required for this final follow-up.

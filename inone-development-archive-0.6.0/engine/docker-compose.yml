@@ -1,26 +1,46 @@
-# Сервер и база для проверки. Пароли — в файле .env, не в этом файле. Не проверено в этой среде.
+# Local runtime smoke for the canonical Node.js backend + PostgreSQL 16.
+# Set POSTGRES_PASSWORD to a URL-safe value in .env or the process environment.
+# Development-only settings; do not use this profile in production.
 services:
   db:
     image: postgres:16
+    restart: unless-stopped
     environment:
-      POSTGRES_DB: change-me-set-in-your-environment
-      POSTGRES_USER: change-me-set-in-your-environment
-      POSTGRES_PASSWORD: change-me-set-in-your-environment
+      POSTGRES_DB: ${POSTGRES_DB:-inone}
+      POSTGRES_USER: ${POSTGRES_USER:-inone}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env or environment}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U inone -d inone"]
+      test: ["CMD-SHELL", 'pg_isready -U "$$${POSTGRES_USER}" -d "$$${POSTGRES_DB}"']
       interval: 5s
+      timeout: 3s
       retries: 20
   app:
     build: .
-    env_file: .env
+    restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://HOST:5432/DATABASE (логин и пароль задаются переменной окружения)
+      NODE_ENV: development
+      HOST: 0.0.0.0
+      PORT: 8080
+      DATABASE_URL: postgresql://${POSTGRES_USER:-inone}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-inone}
+      INONE_PIN_PEPPER: ${INONE_PIN_PEPPER:-dev-only-pepper-do-not-use-in-production-000000}
+      INONE_PUBLIC_URL: ${INONE_PUBLIC_URL:-http://localhost:8080}
+      INONE_REGISTRATION_MODE: verified
+      INONE_TRUST_PROXY: "false"
+      INONE_RUN_MIGRATIONS: "true"
+      INONE_MAIL_TRANSPORT: memory
+      INONE_REQUIRE_PHONE: "false"
+      INONE_SMS_ENABLED: "false"
+      INONE_FILES_DIR: /var/lib/inone/files
+      LOG_LEVEL: info
     depends_on:
       db:
         condition: service_healthy
     ports:
-      - "8080:8080"
+      - "${PORT:-8080}:8080"
+    volumes:
+      - inone-files:/var/lib/inone/files
 volumes:
   pgdata:
+  inone-files:

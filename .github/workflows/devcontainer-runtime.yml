@@ -1,0 +1,120 @@
+name: Dev Container Compose runtime validation
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".devcontainer/**"
+      - "inone-development-archive-0.6.0/engine/**"
+      - ".github/workflows/devcontainer-runtime.yml"
+  push:
+    branches: [main]
+    paths:
+      - ".devcontainer/**"
+      - "inone-development-archive-0.6.0/engine/**"
+      - ".github/workflows/devcontainer-runtime.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: devcontainer-runtime-${{ github.event.pull_request.head.ref || github.ref_name }}-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  compose-runtime:
+    name: Compose PostgreSQL + migrations + backend API smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      COMPOSE_PROJECT_NAME: inone-ci-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify exact source SHA
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$EXPECTED_SHA"
+          echo "Validated source SHA: $actual"
+
+      - name: Record Docker toolchain
+        run: |
+          docker --version
+          docker compose version
+
+      - name: Build and start the actual Dev Container Compose services
+        run: |
+          docker compose -f .devcontainer/docker-compose.yml up --build --detach --wait --wait-timeout 180
+
+      - name: Install locked engine dependencies and apply database migrations
+        run: |
+          docker compose -f .devcontainer/docker-compose.yml exec -T --user root app bash -lc '
+            set -euo pipefail
+            cd /workspace/inone-development-archive-0.6.0/engine
+            npm ci
+            npm run migrate
+          '
+
+      - name: Start backend and run HTTP API smoke checks
+        run: |
+          docker compose -f .devcontainer/docker-compose.yml exec -T app bash -lc '
+            set -euo pipefail
+            cd /workspace/inone-development-archive-0.6.0/engine
+            nohup npm start >/tmp/inone-backend-runtime.log 2>&1 </dev/null &
+          '
+          docker compose -f .devcontainer/docker-compose.yml exec -T --user root app node --input-type=module <<'NODE'
+          import assert from "node:assert/strict";
+
+          const base = "http://127.0.0.1:8080";
+          let lastError;
+          for (let attempt = 0; attempt < 60; attempt += 1) {
+            try {
+              const health = await fetch(`${base}/healthz`, { signal: AbortSignal.timeout(3000) });
+              assert.equal(health.status, 200, "GET /healthz must return HTTP 200");
+              const healthBody = await health.json();
+              assert.equal(healthBody.status, "ok", "GET /healthz must report status=ok");
+
+              const ready = await fetch(`${base}/readyz`, { signal: AbortSignal.timeout(3000) });
+              assert.equal(ready.status, 200, "GET /readyz must return HTTP 200 after migrations");
+              const readyBody = await ready.json();
+              assert.equal(readyBody.status, "ready", "GET /readyz must report status=ready");
+
+              console.log("API smoke passed: /healthz and /readyz returned HTTP 200.");
+              process.exit(0);
+            } catch (error) {
+              lastError = error;
+              await new Promise((resolve) => setTimeout(resolve, 1000));
+            }
+          }
+          console.error("API smoke failed:", lastError?.message ?? "backend did not become ready");
+          process.exit(1);
+          NODE
+
+      - name: Capture Compose and backend diagnostics
+        if: always()
+        run: |
+          mkdir -p "${RUNNER_TEMP}/inone-compose-diagnostics"
+          docker compose -f .devcontainer/docker-compose.yml ps --all > "${RUNNER_TEMP}/inone-compose-diagnostics/compose-ps.txt" 2>&1 || true
+          docker compose -f .devcontainer/docker-compose.yml logs --no-color > "${RUNNER_TEMP}/inone-compose-diagnostics/compose.log" 2>&1 || true
+          docker compose -f .devcontainer/docker-compose.yml exec -T --user root app bash -lc 'cat /tmp/inone-backend-runtime.log 2>/dev/null || true' > "${RUNNER_TEMP}/inone-compose-diagnostics/backend.log" 2>&1 || true
+          docker --version > "${RUNNER_TEMP}/inone-compose-diagnostics/docker-version.txt" 2>&1 || true
+          docker compose version >> "${RUNNER_TEMP}/inone-compose-diagnostics/docker-version.txt" 2>&1 || true
+
+      - name: Upload runtime diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: inone-devcontainer-runtime-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/inone-compose-diagnostics/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Stop Compose services
+        if: always()
+        run: docker compose -f .devcontainer/docker-compose.yml down --volumes --remove-orphans

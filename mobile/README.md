@@ -61,7 +61,7 @@ The native Flutter app uses the local development backend by default in debug bu
 - iOS simulator / desktop: `http://127.0.0.1:8080`.
 - Physical device: pass the host computer's private LAN address explicitly.
 
-Run the backend from `../inone-engine-poc-0.6.0` on port `8080` using its development instructions, then start the app:
+Run the canonical Beta 1.0 Node.js backend from `../inone-development-archive-0.6.0/engine` on port `8080` using its development instructions. The separate `inone-engine-poc-0.6.0` tree is not the active Node.js backend; it contains the Flutter-connected persistent Rust MLS client at `mobile-mls/mls-client/`. Then start the app:
 
 ```sh
 cd mobile
