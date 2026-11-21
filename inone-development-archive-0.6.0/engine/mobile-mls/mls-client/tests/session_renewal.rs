@@ -167,14 +167,16 @@ fn resume_never_regenerates_a_missing_sqlcipher_key() {
 
     let scope = format!("{user}/{device}");
     keys.delete_database_key(&scope).expect("remove test key");
-    let error = resume_with_session(
+    let error = match resume_with_session(
         &engine.base,
         user,
         device,
         &database_path,
         &keys,
-    )
-    .expect_err("resume must fail closed when the SQLCipher key is missing");
+    ) {
+        Ok(_) => panic!("resume must fail closed when the SQLCipher key is missing"),
+        Err(error) => error,
+    };
 
     assert!(
         error.contains("ключ SQLCipher сохранённой MLS-сессии отсутствует"),
