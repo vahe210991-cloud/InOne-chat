@@ -132,6 +132,11 @@ fn attachment_retry_reuses_the_exact_mls_message_after_server_commit() {
     let first_message = read_persisted_message();
     assert!(!first_message.is_empty());
 
+    // Close and reopen Rust: the exact MLS ciphertext and encrypted manifest
+    // must survive process loss without depending on the original Dart handle.
+    drop(alice);
+    let mut alice = resume_with_session(&engine.base, ALICE, "A_PHONE", &alice_db, &keys).unwrap();
+
     // A second uncertain retry receives the server's original event ID. It
     // must not consume another sender ratchet generation or change the bytes.
     assert!(alice.send_attachment_with_id(
@@ -140,13 +145,20 @@ fn attachment_retry_reuses_the_exact_mls_message_after_server_commit() {
     let second_message = read_persisted_message();
     assert_eq!(first_message, second_message);
 
+    // After another restart, the native outbox can finish without the caller
+    // re-supplying the file bytes; the ciphertext is already durable in SQLCipher.
+    drop(alice);
     let connection = open_encrypted_db(&alice_db, &database_key);
     connection.execute_batch("DROP TRIGGER fail_outgoing_attachment_insert;").unwrap();
     drop(connection);
-
-    let event_id = alice.send_attachment_with_id(
-        ROOM, "retry.txt", "text/plain", &plaintext, client_message_id
-    ).unwrap();
+    let mut alice = resume_with_session(&engine.base, ALICE, "A_PHONE", &alice_db, &keys).unwrap();
+    assert_eq!(alice.flush_outbox().unwrap(), 1);
+    assert_eq!(alice.outbox_len().unwrap(), 0);
+    let sender_history = alice.messages_for_room(ROOM).unwrap();
+    let event_id = sender_history.iter().find_map(|item| match item {
+        Incoming::Attachment { event_id, mine: true, .. } => Some(event_id.clone()),
+        _ => None,
+    }).expect("sender attachment history after resumed outbox flush");
     let received = bob.sync().unwrap();
     assert_eq!(received.iter().filter(|item| matches!(item, Incoming::Attachment { .. })).count(), 1);
     assert!(received.iter().any(|item| matches!(item, Incoming::Attachment { event_id: id, .. } if id == &event_id)));
@@ -193,6 +205,43 @@ fn attachment_is_mls_encrypted_uploaded_and_persisted_for_both_devices() {
     assert_eq!(name, "confidential.txt");
     assert_eq!(mime_type, "text/plain");
     assert_eq!(*size, plaintext.len() as u64);
+
+    // The object service stores only AES-GCM ciphertext, never the source bytes.
+    let alice_token = alice.access_token_snapshot().unwrap();
+    let alice_auth = format!("Bearer {alice_token}");
+    let alice_link = ureq::get(&format!("{}/files/{file_id}/url", engine.base))
+        .set("authorization", &alice_auth)
+        .call()
+        .unwrap()
+        .into_json::<serde_json::Value>()
+        .unwrap();
+    let alice_download_url = alice_link["downloadUrl"].as_str().unwrap();
+    let mut uploaded_ciphertext = Vec::new();
+    ureq::get(alice_download_url)
+        .set("authorization", &alice_auth)
+        .call()
+        .unwrap()
+        .into_reader()
+        .read_to_end(&mut uploaded_ciphertext)
+        .unwrap();
+    assert_ne!(uploaded_ciphertext, plaintext);
+    assert_eq!(uploaded_ciphertext.len(), plaintext.len() + 16);
+
+    // A signed object URL obtained by another room member is still bound to
+    // that member's device and cannot be replayed with this device's bearer.
+    let bob_token = bob.access_token_snapshot().unwrap();
+    let bob_auth = format!("Bearer {bob_token}");
+    let bob_link = ureq::get(&format!("{}/files/{file_id}/url", engine.base))
+        .set("authorization", &bob_auth)
+        .call()
+        .unwrap()
+        .into_json::<serde_json::Value>()
+        .unwrap();
+    let bob_download_url = bob_link["downloadUrl"].as_str().unwrap();
+    let cross_device = ureq::get(bob_download_url)
+        .set("authorization", &alice_auth)
+        .call();
+    assert!(matches!(cross_device, Err(ureq::Error::Status(403, _))));
 
     assert_eq!(bob.download_attachment(file_id).unwrap(), plaintext);
     assert_eq!(alice.download_attachment(file_id).unwrap(), plaintext);
