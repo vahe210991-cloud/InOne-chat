@@ -3410,13 +3410,22 @@ impl Client {
         if self.cached_remote_config().maintenance {
             return Ok(0); // очередь не трогаем: сообщения уйдут после обслуживания
         }
-        let items: Vec<(String, String, String)> = {
+        let items: Vec<(String, String, String, Option<Vec<u8>>)> = {
             let mut stmt = self
                 .meta
-                .prepare("SELECT local_id, room_id, body FROM client_outbox ORDER BY seq")
+                .prepare(
+                    "SELECT local_id, room_id, body, payload FROM client_outbox ORDER BY seq",
+                )
                 .map_err(text)?;
             let rows = stmt
-                .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+                .query_map([], |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                    ))
+                })
                 .map_err(text)?;
             rows.collect::<Result<_, _>>().map_err(text)?
         };
@@ -3429,8 +3438,14 @@ impl Client {
             Err(e) => return Err(e),
         }
         let mut sent = 0;
-        for (local_id, room_id, body) in items {
-            match self.send_text_with_id(&room_id, &body, &local_id) {
+        for (local_id, room_id, body, payload) in items {
+            let result = match payload {
+                Some(payload) => {
+                    self.send_application_payload_with_id(&room_id, &payload, &local_id)
+                }
+                None => self.send_text_with_id(&room_id, &body, &local_id),
+            };
+            match result {
                 Ok(_) => {
                     self.meta
                         .execute("DELETE FROM client_outbox WHERE local_id = ?1", [&local_id])
