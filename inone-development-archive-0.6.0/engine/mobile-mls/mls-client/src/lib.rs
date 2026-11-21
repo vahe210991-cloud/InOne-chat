@@ -1296,14 +1296,17 @@ fn verify_staged_membership_metadata(
     Ok(())
 }
 
-fn membership_commit_fingerprint(
-    provider: &DeviceProvider<Connection>,
+fn membership_commit_fingerprint<ConnectionRef>(
+    provider: &DeviceProvider<ConnectionRef>,
     room_id: &str,
     operation_id: &str,
     base_epoch: u64,
     payload: &Value,
     staged: &StagedCommit,
-) -> Result<String, String> {
+) -> Result<String, String>
+where
+    ConnectionRef: Borrow<Connection>,
+{
     let staged_epoch = staged.epoch().as_u64();
     if staged_epoch != base_epoch.saturating_add(1) {
         return Err(format!(
@@ -2336,6 +2339,10 @@ pub fn download_attachment(&self, file_id: &str) -> Result<Vec<u8>, String> {
                         return Err(format!("RecoveryRequired: {reason}"));
                     }
                     let tx = self.meta.unchecked_transaction().map_err(text)?;
+                    let transaction_provider = DeviceProvider::new(
+                        Arc::clone(&transaction_provider.crypto),
+                        TransactionConnection(&tx),
+                    );
                     let mut integrity_error: Option<String> = None;
                     let settlement = (|| -> Result<(), String> {
                         let group = self
@@ -2402,6 +2409,10 @@ pub fn download_attachment(&self, file_id: &str) -> Result<Vec<u8>, String> {
                 }
                 Err(error) if response_error_code(&error).as_deref() == Some("epoch_outdated") => {
                     let tx = self.meta.unchecked_transaction().map_err(text)?;
+                    let transaction_provider = DeviceProvider::new(
+                        Arc::clone(&transaction_provider.crypto),
+                        TransactionConnection(&tx),
+                    );
                     let mut integrity_error: Option<String> = None;
                     let clearing = (|| -> Result<(), String> {
                         let group = self
@@ -2427,7 +2438,7 @@ pub fn download_attachment(&self, file_id: &str) -> Result<Vec<u8>, String> {
                         }
                         group
                             .mls
-                            .clear_pending_commit(self.provider.storage())
+                            .clear_pending_commit(transaction_provider.storage())
                             .map_err(text)?;
                         tx.execute(
                             "DELETE FROM client_membership_commits WHERE operation_id = ?1",
@@ -2610,6 +2621,10 @@ pub fn download_attachment(&self, file_id: &str) -> Result<Vec<u8>, String> {
         devices.dedup();
 
         let tx = self.meta.unchecked_transaction().map_err(text)?;
+        let transaction_provider = DeviceProvider::new(
+            Arc::clone(&transaction_provider.crypto),
+            TransactionConnection(&tx),
+        );
         let staged = (|| -> Result<(), String> {
             let group = self
                 .groups
@@ -4083,6 +4098,10 @@ pub fn download_attachment(&self, file_id: &str) -> Result<Vec<u8>, String> {
                     .collect();
                 let operation_id = hex_encode(&self.provider.rand().random_vec(16).map_err(text)?);
                 let tx = self.meta.unchecked_transaction().map_err(text)?;
+                let transaction_provider = DeviceProvider::new(
+                    Arc::clone(&transaction_provider.crypto),
+                    TransactionConnection(&tx),
+                );
                 let staged = (|| -> Result<(), String> {
                     let group = self.groups.get_mut(&room_id).ok_or("комната не найдена")?;
                     let leaves: Vec<LeafNodeIndex> = group
