@@ -138,10 +138,7 @@ dbTest('FILES_DIR: архив с символической ссылкой и п
     try { await migrate(pool); } finally { await pool.end(); }
     const [dump] = runBackup(sourceUrl, sourceFiles, backupDir);
     const linkArchive = path.join(temp, 'links.tar.gz');
-    execFileSync('tar', ['-czf', linkArchive, '-C', linkFiles, '--transform=s|payload|link|', 'payload']);
-    execFileSync('tar', ['-czf', linkArchive, '-C', linkFiles, '--transform=s|payload|link|', 'payload']);
-    const linkCreator = spawnSync('bash', ['-lc', `ln -s /tmp/inone-outside "${linkFiles}/link" && tar -czf "${linkArchive}" -C "${linkFiles}" link`], { encoding: 'utf8' });
-    assert.equal(linkCreator.status, 0);
+    execFileSync('bash', ['-lc', `ln -s /tmp/inone-outside "${linkFiles}/link" && tar -czf "${linkArchive}" -C "${linkFiles}" link`]);
     writeChecksum(linkArchive);
     const linkResult = spawnSync('bash', [path.join(root, 'scripts/restore-db.sh'), dump, targetUrl, linkArchive, targetFiles], { encoding: 'utf8' });
     assert.notEqual(linkResult.status, 0);
