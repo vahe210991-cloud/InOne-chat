@@ -2340,7 +2340,7 @@ pub fn download_attachment(&self, file_id: &str) -> Result<Vec<u8>, String> {
                     }
                     let tx = self.meta.unchecked_transaction().map_err(text)?;
                     let transaction_provider = DeviceProvider::new(
-                        Arc::clone(&transaction_provider.crypto),
+                        Arc::clone(&self.provider.crypto),
                         TransactionConnection(&tx),
                     );
                     let mut integrity_error: Option<String> = None;
@@ -2410,7 +2410,7 @@ pub fn download_attachment(&self, file_id: &str) -> Result<Vec<u8>, String> {
                 Err(error) if response_error_code(&error).as_deref() == Some("epoch_outdated") => {
                     let tx = self.meta.unchecked_transaction().map_err(text)?;
                     let transaction_provider = DeviceProvider::new(
-                        Arc::clone(&transaction_provider.crypto),
+                        Arc::clone(&self.provider.crypto),
                         TransactionConnection(&tx),
                     );
                     let mut integrity_error: Option<String> = None;
@@ -2622,7 +2622,7 @@ pub fn download_attachment(&self, file_id: &str) -> Result<Vec<u8>, String> {
 
         let tx = self.meta.unchecked_transaction().map_err(text)?;
         let transaction_provider = DeviceProvider::new(
-            Arc::clone(&transaction_provider.crypto),
+            Arc::clone(&self.provider.crypto),
             TransactionConnection(&tx),
         );
         let staged = (|| -> Result<(), String> {
@@ -4099,7 +4099,7 @@ pub fn download_attachment(&self, file_id: &str) -> Result<Vec<u8>, String> {
                 let operation_id = hex_encode(&self.provider.rand().random_vec(16).map_err(text)?);
                 let tx = self.meta.unchecked_transaction().map_err(text)?;
                 let transaction_provider = DeviceProvider::new(
-                    Arc::clone(&transaction_provider.crypto),
+                    Arc::clone(&self.provider.crypto),
                     TransactionConnection(&tx),
                 );
                 let staged = (|| -> Result<(), String> {
