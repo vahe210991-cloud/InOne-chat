@@ -3,10 +3,12 @@
 //! База устройства зашифрована (SQLCipher). Ключ передаёт платформа: Keychain на iOS, Keystore на Android.
 use std::borrow::Borrow;
 use std::collections::{BTreeSet, HashMap, HashSet};
+use std::io::Read;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use url::Url;
 use zeroize::{Zeroize, Zeroizing};
 
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
@@ -55,6 +57,14 @@ pub enum Incoming {
         room_id: String,
         event_id: String,
         text: String,
+    },
+    Attachment {
+        room_id: String,
+        event_id: String,
+        file_id: String,
+        name: String,
+        mime_type: String,
+        size: u64,
     },
     Unreadable {
         room_id: String,
@@ -203,6 +213,9 @@ fn insert_incoming_record(db: &Connection, incoming: &Incoming) -> Result<(), St
             event_id,
             text,
         } => (event_id, room_id, "text", Some(text)),
+        Incoming::Attachment { room_id, event_id, .. } => {
+            (event_id, room_id, "text", Some(""))
+        }
         Incoming::Unreadable { room_id, event_id } => (event_id, room_id, "unreadable", None),
     };
     let exists: bool = db
@@ -255,6 +268,83 @@ fn insert_incoming_record(db: &Connection, incoming: &Incoming) -> Result<(), St
     .map_err(text)?;
     crash_at_test_failpoint("after_inbox_insert");
     Ok(())
+}
+
+
+fn insert_attachment_record(
+    db: &Connection,
+    file_id: &str,
+    room_id: &str,
+    event_id: &str,
+    manifest: &[u8],
+    direction: &str,
+    client_message_id: Option<&str>,
+) -> Result<(), String> {
+    let created_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64;
+    db.execute(
+        "INSERT OR IGNORE INTO client_attachments
+         (file_id, room_id, event_id, manifest, direction, created_at, client_message_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        rusqlite::params![file_id, room_id, event_id, manifest, direction, created_at, client_message_id],
+    )
+    .map_err(text)?;
+    let stored: (String, String, Vec<u8>) = db
+        .query_row(
+            "SELECT room_id, event_id, manifest FROM client_attachments WHERE file_id = ?1",
+            [file_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .map_err(text)?;
+    if stored.0 != room_id || stored.1 != event_id || stored.2.as_slice() != manifest {
+        return Err("attachment fileId is already bound to a different room/event/manifest".to_string());
+    }
+    Ok(())
+}
+
+fn incoming_from_inbox_row(
+    db: &Connection,
+    event_id: String,
+    room_id: String,
+    kind: String,
+    body: Option<String>,
+) -> Result<Incoming, String> {
+    match kind.as_str() {
+        "text" => {
+            use rusqlite::OptionalExtension;
+            let attachment: Option<(String, Vec<u8>)> = db
+                .query_row(
+                    "SELECT file_id, manifest FROM client_attachments WHERE event_id = ?1",
+                    [&event_id],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .optional()
+                .map_err(text)?;
+            if let Some((file_id, manifest_bytes)) = attachment {
+                let manifest_bytes = Zeroizing::new(manifest_bytes);
+                let manifest =
+                    attachment_crypto::parse_manifest(&manifest_bytes, &file_id, &room_id)?;
+                Ok(Incoming::Attachment {
+                    room_id,
+                    event_id,
+                    file_id,
+                    name: manifest.name.clone(),
+                    mime_type: manifest.mime_type.clone(),
+                    size: manifest.size,
+                })
+            } else {
+                Ok(Incoming::Text {
+                    room_id,
+                    event_id,
+                    text: body.ok_or_else(|| "inbox text row has no body".to_string())?,
+                })
+            }
+        }
+        "unreadable" => Ok(Incoming::Unreadable { room_id, event_id }),
+        _ => Err(format!("inbox contains an unsupported record kind: {kind}")),
+    }
 }
 
 fn insert_processed_event(db: &Connection, event_id: &str) -> Result<(), String> {
@@ -861,6 +951,28 @@ fn build_client(
            acked_at INTEGER
          );
          CREATE TABLE IF NOT EXISTS client_outbox (local_id TEXT PRIMARY KEY, room_id TEXT NOT NULL, body TEXT NOT NULL, seq INTEGER NOT NULL);
+         CREATE TABLE IF NOT EXISTS client_attachments (
+           file_id TEXT PRIMARY KEY,
+           room_id TEXT NOT NULL,
+           event_id TEXT NOT NULL UNIQUE,
+           manifest BLOB NOT NULL,
+           direction TEXT NOT NULL CHECK (direction IN ('incoming', 'outgoing')),
+           created_at INTEGER NOT NULL,
+           client_message_id TEXT
+         );
+         CREATE TABLE IF NOT EXISTS client_attachment_outbox (
+           client_message_id TEXT PRIMARY KEY,
+           room_id TEXT NOT NULL,
+           file_id TEXT NOT NULL,
+           manifest BLOB NOT NULL,
+           ciphertext_sha256 TEXT NOT NULL,
+           ciphertext_size INTEGER NOT NULL,
+           uploaded INTEGER NOT NULL DEFAULT 0 CHECK (uploaded IN (0, 1)),
+           mls_message BLOB,
+           mls_epoch INTEGER
+         );
+         CREATE INDEX IF NOT EXISTS idx_client_attachments_room_created
+           ON client_attachments(room_id, created_at);
          CREATE TABLE IF NOT EXISTS client_remote_config (id INTEGER PRIMARY KEY CHECK (id = 1), etag TEXT NOT NULL, body TEXT NOT NULL, fetched_at INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS client_key_package_claims (room_id TEXT NOT NULL, user_id TEXT NOT NULL, claim_id TEXT NOT NULL, PRIMARY KEY (room_id, user_id));
           CREATE TABLE IF NOT EXISTS client_membership_commits (
@@ -2610,6 +2722,7 @@ impl Client {
         room_id: &str,
         event_id: &str,
         bytes: &[u8],
+        outer_file_id: Option<&str>,
         out: &mut Vec<Incoming>,
     ) -> Result<(), String> {
         let parsed = MlsMessageIn::tls_deserialize_exact(bytes)
@@ -2670,39 +2783,94 @@ impl Client {
 
         match processed_result {
             Ok(processed) => {
-                let (incoming, unreadable_reason) = match processed.into_content() {
-                    ProcessedMessageContent::ApplicationMessage(app) => {
-                        match String::from_utf8(app.into_bytes()) {
-                            Ok(text) => (
-                                Incoming::Text {
-                                    room_id: room_id.to_string(),
-                                    event_id: event_id.to_string(),
-                                    text,
-                                },
-                                None,
-                            ),
-                            Err(_) => (
-                                Incoming::Unreadable {
-                                    room_id: room_id.to_string(),
-                                    event_id: event_id.to_string(),
-                                },
-                                Some("application payload is not valid UTF-8"),
-                            ),
+                let (incoming, unreadable_reason, attachment_manifest) =
+                    match processed.into_content() {
+                        ProcessedMessageContent::ApplicationMessage(app) => {
+                            let app_bytes = Zeroizing::new(app.into_bytes());
+                            if let Some(file_id) = outer_file_id {
+                                match attachment_crypto::parse_manifest(&app_bytes, file_id, room_id) {
+                                    Ok(manifest) => (
+                                        Incoming::Attachment {
+                                            room_id: room_id.to_string(),
+                                            event_id: event_id.to_string(),
+                                            file_id: manifest.file_id.clone(),
+                                            name: manifest.name.clone(),
+                                            mime_type: manifest.mime_type.clone(),
+                                            size: manifest.size,
+                                        },
+                                        None,
+                                        Some(Zeroizing::new(app_bytes.to_vec())),
+                                    ),
+                                    Err(error) => (
+                                        Incoming::Unreadable {
+                                            room_id: room_id.to_string(),
+                                            event_id: event_id.to_string(),
+                                        },
+                                        Some(format!("invalid MLS attachment manifest: {error}")),
+                                        None,
+                                    ),
+                                }
+                            } else if attachment_crypto::is_attachment_manifest(&app_bytes) {
+                                (
+                                    Incoming::Unreadable {
+                                        room_id: room_id.to_string(),
+                                        event_id: event_id.to_string(),
+                                    },
+                                    Some("MLS attachment manifest is missing the outer file reference".to_string()),
+                                    None,
+                                )
+                            } else {
+                                match String::from_utf8(app_bytes.to_vec()) {
+                                    Ok(text) => (
+                                        Incoming::Text {
+                                            room_id: room_id.to_string(),
+                                            event_id: event_id.to_string(),
+                                            text,
+                                        },
+                                        None,
+                                        None,
+                                    ),
+                                    Err(_) => (
+                                        Incoming::Unreadable {
+                                            room_id: room_id.to_string(),
+                                            event_id: event_id.to_string(),
+                                        },
+                                        Some("application payload is not valid UTF-8".to_string()),
+                                        None,
+                                    ),
+                                }
+                            }
                         }
-                    }
-                    _ => (
-                        Incoming::Unreadable {
-                            room_id: room_id.to_string(),
-                            event_id: event_id.to_string(),
-                        },
-                        Some("MLS message is not an application message"),
-                    ),
-                };
+                        _ => (
+                            Incoming::Unreadable {
+                                room_id: room_id.to_string(),
+                                event_id: event_id.to_string(),
+                            },
+                            Some("MLS message is not an application message".to_string()),
+                            None,
+                        ),
+                    };
 
                 if let Err(error) = insert_incoming_record(&transaction, &incoming)
+                    .and_then(|_| {
+                        if let (Incoming::Attachment { file_id, .. }, Some(manifest)) =
+                            (&incoming, attachment_manifest.as_ref())
+                        {
+                            insert_attachment_record(
+                                &transaction,
+                                file_id,
+                                room_id,
+                                event_id,
+                                manifest.as_slice(),
+                                "incoming",
+                                None,
+                            )?;
+                        }
+                        Ok(())
+                    })
                     .and_then(|_| insert_processed_event(&transaction, event_id))
                     .and_then(|_| {
-                        if let Some(reason) = unreadable_reason {
+                        if let Some(reason) = unreadable_reason.as_deref() {
                             insert_undecryptable_record(&transaction, event_id, room_id, reason)?;
                         }
                         Ok(())
