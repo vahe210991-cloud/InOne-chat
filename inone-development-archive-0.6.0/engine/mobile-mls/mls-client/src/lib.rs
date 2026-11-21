@@ -3651,10 +3651,10 @@ impl Client {
             return Ok(event_id);
         }
 
-        let existing: Option<(String, String, Vec<u8>, String, i64, bool)> = self
+        let existing: Option<(String, String, Vec<u8>, String, i64, Option<Vec<u8>>, bool)> = self
             .meta
             .query_row(
-                "SELECT room_id, file_id, manifest, ciphertext_sha256, ciphertext_size, uploaded
+                "SELECT room_id, file_id, manifest, ciphertext_sha256, ciphertext_size, ciphertext, uploaded
                  FROM client_attachment_outbox WHERE client_message_id = ?1",
                 [operation_id.as_str()],
                 |row| {
@@ -3665,6 +3665,7 @@ impl Client {
                         row.get(3)?,
                         row.get(4)?,
                         row.get(5)?,
+                        row.get(6)?,
                     ))
                 },
             )
@@ -3677,6 +3678,7 @@ impl Client {
             stored_manifest,
             stored_cipher_hash,
             stored_cipher_size,
+            stored_ciphertext,
             uploaded,
         )) = existing
         {
@@ -3696,8 +3698,10 @@ impl Client {
                         .to_string(),
                 );
             }
-            ciphertext =
-                attachment_crypto::encrypt(plaintext, &parsed.key, &parsed.nonce, room_id)?;
+            ciphertext = match stored_ciphertext {
+                Some(bytes) => bytes,
+                None => attachment_crypto::encrypt(plaintext, &parsed.key, &parsed.nonce, room_id)?,
+            };
             let ciphertext_hash = attachment_crypto::sha256_hex(&ciphertext);
             if ciphertext_hash != stored_cipher_hash || ciphertext.len() as i64 != stored_cipher_size {
                 return Err(
@@ -3705,6 +3709,13 @@ impl Client {
                         .to_string(),
                 );
             }
+            self.meta
+                .execute(
+                    "UPDATE client_attachment_outbox SET ciphertext = ?2
+                     WHERE client_message_id = ?1 AND ciphertext IS NULL",
+                    rusqlite::params![operation_id.as_str(), ciphertext],
+                )
+                .map_err(text)?;
             if uploaded {
                 file_id = stored_file_id;
                 manifest_payload = Zeroizing::new(stored_manifest.to_vec());
@@ -3766,15 +3777,20 @@ impl Client {
             self.meta
                 .execute(
                     "INSERT INTO client_attachment_outbox
-                     (client_message_id, room_id, file_id, manifest, ciphertext_sha256, ciphertext_size, uploaded)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0)",
+                     (client_message_id, room_id, file_id, manifest, ciphertext_sha256, ciphertext_size, ciphertext, created_at, uploaded)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 0)",
                     rusqlite::params![
                         operation_id.as_str(),
                         room_id,
                         reserved_file_id,
                         manifest.as_slice(),
                         ciphertext_hash,
-                        ciphertext.len() as i64
+                        ciphertext.len() as i64,
+                        ciphertext,
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis() as i64
                     ],
                 )
                 .map_err(text)?;
