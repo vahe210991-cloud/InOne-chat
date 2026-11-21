@@ -68,6 +68,10 @@ jobs:
             if (workflowChanged("email-delivery-validation.yml") || changed(/^inone-development-archive-0\.6\.0\/engine\//)) {
               expected.add("Email delivery and PostgreSQL validation");
             }
+            if (workflowChanged("backend-compose-acceptance.yml") ||
+                changed(/^inone-development-archive-0\\.6\\.0\\/engine\\//)) {
+              expected.add("Backend Docker Compose runtime acceptance");
+            }
             if (workflowChanged("devcontainer-runtime.yml") ||
                 changed(/^\.devcontainer\//) ||
                 changed(/^inone-development-archive-0\.6\.0\/engine\//)) {
