@@ -452,8 +452,8 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
       // (the direct loopback test/dev case). Proxied/public requests use configured
       // publicUrl; an attacker-controlled Host header is never reflected.
       // Host and X-Forwarded-Host are not trusted proxy metadata. Only the
-      // socket-local loopback authority is accepted directly; public traffic
-      // must use the configured publicUrl origin.
+      // socket-local loopback authority is accepted directly for local tests;
+      // reverse-proxied and public traffic must use the configured publicUrl origin.
       const origin = requestAuthority === localAuthority
         ? `${req.socket.encrypted ? 'https' : 'http'}://${localAuthority}`
         : new URL(publicUrl).origin;

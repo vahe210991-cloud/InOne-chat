@@ -325,6 +325,8 @@ fn insert_attachment_record(
     {
         return Err("attachment fileId is already bound to a different room/event/manifest".to_string());
     }
+    // A sender can sync the server-accepted event before the UI retries its outbox.
+    // Promote the matching incoming row instead of creating a second attachment record.
     match (
         stored_direction.as_str(),
         direction,

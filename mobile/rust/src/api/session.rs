@@ -266,6 +266,7 @@ impl MlsSession {
     }
 
     /// Downloads ciphertext and returns plaintext only after manifest/hash verification.
+    /// The returned bytes are intended for the requesting device only.
     pub fn download_attachment(&self, file_id: String) -> Result<Vec<u8>, String> {
         self.with_client(|client| client.download_attachment(&file_id))
             .map(|bytes| Zeroizing::new(bytes).to_vec())
