@@ -4,7 +4,9 @@ use std::process::{Child, ChildStdin, Command, Stdio};
 use std::thread;
 use std::time::Duration;
 
-use mls_client::{connect, connect_with_session, resume_with_session, Incoming, KeyStore, MemoryKeyStore};
+use mls_client::{
+    connect, connect_with_session, resume_with_session, Incoming, KeyStore, MemoryKeyStore,
+};
 use serde_json::json;
 
 const PW: &str = "пароль-проверки-1";

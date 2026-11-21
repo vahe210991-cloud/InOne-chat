@@ -34,7 +34,13 @@ pub fn encrypt(
     let aad = associated_data(room_id, plaintext.len() as u64);
     let cipher = Aes256Gcm::new_from_slice(key).map_err(|_| "invalid attachment key")?;
     cipher
-        .encrypt(Nonce::from_slice(nonce), Payload { msg: plaintext, aad: &aad })
+        .encrypt(
+            Nonce::from_slice(nonce),
+            Payload {
+                msg: plaintext,
+                aad: &aad,
+            },
+        )
         .map_err(|_| "attachment encryption failed".to_string())
 }
 
@@ -58,8 +64,11 @@ pub fn build_manifest(
     if ciphertext.len() != plaintext.len() + GCM_TAG_LEN {
         return Err("ciphertext length does not match AES-GCM payload".to_string());
     }
-    if name.is_empty() || name.len() > 255 || name.chars().any(char::is_control)
-        || name.contains('/') || name.contains('\\')
+    if name.is_empty()
+        || name.len() > 255
+        || name.chars().any(char::is_control)
+        || name.contains('/')
+        || name.contains('\\')
     {
         return Err("invalid attachment display name".to_string());
     }
@@ -140,11 +149,13 @@ pub fn parse_manifest(
     }
     let mut guarded_value = ZeroizingJson(
         serde_json::from_slice(payload)
-            .map_err(|_| "attachment manifest is not valid JSON".to_string())?
+            .map_err(|_| "attachment manifest is not valid JSON".to_string())?,
     );
     let value = &mut guarded_value.0;
     let string = |key: &str| -> Result<String, String> {
-        value.get(key).and_then(Value::as_str)
+        value
+            .get(key)
+            .and_then(Value::as_str)
             .map(str::to_string)
             .ok_or_else(|| format!("attachment manifest field {key} is missing or invalid"))
     };
@@ -162,18 +173,25 @@ pub fn parse_manifest(
     }
     let name = string("name")?;
     let mime_type = string("mimeType")?;
-    if name.is_empty() || name.len() > 255 || name.chars().any(char::is_control)
-        || name.contains('/') || name.contains('\\')
+    if name.is_empty()
+        || name.len() > 255
+        || name.chars().any(char::is_control)
+        || name.contains('/')
+        || name.contains('\\')
     {
         return Err("invalid attachment display name".to_string());
     }
     if mime_type.is_empty() || mime_type.len() > 127 || mime_type.chars().any(char::is_control) {
         return Err("invalid attachment MIME type".to_string());
     }
-    let size = value.get("size").and_then(Value::as_u64)
+    let size = value
+        .get("size")
+        .and_then(Value::as_u64)
         .filter(|size| *size > 0 && *size <= MAX_FILE_SIZE)
         .ok_or_else(|| "invalid attachment plaintext size".to_string())?;
-    let ciphertext_size = value.get("ciphertextSize").and_then(Value::as_u64)
+    let ciphertext_size = value
+        .get("ciphertextSize")
+        .and_then(Value::as_u64)
         .filter(|actual| *actual == size + GCM_TAG_LEN as u64)
         .ok_or_else(|| "invalid attachment ciphertext size".to_string())?;
     let sha256 = string("sha256")?;
@@ -182,40 +200,56 @@ pub fn parse_manifest(
     validate_hash(&ciphertext_sha256)?;
     let encoded_key = Zeroizing::new(string("key")?);
     let key_bytes = Zeroizing::new(
-        B64.decode(encoded_key.as_bytes()).map_err(|_| "invalid attachment key encoding")?
+        B64.decode(encoded_key.as_bytes())
+            .map_err(|_| "invalid attachment key encoding")?,
     );
     let encoded_nonce = Zeroizing::new(string("nonce")?);
     let nonce_bytes = Zeroizing::new(
-        B64.decode(encoded_nonce.as_bytes()).map_err(|_| "invalid attachment nonce encoding")?
+        B64.decode(encoded_nonce.as_bytes())
+            .map_err(|_| "invalid attachment nonce encoding")?,
     );
-    let key: [u8; AES256_KEY_LEN] = key_bytes.as_slice().try_into()
+    let key: [u8; AES256_KEY_LEN] = key_bytes
+        .as_slice()
+        .try_into()
         .map_err(|_| "attachment key must be exactly 32 bytes")?;
-    let nonce: [u8; GCM_NONCE_LEN] = nonce_bytes.as_slice().try_into()
+    let nonce: [u8; GCM_NONCE_LEN] = nonce_bytes
+        .as_slice()
+        .try_into()
         .map_err(|_| "attachment nonce must be exactly 12 bytes")?;
     Ok(AttachmentManifestV1 {
-        file_id, room_id, name, mime_type, size, ciphertext_size,
-        sha256, ciphertext_sha256, key, nonce,
+        file_id,
+        room_id,
+        name,
+        mime_type,
+        size,
+        ciphertext_size,
+        sha256,
+        ciphertext_sha256,
+        key,
+        nonce,
     })
 }
 
 /// Verify ciphertext integrity and decrypt. The AEAD tag authenticates the
 /// room-bound associated data; hashes detect truncation/corruption before use.
-pub fn decrypt(
-    ciphertext: &[u8],
-    manifest: &AttachmentManifestV1,
-) -> Result<Vec<u8>, String> {
+pub fn decrypt(ciphertext: &[u8], manifest: &AttachmentManifestV1) -> Result<Vec<u8>, String> {
     if ciphertext.len() as u64 != manifest.ciphertext_size
         || sha256_hex(ciphertext) != manifest.ciphertext_sha256
     {
         return Err("attachment ciphertext integrity check failed".to_string());
     }
     let aad = associated_data(&manifest.room_id, manifest.size);
-    let cipher = Aes256Gcm::new_from_slice(&manifest.key)
-        .map_err(|_| "invalid attachment key")?;
+    let cipher = Aes256Gcm::new_from_slice(&manifest.key).map_err(|_| "invalid attachment key")?;
     let plaintext = Zeroizing::new(
         cipher
-            .decrypt(Nonce::from_slice(&manifest.nonce), Payload { msg: ciphertext, aad: &aad })
-            .map_err(|_| "attachment authentication failed".to_string())?
+            .decrypt(
+                Nonce::from_slice(&manifest.nonce),
+                Payload {
+                    msg: ciphertext,
+                    aad: &aad,
+                },
+            )
+            .map_err(|_| "attachment authentication failed".to_string())?,
     );
     if plaintext.len() as u64 != manifest.size || sha256_hex(&plaintext) != manifest.sha256 {
         return Err("attachment plaintext integrity check failed".to_string());
@@ -248,10 +282,14 @@ fn zeroize_json_value(value: &mut Value) {
     match value {
         Value::String(value) => value.zeroize(),
         Value::Array(values) => {
-            for value in values { zeroize_json_value(value); }
+            for value in values {
+                zeroize_json_value(value);
+            }
         }
         Value::Object(values) => {
-            for value in values.values_mut() { zeroize_json_value(value); }
+            for value in values.values_mut() {
+                zeroize_json_value(value);
+            }
         }
         _ => {}
     }
@@ -265,7 +303,11 @@ fn validate_identity(value: &str, field: &str) -> Result<(), String> {
 }
 
 fn validate_hash(value: &str) -> Result<(), String> {
-    if value.len() != 64 || !value.bytes().all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase()) {
+    if value.len() != 64
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+    {
         return Err("attachment hash must be 64 lowercase hexadecimal characters".to_string());
     }
     Ok(())
@@ -287,9 +329,16 @@ mod tests {
     fn encrypted_manifest_round_trip_binds_file_and_room() {
         let (plaintext, key, nonce, ciphertext) = fixture();
         let payload = build_manifest(
-            "file-1", "room-1", "document.pdf", "application/pdf",
-            &plaintext, &ciphertext, &key, &nonce,
-        ).unwrap();
+            "file-1",
+            "room-1",
+            "document.pdf",
+            "application/pdf",
+            &plaintext,
+            &ciphertext,
+            &key,
+            &nonce,
+        )
+        .unwrap();
         let manifest = parse_manifest(&payload, "file-1", "room-1").unwrap();
         assert_eq!(decrypt(&ciphertext, &manifest).unwrap(), plaintext);
     }
@@ -298,9 +347,16 @@ mod tests {
     fn manifest_rejects_outer_file_or_room_mismatch() {
         let (plaintext, key, nonce, ciphertext) = fixture();
         let payload = build_manifest(
-            "file-1", "room-1", "document.pdf", "application/pdf",
-            &plaintext, &ciphertext, &key, &nonce,
-        ).unwrap();
+            "file-1",
+            "room-1",
+            "document.pdf",
+            "application/pdf",
+            &plaintext,
+            &ciphertext,
+            &key,
+            &nonce,
+        )
+        .unwrap();
         assert!(parse_manifest(&payload, "file-2", "room-1").is_err());
         assert!(parse_manifest(&payload, "file-1", "room-2").is_err());
     }
@@ -309,9 +365,16 @@ mod tests {
     fn ciphertext_tampering_and_wrong_room_fail_closed() {
         let (plaintext, key, nonce, mut ciphertext) = fixture();
         let payload = build_manifest(
-            "file-1", "room-1", "document.pdf", "application/pdf",
-            &plaintext, &ciphertext, &key, &nonce,
-        ).unwrap();
+            "file-1",
+            "room-1",
+            "document.pdf",
+            "application/pdf",
+            &plaintext,
+            &ciphertext,
+            &key,
+            &nonce,
+        )
+        .unwrap();
         let manifest = parse_manifest(&payload, "file-1", "room-1").unwrap();
         ciphertext[0] ^= 0x01;
         assert!(decrypt(&ciphertext, &manifest).is_err());
@@ -330,29 +393,61 @@ mod tests {
     fn parser_rejects_invalid_key_nonce_hash_version_and_display_name() {
         let (plaintext, key, nonce, ciphertext) = fixture();
         let payload = build_manifest(
-            "file-1", "room-1", "document.pdf", "application/pdf",
-            &plaintext, &ciphertext, &key, &nonce,
-        ).unwrap();
+            "file-1",
+            "room-1",
+            "document.pdf",
+            "application/pdf",
+            &plaintext,
+            &ciphertext,
+            &key,
+            &nonce,
+        )
+        .unwrap();
 
         let mut invalid_key: Value = serde_json::from_slice(&payload).unwrap();
         invalid_key["key"] = json!(B64.encode([0x11; AES256_KEY_LEN - 1]));
-        assert!(parse_manifest(&serde_json::to_vec(&invalid_key).unwrap(), "file-1", "room-1").is_err());
+        assert!(parse_manifest(
+            &serde_json::to_vec(&invalid_key).unwrap(),
+            "file-1",
+            "room-1"
+        )
+        .is_err());
 
         let mut invalid_nonce: Value = serde_json::from_slice(&payload).unwrap();
         invalid_nonce["nonce"] = json!(B64.encode([0x22; GCM_NONCE_LEN - 1]));
-        assert!(parse_manifest(&serde_json::to_vec(&invalid_nonce).unwrap(), "file-1", "room-1").is_err());
+        assert!(parse_manifest(
+            &serde_json::to_vec(&invalid_nonce).unwrap(),
+            "file-1",
+            "room-1"
+        )
+        .is_err());
 
         let mut invalid_hash: Value = serde_json::from_slice(&payload).unwrap();
         invalid_hash["sha256"] = json!("A".repeat(64));
-        assert!(parse_manifest(&serde_json::to_vec(&invalid_hash).unwrap(), "file-1", "room-1").is_err());
+        assert!(parse_manifest(
+            &serde_json::to_vec(&invalid_hash).unwrap(),
+            "file-1",
+            "room-1"
+        )
+        .is_err());
 
         let mut invalid_version: Value = serde_json::from_slice(&payload).unwrap();
         invalid_version["version"] = json!(MANIFEST_VERSION + 1);
-        assert!(parse_manifest(&serde_json::to_vec(&invalid_version).unwrap(), "file-1", "room-1").is_err());
+        assert!(parse_manifest(
+            &serde_json::to_vec(&invalid_version).unwrap(),
+            "file-1",
+            "room-1"
+        )
+        .is_err());
 
         let mut unsafe_name: Value = serde_json::from_slice(&payload).unwrap();
         unsafe_name["name"] = json!("../private.txt");
-        assert!(parse_manifest(&serde_json::to_vec(&unsafe_name).unwrap(), "file-1", "room-1").is_err());
+        assert!(parse_manifest(
+            &serde_json::to_vec(&unsafe_name).unwrap(),
+            "file-1",
+            "room-1"
+        )
+        .is_err());
     }
 
     #[test]
@@ -360,9 +455,16 @@ mod tests {
         let (plaintext, key, nonce, mut ciphertext) = fixture();
         ciphertext[0] ^= 0x80;
         assert!(build_manifest(
-            "file-1", "room-1", "document.pdf", "application/pdf",
-            &plaintext, &ciphertext, &key, &nonce,
-        ).is_err());
+            "file-1",
+            "room-1",
+            "document.pdf",
+            "application/pdf",
+            &plaintext,
+            &ciphertext,
+            &key,
+            &nonce,
+        )
+        .is_err());
     }
 
     #[test]

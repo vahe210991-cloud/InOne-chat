@@ -52,15 +52,19 @@ fn db(name: &str) -> String {
     path.to_string_lossy().to_string()
 }
 
-
 fn open_encrypted_db(path: &str, key: &[u8; 32]) -> rusqlite::Connection {
     let connection = rusqlite::Connection::open(path).expect("open SQLCipher database");
-    let key_hex = key.iter().map(|byte| format!("{byte:02x}")).collect::<String>();
+    let key_hex = key
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
     connection
         .pragma_update(None, "key", format!("x'{key_hex}'"))
         .expect("unlock SQLCipher database");
     connection
-        .query_row("SELECT count(*) FROM sqlite_master", [], |row| row.get::<_, i64>(0))
+        .query_row("SELECT count(*) FROM sqlite_master", [], |row| {
+            row.get::<_, i64>(0)
+        })
         .expect("verify SQLCipher key");
     connection
 }
@@ -80,7 +84,6 @@ fn attachments(items: &[Incoming]) -> Vec<(String, String, String, u64)> {
         })
         .collect()
 }
-
 
 #[test]
 fn attachment_retry_reuses_the_exact_mls_message_after_server_commit() {
@@ -105,14 +108,16 @@ fn attachment_retry_reuses_the_exact_mls_message_after_server_commit() {
         .expect("sender SQLCipher key");
 
     let connection = open_encrypted_db(&alice_db, &database_key);
-    connection.execute_batch(
-        "CREATE TRIGGER fail_outgoing_attachment_insert
+    connection
+        .execute_batch(
+            "CREATE TRIGGER fail_outgoing_attachment_insert
          BEFORE INSERT ON client_attachments
          WHEN NEW.direction = 'outgoing'
          BEGIN
            SELECT RAISE(ABORT, 'simulated local persistence failure');
          END;",
-    ).unwrap();
+        )
+        .unwrap();
     drop(connection);
 
     // The server accepts the encrypted message, but the local commit is forced
@@ -125,7 +130,9 @@ fn attachment_retry_reuses_the_exact_mls_message_after_server_commit() {
             &plaintext,
             client_message_id,
         )
-        .expect_err("the injected local attachment persistence failure must abort the first attempt");
+        .expect_err(
+            "the injected local attachment persistence failure must abort the first attempt",
+        );
     assert!(
         first_attempt_error.contains("simulated local persistence failure"),
         "the first attempt must reach the post-server-acceptance local transaction; got: {first_attempt_error}"
@@ -133,16 +140,20 @@ fn attachment_retry_reuses_the_exact_mls_message_after_server_commit() {
     // The trigger simulates a one-time local write failure. Remove it before
     // sync so the recovery transaction can persist the outgoing attachment row.
     let connection = open_encrypted_db(&alice_db, &database_key);
-    connection.execute_batch("DROP TRIGGER fail_outgoing_attachment_insert;").unwrap();
+    connection
+        .execute_batch("DROP TRIGGER fail_outgoing_attachment_insert;")
+        .unwrap();
     drop(connection);
 
     let read_persisted_message = || {
         let connection = open_encrypted_db(&alice_db, &database_key);
-        connection.query_row(
-            "SELECT mls_message FROM client_attachment_outbox WHERE client_message_id = ?1",
-            [&operation_id],
-            |row| row.get::<_, Vec<u8>>(0),
-        ).expect("persisted MLS message")
+        connection
+            .query_row(
+                "SELECT mls_message FROM client_attachment_outbox WHERE client_message_id = ?1",
+                [&operation_id],
+                |row| row.get::<_, Vec<u8>>(0),
+            )
+            .expect("persisted MLS message")
     };
     let first_message = read_persisted_message();
     assert!(!first_message.is_empty());
@@ -165,18 +176,37 @@ fn attachment_retry_reuses_the_exact_mls_message_after_server_commit() {
             |row| row.get(0),
         )
         .unwrap();
-    assert_eq!(pending_outbox, 0, "sync should atomically finalize the outbox");
+    assert_eq!(
+        pending_outbox, 0,
+        "sync should atomically finalize the outbox"
+    );
 
-    let event_id = alice.send_attachment_with_id(
-        ROOM, "retry.txt", "text/plain", &plaintext, client_message_id
-    ).unwrap();
+    let event_id = alice
+        .send_attachment_with_id(
+            ROOM,
+            "retry.txt",
+            "text/plain",
+            &plaintext,
+            client_message_id,
+        )
+        .unwrap();
     assert_eq!(event_id, replayed_event_id);
 
     let received = bob.sync().unwrap();
-    assert_eq!(received.iter().filter(|item| matches!(item, Incoming::Attachment { .. })).count(), 1);
-    assert!(received.iter().any(|item| matches!(item, Incoming::Attachment { event_id: id, .. } if id == &event_id)));
+    assert_eq!(
+        received
+            .iter()
+            .filter(|item| matches!(item, Incoming::Attachment { .. }))
+            .count(),
+        1
+    );
+    assert!(received
+        .iter()
+        .any(|item| matches!(item, Incoming::Attachment { event_id: id, .. } if id == &event_id)));
 
-    alice.send_text(ROOM, "message after attachment retry").unwrap();
+    alice
+        .send_text(ROOM, "message after attachment retry")
+        .unwrap();
     let after_retry = bob.sync().unwrap();
     assert!(after_retry.iter().any(|item| matches!(
         item,
