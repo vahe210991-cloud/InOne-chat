@@ -415,10 +415,15 @@ void main() {
       nativeMlsBridge: bridge,
       readDeviceId: () async => 'device-1',
       writeDeviceId: (_) async {},
-      readMlsUserId: () async => null,
+      readMlsUserId: () async => 'user-1',
       writeMlsUserId: (_) async {},
       deleteMlsUserId: () async {},
+      readLocale: () async => null,
+      readLocaleSyncPending: () async => null,
+      writeLocale: (_) async {},
+      writeLocaleSyncPending: (_) async {},
     );
+    await session.initialize();
     final bytes = Uint8List.fromList([1, 2, 3, 4]);
 
     final eventId = await session.sendMlsAttachment(
