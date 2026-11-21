@@ -300,6 +300,7 @@ fn insert_attachment_record(
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as i64;
+    crash_at_test_failpoint("before_attachment_manifest_insert");
     db.execute(
         "INSERT OR IGNORE INTO client_attachments
          (file_id, room_id, event_id, manifest, direction, created_at, client_message_id)
@@ -307,6 +308,7 @@ fn insert_attachment_record(
         rusqlite::params![file_id, room_id, event_id, manifest, direction, created_at, client_message_id],
     )
     .map_err(text)?;
+    crash_at_test_failpoint("after_attachment_manifest_insert");
     let (stored_room, stored_event, stored_bytes): (String, String, Vec<u8>) = db
         .query_row(
             "SELECT room_id, event_id, manifest FROM client_attachments WHERE file_id = ?1",
@@ -990,6 +992,8 @@ fn build_client(
          );
          CREATE INDEX IF NOT EXISTS idx_client_attachments_room_created
            ON client_attachments(room_id, created_at);
+         CREATE UNIQUE INDEX IF NOT EXISTS idx_client_attachments_client_message
+           ON client_attachments(client_message_id) WHERE client_message_id IS NOT NULL;
          CREATE TABLE IF NOT EXISTS client_remote_config (id INTEGER PRIMARY KEY CHECK (id = 1), etag TEXT NOT NULL, body TEXT NOT NULL, fetched_at INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS client_key_package_claims (room_id TEXT NOT NULL, user_id TEXT NOT NULL, claim_id TEXT NOT NULL, PRIMARY KEY (room_id, user_id));
           CREATE TABLE IF NOT EXISTS client_membership_commits (
@@ -1504,6 +1508,7 @@ fn create_and_persist_attachment_mls_message(
                 return Err(error);
             }
         };
+        crash_at_test_failpoint("before_attachment_mls_journal_update");
         let changed = match transaction.execute(
             "UPDATE client_attachment_outbox
              SET mls_message = ?4, mls_epoch = ?5
@@ -1522,10 +1527,13 @@ fn create_and_persist_attachment_mls_message(
             self.reload_group(room_id)?;
             return Err("attachment outbox changed before MLS message persistence".to_string());
         }
+        crash_at_test_failpoint("after_attachment_mls_journal_update");
+        crash_at_test_failpoint("before_attachment_mls_transaction_commit");
         if let Err(error) = transaction.commit() {
             self.reload_group(room_id)?;
             return Err(text(error));
         }
+        crash_at_test_failpoint("after_attachment_mls_transaction_commit");
         Ok(message_bytes)
     }
 
@@ -1760,11 +1768,15 @@ pub fn send_attachment_with_id(
             Some(operation_id.as_str()),
         )?;
         insert_processed_event(&transaction, &event_id)?;
+        crash_at_test_failpoint("before_attachment_outbox_delete");
         transaction.execute(
             "DELETE FROM client_attachment_outbox WHERE client_message_id = ?1",
             [operation_id.as_str()],
         ).map_err(text)?;
+        crash_at_test_failpoint("after_attachment_outbox_delete");
+        crash_at_test_failpoint("before_attachment_transaction_commit");
         transaction.commit().map_err(text)?;
+        crash_at_test_failpoint("after_attachment_transaction_commit");
         self.processed.insert(event_id.clone());
         Ok(event_id)
     }
@@ -3819,7 +3831,8 @@ pub fn download_attachment(&self, file_id: &str) -> Result<Vec<u8>, String> {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis() as i64;
-        self.meta
+        let cleanup = self.meta.unchecked_transaction().map_err(text)?;
+        cleanup
             .execute(
                 "DELETE FROM client_attachments
                  WHERE event_id IN (
@@ -3829,13 +3842,14 @@ pub fn download_attachment(&self, file_id: &str) -> Result<Vec<u8>, String> {
                 [now - ACKNOWLEDGED_INBOX_RETENTION_MS],
             )
             .map_err(text)?;
-        self.meta
+        cleanup
             .execute(
                 "DELETE FROM client_inbox
                  WHERE acknowledged = 1 AND acknowledged_at IS NOT NULL AND acknowledged_at < ?1",
                 [now - ACKNOWLEDGED_INBOX_RETENTION_MS],
             )
             .map_err(text)?;
+        cleanup.commit().map_err(text)?;
         let mut statement = self
             .meta
             .prepare(
