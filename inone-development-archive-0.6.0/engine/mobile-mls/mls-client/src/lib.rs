@@ -344,20 +344,11 @@ fn register(agent: &ureq::Agent, base: &str, user_id: &str, password: &str) -> R
 }
 
 /// Ключ базы устройства. Платформа хранит его в Keychain (iOS) или Keystore (Android); ядро его не сохраняет.
-pub trait KeyStore {
+pub trait KeyStore: Send + Sync {
+    fn has_database_key(&self, scope: &str) -> Result<bool, String>;
+    fn existing_database_key(&self, scope: &str) -> Result<Option<[u8; 32]>, String>;
     fn database_key(&self, scope: &str) -> Result<[u8; 32], String>;
-
-    fn has_database_key(&self, scope: &str) -> Result<bool, String> {
-        self.existing_database_key(scope).map(|key| key.is_some())
-    }
-
-    fn existing_database_key(&self, _scope: &str) -> Result<Option<[u8; 32]>, String> {
-        Ok(None)
-    }
-
-    fn delete_database_key(&self, _scope: &str) -> Result<(), String> {
-        Err("удаление ключа SQLCipher не поддерживается этим KeyStore".to_string())
-    }
+    fn delete_database_key(&self, scope: &str) -> Result<(), String>;
 }
 
 #[derive(Default)]
@@ -367,15 +358,25 @@ pub struct MemoryKeyStore {
 
 impl Drop for MemoryKeyStore {
     fn drop(&mut self) {
-        if let Ok(keys) = self.keys.get_mut() {
-            for key in keys.values_mut() {
-                key.zeroize();
-            }
+        let keys = match self.keys.get_mut() {
+            Ok(keys) => keys,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        for key in keys.values_mut() {
+            key.zeroize();
         }
     }
 }
 
 impl KeyStore for MemoryKeyStore {
+    fn has_database_key(&self, scope: &str) -> Result<bool, String> {
+        Ok(self.keys.lock().map_err(text)?.contains_key(scope))
+    }
+
+    fn existing_database_key(&self, scope: &str) -> Result<Option<[u8; 32]>, String> {
+        Ok(self.keys.lock().map_err(text)?.get(scope).copied())
+    }
+
     fn database_key(&self, scope: &str) -> Result<[u8; 32], String> {
         let mut keys = self.keys.lock().map_err(text)?;
         if let Some(key) = keys.get(scope) {
@@ -384,14 +385,6 @@ impl KeyStore for MemoryKeyStore {
         let key = RustCrypto::default().random_array::<32>().map_err(text)?;
         keys.insert(scope.to_string(), key);
         Ok(key)
-    }
-
-    fn has_database_key(&self, scope: &str) -> Result<bool, String> {
-        Ok(self.keys.lock().map_err(text)?.contains_key(scope))
-    }
-
-    fn existing_database_key(&self, scope: &str) -> Result<Option<[u8; 32]>, String> {
-        Ok(self.keys.lock().map_err(text)?.get(scope).copied())
     }
 
     fn delete_database_key(&self, scope: &str) -> Result<(), String> {
@@ -537,6 +530,71 @@ pub fn with_retry<T>(
 }
 
 /// Вход первого устройства аккаунта (или устройства, которое уже подтверждено).
+fn remove_database_artifacts(db_path: &str) -> Result<(), String> {
+    let mut errors = Vec::new();
+    for suffix in ["", "-wal", "-shm", "-journal"] {
+        let path = format!("{db_path}{suffix}");
+        match std::fs::remove_file(&path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => errors.push(format!("remove {path}: {error}")),
+        }
+    }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join("; "))
+    }
+}
+
+fn build_client_with_keys(
+    agent: ureq::Agent,
+    base: &str,
+    tokens: SessionTokens,
+    user_id: &str,
+    device_id: &str,
+    db_path: &str,
+    keys: &dyn KeyStore,
+) -> Result<Client, String> {
+    let scope = format!("{user_id}/{device_id}");
+    let has_existing_key = ensure_existing_key_matches_database(db_path, &scope, keys)?;
+    let database_existed = database_artifacts_exist(db_path);
+    let db_key = Zeroizing::new(match keys.database_key(&scope) {
+        Ok(key) => key,
+        Err(error) => {
+            if !has_existing_key && !database_existed {
+                if let Err(cleanup_error) = keys.delete_database_key(&scope) {
+                    return Err(format!(
+                        "{error}; cleanup of partially created key failed: {cleanup_error}"
+                    ));
+                }
+            }
+            return Err(error);
+        }
+    });
+    let result = build_client(agent, base, tokens, user_id, device_id, db_path, &db_key);
+    match result {
+        Ok(client) => Ok(client),
+        Err(error) if !has_existing_key && !database_existed => {
+            let database_cleanup = remove_database_artifacts(db_path);
+            let key_cleanup = keys.delete_database_key(&scope);
+            let cleanup_errors: Vec<String> = [database_cleanup.err(), key_cleanup.err()]
+                .into_iter()
+                .flatten()
+                .collect();
+            if cleanup_errors.is_empty() {
+                Err(error)
+            } else {
+                Err(format!(
+                    "{error}; cleanup of partially created MLS session failed: {}",
+                    cleanup_errors.join("; ")
+                ))
+            }
+        }
+        Err(error) => Err(error),
+    }
+}
+
 pub fn connect(
     base: &str,
     user_id: &str,
@@ -545,7 +603,9 @@ pub fn connect(
     db_path: &str,
     keys: &dyn KeyStore,
 ) -> Result<Client, String> {
-    let agent = ureq::AgentBuilder::new().build();
+    let scope = format!("{user_id}/{device_id}");
+    ensure_existing_key_matches_database(db_path, &scope, keys)?;
+    let agent = ureq::AgentBuilder::new().redirects(0).build();
     register(&agent, base, user_id, password)?;
     let login = request(
         &agent,
@@ -565,10 +625,7 @@ pub fn connect(
             .ok_or("сервер не вернул токен обновления")?
             .to_string(),
     );
-    let scope = format!("{user_id}/{device_id}");
-    ensure_existing_key_matches_database(db_path, &scope, keys)?;
-    let db_key = Zeroizing::new(keys.database_key(&scope)?);
-    build_client(agent, base, tokens, user_id, device_id, db_path, &db_key)
+    build_client_with_keys(agent, base, tokens, user_id, device_id, db_path, keys)
 }
 
 /// Adopts an already authenticated mobile session into the canonical Rust client.
@@ -588,18 +645,15 @@ pub fn connect_with_session(
     if access_token.is_empty() || refresh_token.is_empty() {
         return Err("для подключения нужны access и refresh tokens".to_string());
     }
-    let scope = format!("{user_id}/{device_id}");
-    ensure_existing_key_matches_database(db_path, &scope, keys)?;
-    let db_key = Zeroizing::new(keys.database_key(&scope)?);
     let agent = ureq::AgentBuilder::new().redirects(0).build();
-    build_client(
+    build_client_with_keys(
         agent,
         base,
         SessionTokens(access_token.to_string(), refresh_token.to_string()),
         user_id,
         device_id,
         db_path,
-        &db_key,
+        keys,
     )
 }
 
@@ -663,7 +717,9 @@ pub fn connect_with_approval(
     keys: &dyn KeyStore,
     approver: &Client,
 ) -> Result<Client, String> {
-    let agent = ureq::AgentBuilder::new().build();
+    let scope = format!("{user_id}/{device_id}");
+    ensure_existing_key_matches_database(db_path, &scope, keys)?;
+    let agent = ureq::AgentBuilder::new().redirects(0).build();
     register(&agent, base, user_id, password)?;
     let login = request(
         &agent,
@@ -730,17 +786,14 @@ pub fn connect_with_approval(
             )
         }
     };
-    let scope = format!("{user_id}/{device_id}");
-    ensure_existing_key_matches_database(db_path, &scope, keys)?;
-    let db_key = Zeroizing::new(keys.database_key(&scope)?);
-    build_client(
+    build_client_with_keys(
         agent,
         base,
         SessionTokens(tokens.0, tokens.1),
         user_id,
         device_id,
         db_path,
-        &db_key,
+        keys,
     )
 }
 
