@@ -612,3 +612,5 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Added ADR-004, backend source-of-truth map and detailed audit report.
 - Branch: `fix/canonical-backend-identity-2026-11-21`. No source tree move/rewrite, no Rust dependency change and no merge to main.
 - Runtime tests and CI are not yet evidenced; inspect exact-head checks before accepting or merging.
+
+- Draft PR #120 is open against `main`, exact head `1741651a3212057b0d6b8feb4b30ad7e7212c826`; not merged. P0, Email/PostgreSQL, Flutter and iOS workflow runs are queued; no pass/fail result or test execution is claimed yet.
