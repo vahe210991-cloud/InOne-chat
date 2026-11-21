@@ -1,15 +1,15 @@
-# Сервер и база для проверки. Пароли — в файле .env, не в этом файле. Не проверено в этой среде.
+# Local/CI runtime. Production secrets are injected by the deployment environment.
 services:
   db:
     image: postgres:16
     environment:
-      POSTGRES_DB: change-me-set-in-your-environment
-      POSTGRES_USER: change-me-set-in-your-environment
-      POSTGRES_PASSWORD: change-me-set-in-your-environment
+      POSTGRES_DB: ${POSTGRES_DB:-inone}
+      POSTGRES_USER: ${POSTGRES_USER:-inone}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U inone -d inone"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-inone} -d ${POSTGRES_DB:-inone}"]
       interval: 5s
       retries: 20
   app:
@@ -18,11 +18,16 @@ services:
       - path: .env
         required: false
     environment:
-      DATABASE_URL: postgresql://HOST:5432/DATABASE (логин и пароль задаются переменной окружения)
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: ${PORT:-8080}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-inone}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-inone}}
+      INONE_PIN_PEPPER: ${INONE_PIN_PEPPER:?INONE_PIN_PEPPER must be set}
+      INONE_MAIL_TRANSPORT: ${INONE_MAIL_TRANSPORT:-memory}
+      INONE_RUN_MIGRATIONS: ${INONE_RUN_MIGRATIONS:-true}
     depends_on:
       db:
         condition: service_healthy
     ports:
-      - "8080:8080"
+      - "${PORT:-8080}:8080"
 volumes:
   pgdata:
