@@ -604,7 +604,7 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
       return rows.map((r) => ({ deviceKey: r.device_key, provider: r.provider, identifierKind: r.identifier_kind }));
     },
     async listDevicesFor(userId) {
-      const { rows } = await pool.query('SELECT d.device_id, d.label, d.revoked, (p.device_key IS NOT NULL) AS push FROM devices d LEFT JOIN push_tokens p ON p.device_key = d.device_key AND p.provider = 'fcm' AND p.identifier_kind = 'fid' AND p.token_ciphertext IS NOT NULL WHERE d.user_id = $1 ORDER BY d.device_id', [userId]);
+      const { rows } = await pool.query(`SELECT d.device_id, d.label, d.revoked, (p.device_key IS NOT NULL) AS push FROM devices d LEFT JOIN push_tokens p ON p.device_key = d.device_key AND p.provider = 'fcm' AND p.identifier_kind = 'fid' AND p.token_ciphertext IS NOT NULL WHERE d.user_id = $1 ORDER BY d.device_id`, [userId]);
       return rows.map((r) => ({ deviceId: r.device_id, label: r.label, revoked: r.revoked, pushRegistered: r.push }));
     },
     async flagOverrides() {
