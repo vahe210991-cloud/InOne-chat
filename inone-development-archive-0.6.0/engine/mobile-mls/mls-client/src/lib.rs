@@ -3279,7 +3279,8 @@ impl Client {
         insert_incoming_record(&transaction, &incoming)?;
         let tagged = transaction
             .execute(
-                "UPDATE client_inbox SET client_message_id = ?1
+                "UPDATE client_inbox
+                 SET client_message_id = ?1, acknowledged = 1, acknowledged_at = NULL
                  WHERE event_id = ?2 AND room_id = ?3",
                 rusqlite::params![operation_id, event_id, room_id],
             )
