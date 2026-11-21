@@ -15,6 +15,8 @@ const PROD = {
   INONE_SMTP_HOST: 'smtp.example',
   INONE_SMTP_FROM: 'no-reply@inone.example',
   INONE_EMAIL_ENCRYPTION_KEY: randomBytes(32).toString('base64'),
+  INONE_FIREBASE_PROJECT_ID: 'inone-messenger',
+  INONE_PUSH_ENCRYPTION_KEY: randomBytes(32).toString('hex'),
   DATABASE_URL: 'postgresql://db.example/inone',
 };
 
