@@ -38,6 +38,23 @@ node scripts/verify-restore.mjs 'postgresql://…/inone' 'postgresql://…/inone
 ./scripts/restore-db.sh /path/database.dump 'postgresql://…/inone_drill' /path/files.tar.gz /var/lib/inone/files-drill
 ```
 
+## Проверка реального SMTP-провайдера
+
+Локальные `test/mail-smtp.test.js` проверки подтверждают SMTP hand-off на тестовом сервере. Для проверки учётной записи реального SMTP-провайдера предусмотрена отдельная команда, которая отправляет одно тестовое письмо только на явно заданный адрес:
+
+```sh
+INONE_SMTP_HOST='smtp.example.com' \\
+INONE_SMTP_PORT=587 \\
+INONE_SMTP_REQUIRE_TLS=true \\
+INONE_SMTP_USER='…' \\
+INONE_SMTP_PASSWORD='…' \\
+INONE_SMTP_FROM='InOne <noreply@example.com>' \\
+INONE_SMTP_TEST_TO='your-test-mailbox@example.com' \\
+npm run test:mail:live
+```
+
+Секреты задаются в защищённом окружении сервера/CI, не в Git и не в переписке. Успех означает, что SMTP-сервер принял сообщение; это не доказывает доставку во входящие, отсутствие спама или прохождение SPF/DKIM/DMARC.
+
 ## Рекомендуемый график
 
 - Ежедневно: backup в отдельный каталог с ограниченными правами доступа.
