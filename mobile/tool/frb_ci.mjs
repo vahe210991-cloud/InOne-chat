@@ -11,6 +11,8 @@ const protectedPaths = [
   'pubspec.lock',
   'rust/Cargo.toml',
   'rust/Cargo.lock',
+  // `integrate` injects this module declaration into the crate root.
+  'rust/src/lib.rs',
 ];
 
 function run(command, args) {
@@ -34,7 +36,9 @@ function sameSet(actual, expected, label) {
 }
 
 function futureMethods(source) {
-  return [...source.matchAll(/^\s*Future<[^;\n]*?>\s+([A-Za-z_]\w*)\s*\(/gm)].map(match => match[1]);
+  // Keep the return type and method name on one declaration line. Do not let
+  // whitespace matching cross a newline and misread a later helper as a method.
+  return [...source.matchAll(/^[ \t]*Future<[^\r\n]*?>[ \t]+([A-Za-z_]\w*)[ \t]*\(/gm)].map(match => match[1]);
 }
 
 function verifyContract() {
@@ -49,7 +53,7 @@ function verifyContract() {
   const adapterOverrides = [];
   for (let index = 0; index < adapterLines.length; index++) {
     if (adapterLines[index].trim() !== '@override') continue;
-    const match = (adapterLines[index + 1] || '').match(/^\s*Future<[^;\n]*?>\s+([A-Za-z_]\w*)\s*\(/);
+    const match = (adapterLines[index + 1] || '').match(/^[ \t]*Future<[^\r\n]*?>[ \t]+([A-Za-z_]\w*)[ \t]*\(/);
     if (match) adapterOverrides.push(match[1]);
   }
   if (new Set(interfaceMethods).size !== interfaceMethods.length) {
@@ -80,6 +84,7 @@ function verifyContract() {
     messagesForRoom: 'messagesForRoomJson',
     undecryptable: 'undecryptableJson',
     outboxLength: 'outboxLen',
+    pendingOutbox: 'pendingOutboxForRoomJson',
   };
   const expectedTopLevel = interfaceMethods
     .filter(name => Object.prototype.hasOwnProperty.call(topLevelMap, name))
@@ -139,6 +144,7 @@ function verifyContract() {
     'Future<String> pendingIncomingJson(',
     'Future<String> messagesForRoomJson(',
     'Future<String> undecryptableJson(',
+    'Future<String> pendingOutboxForRoomJson(',
     'Future<void> ensureKeyPackages({required BigInt target ',
   ];
   for (const signature of requiredTypes) {
@@ -167,9 +173,11 @@ if (process.argv.includes('--verify-only')) {
   process.exit(0);
 }
 
-const snapshots = new Map(protectedPaths.map(path => [path, fs.readFileSync(path)]));
 function restoreProtectedFiles() {
-  for (const [path, content] of snapshots) fs.writeFileSync(path, content);
+  // Use Git's index as the byte-exact source of truth. Cargo metadata and
+  // FRB integration may normalize lockfiles even when the original snapshot
+  // is rewritten, so restore tracked protected inputs directly from HEAD.
+  run('git', ['restore', '--worktree', '--', ...protectedPaths]);
 }
 
 try {
@@ -189,10 +197,20 @@ try {
   // Resolve dependencies strictly from the committed lockfile. The downstream
   // iOS artifact consumer must receive exactly the same dependency graph.
   run('flutter', ['pub', 'get', '--enforce-lockfile']);
+  // The integration command and Flutter tooling may normalize the nested Rust
+  // lockfile; restore the committed contract before checking reproducibility.
+  restoreProtectedFiles();
   run('git', ['diff', '--exit-code', '--', ...protectedPaths]);
+
+  // Remove the sample module created by `integrate` before codegen scans the crate.
+  // The production bridge surface is intentionally limited to api::session.
+  fs.rmSync('rust/src/api/simple.rs', { force: true });
+  fs.rmSync('lib/src/rust/api/simple.dart', { force: true });
+  fs.rmSync('integration_test/simple_test.dart', { force: true });
 
   run('flutter_rust_bridge_codegen', [
     'generate',
+    '--rust-input', 'crate::api::session',
     '--skip-fvm-install',
     '--no-dart-fix',
     '--no-dart-format',
@@ -208,6 +226,10 @@ try {
 
   run('cargo', ['fmt', '--manifest-path', 'rust/Cargo.toml']);
   run('cargo', ['fmt', '--manifest-path', 'rust/Cargo.toml', '--', '--check']);
+  // cargo-expand/cargo metadata can append a trailing newline to Cargo.lock
+  // after the earlier restore. Re-restore all tracked inputs immediately before
+  // the reproducibility check; generated FRB outputs are outside this list.
+  restoreProtectedFiles();
   run('git', ['diff', '--exit-code', '--', ...protectedPaths]);
   verifyContract();
 } finally {

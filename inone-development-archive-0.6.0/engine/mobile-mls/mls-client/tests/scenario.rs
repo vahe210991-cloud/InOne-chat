@@ -183,7 +183,7 @@ fn non_utf8_application_payload_is_quarantined_and_durably_acknowledged() {
     assert_eq!(unreadable(&unreadable_items), 1);
     assert!(matches!(
         unreadable_items.as_slice(),
-        [Incoming::Unreadable { room_id, event_id }]
+        [Incoming::Unreadable { room_id, event_id, .. }]
             if room_id == room && event_id == &invalid_event_id
     ));
     assert_eq!(bob.desync_reason(room).unwrap(), None);
@@ -191,7 +191,7 @@ fn non_utf8_application_payload_is_quarantined_and_durably_acknowledged() {
     let durable_unreadable = bob.pending_incoming().unwrap();
     assert!(matches!(
         durable_unreadable.as_slice(),
-        [Incoming::Unreadable { room_id, event_id }]
+        [Incoming::Unreadable { room_id, event_id, .. }]
             if room_id == room && event_id == &invalid_event_id
     ));
     bob.acknowledge_incoming(&[invalid_event_id]).unwrap();

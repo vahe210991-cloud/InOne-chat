@@ -29,6 +29,43 @@ void main() {
   tearDown(() =>
       binaryMessenger.setMockMethodCallHandler(secureStorageChannel, null));
 
+  test('pending outbox parser preserves text, opaque and attachment operations', () {
+    final text = MlsPendingOutboxItem.fromJson({
+      'local_id': 'operation-text-1',
+      'room_id': '!room:inone.test',
+      'kind': 'text',
+      'text': 'retry me',
+      'payload_bytes': 8,
+    });
+    expect(text.localId, 'operation-text-1');
+    expect(text.text, 'retry me');
+    expect(text.payloadBytes, 8);
+
+    final opaque = MlsPendingOutboxItem.fromJson({
+      'local_id': 'operation-opaque-1',
+      'room_id': '!room:inone.test',
+      'kind': 'opaque',
+      'text': null,
+      'payload_bytes': 3,
+    });
+    expect(opaque.kind, 'opaque');
+    expect(opaque.text, isNull);
+
+    final attachment = MlsPendingOutboxItem.fromJson({
+      'local_id': 'operation-file-1',
+      'room_id': '!room:inone.test',
+      'kind': 'attachment',
+      'file_id': 'file-1',
+      'name': 'report.pdf',
+      'mime_type': 'application/pdf',
+      'size': 1024,
+      'uploaded': true,
+    });
+    expect(attachment.fileId, 'file-1');
+    expect(attachment.uploaded, isTrue);
+    expect(attachment.size, 1024);
+  });
+
   test('concurrent initialize calls share one device identity creation', () async {
     final readGate = Completer<String?>();
     var readCalls = 0;
@@ -493,6 +530,36 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
 
   @override
   Future<String> sendText(String roomId, String plaintext) async => 'event-1';
+
+  @override
+  Future<String> sendTextWithId(
+    String roomId,
+    String plaintext,
+    String clientMessageId,
+  ) async => clientMessageId;
+
+  @override
+  Future<List<MlsPendingOutboxItem>> pendingOutbox(String roomId) async => const [];
+
+  @override
+  Future<String> sendAttachment({
+    required String roomId,
+    required String name,
+    required String mimeType,
+    required Uint8List plaintext,
+  }) async => 'attachment-event-1';
+
+  @override
+  Future<String> sendAttachmentWithId({
+    required String roomId,
+    required String name,
+    required String mimeType,
+    required Uint8List plaintext,
+    required String clientMessageId,
+  }) async => 'attachment-event-1';
+
+  @override
+  Future<Uint8List> downloadAttachment(String fileId) async => Uint8List(0);
 
   @override
   Future<String> enqueueText(String roomId, String plaintext) async => 'local-1';

@@ -1,4 +1,5 @@
 pub mod api;
+mod frb_generated;
 mod secure_store;
 
 #[cfg(any(target_os = "android", test))]

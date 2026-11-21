@@ -3,8 +3,11 @@
 //! База устройства зашифрована (SQLCipher). Ключ передаёт платформа: Keychain на iOS, Keystore на Android.
 use std::borrow::Borrow;
 use std::collections::{BTreeSet, HashMap, HashSet};
+use std::io::Read;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use zeroize::{Zeroize, Zeroizing};
 
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use openmls::prelude::tls_codec::{Deserialize, Serialize};
@@ -13,8 +16,11 @@ use openmls_basic_credential::SignatureKeyPair;
 use openmls_rust_crypto::RustCrypto;
 use openmls_sqlite_storage::{Codec, Connection, SqliteStorageProvider};
 use openmls_traits::{crypto::OpenMlsCrypto, random::OpenMlsRand, types::HashType};
+use rusqlite::OptionalExtension;
 use serde_json::{json, Value};
+use url::Url;
 
+pub mod attachment_crypto;
 pub mod remote_config;
 
 const CIPHERSUITE: Ciphersuite = Ciphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519;
@@ -51,10 +57,21 @@ pub enum Incoming {
         room_id: String,
         event_id: String,
         text: String,
+        mine: bool,
+    },
+    Attachment {
+        room_id: String,
+        event_id: String,
+        file_id: String,
+        name: String,
+        mime_type: String,
+        size: u64,
+        mine: bool,
     },
     Unreadable {
         room_id: String,
         event_id: String,
+        mine: bool,
     },
 }
 
@@ -126,13 +143,23 @@ struct Group {
     join_epoch: u64,
 }
 
+struct SessionTokens(String, String);
+
+impl Drop for SessionTokens {
+    fn drop(&mut self) {
+        self.0.zeroize();
+        self.1.zeroize();
+    }
+}
+
 pub struct Client {
     base: String,
-    /// Пара: токен доступа и одноразовый токен обновления. Ядро обновляет их само, когда доступ истёк.
-    tokens: Mutex<(String, String)>,
+    /// Access/refresh tokens are retained only in Rust and zeroized when replaced or dropped.
+    tokens: Mutex<SessionTokens>,
     user_id: String,
     device_id: String,
     agent: ureq::Agent,
+    crypto: Arc<RustCrypto>,
     provider: DeviceProvider<Arc<Connection>>,
     /// Соединение с той же базой для собственных таблиц клиента (комнаты, обработанные события, метаданные).
     meta: Arc<Connection>,
@@ -143,6 +170,14 @@ pub struct Client {
     /// Сообщения, полученные при отправке из очереди: их забирает приложение через take_incoming().
     inbox: Vec<Incoming>,
 }
+
+// SAFETY: rusqlite::Connection is Send but not Sync. Client's connection Arcs
+// are private implementation details: every alias (the OpenMLS provider,
+// metadata handle, and transaction-scoped providers) stays inside this Client
+// and is accessed only during one exclusive Client operation. Client is not
+// Sync, so shared concurrent access is impossible. The Flutter bridge stores
+// Client only behind MlsSession::client's Mutex, which serializes every call.
+unsafe impl Send for Client {}
 
 fn text(e: impl std::fmt::Display) -> String {
     e.to_string()
@@ -183,13 +218,38 @@ const MAX_PENDING_INBOX_BYTES: i64 = 32 * 1024 * 1024;
 const ACKNOWLEDGED_INBOX_RETENTION_MS: i64 = 30 * 24 * 60 * 60 * 1000;
 
 fn insert_incoming_record(db: &Connection, incoming: &Incoming) -> Result<(), String> {
-    let (event_id, room_id, kind, body): (&str, &str, &str, Option<&str>) = match incoming {
+    let (event_id, room_id, kind, body): (&str, &str, &str, Option<String>) = match incoming {
         Incoming::Text {
             room_id,
             event_id,
             text,
-        } => (event_id, room_id, "text", Some(text)),
-        Incoming::Unreadable { room_id, event_id } => (event_id, room_id, "unreadable", None),
+            ..
+        } => (event_id, room_id, "text", Some(text.clone())),
+        Incoming::Attachment {
+            room_id,
+            event_id,
+            file_id,
+            name,
+            mime_type,
+            size,
+            ..
+        } => (
+            event_id,
+            room_id,
+            "text",
+            Some(
+                serde_json::to_string(&json!({
+                    "fileId": file_id,
+                    "name": name,
+                    "mimeType": mime_type,
+                    "size": size,
+                }))
+                .map_err(text)?,
+            ),
+        ),
+        Incoming::Unreadable {
+            room_id, event_id, ..
+        } => (event_id, room_id, "unreadable", None),
     };
     let exists: bool = db
         .query_row(
@@ -223,7 +283,7 @@ fn insert_incoming_record(db: &Connection, incoming: &Incoming) -> Result<(), St
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .map_err(text)?;
-    let body_bytes = body.map_or(0, |value| value.len()) as i64;
+    let body_bytes = body.as_ref().map_or(0, |value| value.len()) as i64;
     if pending_count >= MAX_PENDING_INBOX_ITEMS
         || pending_bytes.saturating_add(body_bytes) > MAX_PENDING_INBOX_BYTES
     {
@@ -241,6 +301,124 @@ fn insert_incoming_record(db: &Connection, incoming: &Incoming) -> Result<(), St
     .map_err(text)?;
     crash_at_test_failpoint("after_inbox_insert");
     Ok(())
+}
+
+fn insert_attachment_manifest(
+    db: &Connection,
+    incoming: &Incoming,
+    manifest: &[u8],
+    direction: &str,
+    client_message_id: Option<&str>,
+) -> Result<(), String> {
+    let Incoming::Attachment {
+        room_id,
+        event_id,
+        file_id,
+        ..
+    } = incoming
+    else {
+        return Err("attachment manifest requires an attachment inbox item".to_string());
+    };
+    if !matches!(direction, "incoming" | "outgoing") {
+        return Err("invalid attachment direction".to_string());
+    }
+    let created_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64;
+    db.execute(
+        "INSERT INTO client_attachments
+         (file_id, room_id, event_id, manifest, direction, client_message_id, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+         ON CONFLICT(file_id) DO UPDATE SET
+           direction = excluded.direction,
+           client_message_id = excluded.client_message_id
+         WHERE client_attachments.room_id = excluded.room_id
+           AND client_attachments.event_id = excluded.event_id
+           AND client_attachments.manifest = excluded.manifest",
+        rusqlite::params![
+            file_id,
+            room_id,
+            event_id,
+            manifest,
+            direction,
+            client_message_id,
+            created_at
+        ],
+    )
+    .map_err(text)?;
+    let stored: (String, String, Vec<u8>, String, Option<String>) = db
+        .query_row(
+            "SELECT room_id, event_id, manifest, direction, client_message_id
+             FROM client_attachments WHERE file_id = ?1",
+            [file_id],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            },
+        )
+        .map_err(text)?;
+    if stored.0 != *room_id
+        || stored.1 != *event_id
+        || stored.2.as_slice() != manifest
+        || stored.3 != direction
+        || stored.4.as_deref() != client_message_id
+    {
+        return Err("attachment fileId is already bound to a different local event".to_string());
+    }
+    Ok(())
+}
+
+fn incoming_from_row(
+    event_id: String,
+    room_id: String,
+    kind: String,
+    body: Option<String>,
+    client_message_id: Option<String>,
+    file_id: Option<String>,
+    manifest: Option<Vec<u8>>,
+) -> Result<Incoming, String> {
+    let mine = client_message_id.is_some();
+    if let Some(file_id) = file_id {
+        if !matches!(kind.as_str(), "text" | "unreadable") {
+            return Err(format!(
+                "attachment index references an invalid inbox kind: {kind}"
+            ));
+        }
+        // The encrypted manifest index is authoritative for attachment metadata.
+        // client_inbox.body is a denormalized display cache and can predate a
+        // recovered/idempotent handoff; never use it to bind file identity.
+        let manifest = manifest.ok_or("в индексе вложения отсутствует manifest")?;
+        let parsed = attachment_crypto::parse_manifest(&manifest, &file_id, &room_id)?;
+        return Ok(Incoming::Attachment {
+            room_id,
+            event_id,
+            file_id,
+            name: parsed.name.clone(),
+            mime_type: parsed.mime_type.clone(),
+            size: parsed.size,
+            mine,
+        });
+    }
+    match kind.as_str() {
+        "text" => Ok(Incoming::Text {
+            room_id,
+            event_id,
+            text: body.ok_or("в сохранённом сообщении отсутствует текст")?,
+            mine,
+        }),
+        "unreadable" => Ok(Incoming::Unreadable {
+            room_id,
+            event_id,
+            mine,
+        }),
+        _ => Err(format!("неизвестный тип локального сообщения: {kind}")),
+    }
 }
 
 fn insert_processed_event(db: &Connection, event_id: &str) -> Result<(), String> {
@@ -313,18 +491,43 @@ fn register(agent: &ureq::Agent, base: &str, user_id: &str, password: &str) -> R
     }
 }
 
-/// Ключ базы устройства. Платформа хранит его в Keychain (iOS) или Keystore (Android); ядро его не сохраняет.
-pub trait KeyStore {
+/// Ключ базы устройства. Платформа хранит его в Keychain (iOS) или Keystore (Android).
+pub trait KeyStore: Send + Sync {
+    /// Checks for an existing key without creating or replacing key material.
+    fn has_database_key(&self, scope: &str) -> Result<bool, String>;
+    /// Loads an existing key only. A missing key must never be recreated during resume.
+    fn existing_database_key(&self, scope: &str) -> Result<Option<[u8; 32]>, String>;
+    /// Loads an existing key or creates one for a new encrypted database.
     fn database_key(&self, scope: &str) -> Result<[u8; 32], String>;
+    /// Removes the platform-protected key after the encrypted database is deleted.
+    fn delete_database_key(&self, scope: &str) -> Result<(), String>;
 }
 
-/// Хранилище ключей в памяти: для тестов. Для выпуска нужно хранилище платформы.
+/// Хранилище ключей в памяти: только для тестов.
 #[derive(Default)]
 pub struct MemoryKeyStore {
     keys: std::sync::Mutex<HashMap<String, [u8; 32]>>,
 }
 
+impl Drop for MemoryKeyStore {
+    fn drop(&mut self) {
+        let keys = match self.keys.get_mut() {
+            Ok(keys) => keys,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        for key in keys.values_mut() {
+            key.zeroize();
+        }
+    }
+}
+
 impl KeyStore for MemoryKeyStore {
+    fn has_database_key(&self, scope: &str) -> Result<bool, String> {
+        Ok(self.keys.lock().map_err(text)?.contains_key(scope))
+    }
+    fn existing_database_key(&self, scope: &str) -> Result<Option<[u8; 32]>, String> {
+        Ok(self.keys.lock().map_err(text)?.get(scope).copied())
+    }
     fn database_key(&self, scope: &str) -> Result<[u8; 32], String> {
         let mut keys = self.keys.lock().map_err(text)?;
         if let Some(key) = keys.get(scope) {
@@ -333,6 +536,13 @@ impl KeyStore for MemoryKeyStore {
         let key = RustCrypto::default().random_array::<32>().map_err(text)?;
         keys.insert(scope.to_string(), key);
         Ok(key)
+    }
+
+    fn delete_database_key(&self, scope: &str) -> Result<(), String> {
+        if let Some(mut key) = self.keys.lock().map_err(text)?.remove(scope) {
+            key.zeroize();
+        }
+        Ok(())
     }
 }
 
@@ -468,7 +678,7 @@ pub fn connect(
         "/login",
         Some(json!({ "userId": user_id, "password": password, "deviceId": device_id })),
     )?;
-    let tokens = (
+    let tokens = SessionTokens(
         login["token"]
             .as_str()
             .ok_or("сервер не вернул токен: нужно подтверждение с другого устройства")?
@@ -478,15 +688,9 @@ pub fn connect(
             .ok_or("сервер не вернул токен обновления")?
             .to_string(),
     );
-    build_client(
-        agent,
-        base,
-        tokens,
-        user_id,
-        device_id,
-        db_path,
-        &keys.database_key(&format!("{user_id}/{device_id}"))?,
-    )
+    let scope = format!("{user_id}/{device_id}");
+    let db_key = session_database_key(&scope, db_path, keys)?;
+    build_client(agent, base, tokens, user_id, device_id, db_path, &db_key)
 }
 
 /// Вход нового устройства аккаунта: подтверждается существующим устройством `approver`.
@@ -566,21 +770,177 @@ pub fn connect_with_approval(
             )
         }
     };
+    let tokens = SessionTokens(tokens.0, tokens.1);
+    let scope = format!("{user_id}/{device_id}");
+    let db_key = session_database_key(&scope, db_path, keys)?;
+    build_client(agent, base, tokens, user_id, device_id, db_path, &db_key)
+}
+
+fn session_database_key(
+    scope: &str,
+    db_path: &str,
+    keys: &dyn KeyStore,
+) -> Result<Zeroizing<[u8; 32]>, String> {
+    let has_key = keys.has_database_key(scope)?;
+    let existing_key = keys.existing_database_key(scope)?;
+    match (has_key, existing_key) {
+        (true, Some(key)) => Ok(Zeroizing::new(key)),
+        (true, None) => Err(
+            "защищённое хранилище сообщило о ключе, но не вернуло его".to_string(),
+        ),
+        (false, Some(mut key)) => {
+            key.zeroize();
+            Err("защищённое хранилище вернуло ключ без признака его наличия".to_string())
+        }
+        (false, None) if Path::new(db_path).is_file() => Err(
+            "файл SQLCipher существует, но защищённый ключ отсутствует; автоматическая генерация нового ключа запрещена"
+                .to_string(),
+        ),
+        (false, None) => Ok(Zeroizing::new(keys.database_key(scope)?)),
+    }
+}
+
+fn validate_session_base(base: &str) -> Result<(), String> {
+    let base = base.trim();
+    let local_http = cfg!(debug_assertions)
+        && (base.starts_with("http://127.0.0.1:")
+            || base.starts_with("http://localhost:")
+            || base.starts_with("http://[::1]:"));
+    if !(base.starts_with("https://") || local_http)
+        || base.contains('@')
+        || base.contains('#')
+        || base.contains('?')
+    {
+        return Err(
+            "адрес MLS API должен быть HTTPS (HTTP разрешён только для loopback в debug) и не содержать credentials/query/fragment"
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
+fn store_session_tokens(meta: &Connection, tokens: &SessionTokens) -> Result<(), String> {
+    if tokens.0.is_empty() || tokens.1.is_empty() {
+        return Err("пара токенов сессии не может быть пустой".to_string());
+    }
+    let serialized =
+        Zeroizing::new(serde_json::to_vec(&(tokens.0.as_str(), tokens.1.as_str())).map_err(text)?);
+    meta.execute(
+        "INSERT INTO client_meta (key, value) VALUES ('session_tokens', ?1) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        [serialized.as_slice()],
+    )
+    .map_err(text)?;
+    Ok(())
+}
+
+fn load_session_tokens(meta: &Connection) -> Result<SessionTokens, String> {
+    let serialized: Zeroizing<Vec<u8>> = Zeroizing::new(
+        meta.query_row(
+            "SELECT value FROM client_meta WHERE key = 'session_tokens'",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|_| "в базе нет сохранённой MLS-сессии; выполните вход заново".to_string())?,
+    );
+    let (access, refresh): (String, String) = serde_json::from_slice(serialized.as_slice())
+        .map_err(|_| "сохранённая сессия повреждена; выполните вход заново".to_string())?;
+    if access.is_empty() || refresh.is_empty() {
+        return Err("сохранённая сессия неполная; выполните вход заново".to_string());
+    }
+    Ok(SessionTokens(access, refresh))
+}
+
+fn zeroize_json_value(value: &mut Value) {
+    match value {
+        Value::String(value) => value.zeroize(),
+        Value::Array(values) => values.iter_mut().for_each(zeroize_json_value),
+        Value::Object(values) => values.values_mut().for_each(zeroize_json_value),
+        _ => {}
+    }
+}
+
+/// Adopts an already authenticated mobile session without resetting MLS state.
+pub fn connect_with_session(
+    base: &str,
+    user_id: &str,
+    device_id: &str,
+    access_token: &str,
+    refresh_token: &str,
+    db_path: &str,
+    keys: &dyn KeyStore,
+) -> Result<Client, String> {
+    validate_session_base(base)?;
+    if user_id.trim().is_empty()
+        || device_id.trim().is_empty()
+        || access_token.is_empty()
+        || refresh_token.is_empty()
+    {
+        return Err("user_id, device_id, access_token и refresh_token обязательны".to_string());
+    }
+    let scope = format!("{user_id}/{device_id}");
+    let tokens = SessionTokens(access_token.to_string(), refresh_token.to_string());
+    let db_key = session_database_key(&scope, db_path, keys)?;
+    let agent = ureq::AgentBuilder::new().redirects(0).build();
     build_client(
         agent,
-        base,
+        base.trim(),
         tokens,
         user_id,
         device_id,
         db_path,
-        &keys.database_key(&format!("{user_id}/{device_id}"))?,
+        &db_key,
+    )
+}
+
+/// Reopens an existing SQLCipher session. It never creates a replacement database key.
+pub fn resume_with_session(
+    base: &str,
+    user_id: &str,
+    device_id: &str,
+    db_path: &str,
+    keys: &dyn KeyStore,
+) -> Result<Client, String> {
+    validate_session_base(base)?;
+    if user_id.trim().is_empty() || device_id.trim().is_empty() {
+        return Err("user_id и device_id обязательны".to_string());
+    }
+    if !Path::new(db_path).is_file() {
+        return Err("сохранённая MLS-сессия не найдена на этом устройстве".to_string());
+    }
+    let scope = format!("{user_id}/{device_id}");
+    let db_key = Zeroizing::new(keys.existing_database_key(&scope)?.ok_or_else(|| {
+        "ключ SQLCipher сохранённой MLS-сессии отсутствует; создание нового ключа запрещено"
+            .to_string()
+    })?);
+    let meta = open_db(db_path, &db_key)?;
+    let has_meta: bool = meta
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'client_meta')",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(text)?;
+    if !has_meta {
+        return Err("в базе нет сохранённой MLS-сессии".to_string());
+    }
+    let tokens = load_session_tokens(&meta)?;
+    drop(meta);
+    let agent = ureq::AgentBuilder::new().redirects(0).build();
+    build_client(
+        agent,
+        base.trim(),
+        tokens,
+        user_id,
+        device_id,
+        db_path,
+        &db_key,
     )
 }
 
 fn build_client(
     agent: ureq::Agent,
     base: &str,
-    tokens: (String, String),
+    tokens: SessionTokens,
     user_id: &str,
     device_id: &str,
     db_path: &str,
@@ -596,7 +956,8 @@ fn build_client(
     // One shared connection makes MLS state transitions and their journal rows
     // part of the same SQLite transaction.
     let connection = Arc::new(open_db(db_path, db_key)?);
-    let provider = DeviceProvider::new(Arc::new(RustCrypto::default()), Arc::clone(&connection));
+    let crypto = Arc::new(RustCrypto::default());
+    let provider = DeviceProvider::new(Arc::clone(&crypto), Arc::clone(&connection));
     let meta = connection;
     meta.execute_batch(
         "CREATE TABLE IF NOT EXISTS client_meta (key TEXT PRIMARY KEY, value BLOB NOT NULL);
@@ -608,9 +969,12 @@ fn build_client(
            room_id TEXT NOT NULL,
            kind TEXT NOT NULL CHECK (kind IN ('text', 'unreadable')),
            body TEXT,
+           payload BLOB,
            acknowledged INTEGER NOT NULL DEFAULT 0 CHECK (acknowledged IN (0, 1)),
            created_at INTEGER NOT NULL,
            acknowledged_at INTEGER,
+           direction TEXT NOT NULL DEFAULT 'incoming' CHECK (direction IN ('incoming', 'outgoing')),
+           client_message_id TEXT,
            CHECK ((kind = 'text' AND body IS NOT NULL) OR (kind = 'unreadable' AND body IS NULL))
          );
          CREATE INDEX IF NOT EXISTS idx_client_inbox_pending ON client_inbox(acknowledged, seq);
@@ -627,8 +991,40 @@ fn build_client(
            created_at INTEGER NOT NULL,
            acked_at INTEGER
          );
-         CREATE TABLE IF NOT EXISTS client_outbox (local_id TEXT PRIMARY KEY, room_id TEXT NOT NULL, body TEXT NOT NULL, seq INTEGER NOT NULL);
-         CREATE TABLE IF NOT EXISTS client_remote_config (id INTEGER PRIMARY KEY CHECK (id = 1), etag TEXT NOT NULL, body TEXT NOT NULL, fetched_at INTEGER NOT NULL);
+         CREATE TABLE IF NOT EXISTS client_outbox (
+           local_id TEXT PRIMARY KEY,
+           room_id TEXT NOT NULL,
+           body TEXT NOT NULL,
+           payload BLOB,
+           seq INTEGER NOT NULL,
+           mls_message BLOB,
+           mls_epoch INTEGER
+         );
+                   CREATE TABLE IF NOT EXISTS client_attachments (
+            file_id TEXT PRIMARY KEY,
+            room_id TEXT NOT NULL,
+            event_id TEXT NOT NULL UNIQUE,
+            manifest BLOB NOT NULL,
+            direction TEXT NOT NULL CHECK (direction IN ('incoming', 'outgoing')),
+            client_message_id TEXT,
+            created_at INTEGER NOT NULL
+          );
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_client_attachments_message_id
+            ON client_attachments(client_message_id) WHERE client_message_id IS NOT NULL;
+          CREATE TABLE IF NOT EXISTS client_attachment_outbox (
+            client_message_id TEXT PRIMARY KEY,
+            room_id TEXT NOT NULL,
+            file_id TEXT NOT NULL,
+            manifest BLOB NOT NULL,
+            ciphertext_sha256 TEXT NOT NULL,
+            ciphertext_size INTEGER NOT NULL,
+            ciphertext BLOB NOT NULL,
+            created_at INTEGER NOT NULL,
+            uploaded INTEGER NOT NULL DEFAULT 0,
+            mls_message BLOB,
+            mls_epoch INTEGER
+          );
+          CREATE TABLE IF NOT EXISTS client_remote_config (id INTEGER PRIMARY KEY CHECK (id = 1), etag TEXT NOT NULL, body TEXT NOT NULL, fetched_at INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS client_key_package_claims (room_id TEXT NOT NULL, user_id TEXT NOT NULL, claim_id TEXT NOT NULL, PRIMARY KEY (room_id, user_id));
           CREATE TABLE IF NOT EXISTS client_membership_commits (
             operation_id TEXT PRIMARY KEY, room_id TEXT NOT NULL, base_epoch INTEGER NOT NULL,
@@ -643,6 +1039,106 @@ fn build_client(
             created_at INTEGER NOT NULL,
             UNIQUE (room_id, target_user_id)
           )",
+    )
+    .map_err(text)?;
+
+    // Upgrade databases created by earlier Engine B builds without replacing any
+    // existing inbox/outbox rows or OpenMLS storage.
+    let has_inbox_direction: bool = meta
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('client_inbox') WHERE name = 'direction')",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(text)?;
+    if !has_inbox_direction {
+        meta.execute_batch(
+            "ALTER TABLE client_inbox ADD COLUMN direction TEXT NOT NULL DEFAULT 'incoming' CHECK (direction IN ('incoming', 'outgoing'))",
+        )
+        .map_err(text)?;
+    }
+    let has_client_message_id: bool = meta
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('client_inbox') WHERE name = 'client_message_id')",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(text)?;
+    if !has_client_message_id {
+        meta.execute_batch("ALTER TABLE client_inbox ADD COLUMN client_message_id TEXT")
+            .map_err(text)?;
+    }
+    let has_inbox_payload: bool = meta
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('client_inbox') WHERE name = 'payload')",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(text)?;
+    if !has_inbox_payload {
+        meta.execute_batch("ALTER TABLE client_inbox ADD COLUMN payload BLOB")
+            .map_err(text)?;
+    }
+    let has_outbox_payload: bool = meta
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('client_outbox') WHERE name = 'payload')",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(text)?;
+    if !has_outbox_payload {
+        meta.execute_batch("ALTER TABLE client_outbox ADD COLUMN payload BLOB")
+            .map_err(text)?;
+    }
+    let has_attachment_ciphertext: bool = meta
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('client_attachment_outbox') WHERE name = 'ciphertext')",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(text)?;
+    if !has_attachment_ciphertext {
+        meta.execute_batch("ALTER TABLE client_attachment_outbox ADD COLUMN ciphertext BLOB")
+            .map_err(text)?;
+    }
+    let has_attachment_created_at: bool = meta
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('client_attachment_outbox') WHERE name = 'created_at')",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(text)?;
+    if !has_attachment_created_at {
+        meta.execute_batch(
+            "ALTER TABLE client_attachment_outbox ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0",
+        )
+        .map_err(text)?;
+    }
+    let has_outbox_mls_message: bool = meta
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('client_outbox') WHERE name = 'mls_message')",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(text)?;
+    if !has_outbox_mls_message {
+        meta.execute_batch("ALTER TABLE client_outbox ADD COLUMN mls_message BLOB")
+            .map_err(text)?;
+    }
+    let has_outbox_mls_epoch: bool = meta
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('client_outbox') WHERE name = 'mls_epoch')",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(text)?;
+    if !has_outbox_mls_epoch {
+        meta.execute_batch("ALTER TABLE client_outbox ADD COLUMN mls_epoch INTEGER")
+            .map_err(text)?;
+    }
+    meta.execute_batch(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_client_inbox_client_message_id
+         ON client_inbox(client_message_id) WHERE client_message_id IS NOT NULL",
     )
     .map_err(text)?;
 
@@ -710,12 +1206,15 @@ fn build_client(
     }
     drop(stmt);
 
+    store_session_tokens(&meta, &tokens)?;
+
     Ok(Client {
         base: base.to_string(),
         tokens: Mutex::new(tokens),
         user_id: user_id.to_string(),
         device_id: device_id.to_string(),
         agent,
+        crypto,
         provider,
         meta,
         signer,
@@ -947,37 +1446,198 @@ impl Client {
     }
 
     fn call_once(&self, method: &str, path: &str, body: Option<Value>) -> Result<Value, String> {
-        let token = self.tokens.lock().map_err(text)?.0.clone();
-        request(&self.agent, &self.base, &token, method, path, body)
+        let token = Zeroizing::new(self.tokens.lock().map_err(text)?.0.clone());
+        request(&self.agent, &self.base, token.as_str(), method, path, body)
     }
 
-    /// Новая пара по токену обновления. Старый токен обновления после этого не принимается.
+    fn same_origin_url(&self, raw_url: &str) -> Result<Url, String> {
+        let base = Url::parse(&self.base).map_err(text)?;
+        let target = Url::parse(raw_url).map_err(text)?;
+        if base.origin() != target.origin()
+            || !target.username().is_empty()
+            || target.password().is_some()
+            || target.fragment().is_some()
+            || !target.path().starts_with("/objects/")
+        {
+            return Err(
+                "signed object URL must remain on the authenticated API origin and /objects path"
+                    .to_string(),
+            );
+        }
+        Ok(target)
+    }
+
+    /// Upload capability URLs are unauthenticated and never receive the bearer token.
+    fn upload_signed_bytes(&self, raw_url: &str, ciphertext: &[u8]) -> Result<(), String> {
+        let url = self.same_origin_url(raw_url)?;
+        match self
+            .agent
+            .put(url.as_str())
+            .set("content-type", "application/octet-stream")
+            .send_bytes(ciphertext)
+        {
+            Ok(_) => Ok(()),
+            Err(ureq::Error::Status(code, response)) => Err(format!(
+                "signed upload -> {code} {}",
+                response.into_string().unwrap_or_default()
+            )),
+            Err(error) => Err(format!("сеть: {error}")),
+        }
+    }
+
+    /// Download capability URLs are device-bound and require the active bearer token.
+    fn download_signed_bytes(&self, raw_url: &str, max_bytes: u64) -> Result<Vec<u8>, String> {
+        let url = self.same_origin_url(raw_url)?;
+        for attempt in 0..2 {
+            let token = Zeroizing::new(self.tokens.lock().map_err(text)?.0.clone());
+            let authorization = Zeroizing::new(format!("Bearer {}", token.as_str()));
+            let response = self
+                .agent
+                .get(url.as_str())
+                .set("authorization", authorization.as_str())
+                .call();
+            match response {
+                Ok(response) => {
+                    let mut bytes = Vec::new();
+                    response
+                        .into_reader()
+                        .take(max_bytes.saturating_add(1))
+                        .read_to_end(&mut bytes)
+                        .map_err(text)?;
+                    if bytes.len() as u64 > max_bytes {
+                        return Err("signed file download exceeded the manifest ciphertext size"
+                            .to_string());
+                    }
+                    return Ok(bytes);
+                }
+                Err(ureq::Error::Status(401, response)) if attempt == 0 => {
+                    let _ = response.into_string();
+                    self.renew()?;
+                }
+                Err(ureq::Error::Status(code, response)) => {
+                    return Err(format!(
+                        "signed download -> {code} {}",
+                        response.into_string().unwrap_or_default()
+                    ));
+                }
+                Err(error) => return Err(format!("сеть: {error}")),
+            }
+        }
+        Err("signed download remained unauthorized after token refresh".to_string())
+    }
+
+    fn reserve_attachment_upload(
+        &self,
+        room_id: &str,
+        ciphertext: &[u8],
+    ) -> Result<(String, String), String> {
+        let response = self.call(
+            "POST",
+            "/files",
+            Some(json!({
+                "kind": "file",
+                "size": ciphertext.len(),
+                "sha256": attachment_crypto::sha256_hex(ciphertext),
+                "roomId": room_id,
+            })),
+        )?;
+        let file_id = response
+            .get("fileId")
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .ok_or("file reservation did not return fileId")?
+            .to_string();
+        let upload_url = response
+            .get("uploadUrl")
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .ok_or("file reservation did not return uploadUrl")?
+            .to_string();
+        self.same_origin_url(&upload_url)?;
+        Ok((file_id, upload_url))
+    }
+
+    /// Rotates the refresh token and persists the complete replacement before updating memory.
     fn renew(&self) -> Result<(), String> {
-        let refresh = self.tokens.lock().map_err(text)?.1.clone();
-        let r = request(
+        // Serialize rotations so concurrent 401 responses cannot spend one refresh token twice.
+        let mut tokens = self.tokens.lock().map_err(text)?;
+        if tokens.1.is_empty() {
+            return Err("сессия MLS завершена; требуется повторный вход".to_string());
+        }
+        let refresh = Zeroizing::new(tokens.1.clone());
+        let mut response = request(
             &self.agent,
             &self.base,
             "",
             "POST",
             "/token/refresh",
-            Some(json!({ "refreshToken": refresh })),
+            Some(json!({ "refreshToken": refresh.as_str() })),
         )?;
-        let token = r["token"]
-            .as_str()
-            .ok_or("сервер не вернул токен")?
-            .to_string();
-        let next = r["refreshToken"]
-            .as_str()
-            .ok_or("сервер не вернул токен обновления")?
-            .to_string();
-        *self.tokens.lock().map_err(text)? = (token, next);
+        let next_pair = (|| -> Result<SessionTokens, String> {
+            Ok(SessionTokens(
+                response["token"]
+                    .as_str()
+                    .ok_or("сервер не вернул токен")?
+                    .to_string(),
+                response["refreshToken"]
+                    .as_str()
+                    .ok_or("сервер не вернул токен обновления")?
+                    .to_string(),
+            ))
+        })();
+        zeroize_json_value(&mut response);
+        let next_pair = next_pair?;
+        // One SQLite statement atomically replaces the encrypted token pair. Keep the old
+        // in-memory refresh token if persistence fails after the server response.
+        store_session_tokens(&self.meta, &next_pair)?;
+        *tokens = next_pair;
         Ok(())
     }
 
-    /// Выход: сессия этого устройства завершается на сервере.
+    pub fn access_token_snapshot(&self) -> Result<String, String> {
+        let tokens = self.tokens.lock().map_err(text)?;
+        if tokens.0.is_empty() {
+            return Err("сессия MLS завершена; требуется повторный вход".to_string());
+        }
+        Ok(tokens.0.clone())
+    }
+
+    pub fn refresh_session(&self) -> Result<String, String> {
+        self.renew()?;
+        self.access_token_snapshot()
+    }
+
+    /// Logout always clears the persisted and in-memory token pair, even if the server is offline.
     pub fn logout(&self) -> Result<(), String> {
-        self.call("POST", "/logout", Some(json!({})))?;
-        Ok(())
+        let server_result = match self.call("POST", "/logout", Some(json!({}))) {
+            Ok(mut response) => {
+                zeroize_json_value(&mut response);
+                Ok(())
+            }
+            Err(error) => Err(error),
+        };
+        let local_result = self
+            .meta
+            .execute("DELETE FROM client_meta WHERE key = 'session_tokens'", [])
+            .map(|_| ())
+            .map_err(text);
+        let empty = SessionTokens(String::new(), String::new());
+        match self.tokens.lock() {
+            Ok(mut tokens) => *tokens = empty,
+            Err(poisoned) => *poisoned.into_inner() = empty,
+        }
+        match (server_result, local_result) {
+            (Ok(()), Ok(())) => Ok(()),
+            (Err(server), Ok(())) => Err(format!(
+                "ошибка выхода на сервере; локальные токены очищены: {server}"
+            )),
+            (Ok(()), Err(local)) => Err(format!(
+                "выход на сервере выполнен; не удалось удалить локальные токены: {local}"
+            )),
+            (Err(server), Err(local)) => Err(format!(
+                "ошибка выхода на сервере: {server}; не удалось удалить локальные токены: {local}"
+            )),
+        }
     }
 
     /// Идентификатор этого устройства на сервере.
@@ -1965,7 +2625,8 @@ impl Client {
         self.send_text_with_id(room_id, plaintext, &id)
     }
 
-    /// Отправляет UTF-8 текст с идемпотентным идентификатором клиента.
+    /// Отправляет UTF-8 текст с durable idempotency: точное MLS-сообщение
+    /// и sender ratchet фиксируются в SQLCipher до обращения к серверу.
     pub fn send_text_with_id(
         &mut self,
         room_id: &str,
@@ -1975,51 +2636,876 @@ impl Client {
         self.send_application_payload_with_id(room_id, plaintext.as_bytes(), client_message_id)
     }
 
-    /// Sends an opaque MLS application payload. Text consumers may classify non-UTF-8 payloads
-    /// as unreadable, but must still advance and persist the MLS event without poisoning the room.
+    fn create_and_persist_outbox_message(
+        &mut self,
+        room_id: &str,
+        client_message_id: &str,
+        plaintext: &[u8],
+    ) -> Result<Vec<u8>, String> {
+        let transaction = self.meta.unchecked_transaction().map_err(text)?;
+        let created = {
+            let transactional_provider = DeviceProvider::new(
+                Arc::clone(&self.provider.crypto),
+                TransactionConnection(&transaction),
+            );
+            let group = self
+                .groups
+                .get_mut(room_id)
+                .ok_or("комната не создана на этом устройстве")?;
+            let epoch = group.mls.epoch().as_u64();
+            let result = group
+                .mls
+                .create_message(&transactional_provider, &self.signer, plaintext)
+                .map_err(text)
+                .and_then(|message| message.tls_serialize_detached().map_err(text));
+            result.map(|bytes| (bytes, epoch))
+        };
+        let (message, epoch) = match created {
+            Ok(created) => created,
+            Err(error) => {
+                drop(transaction);
+                self.reload_group(room_id)?;
+                return Err(error);
+            }
+        };
+        let changed = match transaction.execute(
+            "UPDATE client_outbox
+             SET mls_message = ?2, mls_epoch = ?3
+             WHERE local_id = ?1 AND room_id = ?4 AND payload = ?5 AND mls_message IS NULL",
+            rusqlite::params![client_message_id, message, epoch as i64, room_id, plaintext],
+        ) {
+            Ok(changed) => changed,
+            Err(error) => {
+                drop(transaction);
+                self.reload_group(room_id)?;
+                return Err(text(error));
+            }
+        };
+        if changed != 1 {
+            drop(transaction);
+            self.reload_group(room_id)?;
+            return Err("outbox operation changed before MLS message persistence".to_string());
+        }
+        crash_at_test_failpoint("outbox_before_message_commit");
+        if let Err(error) = transaction.commit() {
+            self.reload_group(room_id)?;
+            return Err(text(error));
+        }
+        crash_at_test_failpoint("outbox_after_message_commit");
+        Ok(message)
+    }
+
+    fn persist_outgoing_message(
+        &mut self,
+        client_message_id: &str,
+        room_id: &str,
+        payload: &[u8],
+        event_id: &str,
+    ) -> Result<(), String> {
+        let transaction = self.meta.unchecked_transaction().map_err(text)?;
+        let created_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+        let (kind, body) = match std::str::from_utf8(payload) {
+            Ok(text) => ("text", Some(text)),
+            Err(_) => ("unreadable", None),
+        };
+        let inserted = transaction
+            .execute(
+                "INSERT INTO client_inbox
+                 (event_id, room_id, kind, body, payload, acknowledged, created_at, acknowledged_at, direction, client_message_id)
+                 VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, NULL, 'outgoing', ?7)
+                 ON CONFLICT(event_id) DO UPDATE SET
+                   acknowledged = 1,
+                   acknowledged_at = NULL,
+                   direction = 'outgoing',
+                   client_message_id = excluded.client_message_id,
+                   payload = excluded.payload
+                 WHERE client_inbox.room_id = excluded.room_id
+                   AND client_inbox.kind = excluded.kind
+                   AND client_inbox.body IS excluded.body
+                   AND (client_inbox.client_message_id IS NULL
+                        OR client_inbox.client_message_id = excluded.client_message_id)
+                   AND (client_inbox.payload IS NULL OR client_inbox.payload = excluded.payload)",
+                rusqlite::params![
+                    event_id,
+                    room_id,
+                    kind,
+                    body,
+                    payload,
+                    created_at,
+                    client_message_id
+                ],
+            )
+            .map_err(text)?;
+        if inserted != 1 {
+            return Err("server event ID conflicts with a different local message".to_string());
+        }
+        transaction
+            .execute(
+                "INSERT OR IGNORE INTO client_processed (event_id) VALUES (?1)",
+                [event_id],
+            )
+            .map_err(text)?;
+        let removed = transaction
+            .execute(
+                "DELETE FROM client_outbox
+                 WHERE local_id = ?1 AND room_id = ?2 AND payload = ?3 AND mls_message IS NOT NULL",
+                rusqlite::params![client_message_id, room_id, payload],
+            )
+            .map_err(text)?;
+        if removed != 1 {
+            return Err(
+                "durable outgoing message journal disappeared before completion".to_string(),
+            );
+        }
+        transaction.commit().map_err(text)?;
+        self.processed.insert(event_id.to_string());
+        Ok(())
+    }
+
+    /// Persist the sender ratchet and exact attachment MLS ciphertext in one SQLCipher transaction.
+    fn create_and_persist_attachment_mls_message(
+        &mut self,
+        room_id: &str,
+        operation_id: &str,
+        file_id: &str,
+        manifest: &[u8],
+        epoch: u64,
+    ) -> Result<Vec<u8>, String> {
+        let transaction = self.meta.unchecked_transaction().map_err(text)?;
+        let created = {
+            let transactional_provider = DeviceProvider::new(
+                Arc::clone(&self.provider.crypto),
+                TransactionConnection(&transaction),
+            );
+            let group = self
+                .groups
+                .get_mut(room_id)
+                .ok_or("комната не создана на этом устройстве")?;
+            let current_epoch = group.mls.epoch().as_u64();
+            if current_epoch != epoch {
+                drop(transactional_provider);
+                drop(transaction);
+                return Err("MLS room epoch changed before attachment encryption".to_string());
+            }
+            group
+                .mls
+                .create_message(&transactional_provider, &self.signer, manifest)
+                .map_err(text)
+                .and_then(|message| message.tls_serialize_detached().map_err(text))
+        };
+        let message = match created {
+            Ok(message) => message,
+            Err(error) => {
+                drop(transaction);
+                self.reload_group(room_id)?;
+                return Err(error);
+            }
+        };
+        let changed = match transaction.execute(
+            "UPDATE client_attachment_outbox
+             SET mls_message = ?4, mls_epoch = ?5
+             WHERE client_message_id = ?1 AND room_id = ?2 AND file_id = ?3
+               AND uploaded = 1
+               AND (mls_message IS NULL OR mls_epoch IS NULL OR mls_epoch != ?5)",
+            rusqlite::params![operation_id, room_id, file_id, message, epoch as i64],
+        ) {
+            Ok(changed) => changed,
+            Err(error) => {
+                drop(transaction);
+                self.reload_group(room_id)?;
+                return Err(text(error));
+            }
+        };
+        if changed != 1 {
+            drop(transaction);
+            self.reload_group(room_id)?;
+            return Err("attachment outbox changed before MLS message persistence".to_string());
+        }
+        crash_at_test_failpoint("attachment_before_mls_message_commit");
+        if let Err(error) = transaction.commit() {
+            self.reload_group(room_id)?;
+            return Err(text(error));
+        }
+        crash_at_test_failpoint("attachment_after_mls_message_commit");
+        Ok(message)
+    }
+
+    /// Encrypts attachment bytes before upload; only ciphertext and its digest reach the file service.
+    /// The manifest (including file key and nonce) is sent only inside an MLS application message.
+    pub fn send_attachment(
+        &mut self,
+        room_id: &str,
+        name: &str,
+        mime_type: &str,
+        plaintext: &[u8],
+    ) -> Result<String, String> {
+        let random_id = self.provider.rand().random_array::<16>().map_err(text)?;
+        self.send_attachment_with_id(room_id, name, mime_type, plaintext, &hex_encode(&random_id))
+    }
+
+    /// Retries with the same ID reuse the same file key/nonce, manifest, and MLS ciphertext.
+    pub fn send_attachment_with_id(
+        &mut self,
+        room_id: &str,
+        name: &str,
+        mime_type: &str,
+        plaintext: &[u8],
+        client_message_id: &str,
+    ) -> Result<String, String> {
+        self.ensure_writable()?;
+        if room_id.trim().is_empty()
+            || client_message_id.is_empty()
+            || client_message_id.len() > 60
+            || !client_message_id
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
+        {
+            return Err("clientMessageId must contain 1-60 letters, digits, _ or -".to_string());
+        }
+        if name.is_empty()
+            || name.len() > 255
+            || name.chars().any(char::is_control)
+            || name.contains('/')
+            || name.contains('\\')
+        {
+            return Err("invalid attachment display name".to_string());
+        }
+        if mime_type.is_empty() || mime_type.len() > 127 || mime_type.chars().any(char::is_control)
+        {
+            return Err("invalid attachment MIME type".to_string());
+        }
+        if plaintext.is_empty() || plaintext.len() as u64 > 50 * 1024 * 1024 - 16 {
+            return Err(
+                "attachment size must be between 1 byte and 50 MiB minus the GCM tag".to_string(),
+            );
+        }
+
+        let operation_id = format!("att_{client_message_id}");
+        if self.flush_pending_membership_commits()? > 0 {
+            self.sync()?;
+        }
+        if let Some(reason) = self.desync_reason(room_id)? {
+            return Err(format!(
+                "комната рассинхронизирована и требует восстановления: {reason}"
+            ));
+        }
+
+        let completed: Option<(String, String, String, Vec<u8>)> = self
+            .meta
+            .query_row(
+                "SELECT room_id, file_id, event_id, manifest
+                 FROM client_attachments
+                 WHERE client_message_id = ?1 AND direction = 'outgoing'",
+                [&operation_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .optional()
+            .map_err(text)?;
+        if let Some((stored_room, stored_file_id, event_id, stored_manifest)) = completed {
+            if stored_room != room_id {
+                return Err("clientMessageId is already completed for a different room".to_string());
+            }
+            let stored_manifest = Zeroizing::new(stored_manifest);
+            let manifest = attachment_crypto::parse_manifest(
+                stored_manifest.as_slice(),
+                &stored_file_id,
+                room_id,
+            )?;
+            if manifest.name != name
+                || manifest.mime_type != mime_type
+                || manifest.size != plaintext.len() as u64
+                || manifest.sha256 != attachment_crypto::sha256_hex(plaintext)
+            {
+                return Err(
+                    "clientMessageId retry payload does not match the completed attachment"
+                        .to_string(),
+                );
+            }
+            return Ok(event_id);
+        }
+
+        if let Some(reason) = self.desync_reason(room_id)? {
+            return Err(format!(
+                "комната рассинхронизирована и требует восстановления: {reason}"
+            ));
+        }
+        let initial_server_epoch = self.server_epoch(room_id)?;
+        let initial_local_epoch = self
+            .groups
+            .get(room_id)
+            .ok_or("комната не создана на этом устройстве")?
+            .mls
+            .epoch()
+            .as_u64();
+        if initial_local_epoch != initial_server_epoch {
+            return Err(format!(
+                "устройство на эпохе {initial_local_epoch}, сервер на {initial_server_epoch}: сначала синхронизация"
+            ));
+        }
+
+        let existing: Option<(String, String, Vec<u8>, String, i64, bool)> = self
+            .meta
+            .query_row(
+                "SELECT room_id, file_id, manifest, ciphertext_sha256, ciphertext_size, uploaded
+                 FROM client_attachment_outbox WHERE client_message_id = ?1",
+                [&operation_id],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(text)?;
+
+        let file_id: String;
+        let mut upload_url: Option<String> = None;
+        let manifest_payload: Zeroizing<Vec<u8>>;
+        let ciphertext: Zeroizing<Vec<u8>>;
+        let mut already_uploaded = false;
+
+        if let Some((
+            stored_room,
+            stored_file_id,
+            stored_manifest,
+            stored_hash,
+            stored_size,
+            uploaded,
+        )) = existing
+        {
+            if stored_room != room_id {
+                return Err("clientMessageId is already reserved for a different room".to_string());
+            }
+            let stored_manifest = Zeroizing::new(stored_manifest);
+            let parsed = attachment_crypto::parse_manifest(
+                stored_manifest.as_slice(),
+                &stored_file_id,
+                room_id,
+            )?;
+            if parsed.name != name
+                || parsed.mime_type != mime_type
+                || parsed.size != plaintext.len() as u64
+                || parsed.sha256 != attachment_crypto::sha256_hex(plaintext)
+            {
+                return Err(
+                    "clientMessageId retry payload does not match the persisted attachment"
+                        .to_string(),
+                );
+            }
+            ciphertext = Zeroizing::new(attachment_crypto::encrypt(
+                plaintext,
+                &parsed.key,
+                &parsed.nonce,
+                room_id,
+            )?);
+            if attachment_crypto::sha256_hex(ciphertext.as_slice()) != stored_hash
+                || ciphertext.len() as i64 != stored_size
+            {
+                return Err(
+                    "persisted attachment retry ciphertext does not match its SQLCipher journal"
+                        .to_string(),
+                );
+            }
+            if uploaded {
+                file_id = stored_file_id;
+                manifest_payload = Zeroizing::new(stored_manifest.to_vec());
+                already_uploaded = true;
+            } else {
+                // The previous signed URL may have expired; reserve a fresh object but reuse key/nonce.
+                let (new_file_id, new_upload_url) =
+                    self.reserve_attachment_upload(room_id, ciphertext.as_slice())?;
+                let new_manifest = Zeroizing::new(attachment_crypto::build_manifest(
+                    &new_file_id,
+                    room_id,
+                    name,
+                    mime_type,
+                    plaintext,
+                    ciphertext.as_slice(),
+                    &parsed.key,
+                    &parsed.nonce,
+                )?);
+                let changed = self
+                    .meta
+                    .execute(
+                        "UPDATE client_attachment_outbox
+                         SET file_id = ?2, manifest = ?3, ciphertext_sha256 = ?4,
+                             ciphertext_size = ?5, uploaded = 0, mls_message = NULL, mls_epoch = NULL
+                         WHERE client_message_id = ?1 AND room_id = ?6",
+                        rusqlite::params![
+                            operation_id,
+                            new_file_id,
+                            new_manifest.as_slice(),
+                            attachment_crypto::sha256_hex(ciphertext.as_slice()),
+                            ciphertext.len() as i64,
+                            room_id
+                        ],
+                    )
+                    .map_err(text)?;
+                if changed != 1 {
+                    return Err(
+                        "attachment retry journal changed during upload reservation".to_string()
+                    );
+                }
+                file_id = new_file_id;
+                upload_url = Some(new_upload_url);
+                manifest_payload = new_manifest;
+            }
+        } else {
+            let key = Zeroizing::new(self.provider.rand().random_array::<32>().map_err(text)?);
+            let nonce = Zeroizing::new(self.provider.rand().random_array::<12>().map_err(text)?);
+            ciphertext = Zeroizing::new(attachment_crypto::encrypt(
+                plaintext, &key, &nonce, room_id,
+            )?);
+            let ciphertext_hash = attachment_crypto::sha256_hex(ciphertext.as_slice());
+            let (reserved_file_id, reserved_upload_url) =
+                self.reserve_attachment_upload(room_id, ciphertext.as_slice())?;
+            let manifest = Zeroizing::new(attachment_crypto::build_manifest(
+                &reserved_file_id,
+                room_id,
+                name,
+                mime_type,
+                plaintext,
+                ciphertext.as_slice(),
+                &key,
+                &nonce,
+            )?);
+            self.meta
+                .execute(
+                    "INSERT INTO client_attachment_outbox
+                     (client_message_id, room_id, file_id, manifest, ciphertext_sha256,
+                      ciphertext_size, ciphertext, created_at, uploaded)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 0)",
+                    rusqlite::params![
+                        operation_id,
+                        room_id,
+                        reserved_file_id,
+                        manifest.as_slice(),
+                        ciphertext_hash,
+                        ciphertext.len() as i64,
+                        ciphertext.as_slice(),
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis() as i64
+                    ],
+                )
+                .map_err(text)?;
+            file_id = reserved_file_id;
+            upload_url = Some(reserved_upload_url);
+            manifest_payload = manifest;
+        }
+
+        if !already_uploaded {
+            let signed_upload_url = upload_url
+                .as_deref()
+                .ok_or("attachment upload URL is missing for an unuploaded outbox item")?;
+            self.upload_signed_bytes(signed_upload_url, ciphertext.as_slice())?;
+            self.call(
+                "POST",
+                &format!("/files/{}/complete", urlencoding::encode(&file_id)),
+                Some(json!({})),
+            )?;
+            let changed = self
+                .meta
+                .execute(
+                    "UPDATE client_attachment_outbox
+                     SET uploaded = 1
+                     WHERE client_message_id = ?1 AND file_id = ?2 AND uploaded = 0",
+                    rusqlite::params![operation_id, file_id],
+                )
+                .map_err(text)?;
+            if changed != 1 {
+                return Err("attachment outbox disappeared after successful upload".to_string());
+            }
+        }
+
+        let mut server_epoch = self.server_epoch(room_id)?;
+        let mut local_epoch = self
+            .groups
+            .get(room_id)
+            .ok_or("комната не создана на этом устройстве")?
+            .mls
+            .epoch()
+            .as_u64();
+        if local_epoch != server_epoch {
+            self.sync()?;
+            server_epoch = self.server_epoch(room_id)?;
+            local_epoch = self
+                .groups
+                .get(room_id)
+                .ok_or("комната не создана на этом устройстве")?
+                .mls
+                .epoch()
+                .as_u64();
+        }
+        if local_epoch != server_epoch {
+            return Err(format!(
+                "устройство на эпохе {local_epoch}, сервер на {server_epoch}: вложение сохранено в очереди, сначала синхронизация"
+            ));
+        }
+        let expected_epoch = i64::try_from(server_epoch)
+            .map_err(|_| "MLS epoch exceeds the persistent attachment journal range".to_string())?;
+        let persisted_message: (Option<Vec<u8>>, Option<i64>) = self
+            .meta
+            .query_row(
+                "SELECT mls_message, mls_epoch FROM client_attachment_outbox
+                 WHERE client_message_id = ?1 AND room_id = ?2 AND file_id = ?3 AND uploaded = 1",
+                rusqlite::params![operation_id, room_id, file_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+            .map_err(text)?
+            .ok_or_else(|| {
+                "attachment outbox disappeared before MLS message persistence".to_string()
+            })?;
+        let mls_message = match persisted_message {
+            (Some(bytes), Some(epoch)) if !bytes.is_empty() && epoch == expected_epoch => {
+                Zeroizing::new(bytes)
+            }
+            _ => Zeroizing::new(self.create_and_persist_attachment_mls_message(
+                room_id,
+                &operation_id,
+                &file_id,
+                manifest_payload.as_slice(),
+                server_epoch,
+            )?),
+        };
+
+        let response = self.call(
+            "POST",
+            &format!("/mls/groups/{}/messages", urlencoding::encode(room_id)),
+            Some(json!({
+                "message": B64.encode(mls_message.as_slice()),
+                "kind": "text",
+                "forwarded": false,
+                "clientMessageId": operation_id,
+                "fileId": file_id,
+            })),
+        )?;
+        let event_id = response
+            .get("event_id")
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .ok_or("сервер не вернул event_id для вложения")?
+            .to_string();
+
+        let incoming = Incoming::Attachment {
+            room_id: room_id.to_string(),
+            event_id: event_id.clone(),
+            file_id: file_id.clone(),
+            name: name.to_string(),
+            mime_type: mime_type.to_string(),
+            size: plaintext.len() as u64,
+            mine: true,
+        };
+        let transaction = self.meta.unchecked_transaction().map_err(text)?;
+        insert_incoming_record(&transaction, &incoming)?;
+        let tagged = transaction
+            .execute(
+                "UPDATE client_inbox
+                 SET client_message_id = ?1, acknowledged = 1, acknowledged_at = NULL
+                 WHERE event_id = ?2 AND room_id = ?3",
+                rusqlite::params![operation_id, event_id, room_id],
+            )
+            .map_err(text)?;
+        if tagged != 1 {
+            return Err("could not tag outgoing attachment direction in local history".to_string());
+        }
+        insert_attachment_manifest(
+            &transaction,
+            &incoming,
+            manifest_payload.as_slice(),
+            "outgoing",
+            Some(&operation_id),
+        )?;
+        // A recovery sync can quarantine this server-committed event before the
+        // durable outbox has enough information to reconstruct its attachment.
+        // Once the idempotent outgoing operation is confirmed and its manifest is
+        // committed locally, that authenticated local record supersedes the stale
+        // unreadable inbox placeholder and diagnostic.
+        let attachment_body = serde_json::to_string(&json!({
+            "fileId": file_id,
+            "name": name,
+            "mimeType": mime_type,
+            "size": plaintext.len() as u64,
+        }))
+        .map_err(text)?;
+        let normalized = transaction
+            .execute(
+                "UPDATE client_inbox SET kind = 'text', body = ?1
+                 WHERE event_id = ?2 AND room_id = ?3 AND client_message_id = ?4",
+                rusqlite::params![attachment_body, event_id, room_id, operation_id],
+            )
+            .map_err(text)?;
+        if normalized != 1 {
+            return Err(
+                "could not normalize recovered outgoing attachment inbox record".to_string(),
+            );
+        }
+        transaction
+            .execute(
+                "DELETE FROM client_undecryptable WHERE event_id = ?1",
+                [&event_id],
+            )
+            .map_err(text)?;
+        let removed = transaction
+            .execute(
+                "DELETE FROM client_attachment_outbox WHERE client_message_id = ?1 AND file_id = ?2",
+                rusqlite::params![operation_id, file_id],
+            )
+            .map_err(text)?;
+        if removed != 1 {
+            return Err("attachment outbox disappeared before local history commit".to_string());
+        }
+        crash_at_test_failpoint("attachment_before_history_commit");
+        transaction.commit().map_err(text)?;
+        crash_at_test_failpoint("attachment_after_history_commit");
+        self.reconcile_outgoing_attachment_handoff(incoming);
+        self.processed.insert(event_id.clone());
+        Ok(event_id)
+    }
+
+    /// Reconciles an outgoing attachment with any copy queued by a recovery sync.
+    /// The durable SQLCipher attachment record is authoritative for sender direction.
+    fn reconcile_outgoing_attachment_handoff(&mut self, mut incoming: Incoming) {
+        let (event_id, file_id) = match &mut incoming {
+            Incoming::Attachment {
+                event_id,
+                file_id,
+                mine,
+                ..
+            } => {
+                // The durable outgoing SQLCipher record is authoritative even
+                // when recovery did not already enqueue an inbox copy.
+                *mine = true;
+                (event_id.clone(), file_id.clone())
+            }
+            _ => return,
+        };
+        let mut handoff_present = false;
+        self.inbox.retain_mut(|item| {
+            if let Incoming::Attachment {
+                event_id: queued_event_id,
+                file_id: queued_file_id,
+                mine,
+                ..
+            } = item
+            {
+                if queued_event_id == &event_id || queued_file_id == &file_id {
+                    if handoff_present {
+                        return false;
+                    }
+                    *queued_event_id = event_id.clone();
+                    *queued_file_id = file_id.clone();
+                    *mine = true;
+                    handoff_present = true;
+                }
+            }
+            true
+        });
+        if !handoff_present {
+            self.inbox.push(incoming);
+        }
+    }
+
+    /// Fetches the encrypted object only for the active authenticated device, then verifies and decrypts locally.
+    pub fn download_attachment(&self, file_id: &str) -> Result<Vec<u8>, String> {
+        if file_id.trim().is_empty() || file_id.len() > 128 {
+            return Err("invalid attachment fileId".to_string());
+        }
+        let (room_id, manifest_bytes): (String, Vec<u8>) = self
+            .meta
+            .query_row(
+                "SELECT room_id, manifest FROM client_attachments WHERE file_id = ?1",
+                [file_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+            .map_err(text)?
+            .ok_or_else(|| {
+                "attachment manifest is not available in the encrypted local inbox".to_string()
+            })?;
+        let manifest_bytes = Zeroizing::new(manifest_bytes);
+        let manifest =
+            attachment_crypto::parse_manifest(manifest_bytes.as_slice(), file_id, &room_id)?;
+        for attempt in 0..2 {
+            let link = self.call(
+                "GET",
+                &format!("/files/{}/url", urlencoding::encode(file_id)),
+                None,
+            )?;
+            let download_url = link
+                .get("downloadUrl")
+                .and_then(Value::as_str)
+                .filter(|value| !value.trim().is_empty())
+                .ok_or("file link response did not return downloadUrl")?;
+            match self.download_signed_bytes(download_url, manifest.ciphertext_size) {
+                Ok(ciphertext) => return attachment_crypto::decrypt(&ciphertext, &manifest),
+                Err(error) if attempt == 0 && error.contains("signed download -> 403") => {
+                    // Refresh the short-lived capability once; revoked devices still fail closed.
+                    continue;
+                }
+                Err(error) => return Err(error),
+            }
+        }
+        Err("could not obtain a valid signed attachment download".to_string())
+    }
+
+    /// Sends an opaque MLS application payload with a stable operation ID.
+    /// Exact plaintext bytes and the sender ratchet are persisted before network I/O.
     pub fn send_application_payload_with_id(
         &mut self,
         room_id: &str,
         payload: &[u8],
         client_message_id: &str,
     ) -> Result<String, String> {
+        if room_id.trim().is_empty()
+            || client_message_id.is_empty()
+            || client_message_id.len() > 64
+            || !client_message_id
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
+        {
+            return Err("invalid room ID or clientMessageId".to_string());
+        }
+        self.ensure_writable()?;
+        let text_body = std::str::from_utf8(payload).ok();
+        let display_body = text_body
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("opaque:{}", B64.encode(payload)));
+
+        let completed: Option<(String, String, Option<String>, Option<Vec<u8>>, String)> = self
+            .meta
+            .query_row(
+                "SELECT room_id, kind, body, payload, event_id
+                 FROM client_inbox WHERE client_message_id = ?1",
+                [client_message_id],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(text)?;
+        if let Some((stored_room, kind, body, stored_payload, event_id)) = completed {
+            let same_payload = stored_payload
+                .as_deref()
+                .map(|stored| stored == payload)
+                .unwrap_or_else(|| text_body.is_some_and(|text| body.as_deref() == Some(text)));
+            let expected_kind = if text_body.is_some() {
+                "text"
+            } else {
+                "unreadable"
+            };
+            if stored_room != room_id || kind != expected_kind || !same_payload {
+                return Err(
+                    "clientMessageId is already completed with a different room or payload"
+                        .to_string(),
+                );
+            }
+            return Ok(event_id);
+        }
+
         if self.flush_pending_membership_commits()? > 0 {
             self.sync()?;
         }
-        self.ensure_writable()?;
         if let Some(reason) = self.desync_reason(room_id)? {
             return Err(format!(
                 "комната рассинхронизирована, отправка приостановлена: {reason}"
             ));
         }
-        let server = self.server_epoch(room_id)?;
-        let body = {
-            let group = self
-                .groups
-                .get_mut(room_id)
-                .ok_or("комната не создана на этом устройстве")?;
-            let local = group.mls.epoch().as_u64();
-            if local != server {
-                return Err(format!(
-                    "устройство на эпохе {local}, сервер на {server}: сначала синхронизация"
-                ));
+
+        let existing: Option<(String, String, Option<Vec<u8>>, Option<Vec<u8>>)> = self
+            .meta
+            .query_row(
+                "SELECT room_id, body, payload, mls_message
+                 FROM client_outbox WHERE local_id = ?1",
+                [client_message_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .optional()
+            .map_err(text)?;
+        let persisted_message = if let Some((stored_room, stored_body, stored_payload, message)) =
+            existing
+        {
+            let same_payload = stored_payload
+                .as_deref()
+                .map(|stored| stored == payload)
+                .unwrap_or_else(|| text_body.is_some_and(|text| stored_body == text));
+            if stored_room != room_id || !same_payload {
+                return Err(
+                    "clientMessageId is already reserved for a different room or payload"
+                        .to_string(),
+                );
             }
-            let message = group
-                .mls
-                .create_message(&self.provider, &self.signer, payload)
+            if stored_payload.is_none() {
+                self.meta
+                    .execute(
+                        "UPDATE client_outbox SET payload = ?2 WHERE local_id = ?1 AND payload IS NULL",
+                        rusqlite::params![client_message_id, payload],
+                    )
+                    .map_err(text)?;
+            }
+            message
+        } else {
+            self.meta
+                .execute(
+                    "INSERT INTO client_outbox (local_id, room_id, body, payload, seq)
+                     VALUES (?1, ?2, ?3, ?4, (SELECT COALESCE(MAX(seq), 0) + 1 FROM client_outbox))",
+                    rusqlite::params![client_message_id, room_id, display_body, payload],
+                )
                 .map_err(text)?;
-            B64.encode(message.tls_serialize_detached().map_err(text)?)
+            None
         };
-        let res = self.call(
+
+        let message = match persisted_message {
+            Some(message) => message,
+            None => {
+                let server_epoch = self.server_epoch(room_id)?;
+                let local_epoch = self
+                    .groups
+                    .get(room_id)
+                    .ok_or("комната не создана на этом устройстве")?
+                    .mls
+                    .epoch()
+                    .as_u64();
+                if local_epoch != server_epoch {
+                    return Err(format!(
+                        "устройство на эпохе {local_epoch}, сервер на {server_epoch}: сначала синхронизация"
+                    ));
+                }
+                self.create_and_persist_outbox_message(room_id, client_message_id, payload)?
+            }
+        };
+
+        let response = self.call(
             "POST",
             &format!("/mls/groups/{}/messages", urlencoding::encode(room_id)),
-            Some(json!({ "message": body, "kind": "text", "forwarded": false, "clientMessageId": client_message_id })),
+            Some(json!({
+                "message": B64.encode(&message),
+                "kind": "text",
+                "forwarded": false,
+                "clientMessageId": client_message_id
+            })),
         )?;
-        let event_id = res["event_id"]
+        let event_id = response["event_id"]
             .as_str()
             .ok_or("сервер не вернул event_id")?
             .to_string();
-        self.mark_processed(&event_id)?;
+        self.persist_outgoing_message(client_message_id, room_id, payload, &event_id)?;
         Ok(event_id)
     }
 
@@ -2352,6 +3838,7 @@ impl Client {
         room_id: &str,
         event_id: &str,
         bytes: &[u8],
+        outer_file_id: Option<&str>,
         out: &mut Vec<Incoming>,
     ) -> Result<(), String> {
         let parsed = MlsMessageIn::tls_deserialize_exact(bytes)
@@ -2361,6 +3848,7 @@ impl Client {
             let incoming = Incoming::Unreadable {
                 room_id: room_id.to_string(),
                 event_id: event_id.to_string(),
+                mine: false,
             };
             let transaction = self.meta.unchecked_transaction().map_err(text)?;
             if let Err(error) = insert_incoming_record(&transaction, &incoming)
@@ -2412,37 +3900,109 @@ impl Client {
 
         match processed_result {
             Ok(processed) => {
-                let (incoming, unreadable_reason) = match processed.into_content() {
+                let (incoming, unreadable_reason, attachment_manifest) = match processed
+                    .into_content()
+                {
                     ProcessedMessageContent::ApplicationMessage(app) => {
-                        match String::from_utf8(app.into_bytes()) {
-                            Ok(text) => (
-                                Incoming::Text {
-                                    room_id: room_id.to_string(),
-                                    event_id: event_id.to_string(),
-                                    text,
-                                },
-                                None,
-                            ),
-                            Err(_) => (
-                                Incoming::Unreadable {
-                                    room_id: room_id.to_string(),
-                                    event_id: event_id.to_string(),
-                                },
-                                Some("application payload is not valid UTF-8"),
-                            ),
+                        let payload = Zeroizing::new(app.into_bytes());
+                        if attachment_crypto::is_attachment_manifest(payload.as_slice()) {
+                            match outer_file_id {
+                                    Some(file_id) => match attachment_crypto::parse_manifest(
+                                        payload.as_slice(),
+                                        file_id,
+                                        room_id,
+                                    ) {
+                                        Ok(manifest) => (
+                                            Incoming::Attachment {
+                                                room_id: room_id.to_string(),
+                                                event_id: event_id.to_string(),
+                                                file_id: manifest.file_id.clone(),
+                                                name: manifest.name.clone(),
+                                                mime_type: manifest.mime_type.clone(),
+                                                size: manifest.size,
+                                                mine: false,
+                                            },
+                                            None,
+                                            Some(payload),
+                                        ),
+                                        Err(_) => (
+                                            Incoming::Unreadable {
+                                                room_id: room_id.to_string(),
+                                                event_id: event_id.to_string(),
+                                                mine: false,
+                                            },
+                                            Some("attachment manifest failed validation or outer binding"),
+                                            None,
+                                        ),
+                                    },
+                                    None => (
+                                        Incoming::Unreadable {
+                                            room_id: room_id.to_string(),
+                                            event_id: event_id.to_string(),
+                                            mine: false,
+                                        },
+                                        Some("attachment manifest is missing its outer file reference"),
+                                        None,
+                                    ),
+                                }
+                        } else if outer_file_id.is_some() {
+                            (
+                                    Incoming::Unreadable {
+                                        room_id: room_id.to_string(),
+                                        event_id: event_id.to_string(),
+                                        mine: false,
+                                    },
+                                    Some("outer file reference is not bound to an MLS attachment manifest"),
+                                    None,
+                                )
+                        } else {
+                            match String::from_utf8(payload.to_vec()) {
+                                Ok(text) => (
+                                    Incoming::Text {
+                                        room_id: room_id.to_string(),
+                                        event_id: event_id.to_string(),
+                                        text,
+                                        mine: false,
+                                    },
+                                    None,
+                                    None,
+                                ),
+                                Err(_) => (
+                                    Incoming::Unreadable {
+                                        room_id: room_id.to_string(),
+                                        event_id: event_id.to_string(),
+                                        mine: false,
+                                    },
+                                    Some("application payload is not valid UTF-8"),
+                                    None,
+                                ),
+                            }
                         }
                     }
                     _ => (
                         Incoming::Unreadable {
                             room_id: room_id.to_string(),
                             event_id: event_id.to_string(),
+                            mine: false,
                         },
                         Some("MLS message is not an application message"),
+                        None,
                     ),
                 };
 
                 if let Err(error) = insert_incoming_record(&transaction, &incoming)
-                    .and_then(|_| insert_processed_event(&transaction, event_id))
+                    .and_then(|_| {
+                        if let Some(manifest) = attachment_manifest.as_deref() {
+                            insert_attachment_manifest(
+                                &transaction,
+                                &incoming,
+                                manifest,
+                                "incoming",
+                                None,
+                            )?;
+                        }
+                        insert_processed_event(&transaction, event_id)
+                    })
                     .and_then(|_| {
                         if let Some(reason) = unreadable_reason {
                             insert_undecryptable_record(&transaction, event_id, room_id, reason)?;
@@ -2481,6 +4041,7 @@ impl Client {
                     let incoming = Incoming::Unreadable {
                         room_id: room_id.to_string(),
                         event_id: event_id.to_string(),
+                        mine: false,
                     };
                     let quarantine = self.meta.unchecked_transaction().map_err(text)?;
                     if let Err(error) = insert_incoming_record(&quarantine, &incoming) {
@@ -2532,7 +4093,7 @@ impl Client {
                     error
                 }
             })?;
-        let mut pending: Vec<(u64, String, Vec<u8>)> = Vec::new();
+        let mut pending: Vec<(u64, String, Vec<u8>, Option<String>)> = Vec::new();
         for ev in events["events"].as_array().cloned().unwrap_or_default() {
             let event_id = ev
                 .get("event_id")
@@ -2543,6 +4104,34 @@ impl Client {
                     "ошибка контракта ответа: event_id отсутствует, не строка или пустой"
                         .to_string()
                 })?;
+            let content = ev
+                .get("content")
+                .and_then(Value::as_object)
+                .ok_or_else(|| {
+                    "ошибка контракта ответа: event content отсутствует или не объект".to_string()
+                })?;
+            let file_ref = content.get("file");
+            let legacy_file_ref = content.get("fileId");
+            if let (Some(Value::String(file)), Some(Value::String(legacy))) =
+                (file_ref, legacy_file_ref)
+            {
+                if file != legacy {
+                    return Err(
+                        "ошибка контракта ответа: file и fileId содержат разные идентификаторы"
+                            .to_string(),
+                    );
+                }
+            }
+            let outer_file_id = match file_ref.or(legacy_file_ref) {
+                Some(Value::String(file_id)) if !file_id.trim().is_empty() => Some(file_id.clone()),
+                Some(_) => {
+                    return Err(
+                        "ошибка контракта ответа: event content.file должен быть непустой строкой"
+                            .to_string(),
+                    )
+                }
+                None => None,
+            };
             let Some(mls_b64) = ev["content"]["mls"].as_str() else {
                 continue;
             };
@@ -2552,17 +4141,17 @@ impl Client {
             // Malformed base64 or TLS payloads are persisted through the same durable
             // inbox transaction as every other unreadable event.
             let Ok(bytes) = B64.decode(mls_b64) else {
-                self.process_event(room_id, &event_id, &[], out)?;
+                self.process_event(room_id, &event_id, &[], outer_file_id.as_deref(), out)?;
                 continue;
             };
             let parsed = MlsMessageIn::tls_deserialize_exact(&bytes)
                 .ok()
                 .and_then(|message| message.try_into_protocol_message().ok());
             let Some(protocol) = parsed else {
-                self.process_event(room_id, &event_id, &bytes, out)?;
+                self.process_event(room_id, &event_id, &bytes, outer_file_id.as_deref(), out)?;
                 continue;
             };
-            pending.push((protocol.epoch().as_u64(), event_id, bytes));
+            pending.push((protocol.epoch().as_u64(), event_id, bytes, outer_file_id));
         }
         let current = self
             .groups
@@ -2608,21 +4197,21 @@ impl Client {
         let join_epoch = self.groups[room_id].join_epoch;
         let before_join: Vec<String> = pending
             .iter()
-            .filter(|(e, _, _)| *e < join_epoch)
-            .map(|(_, id, _)| id.clone())
+            .filter(|(e, _, _, _)| *e < join_epoch)
+            .map(|(_, id, _, _)| id.clone())
             .collect();
         for event_id in before_join {
             self.mark_processed(&event_id)?;
         }
         loop {
             let epoch = self.groups[room_id].mls.epoch().as_u64();
-            let ready: Vec<(String, Vec<u8>)> = pending
+            let ready: Vec<(String, Vec<u8>, Option<String>)> = pending
                 .iter()
-                .filter(|(e, id, _)| *e == epoch && !self.processed.contains(id))
-                .map(|(_, id, b)| (id.clone(), b.clone()))
+                .filter(|(e, id, _, _)| *e == epoch && !self.processed.contains(id))
+                .map(|(_, id, bytes, file_id)| (id.clone(), bytes.clone(), file_id.clone()))
                 .collect();
-            for (event_id, bytes) in ready {
-                self.process_event(room_id, &event_id, &bytes, out)?;
+            for (event_id, bytes, outer_file_id) in ready {
+                self.process_event(room_id, &event_id, &bytes, outer_file_id.as_deref(), out)?;
             }
             let Some((commit_epoch, commit, metadata)) =
                 commits.iter().find(|(e, _, _)| *e == epoch + 1)
@@ -2746,12 +4335,12 @@ impl Client {
         // Опоздавшие события (аудит, P0.3): их эпоха уже пройдена. Внутри окна пробуем расшифровать,
         // за пределами окна — явная постоянная ошибка с причиной, а не молчаливый пропуск.
         let final_epoch = self.groups[room_id].mls.epoch().as_u64();
-        let late: Vec<(String, Vec<u8>, u64)> = pending
+        let late: Vec<(String, Vec<u8>, u64, Option<String>)> = pending
             .iter()
-            .filter(|(e, id, _)| *e < final_epoch && !self.processed.contains(id))
-            .map(|(e, id, b)| (id.clone(), b.clone(), *e))
+            .filter(|(epoch, id, _, _)| *epoch < final_epoch && !self.processed.contains(id))
+            .map(|(epoch, id, bytes, file_id)| (id.clone(), bytes.clone(), *epoch, file_id.clone()))
             .collect();
-        for (event_id, bytes, epoch) in late {
+        for (event_id, bytes, epoch, outer_file_id) in late {
             if final_epoch - epoch > MAX_PAST_EPOCHS as u64 {
                 self.record_unreadable(
                     room_id,
@@ -2762,9 +4351,10 @@ impl Client {
                 out.push(Incoming::Unreadable {
                     room_id: room_id.to_string(),
                     event_id: event_id.clone(),
+                    mine: false,
                 });
             } else {
-                self.process_event(room_id, &event_id, &bytes, out)?;
+                self.process_event(room_id, &event_id, &bytes, outer_file_id.as_deref(), out)?;
             }
         }
 
@@ -2772,10 +4362,10 @@ impl Client {
         // Commit. Persist this room-scoped state and retry it on the next sync.
         let future_event_ids: Vec<String> = pending
             .iter()
-            .filter(|(epoch, event_id, _)| {
+            .filter(|(epoch, event_id, _, _)| {
                 *epoch > final_epoch && !self.processed.contains(event_id)
             })
-            .map(|(_, event_id, _)| event_id.clone())
+            .map(|(_, event_id, _, _)| event_id.clone())
             .collect();
         if !future_event_ids.is_empty() {
             self.set_waiting_for_commit(room_id, final_epoch.saturating_add(1), &future_event_ids)?;
@@ -2831,11 +4421,98 @@ impl Client {
         Ok(local_id)
     }
 
+    /// Local MLS rooms restored from the persistent SQLCipher-backed client.
+    pub fn local_room_ids(&self) -> Vec<String> {
+        let mut room_ids = self.groups.keys().cloned().collect::<Vec<_>>();
+        room_ids.sort();
+        room_ids
+    }
+
+    /// Pending text and attachment bubbles for restoring the UI after process restart.
+    /// Attachment keys remain inside the encrypted manifest and are never returned here.
+    pub fn pending_outbox_for_room_json(&self, room_id: &str) -> Result<String, String> {
+        if room_id.trim().is_empty() || room_id.len() > 255 {
+            return Err("invalid MLS room id".to_string());
+        }
+        let mut pending = Vec::new();
+        {
+            let mut statement = self
+                .meta
+                .prepare(
+                    "SELECT local_id, body, payload FROM client_outbox
+                     WHERE room_id = ?1 ORDER BY seq",
+                )
+                .map_err(text)?;
+            let rows = statement
+                .query_map([room_id], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, Option<Vec<u8>>>(2)?,
+                    ))
+                })
+                .map_err(text)?;
+            for row in rows {
+                let (local_id, body, payload) = row.map_err(text)?;
+                let opaque = body.starts_with("opaque:");
+                pending.push(json!({
+                    "local_id": local_id,
+                    "room_id": room_id,
+                    "kind": if opaque { "opaque" } else { "text" },
+                    "text": if opaque { Value::Null } else { Value::String(body) },
+                    "payload_bytes": payload.as_ref().map_or(0, Vec::len),
+                }));
+            }
+        }
+        {
+            let mut statement = self
+                .meta
+                .prepare(
+                    "SELECT client_message_id, file_id, manifest, uploaded
+                     FROM client_attachment_outbox
+                     WHERE room_id = ?1 ORDER BY created_at, client_message_id",
+                )
+                .map_err(text)?;
+            let rows = statement
+                .query_map([room_id], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, Vec<u8>>(2)?,
+                        row.get::<_, bool>(3)?,
+                    ))
+                })
+                .map_err(text)?;
+            for row in rows {
+                let (operation_id, file_id, manifest_bytes, uploaded) = row.map_err(text)?;
+                let manifest_bytes = Zeroizing::new(manifest_bytes);
+                let manifest =
+                    attachment_crypto::parse_manifest(&manifest_bytes, &file_id, room_id)?;
+                pending.push(json!({
+                    "local_id": operation_id,
+                    "room_id": room_id,
+                    "kind": "attachment",
+                    "file_id": file_id,
+                    "name": manifest.name.clone(),
+                    "mime_type": manifest.mime_type.clone(),
+                    "size": manifest.size,
+                    "uploaded": uploaded,
+                }));
+            }
+        }
+        serde_json::to_string(&pending).map_err(text)
+    }
+
     /// Сколько сообщений ждут отправки.
     pub fn outbox_len(&self) -> Result<u64, String> {
         let n: i64 = self
             .meta
-            .query_row("SELECT COUNT(*) FROM client_outbox", [], |r| r.get(0))
+            .query_row(
+                "SELECT (SELECT COUNT(*) FROM client_outbox)
+                      + (SELECT COUNT(*) FROM client_attachment_outbox)",
+                [],
+                |row| row.get(0),
+            )
             .map_err(text)?;
         Ok(n as u64)
     }
@@ -2845,17 +4522,25 @@ impl Client {
         if self.cached_remote_config().maintenance {
             return Ok(0); // очередь не трогаем: сообщения уйдут после обслуживания
         }
-        let items: Vec<(String, String, String)> = {
+        let items: Vec<(String, String, String, Option<Vec<u8>>)> = {
             let mut stmt = self
                 .meta
-                .prepare("SELECT local_id, room_id, body FROM client_outbox ORDER BY seq")
+                .prepare("SELECT local_id, room_id, body, payload FROM client_outbox ORDER BY seq")
                 .map_err(text)?;
             let rows = stmt
-                .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+                .query_map([], |row| {
+                    Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+                })
                 .map_err(text)?;
             rows.collect::<Result<_, _>>().map_err(text)?
         };
-        if items.is_empty() {
+        let attachment_count: i64 = self
+            .meta
+            .query_row("SELECT COUNT(*) FROM client_attachment_outbox", [], |row| {
+                row.get(0)
+            })
+            .map_err(text)?;
+        if items.is_empty() && attachment_count == 0 {
             return Ok(0);
         }
         match self.sync() {
@@ -2864,8 +4549,14 @@ impl Client {
             Err(e) => return Err(e),
         }
         let mut sent = 0;
-        for (local_id, room_id, body) in items {
-            match self.send_text_with_id(&room_id, &body, &local_id) {
+        for (local_id, room_id, body, payload) in items {
+            let result = match payload {
+                Some(payload) => {
+                    self.send_application_payload_with_id(&room_id, &payload, &local_id)
+                }
+                None => self.send_text_with_id(&room_id, &body, &local_id),
+            };
+            match result {
                 Ok(_) => {
                     self.meta
                         .execute("DELETE FROM client_outbox WHERE local_id = ?1", [&local_id])
@@ -2874,6 +4565,112 @@ impl Client {
                 }
                 Err(e) if is_retryable(&e) => break,
                 Err(e) => return Err(e),
+            }
+        }
+        sent += self.flush_attachment_outbox()?;
+        Ok(sent)
+    }
+
+    /// Retries durable attachment uploads from ciphertext stored in SQLCipher.
+    /// The original plaintext file is reconstructed only in zeroizing memory.
+    fn flush_attachment_outbox(&mut self) -> Result<usize, String> {
+        let items: Vec<(String, String, String, Vec<u8>, String, i64, Vec<u8>)> = {
+            let mut statement = self
+                .meta
+                .prepare(
+                    "SELECT client_message_id, room_id, file_id, manifest, ciphertext_sha256,
+                        ciphertext_size, ciphertext
+                 FROM client_attachment_outbox ORDER BY created_at, client_message_id",
+                )
+                .map_err(text)?;
+            let rows = statement
+                .query_map([], |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                        row.get(6)?,
+                    ))
+                })
+                .map_err(text)?;
+            rows.collect::<Result<_, _>>().map_err(text)?
+        };
+        let mut sent = 0;
+        for (
+            operation_id,
+            room_id,
+            file_id,
+            manifest_bytes,
+            stored_hash,
+            stored_size,
+            ciphertext,
+        ) in items
+        {
+            let Some(client_message_id) = operation_id.strip_prefix("att_") else {
+                return Err("attachment outbox contains an invalid operation ID".to_string());
+            };
+            let manifest_bytes = Zeroizing::new(manifest_bytes);
+            let manifest = attachment_crypto::parse_manifest(&manifest_bytes, &file_id, &room_id)?;
+            if attachment_crypto::sha256_hex(&ciphertext) != stored_hash
+                || ciphertext.len() as i64 != stored_size
+                || manifest.ciphertext_size != stored_size as u64
+                || manifest.ciphertext_sha256 != stored_hash
+            {
+                return Err(
+                    "encrypted attachment outbox failed its ciphertext integrity check".to_string(),
+                );
+            }
+            let plaintext = Zeroizing::new(attachment_crypto::decrypt(&ciphertext, &manifest)?);
+            match self.send_attachment_with_id(
+                &room_id,
+                &manifest.name,
+                &manifest.mime_type,
+                plaintext.as_slice(),
+                client_message_id,
+            ) {
+                Ok(event_id) => {
+                    // Rebuild the sender bubble from the committed SQLCipher record.
+                    // This also covers the idempotent-completed fast path, where the
+                    // send method can return before publishing an in-memory handoff.
+                    let completed: Option<(String, Vec<u8>)> = self
+                        .meta
+                        .query_row(
+                            "SELECT file_id, manifest FROM client_attachments
+                             WHERE client_message_id = ?1 AND direction = 'outgoing'",
+                            [&operation_id],
+                            |row| Ok((row.get(0)?, row.get(1)?)),
+                        )
+                        .optional()
+                        .map_err(text)?;
+                    let (stored_file_id, stored_manifest) = completed.ok_or_else(|| {
+                        "completed attachment outbox has no durable outgoing history record"
+                            .to_string()
+                    })?;
+                    let stored_manifest = Zeroizing::new(stored_manifest);
+                    let stored = attachment_crypto::parse_manifest(
+                        stored_manifest.as_slice(),
+                        &stored_file_id,
+                        &room_id,
+                    )?;
+                    self.reconcile_outgoing_attachment_handoff(Incoming::Attachment {
+                        room_id: room_id.clone(),
+                        event_id,
+                        file_id: stored_file_id,
+                        name: stored.name.clone(),
+                        mime_type: stored.mime_type.clone(),
+                        size: stored.size,
+                        mine: true,
+                    });
+                    sent += 1;
+                }
+                Err(error) if is_retryable(&error) => break,
+                Err(error) if error.contains("комната рассинхронизирована") => {
+                    continue
+                }
+                Err(error) => return Err(error),
             }
         }
         Ok(sent)
@@ -2896,30 +4693,80 @@ impl Client {
         let mut statement = self
             .meta
             .prepare(
-                "SELECT event_id, room_id, kind, body
-                 FROM client_inbox WHERE acknowledged = 0 ORDER BY seq",
+                "SELECT i.event_id, i.room_id, i.kind,
+                        i.body, i.client_message_id, a.file_id, a.manifest
+                 FROM client_inbox i
+                 LEFT JOIN client_attachments a ON a.event_id = i.event_id
+                 WHERE i.acknowledged = 0 ORDER BY i.seq",
             )
             .map_err(text)?;
         let rows = statement
             .query_map([], |row| {
-                let event_id: String = row.get(0)?;
-                let room_id: String = row.get(1)?;
-                let kind: String = row.get(2)?;
-                let body: Option<String> = row.get(3)?;
-                Ok((event_id, room_id, kind, body))
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, Option<String>>(4)?,
+                    row.get::<_, Option<String>>(5)?,
+                    row.get::<_, Option<Vec<u8>>>(6)?,
+                ))
             })
             .map_err(text)?;
         rows.map(|row| {
-            let (event_id, room_id, kind, body) = row.map_err(text)?;
-            match kind.as_str() {
-                "text" => Ok(Incoming::Text {
-                    room_id,
-                    event_id,
-                    text: body.ok_or_else(|| "inbox text row has no body".to_string())?,
-                }),
-                "unreadable" => Ok(Incoming::Unreadable { room_id, event_id }),
-                _ => Err("inbox contains an unsupported record kind".to_string()),
-            }
+            let (event_id, room_id, kind, body, client_message_id, file_id, manifest) =
+                row.map_err(text)?;
+            incoming_from_row(
+                event_id,
+                room_id,
+                kind,
+                body,
+                client_message_id,
+                file_id,
+                manifest,
+            )
+        })
+        .collect()
+    }
+
+    /// Returns all locally persisted, decrypted history for one room, including acknowledged items.
+    /// The inbox journal remains the source of truth; reading history never consumes or ACKs events.
+    pub fn messages_for_room(&self, room_id: &str) -> Result<Vec<Incoming>, String> {
+        let mut statement = self
+            .meta
+            .prepare(
+                "SELECT i.event_id, i.room_id, i.kind,
+                        i.body, i.client_message_id, a.file_id, a.manifest
+                 FROM client_inbox i
+                 LEFT JOIN client_attachments a ON a.event_id = i.event_id
+                 WHERE i.room_id = ?1 ORDER BY i.seq",
+            )
+            .map_err(text)?;
+        let rows = statement
+            .query_map([room_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, Option<String>>(4)?,
+                    row.get::<_, Option<String>>(5)?,
+                    row.get::<_, Option<Vec<u8>>>(6)?,
+                ))
+            })
+            .map_err(text)?;
+        rows.map(|row| {
+            let (event_id, room_id, kind, body, client_message_id, file_id, manifest) =
+                row.map_err(text)?;
+            incoming_from_row(
+                event_id,
+                room_id,
+                kind,
+                body,
+                client_message_id,
+                file_id,
+                manifest,
+            )
         })
         .collect()
     }
@@ -3216,5 +5063,254 @@ mod classify_tests {
             classify_process_error(&E::<()>::UnauthorizedExternalCommitMessage),
             Failure::Permanent("отправитель вне группы")
         );
+    }
+}
+
+#[cfg(test)]
+mod session_persistence_tests {
+    use super::*;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::thread;
+
+    static NEXT_DB: AtomicU64 = AtomicU64::new(0);
+
+    fn temp_db(label: &str) -> String {
+        let path = std::env::temp_dir().join(format!(
+            "inone-engine-b-session-{}-{}-{label}.db",
+            std::process::id(),
+            NEXT_DB.fetch_add(1, Ordering::Relaxed)
+        ));
+        remove_db(&path.to_string_lossy());
+        path.to_string_lossy().into_owned()
+    }
+
+    fn remove_db(path: &str) {
+        for suffix in ["", "-wal", "-shm", "-journal"] {
+            let _ = std::fs::remove_file(format!("{path}{suffix}"));
+        }
+    }
+
+    #[test]
+    fn adopted_session_resumes_and_refresh_rotation_is_durable_and_encrypted() {
+        let database = temp_db("rotation");
+        let keys = MemoryKeyStore::default();
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind refresh test server");
+        let address = listener.local_addr().expect("refresh test server address");
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept refresh request");
+            stream
+                .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+                .unwrap();
+            let mut request = [0u8; 4096];
+            let _ = stream.read(&mut request);
+            let body = r#"{"token":"rotated-access-token","refreshToken":"rotated-refresh-token"}"#;
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            )
+            .expect("write refresh response");
+        });
+        let base = format!("http://{address}");
+        let client = connect_with_session(
+            &base,
+            "user-session",
+            "device-session",
+            "initial-access-token",
+            "initial-refresh-token",
+            &database,
+            &keys,
+        )
+        .expect("adopt authenticated session");
+        assert_eq!(
+            client.access_token_snapshot().unwrap(),
+            "initial-access-token"
+        );
+        assert_eq!(client.refresh_session().unwrap(), "rotated-access-token");
+        server.join().expect("refresh server thread");
+
+        drop(client);
+        let resumed =
+            resume_with_session(&base, "user-session", "device-session", &database, &keys)
+                .expect("resume persisted SQLCipher session");
+        assert_eq!(
+            resumed.access_token_snapshot().unwrap(),
+            "rotated-access-token"
+        );
+
+        let key = keys
+            .existing_database_key("user-session/device-session")
+            .unwrap()
+            .expect("persisted database key");
+        let connection = open_db(&database, &key).expect("open encrypted database");
+        let tokens = load_session_tokens(&connection).expect("read rotated token pair");
+        assert_eq!(tokens.0, "rotated-access-token");
+        assert_eq!(tokens.1, "rotated-refresh-token");
+        drop(tokens);
+        drop(connection);
+        drop(resumed);
+
+        let ciphertext = std::fs::read(&database).expect("read encrypted database file");
+        for secret in ["rotated-access-token", "rotated-refresh-token"] {
+            assert!(
+                !ciphertext
+                    .windows(secret.len())
+                    .any(|window| window == secret.as_bytes()),
+                "session credentials must not be visible in the SQLCipher file"
+            );
+        }
+        remove_db(&database);
+    }
+
+    #[test]
+    fn memory_key_store_distinguishes_read_create_and_idempotent_delete() {
+        let keys = MemoryKeyStore::default();
+        let scope = "user-key/device-key";
+        assert!(!keys.has_database_key(scope).unwrap());
+        assert_eq!(keys.existing_database_key(scope).unwrap(), None);
+
+        let first = keys.database_key(scope).unwrap();
+        assert!(keys.has_database_key(scope).unwrap());
+        assert_eq!(keys.existing_database_key(scope).unwrap(), Some(first));
+
+        keys.delete_database_key(scope).unwrap();
+        keys.delete_database_key(scope).unwrap();
+        assert!(!keys.has_database_key(scope).unwrap());
+        assert_eq!(keys.existing_database_key(scope).unwrap(), None);
+        let second = keys.database_key(scope).unwrap();
+        assert_ne!(first, second, "deleted key material must not be reused");
+    }
+
+    #[test]
+    fn resume_never_creates_a_missing_platform_database_key() {
+        let database = temp_db("missing-key");
+        std::fs::write(&database, b"existing encrypted database placeholder").unwrap();
+        let keys = MemoryKeyStore::default();
+
+        let error = resume_with_session(
+            "https://api.example.invalid",
+            "user-missing-key",
+            "device-missing-key",
+            &database,
+            &keys,
+        )
+        .err()
+        .expect("resume must fail closed without the original SQLCipher key");
+
+        assert!(error.contains("ключ SQLCipher"));
+        assert!(!keys
+            .has_database_key("user-missing-key/device-missing-key")
+            .unwrap());
+        remove_db(&database);
+    }
+
+    #[test]
+    fn adopting_session_refuses_to_replace_a_missing_key_for_existing_database() {
+        let database = temp_db("existing-db-no-key");
+        std::fs::write(&database, b"existing encrypted database placeholder").unwrap();
+        let keys = MemoryKeyStore::default();
+
+        let error = connect_with_session(
+            "https://api.example.invalid",
+            "user-existing-db",
+            "device-existing-db",
+            "access",
+            "refresh",
+            &database,
+            &keys,
+        )
+        .err()
+        .expect("an existing database without its platform key must not be re-keyed");
+
+        assert!(error.contains("защищённый ключ отсутствует"));
+        assert!(!keys
+            .has_database_key("user-existing-db/device-existing-db")
+            .unwrap());
+        remove_db(&database);
+    }
+
+    #[test]
+    fn room_history_retains_acknowledged_events_without_replaying_pending_inbox() {
+        let database = temp_db("history");
+        let keys = MemoryKeyStore::default();
+        let mut client = connect_with_session(
+            "https://api.example.invalid",
+            "user-history",
+            "device-history",
+            "history-access",
+            "history-refresh",
+            &database,
+            &keys,
+        )
+        .expect("adopt session for history test");
+
+        let event = Incoming::Text {
+            room_id: "!history:inone.test".to_string(),
+            event_id: "$history-1".to_string(),
+            text: "persisted message".to_string(),
+            mine: false,
+        };
+        let other_room_event = Incoming::Text {
+            room_id: "!other:inone.test".to_string(),
+            event_id: "$history-2".to_string(),
+            text: "another room".to_string(),
+            mine: false,
+        };
+        insert_incoming_record(&client.meta, &event).unwrap();
+        insert_incoming_record(&client.meta, &other_room_event).unwrap();
+
+        client
+            .acknowledge_incoming(&["$history-1".to_string(), "$history-2".to_string()])
+            .unwrap();
+        assert!(client.pending_incoming().unwrap().is_empty());
+        assert_eq!(
+            client.messages_for_room("!history:inone.test").unwrap(),
+            vec![event],
+            "ACK must not delete durable history"
+        );
+        drop(client);
+        remove_db(&database);
+    }
+
+    #[test]
+    fn logout_clears_persisted_and_in_memory_tokens_when_server_is_unavailable() {
+        let database = temp_db("logout");
+        let keys = MemoryKeyStore::default();
+        let client = connect_with_session(
+            "http://127.0.0.1:1",
+            "user-logout",
+            "device-logout",
+            "logout-access",
+            "logout-refresh",
+            &database,
+            &keys,
+        )
+        .expect("adopt session for logout test");
+
+        let error = client
+            .logout()
+            .expect_err("unavailable server must be reported");
+        assert!(error.contains("локальные токены очищены"));
+        assert!(client.access_token_snapshot().is_err());
+
+        let key = keys
+            .existing_database_key("user-logout/device-logout")
+            .unwrap()
+            .expect("database key remains until FFI cleanup");
+        let connection = open_db(&database, &key).expect("open database after logout");
+        let count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM client_meta WHERE key = 'session_tokens'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 0, "logout must delete the persisted refresh token");
+        drop(connection);
+        drop(client);
+        remove_db(&database);
     }
 }
