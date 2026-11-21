@@ -5,6 +5,8 @@ use std::borrow::Borrow;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use std::path::Path;
+use zeroize::{Zeroize, Zeroizing};
 
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use openmls::prelude::tls_codec::{Deserialize, Serialize};
@@ -126,10 +128,19 @@ struct Group {
     join_epoch: u64,
 }
 
+struct SessionTokens(String, String);
+
+impl Drop for SessionTokens {
+    fn drop(&mut self) {
+        self.0.zeroize();
+        self.1.zeroize();
+    }
+}
+
 pub struct Client {
     base: String,
-    /// Пара: токен доступа и одноразовый токен обновления. Ядро обновляет их само, когда доступ истёк.
-    tokens: Mutex<(String, String)>,
+    /// Access/refresh tokens are retained only in Rust and zeroized when replaced or dropped.
+    tokens: Mutex<SessionTokens>,
     user_id: String,
     device_id: String,
     agent: ureq::Agent,
@@ -313,18 +324,38 @@ fn register(agent: &ureq::Agent, base: &str, user_id: &str, password: &str) -> R
     }
 }
 
-/// Ключ базы устройства. Платформа хранит его в Keychain (iOS) или Keystore (Android); ядро его не сохраняет.
-pub trait KeyStore {
+/// Ключ базы устройства. Платформа хранит его в Keychain (iOS) или Keystore (Android).
+pub trait KeyStore: Send + Sync {
+    /// Checks for an existing key without creating or replacing key material.
+    fn has_database_key(&self, scope: &str) -> Result<bool, String>;
+    /// Loads an existing key only. A missing key must never be recreated during resume.
+    fn existing_database_key(&self, scope: &str) -> Result<Option<[u8; 32]>, String>;
+    /// Loads an existing key or creates one for a new encrypted database.
     fn database_key(&self, scope: &str) -> Result<[u8; 32], String>;
+    /// Removes the platform-protected key after the encrypted database is deleted.
+    fn delete_database_key(&self, scope: &str) -> Result<(), String>;
 }
 
-/// Хранилище ключей в памяти: для тестов. Для выпуска нужно хранилище платформы.
+/// Хранилище ключей в памяти: только для тестов.
 #[derive(Default)]
 pub struct MemoryKeyStore {
     keys: std::sync::Mutex<HashMap<String, [u8; 32]>>,
 }
 
+impl Drop for MemoryKeyStore {
+    fn drop(&mut self) {
+        let keys = match self.keys.get_mut() { Ok(keys) => keys, Err(poisoned) => poisoned.into_inner() };
+        for key in keys.values_mut() { key.zeroize(); }
+    }
+}
+
 impl KeyStore for MemoryKeyStore {
+    fn has_database_key(&self, scope: &str) -> Result<bool, String> {
+        Ok(self.keys.lock().map_err(text)?.contains_key(scope))
+    }
+    fn existing_database_key(&self, scope: &str) -> Result<Option<[u8; 32]>, String> {
+        Ok(self.keys.lock().map_err(text)?.get(scope).copied())
+    }
     fn database_key(&self, scope: &str) -> Result<[u8; 32], String> {
         let mut keys = self.keys.lock().map_err(text)?;
         if let Some(key) = keys.get(scope) {
@@ -333,6 +364,11 @@ impl KeyStore for MemoryKeyStore {
         let key = RustCrypto::default().random_array::<32>().map_err(text)?;
         keys.insert(scope.to_string(), key);
         Ok(key)
+    }
+
+    fn delete_database_key(&self, scope: &str) -> Result<(), String> {
+        if let Some(mut key) = self.keys.lock().map_err(text)?.remove(scope) { key.zeroize(); }
+        Ok(())
     }
 }
 
@@ -577,6 +613,99 @@ pub fn connect_with_approval(
     )
 }
 
+fn validate_session_base(base: &str) -> Result<(), String> {
+    let base = base.trim();
+    let local_http = cfg!(debug_assertions)
+        && (base.starts_with("http://127.0.0.1:") || base.starts_with("http://localhost:") || base.starts_with("http://[::1]:"));
+    if !(base.starts_with("https://") || local_http) || base.contains('@') || base.contains('#') || base.contains('?') {
+        return Err("адрес MLS API должен быть HTTPS (HTTP разрешён только для loopback в debug) и не содержать credentials/query/fragment".to_string());
+    }
+    Ok(())
+}
+
+fn store_session_tokens(meta: &Connection, tokens: &SessionTokens) -> Result<(), String> {
+    if tokens.0.is_empty() || tokens.1.is_empty() {
+        return Err("пара токенов сессии не может быть пустой".to_string());
+    }
+    let serialized = Zeroizing::new(serde_json::to_vec(&(tokens.0.as_str(), tokens.1.as_str())).map_err(text)?);
+    meta.execute(
+        "INSERT INTO client_meta (key, value) VALUES ('session_tokens', ?1) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        [serialized.as_slice()],
+    ).map_err(text)?;
+    Ok(())
+}
+
+fn load_session_tokens(meta: &Connection) -> Result<SessionTokens, String> {
+    let serialized: Zeroizing<Vec<u8>> = Zeroizing::new(meta.query_row(
+        "SELECT value FROM client_meta WHERE key = 'session_tokens'", [], |row| row.get(0)
+    ).map_err(|_| "в базе нет сохранённой MLS-сессии; выполните вход заново".to_string())?);
+    let (access, refresh): (String, String) = serde_json::from_slice(serialized.as_slice())
+        .map_err(|_| "сохранённая сессия повреждена; выполните вход заново".to_string())?;
+    if access.is_empty() || refresh.is_empty() {
+        return Err("сохранённая сессия неполная; выполните вход заново".to_string());
+    }
+    Ok(SessionTokens(access, refresh))
+}
+
+fn zeroize_json_value(value: &mut Value) {
+    match value {
+        Value::String(value) => value.zeroize(),
+        Value::Array(values) => values.iter_mut().for_each(zeroize_json_value),
+        Value::Object(values) => values.values_mut().for_each(zeroize_json_value),
+        _ => {}
+    }
+}
+
+/// Adopts an already authenticated mobile session without resetting MLS state.
+pub fn connect_with_session(
+    base: &str, user_id: &str, device_id: &str, access_token: &str, refresh_token: &str,
+    db_path: &str, keys: &dyn KeyStore,
+) -> Result<Client, String> {
+    validate_session_base(base)?;
+    if user_id.trim().is_empty() || device_id.trim().is_empty() || access_token.is_empty() || refresh_token.is_empty() {
+        return Err("user_id, device_id, access_token и refresh_token обязательны".to_string());
+    }
+    let scope = format!("{user_id}/{device_id}");
+    let database_exists = Path::new(db_path).is_file();
+    let has_key = keys.has_database_key(&scope)?;
+    let db_key = if has_key {
+        keys.existing_database_key(&scope)?.ok_or_else(|| "защищённое хранилище сообщило о ключе, но не вернуло его".to_string())?
+    } else {
+        if database_exists {
+            return Err("файл SQLCipher существует, но защищённый ключ отсутствует; автоматическая генерация нового ключа запрещена".to_string());
+        }
+        keys.database_key(&scope)?
+    };
+    let agent = ureq::AgentBuilder::new().redirects(0).build();
+    build_client(agent, base.trim(), (access_token.to_string(), refresh_token.to_string()), user_id, device_id, db_path, &db_key)
+}
+
+/// Reopens an existing SQLCipher session. It never creates a replacement database key.
+pub fn resume_with_session(
+    base: &str, user_id: &str, device_id: &str, db_path: &str, keys: &dyn KeyStore,
+) -> Result<Client, String> {
+    validate_session_base(base)?;
+    if user_id.trim().is_empty() || device_id.trim().is_empty() {
+        return Err("user_id и device_id обязательны".to_string());
+    }
+    if !Path::new(db_path).is_file() {
+        return Err("сохранённая MLS-сессия не найдена на этом устройстве".to_string());
+    }
+    let scope = format!("{user_id}/{device_id}");
+    let db_key = Zeroizing::new(keys.existing_database_key(&scope)?.ok_or_else(||
+        "ключ SQLCipher сохранённой MLS-сессии отсутствует; создание нового ключа запрещено".to_string()
+    )?);
+    let meta = open_db(db_path, &db_key)?;
+    let has_meta: bool = meta.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'client_meta')", [], |row| row.get(0)
+    ).map_err(text)?;
+    if !has_meta { return Err("в базе нет сохранённой MLS-сессии".to_string()); }
+    let tokens = load_session_tokens(&meta)?;
+    drop(meta);
+    let agent = ureq::AgentBuilder::new().redirects(0).build();
+    build_client(agent, base.trim(), (tokens.0, tokens.1), user_id, device_id, db_path, &db_key)
+}
+
 fn build_client(
     agent: ureq::Agent,
     base: &str,
@@ -646,6 +775,9 @@ fn build_client(
     )
     .map_err(text)?;
 
+    let session_tokens = SessionTokens(tokens.0, tokens.1);
+    store_session_tokens(&meta, &session_tokens)?;
+
     let stored_public: Option<Vec<u8>> = meta
         .query_row(
             "SELECT value FROM client_meta WHERE key = 'signer_public'",
@@ -712,7 +844,7 @@ fn build_client(
 
     Ok(Client {
         base: base.to_string(),
-        tokens: Mutex::new(tokens),
+        tokens: Mutex::new(session_tokens),
         user_id: user_id.to_string(),
         device_id: device_id.to_string(),
         agent,
@@ -947,37 +1079,65 @@ impl Client {
     }
 
     fn call_once(&self, method: &str, path: &str, body: Option<Value>) -> Result<Value, String> {
-        let token = self.tokens.lock().map_err(text)?.0.clone();
-        request(&self.agent, &self.base, &token, method, path, body)
+        let token = Zeroizing::new(self.tokens.lock().map_err(text)?.0.clone());
+        request(&self.agent, &self.base, token.as_str(), method, path, body)
     }
 
-    /// Новая пара по токену обновления. Старый токен обновления после этого не принимается.
+    /// Rotates the refresh token and persists the complete replacement before updating memory.
     fn renew(&self) -> Result<(), String> {
-        let refresh = self.tokens.lock().map_err(text)?.1.clone();
-        let r = request(
-            &self.agent,
-            &self.base,
-            "",
-            "POST",
-            "/token/refresh",
-            Some(json!({ "refreshToken": refresh })),
+        // Serialize rotations so concurrent 401 responses cannot spend one refresh token twice.
+        let mut tokens = self.tokens.lock().map_err(text)?;
+        if tokens.1.is_empty() { return Err("сессия MLS завершена; требуется повторный вход".to_string()); }
+        let refresh = Zeroizing::new(tokens.1.clone());
+        let mut response = request(
+            &self.agent, &self.base, "", "POST", "/token/refresh",
+            Some(json!({ "refreshToken": refresh.as_str() })),
         )?;
-        let token = r["token"]
-            .as_str()
-            .ok_or("сервер не вернул токен")?
-            .to_string();
-        let next = r["refreshToken"]
-            .as_str()
-            .ok_or("сервер не вернул токен обновления")?
-            .to_string();
-        *self.tokens.lock().map_err(text)? = (token, next);
+        let next_pair = (|| -> Result<SessionTokens, String> {
+            Ok(SessionTokens(
+                response["token"].as_str().ok_or("сервер не вернул токен")?.to_string(),
+                response["refreshToken"].as_str().ok_or("сервер не вернул токен обновления")?.to_string(),
+            ))
+        })();
+        zeroize_json_value(&mut response);
+        let next_pair = next_pair?;
+        // One SQLite statement atomically replaces the encrypted token pair. Keep the old
+        // in-memory refresh token if persistence fails after the server response.
+        store_session_tokens(&self.meta, &next_pair)?;
+        *tokens = next_pair;
         Ok(())
     }
 
-    /// Выход: сессия этого устройства завершается на сервере.
+    pub fn access_token_snapshot(&self) -> Result<String, String> {
+        let tokens = self.tokens.lock().map_err(text)?;
+        if tokens.0.is_empty() { return Err("сессия MLS завершена; требуется повторный вход".to_string()); }
+        Ok(tokens.0.clone())
+    }
+
+    pub fn refresh_session(&self) -> Result<String, String> {
+        self.renew()?;
+        self.access_token_snapshot()
+    }
+
+    /// Logout always clears the persisted and in-memory token pair, even if the server is offline.
     pub fn logout(&self) -> Result<(), String> {
-        self.call("POST", "/logout", Some(json!({})))?;
-        Ok(())
+        let server_result = match self.call("POST", "/logout", Some(json!({}))) {
+            Ok(mut response) => { zeroize_json_value(&mut response); Ok(()) },
+            Err(error) => Err(error),
+        };
+        let local_result = self.meta.execute("DELETE FROM client_meta WHERE key = 'session_tokens'", [])
+            .map(|_| ()).map_err(text);
+        let empty = SessionTokens(String::new(), String::new());
+        match self.tokens.lock() {
+            Ok(mut tokens) => *tokens = empty,
+            Err(poisoned) => *poisoned.into_inner() = empty,
+        }
+        match (server_result, local_result) {
+            (Ok(()), Ok(())) => Ok(()),
+            (Err(server), Ok(())) => Err(format!("ошибка выхода на сервере; локальные токены очищены: {server}")),
+            (Ok(()), Err(local)) => Err(format!("выход на сервере выполнен; не удалось удалить локальные токены: {local}")),
+            (Err(server), Err(local)) => Err(format!("ошибка выхода на сервере: {server}; не удалось удалить локальные токены: {local}")),
+        }
     }
 
     /// Идентификатор этого устройства на сервере.
