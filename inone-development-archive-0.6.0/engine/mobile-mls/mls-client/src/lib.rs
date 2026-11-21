@@ -18,6 +18,7 @@ use openmls_sqlite_storage::{Codec, Connection, SqliteStorageProvider};
 use openmls_traits::{crypto::OpenMlsCrypto, random::OpenMlsRand, types::HashType};
 use serde_json::{json, Value};
 
+pub mod attachment_crypto;
 pub mod remote_config;
 
 const CIPHERSUITE: Ciphersuite = Ciphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519;
