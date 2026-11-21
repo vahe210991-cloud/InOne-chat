@@ -3378,3 +3378,144 @@ mod classify_tests {
         );
     }
 }
+
+
+#[cfg(test)]
+mod session_persistence_tests {
+    use super::*;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::thread;
+
+    static NEXT_DB: AtomicU64 = AtomicU64::new(0);
+
+    fn temp_db(label: &str) -> String {
+        let path = std::env::temp_dir().join(format!(
+            "inone-engine-b-session-{}-{}-{label}.db",
+            std::process::id(),
+            NEXT_DB.fetch_add(1, Ordering::Relaxed)
+        ));
+        remove_db(&path.to_string_lossy());
+        path.to_string_lossy().into_owned()
+    }
+
+    fn remove_db(path: &str) {
+        for suffix in ["", "-wal", "-shm", "-journal"] {
+            let _ = std::fs::remove_file(format!("{path}{suffix}"));
+        }
+    }
+
+    #[test]
+    fn adopted_session_resumes_and_refresh_rotation_is_durable_and_encrypted() {
+        let database = temp_db("rotation");
+        let keys = MemoryKeyStore::default();
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind refresh test server");
+        let address = listener.local_addr().expect("refresh test server address");
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept refresh request");
+            stream.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
+            let mut request = [0u8; 4096];
+            let _ = stream.read(&mut request);
+            let body = r#"{"token":"rotated-access-token","refreshToken":"rotated-refresh-token"}"#;
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            )
+            .expect("write refresh response");
+        });
+        let base = format!("http://{address}");
+        let client = connect_with_session(
+            &base, "user-session", "device-session", "initial-access-token",
+            "initial-refresh-token", &database, &keys,
+        ).expect("adopt authenticated session");
+        assert_eq!(client.access_token_snapshot().unwrap(), "initial-access-token");
+        assert_eq!(client.refresh_session().unwrap(), "rotated-access-token");
+        server.join().expect("refresh server thread");
+
+        drop(client);
+        let resumed = resume_with_session(
+            &base, "user-session", "device-session", &database, &keys,
+        ).expect("resume persisted SQLCipher session");
+        assert_eq!(resumed.access_token_snapshot().unwrap(), "rotated-access-token");
+
+        let key = keys.existing_database_key("user-session/device-session")
+            .unwrap().expect("persisted database key");
+        let connection = open_db(&database, &key).expect("open encrypted database");
+        let tokens = load_session_tokens(&connection).expect("read rotated token pair");
+        assert_eq!(tokens.0, "rotated-access-token");
+        assert_eq!(tokens.1, "rotated-refresh-token");
+        drop(tokens);
+        drop(connection);
+        drop(resumed);
+
+        let ciphertext = std::fs::read(&database).expect("read encrypted database file");
+        for secret in ["rotated-access-token", "rotated-refresh-token"] {
+            assert!(
+                !ciphertext.windows(secret.len()).any(|window| window == secret.as_bytes()),
+                "session credentials must not be visible in the SQLCipher file"
+            );
+        }
+        remove_db(&database);
+    }
+
+    #[test]
+    fn resume_never_creates_a_missing_platform_database_key() {
+        let database = temp_db("missing-key");
+        std::fs::write(&database, b"existing encrypted database placeholder").unwrap();
+        let keys = MemoryKeyStore::default();
+
+        let error = resume_with_session(
+            "https://api.example.invalid", "user-missing-key", "device-missing-key",
+            &database, &keys,
+        ).expect_err("resume must fail closed without the original SQLCipher key");
+
+        assert!(error.contains("ключ SQLCipher"));
+        assert!(!keys.has_database_key("user-missing-key/device-missing-key").unwrap());
+        remove_db(&database);
+    }
+
+    #[test]
+    fn adopting_session_refuses_to_replace_a_missing_key_for_existing_database() {
+        let database = temp_db("existing-db-no-key");
+        std::fs::write(&database, b"existing encrypted database placeholder").unwrap();
+        let keys = MemoryKeyStore::default();
+
+        let error = connect_with_session(
+            "https://api.example.invalid", "user-existing-db", "device-existing-db",
+            "access", "refresh", &database, &keys,
+        ).expect_err("an existing database without its platform key must not be re-keyed");
+
+        assert!(error.contains("защищённый ключ отсутствует"));
+        assert!(!keys.has_database_key("user-existing-db/device-existing-db").unwrap());
+        remove_db(&database);
+    }
+
+    #[test]
+    fn logout_clears_persisted_and_in_memory_tokens_when_server_is_unavailable() {
+        let database = temp_db("logout");
+        let keys = MemoryKeyStore::default();
+        let client = connect_with_session(
+            "http://127.0.0.1:1", "user-logout", "device-logout",
+            "logout-access", "logout-refresh", &database, &keys,
+        ).expect("adopt session for logout test");
+
+        let error = client.logout().expect_err("unavailable server must be reported");
+        assert!(error.contains("локальные токены очищены"));
+        assert!(client.access_token_snapshot().is_err());
+
+        let key = keys.existing_database_key("user-logout/device-logout")
+            .unwrap().expect("database key remains until FFI cleanup");
+        let connection = open_db(&database, &key).expect("open database after logout");
+        let count: i64 = connection.query_row(
+            "SELECT COUNT(*) FROM client_meta WHERE key = 'session_tokens'", [],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(count, 0, "logout must delete the persisted refresh token");
+        drop(connection);
+        drop(client);
+        remove_db(&database);
+    }
+}
