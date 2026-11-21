@@ -385,7 +385,7 @@ fn incoming_from_row(
 ) -> Result<Incoming, String> {
     let mine = client_message_id.is_some();
     if let Some(file_id) = file_id {
-        if kind != "text" {
+        if !matches!(kind.as_str(), "text" | "unreadable") {
             return Err(format!(
                 "attachment index references an invalid inbox kind: {kind}"
             ));
@@ -3226,6 +3226,34 @@ impl Client {
             "outgoing",
             Some(&operation_id),
         )?;
+        // A recovery sync can quarantine this server-committed event before the
+        // durable outbox has enough information to reconstruct its attachment.
+        // Once the idempotent outgoing operation is confirmed and its manifest is
+        // committed locally, that authenticated local record supersedes the stale
+        // unreadable inbox placeholder and diagnostic.
+        let attachment_body = serde_json::to_string(&json!({
+            "fileId": file_id,
+            "name": name,
+            "mimeType": mime_type,
+            "size": plaintext.len() as u64,
+        }))
+        .map_err(text)?;
+        let normalized = transaction
+            .execute(
+                "UPDATE client_inbox SET kind = 'text', body = ?1
+                 WHERE event_id = ?2 AND room_id = ?3 AND client_message_id = ?4",
+                rusqlite::params![attachment_body, event_id, room_id, operation_id],
+            )
+            .map_err(text)?;
+        if normalized != 1 {
+            return Err("could not normalize recovered outgoing attachment inbox record".to_string());
+        }
+        transaction
+            .execute(
+                "DELETE FROM client_undecryptable WHERE event_id = ?1",
+                [&event_id],
+            )
+            .map_err(text)?;
         let removed = transaction
             .execute(
                 "DELETE FROM client_attachment_outbox WHERE client_message_id = ?1 AND file_id = ?2",
@@ -4686,7 +4714,15 @@ impl Client {
         rows.map(|row| {
             let (event_id, room_id, kind, body, client_message_id, file_id, manifest) =
                 row.map_err(text)?;
-            incoming_from_row(event_id, room_id, kind, body, client_message_id, file_id, manifest)
+            incoming_from_row(
+                event_id,
+                room_id,
+                kind,
+                body,
+                client_message_id,
+                file_id,
+                manifest,
+            )
         })
         .collect()
     }
@@ -4718,8 +4754,17 @@ impl Client {
             })
             .map_err(text)?;
         rows.map(|row| {
-            let (event_id, room_id, kind, body, client_message_id, file_id, manifest) = row.map_err(text)?;
-            incoming_from_row(event_id, room_id, kind, body, client_message_id, file_id, manifest)
+            let (event_id, room_id, kind, body, client_message_id, file_id, manifest) =
+                row.map_err(text)?;
+            incoming_from_row(
+                event_id,
+                room_id,
+                kind,
+                body,
+                client_message_id,
+                file_id,
+                manifest,
+            )
         })
         .collect()
     }
