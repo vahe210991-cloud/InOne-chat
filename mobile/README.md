@@ -145,7 +145,7 @@ The current engine deployment guide describes the checked-in server build as dev
 
 The repository-root Firebase client files are validated and copied by `tool/generate_flutter_platforms.sh` into the generated native projects on every run. Android receives `android/app/google-services.json`; iOS receives `ios/Runner/GoogleService-Info.plist`. The helper rejects missing files or mismatched Firebase project/App IDs and package/bundle identifiers before platform builds. See [platform identifier and Firebase configuration details](PLATFORM-IDENTIFIERS.md).
 
-**Important integration boundary:** the current Flutter dependency manifest and application entry point do not yet include Firebase Core or Firebase Messaging initialization, FCM permission/token handling, or automatic calls to the existing `InOnePushRepository`. The copied client files therefore establish native configuration placement only; they do not mean push registration or delivery is active. Do not log FCM/APNs tokens or commit Firebase Admin service-account credentials or APNs private keys. Backend push delivery remains separately gated by the existing `push.enabled` feature flag and provider credentials.
+**Integration status:** Firebase Core and Firebase Messaging runtime initialization, FCM permission/FID registration, receive/tap lifecycle and MLS-gated navigation are implemented in this branch. End-to-end delivery is not yet accepted until FCM/APNs physical-device smoke tests pass. Do not log FCM/APNs identifiers or commit Firebase Admin service-account credentials or APNs private keys.
 
 ## Firebase Messaging runtime
 
