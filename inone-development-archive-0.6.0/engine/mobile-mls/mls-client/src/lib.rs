@@ -157,9 +157,10 @@ pub struct Client {
     user_id: String,
     device_id: String,
     agent: ureq::Agent,
-    provider: DeviceProvider<Arc<Connection>>,
-    /// Соединение с той же базой для собственных таблиц клиента (комнаты, обработанные события, метаданные).
-    meta: Arc<Connection>,
+    provider: DeviceProvider<Connection>,
+    /// Separate owned connection for the durable client journal. Transaction-bound OpenMLS operations
+    /// use TransactionConnection over this connection so ratchet state and journal rows commit together.
+    meta: Connection,
     signer: SignatureKeyPair,
     credential: CredentialWithKey,
     groups: HashMap<String, Group>,
@@ -979,9 +980,9 @@ fn build_client(
 
     // One shared connection makes MLS state transitions and their journal rows
     // part of the same SQLite transaction.
-    let connection = Arc::new(open_db(db_path, db_key)?);
-    let provider = DeviceProvider::new(Arc::new(RustCrypto::default()), Arc::clone(&connection));
-    let meta = connection;
+    let provider_connection = open_db(db_path, db_key)?;
+    let meta = open_db(db_path, db_key)?;
+    let provider = DeviceProvider::new(Arc::new(RustCrypto::default()), provider_connection);
     meta.execute_batch(
         "CREATE TABLE IF NOT EXISTS client_meta (key TEXT PRIMARY KEY, value BLOB NOT NULL);
          CREATE TABLE IF NOT EXISTS client_rooms (room_id TEXT PRIMARY KEY, join_epoch INTEGER NOT NULL);
@@ -1296,7 +1297,7 @@ fn verify_staged_membership_metadata(
 }
 
 fn membership_commit_fingerprint(
-    provider: &DeviceProvider<Arc<Connection>>,
+    provider: &DeviceProvider<Connection>,
     room_id: &str,
     operation_id: &str,
     base_epoch: u64,
