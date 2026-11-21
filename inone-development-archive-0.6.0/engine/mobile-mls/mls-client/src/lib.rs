@@ -4679,7 +4679,9 @@ impl Client {
         let mut statement = self
             .meta
             .prepare(
-                "SELECT i.event_id, i.room_id, i.kind, i.body, i.client_message_id, a.file_id
+                "SELECT i.event_id, i.room_id, i.kind,
+                        COALESCE(i.body, CAST(a.manifest AS TEXT)),
+                        i.client_message_id, a.file_id
                  FROM client_inbox i
                  LEFT JOIN client_attachments a ON a.event_id = i.event_id
                  WHERE i.acknowledged = 0 ORDER BY i.seq",
@@ -4710,7 +4712,9 @@ impl Client {
         let mut statement = self
             .meta
             .prepare(
-                "SELECT i.event_id, i.room_id, i.kind, i.body, i.client_message_id, a.file_id
+                "SELECT i.event_id, i.room_id, i.kind,
+                        COALESCE(i.body, CAST(a.manifest AS TEXT)),
+                        i.client_message_id, a.file_id
                  FROM client_inbox i
                  LEFT JOIN client_attachments a ON a.event_id = i.event_id
                  WHERE i.room_id = ?1 ORDER BY i.seq",
