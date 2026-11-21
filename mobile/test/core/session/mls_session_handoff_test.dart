@@ -455,6 +455,7 @@ void main() {
     expect(bridge.lastAttachmentMimeType, 'image/jpeg');
     expect(bridge.lastAttachmentBytes, bytes);
     expect(bridge.lastAttachmentClientMessageId, 'retry-001');
+    // A retry after background sync keeps the same operation identity.
 
     await expectLater(
       session.downloadMlsAttachment(''),

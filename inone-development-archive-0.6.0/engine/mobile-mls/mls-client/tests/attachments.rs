@@ -142,7 +142,15 @@ fn attachment_retry_reuses_the_exact_mls_message_after_server_commit() {
             _ => None,
         })
         .expect("sender sync should recover its own accepted attachment event");
-    assert_eq!(first_message, read_persisted_message());
+    let connection = open_encrypted_db(&alice_db, &database_key);
+    let pending_outbox: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM client_attachment_outbox WHERE client_message_id = ?1",
+            [&operation_id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(pending_outbox, 0, "sync should atomically finalize the outbox");
 
     let event_id = alice.send_attachment_with_id(
         ROOM, "retry.txt", "text/plain", &plaintext, client_message_id

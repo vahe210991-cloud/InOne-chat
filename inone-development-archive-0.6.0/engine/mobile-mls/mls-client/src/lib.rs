@@ -3237,6 +3237,73 @@ pub fn download_attachment(&self, file_id: &str) -> Result<Vec<u8>, String> {
 
     /// Читает комнату: сообщения идут по эпохам, коммит N -> N+1 применяется после сообщений эпохи N.
     /// Обработка одного события комнаты (аудит, P0.1 и P0.3): расшифровка, постоянная или временная ошибка.
+
+    fn reconcile_outgoing_attachment_event(
+        &mut self,
+        room_id: &str,
+        event_id: &str,
+        file_id: &str,
+        message_bytes: &[u8],
+    ) -> Result<Option<Incoming>, String> {
+        use rusqlite::OptionalExtension;
+        let pending: Option<(String, Vec<u8>, Vec<u8>)> = self
+            .meta
+            .query_row(
+                "SELECT client_message_id, manifest, mls_message
+                 FROM client_attachment_outbox
+                 WHERE room_id = ?1 AND file_id = ?2
+                   AND uploaded = 1 AND mls_message IS NOT NULL",
+                rusqlite::params![room_id, file_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .optional()
+            .map_err(text)?;
+        let Some((operation_id, manifest_bytes, stored_message)) = pending else {
+            return Ok(None);
+        };
+        let stored_message = Zeroizing::new(stored_message);
+        if stored_message.as_slice() != message_bytes {
+            return Ok(None);
+        }
+        let manifest_bytes = Zeroizing::new(manifest_bytes);
+        let manifest = attachment_crypto::parse_manifest(&manifest_bytes, file_id, room_id)?;
+        let incoming = Incoming::Attachment {
+            room_id: room_id.to_string(),
+            event_id: event_id.to_string(),
+            file_id: file_id.to_string(),
+            name: manifest.name.clone(),
+            mime_type: manifest.mime_type.clone(),
+            size: manifest.size,
+        };
+
+        let transaction = self.meta.unchecked_transaction().map_err(text)?;
+        insert_incoming_record(&transaction, &incoming)?;
+        insert_attachment_record(
+            &transaction,
+            file_id,
+            room_id,
+            event_id,
+            manifest_bytes.as_slice(),
+            "outgoing",
+            Some(&operation_id),
+        )?;
+        insert_processed_event(&transaction, event_id)?;
+        crash_at_test_failpoint("before_attachment_outbox_delete");
+        transaction
+            .execute(
+                "DELETE FROM client_attachment_outbox
+                 WHERE client_message_id = ?1 AND room_id = ?2 AND file_id = ?3",
+                rusqlite::params![operation_id, room_id, file_id],
+            )
+            .map_err(text)?;
+        crash_at_test_failpoint("after_attachment_outbox_delete");
+        crash_at_test_failpoint("before_attachment_reconcile_commit");
+        transaction.commit().map_err(text)?;
+        crash_at_test_failpoint("after_attachment_reconcile_commit");
+        self.processed.insert(event_id.to_string());
+        Ok(Some(incoming))
+    }
+
     fn process_event(
         &mut self,
         room_id: &str,
@@ -3514,6 +3581,17 @@ pub fn download_attachment(&self, file_id: &str) -> Result<Vec<u8>, String> {
                 self.process_event(room_id, &event_id, &[], outer_file_id.as_deref(), out)?;
                 continue;
             };
+            if let Some(file_id) = outer_file_id.as_deref() {
+                if let Some(incoming) = self.reconcile_outgoing_attachment_event(
+                    room_id,
+                    &event_id,
+                    file_id,
+                    &bytes,
+                )? {
+                    out.push(incoming);
+                    continue;
+                }
+            }
             let parsed = MlsMessageIn::tls_deserialize_exact(&bytes)
                 .ok()
                 .and_then(|message| message.try_into_protocol_message().ok());
