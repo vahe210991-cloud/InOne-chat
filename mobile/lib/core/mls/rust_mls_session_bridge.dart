@@ -162,6 +162,33 @@ class RustMlsSessionBridge implements MlsSessionBridge {
       _requireSession().sendText(roomId: roomId, plaintext: plaintext);
 
   @override
+  Future<String> sendTextWithId(
+    String roomId,
+    String plaintext,
+    String clientMessageId,
+  ) =>
+      _requireSession().sendTextWithId(
+        roomId: roomId,
+        plaintext: plaintext,
+        clientMessageId: clientMessageId,
+      );
+
+  @override
+  Future<List<MlsPendingOutboxItem>> pendingOutbox(String roomId) async {
+    final source = await _requireSession().pendingOutboxForRoomJson(roomId: roomId);
+    final decoded = jsonDecode(source);
+    if (decoded is! List) {
+      throw const FormatException('Native MLS returned an invalid pending outbox');
+    }
+    return decoded.map((item) {
+      if (item is! Map) {
+        throw const FormatException('Native MLS returned an invalid pending outbox item');
+      }
+      return MlsPendingOutboxItem.fromJson(Map<String, dynamic>.from(item));
+    }).toList(growable: false);
+  }
+
+  @override
   Future<String> sendAttachment({
     required String roomId,
     required String name,
