@@ -802,6 +802,7 @@ fn build_client(
            room_id TEXT NOT NULL,
            kind TEXT NOT NULL CHECK (kind IN ('text', 'unreadable')),
            body TEXT,
+           payload BLOB,
            acknowledged INTEGER NOT NULL DEFAULT 0 CHECK (acknowledged IN (0, 1)),
            created_at INTEGER NOT NULL,
            acknowledged_at INTEGER,
@@ -827,6 +828,7 @@ fn build_client(
            local_id TEXT PRIMARY KEY,
            room_id TEXT NOT NULL,
            body TEXT NOT NULL,
+           payload BLOB,
            seq INTEGER NOT NULL,
            mls_message BLOB,
            mls_epoch INTEGER
@@ -873,6 +875,28 @@ fn build_client(
         .map_err(text)?;
     if !has_client_message_id {
         meta.execute_batch("ALTER TABLE client_inbox ADD COLUMN client_message_id TEXT")
+            .map_err(text)?;
+    }
+    let has_inbox_payload: bool = meta
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('client_inbox') WHERE name = 'payload')",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(text)?;
+    if !has_inbox_payload {
+        meta.execute_batch("ALTER TABLE client_inbox ADD COLUMN payload BLOB")
+            .map_err(text)?;
+    }
+    let has_outbox_payload: bool = meta
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('client_outbox') WHERE name = 'payload')",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(text)?;
+    if !has_outbox_payload {
+        meta.execute_batch("ALTER TABLE client_outbox ADD COLUMN payload BLOB")
             .map_err(text)?;
     }
     let has_outbox_mls_message: bool = meta
@@ -2324,8 +2348,8 @@ impl Client {
         let changed = match transaction.execute(
             "UPDATE client_outbox
              SET mls_message = ?2, mls_epoch = ?3
-             WHERE local_id = ?1 AND room_id = ?4 AND mls_message IS NULL",
-            rusqlite::params![client_message_id, message, epoch as i64, room_id],
+             WHERE local_id = ?1 AND room_id = ?4 AND payload = ?5 AND mls_message IS NULL",
+            rusqlite::params![client_message_id, message, epoch as i64, room_id, plaintext],
         ) {
             Ok(changed) => changed,
             Err(error) => {
@@ -2352,7 +2376,7 @@ impl Client {
         &mut self,
         client_message_id: &str,
         room_id: &str,
-        plaintext: &str,
+        payload: &[u8],
         event_id: &str,
     ) -> Result<(), String> {
         let transaction = self.meta.unchecked_transaction().map_err(text)?;
@@ -2360,22 +2384,36 @@ impl Client {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis() as i64;
+        let (kind, body) = match std::str::from_utf8(payload) {
+            Ok(text) => ("text", Some(text)),
+            Err(_) => ("unreadable", None),
+        };
         let inserted = transaction
             .execute(
                 "INSERT INTO client_inbox
-                 (event_id, room_id, kind, body, acknowledged, created_at, acknowledged_at, direction, client_message_id)
-                 VALUES (?1, ?2, 'text', ?3, 1, ?4, NULL, 'outgoing', ?5)
+                 (event_id, room_id, kind, body, payload, acknowledged, created_at, acknowledged_at, direction, client_message_id)
+                 VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, NULL, 'outgoing', ?7)
                  ON CONFLICT(event_id) DO UPDATE SET
                    acknowledged = 1,
                    acknowledged_at = NULL,
                    direction = 'outgoing',
-                   client_message_id = excluded.client_message_id
+                   client_message_id = excluded.client_message_id,
+                   payload = excluded.payload
                  WHERE client_inbox.room_id = excluded.room_id
-                   AND client_inbox.kind = 'text'
-                   AND client_inbox.body = excluded.body
+                   AND client_inbox.kind = excluded.kind
+                   AND client_inbox.body IS excluded.body
                    AND (client_inbox.client_message_id IS NULL
-                        OR client_inbox.client_message_id = excluded.client_message_id)",
-                rusqlite::params![event_id, room_id, plaintext, created_at, client_message_id],
+                        OR client_inbox.client_message_id = excluded.client_message_id)
+                   AND (client_inbox.payload IS NULL OR client_inbox.payload = excluded.payload)",
+                rusqlite::params![
+                    event_id,
+                    room_id,
+                    kind,
+                    body,
+                    payload,
+                    created_at,
+                    client_message_id
+                ],
             )
             .map_err(text)?;
         if inserted != 1 {
@@ -2390,8 +2428,8 @@ impl Client {
         let removed = transaction
             .execute(
                 "DELETE FROM client_outbox
-                 WHERE local_id = ?1 AND room_id = ?2 AND body = ?3 AND mls_message IS NOT NULL",
-                rusqlite::params![client_message_id, room_id, plaintext],
+                 WHERE local_id = ?1 AND room_id = ?2 AND payload = ?3 AND mls_message IS NOT NULL",
+                rusqlite::params![client_message_id, room_id, payload],
             )
             .map_err(text)?;
         if removed != 1 {
@@ -2405,15 +2443,13 @@ impl Client {
     }
 
     /// Sends an opaque MLS application payload with a stable operation ID.
-    /// This text API persists the exact serialized MLS message before network I/O.
+    /// Exact plaintext bytes and the sender ratchet are persisted before network I/O.
     pub fn send_application_payload_with_id(
         &mut self,
         room_id: &str,
         payload: &[u8],
         client_message_id: &str,
     ) -> Result<String, String> {
-        let plaintext = std::str::from_utf8(payload)
-            .map_err(|_| "text message payload must be valid UTF-8".to_string())?;
         if room_id.trim().is_empty()
             || client_message_id.is_empty()
             || client_message_id.len() > 64
@@ -2424,18 +2460,36 @@ impl Client {
             return Err("invalid room ID or clientMessageId".to_string());
         }
         self.ensure_writable()?;
+        let text_body = std::str::from_utf8(payload).ok();
+        let display_body = text_body
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("opaque:{}", B64.encode(payload)));
 
-        let completed: Option<(String, String, String)> = self
+        let completed: Option<(String, String, Option<String>, Option<Vec<u8>>, String)> = self
             .meta
             .query_row(
-                "SELECT room_id, body, event_id FROM client_inbox WHERE client_message_id = ?1",
+                "SELECT room_id, kind, body, payload, event_id
+                 FROM client_inbox WHERE client_message_id = ?1",
                 [client_message_id],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
             )
             .optional()
             .map_err(text)?;
-        if let Some((stored_room, stored_body, event_id)) = completed {
-            if stored_room != room_id || stored_body != plaintext {
+        if let Some((stored_room, kind, body, stored_payload, event_id)) = completed {
+            let same_payload = stored_payload
+                .as_deref()
+                .map(|stored| stored == payload)
+                .unwrap_or_else(|| text_body.is_some_and(|text| body.as_deref() == Some(text)));
+            let expected_kind = if text_body.is_some() { "text" } else { "unreadable" };
+            if stored_room != room_id || kind != expected_kind || !same_payload {
                 return Err(
                     "clientMessageId is already completed with a different room or payload"
                         .to_string(),
@@ -2453,29 +2507,44 @@ impl Client {
             ));
         }
 
-        let existing: Option<(String, String, Option<Vec<u8>>)> = self
+        let existing: Option<(String, String, Option<Vec<u8>>, Option<Vec<u8>>)> = self
             .meta
             .query_row(
-                "SELECT room_id, body, mls_message FROM client_outbox WHERE local_id = ?1",
+                "SELECT room_id, body, payload, mls_message
+                 FROM client_outbox WHERE local_id = ?1",
                 [client_message_id],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
             )
             .optional()
             .map_err(text)?;
-        let persisted_message = if let Some((stored_room, stored_body, message)) = existing {
-            if stored_room != room_id || stored_body != plaintext {
+        let persisted_message = if let Some((stored_room, stored_body, stored_payload, message)) =
+            existing
+        {
+            let same_payload = stored_payload
+                .as_deref()
+                .map(|stored| stored == payload)
+                .unwrap_or_else(|| text_body.is_some_and(|text| stored_body == text));
+            if stored_room != room_id || !same_payload {
                 return Err(
                     "clientMessageId is already reserved for a different room or payload"
                         .to_string(),
                 );
             }
+            if stored_payload.is_none() {
+                self.meta
+                    .execute(
+                        "UPDATE client_outbox SET payload = ?2 WHERE local_id = ?1 AND payload IS NULL",
+                        rusqlite::params![client_message_id, payload],
+                    )
+                    .map_err(text)?;
+            }
             message
         } else {
             self.meta
                 .execute(
-                    "INSERT INTO client_outbox (local_id, room_id, body, seq)
-                     VALUES (?1, ?2, ?3, (SELECT COALESCE(MAX(seq), 0) + 1 FROM client_outbox))",
-                    rusqlite::params![client_message_id, room_id, plaintext],
+                    "INSERT INTO client_outbox (local_id, room_id, body, payload, seq)
+                     VALUES (?1, ?2, ?3, ?4, (SELECT COALESCE(MAX(seq), 0) + 1 FROM client_outbox))",
+                    rusqlite::params![client_message_id, room_id, display_body, payload],
                 )
                 .map_err(text)?;
             None
@@ -2515,7 +2584,7 @@ impl Client {
             .as_str()
             .ok_or("сервер не вернул event_id")?
             .to_string();
-        self.persist_outgoing_message(client_message_id, room_id, plaintext, &event_id)?;
+        self.persist_outgoing_message(client_message_id, room_id, payload, &event_id)?;
         Ok(event_id)
     }
 
