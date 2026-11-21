@@ -412,6 +412,11 @@ void main() {
     final bridge = _FakeMlsSessionBridge();
     final session = InOneSession(
       baseUrl: 'https://api.inone.test',
+      httpClient: MockClient((request) async {
+        expect(request.method, 'GET');
+        expect(request.url.path, '/profile');
+        return http.Response('{"locale":"en"}', 200);
+      }),
       nativeMlsBridge: bridge,
       readDeviceId: () async => 'device-1',
       writeDeviceId: (_) async {},
