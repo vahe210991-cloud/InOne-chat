@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Восстановление из копии в ПУСТУЮ базу и (если задан архив файлов) в ПУСТУЮ папку файлов.
-# Проверки дампов/архивов проходят до записи; файлы распаковываются во временный каталог.
+# Архив сначала проверяется и распаковывается в staging; файлы публикуются до атомарного pg_restore.
 # Использование: ./scripts/restore-db.sh <копия базы.dump> <адрес пустой базы> [<архив файлов> <пустая папка файлов>]
 set -euo pipefail
 dump="${1:?укажите файл копии базы}"
@@ -8,14 +8,15 @@ target="${2:?укажите адрес пустой базы}"
 files_archive="${3:-}"
 files_target="${4:-}"
 staging=""
+moved_entries=()
 
 cleanup() {
+  # При любой ошибке до завершения восстановления удаляем только файлы,
+  # опубликованные этим запуском; посторонние файлы в FILES_DIR не трогаем.
+  for moved in "${moved_entries[@]}"; do
+    rm -rf -- "$moved" || true
+  done
   if [ -n "$staging" ] && [ -d "$staging" ]; then
-    # При ошибке переносов возвращаем уже перемещённые элементы в staging.
-    shopt -s dotglob nullglob
-    for moved in "$files_target"/*; do
-      if [ "$moved" != "$staging" ]; then mv -- "$moved" "$staging/" || true; fi
-    done
     rm -rf -- "$staging"
   fi
 }
@@ -31,12 +32,10 @@ check_sum() {
 
 validate_files_archive() {
   local archive="$1" entry normalized type
-  # Полный проход gzip/tar до любых изменений БД или файлового каталога.
   tar -tzf "$archive" > /dev/null || {
     echo "архив файлов некорректен или повреждён: восстановление остановлено" >&2
     return 1
   }
-  # Не допускаем абсолютные пути и компоненты '..' (включая ./../ и повторные ./).
   while IFS= read -r entry; do
     normalized="$entry"
     while [[ "$normalized" == ./* ]]; do normalized="${normalized#./}"; done
@@ -47,8 +46,7 @@ validate_files_archive() {
         ;;
     esac
   done < <(tar -tzf "$archive")
-  # Символические/жёсткие ссылки и специальные файлы могут перенаправить запись за staging.
-  # Разрешаем только обычные файлы и каталоги.
+  # Разрешаем только обычные файлы и каталоги: никаких symlink/hardlink/FIFO/device.
   while IFS= read -r entry; do
     type="${entry:0:1}"
     case "$type" in
@@ -83,28 +81,32 @@ fi
 tables="$(psql "$target" -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog', 'information_schema');")"
 [ "$tables" = "0" ] || { echo "цель не пустая ($tables таблиц): восстановление остановлено" >&2; exit 1; }
 
-# Подготавливаем и полностью проверяем файловое дерево до записи в PostgreSQL.
+# Полностью распаковываем и проверяем дерево до публикации файлов и изменения БД.
 if [ -n "$files_archive" ]; then
   # FILES_DIR может быть корнем Docker volume/mountpoint: сам каталог не переименовываем.
-  # staging создаётся внутри назначения, перенос элементов остаётся в пределах той же FS.
   mkdir -p "$files_target"
   staging="$(mktemp -d "$files_target/.inone-restore.XXXXXX")"
   tar --no-same-owner --no-same-permissions -C "$staging" -xzf "$files_archive"
-fi
-
-pg_restore --no-owner --no-acl --exit-on-error --dbname="$target" "$dump"
-echo "восстановлено: $target"
-
-if [ -n "$files_archive" ]; then
   shopt -s dotglob nullglob
   staged_entries=("$staging"/*)
   for entry in "${staged_entries[@]}"; do
     if ! mv -- "$entry" "$files_target/"; then
-      echo "не удалось переместить восстановленные файлы; выполняется откат" >&2
+      echo "не удалось опубликовать восстановленные файлы; выполнен откат файлов" >&2
       exit 1
     fi
+    moved_entries+=("$files_target/${entry##*/}")
   done
-  rmdir "$staging"
+fi
+
+# Одна транзакция: при ошибке PostgreSQL откатывает все изменения БД,
+# а EXIT cleanup удаляет опубликованные этим запуском файлы.
+pg_restore --single-transaction --no-owner --no-acl --exit-on-error --dbname="$target" "$dump"
+echo "восстановлено: $target"
+
+if [ -n "$files_archive" ]; then
+  rm -rf -- "$staging"
   staging=""
   echo "файлы восстановлены: $files_target"
 fi
+# Commit point: после успешного DB restore не выполнять rollback файлов.
+moved_entries=()
