@@ -3234,6 +3234,7 @@ pub fn download_attachment(&self, file_id: &str) -> Result<Vec<u8>, String> {
             )
             .optional()
             .map_err(text)?;
+        eprintln!("MLS_ATTACHMENT_TRACE reconcile room={room_id} event={event_id} file={file_id} outbox_found={}", pending.is_some());
         let Some((operation_id, manifest_bytes, stored_message)) = pending else {
             return Ok(None);
         };
@@ -3569,6 +3570,7 @@ pub fn download_attachment(&self, file_id: &str) -> Result<Vec<u8>, String> {
                 self.process_event(room_id, &event_id, &[], outer_file_id.as_deref(), out)?;
                 continue;
             };
+            eprintln!("MLS_ATTACHMENT_TRACE sync room={room_id} event={event_id} outer_file_id={outer_file_id:?} processed={}", self.processed.contains(&event_id));
             if let Some(file_id) = outer_file_id.as_deref() {
                 if let Some(incoming) = self.reconcile_outgoing_attachment_event(
                     room_id,
