@@ -275,18 +275,6 @@ impl MlsSession {
         self.with_client(|client| client.send_text(&room_id, plaintext.as_str()))
     }
 
-    pub fn send_text_with_id(
-        &self,
-        room_id: String,
-        plaintext: String,
-        client_message_id: String,
-    ) -> Result<String, String> {
-        let plaintext = Zeroizing::new(plaintext);
-        self.with_client(|client| {
-            client.send_text_with_id(&room_id, plaintext.as_str(), &client_message_id)
-        })
-    }
-
     pub fn send_attachment(
         &self,
         room_id: String,
@@ -372,16 +360,6 @@ impl MlsSession {
 
     pub fn flush_outbox(&self) -> Result<usize, String> {
         self.with_client(Client::flush_outbox)
-    }
-
-    pub fn local_room_ids_json(&self) -> Result<String, String> {
-        self.with_client(|client| {
-            serde_json::to_string(&client.local_room_ids()).map_err(|error| error.to_string())
-        })
-    }
-
-    pub fn pending_outbox_for_room_json(&self, room_id: String) -> Result<String, String> {
-        self.with_client(|client| client.pending_outbox_for_room_json(&room_id))
     }
 
     pub fn local_epoch(&self, room_id: String) -> Result<Option<u64>, String> {
