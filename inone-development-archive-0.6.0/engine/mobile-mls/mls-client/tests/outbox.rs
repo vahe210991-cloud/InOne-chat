@@ -298,7 +298,9 @@ fn uncertain_send_reuses_exact_mls_ciphertext_and_keeps_sender_history() {
     let sender_history = texts(&alice.messages_for_room(ROOM).unwrap());
     assert_eq!(sender_history, vec!["retry-safe text"]);
 
-    alice.send_text_with_id(ROOM, "message after retry", "stable-send-0002").unwrap();
+    alice
+        .send_text_with_id(ROOM, "message after retry", "stable-send-0002")
+        .unwrap();
     assert_eq!(texts(&bob.sync().unwrap()), vec!["message after retry"]);
 }
 
