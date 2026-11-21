@@ -52,15 +52,19 @@ fn db(name: &str) -> String {
     path.to_string_lossy().to_string()
 }
 
-
 fn open_encrypted_db(path: &str, key: &[u8; 32]) -> rusqlite::Connection {
     let connection = rusqlite::Connection::open(path).expect("open SQLCipher database");
-    let key_hex = key.iter().map(|byte| format!("{byte:02x}")).collect::<String>();
+    let key_hex = key
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
     connection
         .pragma_update(None, "key", format!("x'{key_hex}'"))
         .expect("unlock SQLCipher database");
     connection
-        .query_row("SELECT count(*) FROM sqlite_master", [], |row| row.get::<_, i64>(0))
+        .query_row("SELECT count(*) FROM sqlite_master", [], |row| {
+            row.get::<_, i64>(0)
+        })
         .expect("verify SQLCipher key");
     connection
 }
@@ -80,7 +84,6 @@ fn attachments(items: &[Incoming]) -> Vec<(String, String, String, u64)> {
         })
         .collect()
 }
-
 
 #[test]
 fn attachment_retry_reuses_the_exact_mls_message_after_server_commit() {
@@ -105,29 +108,39 @@ fn attachment_retry_reuses_the_exact_mls_message_after_server_commit() {
         .expect("sender SQLCipher key");
 
     let connection = open_encrypted_db(&alice_db, &database_key);
-    connection.execute_batch(
-        "CREATE TRIGGER fail_outgoing_attachment_insert
+    connection
+        .execute_batch(
+            "CREATE TRIGGER fail_outgoing_attachment_insert
          BEFORE INSERT ON client_attachments
          WHEN NEW.direction = 'outgoing'
          BEGIN
            SELECT RAISE(ABORT, 'simulated local persistence failure');
          END;",
-    ).unwrap();
+        )
+        .unwrap();
     drop(connection);
 
     // The server accepts the encrypted message, but the local commit is forced
     // to fail. The durable outbox must retain the exact MLS ciphertext.
-    assert!(alice.send_attachment_with_id(
-        ROOM, "retry.txt", "text/plain", &plaintext, client_message_id
-    ).is_err());
+    assert!(alice
+        .send_attachment_with_id(
+            ROOM,
+            "retry.txt",
+            "text/plain",
+            &plaintext,
+            client_message_id
+        )
+        .is_err());
 
     let read_persisted_message = || {
         let connection = open_encrypted_db(&alice_db, &database_key);
-        connection.query_row(
-            "SELECT mls_message FROM client_attachment_outbox WHERE client_message_id = ?1",
-            [&operation_id],
-            |row| row.get::<_, Vec<u8>>(0),
-        ).expect("persisted MLS message")
+        connection
+            .query_row(
+                "SELECT mls_message FROM client_attachment_outbox WHERE client_message_id = ?1",
+                [&operation_id],
+                |row| row.get::<_, Vec<u8>>(0),
+            )
+            .expect("persisted MLS message")
     };
     let first_message = read_persisted_message();
     assert!(!first_message.is_empty());
@@ -139,9 +152,15 @@ fn attachment_retry_reuses_the_exact_mls_message_after_server_commit() {
 
     // A second uncertain retry receives the server's original event ID. It
     // must not consume another sender ratchet generation or change the bytes.
-    assert!(alice.send_attachment_with_id(
-        ROOM, "retry.txt", "text/plain", &plaintext, client_message_id
-    ).is_err());
+    assert!(alice
+        .send_attachment_with_id(
+            ROOM,
+            "retry.txt",
+            "text/plain",
+            &plaintext,
+            client_message_id
+        )
+        .is_err());
     let second_message = read_persisted_message();
     assert_eq!(first_message, second_message);
 
@@ -149,7 +168,9 @@ fn attachment_retry_reuses_the_exact_mls_message_after_server_commit() {
     // re-supplying the file bytes; the ciphertext is already durable in SQLCipher.
     drop(alice);
     let connection = open_encrypted_db(&alice_db, &database_key);
-    connection.execute_batch("DROP TRIGGER fail_outgoing_attachment_insert;").unwrap();
+    connection
+        .execute_batch("DROP TRIGGER fail_outgoing_attachment_insert;")
+        .unwrap();
     drop(connection);
     let mut alice = resume_with_session(&engine.base, ALICE, "A_PHONE", &alice_db, &keys).unwrap();
     assert_eq!(alice.flush_outbox().unwrap(), 1);
@@ -160,15 +181,32 @@ fn attachment_retry_reuses_the_exact_mls_message_after_server_commit() {
         "the sender's own recovered attachment must retain outgoing direction in the in-memory handoff"
     );
     let sender_history = alice.messages_for_room(ROOM).unwrap();
-    let event_id = sender_history.iter().find_map(|item| match item {
-        Incoming::Attachment { event_id, mine: true, .. } => Some(event_id.clone()),
-        _ => None,
-    }).expect("sender attachment history after resumed outbox flush");
+    let event_id = sender_history
+        .iter()
+        .find_map(|item| match item {
+            Incoming::Attachment {
+                event_id,
+                mine: true,
+                ..
+            } => Some(event_id.clone()),
+            _ => None,
+        })
+        .expect("sender attachment history after resumed outbox flush");
     let received = bob.sync().unwrap();
-    assert_eq!(received.iter().filter(|item| matches!(item, Incoming::Attachment { .. })).count(), 1);
-    assert!(received.iter().any(|item| matches!(item, Incoming::Attachment { event_id: id, .. } if id == &event_id)));
+    assert_eq!(
+        received
+            .iter()
+            .filter(|item| matches!(item, Incoming::Attachment { .. }))
+            .count(),
+        1
+    );
+    assert!(received
+        .iter()
+        .any(|item| matches!(item, Incoming::Attachment { event_id: id, .. } if id == &event_id)));
 
-    alice.send_text(ROOM, "message after attachment retry").unwrap();
+    alice
+        .send_text(ROOM, "message after attachment retry")
+        .unwrap();
     let after_retry = bob.sync().unwrap();
     assert!(after_retry.iter().any(|item| matches!(
         item,
@@ -203,7 +241,10 @@ fn attachment_is_mls_encrypted_uploaded_and_persisted_for_both_devices() {
         .unwrap();
 
     let received = bob.sync().unwrap();
-    assert!(matches!(received.as_slice(), [Incoming::Attachment { mine: false, .. }]));
+    assert!(matches!(
+        received.as_slice(),
+        [Incoming::Attachment { mine: false, .. }]
+    ));
     let received_attachments = attachments(&received);
     assert_eq!(received_attachments.len(), 1);
     let (file_id, name, mime_type, size) = &received_attachments[0];
@@ -252,11 +293,16 @@ fn attachment_is_mls_encrypted_uploaded_and_persisted_for_both_devices() {
     assert_eq!(alice.download_attachment(file_id).unwrap(), plaintext);
 
     let sender_messages = alice.messages_for_room(ROOM).unwrap();
-    assert!(matches!(sender_messages.as_slice(), [Incoming::Attachment { mine: true, .. }]));
+    assert!(matches!(
+        sender_messages.as_slice(),
+        [Incoming::Attachment { mine: true, .. }]
+    ));
     assert!(
-        alice.pending_incoming().unwrap().iter().all(|item| {
-            !matches!(item, Incoming::Attachment { mine: true, .. })
-        }),
+        alice
+            .pending_incoming()
+            .unwrap()
+            .iter()
+            .all(|item| { !matches!(item, Incoming::Attachment { mine: true, .. }) }),
         "a sender's already accepted attachment must not be re-delivered as pending incoming"
     );
     let sender_history = attachments(&sender_messages);
