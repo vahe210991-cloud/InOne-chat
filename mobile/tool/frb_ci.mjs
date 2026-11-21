@@ -36,7 +36,9 @@ function sameSet(actual, expected, label) {
 }
 
 function futureMethods(source) {
-  return [...source.matchAll(/^\s*Future<.*>\s+([A-Za-z_]\w*)\s*\(/gm)].map(match => match[1]);
+  // Keep the return type and method name on one declaration line. Do not let
+  // whitespace matching cross a newline and misread a later helper as a method.
+  return [...source.matchAll(/^[ \t]*Future<[^\r\n]*?>[ \t]+([A-Za-z_]\w*)[ \t]*\(/gm)].map(match => match[1]);
 }
 
 function verifyContract() {
@@ -51,7 +53,7 @@ function verifyContract() {
   const adapterOverrides = [];
   for (let index = 0; index < adapterLines.length; index++) {
     if (adapterLines[index].trim() !== '@override') continue;
-    const match = (adapterLines[index + 1] || '').match(/^\s*Future<.*>\s+([A-Za-z_]\w*)\s*\(/);
+    const match = (adapterLines[index + 1] || '').match(/^[ \t]*Future<[^\r\n]*?>[ \t]+([A-Za-z_]\w*)[ \t]*\(/);
     if (match) adapterOverrides.push(match[1]);
   }
   if (new Set(interfaceMethods).size !== interfaceMethods.length) {
