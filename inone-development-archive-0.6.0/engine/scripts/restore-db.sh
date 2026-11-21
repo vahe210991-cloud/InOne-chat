@@ -101,6 +101,8 @@ fi
 # Одна транзакция: при ошибке PostgreSQL откатывает все изменения БД,
 # а EXIT cleanup удаляет опубликованные этим запуском файлы.
 pg_restore --single-transaction --no-owner --no-acl --exit-on-error --dbname="$target" "$dump"
+# DB commit point: after this succeeds, cleanup must never remove published files.
+moved_entries=()
 echo "восстановлено: $target"
 
 if [ -n "$files_archive" ]; then
@@ -108,5 +110,3 @@ if [ -n "$files_archive" ]; then
   staging=""
   echo "файлы восстановлены: $files_target"
 fi
-# Commit point: после успешного DB restore не выполнять rollback файлов.
-moved_entries=()
