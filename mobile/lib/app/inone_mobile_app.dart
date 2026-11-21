@@ -40,7 +40,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   late final InOneRepositories _repositories;
   InOnePushLifecycle? _pushLifecycle;
   InOnePushReceiveLifecycle? _pushReceiveLifecycle;
-  InOnePushRoute? _pendingPushRoute;
+  final InOnePushRouteQueue _pendingPushRoutes = InOnePushRouteQueue();
   bool _pushRouteInFlight = false;
   String? _pushRoomId;
   List<InOneThreadItem> _pushThreadItems = const [];
@@ -229,7 +229,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   Future<void> _openPushRoute(InOnePushRoute route) async {
     await _initializationComplete.future;
     if (!mounted) return;
-    _pendingPushRoute = route;
+    _pendingPushRoutes.enqueue(route);
     if (!_session.isAuthenticated) {
       _notice('Войдите в InOne, чтобы открыть новое сообщение.');
       return;
@@ -238,7 +238,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   }
 
   Future<void> _processPendingPushRoute() async {
-    final route = _pendingPushRoute;
+    final route = _pendingPushRoutes.next;
     if (route == null || _pushRouteInFlight || !_session.isAuthenticated) return;
     _pushRouteInFlight = true;
     try {
@@ -288,8 +288,11 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         _notice('Не удалось безопасно открыть сообщение. Проверьте подключение и членство в комнате.');
       }
     } finally {
-      _pendingPushRoute = null;
+      _pendingPushRoutes.complete(route);
       _pushRouteInFlight = false;
+      if (_pendingPushRoutes.next != null && mounted && _session.isAuthenticated) {
+        unawaited(_processPendingPushRoute());
+      }
     }
   }
   String _formatActivationTime(String raw) {
@@ -384,7 +387,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         _selectedOrganization = organizations.isEmpty ? null : organizations.first;
         _screen = 'messages';
       });
-      if (_pendingPushRoute != null) {
+      if (_pendingPushRoutes.next != null) {
         unawaited(_processPendingPushRoute());
       }
     } catch (_) {
@@ -452,7 +455,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       _selectedOrganization = null;
       _systemStatus = null;
       _registrationEmail = '';
-      _pendingPushRoute = null;
+      _pendingPushRoutes.clear();
       _pushRoomId = null;
       _pushThreadItems = const [];
       _screen = 'login';
