@@ -117,7 +117,9 @@ jobs:
           mkdir -p "$snapshot/rust/src"
           cp rust/src/frb_generated.rs rust/src/lib.rs "$snapshot/rust/src/"
           cp rust/Cargo.toml rust/Cargo.lock pubspec.yaml pubspec.lock "$snapshot/"
+          rm -f rust/src/api/simple.rs lib/src/rust/api/simple.dart integration_test/simple_test.dart
           flutter_rust_bridge_codegen generate \
+            --rust-input crate::api::session \
             --skip-fvm-install \
             --no-dart-fix \
             --no-dart-format \
