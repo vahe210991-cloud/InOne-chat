@@ -3240,6 +3240,13 @@ pub fn download_attachment(&self, file_id: &str) -> Result<Vec<u8>, String> {
         };
         let stored_message = Zeroizing::new(stored_message);
         if stored_message.as_slice() != message_bytes {
+            eprintln!(
+                "MLS_ATTACHMENT_TRACE ciphertext_mismatch stored_len={} event_len={} stored_sha={} event_sha={}",
+                stored_message.len(),
+                message_bytes.len(),
+                attachment_crypto::sha256_hex(&stored_message),
+                attachment_crypto::sha256_hex(message_bytes),
+            );
             return Ok(None);
         }
         let manifest_bytes = Zeroizing::new(manifest_bytes);
