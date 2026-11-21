@@ -591,3 +591,16 @@ The owner has approved two separate applications:
 This changes the product boundary and future scope classification. It does not itself authorize code changes, PR merges, backend/database separation, or changes to the approved Beta 1.0 UI. Existing screens, APIs, repositories, and roadmap items must be audited and mapped to InOne or InOne Business before implementation is reorganized.
 
 Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone-and-inone-business--2026-11-13).
+
+
+## Canonical Backend identity correction — 2026-11-21
+
+- Owner-approved scope: complete six-stage audit/remediation; safe package rename only after dependency review; no merge to `main` without explicit approval.
+- Canonical Node.js backend source remains `inone-development-archive-0.6.0/engine/`. Its package identity is now `inone-backend` (private, version 0.6.0); the old temporary Variant A description is removed.
+- The path itself is intentionally retained for compatibility. The separate `inone-engine-poc-0.6.0/mobile-mls/mls-client/` remains the Flutter-connected persistent Rust MLS client referenced by `mobile/rust/Cargo.toml`. Do not conflate the Node backend ownership with the Rust MLS client ownership.
+- Updated package metadata/lockfile, canonical backend README, mobile backend setup path, and added a package identity regression test to `npm test`.
+- Decision: [ADR-004](../../development/architecture/ADR-004-CANONICAL-BACKEND-IDENTITY.md). Source-of-truth map: [BACKEND-SOURCE-OF-TRUTH](BACKEND-SOURCE-OF-TRUTH.md). Audit report: [2026-11-21 backend identity remediation](../../development/reports/2026-11-21-backend-identity-audit.md).
+- Work branch: `fix/canonical-backend-identity-2026-11-21`. PR and exact-head CI review pending. No tests are claimed as run in this session; require focused identity test, full Node suite, npm audit, PostgreSQL suite and related CI checks on the final PR SHA.
+- No backend source modules, schema/migrations, Rust/FFI source, directory paths or database data were changed. Do not merge to `main` without owner approval.
+
+- PR #120 remains open as Draft against `main`, not merged. Its README received a preservation correction after review; re-read the latest PR head and require fresh exact-head CI before acceptance.
