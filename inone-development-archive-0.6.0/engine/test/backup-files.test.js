@@ -48,15 +48,19 @@ dbTest('FILES_DIR: архив создаётся и полностью восс�
   const tag = `${process.pid}_${randomBytes(4).toString('hex')}`;
   const sourceName = `inone_files_src_${tag}`;
   const targetName = `inone_files_dst_${tag}`;
+  const failedName = `inone_files_failed_${tag}`;
   const sourceUrl = withDatabase(process.env.DATABASE_URL, sourceName);
   const targetUrl = withDatabase(process.env.DATABASE_URL, targetName);
+  const failedUrl = withDatabase(process.env.DATABASE_URL, failedName);
   const temp = mkdtempSync(path.join(tmpdir(), 'inone-files-backup-'));
   const filesSource = path.join(temp, 'source');
   const filesTarget = path.join(temp, 'restored');
+  const failedFilesTarget = path.join(temp, 'failed-restored');
   const backupDir = path.join(temp, 'backups');
   mkdirSync(filesSource);
   mkdirSync(backupDir);
   mkdirSync(filesTarget);
+  mkdirSync(failedFilesTarget);
   const objectId = randomBytes(32).toString('hex');
   const payload = randomBytes(8192);
   writeFileSync(path.join(filesSource, objectId), payload);
@@ -68,13 +72,24 @@ dbTest('FILES_DIR: архив создаётся и полностью восс�
     assert.ok(dump.endsWith('.dump'));
     assert.ok(archive.endsWith('.tar.gz'));
     await admin(`CREATE DATABASE ${targetName}`);
+    await admin(`CREATE DATABASE ${failedName}`);
     execFileSync('bash', [path.join(root, 'scripts/restore-db.sh'), dump, targetUrl, archive, filesTarget], { encoding: 'utf8' });
     assert.deepEqual(readFileSync(path.join(filesTarget, objectId)), payload);
     assert.deepEqual(readdirSync(filesTarget), [objectId]);
     assert.ok((await countPublicTables(targetUrl)) > 0);
+
+    // A failed PostgreSQL restore must roll back both the DB transaction and published files.
+    const invalidDump = path.join(temp, 'invalid.dump');
+    writeFileSync(invalidDump, 'not a PostgreSQL custom archive');
+    writeChecksum(invalidDump);
+    const failed = spawnSync('bash', [path.join(root, 'scripts/restore-db.sh'), invalidDump, failedUrl, archive, failedFilesTarget], { encoding: 'utf8' });
+    assert.notEqual(failed.status, 0, 'invalid PostgreSQL dump is rejected');
+    assert.equal(await countPublicTables(failedUrl), 0, 'PostgreSQL transaction remains empty');
+    assert.deepEqual(readdirSync(failedFilesTarget), [], 'files published before failed DB restore are rolled back');
   } finally {
     await admin(`DROP DATABASE IF EXISTS ${sourceName} WITH (FORCE)`).catch(() => {});
     await admin(`DROP DATABASE IF EXISTS ${targetName} WITH (FORCE)`).catch(() => {});
+    await admin(`DROP DATABASE IF EXISTS ${failedName} WITH (FORCE)`).catch(() => {});
     rmSync(temp, { recursive: true, force: true });
   }
 });
