@@ -448,13 +448,14 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
       const localPort = req.socket.localPort;
       const localAuthority = `${localHost}${localPort ? `:${localPort}` : ''}`.toLowerCase();
       const requestAuthority = String(req.headers.host || '').toLowerCase();
-      // Accept Host only when it exactly identifies the socket's local endpoint
-      // (the direct loopback test/dev case). Proxied/public requests use configured
+      const isLoopbackAddress = localAddress === '::1'
+        || localAddress.startsWith('127.')
+        || /^::ffff:127(?:\\.\\d{1,3}){3}$/i.test(localAddress);
+      // Accept Host only when it exactly identifies a loopback socket endpoint.
+      // For every non-loopback bind (including reverse proxies), use configured
       // publicUrl; an attacker-controlled Host header is never reflected.
-      // Host and X-Forwarded-Host are not trusted proxy metadata. Only the
-      // socket-local loopback authority is accepted directly for local tests;
-      // reverse-proxied and public traffic must use the configured publicUrl origin.
-      const origin = requestAuthority === localAuthority
+      // Host and X-Forwarded-Host are not trusted proxy metadata.
+      const origin = isLoopbackAddress && requestAuthority === localAuthority
         ? `${req.socket.encrypted ? 'https' : 'http'}://${localAuthority}`
         : new URL(publicUrl).origin;
       return new URL(path, origin).toString();
