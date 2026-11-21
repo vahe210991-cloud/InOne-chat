@@ -1,6 +1,6 @@
 # ADR: MLS state and client journal atomicity
 
-- Status: **Proposed — pending CTO review**
+- Status: **Implemented and CI-verified for inbound application messages and inbound Commit processing; formal CTO acceptance remains pending**
 - Date: 2026-11-20
 - Scope: canonical source `inone-development-archive-0.6.0/engine/mobile-mls/mls-client`
 - Pinned storage dependencies: `openmls_sqlite_storage = 0.2.0`, `rusqlite = 0.32`
@@ -36,19 +36,19 @@ This design uses the pinned crate's public `Borrow<Connection>` provider contrac
 
 ## Required verification before acceptance
 
-- [ ] Compile the canonical `mls-client` crate and native bridge with the pinned lockfile.
+- [x] Compile the canonical `mls-client` crate and native bridge with the pinned lockfile (final implementation SHA `d3a88cf15a35d7c24a03c793e92086633493b101`; see verification report).
 - [x] Application message: inject process termination after OpenMLS ratchet/storage writes and before inbox/event-marker writes; restart a separate process against the same SQLCipher database and key; verify the exact ciphertext is decryptable once and no unreadable record is created (covered by process_crash_after_application_ratchet_write_rolls_back_and_redelivers).
 - [x] Application message: inject a normal journal-write failure; verify transaction rollback and exact-event redelivery (covered by inbox_write_failure_rolls_back_mls_state_and_allows_server_redelivery).
 - [x] Commit: inject process termination after staged Commit merge writes and before transaction commit; restart and verify the prior epoch remains loadable and the same Commit can be applied exactly once (covered by process_crash_after_inbound_commit_merge_rolls_back_epoch_and_retries).
 - [x] Commit: verify successful merge and associated epoch state survive restart together (covered by the post-crash retry assertions in process_crash_after_inbound_commit_merge_rolls_back_epoch_and_retries).
-- [ ] Exercise crash points immediately before and after transaction commit (pre-COMMIT is covered; post-COMMIT coverage is added by process_crash_immediately_after_inbound_commit_transaction_commit_keeps_epoch and awaits CI execution on this revision).
+- [x] Exercise inbound Commit crash points before and after transaction commit: `process_crash_after_inbound_commit_merge_rolls_back_epoch_and_retries` and `process_crash_immediately_after_inbound_commit_transaction_commit_keeps_epoch` both passed on the final implementation SHA.
 - [x] Run process-kill/reopen tests against real SQLCipher database files with the same device key. The client currently uses SQLite's default journal mode; WAL is not enabled by this PR and is not claimed as tested.
-- [ ] Run all canonical MLS client, Rust bridge, Android and iOS checks on the final head SHA (previous SHA passed; rerun is required after this revision).
-- [ ] CTO review approves the transaction boundary, failure semantics, and migration/backward-compatibility story.
+- [x] Run all canonical MLS client, Rust bridge, Android and iOS checks on final implementation SHA `d3a88cf15a35d7c24a03c793e92086633493b101` (all associated required workflows/jobs passed; see verification report).
+- [ ] Formal CTO review approves the transaction boundary, failure semantics, and migration/backward-compatibility story. No GitHub CTO approval has been verified.
 
 ## Current implementation note
 
-The P0 branch changes inbound Commit processing and staged-Commit merge to use a transaction-backed OpenMLS provider and reloads the group after rollback paths. Existing application-message processing already uses this transaction pattern. This ADR remains **proposed** until process-kill/restart tests and CTO review pass.
+The P0 branch changes inbound Commit processing and staged-Commit merge to use a transaction-backed OpenMLS provider and reloads the group after rollback paths. Existing application-message processing already uses this transaction pattern. The implementation and stated inbound crash/restart tests are CI-verified. This ADR remains **pending formal CTO acceptance**.
 
 ## Explicitly not claimed
 
