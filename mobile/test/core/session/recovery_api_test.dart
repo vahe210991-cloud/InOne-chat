@@ -46,9 +46,9 @@ void main() {
         final body = jsonDecode(request.body) as Map<String, dynamic>;
         expect(body['userId'], 'user-123');
         expect(body.containsKey('email'), isFalse);
-        expect(body['code'], '123456');
-        expect(body['newPassword'], 'new-password-123');
-        expect(body['pin'], '1234');
+        expect(body['code'], 'test-code');
+        expect(body['newPassword'], 'test-password');
+        expect(body['pin'], 'test-pin');
         expect(body['locale'], 'ru');
         return http.Response(jsonEncode({'ok': true}), 200);
       });
@@ -61,13 +61,15 @@ void main() {
         writeMlsUserId: (_) async {},
         deleteMlsUserId: () async {},
         readLocale: () async => 'ru',
+        readLocaleSyncPending: () async => null,
+        writeLocaleSyncPending: (_) async {},
       );
 
       final result = await session.completeRecovery(
         userId: 'user-123',
-        code: '123456',
-        newPassword: 'new-password-123',
-        pin: '1234',
+        code: 'test-code',
+        newPassword: 'test-password',
+        pin: 'test-pin',
       );
 
       expect(result['ok'], isTrue);
@@ -83,12 +85,15 @@ void main() {
         readMlsUserId: () async => null,
         writeMlsUserId: (_) async {},
         deleteMlsUserId: () async {},
+        readLocale: () async => null,
+        readLocaleSyncPending: () async => null,
+        writeLocaleSyncPending: (_) async {},
       );
 
       await expectLater(
         session.completeRecovery(
-          code: '123456',
-          newPassword: 'new-password-123',
+          code: 'test-code',
+          newPassword: 'test-password',
         ),
         throwsA(
           isA<ApiException>().having(
