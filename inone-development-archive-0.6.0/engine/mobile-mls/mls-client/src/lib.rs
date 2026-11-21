@@ -3,6 +3,7 @@
 //! База устройства зашифрована (SQLCipher). Ключ передаёт платформа: Keychain на iOS, Keystore на Android.
 use std::borrow::Borrow;
 use std::collections::{BTreeSet, HashMap, HashSet};
+use std::io::Read;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -17,6 +18,7 @@ use openmls_sqlite_storage::{Codec, Connection, SqliteStorageProvider};
 use openmls_traits::{crypto::OpenMlsCrypto, random::OpenMlsRand, types::HashType};
 use rusqlite::OptionalExtension;
 use serde_json::{json, Value};
+use url::Url;
 
 pub mod attachment_crypto;
 pub mod remote_config;
@@ -146,6 +148,7 @@ pub struct Client {
     user_id: String,
     device_id: String,
     agent: ureq::Agent,
+    crypto: Arc<RustCrypto>,
     provider: DeviceProvider<Arc<Connection>>,
     /// Соединение с той же базой для собственных таблиц клиента (комнаты, обработанные события, метаданные).
     meta: Arc<Connection>,
@@ -791,7 +794,8 @@ fn build_client(
     // One shared connection makes MLS state transitions and their journal rows
     // part of the same SQLite transaction.
     let connection = Arc::new(open_db(db_path, db_key)?);
-    let provider = DeviceProvider::new(Arc::new(RustCrypto::default()), Arc::clone(&connection));
+    let crypto = Arc::new(RustCrypto::default());
+    let provider = DeviceProvider::new(Arc::clone(&crypto), Arc::clone(&connection));
     let meta = connection;
     meta.execute_batch(
         "CREATE TABLE IF NOT EXISTS client_meta (key TEXT PRIMARY KEY, value BLOB NOT NULL);
@@ -834,7 +838,29 @@ fn build_client(
            mls_message BLOB,
            mls_epoch INTEGER
          );
-         CREATE TABLE IF NOT EXISTS client_remote_config (id INTEGER PRIMARY KEY CHECK (id = 1), etag TEXT NOT NULL, body TEXT NOT NULL, fetched_at INTEGER NOT NULL);
+                   CREATE TABLE IF NOT EXISTS client_attachments (
+            file_id TEXT PRIMARY KEY,
+            room_id TEXT NOT NULL,
+            event_id TEXT NOT NULL UNIQUE,
+            manifest BLOB NOT NULL,
+            direction TEXT NOT NULL CHECK (direction IN ('incoming', 'outgoing')),
+            client_message_id TEXT,
+            created_at INTEGER NOT NULL
+          );
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_client_attachments_message_id
+            ON client_attachments(client_message_id) WHERE client_message_id IS NOT NULL;
+          CREATE TABLE IF NOT EXISTS client_attachment_outbox (
+            client_message_id TEXT PRIMARY KEY,
+            room_id TEXT NOT NULL,
+            file_id TEXT NOT NULL,
+            manifest BLOB NOT NULL,
+            ciphertext_sha256 TEXT NOT NULL,
+            ciphertext_size INTEGER NOT NULL,
+            uploaded INTEGER NOT NULL DEFAULT 0,
+            mls_message BLOB,
+            mls_epoch INTEGER
+          );
+          CREATE TABLE IF NOT EXISTS client_remote_config (id INTEGER PRIMARY KEY CHECK (id = 1), etag TEXT NOT NULL, body TEXT NOT NULL, fetched_at INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS client_key_package_claims (room_id TEXT NOT NULL, user_id TEXT NOT NULL, claim_id TEXT NOT NULL, PRIMARY KEY (room_id, user_id));
           CREATE TABLE IF NOT EXISTS client_membership_commits (
             operation_id TEXT PRIMARY KEY, room_id TEXT NOT NULL, base_epoch INTEGER NOT NULL,
@@ -1000,6 +1026,7 @@ fn build_client(
         user_id: user_id.to_string(),
         device_id: device_id.to_string(),
         agent,
+        crypto,
         provider,
         meta,
         signer,
