@@ -4507,10 +4507,24 @@ impl Client {
                     "ошибка контракта ответа: event_id отсутствует, не строка или пустой"
                         .to_string()
                 })?;
-            let outer_file_id = ev["content"]["fileId"]
-                .as_str()
-                .filter(|file_id| !file_id.trim().is_empty())
-                .map(str::to_string);
+            let content = ev
+                .get("content")
+                .and_then(Value::as_object)
+                .ok_or_else(|| "ошибка контракта ответа: event content отсутствует или не объект".to_string())?;
+            let file_ref = content.get("file");
+            let legacy_file_ref = content.get("fileId");
+            if let (Some(Value::String(file)), Some(Value::String(legacy))) =
+                (file_ref, legacy_file_ref)
+            {
+                if file != legacy {
+                    return Err("ошибка контракта ответа: file и fileId содержат разные идентификаторы".to_string());
+                }
+            }
+            let outer_file_id = match file_ref.or(legacy_file_ref) {
+                Some(Value::String(file_id)) if !file_id.trim().is_empty() => Some(file_id.clone()),
+                Some(_) => return Err("ошибка контракта ответа: event content.file должен быть непустой строкой".to_string()),
+                None => None,
+            };
             let Some(mls_b64) = ev["content"]["mls"].as_str() else {
                 continue;
             };
