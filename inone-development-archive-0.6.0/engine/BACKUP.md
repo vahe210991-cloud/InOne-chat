@@ -43,13 +43,13 @@ node scripts/verify-restore.mjs 'postgresql://…/inone' 'postgresql://…/inone
 Локальные `test/mail-smtp.test.js` проверки подтверждают SMTP hand-off на тестовом сервере. Для проверки учётной записи реального SMTP-провайдера предусмотрена отдельная команда, которая отправляет одно тестовое письмо только на явно заданный адрес:
 
 ```sh
-INONE_SMTP_HOST='smtp.example.com' \\
-INONE_SMTP_PORT=587 \\
-INONE_SMTP_REQUIRE_TLS=true \\
-INONE_SMTP_USER='…' \\
-INONE_SMTP_PASSWORD='…' \\
-INONE_SMTP_FROM='InOne <noreply@example.com>' \\
-INONE_SMTP_TEST_TO='your-test-mailbox@example.com' \\
+INONE_SMTP_HOST='smtp.example.com' \
+INONE_SMTP_PORT=587 \
+INONE_SMTP_REQUIRE_TLS=true \
+INONE_SMTP_USER='…' \
+INONE_SMTP_PASSWORD='…' \
+INONE_SMTP_FROM='InOne <noreply@example.com>' \
+INONE_SMTP_TEST_TO='your-test-mailbox@example.com' \
 npm run test:mail:live
 ```
 
@@ -73,4 +73,6 @@ RPO 24 часа — только целевой показатель при ус
 6. **Безопасная доставка и мониторинг:** удалённая копия, алерт о просроченном/неуспешном backup, проверка checksum и restore drill должны быть автоматизированы.
 7. **Проверка файлового архива:** отдельные integration-тесты backup/restore для FILES_DIR и безопасного поведения на некорректных архивах ещё требуются.
 
-До закрытия этих пунктов резервное копирование нельзя считать production-ready.
+8. **SMTP-провайдер:** добавлена opt-in команда `npm run test:mail:live`; реальный SMTP hand-off не подтверждён до запуска с credentials провайдера и отдельным тестовым адресом.
+
+До закрытия этих пунктов резервное копирование нельзя считать production-ready, а SMTP нельзя считать проверенным на боевом провайдере.
