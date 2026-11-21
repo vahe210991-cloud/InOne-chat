@@ -3111,6 +3111,7 @@ impl Client {
         room_id: &str,
         event_id: &str,
         bytes: &[u8],
+        outer_file_id: Option<&str>,
         out: &mut Vec<Incoming>,
     ) -> Result<(), String> {
         let parsed = MlsMessageIn::tls_deserialize_exact(bytes)
@@ -3120,6 +3121,7 @@ impl Client {
             let incoming = Incoming::Unreadable {
                 room_id: room_id.to_string(),
                 event_id: event_id.to_string(),
+                mine: false,
             };
             let transaction = self.meta.unchecked_transaction().map_err(text)?;
             if let Err(error) = insert_incoming_record(&transaction, &incoming)
@@ -3171,37 +3173,108 @@ impl Client {
 
         match processed_result {
             Ok(processed) => {
-                let (incoming, unreadable_reason) = match processed.into_content() {
-                    ProcessedMessageContent::ApplicationMessage(app) => {
-                        match String::from_utf8(app.into_bytes()) {
-                            Ok(text) => (
-                                Incoming::Text {
-                                    room_id: room_id.to_string(),
-                                    event_id: event_id.to_string(),
-                                    text,
-                                },
-                                None,
-                            ),
-                            Err(_) => (
-                                Incoming::Unreadable {
-                                    room_id: room_id.to_string(),
-                                    event_id: event_id.to_string(),
-                                },
-                                Some("application payload is not valid UTF-8"),
-                            ),
+                let (incoming, unreadable_reason, attachment_manifest) =
+                    match processed.into_content() {
+                        ProcessedMessageContent::ApplicationMessage(app) => {
+                            let payload = Zeroizing::new(app.into_bytes());
+                            if attachment_crypto::is_attachment_manifest(payload.as_slice()) {
+                                match outer_file_id {
+                                    Some(file_id) => match attachment_crypto::parse_manifest(
+                                        payload.as_slice(),
+                                        file_id,
+                                        room_id,
+                                    ) {
+                                        Ok(manifest) => (
+                                            Incoming::Attachment {
+                                                room_id: room_id.to_string(),
+                                                event_id: event_id.to_string(),
+                                                file_id: manifest.file_id.clone(),
+                                                name: manifest.name.clone(),
+                                                mime_type: manifest.mime_type.clone(),
+                                                size: manifest.size,
+                                                mine: false,
+                                            },
+                                            None,
+                                            Some(payload),
+                                        ),
+                                        Err(_) => (
+                                            Incoming::Unreadable {
+                                                room_id: room_id.to_string(),
+                                                event_id: event_id.to_string(),
+                                                mine: false,
+                                            },
+                                            Some("attachment manifest failed validation or outer binding"),
+                                            None,
+                                        ),
+                                    },
+                                    None => (
+                                        Incoming::Unreadable {
+                                            room_id: room_id.to_string(),
+                                            event_id: event_id.to_string(),
+                                            mine: false,
+                                        },
+                                        Some("attachment manifest is missing its outer file reference"),
+                                        None,
+                                    ),
+                                }
+                            } else if outer_file_id.is_some() {
+                                (
+                                    Incoming::Unreadable {
+                                        room_id: room_id.to_string(),
+                                        event_id: event_id.to_string(),
+                                        mine: false,
+                                    },
+                                    Some("outer file reference is not bound to an MLS attachment manifest"),
+                                    None,
+                                )
+                            } else {
+                                match String::from_utf8(payload.to_vec()) {
+                                    Ok(text) => (
+                                        Incoming::Text {
+                                            room_id: room_id.to_string(),
+                                            event_id: event_id.to_string(),
+                                            text,
+                                            mine: false,
+                                        },
+                                        None,
+                                        None,
+                                    ),
+                                    Err(_) => (
+                                        Incoming::Unreadable {
+                                            room_id: room_id.to_string(),
+                                            event_id: event_id.to_string(),
+                                            mine: false,
+                                        },
+                                        Some("application payload is not valid UTF-8"),
+                                        None,
+                                    ),
+                                }
+                            }
                         }
-                    }
-                    _ => (
-                        Incoming::Unreadable {
-                            room_id: room_id.to_string(),
-                            event_id: event_id.to_string(),
-                        },
-                        Some("MLS message is not an application message"),
-                    ),
-                };
+                        _ => (
+                            Incoming::Unreadable {
+                                room_id: room_id.to_string(),
+                                event_id: event_id.to_string(),
+                                mine: false,
+                            },
+                            Some("MLS message is not an application message"),
+                            None,
+                        ),
+                    };
 
                 if let Err(error) = insert_incoming_record(&transaction, &incoming)
-                    .and_then(|_| insert_processed_event(&transaction, event_id))
+                    .and_then(|_| {
+                        if let Some(manifest) = attachment_manifest.as_deref() {
+                            insert_attachment_manifest(
+                                &transaction,
+                                &incoming,
+                                manifest,
+                                "incoming",
+                                None,
+                            )?;
+                        }
+                        insert_processed_event(&transaction, event_id)
+                    })
                     .and_then(|_| {
                         if let Some(reason) = unreadable_reason {
                             insert_undecryptable_record(&transaction, event_id, room_id, reason)?;
@@ -3240,6 +3313,7 @@ impl Client {
                     let incoming = Incoming::Unreadable {
                         room_id: room_id.to_string(),
                         event_id: event_id.to_string(),
+                        mine: false,
                     };
                     let quarantine = self.meta.unchecked_transaction().map_err(text)?;
                     if let Err(error) = insert_incoming_record(&quarantine, &incoming) {
