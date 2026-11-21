@@ -15,6 +15,7 @@ use openmls_basic_credential::SignatureKeyPair;
 use openmls_rust_crypto::RustCrypto;
 use openmls_sqlite_storage::{Codec, Connection, SqliteStorageProvider};
 use openmls_traits::{crypto::OpenMlsCrypto, random::OpenMlsRand, types::HashType};
+use rusqlite::OptionalExtension;
 use serde_json::{json, Value};
 
 pub mod remote_config;
