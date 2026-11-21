@@ -796,9 +796,13 @@ fn build_client(
            acknowledged INTEGER NOT NULL DEFAULT 0 CHECK (acknowledged IN (0, 1)),
            created_at INTEGER NOT NULL,
            acknowledged_at INTEGER,
+           direction TEXT NOT NULL DEFAULT 'incoming' CHECK (direction IN ('incoming', 'outgoing')),
+           client_message_id TEXT,
            CHECK ((kind = 'text' AND body IS NOT NULL) OR (kind = 'unreadable' AND body IS NULL))
          );
          CREATE INDEX IF NOT EXISTS idx_client_inbox_pending ON client_inbox(acknowledged, seq);
+         CREATE UNIQUE INDEX IF NOT EXISTS idx_client_inbox_client_message_id
+           ON client_inbox(client_message_id) WHERE client_message_id IS NOT NULL;
          CREATE TABLE IF NOT EXISTS client_undecryptable (event_id TEXT PRIMARY KEY, room_id TEXT NOT NULL, reason TEXT NOT NULL);
          CREATE TABLE IF NOT EXISTS client_desync (room_id TEXT PRIMARY KEY, reason TEXT NOT NULL);
          CREATE TABLE IF NOT EXISTS client_waiting_for_commit (room_id TEXT PRIMARY KEY, expected_epoch INTEGER NOT NULL, event_ids TEXT NOT NULL, updated_at INTEGER NOT NULL);
@@ -812,7 +816,14 @@ fn build_client(
            created_at INTEGER NOT NULL,
            acked_at INTEGER
          );
-         CREATE TABLE IF NOT EXISTS client_outbox (local_id TEXT PRIMARY KEY, room_id TEXT NOT NULL, body TEXT NOT NULL, seq INTEGER NOT NULL);
+         CREATE TABLE IF NOT EXISTS client_outbox (
+           local_id TEXT PRIMARY KEY,
+           room_id TEXT NOT NULL,
+           body TEXT NOT NULL,
+           seq INTEGER NOT NULL,
+           mls_message BLOB,
+           mls_epoch INTEGER
+         );
          CREATE TABLE IF NOT EXISTS client_remote_config (id INTEGER PRIMARY KEY CHECK (id = 1), etag TEXT NOT NULL, body TEXT NOT NULL, fetched_at INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS client_key_package_claims (room_id TEXT NOT NULL, user_id TEXT NOT NULL, claim_id TEXT NOT NULL, PRIMARY KEY (room_id, user_id));
           CREATE TABLE IF NOT EXISTS client_membership_commits (
@@ -828,6 +839,60 @@ fn build_client(
             created_at INTEGER NOT NULL,
             UNIQUE (room_id, target_user_id)
           )",
+    )
+    .map_err(text)?;
+
+    // Upgrade databases created by earlier Engine B builds without replacing any
+    // existing inbox/outbox rows or OpenMLS storage.
+    let has_inbox_direction: bool = meta
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('client_inbox') WHERE name = 'direction')",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(text)?;
+    if !has_inbox_direction {
+        meta.execute_batch(
+            "ALTER TABLE client_inbox ADD COLUMN direction TEXT NOT NULL DEFAULT 'incoming' CHECK (direction IN ('incoming', 'outgoing'))",
+        )
+        .map_err(text)?;
+    }
+    let has_client_message_id: bool = meta
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('client_inbox') WHERE name = 'client_message_id')",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(text)?;
+    if !has_client_message_id {
+        meta.execute_batch("ALTER TABLE client_inbox ADD COLUMN client_message_id TEXT")
+            .map_err(text)?;
+    }
+    let has_outbox_mls_message: bool = meta
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('client_outbox') WHERE name = 'mls_message')",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(text)?;
+    if !has_outbox_mls_message {
+        meta.execute_batch("ALTER TABLE client_outbox ADD COLUMN mls_message BLOB")
+            .map_err(text)?;
+    }
+    let has_outbox_mls_epoch: bool = meta
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('client_outbox') WHERE name = 'mls_epoch')",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(text)?;
+    if !has_outbox_mls_epoch {
+        meta.execute_batch("ALTER TABLE client_outbox ADD COLUMN mls_epoch INTEGER")
+            .map_err(text)?;
+    }
+    meta.execute_batch(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_client_inbox_client_message_id
+         ON client_inbox(client_message_id) WHERE client_message_id IS NOT NULL",
     )
     .map_err(text)?;
 
