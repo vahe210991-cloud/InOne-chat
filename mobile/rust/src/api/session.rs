@@ -276,6 +276,24 @@ impl MlsSession {
         self.with_client(|client| client.send_text(&room_id, plaintext.as_str()))
     }
 
+    /// Sends text with a caller-stable operation ID for exact retry after restart.
+    pub fn send_text_with_id(
+        &self,
+        room_id: String,
+        plaintext: String,
+        client_message_id: String,
+    ) -> Result<String, String> {
+        let plaintext = Zeroizing::new(plaintext);
+        self.with_client(|client| {
+            client.send_text_with_id(&room_id, plaintext.as_str(), &client_message_id)
+        })
+    }
+
+    /// Returns durable pending text/opaque/attachment bubbles for one room.
+    pub fn pending_outbox_for_room_json(&self, room_id: String) -> Result<String, String> {
+        self.with_client(|client| client.pending_outbox_for_room_json(&room_id))
+    }
+
     pub fn send_attachment(
         &self,
         room_id: String,
