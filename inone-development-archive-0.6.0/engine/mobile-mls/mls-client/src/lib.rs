@@ -3246,14 +3246,22 @@ impl Client {
         crash_at_test_failpoint("attachment_before_history_commit");
         transaction.commit().map_err(text)?;
         crash_at_test_failpoint("attachment_after_history_commit");
-        // A sync immediately before outbox recovery may already have queued this
-        // event as incoming. Once the durable outbox confirms it is ours, correct
-        // the in-memory handoff as well as the SQLCipher history row.
-        // Keep the durable sender-side completion visible to the caller even
-        // when the preceding recovery sync did not enqueue this event (for
-        // example, the server accepted it before the previous process died).
-        // If sync already queued the same event as remote, correct that entry
-        // rather than delivering a duplicate bubble.
+        self.reconcile_outgoing_attachment_handoff(incoming);
+        self.processed.insert(event_id.clone());
+        Ok(event_id)
+    }
+
+    /// Reconciles an outgoing attachment with any copy queued by a recovery sync.
+    /// The durable SQLCipher attachment record is authoritative for sender direction.
+    fn reconcile_outgoing_attachment_handoff(&mut self, incoming: Incoming) {
+        let Incoming::Attachment {
+            event_id,
+            file_id,
+            ..
+        } = &incoming
+        else {
+            return;
+        };
         let mut handoff_present = false;
         self.inbox.retain_mut(|item| {
             if let Incoming::Attachment {
@@ -3263,15 +3271,10 @@ impl Client {
                 ..
             } = item
             {
-                // A recovery sync can enqueue the same uploaded object before the
-                // idempotent send retry returns its canonical event ID. The durable
-                // file ID is stable across that handoff, so reconcile on either key.
-                if queued_event_id == &event_id || queued_file_id == &file_id {
+                if queued_event_id == event_id || queued_file_id == file_id {
                     if handoff_present {
                         return false;
                     }
-                    // Publish the canonical identity returned by the idempotent
-                    // server operation, not a stale identity from the recovery sync.
                     *queued_event_id = event_id.clone();
                     *queued_file_id = file_id.clone();
                     *mine = true;
@@ -3283,8 +3286,6 @@ impl Client {
         if !handoff_present {
             self.inbox.push(incoming);
         }
-        self.processed.insert(event_id.clone());
-        Ok(event_id)
     }
 
     /// Fetches the encrypted object only for the active authenticated device, then verifies and decrypts locally.
@@ -4602,7 +4603,40 @@ impl Client {
                 plaintext.as_slice(),
                 client_message_id,
             ) {
-                Ok(_) => sent += 1,
+                Ok(event_id) => {
+                    // Rebuild the sender bubble from the committed SQLCipher record.
+                    // This also covers the idempotent-completed fast path, where the
+                    // send method can return before publishing an in-memory handoff.
+                    let completed: Option<(String, Vec<u8>)> = self
+                        .meta
+                        .query_row(
+                            "SELECT file_id, manifest FROM client_attachments
+                             WHERE client_message_id = ?1 AND direction = 'outgoing'",
+                            [&operation_id],
+                            |row| Ok((row.get(0)?, row.get(1)?)),
+                        )
+                        .optional()
+                        .map_err(text)?;
+                    let (stored_file_id, stored_manifest) = completed.ok_or_else(|| {
+                        "completed attachment outbox has no durable outgoing history record".to_string()
+                    })?;
+                    let stored_manifest = Zeroizing::new(stored_manifest);
+                    let stored = attachment_crypto::parse_manifest(
+                        stored_manifest.as_slice(),
+                        &stored_file_id,
+                        &room_id,
+                    )?;
+                    self.reconcile_outgoing_attachment_handoff(Incoming::Attachment {
+                        room_id: room_id.clone(),
+                        event_id,
+                        file_id: stored_file_id,
+                        name: stored.name,
+                        mime_type: stored.mime_type,
+                        size: stored.size,
+                        mine: true,
+                    });
+                    sent += 1;
+                }
                 Err(error) if is_retryable(&error) => break,
                 Err(error) if error.contains("комната рассинхронизирована") => {
                     continue
