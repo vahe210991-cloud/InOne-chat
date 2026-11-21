@@ -482,6 +482,12 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
   int logoutCalls = 0;
   int purgeCalls = 0;
   int closeCalls = 0;
+  String? lastAttachmentRoomId;
+  String? lastAttachmentName;
+  String? lastAttachmentMimeType;
+  Uint8List lastAttachmentBytes = Uint8List(0);
+  String? lastAttachmentClientMessageId;
+  Uint8List downloadResult = Uint8List(0);
   int openCalls = 0;
   Completer<void>? openStarted;
   Completer<void>? openGate;
