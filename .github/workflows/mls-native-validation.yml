@@ -11,7 +11,7 @@ on:
       - "mobile/rust/**"
       - ".github/workflows/mls-native-validation.yml"
   push:
-    branches: ['**']
+    branches: [main]
     paths:
       - "inone-engine-poc-0.6.0/mobile-mls/**"
       - "inone-development-archive-0.6.0/engine/mobile-mls/**"
@@ -22,7 +22,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: native-mls-${{ github.event.pull_request.number || github.ref }}
+  group: native-mls-${{ github.event.pull_request.head.ref || github.ref_name }}-${{ github.event.pull_request.head.sha || github.sha }}
   cancel-in-progress: true
 
 env:
