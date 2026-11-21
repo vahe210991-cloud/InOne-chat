@@ -16,7 +16,15 @@ use crate::secure_store::PlatformKeyStore;
 
 /// Rust-owned persistent OpenMLS session. The refresh token and SQLCipher
 /// database key never have getters in the Dart-facing API.
+/// The client is serialized behind this mutex; its rusqlite connection is owned,
+/// never shared through `Arc<Connection>` (which would incorrectly require Sync).
 #[frb(opaque)]
+// Keep the FRB opaque-handle thread-safety contract explicit at compile time.
+const _: fn() = || {
+    fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<MlsSession>();
+};
+
 pub struct MlsSession {
     client: Mutex<Option<Client>>,
     database_path: String,
