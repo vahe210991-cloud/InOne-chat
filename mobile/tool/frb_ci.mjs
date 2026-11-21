@@ -200,8 +200,15 @@ try {
   restoreProtectedFiles();
   run('git', ['diff', '--exit-code', '--', ...protectedPaths]);
 
+  // Remove the sample module created by `integrate` before codegen scans the crate.
+  // The production bridge surface is intentionally limited to api::session.
+  fs.rmSync('rust/src/api/simple.rs', { force: true });
+  fs.rmSync('lib/src/rust/api/simple.dart', { force: true });
+  fs.rmSync('integration_test/simple_test.dart', { force: true });
+
   run('flutter_rust_bridge_codegen', [
     'generate',
+    '--rust-input', 'crate::api::session',
     '--skip-fvm-install',
     '--no-dart-fix',
     '--no-dart-format',
