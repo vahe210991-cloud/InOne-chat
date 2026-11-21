@@ -55,6 +55,14 @@ jobs:
           set -euo pipefail
           cargo generate-lockfile --manifest-path inone-development-archive-0.6.0/engine/mobile-mls/mls-client/Cargo.toml
           cargo generate-lockfile --manifest-path mobile/rust/Cargo.toml
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: inone-development-archive-0.6.0/engine/package-lock.json
+      - name: Install canonical engine dependencies for real-server MLS tests
+        run: npm ci
+        working-directory: inone-development-archive-0.6.0/engine
       - name: Verify lockfiles and run Rust checks
         run: |
           set -euo pipefail
