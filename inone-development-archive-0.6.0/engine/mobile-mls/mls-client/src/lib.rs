@@ -4925,8 +4925,8 @@ impl Client {
                     "room_id": room_id,
                     "kind": "attachment",
                     "file_id": file_id,
-                    "name": manifest.name,
-                    "mime_type": manifest.mime_type,
+                    "name": manifest.name.clone(),
+                    "mime_type": manifest.mime_type.clone(),
                     "size": manifest.size,
                     "uploaded": uploaded,
                 }));
