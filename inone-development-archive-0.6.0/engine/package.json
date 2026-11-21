@@ -10,6 +10,7 @@
     "start": "node src/main.js",
     "migrate": "node src/migrate.js",
     "test:registration:live": "node scripts/registration-live-smoke.mjs",
+    "test:mail:live": "node scripts/smtp-live-smoke.mjs",
     "audit:legacy-client-messages": "node scripts/audit-legacy-client-messages.mjs"
   },
   "dependencies": {
