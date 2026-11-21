@@ -19,7 +19,7 @@ on:
       - ".github/workflows/mls-native-validation.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: native-mls-${{ github.event.pull_request.head.ref || github.ref_name }}-${{ github.event.pull_request.head.sha || github.sha }}
@@ -29,17 +29,68 @@ env:
   INONE_ENGINE_DIR: ${{ github.workspace }}/inone-development-archive-0.6.0/engine
 
 jobs:
+  prepare:
+    name: Format MLS Rust and regenerate locked dependencies
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    outputs:
+      sha: ${{ steps.commit.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.91.0"
+          components: rustfmt
+      - name: Format both MLS Rust crates
+        run: |
+          set -euo pipefail
+          cargo fmt --manifest-path inone-development-archive-0.6.0/engine/mobile-mls/mls-client/Cargo.toml
+          cargo fmt --manifest-path mobile/rust/Cargo.toml
+      - name: Regenerate committed lockfiles
+        run: |
+          set -euo pipefail
+          cargo generate-lockfile --manifest-path inone-development-archive-0.6.0/engine/mobile-mls/mls-client/Cargo.toml
+          cargo generate-lockfile --manifest-path mobile/rust/Cargo.toml
+      - name: Verify lockfiles and run Rust checks
+        run: |
+          set -euo pipefail
+          cargo fmt --manifest-path inone-development-archive-0.6.0/engine/mobile-mls/mls-client/Cargo.toml -- --check
+          cargo fmt --manifest-path mobile/rust/Cargo.toml -- --check
+          cargo check --locked --all-targets --manifest-path inone-development-archive-0.6.0/engine/mobile-mls/mls-client/Cargo.toml
+          cargo test --locked --no-fail-fast --manifest-path inone-development-archive-0.6.0/engine/mobile-mls/mls-client/Cargo.toml -- --test-threads=1
+          cargo check --locked --all-targets --manifest-path mobile/rust/Cargo.toml
+          cargo test --locked --no-fail-fast --manifest-path mobile/rust/Cargo.toml
+      - name: Commit formatting and lockfile updates
+        id: commit
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref || github.ref_name }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git diff --quiet; then
+            git add inone-development-archive-0.6.0/engine/mobile-mls/mls-client mobile/rust
+            git commit -m "fix(ci): format MLS Rust and refresh Cargo lockfiles"
+            git push origin "HEAD:${HEAD_REF}"
+          fi
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
   mls-client:
+    needs: prepare
     name: OpenMLS attachment and session integration tests
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ needs.prepare.outputs.sha }}
       - name: Verify exact source SHA
         env:
-          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          EXPECTED_SHA: ${{ needs.prepare.outputs.sha }}
         run: |
           set -euo pipefail
           actual="$(git rev-parse HEAD)"
@@ -66,6 +117,7 @@ jobs:
 
 
   canonical-mls-client:
+    needs: prepare
     name: Canonical B MLS client regression tests
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -103,6 +155,7 @@ jobs:
         run: cargo test --locked --no-fail-fast --manifest-path inone-development-archive-0.6.0/engine/mobile-mls/mls-client/Cargo.toml -- --test-threads=1
 
   ios-keychain:
+    needs: prepare
     name: iOS Keychain native target build
     runs-on: macos-15
     timeout-minutes: 45
@@ -139,6 +192,7 @@ jobs:
         run: cargo build --locked --target aarch64-apple-ios --manifest-path mobile/rust/Cargo.toml
 
   rust-bridge:
+    needs: prepare
     name: Persistent Flutter Rust bridge host tests
     runs-on: ubuntu-24.04
     timeout-minutes: 45
