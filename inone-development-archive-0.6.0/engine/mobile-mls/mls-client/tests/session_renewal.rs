@@ -28,8 +28,14 @@ fn start_engine(access_ms: &str) -> Engine {
         .expect("запуск node");
     let stdin = child.stdin.take();
     let mut line = String::new();
-    BufReader::new(child.stdout.take().expect("stdout")).read_line(&mut line).expect("строка адреса");
-    let base = line.trim().strip_prefix("URL=").expect("адрес сервера").to_string();
+    BufReader::new(child.stdout.take().expect("stdout"))
+        .read_line(&mut line)
+        .expect("строка адреса");
+    let base = line
+        .trim()
+        .strip_prefix("URL=")
+        .expect("адрес сервера")
+        .to_string();
     Engine { child, stdin, base }
 }
 
@@ -41,7 +47,10 @@ impl Drop for Engine {
 }
 
 fn db(name: &str) -> String {
-    let path = std::env::temp_dir().join(format!("inone-client-renew-{}-{name}.db", std::process::id()));
+    let path = std::env::temp_dir().join(format!(
+        "inone-client-renew-{}-{name}.db",
+        std::process::id()
+    ));
     let _ = std::fs::remove_file(&path);
     path.to_string_lossy().to_string()
 }
@@ -73,7 +82,10 @@ fn session_tokens(base: &str, user: &str, device: &str) -> (String, String) {
         .expect("JSON ответа входа");
     (
         login["token"].as_str().expect("access token").to_string(),
-        login["refreshToken"].as_str().expect("refresh token").to_string(),
+        login["refreshToken"]
+            .as_str()
+            .expect("refresh token")
+            .to_string(),
     )
 }
 
@@ -81,14 +93,33 @@ fn session_tokens(base: &str, user: &str, device: &str) -> (String, String) {
 fn client_renews_an_expired_access_token_by_itself() {
     let engine = start_engine("1500");
     let keys = MemoryKeyStore::default();
-    let mut alice = connect(&engine.base, "@alice:inone.test", PW, "A_PHONE", &db("alice"), &keys).unwrap();
-    let mut bob = connect(&engine.base, "@bob:inone.test", PW, "B_PHONE", &db("bob"), &keys).unwrap();
+    let mut alice = connect(
+        &engine.base,
+        "@alice:inone.test",
+        PW,
+        "A_PHONE",
+        &db("alice"),
+        &keys,
+    )
+    .unwrap();
+    let mut bob = connect(
+        &engine.base,
+        "@bob:inone.test",
+        PW,
+        "B_PHONE",
+        &db("bob"),
+        &keys,
+    )
+    .unwrap();
     bob.ensure_key_packages(1).unwrap();
     alice.create_room(ROOM).unwrap();
     alice.invite(ROOM, "@bob:inone.test").unwrap();
 
     thread::sleep(Duration::from_millis(2000)); // токены доступа истекли
-    assert!(bob.sync().unwrap().is_empty(), "синхронизация после истечения работает");
+    assert!(
+        bob.sync().unwrap().is_empty(),
+        "синхронизация после истечения работает"
+    );
     thread::sleep(Duration::from_millis(2000));
     alice.send_text(ROOM, "после истечения").unwrap();
     thread::sleep(Duration::from_millis(2000));
@@ -123,24 +154,28 @@ fn client_adopts_flutter_session_and_keeps_refresh_token_in_rust() {
     thread::sleep(Duration::from_millis(2000));
     assert_eq!(client.available_key_packages().unwrap(), 0);
     let rotated_access = client.access_token_snapshot().unwrap();
-    assert_ne!(rotated_access, original_access, "Flutter получает только обновлённый access token");
+    assert_ne!(
+        rotated_access, original_access,
+        "Flutter получает только обновлённый access token"
+    );
     drop(client); // имитируем закрытие процесса приложения
 
     // Восстановление использует только идентификаторы и ключ системного хранилища:
     // refresh token не передаётся из Flutter повторно.
-    let resumed = resume_with_session(
-        &engine.base,
-        user,
-        device,
-        &database_path,
-        &keys,
-    )
-    .expect("восстановление сессии после перезапуска");
+    let resumed = resume_with_session(&engine.base, user, device, &database_path, &keys)
+        .expect("восстановление сессии после перезапуска");
     assert_eq!(resumed.access_token_snapshot().unwrap(), rotated_access);
     thread::sleep(Duration::from_millis(2000)); // проверяем сохранённый refresh token после перезапуска
-    assert_eq!(resumed.available_key_packages().unwrap(), 0, "восстановленная сессия выполняет запрос к серверу");
+    assert_eq!(
+        resumed.available_key_packages().unwrap(),
+        0,
+        "восстановленная сессия выполняет запрос к серверу"
+    );
     let resumed_access = resumed.access_token_snapshot().unwrap();
-    assert_ne!(resumed_access, rotated_access, "после перезапуска Rust повторно обновляет сохранённую пару");
+    assert_ne!(
+        resumed_access, rotated_access,
+        "после перезапуска Rust повторно обновляет сохранённую пару"
+    );
     resumed.logout().unwrap();
 }
 
@@ -167,13 +202,7 @@ fn resume_never_regenerates_a_missing_sqlcipher_key() {
 
     let scope = format!("{user}/{device}");
     keys.delete_database_key(&scope).expect("remove test key");
-    let error = match resume_with_session(
-        &engine.base,
-        user,
-        device,
-        &database_path,
-        &keys,
-    ) {
+    let error = match resume_with_session(&engine.base, user, device, &database_path, &keys) {
         Ok(_) => panic!("resume must fail closed when the SQLCipher key is missing"),
         Err(error) => error,
     };

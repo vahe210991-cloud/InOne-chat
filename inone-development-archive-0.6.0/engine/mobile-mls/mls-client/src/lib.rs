@@ -3,11 +3,11 @@
 //! База устройства зашифрована (SQLCipher). Ключ передаёт платформа: Keychain на iOS, Keystore на Android.
 use std::borrow::Borrow;
 use std::collections::{BTreeSet, HashMap, HashSet};
-use std::sync::{Arc, Mutex};
 use std::path::Path;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use zeroize::{Zeroize, Zeroizing};
-use std::time::Duration;
 
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use openmls::prelude::tls_codec::{Deserialize, Serialize};
@@ -619,12 +619,10 @@ pub fn resume_with_session(
         return Err("сохранённая MLS-сессия не найдена на этом устройстве".to_string());
     }
     let scope = format!("{user_id}/{device_id}");
-    let db_key = Zeroizing::new(
-        keys.existing_database_key(&scope)?.ok_or_else(|| {
-            "ключ SQLCipher сохранённой MLS-сессии отсутствует; создание нового ключа запрещено"
-                .to_string()
-        })?,
-    );
+    let db_key = Zeroizing::new(keys.existing_database_key(&scope)?.ok_or_else(|| {
+        "ключ SQLCipher сохранённой MLS-сессии отсутствует; создание нового ключа запрещено"
+            .to_string()
+    })?);
     let meta = open_db(db_path, &db_key)?;
     let has_meta: bool = meta
         .query_row(
@@ -747,9 +745,8 @@ pub fn connect_with_approval(
 }
 
 fn persist_session_tokens(meta: &Connection, tokens: &SessionTokens) -> Result<(), String> {
-    let serialized = Zeroizing::new(
-        serde_json::to_vec(&(tokens.0.as_str(), tokens.1.as_str())).map_err(text)?,
-    );
+    let serialized =
+        Zeroizing::new(serde_json::to_vec(&(tokens.0.as_str(), tokens.1.as_str())).map_err(text)?);
     meta.execute(
         "INSERT INTO client_meta (key, value) VALUES ('session_tokens', ?1)
          ON CONFLICT(key) DO UPDATE SET value = excluded.value",
