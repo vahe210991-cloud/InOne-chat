@@ -4,10 +4,10 @@ import 'package:inone_mobile/core/network/api_exception.dart';
 import 'package:inone_mobile/core/session/inone_session.dart';
 
 void main() {
-  test('registers an FCM token only through the authenticated device route', () async {
+  test('registers an FID only through the authenticated device route', () async {
     final session = _PushSession({'registered': true});
     final repository = InOnePushRepository(session);
-    final token = 'fcm-token-123456789012345678901234567890';
+    const token = 'abcdefghijklmnopqrstuv';
 
     await repository.register(provider: InOnePushProvider.fcm, token: token);
 
@@ -34,32 +34,17 @@ void main() {
     session.dispose();
   });
 
-  test('rejects a Firebase Installation ID for the APNs provider', () async {
+  test('rejects legacy FCM/APNs tokens; iOS also registers an FCM FID', () async {
     final session = _PushSession({'registered': true});
 
     await expectLater(
       InOnePushRepository(session).register(
-        provider: InOnePushProvider.apns,
-        token: 'abcdefghijklmnopqrstuv',
+        provider: InOnePushProvider.fcm,
+        token: 'legacy-apns-token-123456789012345678901234567890',
       ),
       throwsA(isA<ArgumentError>()),
     );
     expect(session.method, isNull);
-    session.dispose();
-  });
-
-  test('registers an APNs token with the APNs provider identifier', () async {
-    final session = _PushSession({'registered': true});
-
-    await InOnePushRepository(session).register(
-      provider: InOnePushProvider.apns,
-      token: 'apns-token-123456789012345678901234567890',
-    );
-
-    expect(session.body, {
-      'provider': 'apns',
-      'token': 'apns-token-123456789012345678901234567890',
-    });
     session.dispose();
   });
 
@@ -96,7 +81,7 @@ void main() {
     await expectLater(
       InOnePushRepository(session).register(
         provider: InOnePushProvider.fcm,
-        token: 'fcm-token-123456789012345678901234567890',
+        token: 'abcdefghijklmnopqrstuv',
       ),
       throwsA(isA<ApiException>().having(
         (error) => error.code,

@@ -2,7 +2,7 @@ import '../network/api_exception.dart';
 import '../session/inone_session.dart';
 
 /// Provider names accepted by the authenticated device registration API.
-enum InOnePushProvider { fcm, apns }
+enum InOnePushProvider { fcm }
 
 /// Device-scoped push registration. Identifiers are sent only in the
 /// authenticated request and are never persisted by this repository.
@@ -12,7 +12,6 @@ class InOnePushRepository {
   final InOneSession session;
 
   static final RegExp _fidPattern = RegExp(r'^[A-Za-z0-9_-]{22}$');
-  static final RegExp _legacyTokenPattern = RegExp(r'^[A-Za-z0-9:_.-]+$');
 
   Future<void> register({
     required InOnePushProvider provider,
@@ -20,10 +19,7 @@ class InOnePushRepository {
   }) async {
     final isFirebaseInstallationId =
         provider == InOnePushProvider.fcm && _fidPattern.hasMatch(token);
-    final isLegacyProviderToken = token.length >= 32 &&
-        token.length <= 512 &&
-        _legacyTokenPattern.hasMatch(token);
-    if (!isFirebaseInstallationId && !isLegacyProviderToken) {
+    if (!isFirebaseInstallationId) {
       throw ArgumentError('Invalid push registration identifier format');
     }
 
