@@ -8,19 +8,15 @@ target="${2:?укажите адрес пустой базы}"
 files_archive="${3:-}"
 files_target="${4:-}"
 staging=""
-backup=""
 
 cleanup() {
   if [ -n "$staging" ] && [ -d "$staging" ]; then
+    # При ошибке переносов возвращаем уже перемещённые элементы в staging.
+    shopt -s dotglob nullglob
+    for moved in "$files_target"/*; do
+      if [ "$moved" != "$staging" ]; then mv -- "$moved" "$staging/" || true; fi
+    done
     rm -rf -- "$staging"
-  fi
-  # Если переключение каталогов оборвалось, возвращаем прежний пустой каталог.
-  if [ -n "$backup" ] && [ -d "$backup" ]; then
-    if [ ! -e "$files_target" ]; then
-      mv -- "$backup" "$files_target" || true
-    else
-      rm -rf -- "$backup"
-    fi
   fi
 }
 trap cleanup EXIT
@@ -89,10 +85,10 @@ tables="$(psql "$target" -tAc "SELECT count(*) FROM information_schema.tables WH
 
 # Подготавливаем и полностью проверяем файловое дерево до записи в PostgreSQL.
 if [ -n "$files_archive" ]; then
-  parent="$(dirname "$files_target")"
-  base="$(basename "$files_target")"
-  mkdir -p "$parent"
-  staging="$(mktemp -d "$parent/.${base}.restore.XXXXXX")"
+  # FILES_DIR может быть корнем Docker volume/mountpoint: сам каталог не переименовываем.
+  # staging создаётся внутри назначения, перенос элементов остаётся в пределах той же FS.
+  mkdir -p "$files_target"
+  staging="$(mktemp -d "$files_target/.inone-restore.XXXXXX")"
   tar --no-same-owner --no-same-permissions -C "$staging" -xzf "$files_archive"
 fi
 
@@ -100,23 +96,15 @@ pg_restore --no-owner --no-acl --exit-on-error --dbname="$target" "$dump"
 echo "восстановлено: $target"
 
 if [ -n "$files_archive" ]; then
-  if [ -d "$files_target" ]; then
-    backup="$(mktemp -d "$parent/.${base}.previous.XXXXXX")"
-    rmdir "$backup"
-    mv -- "$files_target" "$backup"
-  fi
-  if ! mv -- "$staging" "$files_target"; then
-    if [ -n "$backup" ] && [ -d "$backup" ] && [ ! -e "$files_target" ]; then
-      mv -- "$backup" "$files_target"
-      backup=""
+  shopt -s dotglob nullglob
+  staged_entries=("$staging"/*)
+  for entry in "${staged_entries[@]}"; do
+    if ! mv -- "$entry" "$files_target/"; then
+      echo "не удалось переместить восстановленные файлы; выполняется откат" >&2
+      exit 1
     fi
-    echo "не удалось переключить каталог восстановленных файлов" >&2
-    exit 1
-  fi
+  done
+  rmdir "$staging"
   staging=""
-  if [ -n "$backup" ] && [ -d "$backup" ]; then
-    rmdir "$backup"
-    backup=""
-  fi
   echo "файлы восстановлены: $files_target"
 fi
