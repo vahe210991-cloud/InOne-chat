@@ -1,5 +1,4 @@
-// Сверка копии с исходной базой: одинаковые таблицы, одинаковое число строк в каждой, одинаковые версии миграций.
-// Использование: node scripts/verify-restore.mjs <адрес исходной базы> <адрес копии>
+// Сверка восстановления: уникальная цель, одинаковые таблицы/строки и обязательная история миграций.
 import pg from 'pg';
 
 const [source, target] = process.argv.slice(2);
@@ -18,26 +17,50 @@ async function tableNames(client) {
 async function rowCounts(client, names) {
   const counts = {};
   for (const name of names) {
-    const { rows } = await client.query(`SELECT count(*)::int AS n FROM "${name}"`);
+    const quoted = `"${name.replaceAll('"', '""')}"`;
+    const { rows } = await client.query(`SELECT count(*)::int AS n FROM ${quoted}`);
     counts[name] = rows[0].n;
   }
   return counts;
 }
 
-async function migrationVersions(client) {
-  try {
-    const { rows } = await client.query('SELECT version FROM schema_migrations ORDER BY version');
-    return rows.map((r) => r.version);
-  } catch {
-    return null;
+async function databaseIdentity(client) {
+  const { rows } = await client.query(
+    "SELECT current_database() AS database, COALESCE(inet_server_addr()::text, 'local') AS address, COALESCE(inet_server_port(), 0) AS port",
+  );
+  return rows[0];
+}
+
+async function migrationVersions(client, label) {
+  const { rows: existence } = await client.query(
+    "SELECT to_regclass('public.schema_migrations') IS NOT NULL AS present",
+  );
+  if (!existence[0].present) {
+    throw new Error(`${label}: обязательная таблица public.schema_migrations отсутствует`);
   }
+  const { rows } = await client.query('SELECT version FROM public.schema_migrations ORDER BY version');
+  if (rows.length === 0) {
+    throw new Error(`${label}: история миграций пуста; это не подтверждённая база InOne`);
+  }
+  return rows.map((r) => r.version);
 }
 
 const a = new pg.Client({ connectionString: source });
 const b = new pg.Client({ connectionString: target });
-await a.connect();
-await b.connect();
+let aConnected = false;
+let bConnected = false;
 try {
+  await a.connect();
+  aConnected = true;
+  await b.connect();
+  bConnected = true;
+
+  const identityA = await databaseIdentity(a);
+  const identityB = await databaseIdentity(b);
+  if (JSON.stringify(identityA) === JSON.stringify(identityB)) {
+    throw new Error('исходная и целевая базы совпадают; для проверки восстановления нужны две разные базы');
+  }
+
   const namesA = await tableNames(a);
   const namesB = await tableNames(b);
   const problems = [];
@@ -47,8 +70,8 @@ try {
   for (const name of namesA) {
     if (countsA[name] !== countsB[name]) problems.push(`${name}: ${countsA[name]} строк в исходной базе, ${countsB[name]} в копии`);
   }
-  const versionsA = await migrationVersions(a);
-  const versionsB = await migrationVersions(b);
+  const versionsA = await migrationVersions(a, 'исходная база');
+  const versionsB = await migrationVersions(b, 'целевая база');
   if (JSON.stringify(versionsA) !== JSON.stringify(versionsB)) {
     problems.push(`версии миграций различаются: ${JSON.stringify(versionsA)} и ${JSON.stringify(versionsB)}`);
   }
@@ -56,10 +79,13 @@ try {
     console.error(problems.join('\n'));
     process.exitCode = 1;
   } else {
-    const total = Object.values(countsA).reduce((s, n) => s + n, 0);
-    console.log(`сверка пройдена: таблиц ${namesA.length}, строк ${total}, миграций ${versionsA?.length ?? 0}`);
+    const total = Object.values(countsA).reduce((sum, count) => sum + count, 0);
+    console.log(`сверка пройдена: таблиц ${namesA.length}, строк ${total}, миграций ${versionsA.length}`);
   }
+} catch (error) {
+  console.error(error instanceof Error ? error.message : 'ошибка сверки восстановления');
+  process.exitCode = 1;
 } finally {
-  await a.end();
-  await b.end();
+  if (aConnected) await a.end();
+  if (bConnected) await b.end();
 }
