@@ -381,43 +381,25 @@ fn incoming_from_row(
     body: Option<String>,
     client_message_id: Option<String>,
     file_id: Option<String>,
+    manifest: Option<Vec<u8>>,
 ) -> Result<Incoming, String> {
     let mine = client_message_id.is_some();
     if let Some(file_id) = file_id {
-        let body = body.ok_or("в сохранённом вложении отсутствуют метаданные")?;
-        let value: Value = serde_json::from_str(&body).map_err(text)?;
-        let stored_file_id = value
-            .get("fileId")
-            .and_then(Value::as_str)
-            .filter(|value| !value.trim().is_empty())
-            .ok_or("в метаданных вложения отсутствует fileId")?;
-        let name = value
-            .get("name")
-            .and_then(Value::as_str)
-            .filter(|value| !value.trim().is_empty())
-            .ok_or("в метаданных вложения отсутствует имя")?
-            .to_string();
-        let mime_type = value
-            .get("mimeType")
-            .and_then(Value::as_str)
-            .filter(|value| !value.trim().is_empty())
-            .ok_or("в метаданных вложения отсутствует MIME type")?
-            .to_string();
-        let size = value
-            .get("size")
-            .and_then(Value::as_u64)
-            .filter(|size| *size > 0 && *size <= 50 * 1024 * 1024 - 16)
-            .ok_or("в метаданных вложения некорректный размер")?;
-        if kind != "text" || stored_file_id != file_id {
-            return Err("локальные метаданные вложения не совпадают с manifest index".to_string());
+        if kind != "text" {
+            return Err(format!("attachment index references an invalid inbox kind: {kind}"));
         }
+        // The encrypted manifest index is authoritative for attachment metadata.
+        // client_inbox.body is a denormalized display cache and can predate a
+        // recovered/idempotent handoff; never use it to bind file identity.
+        let manifest = manifest.ok_or("в индексе вложения отсутствует manifest")?;
+        let parsed = attachment_crypto::parse_manifest(&manifest, &file_id, &room_id)?;
         return Ok(Incoming::Attachment {
             room_id,
             event_id,
             file_id,
-            name,
-            mime_type,
-            size,
+            name: parsed.name.clone(),
+            mime_type: parsed.mime_type.clone(),
+            size: parsed.size,
             mine,
         });
     }
@@ -4680,8 +4662,7 @@ impl Client {
             .meta
             .prepare(
                 "SELECT i.event_id, i.room_id, i.kind,
-                        COALESCE(i.body, CAST(a.manifest AS TEXT)),
-                        i.client_message_id, a.file_id
+                        i.body, i.client_message_id, a.file_id, a.manifest
                  FROM client_inbox i
                  LEFT JOIN client_attachments a ON a.event_id = i.event_id
                  WHERE i.acknowledged = 0 ORDER BY i.seq",
@@ -4696,12 +4677,13 @@ impl Client {
                     row.get::<_, Option<String>>(3)?,
                     row.get::<_, Option<String>>(4)?,
                     row.get::<_, Option<String>>(5)?,
+                    row.get::<_, Option<Vec<u8>>>(6)?,
                 ))
             })
             .map_err(text)?;
         rows.map(|row| {
-            let (event_id, room_id, kind, body, client_message_id, file_id) = row.map_err(text)?;
-            incoming_from_row(event_id, room_id, kind, body, client_message_id, file_id)
+            let (event_id, room_id, kind, body, client_message_id, file_id, manifest) = row.map_err(text)?;
+            incoming_from_row(event_id, room_id, kind, body, client_message_id, file_id, manifest)
         })
         .collect()
     }
@@ -4713,8 +4695,7 @@ impl Client {
             .meta
             .prepare(
                 "SELECT i.event_id, i.room_id, i.kind,
-                        COALESCE(i.body, CAST(a.manifest AS TEXT)),
-                        i.client_message_id, a.file_id
+                        i.body, i.client_message_id, a.file_id, a.manifest
                  FROM client_inbox i
                  LEFT JOIN client_attachments a ON a.event_id = i.event_id
                  WHERE i.room_id = ?1 ORDER BY i.seq",
@@ -4729,12 +4710,13 @@ impl Client {
                     row.get::<_, Option<String>>(3)?,
                     row.get::<_, Option<String>>(4)?,
                     row.get::<_, Option<String>>(5)?,
+                    row.get::<_, Option<Vec<u8>>>(6)?,
                 ))
             })
             .map_err(text)?;
         rows.map(|row| {
-            let (event_id, room_id, kind, body, client_message_id, file_id) = row.map_err(text)?;
-            incoming_from_row(event_id, room_id, kind, body, client_message_id, file_id)
+            let (event_id, room_id, kind, body, client_message_id, file_id, manifest) = row.map_err(text)?;
+            incoming_from_row(event_id, room_id, kind, body, client_message_id, file_id, manifest)
         })
         .collect()
     }
