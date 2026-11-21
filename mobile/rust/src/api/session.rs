@@ -143,7 +143,6 @@ fn ffi_guard<T>(operation: impl FnOnce() -> Result<T, String>) -> Result<T, Stri
         .unwrap_or_else(|_| Err("panic at the MLS Rust FFI boundary".to_string()))
 }
 
-
 fn map_incoming(items: Vec<Incoming>) -> Vec<IncomingMessage> {
     items
         .into_iter()
@@ -184,7 +183,7 @@ fn map_incoming(items: Vec<Incoming>) -> Vec<IncomingMessage> {
                 room_id,
                 event_id,
                 mine,
-            }
+            },
         })
         .collect()
 }
@@ -200,7 +199,9 @@ impl MlsSession {
                 let mut guard = poisoned.into_inner();
                 *guard = None;
                 self.client.clear_poison();
-                return Err("MLS session mutex was poisoned; the client was invalidated".to_string());
+                return Err(
+                    "MLS session mutex was poisoned; the client was invalidated".to_string()
+                );
             }
         };
         let client = guard
@@ -309,7 +310,8 @@ impl MlsSession {
     }
 
     pub fn download_attachment(&self, file_id: String) -> Result<Vec<u8>, String> {
-        let plaintext = Zeroizing::new(self.with_client(|client| client.download_attachment(&file_id))?);
+        let plaintext =
+            Zeroizing::new(self.with_client(|client| client.download_attachment(&file_id))?);
         Ok(plaintext.to_vec())
     }
 
@@ -525,52 +527,51 @@ pub fn open_session(
     database_directory: String,
 ) -> Result<MlsSession, String> {
     ffi_guard(|| {
-    let access_token = Zeroizing::new(access_token);
-    let refresh_token = Zeroizing::new(refresh_token);
-    let identity = validated_identity(&user_id, &device_id)?;
-    let reservation = reserve_identity(&identity)?;
-    let database_directory = normalized_database_directory(&database_directory, true)?;
-    let database_path = database_path_for_identity(&database_directory, &identity);
-    let keys: Arc<dyn KeyStore> = Arc::new(PlatformKeyStore::new()?);
-    let has_existing_key = keys.has_database_key(&identity)?;
-    let database_existed = database_artifacts_exist(&database_path);
-    if database_existed && !has_existing_key {
-        return Err(
+        let access_token = Zeroizing::new(access_token);
+        let refresh_token = Zeroizing::new(refresh_token);
+        let identity = validated_identity(&user_id, &device_id)?;
+        let reservation = reserve_identity(&identity)?;
+        let database_directory = normalized_database_directory(&database_directory, true)?;
+        let database_path = database_path_for_identity(&database_directory, &identity);
+        let keys: Arc<dyn KeyStore> = Arc::new(PlatformKeyStore::new()?);
+        let has_existing_key = keys.has_database_key(&identity)?;
+        let database_existed = database_artifacts_exist(&database_path);
+        if database_existed && !has_existing_key {
+            return Err(
             "файл SQLCipher существует, но защищённый ключ отсутствует; автоматическая генерация нового ключа запрещена, требуется явное восстановление"
                 .to_string(),
         );
-    }
-    let client = match connect_with_session(
-        &base_url,
-        &user_id,
-        &device_id,
-        access_token.as_str(),
-        refresh_token.as_str(),
-        &database_path,
-        keys.as_ref(),
-    ) {
-        Ok(client) => client,
-        Err(error) => {
-            if !has_existing_key && !database_existed {
-                if let Err(cleanup_error) =
-                    cleanup_local_session(&database_path, &identity, keys.as_ref())
-                {
-                    return Err(format!(
+        }
+        let client = match connect_with_session(
+            &base_url,
+            &user_id,
+            &device_id,
+            access_token.as_str(),
+            refresh_token.as_str(),
+            &database_path,
+            keys.as_ref(),
+        ) {
+            Ok(client) => client,
+            Err(error) => {
+                if !has_existing_key && !database_existed {
+                    if let Err(cleanup_error) =
+                        cleanup_local_session(&database_path, &identity, keys.as_ref())
+                    {
+                        return Err(format!(
                         "{error}; очистка частично созданной MLS-сессии не завершена: {cleanup_error}"
                     ));
+                    }
                 }
+                return Err(error);
             }
-            return Err(error);
-        }
-    };
-    Ok(MlsSession {
-        client: Mutex::new(Some(client)),
-        database_path,
-        identity_scope: identity,
-        keys,
-        identity_reservation: Mutex::new(Some(reservation)),
-    })
-
+        };
+        Ok(MlsSession {
+            client: Mutex::new(Some(client)),
+            database_path,
+            identity_scope: identity,
+            keys,
+            identity_reservation: Mutex::new(Some(reservation)),
+        })
     })
 }
 
@@ -583,26 +584,25 @@ pub fn resume_session(
     database_directory: String,
 ) -> Result<MlsSession, String> {
     ffi_guard(|| {
-    let identity = validated_identity(&user_id, &device_id)?;
-    let reservation = reserve_identity(&identity)?;
-    let database_directory = normalized_database_directory(&database_directory, false)?;
-    let database_path = database_path_for_identity(&database_directory, &identity);
-    let keys: Arc<dyn KeyStore> = Arc::new(PlatformKeyStore::new()?);
-    let client = resume_with_session(
-        &base_url,
-        &user_id,
-        &device_id,
-        &database_path,
-        keys.as_ref(),
-    )?;
-    Ok(MlsSession {
-        client: Mutex::new(Some(client)),
-        database_path,
-        identity_scope: identity,
-        keys,
-        identity_reservation: Mutex::new(Some(reservation)),
-    })
-
+        let identity = validated_identity(&user_id, &device_id)?;
+        let reservation = reserve_identity(&identity)?;
+        let database_directory = normalized_database_directory(&database_directory, false)?;
+        let database_path = database_path_for_identity(&database_directory, &identity);
+        let keys: Arc<dyn KeyStore> = Arc::new(PlatformKeyStore::new()?);
+        let client = resume_with_session(
+            &base_url,
+            &user_id,
+            &device_id,
+            &database_path,
+            keys.as_ref(),
+        )?;
+        Ok(MlsSession {
+            client: Mutex::new(Some(client)),
+            database_path,
+            identity_scope: identity,
+            keys,
+            identity_reservation: Mutex::new(Some(reservation)),
+        })
     })
 }
 
@@ -614,17 +614,16 @@ pub fn purge_local_session(
     database_directory: String,
 ) -> Result<(), String> {
     ffi_guard(|| {
-    let identity = validated_identity(&user_id, &device_id)?;
-    let _reservation = reserve_identity(&identity)?;
-    let database_directory = purge_database_directory(&database_directory)?;
-    let database_path = database_path_for_identity(&database_directory, &identity);
-    let platform_keys = PlatformKeyStore::new();
-    let keys: Result<&dyn KeyStore, String> = match &platform_keys {
-        Ok(keys) => Ok(keys),
-        Err(error) => Err(error.clone()),
-    };
-    cleanup_local_session_with_key_store(&database_path, &identity, keys)
-
+        let identity = validated_identity(&user_id, &device_id)?;
+        let _reservation = reserve_identity(&identity)?;
+        let database_directory = purge_database_directory(&database_directory)?;
+        let database_path = database_path_for_identity(&database_directory, &identity);
+        let platform_keys = PlatformKeyStore::new();
+        let keys: Result<&dyn KeyStore, String> = match &platform_keys {
+            Ok(keys) => Ok(keys),
+            Err(error) => Err(error.clone()),
+        };
+        cleanup_local_session_with_key_store(&database_path, &identity, keys)
     })
 }
 
