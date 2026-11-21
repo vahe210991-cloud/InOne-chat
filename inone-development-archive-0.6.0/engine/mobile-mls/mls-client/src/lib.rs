@@ -3176,6 +3176,40 @@ impl Client {
         .collect()
     }
 
+    /// Returns all locally persisted, decrypted history for one room, including acknowledged items.
+    /// The inbox journal remains the source of truth; reading history never consumes or ACKs events.
+    pub fn messages_for_room(&self, room_id: &str) -> Result<Vec<Incoming>, String> {
+        let mut statement = self
+            .meta
+            .prepare(
+                "SELECT event_id, room_id, kind, body FROM client_inbox WHERE room_id = ?1 ORDER BY seq",
+            )
+            .map_err(text)?;
+        let rows = statement
+            .query_map([room_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                ))
+            })
+            .map_err(text)?;
+        rows.map(|row| {
+            let (event_id, room_id, kind, body) = row.map_err(text)?;
+            match kind.as_str() {
+                "text" => Ok(Incoming::Text {
+                    room_id,
+                    event_id,
+                    text: body.ok_or_else(|| "inbox text row has no body".to_string())?,
+                }),
+                "unreadable" => Ok(Incoming::Unreadable { room_id, event_id }),
+                _ => Err("inbox contains an unsupported record kind".to_string()),
+            }
+        })
+        .collect()
+    }
+
     /// Acknowledges inbox items after the application has durably accepted them.
     /// Unknown IDs are harmless; repeated ACKs are idempotent.
     pub fn acknowledge_incoming(&mut self, event_ids: &[String]) -> Result<(), String> {
