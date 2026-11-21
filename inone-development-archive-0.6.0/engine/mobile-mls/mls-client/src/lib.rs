@@ -1424,6 +1424,111 @@ impl Client {
         request(&self.agent, &self.base, token.as_str(), method, path, body)
     }
 
+    fn same_origin_url(&self, raw_url: &str) -> Result<Url, String> {
+        let base = Url::parse(&self.base).map_err(text)?;
+        let target = Url::parse(raw_url).map_err(text)?;
+        if base.origin() != target.origin()
+            || !target.username().is_empty()
+            || target.password().is_some()
+            || target.fragment().is_some()
+        {
+            return Err("signed file URL must remain on the authenticated API origin".to_string());
+        }
+        Ok(target)
+    }
+
+    /// Upload capability URLs are unauthenticated and never receive the bearer token.
+    fn upload_signed_bytes(&self, raw_url: &str, ciphertext: &[u8]) -> Result<(), String> {
+        let url = self.same_origin_url(raw_url)?;
+        match self
+            .agent
+            .put(url.as_str())
+            .set("content-type", "application/octet-stream")
+            .send_bytes(ciphertext)
+        {
+            Ok(_) => Ok(()),
+            Err(ureq::Error::Status(code, response)) => Err(format!(
+                "signed upload -> {code} {}",
+                response.into_string().unwrap_or_default()
+            )),
+            Err(error) => Err(format!("сеть: {error}")),
+        }
+    }
+
+    /// Download capability URLs are device-bound and require the active bearer token.
+    fn download_signed_bytes(&self, raw_url: &str, max_bytes: u64) -> Result<Vec<u8>, String> {
+        let url = self.same_origin_url(raw_url)?;
+        for attempt in 0..2 {
+            let token = Zeroizing::new(self.tokens.lock().map_err(text)?.0.clone());
+            let authorization = Zeroizing::new(format!("Bearer {}", token.as_str()));
+            let response = self
+                .agent
+                .get(url.as_str())
+                .set("authorization", authorization.as_str())
+                .call();
+            match response {
+                Ok(response) => {
+                    let mut bytes = Vec::new();
+                    response
+                        .into_reader()
+                        .take(max_bytes.saturating_add(1))
+                        .read_to_end(&mut bytes)
+                        .map_err(text)?;
+                    if bytes.len() as u64 > max_bytes {
+                        return Err(
+                            "signed file download exceeded the manifest ciphertext size"
+                                .to_string(),
+                        );
+                    }
+                    return Ok(bytes);
+                }
+                Err(ureq::Error::Status(401, response)) if attempt == 0 => {
+                    let _ = response.into_string();
+                    self.renew()?;
+                }
+                Err(ureq::Error::Status(code, response)) => {
+                    return Err(format!(
+                        "signed download -> {code} {}",
+                        response.into_string().unwrap_or_default()
+                    ));
+                }
+                Err(error) => return Err(format!("сеть: {error}")),
+            }
+        }
+        Err("signed download remained unauthorized after token refresh".to_string())
+    }
+
+    fn reserve_attachment_upload(
+        &self,
+        room_id: &str,
+        ciphertext: &[u8],
+    ) -> Result<(String, String), String> {
+        let response = self.call(
+            "POST",
+            "/files",
+            Some(json!({
+                "kind": "file",
+                "size": ciphertext.len(),
+                "sha256": attachment_crypto::sha256_hex(ciphertext),
+                "roomId": room_id,
+            })),
+        )?;
+        let file_id = response
+            .get("fileId")
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .ok_or("file reservation did not return fileId")?
+            .to_string();
+        let upload_url = response
+            .get("uploadUrl")
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .ok_or("file reservation did not return uploadUrl")?
+            .to_string();
+        self.same_origin_url(&upload_url)?;
+        Ok((file_id, upload_url))
+    }
+
     /// Rotates the refresh token and persists the complete replacement before updating memory.
     fn renew(&self) -> Result<(), String> {
         // Serialize rotations so concurrent 401 responses cannot spend one refresh token twice.
