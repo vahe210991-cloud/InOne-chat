@@ -188,11 +188,25 @@ impl MlsSession {
         &self,
         operation: impl FnOnce(&mut Client) -> Result<T, String>,
     ) -> Result<T, String> {
-        let mut guard = self.client.lock().map_err(|error| error.to_string())?;
+        let mut guard = match self.client.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                let mut guard = poisoned.into_inner();
+                *guard = None;
+                self.client.clear_poison();
+                return Err("MLS session mutex was poisoned; the client was invalidated".to_string());
+            }
+        };
         let client = guard
             .as_mut()
             .ok_or_else(|| "MLS session is closed".to_string())?;
-        operation(client)
+        match catch_unwind(AssertUnwindSafe(|| operation(client))) {
+            Ok(result) => result,
+            Err(_) => {
+                *guard = None;
+                Err("panic inside MLS client operation; the client was invalidated".to_string())
+            }
+        }
     }
 
     /// Current short-lived access token only. Refresh token stays in Rust.
@@ -255,6 +269,18 @@ impl MlsSession {
         self.with_client(|client| client.send_text(&room_id, plaintext.as_str()))
     }
 
+    pub fn send_text_with_id(
+        &self,
+        room_id: String,
+        plaintext: String,
+        client_message_id: String,
+    ) -> Result<String, String> {
+        let plaintext = Zeroizing::new(plaintext);
+        self.with_client(|client| {
+            client.send_text_with_id(&room_id, plaintext.as_str(), &client_message_id)
+        })
+    }
+
     pub fn send_attachment(
         &self,
         room_id: String,
@@ -289,7 +315,8 @@ impl MlsSession {
     }
 
     pub fn download_attachment(&self, file_id: String) -> Result<Vec<u8>, String> {
-        self.with_client(|client| client.download_attachment(&file_id))
+        let plaintext = Zeroizing::new(self.with_client(|client| client.download_attachment(&file_id))?);
+        Ok(plaintext.to_vec())
     }
 
     pub fn enqueue_text(&self, room_id: String, plaintext: String) -> Result<String, String> {
@@ -339,6 +366,16 @@ impl MlsSession {
 
     pub fn flush_outbox(&self) -> Result<usize, String> {
         self.with_client(Client::flush_outbox)
+    }
+
+    pub fn local_room_ids_json(&self) -> Result<String, String> {
+        self.with_client(|client| {
+            serde_json::to_string(&client.local_room_ids()).map_err(|error| error.to_string())
+        })
+    }
+
+    pub fn pending_outbox_for_room_json(&self, room_id: String) -> Result<String, String> {
+        self.with_client(|client| client.pending_outbox_for_room_json(&room_id))
     }
 
     pub fn local_epoch(&self, room_id: String) -> Result<Option<u64>, String> {
