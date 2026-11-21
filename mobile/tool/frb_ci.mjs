@@ -80,6 +80,7 @@ function verifyContract() {
     messagesForRoom: 'messagesForRoomJson',
     undecryptable: 'undecryptableJson',
     outboxLength: 'outboxLen',
+    pendingOutbox: 'pendingOutboxForRoomJson',
   };
   const expectedTopLevel = interfaceMethods
     .filter(name => Object.prototype.hasOwnProperty.call(topLevelMap, name))
@@ -189,6 +190,9 @@ try {
   // Resolve dependencies strictly from the committed lockfile. The downstream
   // iOS artifact consumer must receive exactly the same dependency graph.
   run('flutter', ['pub', 'get', '--enforce-lockfile']);
+  // The integration command and Flutter tooling may normalize the nested Rust
+  // lockfile; restore the committed contract before checking reproducibility.
+  restoreProtectedFiles();
   run('git', ['diff', '--exit-code', '--', ...protectedPaths]);
 
   run('flutter_rust_bridge_codegen', [
