@@ -801,8 +801,6 @@ fn build_client(
            CHECK ((kind = 'text' AND body IS NOT NULL) OR (kind = 'unreadable' AND body IS NULL))
          );
          CREATE INDEX IF NOT EXISTS idx_client_inbox_pending ON client_inbox(acknowledged, seq);
-         CREATE UNIQUE INDEX IF NOT EXISTS idx_client_inbox_client_message_id
-           ON client_inbox(client_message_id) WHERE client_message_id IS NOT NULL;
          CREATE TABLE IF NOT EXISTS client_undecryptable (event_id TEXT PRIMARY KEY, room_id TEXT NOT NULL, reason TEXT NOT NULL);
          CREATE TABLE IF NOT EXISTS client_desync (room_id TEXT PRIMARY KEY, reason TEXT NOT NULL);
          CREATE TABLE IF NOT EXISTS client_waiting_for_commit (room_id TEXT PRIMARY KEY, expected_epoch INTEGER NOT NULL, event_ids TEXT NOT NULL, updated_at INTEGER NOT NULL);
