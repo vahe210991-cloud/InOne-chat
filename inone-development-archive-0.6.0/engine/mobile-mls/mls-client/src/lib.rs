@@ -1490,31 +1490,6 @@ fn download_signed_bytes(&self, raw_url: &str, max_bytes: u64) -> Result<Vec<u8>
         Ok((file_id, upload_url))
     }
 
-fn reserve_attachment_upload(
-        &self,
-        room_id: &str,
-        ciphertext: &[u8],
-    ) -> Result<(String, String), String> {
-        let response = self.call(
-            "POST",
-            "/files",
-            Some(json!({
-                "kind": "file",
-                "size": ciphertext.len(),
-                "sha256": attachment_crypto::sha256_hex(ciphertext),
-                "roomId": room_id,
-            })),
-        )?;
-        let file_id = response.get("fileId").and_then(Value::as_str)
-            .filter(|value| !value.trim().is_empty())
-            .ok_or("file reservation did not return fileId")?.to_string();
-        let upload_url = response.get("uploadUrl").and_then(Value::as_str)
-            .filter(|value| !value.trim().is_empty())
-            .ok_or("file reservation did not return uploadUrl")?.to_string();
-        self.same_origin_url(&upload_url)?;
-        Ok((file_id, upload_url))
-    }
-
 fn create_and_persist_attachment_mls_message(
         &mut self,
         room_id: &str,
@@ -1824,6 +1799,7 @@ pub fn send_attachment_with_id(
     }
 
 pub fn download_attachment(&self, file_id: &str) -> Result<Vec<u8>, String> {
+        use rusqlite::OptionalExtension;
         if file_id.trim().is_empty() || file_id.len() > 128 {
             return Err("invalid attachment fileId".to_string());
         }
