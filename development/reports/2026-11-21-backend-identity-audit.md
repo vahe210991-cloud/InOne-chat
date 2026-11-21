@@ -59,3 +59,11 @@ The following checks are required on the resulting PR head:
 ## Merge boundary
 
 The work is isolated to `fix/canonical-backend-identity-2026-11-21`. It must be reviewed through a pull request. Do not merge to `main` without explicit owner approval.
+
+## Pull request and CI status
+
+- Draft PR: [#120 — canonical InOne backend identity](https://github.com/vahe210991-cloud/InOne-chat/pull/120), base `main`, head `1741651a3212057b0d6b8feb4b30ad7e7212c826`.
+- The PR is open, draft and not merged. GitHub reports it mergeable at the time of inspection; this is not an approval to merge.
+- Exact-head workflow runs were created: P0 validation `44871378564`; Email/PostgreSQL validation `44871379518`; Flutter validation `44871378516`; iOS validation `44871378501`.
+- All listed jobs were still `queued` at the latest check. No job has produced a pass/fail result, and no test execution is claimed.
+- CI currently schedules unrelated Flutter/iOS workflows as well as backend checks for this PR. Do not interpret queued jobs as completed validation.
