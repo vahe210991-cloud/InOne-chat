@@ -61,6 +61,29 @@ class InOnePushRoute {
   int get hashCode => Object.hash(roomId, eventId);
 }
 
+
+/// A small FIFO for opened notification routes. Duplicate routes are ignored;
+/// completing one route never discards a newer route received while it runs.
+class InOnePushRouteQueue {
+  InOnePushRouteQueue({this.maxLength = 128});
+
+  final int maxLength;
+  final List<InOnePushRoute> _routes = <InOnePushRoute>[];
+
+  InOnePushRoute? get next => _routes.isEmpty ? null : _routes.first;
+
+  bool enqueue(InOnePushRoute route) {
+    if (_routes.contains(route)) return false;
+    _routes.add(route);
+    if (_routes.length > maxLength) _routes.removeAt(0);
+    return true;
+  }
+
+  bool complete(InOnePushRoute route) => _routes.remove(route);
+
+  void clear() => _routes.clear();
+}
+
 /// Owns Firebase foreground/tap/terminated receive subscriptions. It never
 /// fetches room data or decrypts a message; the authenticated app session does.
 class InOnePushReceiveLifecycle {
