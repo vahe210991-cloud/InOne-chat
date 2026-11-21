@@ -235,6 +235,15 @@ fn insert_incoming_record(db: &Connection, incoming: &Incoming) -> Result<(), St
         .as_millis() as i64;
     crash_at_test_failpoint("before_inbox_retention_cleanup");
     db.execute(
+        "DELETE FROM client_attachments
+         WHERE event_id IN (
+           SELECT event_id FROM client_inbox
+           WHERE acknowledged = 1 AND acknowledged_at IS NOT NULL AND acknowledged_at < ?1
+         )",
+        [now - ACKNOWLEDGED_INBOX_RETENTION_MS],
+    )
+    .map_err(text)?;
+    db.execute(
         "DELETE FROM client_inbox
          WHERE acknowledged = 1 AND acknowledged_at IS NOT NULL AND acknowledged_at < ?1",
         [now - ACKNOWLEDGED_INBOX_RETENTION_MS],
@@ -298,14 +307,15 @@ fn insert_attachment_record(
         rusqlite::params![file_id, room_id, event_id, manifest, direction, created_at, client_message_id],
     )
     .map_err(text)?;
-    let stored: (String, String, Vec<u8>) = db
+    let (stored_room, stored_event, stored_bytes): (String, String, Vec<u8>) = db
         .query_row(
             "SELECT room_id, event_id, manifest FROM client_attachments WHERE file_id = ?1",
             [file_id],
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )
         .map_err(text)?;
-    if stored.0 != room_id || stored.1 != event_id || stored.2.as_slice() != manifest {
+    let stored_bytes = Zeroizing::new(stored_bytes);
+    if stored_room != room_id || stored_event != event_id || stored_bytes.as_slice() != manifest {
         return Err("attachment fileId is already bound to a different room/event/manifest".to_string());
     }
     Ok(())
@@ -3809,6 +3819,16 @@ pub fn download_attachment(&self, file_id: &str) -> Result<Vec<u8>, String> {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis() as i64;
+        self.meta
+            .execute(
+                "DELETE FROM client_attachments
+                 WHERE event_id IN (
+                   SELECT event_id FROM client_inbox
+                   WHERE acknowledged = 1 AND acknowledged_at IS NOT NULL AND acknowledged_at < ?1
+                 )",
+                [now - ACKNOWLEDGED_INBOX_RETENTION_MS],
+            )
+            .map_err(text)?;
         self.meta
             .execute(
                 "DELETE FROM client_inbox
