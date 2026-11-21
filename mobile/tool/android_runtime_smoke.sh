@@ -5,6 +5,8 @@ diag_dir="/tmp/inone-android-runtime-diagnostics"
 mkdir -p "$diag_dir"
 
 timeout 60 adb wait-for-device
+adb install -r build/app/outputs/flutter-apk/app-debug.apk
+adb shell pm grant com.inone.app android.permission.POST_NOTIFICATIONS
 adb logcat -c || true
 adb logcat -b all -v threadtime > "$diag_dir/logcat.txt" 2>&1 &
 logcat_pid=$!

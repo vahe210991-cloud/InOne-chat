@@ -4,6 +4,7 @@ import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 
 import '../core/data/inone_profile.dart';
+import '../core/data/inone_push_repository.dart';
 import '../core/data/inone_public_config.dart';
 import '../core/data/inone_organization.dart';
 import '../core/data/inone_repositories.dart';
@@ -11,6 +12,7 @@ import '../core/mls/rust_mls_session_bridge.dart';
 import '../core/network/api_environment.dart';
 import '../core/network/api_exception.dart';
 import '../core/session/inone_session.dart';
+import '../core/session/inone_push_lifecycle.dart';
 import '../core/session/recovery_deep_link.dart';
 import '../ui_dart_source/inone.dart';
 
@@ -23,7 +25,9 @@ const _nativeMlsEnabled = bool.fromEnvironment(
 );
 
 class InOneMobileApp extends StatefulWidget {
-  const InOneMobileApp({super.key});
+  const InOneMobileApp({super.key, this.enablePush = false});
+
+  final bool enablePush;
 
   @override
   State<InOneMobileApp> createState() => _InOneMobileAppState();
@@ -33,6 +37,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   final _messengerKey = GlobalKey<ScaffoldMessengerState>();
   late final InOneSession _session;
   late final InOneRepositories _repositories;
+  InOnePushLifecycle? _pushLifecycle;
 
   String _screen = 'login';
   String _registrationEmail = '';
@@ -66,6 +71,12 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           : null,
     );
     _repositories = InOneRepositories(_session);
+    if (widget.enablePush) {
+      _pushLifecycle = InOnePushLifecycle.firebase(
+        session: _session,
+        repository: InOnePushRepository(_session),
+      )..start();
+    }
     WidgetsBinding.instance.addObserver(this);
     final initialRoute = WidgetsBinding.instance.platformDispatcher.defaultRouteName;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -92,8 +103,18 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    final pushLifecycle = _pushLifecycle;
+    if (pushLifecycle != null) {
+      unawaited(pushLifecycle.refreshRegistration().catchError((Object _) {}));
+    }
+  }
+
+  @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _pushLifecycle?.dispose();
     _session.dispose();
     super.dispose();
   }
@@ -315,6 +336,13 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   }
 
   Future<InOneFailure?> _logout() async {
+    // Remove this device token while the authenticated bearer session is valid.
+    // The server logout/revocation path independently removes the registration.
+    try {
+      await _pushLifecycle?.unregisterBeforeLogout();
+    } catch (_) {
+      // Continue: local logout must not be blocked by push-service availability.
+    }
     try {
       await _session.logout();
       return null;

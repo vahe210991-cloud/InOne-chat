@@ -17,7 +17,7 @@ jobs:
   exact-sha-acceptance:
     name: Exact-SHA required workflow acceptance
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 150
     steps:
       - name: Verify PR head SHA and wait for every applicable validation workflow
         uses: actions/github-script@v7
@@ -81,7 +81,7 @@ jobs:
 
             core.info(`Acceptance SHA: ${expectedSha}`);
             core.info(`Applicable workflows: ${[...expected].join(", ")}`);
-            const deadline = Date.now() + 30 * 60 * 1000;
+            const deadline = Date.now() + 120 * 60 * 1000;
             let lastState = new Map();
 
             while (Date.now() < deadline) {

@@ -1,0 +1,6 @@
+# Private Firebase / Apple signing credentials (client config files are intentionally not ignored).
+**/*service-account*.json
+**/*firebase-adminsdk*.json
+**/serviceAccountKey.json
+**/AuthKey_*.p8
+**/*.p8

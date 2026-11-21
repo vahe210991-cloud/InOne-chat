@@ -18,6 +18,36 @@ void main() {
     session.dispose();
   });
 
+  test('registers a Firebase Installation ID for the FCM provider', () async {
+    final session = _PushSession({'registered': true});
+    const installationId = 'abcdefghijklmnopqrstuv';
+
+    await InOnePushRepository(session).register(
+      provider: InOnePushProvider.fcm,
+      token: installationId,
+    );
+
+    expect(session.body, {
+      'provider': 'fcm',
+      'token': installationId,
+    });
+    session.dispose();
+  });
+
+  test('rejects a Firebase Installation ID for the APNs provider', () async {
+    final session = _PushSession({'registered': true});
+
+    await expectLater(
+      InOnePushRepository(session).register(
+        provider: InOnePushProvider.apns,
+        token: 'abcdefghijklmnopqrstuv',
+      ),
+      throwsA(isA<ArgumentError>()),
+    );
+    expect(session.method, isNull);
+    session.dispose();
+  });
+
   test('registers an APNs token with the APNs provider identifier', () async {
     final session = _PushSession({'registered': true});
 
