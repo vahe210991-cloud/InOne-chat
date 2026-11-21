@@ -775,9 +775,6 @@ fn build_client(
     )
     .map_err(text)?;
 
-    let session_tokens = SessionTokens(tokens.0, tokens.1);
-    store_session_tokens(&meta, &session_tokens)?;
-
     let stored_public: Option<Vec<u8>> = meta
         .query_row(
             "SELECT value FROM client_meta WHERE key = 'signer_public'",
@@ -841,6 +838,9 @@ fn build_client(
         processed.insert(id.map_err(text)?);
     }
     drop(stmt);
+
+    let session_tokens = SessionTokens(tokens.0, tokens.1);
+    store_session_tokens(&meta, &session_tokens)?;
 
     Ok(Client {
         base: base.to_string(),
