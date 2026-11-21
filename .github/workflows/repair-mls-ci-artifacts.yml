@@ -1,0 +1,61 @@
+name: Repair MLS CI artifacts
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/repair-mls-ci-artifacts.yml"
+      - "inone-development-archive-0.6.0/engine/mobile-mls/mls-client/**"
+      - "mobile/rust/**"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-mls-ci-artifacts-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.91.0"
+          components: rustfmt
+      - name: Format canonical MLS and FRB Rust sources
+        run: |
+          set -euo pipefail
+          cargo fmt --manifest-path inone-development-archive-0.6.0/engine/mobile-mls/mls-client/Cargo.toml
+          cargo fmt --manifest-path mobile/rust/Cargo.toml
+      - name: Regenerate committed Cargo lockfiles
+        run: |
+          set -euo pipefail
+          cargo generate-lockfile --manifest-path inone-development-archive-0.6.0/engine/mobile-mls/mls-client/Cargo.toml
+          cargo generate-lockfile --manifest-path mobile/rust/Cargo.toml
+      - name: Validate regenerated locks and Rust tests
+        run: |
+          set -euo pipefail
+          cargo check --locked --all-targets --manifest-path inone-development-archive-0.6.0/engine/mobile-mls/mls-client/Cargo.toml
+          cargo test --locked --manifest-path inone-development-archive-0.6.0/engine/mobile-mls/mls-client/Cargo.toml
+          cargo test --locked --manifest-path mobile/rust/Cargo.toml
+      - name: Commit formatter and lockfile repairs to PR branch
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref || github.ref_name }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet; then
+            echo "No formatter or lockfile changes were required."
+            exit 0
+          fi
+          git add inone-development-archive-0.6.0/engine/mobile-mls/mls-client mobile/rust
+          git commit -m "fix(ci): format MLS sources and refresh Rust lockfiles"
+          git push origin "HEAD:${HEAD_REF}"
