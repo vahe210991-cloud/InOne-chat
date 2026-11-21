@@ -3663,30 +3663,28 @@ impl Client {
         let mut statement = self
             .meta
             .prepare(
-                "SELECT event_id, room_id, kind, body
-                 FROM client_inbox WHERE acknowledged = 0 ORDER BY seq",
+                "SELECT i.event_id, i.room_id, i.kind, i.body, i.client_message_id, a.file_id
+                 FROM client_inbox i
+                 LEFT JOIN client_attachments a ON a.event_id = i.event_id
+                 WHERE i.acknowledged = 0 ORDER BY i.seq",
             )
             .map_err(text)?;
         let rows = statement
             .query_map([], |row| {
-                let event_id: String = row.get(0)?;
-                let room_id: String = row.get(1)?;
-                let kind: String = row.get(2)?;
-                let body: Option<String> = row.get(3)?;
-                Ok((event_id, room_id, kind, body))
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, Option<String>>(4)?,
+                    row.get::<_, Option<String>>(5)?,
+                ))
             })
             .map_err(text)?;
         rows.map(|row| {
-            let (event_id, room_id, kind, body) = row.map_err(text)?;
-            match kind.as_str() {
-                "text" => Ok(Incoming::Text {
-                    room_id,
-                    event_id,
-                    text: body.ok_or_else(|| "inbox text row has no body".to_string())?,
-                }),
-                "unreadable" => Ok(Incoming::Unreadable { room_id, event_id }),
-                _ => Err("inbox contains an unsupported record kind".to_string()),
-            }
+            let (event_id, room_id, kind, body, client_message_id, file_id) =
+                row.map_err(text)?;
+            incoming_from_row(event_id, room_id, kind, body, client_message_id, file_id)
         })
         .collect()
     }
@@ -3697,7 +3695,10 @@ impl Client {
         let mut statement = self
             .meta
             .prepare(
-                "SELECT event_id, room_id, kind, body FROM client_inbox WHERE room_id = ?1 ORDER BY seq",
+                "SELECT i.event_id, i.room_id, i.kind, i.body, i.client_message_id, a.file_id
+                 FROM client_inbox i
+                 LEFT JOIN client_attachments a ON a.event_id = i.event_id
+                 WHERE i.room_id = ?1 ORDER BY i.seq",
             )
             .map_err(text)?;
         let rows = statement
@@ -3707,20 +3708,15 @@ impl Client {
                     row.get::<_, String>(1)?,
                     row.get::<_, String>(2)?,
                     row.get::<_, Option<String>>(3)?,
+                    row.get::<_, Option<String>>(4)?,
+                    row.get::<_, Option<String>>(5)?,
                 ))
             })
             .map_err(text)?;
         rows.map(|row| {
-            let (event_id, room_id, kind, body) = row.map_err(text)?;
-            match kind.as_str() {
-                "text" => Ok(Incoming::Text {
-                    room_id,
-                    event_id,
-                    text: body.ok_or_else(|| "inbox text row has no body".to_string())?,
-                }),
-                "unreadable" => Ok(Incoming::Unreadable { room_id, event_id }),
-                _ => Err("inbox contains an unsupported record kind".to_string()),
-            }
+            let (event_id, room_id, kind, body, client_message_id, file_id) =
+                row.map_err(text)?;
+            incoming_from_row(event_id, room_id, kind, body, client_message_id, file_id)
         })
         .collect()
     }
