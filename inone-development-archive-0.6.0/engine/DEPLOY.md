@@ -1,6 +1,6 @@
 # Развёртывание сервера InOne
 
-Сборка: 0.6.0-alpha.30. В исходниках подключён SMTP transport и PostgreSQL-backed encrypted email queue. Production acceptance остаётся BLOCKED до выполнения runtime-тестов, настройки домена/провайдера и проверки SPF/DKIM/DMARC.
+Сборка: 0.6.0-alpha.30. В исходниках подключён SMTP transport и PostgreSQL-backed encrypted email queue. Production acceptance остаётся BLOCKED до выполнения production runtime-тестов, настройки домена/провайдера и проверки SPF/DKIM/DMARC.
 
 ## Что нужно
 
@@ -36,7 +36,29 @@
 
 Неверная настройка останавливает запуск до открытия порта и называет причину.
 
-## Первый запуск
+## Локальный запуск через Docker Compose
+
+Корневой `docker-compose.yml` этого каталога — development-профиль, не production deployment. Он запускает PostgreSQL 16 и Backend, применяет миграции при старте, сохраняет данные в named volumes и публикует порт 8080.
+
+1. Создать локальный файл `.env` в этом каталоге. Минимальные значения:
+
+   ```dotenv
+   POSTGRES_DB=inone
+   POSTGRES_USER=inone
+   POSTGRES_PASSWORD=UseAnAlphanumericLocalPassword
+   INONE_PIN_PEPPER=replace-with-at-least-32-random-characters
+   ```
+
+   Для пароля базы используйте URL-safe буквы и цифры, поскольку он включается в `DATABASE_URL`. Не используйте эти локальные значения в production.
+2. Проверить конфигурацию: `docker compose config --quiet`.
+3. Собрать и запустить: `docker compose up -d --build --wait`.
+4. Проверить `http://localhost:8080/healthz`, `/readyz` и `/config/public`.
+5. Посмотреть диагностику: `docker compose logs --tail=200`.
+6. Остановить сервисы: `docker compose down`. Для полного удаления локальной базы и файлов используйте `docker compose down --volumes`.
+
+CI workflow `.github/workflows/backend-compose-acceptance.yml` выполняет сборку образа, запуск PostgreSQL и Backend, проверку health/readiness, публичного API и последней миграции. Результат должен оцениваться только по конкретному SHA PR.
+
+## Первый production запуск без Compose
 
 1. Создать базу: `CREATE DATABASE inone OWNER inone;`
 2. Установить зависимости: `npm ci --omit=dev`
@@ -61,11 +83,11 @@
 
 ## Ограничения этой сборки
 
-- Почта: SMTP transport и durable encrypted queue реализованы в исходниках; добавлены миграции, worker, идемпотентность, expiry, retry/dead-letter, HY/RU/EN templates, локализация по выбранному языку интерфейса и safe logs. Новые тесты добавлены, но на текущем SHA ещё NOT RUN. До acceptance нужны Node + PostgreSQL suite, SMTP integration, restart/retry/shutdown tests и реальная проверка доставки.
+- Почта: SMTP transport и durable encrypted queue реализованы в исходниках; добавлены миграции, worker, идемпотентность, expiry, retry/dead-letter, HY/RU/EN templates, локализация по выбранному языку интерфейса и safe logs. Для acceptance нужны Node + PostgreSQL suite, SMTP integration, restart/retry/shutdown tests и реальная проверка доставки.
 - Продакшен не стартует без `INONE_MAIL_TRANSPORT=smtp` с TLS и адресом отправителя.
-- Зависимости почты по текущему `package.json`: `nodemailer` 10.3.1 и `smtp-server` 3.21.3 (только тестовый сервер). Проверку `npm audit` на этом SHA ещё не выполняли.
+- Зависимости почты по текущему `package.json`: `nodemailer` 10.3.1 и `smtp-server` 3.21.3 (только тестовый сервер). Проверку `npm audit` на соответствующем SHA следует выполнять отдельно.
 - SMS не подключён: восстановление доступа по телефону недоступно.
 - Файлы оформления хранятся в базе данных.
 - Криптографический движок временный (`@matrix-org/matrix-sdk-crypto-wasm`), собственный не собран.
-- Docker-образ и `docker-compose.yml` не собраны и не проверены: в этой среде Docker недоступен.
+- Docker Compose profile is development-only; passing its CI smoke test does not constitute production deployment acceptance.
 - Резервное копирование, очистка устаревших записей и мониторинг не автоматизированы.

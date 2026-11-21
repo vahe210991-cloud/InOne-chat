@@ -4,11 +4,7 @@ name: Email delivery and PostgreSQL validation
 on:
   # Validate every stacked PR head directly; prior-head successes are not reused after branch updates.
   push:
-    branches:
-      - feature/email-delivery-service-2026-11-16-b1
-      - fix/email-delivery-test-readiness-2026-11-17
-      - fix/email-delivery-shutdown-and-key-hardening-2026-11-17
-      - fix/email-ci-server-regex-2026-11-17
+    branches: [main]
     paths:
       - "inone-development-archive-0.6.0/engine/**"
       - ".github/workflows/email-delivery-validation.yml"
@@ -21,8 +17,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: email-delivery-${{ github.event.pull_request.number || github.ref }}-${{ github.sha }}
-  cancel-in-progress: false
+  group: email-delivery-${{ github.event.pull_request.head.ref || github.ref_name }}-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: true
 
 jobs:
   engine:
