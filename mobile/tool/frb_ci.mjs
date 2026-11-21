@@ -224,6 +224,10 @@ try {
 
   run('cargo', ['fmt', '--manifest-path', 'rust/Cargo.toml']);
   run('cargo', ['fmt', '--manifest-path', 'rust/Cargo.toml', '--', '--check']);
+  // cargo-expand/cargo metadata can append a trailing newline to Cargo.lock
+  // after the earlier restore. Re-restore all tracked inputs immediately before
+  // the reproducibility check; generated FRB outputs are outside this list.
+  restoreProtectedFiles();
   run('git', ['diff', '--exit-code', '--', ...protectedPaths]);
   verifyContract();
 } finally {
