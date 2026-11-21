@@ -3672,6 +3672,47 @@ mod session_persistence_tests {
     }
 
     #[test]
+    fn room_history_retains_acknowledged_events_without_replaying_pending_inbox() {
+        let database = temp_db("history");
+        let keys = MemoryKeyStore::default();
+        let mut client = connect_with_session(
+            "https://api.example.invalid",
+            "user-history",
+            "device-history",
+            "history-access",
+            "history-refresh",
+            &database,
+            &keys,
+        )
+        .expect("adopt session for history test");
+
+        let event = Incoming::Text {
+            room_id: "!history:inone.test".to_string(),
+            event_id: "$history-1".to_string(),
+            text: "persisted message".to_string(),
+        };
+        let other_room_event = Incoming::Text {
+            room_id: "!other:inone.test".to_string(),
+            event_id: "$history-2".to_string(),
+            text: "another room".to_string(),
+        };
+        insert_incoming_record(&client.meta, &event).unwrap();
+        insert_incoming_record(&client.meta, &other_room_event).unwrap();
+
+        client
+            .acknowledge_incoming(&["$history-1".to_string()])
+            .unwrap();
+        assert!(client.pending_incoming().unwrap().is_empty());
+        assert_eq!(
+            client.messages_for_room("!history:inone.test").unwrap(),
+            vec![event],
+            "ACK must not delete durable history"
+        );
+        drop(client);
+        remove_db(&database);
+    }
+
+    #[test]
     fn logout_clears_persisted_and_in_memory_tokens_when_server_is_unavailable() {
         let database = temp_db("logout");
         let keys = MemoryKeyStore::default();
