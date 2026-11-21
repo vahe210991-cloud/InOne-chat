@@ -40,41 +40,43 @@ jobs:
               { owner, repo, pull_number: prNumber, per_page: 100 }
             );
             const paths = files.map(file => file.filename);
-            const changed = pattern => paths.some(path => pattern.test(path));
+            const starts = prefix => paths.some(path => path.startsWith(prefix));
             const expected = new Set();
 
-            const workflowChanged = file => paths.includes(`.github/workflows/${file}`);
+            const workflowChanged = file => paths.includes(".github/workflows/" + file);
+            const engine = "inone-development-archive-0.6.0/engine/";
+            const engineMls = engine + "mobile-mls/";
+            const pocMls = "inone-engine-poc-0.6.0/mobile-mls/";
+            const mobile = "mobile/";
+            const mobileRust = "mobile/rust/";
+
             if (workflowChanged("validate-published-p0.yml") ||
-                changed(/^(inone-development-archive-0\.6\.0\/engine\/|inone-engine-poc-0\.6\.0\/mobile-mls\/|mobile\/rust\/)/)) {
+                starts(engine) || starts(pocMls) || starts(mobileRust)) {
               expected.add("Validate recovered InOne P0 source");
             }
             if (workflowChanged("mls-native-validation.yml") ||
-                changed(/^(inone-engine-poc-0\.6\.0\/mobile-mls\/|inone-development-archive-0\.6\.0\/engine\/mobile-mls\/|mobile\/rust\/)/)) {
+                starts(pocMls) || starts(engineMls) || starts(mobileRust)) {
               expected.add("Native MLS client validation");
             }
             if (workflowChanged("flutter-mobile.yml") ||
-                changed(/^mobile\//) ||
-                paths.some(path => path.startsWith("inone-development-archive-0.6.0/engine/"))) {
+                starts(mobile) || starts(engineMls)) {
               expected.add("Flutter mobile validation");
             }
             if (workflowChanged("flutter-ios-validation.yml") ||
-                changed(/^mobile\//) ||
-                changed(/^inone-development-archive-0\.6\.0\/engine\/mobile-mls\//)) {
+                starts(mobile) || starts(engineMls)) {
               expected.add("Flutter iOS validation");
             }
-            if (workflowChanged("openmls-frb-codegen.yml") || changed(/^mobile\//)) {
+            if (workflowChanged("openmls-frb-codegen.yml") || starts(mobile)) {
               expected.add("OpenMLS Flutter Rust Bridge generation");
             }
-            if (workflowChanged("email-delivery-validation.yml") || changed(/^inone-development-archive-0\.6\.0\/engine\//)) {
+            if (workflowChanged("email-delivery-validation.yml") || starts(engine)) {
               expected.add("Email delivery and PostgreSQL validation");
             }
-            if (workflowChanged("backend-compose-acceptance.yml") ||
-                changed(/^inone-development-archive-0\\.6\\.0\\/engine\\//)) {
+            if (workflowChanged("backend-compose-acceptance.yml") || starts(engine)) {
               expected.add("Backend Docker Compose runtime acceptance");
             }
             if (workflowChanged("devcontainer-runtime.yml") ||
-                changed(/^\.devcontainer\//) ||
-                changed(/^inone-development-archive-0\.6\.0\/engine\//)) {
+                starts(".devcontainer/") || starts(engine)) {
               expected.add("Dev Container Compose runtime validation");
             }
 
