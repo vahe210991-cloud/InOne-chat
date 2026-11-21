@@ -145,7 +145,7 @@ test('PostgreSQL push outbox is atomic, encrypted, idempotent, retryable and lea
       )).rows[0];
       assert.equal(accepted.status, 'provider_accepted');
       assert.equal(accepted.attempts, 2);
-      assert.match(accepted.provider_message_id, /messages\\//);
+      assert.match(accepted.provider_message_id, /messages\//);
     } finally {
       await restartedWorker.stop();
     }
