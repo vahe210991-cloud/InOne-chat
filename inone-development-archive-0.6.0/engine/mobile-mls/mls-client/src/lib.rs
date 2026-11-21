@@ -3254,11 +3254,7 @@ impl Client {
     /// Reconciles an outgoing attachment with any copy queued by a recovery sync.
     /// The durable SQLCipher attachment record is authoritative for sender direction.
     fn reconcile_outgoing_attachment_handoff(&mut self, incoming: Incoming) {
-        let Incoming::Attachment {
-            event_id,
-            file_id,
-            ..
-        } = &incoming
+        let Incoming::Attachment { event_id, file_id, .. } = &incoming
         else {
             return;
         };
@@ -4618,7 +4614,8 @@ impl Client {
                         .optional()
                         .map_err(text)?;
                     let (stored_file_id, stored_manifest) = completed.ok_or_else(|| {
-                        "completed attachment outbox has no durable outgoing history record".to_string()
+                        "completed attachment outbox has no durable outgoing history record"
+                            .to_string()
                     })?;
                     let stored_manifest = Zeroizing::new(stored_manifest);
                     let stored = attachment_crypto::parse_manifest(
@@ -4630,8 +4627,8 @@ impl Client {
                         room_id: room_id.clone(),
                         event_id,
                         file_id: stored_file_id,
-                        name: stored.name,
-                        mime_type: stored.mime_type,
+                        name: stored.name.clone(),
+                        mime_type: stored.mime_type.clone(),
                         size: stored.size,
                         mine: true,
                     });
