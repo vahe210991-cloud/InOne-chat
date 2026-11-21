@@ -1,5 +1,5 @@
-import 'dart:typed_data';
 import 'dart:async';
+import 'dart:typed_data';
 import 'dart:convert';
 
 import 'package:flutter/services.dart';
@@ -408,6 +408,42 @@ void main() {
     );
     session.dispose();
   });
+  test('MLS attachment service forwards stable id and encrypted-bridge bytes', () async {
+    final bridge = _FakeMlsSessionBridge();
+    final session = InOneSession(
+      baseUrl: 'https://api.inone.test',
+      nativeMlsBridge: bridge,
+      readDeviceId: () async => 'device-1',
+      writeDeviceId: (_) async {},
+      readMlsUserId: () async => null,
+      writeMlsUserId: (_) async {},
+      deleteMlsUserId: () async {},
+    );
+    final bytes = Uint8List.fromList([1, 2, 3, 4]);
+
+    final eventId = await session.sendMlsAttachment(
+      'room-1',
+      'photo.jpg',
+      'image/jpeg',
+      bytes,
+      'retry-001',
+    );
+
+    expect(eventId, 'attachment-event-1');
+    expect(bridge.lastAttachmentRoomId, 'room-1');
+    expect(bridge.lastAttachmentName, 'photo.jpg');
+    expect(bridge.lastAttachmentMimeType, 'image/jpeg');
+    expect(bridge.lastAttachmentBytes, bytes);
+    expect(bridge.lastAttachmentClientMessageId, 'retry-001');
+
+    bridge.downloadResult = Uint8List.fromList([9, 8, 7]);
+    expect(
+      await session.downloadMlsAttachment('file-1'),
+      orderedEquals([9, 8, 7]),
+    );
+    session.dispose();
+  });
+
 }
 
 class _FakeMlsSessionBridge implements MlsSessionBridge {
@@ -502,10 +538,17 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
     String mimeType,
     Uint8List plaintext,
     String clientMessageId,
-  ) async => 'attachment-event-1';
+  ) async {
+    lastAttachmentRoomId = roomId;
+    lastAttachmentName = name;
+    lastAttachmentMimeType = mimeType;
+    lastAttachmentBytes = plaintext;
+    lastAttachmentClientMessageId = clientMessageId;
+    return 'attachment-event-1';
+  }
 
   @override
-  Future<Uint8List> downloadAttachment(String fileId) async => Uint8List(0);
+  Future<Uint8List> downloadAttachment(String fileId) async => downloadResult;
 
   @override
   Future<String> enqueueText(String roomId, String plaintext) async => 'local-1';
