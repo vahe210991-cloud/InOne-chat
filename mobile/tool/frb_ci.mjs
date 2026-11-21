@@ -34,7 +34,7 @@ function sameSet(actual, expected, label) {
 }
 
 function futureMethods(source) {
-  return [...source.matchAll(/^\s*Future<[^;\n]*?>\s+([A-Za-z_]\w*)\s*\(/gm)].map(match => match[1]);
+  return [...source.matchAll(/^\s*Future<.*>\s+([A-Za-z_]\w*)\s*\(/gm)].map(match => match[1]);
 }
 
 function verifyContract() {
