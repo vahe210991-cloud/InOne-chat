@@ -14,6 +14,7 @@ use openmls_rust_crypto::RustCrypto;
 use openmls_sqlite_storage::{Codec, Connection, SqliteStorageProvider};
 use openmls_traits::{crypto::OpenMlsCrypto, random::OpenMlsRand, types::HashType};
 use serde_json::{json, Value};
+use zeroize::Zeroize;
 
 pub mod remote_config;
 
@@ -314,17 +315,47 @@ fn register(agent: &ureq::Agent, base: &str, user_id: &str, password: &str) -> R
 }
 
 /// Ключ базы устройства. Платформа хранит его в Keychain (iOS) или Keystore (Android); ядро его не сохраняет.
-pub trait KeyStore {
+pub trait KeyStore: Send + Sync {
+    /// Checks for an existing key without creating or replacing key material.
+    fn has_database_key(&self, scope: &str) -> Result<bool, String>;
+
+    /// Loads an existing key only. A missing key must never be silently recreated on resume.
+    fn existing_database_key(&self, scope: &str) -> Result<Option<[u8; 32]>, String>;
+
+    /// Loads an existing key or creates one for a new encrypted database.
     fn database_key(&self, scope: &str) -> Result<[u8; 32], String>;
+
+    /// Removes the platform-protected key after the encrypted database is deleted.
+    fn delete_database_key(&self, scope: &str) -> Result<(), String>;
 }
 
-/// Хранилище ключей в памяти: для тестов. Для выпуска нужно хранилище платформы.
+/// Хранилище ключей в памяти: только для тестов.
 #[derive(Default)]
 pub struct MemoryKeyStore {
     keys: std::sync::Mutex<HashMap<String, [u8; 32]>>,
 }
 
+impl Drop for MemoryKeyStore {
+    fn drop(&mut self) {
+        let keys = match self.keys.get_mut() {
+            Ok(keys) => keys,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        for key in keys.values_mut() {
+            key.zeroize();
+        }
+    }
+}
+
 impl KeyStore for MemoryKeyStore {
+    fn has_database_key(&self, scope: &str) -> Result<bool, String> {
+        Ok(self.keys.lock().map_err(text)?.contains_key(scope))
+    }
+
+    fn existing_database_key(&self, scope: &str) -> Result<Option<[u8; 32]>, String> {
+        Ok(self.keys.lock().map_err(text)?.get(scope).copied())
+    }
+
     fn database_key(&self, scope: &str) -> Result<[u8; 32], String> {
         let mut keys = self.keys.lock().map_err(text)?;
         if let Some(key) = keys.get(scope) {
@@ -333,6 +364,13 @@ impl KeyStore for MemoryKeyStore {
         let key = RustCrypto::default().random_array::<32>().map_err(text)?;
         keys.insert(scope.to_string(), key);
         Ok(key)
+    }
+
+    fn delete_database_key(&self, scope: &str) -> Result<(), String> {
+        if let Some(mut key) = self.keys.lock().map_err(text)?.remove(scope) {
+            key.zeroize();
+        }
+        Ok(())
     }
 }
 
@@ -3216,5 +3254,38 @@ mod classify_tests {
             classify_process_error(&E::<()>::UnauthorizedExternalCommitMessage),
             Failure::Permanent("отправитель вне группы")
         );
+    }
+}
+
+#[cfg(test)]
+mod key_store_contract_tests {
+    use super::{KeyStore, MemoryKeyStore};
+
+    #[test]
+    fn key_store_distinguishes_missing_key_from_existing_key() {
+        let keys = MemoryKeyStore::default();
+        assert!(!keys.has_database_key("user/device").unwrap());
+        assert_eq!(keys.existing_database_key("user/device").unwrap(), None);
+
+        let created = keys.database_key("user/device").unwrap();
+        assert!(keys.has_database_key("user/device").unwrap());
+        assert_eq!(
+            keys.existing_database_key("user/device").unwrap(),
+            Some(created)
+        );
+        assert_eq!(keys.database_key("user/device").unwrap(), created);
+    }
+
+    #[test]
+    fn deleting_key_is_idempotent_and_next_creation_is_new() {
+        let keys = MemoryKeyStore::default();
+        let original = keys.database_key("user/device").unwrap();
+        keys.delete_database_key("user/device").unwrap();
+        keys.delete_database_key("user/device").unwrap();
+        assert!(!keys.has_database_key("user/device").unwrap());
+        assert_eq!(keys.existing_database_key("user/device").unwrap(), None);
+
+        let replacement = keys.database_key("user/device").unwrap();
+        assert_ne!(replacement, original);
     }
 }
