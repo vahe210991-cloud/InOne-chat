@@ -3246,7 +3246,9 @@ impl Client {
             )
             .map_err(text)?;
         if normalized != 1 {
-            return Err("could not normalize recovered outgoing attachment inbox record".to_string());
+            return Err(
+                "could not normalize recovered outgoing attachment inbox record".to_string(),
+            );
         }
         transaction
             .execute(
