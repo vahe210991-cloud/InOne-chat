@@ -456,6 +456,10 @@ void main() {
     expect(bridge.lastAttachmentBytes, bytes);
     expect(bridge.lastAttachmentClientMessageId, 'retry-001');
 
+    await expectLater(
+      session.downloadMlsAttachment(''),
+      throwsArgumentError,
+    );
     bridge.downloadResult = Uint8List.fromList([9, 8, 7]);
     expect(
       await session.downloadMlsAttachment('file-1'),

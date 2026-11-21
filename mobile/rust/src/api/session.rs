@@ -243,7 +243,8 @@ impl MlsSession {
     }
 
     /// Encrypts and uploads an attachment inside the persistent Rust client.
-    /// Plaintext never crosses the object-storage HTTP boundary.
+    /// Plaintext never crosses the object-storage HTTP boundary. The caller must
+    /// reuse client_message_id when retrying an uncertain network operation.
     pub fn send_attachment(
         &self,
         room_id: String,
