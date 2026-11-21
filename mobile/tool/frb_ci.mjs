@@ -140,6 +140,7 @@ function verifyContract() {
     'Future<String> pendingIncomingJson(',
     'Future<String> messagesForRoomJson(',
     'Future<String> undecryptableJson(',
+    'Future<String> pendingOutboxForRoomJson(',
     'Future<void> ensureKeyPackages({required BigInt target ',
   ];
   for (const signature of requiredTypes) {
