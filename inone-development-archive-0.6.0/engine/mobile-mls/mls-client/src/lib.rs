@@ -386,7 +386,9 @@ fn incoming_from_row(
     let mine = client_message_id.is_some();
     if let Some(file_id) = file_id {
         if kind != "text" {
-            return Err(format!("attachment index references an invalid inbox kind: {kind}"));
+            return Err(format!(
+                "attachment index references an invalid inbox kind: {kind}"
+            ));
         }
         // The encrypted manifest index is authoritative for attachment metadata.
         // client_inbox.body is a denormalized display cache and can predate a
@@ -4682,7 +4684,8 @@ impl Client {
             })
             .map_err(text)?;
         rows.map(|row| {
-            let (event_id, room_id, kind, body, client_message_id, file_id, manifest) = row.map_err(text)?;
+            let (event_id, room_id, kind, body, client_message_id, file_id, manifest) =
+                row.map_err(text)?;
             incoming_from_row(event_id, room_id, kind, body, client_message_id, file_id, manifest)
         })
         .collect()
