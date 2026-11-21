@@ -30,7 +30,7 @@ env:
 
 jobs:
   prepare:
-    name: Format MLS Rust and regenerate locked dependencies
+    name: Verify exact-head MLS sources without mutation
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -39,7 +39,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.prepare.outputs.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
       - uses: dtolnay/rust-toolchain@master
         with:
