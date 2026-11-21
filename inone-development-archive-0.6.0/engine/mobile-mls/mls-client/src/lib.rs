@@ -3089,15 +3089,20 @@ impl Client {
                 .execute(
                     "INSERT INTO client_attachment_outbox
                      (client_message_id, room_id, file_id, manifest, ciphertext_sha256,
-                      ciphertext_size, uploaded)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0)",
+                      ciphertext_size, ciphertext, created_at, uploaded)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 0)",
                     rusqlite::params![
                         operation_id,
                         room_id,
                         reserved_file_id,
                         manifest.as_slice(),
                         ciphertext_hash,
-                        ciphertext.len() as i64
+                        ciphertext.len() as i64,
+                        ciphertext.as_slice(),
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis() as i64
                     ],
                 )
                 .map_err(text)?;
