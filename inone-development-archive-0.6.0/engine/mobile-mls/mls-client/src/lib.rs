@@ -654,7 +654,8 @@ fn store_session_tokens(meta: &Connection, tokens: &SessionTokens) -> Result<(),
     meta.execute(
         "INSERT INTO client_meta (key, value) VALUES ('session_tokens', ?1) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
         [serialized.as_slice()],
-    ).map_err(text)?;
+    )
+    .map_err(text)?;
     Ok(())
 }
 
@@ -3512,7 +3513,7 @@ mod session_persistence_tests {
             let body = r#"{"token":"rotated-access-token","refreshToken":"rotated-refresh-token"}"#;
             write!(
                 stream,
-                "HTTP/1.1 200 OK\\r\\nContent-Type: application/json\\r\\nContent-Length: {}\\r\\nConnection: close\\r\\n\\r\\n{}",
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
                 body.len(),
                 body
             )
@@ -3567,6 +3568,25 @@ mod session_persistence_tests {
             );
         }
         remove_db(&database);
+    }
+
+    #[test]
+    fn memory_key_store_distinguishes_read_create_and_idempotent_delete() {
+        let keys = MemoryKeyStore::default();
+        let scope = "user-key/device-key";
+        assert!(!keys.has_database_key(scope).unwrap());
+        assert_eq!(keys.existing_database_key(scope).unwrap(), None);
+
+        let first = keys.database_key(scope).unwrap();
+        assert!(keys.has_database_key(scope).unwrap());
+        assert_eq!(keys.existing_database_key(scope).unwrap(), Some(first));
+
+        keys.delete_database_key(scope).unwrap();
+        keys.delete_database_key(scope).unwrap();
+        assert!(!keys.has_database_key(scope).unwrap());
+        assert_eq!(keys.existing_database_key(scope).unwrap(), None);
+        let second = keys.database_key(scope).unwrap();
+        assert_ne!(first, second, "deleted key material must not be reused");
     }
 
     #[test]
