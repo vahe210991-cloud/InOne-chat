@@ -3249,17 +3249,31 @@ impl Client {
         // A sync immediately before outbox recovery may already have queued this
         // event as incoming. Once the durable outbox confirms it is ours, correct
         // the in-memory handoff as well as the SQLCipher history row.
-        for item in &mut self.inbox {
+        // Keep the durable sender-side completion visible to the caller even
+        // when the preceding recovery sync did not enqueue this event (for
+        // example, the server accepted it before the previous process died).
+        // If sync already queued the same event as remote, correct that entry
+        // rather than delivering a duplicate bubble.
+        let mut handoff_present = false;
+        self.inbox.retain_mut(|item| {
             if let Incoming::Attachment {
                 event_id: queued_event_id,
                 mine,
                 ..
             } = item
             {
-                if queued_event_id.as_str() == event_id.as_str() {
+                if queued_event_id == &event_id {
+                    if handoff_present {
+                        return false;
+                    }
                     *mine = true;
+                    handoff_present = true;
                 }
             }
+            true
+        });
+        if !handoff_present {
+            self.inbox.push(incoming);
         }
         self.processed.insert(event_id.clone());
         Ok(event_id)
