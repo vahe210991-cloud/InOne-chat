@@ -7,7 +7,7 @@ on:
       - ".github/workflows/openmls-frb-codegen.yml"
       - "mobile/**"
   push:
-    branches: [main, feature/stage-4-native-mls-runtime-2026-11-11, fix/android-keystore-runtime-smoke-2026-11-19]
+    branches: [main]
     paths:
       - ".github/workflows/openmls-frb-codegen.yml"
       - "mobile/**"
@@ -16,7 +16,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: openmls-frb-codegen-${{ github.event.pull_request.head.ref || github.ref_name }}
+  group: openmls-frb-codegen-${{ github.event.pull_request.head.ref || github.ref_name }}-${{ github.event.pull_request.head.sha || github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -130,8 +130,7 @@ jobs:
             --stop-on-error
           # Keep the repeated native-only generation snapshot free of unsupported web glue.
           rm -f lib/src/rust/frb_generated.web.dart
-          # cargo-expand may normalize the nested lockfile's trailing newline;
-          # it is a protected input, not generated output.
+          # cargo-expand can normalize the protected nested lockfile's trailing newline.
           git restore --worktree -- rust/Cargo.lock
           diff -ru "$snapshot/hook" hook
           diff -ru "$snapshot/lib-src-rust" lib/src/rust
