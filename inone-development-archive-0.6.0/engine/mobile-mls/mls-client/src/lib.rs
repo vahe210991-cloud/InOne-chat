@@ -206,12 +206,14 @@ fn insert_incoming_record(db: &Connection, incoming: &Incoming) -> Result<(), St
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as i64;
+    crash_at_test_failpoint("before_inbox_retention_cleanup");
     db.execute(
         "DELETE FROM client_inbox
          WHERE acknowledged = 1 AND acknowledged_at IS NOT NULL AND acknowledged_at < ?1",
         [now - ACKNOWLEDGED_INBOX_RETENTION_MS],
     )
     .map_err(text)?;
+    crash_at_test_failpoint("after_inbox_retention_cleanup");
 
     let (pending_count, pending_bytes): (i64, i64) = db
         .query_row(
@@ -230,21 +232,42 @@ fn insert_incoming_record(db: &Connection, incoming: &Incoming) -> Result<(), St
         );
     }
 
+    crash_at_test_failpoint("before_inbox_insert");
     db.execute(
         "INSERT OR IGNORE INTO client_inbox (event_id, room_id, kind, body, acknowledged, created_at)
          VALUES (?1, ?2, ?3, ?4, 0, ?5)",
         rusqlite::params![event_id, room_id, kind, body, now],
     )
     .map_err(text)?;
+    crash_at_test_failpoint("after_inbox_insert");
     Ok(())
 }
 
 fn insert_processed_event(db: &Connection, event_id: &str) -> Result<(), String> {
+    crash_at_test_failpoint("before_processed_marker_insert");
     db.execute(
         "INSERT OR IGNORE INTO client_processed (event_id) VALUES (?1)",
         [event_id],
     )
     .map_err(text)?;
+    crash_at_test_failpoint("after_processed_marker_insert");
+    Ok(())
+}
+
+fn insert_undecryptable_record(
+    db: &Connection,
+    event_id: &str,
+    room_id: &str,
+    reason: &str,
+) -> Result<(), String> {
+    crash_at_test_failpoint("before_undecryptable_marker_insert");
+    db.execute(
+        "INSERT OR IGNORE INTO client_undecryptable (event_id, room_id, reason)
+         VALUES (?1, ?2, ?3)",
+        rusqlite::params![event_id, room_id, reason],
+    )
+    .map_err(text)?;
+    crash_at_test_failpoint("after_undecryptable_marker_insert");
     Ok(())
 }
 
@@ -958,6 +981,17 @@ impl Client {
     }
 
     /// Идентификатор этого устройства на сервере.
+    /// Returns only the short-lived access token. The refresh token remains Rust-owned.
+    pub fn access_token_snapshot(&self) -> Result<String, String> {
+        self.tokens.lock().map(|tokens| tokens.0.clone()).map_err(text)
+    }
+
+    /// Rotates the session credentials in Rust and returns only the new access token.
+    pub fn refresh_session(&self) -> Result<String, String> {
+        self.renew()?;
+        self.access_token_snapshot()
+    }
+
     pub fn device_id(&self) -> &str {
         &self.device_id
     }
@@ -2343,13 +2377,12 @@ impl Client {
             if let Err(error) = insert_incoming_record(&transaction, &incoming)
                 .and_then(|_| insert_processed_event(&transaction, event_id))
                 .and_then(|_| {
-                    transaction
-                        .execute(
-                            "INSERT OR IGNORE INTO client_undecryptable (event_id, room_id, reason)
-                             VALUES (?1, ?2, ?3)",
-                            rusqlite::params![event_id, room_id, "сообщение не разбирается"],
-                        )
-                        .map_err(text)?;
+                    insert_undecryptable_record(
+                        &transaction,
+                        event_id,
+                        room_id,
+                        "сообщение не разбирается",
+                    )?;
                     Ok(())
                 })
             {
@@ -2423,22 +2456,19 @@ impl Client {
                     .and_then(|_| insert_processed_event(&transaction, event_id))
                     .and_then(|_| {
                         if let Some(reason) = unreadable_reason {
-                            transaction
-                                .execute(
-                                    "INSERT OR IGNORE INTO client_undecryptable (event_id, room_id, reason)
-                                     VALUES (?1, ?2, ?3)",
-                                    rusqlite::params![event_id, room_id, reason],
-                                )
-                                .map_err(text)?;
+                            insert_undecryptable_record(&transaction, event_id, room_id, reason)?;
                         }
                         Ok(())
                     })
                 {
                     drop(transaction);
                     self.reload_group(room_id)?;
-                    return Err(format!("временная ошибка сохранения MLS inbox, повтор позже: {error}"));
+                    return Err(format!(
+                        "временная ошибка сохранения MLS inbox, повтор позже: {error}"
+                    ));
                 }
 
+                crash_at_test_failpoint("before_application_transaction_commit");
                 if let Err(error) = transaction.commit() {
                     self.reload_group(room_id)?;
                     return Err(format!(
@@ -2446,6 +2476,7 @@ impl Client {
                         text(error)
                     ));
                 }
+                crash_at_test_failpoint("after_application_transaction_commit");
                 self.processed.insert(event_id.to_string());
                 out.push(incoming);
             }
@@ -2469,15 +2500,13 @@ impl Client {
                             "временная ошибка сохранения unreadable inbox item: {error}"
                         ));
                     }
-                    if let Err(error) = quarantine.execute(
-                        "INSERT OR IGNORE INTO client_undecryptable (event_id, room_id, reason)
-                         VALUES (?1, ?2, ?3)",
-                        rusqlite::params![event_id, room_id, reason],
-                    ) {
+                    if let Err(error) =
+                        insert_undecryptable_record(&quarantine, event_id, room_id, reason)
+                    {
                         drop(quarantine);
                         return Err(format!(
                             "временная ошибка сохранения unreadable diagnostic: {}",
-                            text(error)
+                            error
                         ));
                     }
                     if let Err(error) = insert_processed_event(&quarantine, event_id) {
@@ -2863,6 +2892,37 @@ impl Client {
 
     /// Returns pending incoming events from encrypted SQLCipher storage. Items are not
     /// consumed; the application must acknowledge them only after durable handoff.
+    /// Returns local encrypted inbox history for a room without acknowledging or consuming it.
+    pub fn messages_for_room(&self, room_id: &str) -> Result<Vec<Incoming>, String> {
+        let mut statement = self.meta.prepare(
+            "SELECT event_id, room_id, kind, body
+             FROM client_inbox WHERE room_id = ?1 ORDER BY seq"
+        ).map_err(text)?;
+        let rows = statement.query_map([room_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, Option<String>>(3)?,
+            ))
+        }).map_err(text)?;
+        let mut incoming = Vec::new();
+        for row in rows {
+            let (event_id, room_id, kind, body) = row.map_err(text)?;
+            let item = match kind.as_str() {
+                "text" => Incoming::Text {
+                    room_id,
+                    event_id,
+                    text: body.ok_or_else(|| "inbox text row has no body".to_string())?,
+                },
+                "unreadable" => Incoming::Unreadable { room_id, event_id },
+                _ => return Err(format!("inbox contains an unsupported record kind: {kind}")),
+            };
+            incoming.push(item);
+        }
+        Ok(incoming)
+    }
+
     pub fn pending_incoming(&self) -> Result<Vec<Incoming>, String> {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
