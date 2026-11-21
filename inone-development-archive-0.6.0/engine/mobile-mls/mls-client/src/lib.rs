@@ -3700,7 +3700,10 @@ mod session_persistence_tests {
         insert_incoming_record(&client.meta, &other_room_event).unwrap();
 
         client
-            .acknowledge_incoming(&["$history-1".to_string()])
+            .acknowledge_incoming(&[
+                "$history-1".to_string(),
+                "$history-2".to_string(),
+            ])
             .unwrap();
         assert!(client.pending_incoming().unwrap().is_empty());
         assert_eq!(
