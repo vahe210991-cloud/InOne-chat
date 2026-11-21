@@ -4853,6 +4853,88 @@ impl Client {
         Ok(local_id)
     }
 
+    /// Local MLS rooms restored from the persistent SQLCipher-backed client.
+    pub fn local_room_ids(&self) -> Vec<String> {
+        let mut room_ids = self.groups.keys().cloned().collect::<Vec<_>>();
+        room_ids.sort();
+        room_ids
+    }
+
+    /// Pending text and attachment bubbles for restoring the UI after process restart.
+    /// Attachment keys remain inside the encrypted manifest and are never returned here.
+    pub fn pending_outbox_for_room_json(&self, room_id: &str) -> Result<String, String> {
+        if room_id.trim().is_empty() || room_id.len() > 255 {
+            return Err("invalid MLS room id".to_string());
+        }
+        let mut pending = Vec::new();
+        {
+            let mut statement = self
+                .meta
+                .prepare(
+                    "SELECT local_id, body, payload FROM client_outbox
+                     WHERE room_id = ?1 ORDER BY seq",
+                )
+                .map_err(text)?;
+            let rows = statement
+                .query_map([room_id], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, Option<Vec<u8>>>(2)?,
+                    ))
+                })
+                .map_err(text)?;
+            for row in rows {
+                let (local_id, body, payload) = row.map_err(text)?;
+                let opaque = body.starts_with("opaque:");
+                pending.push(json!({
+                    "local_id": local_id,
+                    "room_id": room_id,
+                    "kind": if opaque { "opaque" } else { "text" },
+                    "text": if opaque { Value::Null } else { Value::String(body) },
+                    "payload_bytes": payload.as_ref().map_or(0, Vec::len),
+                }));
+            }
+        }
+        {
+            let mut statement = self
+                .meta
+                .prepare(
+                    "SELECT client_message_id, file_id, manifest, uploaded
+                     FROM client_attachment_outbox
+                     WHERE room_id = ?1 ORDER BY created_at, client_message_id",
+                )
+                .map_err(text)?;
+            let rows = statement
+                .query_map([room_id], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, Vec<u8>>(2)?,
+                        row.get::<_, bool>(3)?,
+                    ))
+                })
+                .map_err(text)?;
+            for row in rows {
+                let (operation_id, file_id, manifest_bytes, uploaded) = row.map_err(text)?;
+                let manifest_bytes = Zeroizing::new(manifest_bytes);
+                let manifest =
+                    attachment_crypto::parse_manifest(&manifest_bytes, &file_id, room_id)?;
+                pending.push(json!({
+                    "local_id": operation_id,
+                    "room_id": room_id,
+                    "kind": "attachment",
+                    "file_id": file_id,
+                    "name": manifest.name,
+                    "mime_type": manifest.mime_type,
+                    "size": manifest.size,
+                    "uploaded": uploaded,
+                }));
+            }
+        }
+        serde_json::to_string(&pending).map_err(text)
+    }
+
     /// Сколько сообщений ждут отправки.
     pub fn outbox_len(&self) -> Result<u64, String> {
         let n: i64 = self
