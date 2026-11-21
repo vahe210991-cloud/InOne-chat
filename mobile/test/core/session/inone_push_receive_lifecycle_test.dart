@@ -63,7 +63,7 @@ void main() {
     opened.add(message);
     await Future<void>.delayed(Duration.zero);
     expect(foregroundRoutes, [route]);
-    expect(openedRoutes, [route], 'initial and opened stream are deduplicated');
+    expect(openedRoutes, [route], reason: 'initial and opened stream are deduplicated');
 
     await lifecycle.dispose();
     await foreground.close();
