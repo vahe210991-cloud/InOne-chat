@@ -2,7 +2,7 @@
 
 **Canonical Node.js backend:** this directory is the active backend source for InOne Beta 1.0. Its npm package is `inone-backend` (private, version `0.6.0`). The historical directory name `inone-development-archive-0.6.0` is retained for compatibility; it does not mean this code is archived or inactive.
 
-**Architecture source of truth:** [Backend source-of-truth map](../../../docs/continuity/BACKEND-SOURCE-OF-TRUTH.md) and [ADR-004](../../../development/architecture/ADR-004-CANONICAL-BACKEND-IDENTITY.md).
+**Architecture source of truth:** [Backend source-of-truth map](../../docs/continuity/BACKEND-SOURCE-OF-TRUTH.md) and [ADR-004](../../development/architecture/ADR-004-CANONICAL-BACKEND-IDENTITY.md).
 
 **Important:** the legacy implementation notes below are retained as historical context for the earlier Variant A / Matrix SDK prototype. They are not authoritative descriptions of the current Beta 1.0 backend architecture, package identity, persistence, or release status. Use the current package scripts and source-of-truth documents above for development and validation instructions.
 
