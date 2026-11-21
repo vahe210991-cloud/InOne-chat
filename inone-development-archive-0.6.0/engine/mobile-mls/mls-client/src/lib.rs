@@ -2269,7 +2269,8 @@ impl Client {
         self.send_text_with_id(room_id, plaintext, &id)
     }
 
-    /// Отправляет UTF-8 текст с идемпотентным идентификатором клиента.
+    /// Отправляет UTF-8 текст с durable idempotency: точное MLS-сообщение
+    /// и sender ratchet фиксируются в SQLCipher до обращения к серверу.
     pub fn send_text_with_id(
         &mut self,
         room_id: &str,
@@ -2279,51 +2280,225 @@ impl Client {
         self.send_application_payload_with_id(room_id, plaintext.as_bytes(), client_message_id)
     }
 
-    /// Sends an opaque MLS application payload. Text consumers may classify non-UTF-8 payloads
-    /// as unreadable, but must still advance and persist the MLS event without poisoning the room.
+    fn create_and_persist_outbox_message(
+        &mut self,
+        room_id: &str,
+        client_message_id: &str,
+        plaintext: &[u8],
+    ) -> Result<Vec<u8>, String> {
+        let transaction = self.meta.unchecked_transaction().map_err(text)?;
+        let created = {
+            let transactional_provider = DeviceProvider::new(
+                Arc::clone(&self.provider.crypto),
+                TransactionConnection(&transaction),
+            );
+            let group = self
+                .groups
+                .get_mut(room_id)
+                .ok_or("комната не создана на этом устройстве")?;
+            let epoch = group.mls.epoch().as_u64();
+            let result = group
+                .mls
+                .create_message(&transactional_provider, &self.signer, plaintext)
+                .map_err(text)
+                .and_then(|message| message.tls_serialize_detached().map_err(text));
+            result.map(|bytes| (bytes, epoch))
+        };
+        let (message, epoch) = match created {
+            Ok(created) => created,
+            Err(error) => {
+                drop(transaction);
+                self.reload_group(room_id)?;
+                return Err(error);
+            }
+        };
+        let changed = match transaction.execute(
+            "UPDATE client_outbox
+             SET mls_message = ?2, mls_epoch = ?3
+             WHERE local_id = ?1 AND room_id = ?4 AND mls_message IS NULL",
+            rusqlite::params![client_message_id, message, epoch as i64, room_id],
+        ) {
+            Ok(changed) => changed,
+            Err(error) => {
+                drop(transaction);
+                self.reload_group(room_id)?;
+                return Err(text(error));
+            }
+        };
+        if changed != 1 {
+            drop(transaction);
+            self.reload_group(room_id)?;
+            return Err("outbox operation changed before MLS message persistence".to_string());
+        }
+        crash_at_test_failpoint("outbox_before_message_commit");
+        if let Err(error) = transaction.commit() {
+            self.reload_group(room_id)?;
+            return Err(text(error));
+        }
+        crash_at_test_failpoint("outbox_after_message_commit");
+        Ok(message)
+    }
+
+    fn persist_outgoing_message(
+        &mut self,
+        client_message_id: &str,
+        room_id: &str,
+        plaintext: &str,
+        event_id: &str,
+    ) -> Result<(), String> {
+        let transaction = self.meta.unchecked_transaction().map_err(text)?;
+        let created_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+        let inserted = transaction
+            .execute(
+                "INSERT INTO client_inbox
+                 (event_id, room_id, kind, body, acknowledged, created_at, acknowledged_at, direction, client_message_id)
+                 VALUES (?1, ?2, 'text', ?3, 1, ?4, NULL, 'outgoing', ?5)
+                 ON CONFLICT(event_id) DO UPDATE SET
+                   acknowledged = 1,
+                   acknowledged_at = NULL,
+                   direction = 'outgoing',
+                   client_message_id = excluded.client_message_id
+                 WHERE client_inbox.room_id = excluded.room_id
+                   AND client_inbox.kind = 'text'
+                   AND client_inbox.body = excluded.body
+                   AND (client_inbox.client_message_id IS NULL
+                        OR client_inbox.client_message_id = excluded.client_message_id)",
+                rusqlite::params![event_id, room_id, plaintext, created_at, client_message_id],
+            )
+            .map_err(text)?;
+        if inserted != 1 {
+            return Err("server event ID conflicts with a different local message".to_string());
+        }
+        transaction
+            .execute(
+                "INSERT OR IGNORE INTO client_processed (event_id) VALUES (?1)",
+                [event_id],
+            )
+            .map_err(text)?;
+        let removed = transaction
+            .execute(
+                "DELETE FROM client_outbox
+                 WHERE local_id = ?1 AND room_id = ?2 AND body = ?3 AND mls_message IS NOT NULL",
+                rusqlite::params![client_message_id, room_id, plaintext],
+            )
+            .map_err(text)?;
+        if removed != 1 {
+            return Err("durable outgoing message journal disappeared before completion".to_string());
+        }
+        transaction.commit().map_err(text)?;
+        self.processed.insert(event_id.to_string());
+        Ok(())
+    }
+
+    /// Sends an opaque MLS application payload with a stable operation ID.
+    /// This text API persists the exact serialized MLS message before network I/O.
     pub fn send_application_payload_with_id(
         &mut self,
         room_id: &str,
         payload: &[u8],
         client_message_id: &str,
     ) -> Result<String, String> {
+        let plaintext = std::str::from_utf8(payload)
+            .map_err(|_| "text message payload must be valid UTF-8".to_string())?;
+        if room_id.trim().is_empty()
+            || client_message_id.is_empty()
+            || client_message_id.len() > 64
+            || !client_message_id
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
+        {
+            return Err("invalid room ID or clientMessageId".to_string());
+        }
+        self.ensure_writable()?;
+
+        let completed: Option<(String, String, String)> = self
+            .meta
+            .query_row(
+                "SELECT room_id, body, event_id FROM client_inbox WHERE client_message_id = ?1",
+                [client_message_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .optional()
+            .map_err(text)?;
+        if let Some((stored_room, stored_body, event_id)) = completed {
+            if stored_room != room_id || stored_body != plaintext {
+                return Err("clientMessageId is already completed with a different room or payload".to_string());
+            }
+            return Ok(event_id);
+        }
+
         if self.flush_pending_membership_commits()? > 0 {
             self.sync()?;
         }
-        self.ensure_writable()?;
         if let Some(reason) = self.desync_reason(room_id)? {
             return Err(format!(
                 "комната рассинхронизирована, отправка приостановлена: {reason}"
             ));
         }
-        let server = self.server_epoch(room_id)?;
-        let body = {
-            let group = self
-                .groups
-                .get_mut(room_id)
-                .ok_or("комната не создана на этом устройстве")?;
-            let local = group.mls.epoch().as_u64();
-            if local != server {
-                return Err(format!(
-                    "устройство на эпохе {local}, сервер на {server}: сначала синхронизация"
-                ));
+
+        let existing: Option<(String, String, Option<Vec<u8>>)> = self
+            .meta
+            .query_row(
+                "SELECT room_id, body, mls_message FROM client_outbox WHERE local_id = ?1",
+                [client_message_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .optional()
+            .map_err(text)?;
+        let persisted_message = if let Some((stored_room, stored_body, message)) = existing {
+            if stored_room != room_id || stored_body != plaintext {
+                return Err("clientMessageId is already reserved for a different room or payload".to_string());
             }
-            let message = group
-                .mls
-                .create_message(&self.provider, &self.signer, payload)
+            message
+        } else {
+            self.meta
+                .execute(
+                    "INSERT INTO client_outbox (local_id, room_id, body, seq)
+                     VALUES (?1, ?2, ?3, (SELECT COALESCE(MAX(seq), 0) + 1 FROM client_outbox))",
+                    rusqlite::params![client_message_id, room_id, plaintext],
+                )
                 .map_err(text)?;
-            B64.encode(message.tls_serialize_detached().map_err(text)?)
+            None
         };
-        let res = self.call(
+
+        let message = match persisted_message {
+            Some(message) => message,
+            None => {
+                let server_epoch = self.server_epoch(room_id)?;
+                let local_epoch = self
+                    .groups
+                    .get(room_id)
+                    .ok_or("комната не создана на этом устройстве")?
+                    .mls
+                    .epoch()
+                    .as_u64();
+                if local_epoch != server_epoch {
+                    return Err(format!(
+                        "устройство на эпохе {local_epoch}, сервер на {server_epoch}: сначала синхронизация"
+                    ));
+                }
+                self.create_and_persist_outbox_message(room_id, client_message_id, payload)?
+            }
+        };
+
+        let response = self.call(
             "POST",
             &format!("/mls/groups/{}/messages", urlencoding::encode(room_id)),
-            Some(json!({ "message": body, "kind": "text", "forwarded": false, "clientMessageId": client_message_id })),
+            Some(json!({
+                "message": B64.encode(&message),
+                "kind": "text",
+                "forwarded": false,
+                "clientMessageId": client_message_id
+            })),
         )?;
-        let event_id = res["event_id"]
+        let event_id = response["event_id"]
             .as_str()
             .ok_or("сервер не вернул event_id")?
             .to_string();
-        self.mark_processed(&event_id)?;
+        self.persist_outgoing_message(client_message_id, room_id, plaintext, &event_id)?;
         Ok(event_id)
     }
 
