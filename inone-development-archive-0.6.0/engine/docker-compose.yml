@@ -1,6 +1,6 @@
-# Локальный runtime smoke для канонического Node.js backend + PostgreSQL 16.
-# Перед запуском задайте POSTGRES_PASSWORD (URL-safe: латинские буквы и цифры).
-# Не используйте эти development-настройки для production.
+# Local runtime smoke for the canonical Node.js backend + PostgreSQL 16.
+# Set POSTGRES_PASSWORD to a URL-safe value in .env or the process environment.
+# Development-only settings; do not use this profile in production.
 services:
   db:
     image: postgres:16
@@ -12,11 +12,10 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U \"$\${POSTGRES_USER}\" -d \"$\${POSTGRES_DB}\""]
+      test: ["CMD-SHELL", 'pg_isready -U "$$${POSTGRES_USER}" -d "$$${POSTGRES_DB}"']
       interval: 5s
       timeout: 3s
       retries: 20
-
   app:
     build: .
     restart: unless-stopped
@@ -42,7 +41,6 @@ services:
       - "${PORT:-8080}:8080"
     volumes:
       - inone-files:/var/lib/inone/files
-
 volumes:
   pgdata:
   inone-files:
