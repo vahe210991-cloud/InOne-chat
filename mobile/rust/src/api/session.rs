@@ -703,6 +703,12 @@ mod tests {
     }
 
     #[test]
+    fn persistent_session_is_safe_for_frb_worker_thread_handoff() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<MlsSession>();
+    }
+
+    #[test]
     fn duplicate_active_identity_reservation_is_rejected_until_release() {
         let identity = "user/device-a1-reservation";
         let first = reserve_identity(identity).unwrap();
