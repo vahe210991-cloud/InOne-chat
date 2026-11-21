@@ -521,7 +521,8 @@ pub fn connect(
             .ok_or("сервер не вернул токен обновления")?
             .to_string(),
     );
-    let db_key = keys.database_key(&format!("{user_id}/{device_id}"))?;
+    let scope = format!("{user_id}/{device_id}");
+    let db_key = session_database_key(&scope, db_path, keys)?;
     build_client(agent, base, tokens, user_id, device_id, db_path, &db_key)
 }
 
@@ -603,16 +604,33 @@ pub fn connect_with_approval(
         }
     };
     let tokens = SessionTokens(tokens.0, tokens.1);
-    let db_key = keys.database_key(&format!("{user_id}/{device_id}"))?;
-    build_client(
-        agent,
-        base,
-        tokens,
-        user_id,
-        device_id,
-        db_path,
-        &db_key,
-    )
+    let scope = format!("{user_id}/{device_id}");
+    let db_key = session_database_key(&scope, db_path, keys)?;
+    build_client(agent, base, tokens, user_id, device_id, db_path, &db_key)
+}
+
+fn session_database_key(
+    scope: &str,
+    db_path: &str,
+    keys: &dyn KeyStore,
+) -> Result<Zeroizing<[u8; 32]>, String> {
+    let has_key = keys.has_database_key(scope)?;
+    let existing_key = keys.existing_database_key(scope)?;
+    match (has_key, existing_key) {
+        (true, Some(key)) => Ok(Zeroizing::new(key)),
+        (true, None) => Err(
+            "защищённое хранилище сообщило о ключе, но не вернуло его".to_string(),
+        ),
+        (false, Some(mut key)) => {
+            key.zeroize();
+            Err("защищённое хранилище вернуло ключ без признака его наличия".to_string())
+        }
+        (false, None) if Path::new(db_path).is_file() => Err(
+            "файл SQLCipher существует, но защищённый ключ отсутствует; автоматическая генерация нового ключа запрещена"
+                .to_string(),
+        ),
+        (false, None) => Ok(Zeroizing::new(keys.database_key(scope)?)),
+    }
 }
 
 fn validate_session_base(base: &str) -> Result<(), String> {
@@ -693,18 +711,8 @@ pub fn connect_with_session(
         return Err("user_id, device_id, access_token и refresh_token обязательны".to_string());
     }
     let scope = format!("{user_id}/{device_id}");
-    let database_exists = Path::new(db_path).is_file();
-    let has_key = keys.has_database_key(&scope)?;
     let tokens = SessionTokens(access_token.to_string(), refresh_token.to_string());
-    let db_key = if has_key {
-        keys.existing_database_key(&scope)?
-            .ok_or_else(|| "защищённое хранилище сообщило о ключе, но не вернуло его".to_string())?
-    } else {
-        if database_exists {
-            return Err("файл SQLCipher существует, но защищённый ключ отсутствует; автоматическая генерация нового ключа запрещена".to_string());
-        }
-        keys.database_key(&scope)?
-    };
+    let db_key = session_database_key(&scope, db_path, keys)?;
     let agent = ureq::AgentBuilder::new().redirects(0).build();
     build_client(
         agent,
