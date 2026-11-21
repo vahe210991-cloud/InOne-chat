@@ -171,7 +171,6 @@ if (process.argv.includes('--verify-only')) {
   process.exit(0);
 }
 
-const snapshots = new Map(protectedPaths.map(path => [path, fs.readFileSync(path)]));
 function restoreProtectedFiles() {
   // Use Git's index as the byte-exact source of truth. Cargo metadata and
   // FRB integration may normalize lockfiles even when the original snapshot
