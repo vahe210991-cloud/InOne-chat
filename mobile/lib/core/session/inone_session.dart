@@ -719,6 +719,20 @@ class InOneSession extends ChangeNotifier {
     return bridge.roomRecoveryStatus(roomId);
   }
 
+  /// Synchronizes encrypted room events and processes them through the active native MLS client.
+  Future<List<MlsIncomingMessage>> syncMlsMessages() async {
+    final bridge = _mlsBridge;
+    if (bridge == null) throw StateError('Native MLS session is not open');
+    return bridge.sync();
+  }
+
+  /// Returns only messages already processed/decrypted by the native MLS client.
+  Future<List<MlsIncomingMessage>> mlsMessagesForRoom(String roomId) async {
+    final bridge = _mlsBridge;
+    if (bridge == null) throw StateError('Native MLS session is not open');
+    return bridge.messagesForRoom(roomId);
+  }
+
   /// Returns persisted diagnostics for MLS events that could not be decrypted.
   Future<List<MlsUndecryptableEvent>> mlsUndecryptableEvents() async {
     final bridge = _mlsBridge;

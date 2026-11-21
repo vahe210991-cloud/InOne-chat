@@ -138,7 +138,7 @@ const TEST_UI_FILES = {
   'common/state.mjs': { dir: 'client-screens', name: 'common/state.mjs', type: 'text/javascript; charset=utf-8' },
   'common/device.mjs': { dir: 'client-screens', name: 'common/device.mjs', type: 'text/javascript; charset=utf-8' },
 };
-export function createServer({ pinPepper, mailer: externalMailer, store, trustProxy = false, sms, requirePhone = false, registrationMode = 'verified', sessionTtl = {}, objectStore, objectSecret = randomBytes(32).toString('hex'), filesDir = null, quotaBytes = null, pushSender = null, docsSecret = null, defaultOrgAutoJoin = false, testUi = false, providers = {}, providerKeysSource = null, publicUrl = 'https://inone.test', rateLimits = {}, bodyLimit = 4 * 1024 * 1024, logger = null, wireLogLimit = 2000, smsEnabled = true, phoneBlockedCountries = [], phoneAllowedCountries = [], devEmailCode = '' } = {}) {
+export function createServer({ pinPepper, mailer: externalMailer, store, trustProxy = false, sms, requirePhone = false, registrationMode = 'verified', sessionTtl = {}, objectStore, objectSecret = randomBytes(32).toString('hex'), filesDir = null, quotaBytes = null, pushDelivery = null, docsSecret = null, defaultOrgAutoJoin = false, testUi = false, providers = {}, providerKeysSource = null, publicUrl = 'https://inone.test', rateLimits = {}, bodyLimit = 4 * 1024 * 1024, logger = null, wireLogLimit = 2000, smsEnabled = true, phoneBlockedCountries = [], phoneAllowedCountries = [], devEmailCode = '' } = {}) {
   // Аккаунты и PIN: в базе (store.js) или в памяти по умолчанию (store-memory.js).
   const storage = store ?? createMemoryStore({ pinPepper });
   // SMS-поставщик подключается снаружи; по умолчанию сообщения складываются в список (для тестов).
@@ -241,7 +241,9 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
     return mailToRecipients([profile?.email ?? userId, backup?.email], subject, text, templateId, variables, transactionClient, localeOverride ?? profile?.locale ?? 'hy');
   };
   const revokeDevice = async (rec) => {
-    await storage.revokeDevice(key(rec.userId, rec.deviceId));
+    const deviceKey = key(rec.userId, rec.deviceId);
+    await storage.revokeDevice(deviceKey);
+    await storage.deletePushToken(deviceKey);
     // Отозванное устройство больше не выдаётся как получатель ключевых пакетов и приветствий.
     await storage.mlsDropDevicePackages(rec.userId, rec.deviceId);
     await storage.mlsRecordDeviceRemovals(rec.userId, rec.deviceId, now());
@@ -513,22 +515,6 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
       }
       return send(res, 405, { error: 'method not allowed' });
     }
-
-    // Уведомление о новом сообщении: получают устройства участников, кроме отправившего. Содержимого и имени нет.
-      const notifyNewMessage = async (roomId, eventId, senderDeviceKey) => {
-        if (!(await currentFlags())['push.enabled']) return;
-        if (!pushSender) return;
-        const targets = await storage.devicesToNotify(roomId, senderDeviceKey);
-        const path = `/rooms/${encodeURIComponent(roomId)}/events/${encodeURIComponent(eventId)}`;
-        for (const t of targets) {
-          try {
-            const result = await pushSender.send({ provider: t.provider, token: t.token, payload: { type: 'message', path } });
-            if (result && result.invalidToken) await storage.deletePushToken(t.deviceKey);
-          } catch {
-            if (logger) logger.warn('push delivery failed', { provider: t.provider });
-          }
-        }
-      };
 
     // Очистка истёкших данных (критерий версии 0.6.0): очередь, токены, одноразовые токены, коды отмены восстановления, брошенные загрузки.
       const REJECTED_REQUEST_RETENTION_MS = 90 * 24 * 3600_000; // отклонённые заявки и их документы — 90 дней после решения
@@ -1257,11 +1243,13 @@ if ((req.method === 'PUT' || req.method === 'DELETE') && p === '/devices/me/push
   }
   if (!(await currentFlags())['push.enabled']) return send(res, 403, { error: 'feature disabled: push', code: 'feature_disabled' });
   const { provider, token } = body;
-  if (!['fcm', 'apns'].includes(provider)) return send(res, 400, { error: 'provider must be fcm or apns' });
-  const isFid = provider === 'fcm' && typeof token === 'string' && /^[A-Za-z0-9_-]{22}$/.test(token);
-  const isLegacyProviderToken = typeof token === 'string' && token.length >= 32 && token.length <= 512 && /^[A-Za-z0-9:_.-]+$/.test(token);
-  if (!isFid && !isLegacyProviderToken) return send(res, 400, { error: 'registration identifier has an invalid form' });
-  await storage.setPushToken(key(d.userId, d.deviceId), provider, token, now());
+  if (provider !== 'fcm') return send(res, 400, { error: 'provider must be fcm; iOS is routed through FCM to APNs' });
+  if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{22}$/.test(token)) {
+    return send(res, 400, { error: 'a 22-character Firebase Installation ID is required' });
+  }
+  const deviceKey = key(d.userId, d.deviceId);
+  const registration = pushDelivery ? pushDelivery.encryptRegistrationId(token, deviceKey) : token;
+  await storage.setPushToken(deviceKey, 'fcm', registration, now());
   return send(res, 200, { registered: true });
 }
 if (req.method === 'GET' && p === '/config') {
@@ -2393,18 +2381,24 @@ if (req.method === 'POST' && p === '/login') {
               if (header.value.epoch !== epoch) return send(res, 409, { error: 'epoch is outdated', currentEpoch: epoch });
 
               const eventContent = { mls: body.message, kind, forwarded: body.forwarded === true, ...(fileRef ? { file: fileRef } : {}) };
+              const senderDeviceKey = key(d.userId, d.deviceId);
+              const pushEnabled = !!pushDelivery && !!(await currentFlags())['push.enabled'];
+              const enqueuePush = pushEnabled
+                ? (transaction, event) => pushDelivery.enqueueRoomEvent(transaction, {
+                    roomId, eventId: event.eventId, excludeDeviceKey: senderDeviceKey,
+                  })
+                : null;
               let seq;
               if (clientMessageId !== undefined) {
                 const result = await storage.appendClientMessageEvent(
-                  roomId, d.userId, clientMessageId, d.userId, 'm.room.encrypted', eventContent, now(),
+                  roomId, d.userId, clientMessageId, d.userId, 'm.room.encrypted', eventContent, now(), enqueuePush,
                 );
                 if (result.state === 'done') return send(res, 200, { event_id: `$${result.seq}` });
                 if (result.state === 'pending') return send(res, 409, { error: 'a legacy pending message requires reconciliation' });
                 seq = result.seq;
               } else {
-                seq = await storage.appendRoomEvent(roomId, d.userId, 'm.room.encrypted', eventContent, now());
+                seq = await storage.appendRoomEvent(roomId, d.userId, 'm.room.encrypted', eventContent, now(), enqueuePush);
               }
-              await notifyNewMessage(roomId, `$${seq}`, key(d.userId, d.deviceId));
               return send(res, 200, { event_id: `$${seq}` });
             }
             if (req.method === 'GET' && p === '/mls/removals') {

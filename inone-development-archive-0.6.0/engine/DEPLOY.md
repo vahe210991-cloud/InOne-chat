@@ -91,3 +91,22 @@ CI workflow `.github/workflows/backend-compose-acceptance.yml` выполняе�
 - Криптографический движок временный (`@matrix-org/matrix-sdk-crypto-wasm`), собственный не собран.
 - Docker Compose profile is development-only; passing its CI smoke test does not constitute production deployment acceptance.
 - Резервное копирование, очистка устаревших записей и мониторинг не автоматизированы.
+
+## Push delivery
+- `firebase-admin` отправляет по FID через `fid`; iOS использует тот же FCM путь, который Firebase маршрутизирует через APNs.
+- PostgreSQL `push_deliveries` — отдельный durable outbox, не таблица Email Delivery. MLS event и outbox запись фиксируются одной транзакцией, включая путь `clientMessageId`.
+- FID и минимальный push payload зашифрованы AES-256-GCM. Legacy identifiers шифруются при backfill, но не отправляются; клиент должен зарегистрировать актуальный FID.
+- `provider_accepted` означает принятие FCM, а не подтверждённую доставку/показ на устройстве.
+- Для iOS нужны APNs `.p8`, Key ID, Team ID, Bundle ID и корректные entitlements/provisioning. Секреты не коммитить.
+
+## Ограничения этой сборки
+
+- Почта: SMTP transport и durable encrypted queue реализованы в исходниках; добавлены миграции, worker, идемпотентность, expiry, retry/dead-letter, HY/RU/EN templates, локализация по выбранному языку интерфейса и safe logs. Новые тесты добавлены, но на текущем SHA ещё NOT RUN. До acceptance нужны Node + PostgreSQL suite, SMTP integration, restart/retry/shutdown tests и реальная проверка доставки.
+- Продакшен не стартует без `INONE_MAIL_TRANSPORT=smtp` с TLS и адресом отправителя.
+- Зависимости почты по текущему `package.json`: `nodemailer` 10.3.1 и `smtp-server` 3.21.3 (только тестовый сервер). Проверку `npm audit` на этом SHA ещё не выполняли.
+- Push receive/tap navigation и реальные Android/iOS delivery smoke tests остаются отдельными acceptance gates.
+- SMS не подключён: восстановление доступа по телефону недоступно.
+- Файлы оформления хранятся в базе данных.
+- Криптографический движок временный (`@matrix-org/matrix-sdk-crypto-wasm`), собственный не собран.
+- Docker-образ и `docker-compose.yml` не собраны и не проверены: в этой среде Docker недоступен.
+- Резервное копирование, очистка устаревших записей и мониторинг не автоматизированы.
