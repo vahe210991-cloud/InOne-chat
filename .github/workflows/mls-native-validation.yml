@@ -39,55 +39,35 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+          ref: ${{ needs.prepare.outputs.sha }}
           fetch-depth: 0
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: "1.91.0"
           components: rustfmt
-      - name: Format both MLS Rust crates
+      - name: Verify committed lockfiles and Rust formatting without modifying the checkout
         run: |
           set -euo pipefail
-          cargo fmt --manifest-path inone-development-archive-0.6.0/engine/mobile-mls/mls-client/Cargo.toml
-          cargo fmt --manifest-path mobile/rust/Cargo.toml
-      - name: Regenerate committed lockfiles
-        run: |
-          set -euo pipefail
-          cargo generate-lockfile --manifest-path inone-development-archive-0.6.0/engine/mobile-mls/mls-client/Cargo.toml
-          cargo generate-lockfile --manifest-path mobile/rust/Cargo.toml
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: inone-development-archive-0.6.0/engine/package-lock.json
+          test -s inone-development-archive-0.6.0/engine/mobile-mls/mls-client/Cargo.lock
+          test -s mobile/rust/Cargo.lock
+          cargo fmt --manifest-path inone-development-archive-0.6.0/engine/mobile-mls/mls-client/Cargo.toml -- --check
+          cargo fmt --manifest-path mobile/rust/Cargo.toml -- --check
       - name: Install canonical engine dependencies for real-server MLS tests
         run: npm ci
         working-directory: inone-development-archive-0.6.0/engine
-      - name: Verify lockfiles and run Rust checks
+      - name: Run locked canonical MLS and persistent bridge validation
         run: |
           set -euo pipefail
-          cargo fmt --manifest-path inone-development-archive-0.6.0/engine/mobile-mls/mls-client/Cargo.toml -- --check
-          cargo fmt --manifest-path mobile/rust/Cargo.toml -- --check
           cargo check --locked --all-targets --manifest-path inone-development-archive-0.6.0/engine/mobile-mls/mls-client/Cargo.toml
           cargo test --locked --no-fail-fast --manifest-path inone-development-archive-0.6.0/engine/mobile-mls/mls-client/Cargo.toml -- --test-threads=1
           cargo check --locked --all-targets --manifest-path mobile/rust/Cargo.toml
           cargo test --locked --no-fail-fast --manifest-path mobile/rust/Cargo.toml
-      - name: Package formatted Rust sources and regenerated lockfiles
+      - name: Assert validation did not modify tracked or untracked source files
         run: |
           set -euo pipefail
-          artifact="$RUNNER_TEMP/inone-mls-rust-repair"
-          mkdir -p "$artifact/engine/mls-client" "$artifact/mobile/rust"
-          cp -a inone-development-archive-0.6.0/engine/mobile-mls/mls-client/src "$artifact/engine/mls-client/src"
-          cp -a inone-development-archive-0.6.0/engine/mobile-mls/mls-client/tests "$artifact/engine/mls-client/tests"
-          cp inone-development-archive-0.6.0/engine/mobile-mls/mls-client/Cargo.lock "$artifact/engine/mls-client/Cargo.lock"
-          cp -a mobile/rust/src "$artifact/mobile/rust/src"
-          cp mobile/rust/Cargo.lock "$artifact/mobile/rust/Cargo.lock"
-      - name: Upload generated repair artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: inone-mls-rust-repair
-          path: ${{ runner.temp }}/inone-mls-rust-repair
-          if-no-files-found: error
+          git diff --exit-code
+          git diff --cached --exit-code
+          test -z "$(git status --porcelain)"
       - name: Publish validated source SHA
         id: commit
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
@@ -137,20 +117,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - name: Download generated MLS Rust repair artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: inone-mls-rust-repair
-          path: ${{ runner.temp }}/inone-mls-rust-repair
-      - name: Apply generated formatting and lockfiles
-        run: |
-          set -euo pipefail
-          cp -a "$RUNNER_TEMP/inone-mls-rust-repair/engine/mls-client/." inone-development-archive-0.6.0/engine/mobile-mls/mls-client/
-          cp -a "$RUNNER_TEMP/inone-mls-rust-repair/mobile/rust/." mobile/rust/
+          ref: ${{ needs.prepare.outputs.sha }}
       - name: Verify exact source SHA
         env:
-          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          EXPECTED_SHA: ${{ needs.prepare.outputs.sha }}
         run: |
           set -euo pipefail
           actual="$(git rev-parse HEAD)"
@@ -185,20 +155,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - name: Download generated MLS Rust repair artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: inone-mls-rust-repair
-          path: ${{ runner.temp }}/inone-mls-rust-repair
-      - name: Apply generated formatting and lockfiles
-        run: |
-          set -euo pipefail
-          cp -a "$RUNNER_TEMP/inone-mls-rust-repair/engine/mls-client/." inone-development-archive-0.6.0/engine/mobile-mls/mls-client/
-          cp -a "$RUNNER_TEMP/inone-mls-rust-repair/mobile/rust/." mobile/rust/
+          ref: ${{ needs.prepare.outputs.sha }}
       - name: Verify exact source SHA
         env:
-          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          EXPECTED_SHA: ${{ needs.prepare.outputs.sha }}
         run: |
           set -euo pipefail
           actual="$(git rev-parse HEAD)"
@@ -232,20 +192,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - name: Download generated MLS Rust repair artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: inone-mls-rust-repair
-          path: ${{ runner.temp }}/inone-mls-rust-repair
-      - name: Apply generated formatting and lockfiles
-        run: |
-          set -euo pipefail
-          cp -a "$RUNNER_TEMP/inone-mls-rust-repair/engine/mls-client/." inone-development-archive-0.6.0/engine/mobile-mls/mls-client/
-          cp -a "$RUNNER_TEMP/inone-mls-rust-repair/mobile/rust/." mobile/rust/
+          ref: ${{ needs.prepare.outputs.sha }}
       - name: Verify exact source SHA
         env:
-          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          EXPECTED_SHA: ${{ needs.prepare.outputs.sha }}
         run: |
           set -euo pipefail
           actual="$(git rev-parse HEAD)"
