@@ -138,6 +138,12 @@ fn database_path_for_identity(directory: &str, identity: &str) -> String {
         .into_owned()
 }
 
+fn ffi_guard<T>(operation: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+    catch_unwind(AssertUnwindSafe(operation))
+        .unwrap_or_else(|_| Err("panic at the MLS Rust FFI boundary".to_string()))
+}
+
+
 fn map_incoming(items: Vec<Incoming>) -> Vec<IncomingMessage> {
     items
         .into_iter()
@@ -540,6 +546,7 @@ pub fn open_session(
     refresh_token: String,
     database_directory: String,
 ) -> Result<MlsSession, String> {
+    ffi_guard(|| {
     let access_token = Zeroizing::new(access_token);
     let refresh_token = Zeroizing::new(refresh_token);
     let identity = validated_identity(&user_id, &device_id)?;
@@ -585,6 +592,8 @@ pub fn open_session(
         keys,
         identity_reservation: Mutex::new(Some(reservation)),
     })
+
+    })
 }
 
 /// Resume a previously adopted session from the encrypted SQLCipher database.
@@ -595,6 +604,7 @@ pub fn resume_session(
     device_id: String,
     database_directory: String,
 ) -> Result<MlsSession, String> {
+    ffi_guard(|| {
     let identity = validated_identity(&user_id, &device_id)?;
     let reservation = reserve_identity(&identity)?;
     let database_directory = normalized_database_directory(&database_directory, false)?;
@@ -614,6 +624,8 @@ pub fn resume_session(
         keys,
         identity_reservation: Mutex::new(Some(reservation)),
     })
+
+    })
 }
 
 /// Purges an MLS database whose session could not be resumed. This is local
@@ -623,6 +635,7 @@ pub fn purge_local_session(
     device_id: String,
     database_directory: String,
 ) -> Result<(), String> {
+    ffi_guard(|| {
     let identity = validated_identity(&user_id, &device_id)?;
     let _reservation = reserve_identity(&identity)?;
     let database_directory = purge_database_directory(&database_directory)?;
@@ -633,6 +646,8 @@ pub fn purge_local_session(
         Err(error) => Err(error.clone()),
     };
     cleanup_local_session_with_key_store(&database_path, &identity, keys)
+
+    })
 }
 
 #[frb(init)]
