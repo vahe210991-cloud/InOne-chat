@@ -33,10 +33,21 @@ pub enum IncomingMessage {
         room_id: String,
         event_id: String,
         text: String,
+        mine: bool,
+    },
+    Attachment {
+        room_id: String,
+        event_id: String,
+        file_id: String,
+        name: String,
+        mime_type: String,
+        size: u64,
+        mine: bool,
     },
     Unreadable {
         room_id: String,
         event_id: String,
+        mine: bool,
     },
 }
 
@@ -135,13 +146,38 @@ fn map_incoming(items: Vec<Incoming>) -> Vec<IncomingMessage> {
                 room_id,
                 event_id,
                 text,
+                mine,
             } => IncomingMessage::Text {
                 room_id,
                 event_id,
                 text,
+                mine,
             },
-            Incoming::Unreadable { room_id, event_id } => {
-                IncomingMessage::Unreadable { room_id, event_id }
+            Incoming::Attachment {
+                room_id,
+                event_id,
+                file_id,
+                name,
+                mime_type,
+                size,
+                mine,
+            } => IncomingMessage::Attachment {
+                room_id,
+                event_id,
+                file_id,
+                name,
+                mime_type,
+                size,
+                mine,
+            },
+            Incoming::Unreadable {
+                room_id,
+                event_id,
+                mine,
+            } => IncomingMessage::Unreadable {
+                room_id,
+                event_id,
+                mine,
             }
         })
         .collect()
@@ -217,6 +253,43 @@ impl MlsSession {
     pub fn send_text(&self, room_id: String, plaintext: String) -> Result<String, String> {
         let plaintext = Zeroizing::new(plaintext);
         self.with_client(|client| client.send_text(&room_id, plaintext.as_str()))
+    }
+
+    pub fn send_attachment(
+        &self,
+        room_id: String,
+        name: String,
+        mime_type: String,
+        plaintext: Vec<u8>,
+    ) -> Result<String, String> {
+        let plaintext = Zeroizing::new(plaintext);
+        self.with_client(|client| {
+            client.send_attachment(&room_id, &name, &mime_type, plaintext.as_slice())
+        })
+    }
+
+    pub fn send_attachment_with_id(
+        &self,
+        room_id: String,
+        name: String,
+        mime_type: String,
+        plaintext: Vec<u8>,
+        client_message_id: String,
+    ) -> Result<String, String> {
+        let plaintext = Zeroizing::new(plaintext);
+        self.with_client(|client| {
+            client.send_attachment_with_id(
+                &room_id,
+                &name,
+                &mime_type,
+                plaintext.as_slice(),
+                &client_message_id,
+            )
+        })
+    }
+
+    pub fn download_attachment(&self, file_id: String) -> Result<Vec<u8>, String> {
+        self.with_client(|client| client.download_attachment(&file_id))
     }
 
     pub fn enqueue_text(&self, room_id: String, plaintext: String) -> Result<String, String> {
