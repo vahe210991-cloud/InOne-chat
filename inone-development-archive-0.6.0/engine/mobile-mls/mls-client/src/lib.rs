@@ -980,10 +980,12 @@ impl Client {
         Ok(())
     }
 
-    /// Идентификатор этого устройства на сервере.
     /// Returns only the short-lived access token. The refresh token remains Rust-owned.
     pub fn access_token_snapshot(&self) -> Result<String, String> {
-        self.tokens.lock().map(|tokens| tokens.0.clone()).map_err(text)
+        self.tokens
+            .lock()
+            .map(|tokens| tokens.0.clone())
+            .map_err(text)
     }
 
     /// Rotates the session credentials in Rust and returns only the new access token.
@@ -992,6 +994,7 @@ impl Client {
         self.access_token_snapshot()
     }
 
+    /// Идентификатор этого устройства на сервере.
     pub fn device_id(&self) -> &str {
         &self.device_id
     }
@@ -2891,21 +2894,25 @@ impl Client {
     }
 
     /// Returns pending incoming events from encrypted SQLCipher storage. Items are not
-    /// consumed; the application must acknowledge them only after durable handoff.
     /// Returns local encrypted inbox history for a room without acknowledging or consuming it.
     pub fn messages_for_room(&self, room_id: &str) -> Result<Vec<Incoming>, String> {
-        let mut statement = self.meta.prepare(
-            "SELECT event_id, room_id, kind, body
-             FROM client_inbox WHERE room_id = ?1 ORDER BY seq"
-        ).map_err(text)?;
-        let rows = statement.query_map([room_id], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, Option<String>>(3)?,
-            ))
-        }).map_err(text)?;
+        let mut statement = self
+            .meta
+            .prepare(
+                "SELECT event_id, room_id, kind, body
+                 FROM client_inbox WHERE room_id = ?1 ORDER BY seq",
+            )
+            .map_err(text)?;
+        let rows = statement
+            .query_map([room_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                ))
+            })
+            .map_err(text)?;
         let mut incoming = Vec::new();
         for row in rows {
             let (event_id, room_id, kind, body) = row.map_err(text)?;
@@ -2923,6 +2930,8 @@ impl Client {
         Ok(incoming)
     }
 
+    /// Returns pending incoming events from encrypted SQLCipher storage. Items are not
+    /// consumed; the application must acknowledge them only after durable handoff.
     pub fn pending_incoming(&self) -> Result<Vec<Incoming>, String> {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
