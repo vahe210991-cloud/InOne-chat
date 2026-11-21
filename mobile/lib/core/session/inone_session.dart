@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show Platform;
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -725,6 +726,298 @@ class InOneSession extends ChangeNotifier {
     if (bridge == null) return const [];
     return bridge.undecryptable();
   }
+
+  MlsSessionBridge _requireNativeMlsBridge() {
+    final bridge = _mlsBridge;
+    if (bridge == null) {
+      throw const ApiException(
+        code: 'native_mls_session_unavailable',
+        statusCode: 503,
+        retryable: false,
+      );
+    }
+    return bridge;
+  }
+
+  void _validateMlsRoomId(String roomId) {
+    if (roomId.trim().isEmpty || roomId.length > 255) {
+      throw ArgumentError.value(roomId, 'roomId', 'A valid MLS room ID is required');
+    }
+  }
+
+  /// Creates the server room and local OpenMLS group through the persistent Rust client.
+  Future<void> createMlsRoom(String roomId) {
+    _validateMlsRoomId(roomId);
+    return _requireNativeMlsBridge().createRoom(roomId);
+  }
+
+  Future<void> ensureMlsKeyPackages(int target) {
+    if (target < 1 || target > 100) {
+      throw RangeError.range(target, 1, 100, 'target');
+    }
+    return _requireNativeMlsBridge().ensureKeyPackages(target);
+  }
+
+  Future<void> inviteMlsMember(String roomId, String userId) {
+    _validateMlsRoomId(roomId);
+    if (userId.trim().isEmpty || userId.length > 255) {
+      throw ArgumentError.value(userId, 'userId', 'A valid user ID is required');
+    }
+    return _requireNativeMlsBridge().invite(roomId, userId);
+  }
+
+  Future<String> sendMlsText(String roomId, String plaintext) {
+    _validateMlsRoomId(roomId);
+    if (plaintext.trim().isEmpty) {
+      throw ArgumentError.value(plaintext, 'plaintext', 'Message text cannot be empty');
+    }
+    return _requireNativeMlsBridge().sendText(roomId, plaintext);
+  }
+
+  Future<String> enqueueMlsText(String roomId, String plaintext) {
+    _validateMlsRoomId(roomId);
+    if (plaintext.trim().isEmpty) {
+      throw ArgumentError.value(plaintext, 'plaintext', 'Message text cannot be empty');
+    }
+    return _requireNativeMlsBridge().enqueueText(roomId, plaintext);
+  }
+
+  Future<String> sendMlsAttachment(
+    String roomId,
+    String name,
+    String mimeType,
+    Uint8List plaintext,
+    String clientMessageId,
+  ) {
+    _validateMlsRoomId(roomId);
+    if (name.trim().isEmpty || mimeType.trim().isEmpty || plaintext.isEmpty) {
+      throw ArgumentError('Attachment name, MIME type and bytes are required');
+    }
+    if (clientMessageId.isEmpty ||
+        clientMessageId.length > 60 ||
+        !RegExp(r'^[A-Za-z0-9_-]+  Future<String?> mlsQuarantinedCommitReason(String roomId, int epoch) async {
+    final bridge = _mlsBridge;
+    if (bridge == null) return null;
+    return bridge.quarantinedCommitReason(roomId, epoch);
+  }
+
+  /// Cancels an invite only when the native client can safely release its claim.
+  Future<void> cancelMlsInvite(String roomId, String userId) async {
+    final bridge = _mlsBridge;
+    if (bridge == null) {
+      throw StateError('Native MLS session is not open');
+    }
+    await bridge.cancelInvite(roomId, userId);
+  }
+
+  Future<void> logout() {
+    final active = _logoutInFlight;
+    if (active != null) return active;
+    _loggingOut = true;
+    final operation = _logoutOnce();
+    _logoutInFlight = operation;
+    return operation.whenComplete(() {
+      if (identical(_logoutInFlight, operation)) _logoutInFlight = null;
+      _loggingOut = false;
+    });
+  }
+
+  Future<void> _logoutOnce() async {
+    _registrationToken = null;
+    final login = _loginInFlight;
+    if (login != null) {
+      try {
+        await login;
+      } catch (_) {
+        // Continue with local cleanup even if authentication failed.
+      }
+    }
+    final initialization = _initializing;
+    if (initialization != null) {
+      try {
+        await initialization;
+      } catch (_) {
+        // Continue with local cleanup even if session restoration failed.
+      }
+    }
+    final adoption = _adoptionInFlight;
+    if (adoption != null) {
+      try {
+        await adoption;
+      } catch (_) {
+        // The handoff may fail; the saved identity is still cleared below.
+      }
+    }
+    final handoff = _handoffGate;
+    if (handoff != null) await handoff.future;
+    final refresh = _refreshInFlight;
+    if (refresh != null) {
+      try {
+        await refresh;
+      } catch (_) {
+        // Logout must not be blocked by a failed token rotation.
+      }
+    }
+    final nativeRefresh = _nativeRefreshInFlight;
+    if (nativeRefresh != null) {
+      try {
+        await nativeRefresh;
+      } catch (_) {
+        // Local native cleanup remains mandatory.
+      }
+    }
+
+    final bridge = _mlsBridge;
+    final savedUserId = _savedMlsUserId;
+    try {
+      if (bridge != null) {
+        try {
+          await bridge.logout();
+        } finally {
+          if (savedUserId != null) {
+            final deviceId = _deviceId;
+            if (deviceId == null) {
+              throw StateError(
+                'Native MLS cleanup requires the persisted device identity',
+              );
+            }
+            await bridge.purgeLocalSession(
+              userId: savedUserId,
+              deviceId: deviceId,
+            );
+          }
+        }
+      } else if (savedUserId != null) {
+        final native = _nativeMlsBridge;
+        final deviceId = _deviceId;
+        if (native == null || deviceId == null) {
+          throw StateError(
+            'Native MLS cleanup unavailable; saved identity will not be resumed',
+          );
+        }
+        await native.purgeLocalSession(
+          userId: savedUserId,
+          deviceId: deviceId,
+        );
+      } else if (isAuthenticated) {
+        await _client.post('/logout');
+      }
+    } finally {
+      _mlsBridge = null;
+      try {
+        if (bridge != null) await bridge.close();
+      } finally {
+        try {
+          if (savedUserId != null) {
+            // Never auto-resume a session after an explicit logout attempt,
+            // even if native storage cleanup reports an error. The encrypted
+            // database/key may remain for a later explicit recovery, but the
+            // persisted identity must not silently authenticate on next launch.
+            _savedMlsUserId = null;
+            await _deleteMlsUserId();
+          }
+        } finally {
+          try {
+            await _writeLocaleSyncPending(false);
+          } catch (_) {
+            // Locale preference remains local; logout must still clear credentials.
+          }
+          _localeSyncPending = false;
+          _clearSession();
+        }
+      }
+    }
+  }
+
+  void _clearSession() {
+    _mlsError = null;
+    _accessToken = null;
+    _refreshToken = null;
+    _userId = null;
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    final bridge = _mlsBridge;
+    if (bridge != null) unawaited(bridge.close());
+    _client.close();
+    super.dispose();
+  }
+}
+).hasMatch(clientMessageId)) {
+      throw ArgumentError.value(
+        clientMessageId,
+        'clientMessageId',
+        'A stable 1-60 character idempotency key is required',
+      );
+    }
+    return _requireNativeMlsBridge().sendAttachment(
+      roomId,
+      name,
+      mimeType,
+      plaintext,
+      clientMessageId,
+    );
+  }
+
+  Future<Uint8List> downloadMlsAttachment(String fileId) {
+    if (fileId.trim().isEmpty || fileId.length > 128) {
+      throw ArgumentError.value(fileId, 'fileId', 'A valid attachment ID is required');
+    }
+    return _requireNativeMlsBridge().downloadAttachment(fileId);
+  }
+
+  Future<List<MlsIncomingMessage>> syncMlsMessages() =>
+      _requireNativeMlsBridge().sync();
+
+  Future<List<MlsIncomingMessage>> pendingMlsMessages() =>
+      _requireNativeMlsBridge().pendingIncoming();
+
+  Future<List<MlsIncomingMessage>> mlsMessagesForRoom(String roomId) {
+    _validateMlsRoomId(roomId);
+    return _requireNativeMlsBridge().messagesForRoom(roomId);
+  }
+
+  Future<List<String>> localMlsRoomIds() =>
+      _requireNativeMlsBridge().localRoomIds();
+
+  Future<List<MlsPendingOutgoing>> pendingMlsOutbox(String roomId) {
+    _validateMlsRoomId(roomId);
+    return _requireNativeMlsBridge().pendingOutgoing(roomId);
+  }
+
+  /// Call only after the app has accepted the already SQLCipher-persisted messages.
+  Future<void> acknowledgeMlsMessages(List<String> eventIds) {
+    if (eventIds.any((id) => id.trim().isEmpty || id.length > 128)) {
+      throw ArgumentError.value(eventIds, 'eventIds', 'Invalid MLS event ID');
+    }
+    return _requireNativeMlsBridge().acknowledgeIncoming(eventIds);
+  }
+
+  Future<int> flushMlsOutbox() => _requireNativeMlsBridge().flushOutbox();
+
+  Future<int> mlsOutboxLength() => _requireNativeMlsBridge().outboxLength();
+
+  Future<int?> mlsLocalEpoch(String roomId) {
+    _validateMlsRoomId(roomId);
+    return _requireNativeMlsBridge().localEpoch(roomId);
+  }
+
+  Future<List<String>> mlsMembersOf(String roomId) {
+    _validateMlsRoomId(roomId);
+    return _requireNativeMlsBridge().membersOf(roomId);
+  }
+
+  Future<void> revokeMlsDevice(String deviceId) {
+    if (deviceId.trim().isEmpty || deviceId.length > 255) {
+      throw ArgumentError.value(deviceId, 'deviceId', 'A valid device ID is required');
+    }
+    return _requireNativeMlsBridge().revokeDevice(deviceId);
+  }
+
+  Future<int> removeRevokedMlsDevices() =>
+      _requireNativeMlsBridge().removeRevokedDevices();
 
   /// Returns the quarantined Commit reason for a room epoch, when present.
   Future<String?> mlsQuarantinedCommitReason(String roomId, int epoch) async {
