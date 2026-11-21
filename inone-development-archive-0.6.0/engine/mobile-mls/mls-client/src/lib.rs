@@ -2488,7 +2488,11 @@ impl Client {
                 .as_deref()
                 .map(|stored| stored == payload)
                 .unwrap_or_else(|| text_body.is_some_and(|text| body.as_deref() == Some(text)));
-            let expected_kind = if text_body.is_some() { "text" } else { "unreadable" };
+            let expected_kind = if text_body.is_some() {
+                "text"
+            } else {
+                "unreadable"
+            };
             if stored_room != room_id || kind != expected_kind || !same_payload {
                 return Err(
                     "clientMessageId is already completed with a different room or payload"
@@ -3413,18 +3417,11 @@ impl Client {
         let items: Vec<(String, String, String, Option<Vec<u8>>)> = {
             let mut stmt = self
                 .meta
-                .prepare(
-                    "SELECT local_id, room_id, body, payload FROM client_outbox ORDER BY seq",
-                )
+                .prepare("SELECT local_id, room_id, body, payload FROM client_outbox ORDER BY seq")
                 .map_err(text)?;
             let rows = stmt
                 .query_map([], |row| {
-                    Ok((
-                        row.get(0)?,
-                        row.get(1)?,
-                        row.get(2)?,
-                        row.get(3)?,
-                    ))
+                    Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
                 })
                 .map_err(text)?;
             rows.collect::<Result<_, _>>().map_err(text)?
