@@ -1,16 +1,27 @@
+import 'dart:typed_data';
+
 /// Data returned from the native OpenMLS runtime after decryption.
 class MlsIncomingMessage {
   const MlsIncomingMessage({
     required this.roomId,
     required this.eventId,
     this.text,
+    this.fileId,
+    this.name,
+    this.mimeType,
+    this.size,
   });
 
   final String roomId;
   final String eventId;
   final String? text;
+  final String? fileId;
+  final String? name;
+  final String? mimeType;
+  final int? size;
 
-  bool get isReadable => text != null;
+  bool get isAttachment => fileId != null;
+  bool get isReadable => text != null || isAttachment;
 }
 
 /// Durable diagnostics for an MLS event that could not be decrypted or parsed.
@@ -58,6 +69,14 @@ abstract interface class MlsSessionBridge {
   Future<List<MlsUndecryptableEvent>> undecryptable();
   Future<String?> quarantinedCommitReason(String roomId, int epoch);
   Future<String> sendText(String roomId, String plaintext);
+  Future<String> sendAttachment(
+    String roomId,
+    String name,
+    String mimeType,
+    Uint8List plaintext,
+    String clientMessageId,
+  );
+  Future<Uint8List> downloadAttachment(String fileId);
   Future<String> enqueueText(String roomId, String plaintext);
   Future<List<MlsIncomingMessage>> sync();
   Future<List<MlsIncomingMessage>> pendingIncoming();

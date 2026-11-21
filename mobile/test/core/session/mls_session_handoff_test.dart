@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'dart:async';
 import 'dart:convert';
 
@@ -493,6 +494,18 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
 
   @override
   Future<String> sendText(String roomId, String plaintext) async => 'event-1';
+
+  @override
+  Future<String> sendAttachment(
+    String roomId,
+    String name,
+    String mimeType,
+    Uint8List plaintext,
+    String clientMessageId,
+  ) async => 'attachment-event-1';
+
+  @override
+  Future<Uint8List> downloadAttachment(String fileId) async => Uint8List(0);
 
   @override
   Future<String> enqueueText(String roomId, String plaintext) async => 'local-1';
