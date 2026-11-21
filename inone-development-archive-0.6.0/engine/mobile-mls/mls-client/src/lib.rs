@@ -1018,6 +1018,8 @@ fn build_client(
             manifest BLOB NOT NULL,
             ciphertext_sha256 TEXT NOT NULL,
             ciphertext_size INTEGER NOT NULL,
+            ciphertext BLOB NOT NULL,
+            created_at INTEGER NOT NULL,
             uploaded INTEGER NOT NULL DEFAULT 0,
             mls_message BLOB,
             mls_epoch INTEGER
@@ -1086,6 +1088,28 @@ fn build_client(
         .map_err(text)?;
     if !has_outbox_payload {
         meta.execute_batch("ALTER TABLE client_outbox ADD COLUMN payload BLOB")
+            .map_err(text)?;
+    }
+    let has_attachment_ciphertext: bool = meta
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('client_attachment_outbox') WHERE name = 'ciphertext')",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(text)?;
+    if !has_attachment_ciphertext {
+        meta.execute_batch("ALTER TABLE client_attachment_outbox ADD COLUMN ciphertext BLOB")
+            .map_err(text)?;
+    }
+    let has_attachment_created_at: bool = meta
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('client_attachment_outbox') WHERE name = 'created_at')",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(text)?;
+    if !has_attachment_created_at {
+        meta.execute_batch("ALTER TABLE client_attachment_outbox ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0")
             .map_err(text)?;
     }
     let has_outbox_mls_message: bool = meta
