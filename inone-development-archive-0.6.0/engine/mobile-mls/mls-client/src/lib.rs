@@ -3270,6 +3270,10 @@ impl Client {
                     if handoff_present {
                         return false;
                     }
+                    // Publish the canonical identity returned by the idempotent
+                    // server operation, not a stale identity from the recovery sync.
+                    *queued_event_id = event_id.clone();
+                    *queued_file_id = file_id.clone();
                     *mine = true;
                     handoff_present = true;
                 }
