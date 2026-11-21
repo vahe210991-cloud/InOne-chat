@@ -2739,6 +2739,577 @@ impl Client {
 
     /// Sends an opaque MLS application payload with a stable operation ID.
     /// Exact plaintext bytes and the sender ratchet are persisted before network I/O.
+    fn same_origin_url(&self, raw_url: &str) -> Result<Url, String> {
+        let base = Url::parse(&self.base).map_err(text)?;
+        let target = Url::parse(raw_url).map_err(text)?;
+        if base.origin() != target.origin()
+            || !target.username().is_empty()
+            || target.password().is_some()
+            || target.fragment().is_some()
+            || !target.path().starts_with("/objects/")
+        {
+            return Err("signed object URL must remain on the authenticated API origin and /objects path".to_string());
+        }
+        Ok(target)
+    }
+
+    /// Upload capabilities are intentionally unauthenticated: never attach a bearer token.
+    fn upload_signed_bytes(&self, raw_url: &str, ciphertext: &[u8]) -> Result<(), String> {
+        let url = self.same_origin_url(raw_url)?;
+        match self.agent
+            .put(url.as_str())
+            .set("content-type", "application/octet-stream")
+            .send_bytes(ciphertext)
+        {
+            Ok(_) => Ok(()),
+            Err(ureq::Error::Status(code, response)) => Err(format!(
+                "signed upload -> {code} {}",
+                response.into_string().unwrap_or_default()
+            )),
+            Err(error) => Err(format!("сеть: {error}")),
+        }
+    }
+
+    /// Download capabilities are bound to the current authenticated device.
+    fn download_signed_bytes(&self, raw_url: &str, max_bytes: u64) -> Result<Vec<u8>, String> {
+        let url = self.same_origin_url(raw_url)?;
+        for attempt in 0..2 {
+            let token = Zeroizing::new(self.tokens.lock().map_err(text)?.0.clone());
+            let authorization = Zeroizing::new(format!("Bearer {}", token.as_str()));
+            match self.agent
+                .get(url.as_str())
+                .set("authorization", authorization.as_str())
+                .call()
+            {
+                Ok(response) => {
+                    let mut bytes = Vec::new();
+                    response
+                        .into_reader()
+                        .take(max_bytes.saturating_add(1))
+                        .read_to_end(&mut bytes)
+                        .map_err(text)?;
+                    if bytes.len() as u64 > max_bytes {
+                        return Err("signed file download exceeded the manifest ciphertext size".to_string());
+                    }
+                    return Ok(bytes);
+                }
+                Err(ureq::Error::Status(401, response)) if attempt == 0 => {
+                    let _ = response.into_string();
+                    self.renew()?;
+                }
+                Err(ureq::Error::Status(code, response)) => {
+                    return Err(format!(
+                        "signed download -> {code} {}",
+                        response.into_string().unwrap_or_default()
+                    ));
+                }
+                Err(error) => return Err(format!("сеть: {error}")),
+            }
+        }
+        Err("signed download remained unauthorized after token refresh".to_string())
+    }
+
+    fn reserve_attachment_upload(
+        &self,
+        room_id: &str,
+        ciphertext: &[u8],
+    ) -> Result<(String, String), String> {
+        let response = self.call(
+            "POST",
+            "/files",
+            Some(json!({
+                "kind": "file",
+                "size": ciphertext.len(),
+                "sha256": attachment_crypto::sha256_hex(ciphertext),
+                "roomId": room_id,
+            })),
+        )?;
+        let file_id = response
+            .get("fileId")
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .ok_or("file reservation did not return fileId")?
+            .to_string();
+        let upload_url = response
+            .get("uploadUrl")
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .ok_or("file reservation did not return uploadUrl")?
+            .to_string();
+        self.same_origin_url(&upload_url)?;
+        Ok((file_id, upload_url))
+    }
+
+    /// Persist the sender ratchet and exact attachment MLS ciphertext in one SQLCipher transaction.
+    fn create_and_persist_attachment_mls_message(
+        &mut self,
+        room_id: &str,
+        operation_id: &str,
+        file_id: &str,
+        manifest: &[u8],
+        epoch: u64,
+    ) -> Result<Vec<u8>, String> {
+        let transaction = self.meta.unchecked_transaction().map_err(text)?;
+        let created = {
+            let transactional_provider = DeviceProvider::new(
+                Arc::clone(&self.provider.crypto),
+                TransactionConnection(&transaction),
+            );
+            let group = self
+                .groups
+                .get_mut(room_id)
+                .ok_or("комната не создана на этом устройстве")?;
+            let current_epoch = group.mls.epoch().as_u64();
+            if current_epoch != epoch {
+                drop(transactional_provider);
+                drop(transaction);
+                return Err("MLS room epoch changed before attachment encryption".to_string());
+            }
+            group
+                .mls
+                .create_message(&transactional_provider, &self.signer, manifest)
+                .map_err(text)
+                .and_then(|message| message.tls_serialize_detached().map_err(text))
+        };
+        let message = match created {
+            Ok(message) => message,
+            Err(error) => {
+                drop(transaction);
+                self.reload_group(room_id)?;
+                return Err(error);
+            }
+        };
+        let changed = match transaction.execute(
+            "UPDATE client_attachment_outbox
+             SET mls_message = ?4, mls_epoch = ?5
+             WHERE client_message_id = ?1 AND room_id = ?2 AND file_id = ?3
+               AND uploaded = 1
+               AND (mls_message IS NULL OR mls_epoch IS NULL OR mls_epoch != ?5)",
+            rusqlite::params![operation_id, room_id, file_id, message, epoch as i64],
+        ) {
+            Ok(changed) => changed,
+            Err(error) => {
+                drop(transaction);
+                self.reload_group(room_id)?;
+                return Err(text(error));
+            }
+        };
+        if changed != 1 {
+            drop(transaction);
+            self.reload_group(room_id)?;
+            return Err("attachment outbox changed before MLS message persistence".to_string());
+        }
+        crash_at_test_failpoint("attachment_before_mls_message_commit");
+        if let Err(error) = transaction.commit() {
+            self.reload_group(room_id)?;
+            return Err(text(error));
+        }
+        crash_at_test_failpoint("attachment_after_mls_message_commit");
+        Ok(message)
+    }
+
+    /// Encrypts attachment bytes before upload; only ciphertext and its digest reach the file service.
+    /// The manifest (including file key and nonce) is sent only inside an MLS application message.
+    pub fn send_attachment(
+        &mut self,
+        room_id: &str,
+        name: &str,
+        mime_type: &str,
+        plaintext: &[u8],
+    ) -> Result<String, String> {
+        let random_id = self.provider.rand().random_array::<16>().map_err(text)?;
+        self.send_attachment_with_id(room_id, name, mime_type, plaintext, &hex_encode(&random_id))
+    }
+
+    /// Retries with the same ID reuse the same file key/nonce, manifest, and MLS ciphertext.
+    pub fn send_attachment_with_id(
+        &mut self,
+        room_id: &str,
+        name: &str,
+        mime_type: &str,
+        plaintext: &[u8],
+        client_message_id: &str,
+    ) -> Result<String, String> {
+        self.ensure_writable()?;
+        if room_id.trim().is_empty()
+            || client_message_id.is_empty()
+            || client_message_id.len() > 60
+            || !client_message_id
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
+        {
+            return Err("clientMessageId must contain 1-60 letters, digits, _ or -".to_string());
+        }
+        if name.is_empty()
+            || name.len() > 255
+            || name.chars().any(char::is_control)
+            || name.contains('/')
+            || name.contains('\\')
+        {
+            return Err("invalid attachment display name".to_string());
+        }
+        if mime_type.is_empty() || mime_type.len() > 127 || mime_type.chars().any(char::is_control) {
+            return Err("invalid attachment MIME type".to_string());
+        }
+        if plaintext.is_empty() || plaintext.len() as u64 > 50 * 1024 * 1024 - 16 {
+            return Err("attachment size must be between 1 byte and 50 MiB minus the GCM tag".to_string());
+        }
+
+        let operation_id = format!("att_{client_message_id}");
+        if self.flush_pending_membership_commits()? > 0 {
+            self.sync()?;
+        }
+        if let Some(reason) = self.desync_reason(room_id)? {
+            return Err(format!("комната рассинхронизирована и требует восстановления: {reason}"));
+        }
+
+        let completed: Option<(String, String, String, Vec<u8>)> = self
+            .meta
+            .query_row(
+                "SELECT room_id, file_id, event_id, manifest
+                 FROM client_attachments
+                 WHERE client_message_id = ?1 AND direction = 'outgoing'",
+                [&operation_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .optional()
+            .map_err(text)?;
+        if let Some((stored_room, stored_file_id, event_id, stored_manifest)) = completed {
+            if stored_room != room_id {
+                return Err("clientMessageId is already completed for a different room".to_string());
+            }
+            let stored_manifest = Zeroizing::new(stored_manifest);
+            let manifest = attachment_crypto::parse_manifest(
+                stored_manifest.as_slice(),
+                &stored_file_id,
+                room_id,
+            )?;
+            if manifest.name != name
+                || manifest.mime_type != mime_type
+                || manifest.size != plaintext.len() as u64
+                || manifest.sha256 != attachment_crypto::sha256_hex(plaintext)
+            {
+                return Err("clientMessageId retry payload does not match the completed attachment".to_string());
+            }
+            return Ok(event_id);
+        }
+
+        let existing: Option<(String, String, Vec<u8>, String, i64, bool)> = self
+            .meta
+            .query_row(
+                "SELECT room_id, file_id, manifest, ciphertext_sha256, ciphertext_size, uploaded
+                 FROM client_attachment_outbox WHERE client_message_id = ?1",
+                [&operation_id],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(text)?;
+
+        let file_id: String;
+        let mut upload_url: Option<String> = None;
+        let manifest_payload: Zeroizing<Vec<u8>>;
+        let ciphertext: Zeroizing<Vec<u8>>;
+        let mut already_uploaded = false;
+
+        if let Some((stored_room, stored_file_id, stored_manifest, stored_hash, stored_size, uploaded)) = existing {
+            if stored_room != room_id {
+                return Err("clientMessageId is already reserved for a different room".to_string());
+            }
+            let stored_manifest = Zeroizing::new(stored_manifest);
+            let parsed = attachment_crypto::parse_manifest(
+                stored_manifest.as_slice(),
+                &stored_file_id,
+                room_id,
+            )?;
+            if parsed.name != name
+                || parsed.mime_type != mime_type
+                || parsed.size != plaintext.len() as u64
+                || parsed.sha256 != attachment_crypto::sha256_hex(plaintext)
+            {
+                return Err("clientMessageId retry payload does not match the persisted attachment".to_string());
+            }
+            ciphertext = Zeroizing::new(attachment_crypto::encrypt(
+                plaintext,
+                &parsed.key,
+                &parsed.nonce,
+                room_id,
+            )?);
+            if attachment_crypto::sha256_hex(ciphertext.as_slice()) != stored_hash
+                || ciphertext.len() as i64 != stored_size
+            {
+                return Err("persisted attachment retry ciphertext does not match its SQLCipher journal".to_string());
+            }
+            if uploaded {
+                file_id = stored_file_id;
+                manifest_payload = Zeroizing::new(stored_manifest.to_vec());
+                already_uploaded = true;
+            } else {
+                // The previous signed URL may have expired; reserve a fresh object but reuse key/nonce.
+                let (new_file_id, new_upload_url) =
+                    self.reserve_attachment_upload(room_id, ciphertext.as_slice())?;
+                let new_manifest = Zeroizing::new(attachment_crypto::build_manifest(
+                    &new_file_id,
+                    room_id,
+                    name,
+                    mime_type,
+                    plaintext,
+                    ciphertext.as_slice(),
+                    &parsed.key,
+                    &parsed.nonce,
+                )?);
+                let changed = self
+                    .meta
+                    .execute(
+                        "UPDATE client_attachment_outbox
+                         SET file_id = ?2, manifest = ?3, ciphertext_sha256 = ?4,
+                             ciphertext_size = ?5, uploaded = 0, mls_message = NULL, mls_epoch = NULL
+                         WHERE client_message_id = ?1 AND room_id = ?6",
+                        rusqlite::params![
+                            operation_id,
+                            new_file_id,
+                            new_manifest.as_slice(),
+                            attachment_crypto::sha256_hex(ciphertext.as_slice()),
+                            ciphertext.len() as i64,
+                            room_id
+                        ],
+                    )
+                    .map_err(text)?;
+                if changed != 1 {
+                    return Err("attachment retry journal changed during upload reservation".to_string());
+                }
+                file_id = new_file_id;
+                upload_url = Some(new_upload_url);
+                manifest_payload = new_manifest;
+            }
+        } else {
+            let key = Zeroizing::new(self.provider.rand().random_array::<32>().map_err(text)?);
+            let nonce = Zeroizing::new(self.provider.rand().random_array::<12>().map_err(text)?);
+            ciphertext = Zeroizing::new(attachment_crypto::encrypt(
+                plaintext,
+                &key,
+                &nonce,
+                room_id,
+            )?);
+            let ciphertext_hash = attachment_crypto::sha256_hex(ciphertext.as_slice());
+            let (reserved_file_id, reserved_upload_url) =
+                self.reserve_attachment_upload(room_id, ciphertext.as_slice())?;
+            let manifest = Zeroizing::new(attachment_crypto::build_manifest(
+                &reserved_file_id,
+                room_id,
+                name,
+                mime_type,
+                plaintext,
+                ciphertext.as_slice(),
+                &key,
+                &nonce,
+            )?);
+            self.meta
+                .execute(
+                    "INSERT INTO client_attachment_outbox
+                     (client_message_id, room_id, file_id, manifest, ciphertext_sha256,
+                      ciphertext_size, uploaded)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0)",
+                    rusqlite::params![
+                        operation_id,
+                        room_id,
+                        reserved_file_id,
+                        manifest.as_slice(),
+                        ciphertext_hash,
+                        ciphertext.len() as i64
+                    ],
+                )
+                .map_err(text)?;
+            file_id = reserved_file_id;
+            upload_url = Some(reserved_upload_url);
+            manifest_payload = manifest;
+        }
+
+        if !already_uploaded {
+            let signed_upload_url = upload_url
+                .as_deref()
+                .ok_or("attachment upload URL is missing for an unuploaded outbox item")?;
+            self.upload_signed_bytes(signed_upload_url, ciphertext.as_slice())?;
+            self.call(
+                "POST",
+                &format!("/files/{}/complete", urlencoding::encode(&file_id)),
+                Some(json!({})),
+            )?;
+            let changed = self
+                .meta
+                .execute(
+                    "UPDATE client_attachment_outbox
+                     SET uploaded = 1
+                     WHERE client_message_id = ?1 AND file_id = ?2 AND uploaded = 0",
+                    rusqlite::params![operation_id, file_id],
+                )
+                .map_err(text)?;
+            if changed != 1 {
+                return Err("attachment outbox disappeared after successful upload".to_string());
+            }
+        }
+
+        let mut server_epoch = self.server_epoch(room_id)?;
+        let mut local_epoch = self
+            .groups
+            .get(room_id)
+            .ok_or("комната не создана на этом устройстве")?
+            .mls
+            .epoch()
+            .as_u64();
+        if local_epoch != server_epoch {
+            self.sync()?;
+            server_epoch = self.server_epoch(room_id)?;
+            local_epoch = self
+                .groups
+                .get(room_id)
+                .ok_or("комната не создана на этом устройстве")?
+                .mls
+                .epoch()
+                .as_u64();
+        }
+        if local_epoch != server_epoch {
+            return Err(format!(
+                "устройство на эпохе {local_epoch}, сервер на {server_epoch}: вложение сохранено в очереди, сначала синхронизация"
+            ));
+        }
+        let expected_epoch = i64::try_from(server_epoch)
+            .map_err(|_| "MLS epoch exceeds the persistent attachment journal range".to_string())?;
+        let persisted_message: (Option<Vec<u8>>, Option<i64>) = self
+            .meta
+            .query_row(
+                "SELECT mls_message, mls_epoch FROM client_attachment_outbox
+                 WHERE client_message_id = ?1 AND room_id = ?2 AND file_id = ?3 AND uploaded = 1",
+                rusqlite::params![operation_id, room_id, file_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+            .map_err(text)?
+            .ok_or_else(|| "attachment outbox disappeared before MLS message persistence".to_string())?;
+        let mls_message = match persisted_message {
+            (Some(bytes), Some(epoch)) if !bytes.is_empty() && epoch == expected_epoch => {
+                Zeroizing::new(bytes)
+            }
+            _ => Zeroizing::new(self.create_and_persist_attachment_mls_message(
+                room_id,
+                &operation_id,
+                &file_id,
+                manifest_payload.as_slice(),
+                server_epoch,
+            )?),
+        };
+
+        let response = self.call(
+            "POST",
+            &format!("/mls/groups/{}/messages", urlencoding::encode(room_id)),
+            Some(json!({
+                "message": B64.encode(mls_message.as_slice()),
+                "kind": "text",
+                "forwarded": false,
+                "clientMessageId": operation_id,
+                "fileId": file_id,
+            })),
+        )?;
+        let event_id = response
+            .get("event_id")
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .ok_or("сервер не вернул event_id для вложения")?
+            .to_string();
+
+        let incoming = Incoming::Attachment {
+            room_id: room_id.to_string(),
+            event_id: event_id.clone(),
+            file_id: file_id.clone(),
+            name: name.to_string(),
+            mime_type: mime_type.to_string(),
+            size: plaintext.len() as u64,
+            mine: true,
+        };
+        let transaction = self.meta.unchecked_transaction().map_err(text)?;
+        insert_incoming_record(&transaction, &incoming)?;
+        let tagged = transaction
+            .execute(
+                "UPDATE client_inbox SET client_message_id = ?1
+                 WHERE event_id = ?2 AND room_id = ?3",
+                rusqlite::params![operation_id, event_id, room_id],
+            )
+            .map_err(text)?;
+        if tagged != 1 {
+            return Err("could not tag outgoing attachment direction in local history".to_string());
+        }
+        insert_attachment_manifest(
+            &transaction,
+            &incoming,
+            manifest_payload.as_slice(),
+            "outgoing",
+            Some(&operation_id),
+        )?;
+        let removed = transaction
+            .execute(
+                "DELETE FROM client_attachment_outbox WHERE client_message_id = ?1 AND file_id = ?2",
+                rusqlite::params![operation_id, file_id],
+            )
+            .map_err(text)?;
+        if removed != 1 {
+            return Err("attachment outbox disappeared before local history commit".to_string());
+        }
+        crash_at_test_failpoint("attachment_before_history_commit");
+        transaction.commit().map_err(text)?;
+        crash_at_test_failpoint("attachment_after_history_commit");
+        self.processed.insert(event_id.clone());
+        Ok(event_id)
+    }
+
+    /// Fetches the encrypted object only for the active authenticated device, then verifies and decrypts locally.
+    pub fn download_attachment(&self, file_id: &str) -> Result<Vec<u8>, String> {
+        if file_id.trim().is_empty() || file_id.len() > 128 {
+            return Err("invalid attachment fileId".to_string());
+        }
+        let (room_id, manifest_bytes): (String, Vec<u8>) = self
+            .meta
+            .query_row(
+                "SELECT room_id, manifest FROM client_attachments WHERE file_id = ?1",
+                [file_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+            .map_err(text)?
+            .ok_or_else(|| "attachment manifest is not available in the encrypted local inbox".to_string())?;
+        let manifest_bytes = Zeroizing::new(manifest_bytes);
+        let manifest =
+            attachment_crypto::parse_manifest(manifest_bytes.as_slice(), file_id, &room_id)?;
+        for attempt in 0..2 {
+            let link = self.call(
+                "GET",
+                &format!("/files/{}/url", urlencoding::encode(file_id)),
+                None,
+            )?;
+            let download_url = link
+                .get("downloadUrl")
+                .and_then(Value::as_str)
+                .filter(|value| !value.trim().is_empty())
+                .ok_or("file link response did not return downloadUrl")?;
+            match self.download_signed_bytes(download_url, manifest.ciphertext_size) {
+                Ok(ciphertext) => return attachment_crypto::decrypt(&ciphertext, &manifest),
+                Err(error) if attempt == 0 && error.contains("signed download -> 403") => {
+                    // Refresh the short-lived capability once; revoked devices still fail closed.
+                    continue;
+                }
+                Err(error) => return Err(error),
+            }
+        }
+        Err("could not obtain a valid signed attachment download".to_string())
+    }
+
     pub fn send_application_payload_with_id(
         &mut self,
         room_id: &str,
