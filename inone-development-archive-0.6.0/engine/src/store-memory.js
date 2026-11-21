@@ -963,7 +963,7 @@ export function createMemoryStore({ pinPepper }) {
     appendRoomEvent(roomId, sender, type, content, nowMs, afterAppend = null) {
       const r = rooms.get(roomId);
       const seq = ++counters.eventSeq;
-      r.events.push({ event_id: `${seq}`, seq, room_id: roomId, sender, origin_server_ts: nowMs, type, content: structuredClone(content ?? null) });
+      r.events.push({ event_id: `$${seq}`, seq, room_id: roomId, sender, origin_server_ts: nowMs, type, content: structuredClone(content ?? null) });
       if (afterAppend) return Promise.resolve(afterAppend(null, { seq, roomId, eventId: `$${seq}` })).then(() => seq);
       return seq;
     },
