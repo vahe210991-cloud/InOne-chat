@@ -2355,7 +2355,7 @@ pub fn download_attachment(&self, file_id: &str) -> Result<Vec<u8>, String> {
                             .pending_commit()
                             .ok_or("pending StagedCommit disappeared before merge")?;
                         let actual = membership_commit_fingerprint(
-                            &self.provider,
+                            &transaction_provider,
                             &room_id,
                             &operation_id,
                             base_epoch,
@@ -2369,7 +2369,7 @@ pub fn download_attachment(&self, file_id: &str) -> Result<Vec<u8>, String> {
                         }
                         group
                             .mls
-                            .merge_pending_commit(&self.provider)
+                            .merge_pending_commit(&transaction_provider)
                             .map_err(text)?;
                         if group.mls.epoch().as_u64() != accepted_epoch {
                             let reason = format!("merged local epoch {} differs from accepted server epoch {accepted_epoch}", group.mls.epoch().as_u64());
@@ -2425,7 +2425,7 @@ pub fn download_attachment(&self, file_id: &str) -> Result<Vec<u8>, String> {
                             .pending_commit()
                             .ok_or("pending StagedCommit disappeared before stale clear")?;
                         let actual = membership_commit_fingerprint(
-                            &self.provider,
+                            &transaction_provider,
                             &room_id,
                             &operation_id,
                             base_epoch,
@@ -2634,7 +2634,7 @@ pub fn download_attachment(&self, file_id: &str) -> Result<Vec<u8>, String> {
             let base_epoch = group.mls.epoch().as_u64();
             let (commit, welcome, _) = group
                 .mls
-                .add_members(&self.provider, &self.signer, &key_packages)
+                .add_members(&transaction_provider, &self.signer, &key_packages)
                 .map_err(text)?;
             let commit_bytes = commit.tls_serialize_detached().map_err(text)?;
             let welcome_bytes = welcome.tls_serialize_detached().map_err(text)?;
@@ -2662,7 +2662,7 @@ pub fn download_attachment(&self, file_id: &str) -> Result<Vec<u8>, String> {
                 .ok_or("OpenMLS did not retain the staged membership commit")?;
             verify_staged_membership_metadata(&group.mls, pending, &metadata)?;
             let fingerprint = membership_commit_fingerprint(
-                &self.provider,
+                &transaction_provider,
                 room_id,
                 operation_id,
                 base_epoch,
@@ -4120,7 +4120,7 @@ pub fn download_attachment(&self, file_id: &str) -> Result<Vec<u8>, String> {
                     }
                     let (commit, _, _) = group
                         .mls
-                        .remove_members(&self.provider, &self.signer, &leaves)
+                        .remove_members(&transaction_provider, &self.signer, &leaves)
                         .map_err(text)?;
                     let commit_bytes = commit.tls_serialize_detached().map_err(text)?;
                     let changes = json!({ "adds": [], "removes": [], "removeDevices": devices });
@@ -4135,7 +4135,7 @@ pub fn download_attachment(&self, file_id: &str) -> Result<Vec<u8>, String> {
                         .ok_or("OpenMLS did not retain staged device-removal commit")?;
                     verify_staged_membership_metadata(&group.mls, pending, &metadata)?;
                     let fingerprint = membership_commit_fingerprint(
-                        &self.provider,
+                        &transaction_provider,
                         &room_id,
                         &operation_id,
                         local,
