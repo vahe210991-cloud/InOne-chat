@@ -95,7 +95,6 @@ dbTest('FILES_DIR: архив с traversal-путём отклоняется д�
   writeFileSync(path.join(evilFiles, 'payload'), 'must-not-escape');
   await admin(`CREATE DATABASE ${sourceName}`);
   await admin(`CREATE DATABASE ${targetName}`);
-  const outside = path.join(temp, 'escape');
   try {
     const pool = new pg.Pool({ connectionString: sourceUrl });
     try { await migrate(pool); } finally { await pool.end(); }
@@ -109,7 +108,6 @@ dbTest('FILES_DIR: архив с traversal-путём отклоняется д�
     assert.equal(await countPublicTables(targetUrl), 0, 'PostgreSQL не изменена');
     assert.deepEqual(readdirSync(targetFiles), [], 'каталог назначения остался пустым');
     assert.equal(readdirSync(temp).includes('escape'), false, 'файл не записан за пределы каталога');
-    assert.equal(outside.startsWith(temp), true);
   } finally {
     await admin(`DROP DATABASE IF EXISTS ${sourceName} WITH (FORCE)`).catch(() => {});
     await admin(`DROP DATABASE IF EXISTS ${targetName} WITH (FORCE)`).catch(() => {});
