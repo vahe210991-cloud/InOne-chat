@@ -3253,10 +3253,20 @@ impl Client {
 
     /// Reconciles an outgoing attachment with any copy queued by a recovery sync.
     /// The durable SQLCipher attachment record is authoritative for sender direction.
-    fn reconcile_outgoing_attachment_handoff(&mut self, incoming: Incoming) {
-        let Incoming::Attachment { event_id, file_id, .. } = &incoming
-        else {
-            return;
+    fn reconcile_outgoing_attachment_handoff(&mut self, mut incoming: Incoming) {
+        let (event_id, file_id) = match &mut incoming {
+            Incoming::Attachment {
+                event_id,
+                file_id,
+                mine,
+                ..
+            } => {
+                // The durable outgoing SQLCipher record is authoritative even
+                // when recovery did not already enqueue an inbox copy.
+                *mine = true;
+                (event_id.clone(), file_id.clone())
+            }
+            _ => return,
         };
         let mut handoff_present = false;
         self.inbox.retain_mut(|item| {
@@ -3267,7 +3277,7 @@ impl Client {
                 ..
             } = item
             {
-                if queued_event_id == event_id || queued_file_id == file_id {
+                if queued_event_id == &event_id || queued_file_id == &file_id {
                     if handoff_present {
                         return false;
                     }
