@@ -603,4 +603,4 @@ Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone
 - Work branch: `fix/canonical-backend-identity-2026-11-21`. PR and exact-head CI review pending. No tests are claimed as run in this session; require focused identity test, full Node suite, npm audit, PostgreSQL suite and related CI checks on the final PR SHA.
 - No backend source modules, schema/migrations, Rust/FFI source, directory paths or database data were changed. Do not merge to `main` without owner approval.
 
-- PR #120 is open as a draft against `main`, head `1741651a3212057b0d6b8feb4b30ad7e7212c826`; it is not merged. Exact-head P0, Email/PostgreSQL, Flutter and iOS workflow runs `44871378564`, `44871379518`, `44871378516`, `44871378501` are queued; no tests are yet evidenced as executed.
+- PR #120 is open as a draft against `main`, latest inspected head `f81c2a37b54dee2593fa14c3eb9dead441cccaa9`; it is not merged. Workflow runs `44871378564`, `44871379518`, `44871378516`, `44871378501` belong to the previous head `1741651a3212057b0d6b8feb4b30ad7e7212c826` and remain queued. No exact-final-head CI or test execution is evidenced.
