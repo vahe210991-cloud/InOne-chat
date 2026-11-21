@@ -11,6 +11,8 @@ const protectedPaths = [
   'pubspec.lock',
   'rust/Cargo.toml',
   'rust/Cargo.lock',
+  // `integrate` injects this module declaration into the crate root.
+  'rust/src/lib.rs',
 ];
 
 function run(command, args) {
@@ -171,7 +173,10 @@ if (process.argv.includes('--verify-only')) {
 
 const snapshots = new Map(protectedPaths.map(path => [path, fs.readFileSync(path)]));
 function restoreProtectedFiles() {
-  for (const [path, content] of snapshots) fs.writeFileSync(path, content);
+  // Use Git's index as the byte-exact source of truth. Cargo metadata and
+  // FRB integration may normalize lockfiles even when the original snapshot
+  // is rewritten, so restore tracked protected inputs directly from HEAD.
+  run('git', ['restore', '--worktree', '--', ...protectedPaths]);
 }
 
 try {
