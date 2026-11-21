@@ -2893,7 +2893,6 @@ impl Client {
         Ok(sent)
     }
 
-    /// Returns pending incoming events from encrypted SQLCipher storage. Items are not
     /// Returns local encrypted inbox history for a room without acknowledging or consuming it.
     pub fn messages_for_room(&self, room_id: &str) -> Result<Vec<Incoming>, String> {
         let mut statement = self
