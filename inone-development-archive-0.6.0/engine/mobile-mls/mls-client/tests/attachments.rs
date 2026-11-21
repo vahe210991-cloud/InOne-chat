@@ -176,9 +176,17 @@ fn attachment_retry_reuses_the_exact_mls_message_after_server_commit() {
     assert_eq!(alice.flush_outbox().unwrap(), 1);
     assert_eq!(alice.outbox_len().unwrap(), 0);
     let resumed_handoff = alice.take_incoming();
-    assert!(
-        matches!(resumed_handoff.as_slice(), [Incoming::Attachment { mine: true, .. }]),
-        "the sender's own recovered attachment must retain outgoing direction in the in-memory handoff"
+    let recovered_attachment_directions: Vec<bool> = resumed_handoff
+        .iter()
+        .filter_map(|item| match item {
+            Incoming::Attachment { mine, .. } => Some(*mine),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        recovered_attachment_directions,
+        [true],
+        "the sender's recovered attachment must appear exactly once with outgoing direction;          unrelated inbox events may also be present"
     );
     let sender_history = alice.messages_for_room(ROOM).unwrap();
     let event_id = sender_history
