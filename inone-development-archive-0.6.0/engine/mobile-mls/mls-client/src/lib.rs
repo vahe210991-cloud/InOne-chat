@@ -5427,11 +5427,13 @@ mod session_persistence_tests {
             room_id: "!history:inone.test".to_string(),
             event_id: "$history-1".to_string(),
             text: "persisted message".to_string(),
+            mine: false,
         };
         let other_room_event = Incoming::Text {
             room_id: "!other:inone.test".to_string(),
             event_id: "$history-2".to_string(),
             text: "another room".to_string(),
+            mine: false,
         };
         insert_incoming_record(&client.meta, &event).unwrap();
         insert_incoming_record(&client.meta, &other_room_event).unwrap();
