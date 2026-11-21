@@ -78,6 +78,7 @@ jobs:
           artifact="$RUNNER_TEMP/inone-mls-rust-repair"
           mkdir -p "$artifact/engine/mls-client" "$artifact/mobile/rust"
           cp -a inone-development-archive-0.6.0/engine/mobile-mls/mls-client/src "$artifact/engine/mls-client/src"
+          cp -a inone-development-archive-0.6.0/engine/mobile-mls/mls-client/tests "$artifact/engine/mls-client/tests"
           cp inone-development-archive-0.6.0/engine/mobile-mls/mls-client/Cargo.lock "$artifact/engine/mls-client/Cargo.lock"
           cp -a mobile/rust/src "$artifact/mobile/rust/src"
           cp mobile/rust/Cargo.lock "$artifact/mobile/rust/Cargo.lock"
