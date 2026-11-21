@@ -70,6 +70,42 @@ void main() {
     await opened.close();
   });
 
+
+  test('pending opened routes are processed FIFO without dropping arrivals', () {
+    final queue = InOnePushRouteQueue();
+    final first = InOnePushRoute(roomId: '!room:first', eventId: r'$1');
+    final second = InOnePushRoute(roomId: '!room:second', eventId: r'$2');
+    final third = InOnePushRoute(roomId: '!room:third', eventId: r'$3');
+
+    expect(queue.enqueue(first), isTrue);
+    expect(queue.next, first);
+    // A second notification arrives while the first is still being handled.
+    expect(queue.enqueue(second), isTrue);
+    expect(queue.enqueue(second), isFalse);
+    expect(queue.next, first);
+    expect(queue.complete(first), isTrue);
+    expect(queue.next, second);
+    expect(queue.enqueue(third), isTrue);
+    expect(queue.complete(second), isTrue);
+    expect(queue.next, third);
+    expect(queue.complete(third), isTrue);
+    expect(queue.next, isNull);
+  });
+
+  test('pending route queue stays bounded and can be cleared on logout', () {
+    final queue = InOnePushRouteQueue(maxLength: 2);
+    final first = InOnePushRoute(roomId: '!room:first', eventId: r'$1');
+    final second = InOnePushRoute(roomId: '!room:second', eventId: r'$2');
+    final third = InOnePushRoute(roomId: '!room:third', eventId: r'$3');
+
+    queue.enqueue(first);
+    queue.enqueue(second);
+    queue.enqueue(third);
+    expect(queue.next, second);
+    queue.clear();
+    expect(queue.next, isNull);
+  });
+
   test('invalid messages never invoke navigation callbacks', () async {
     final foreground = StreamController<RemoteMessage>();
     final opened = StreamController<RemoteMessage>();
