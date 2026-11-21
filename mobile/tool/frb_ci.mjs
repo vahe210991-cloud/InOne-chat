@@ -49,7 +49,7 @@ function verifyContract() {
   const adapterOverrides = [];
   for (let index = 0; index < adapterLines.length; index++) {
     if (adapterLines[index].trim() !== '@override') continue;
-    const match = (adapterLines[index + 1] || '').match(/^\s*Future<[^;\n]*?>\s+([A-Za-z_]\w*)\s*\(/);
+    const match = (adapterLines[index + 1] || '').match(/^\s*Future<.*>\s+([A-Za-z_]\w*)\s*\(/);
     if (match) adapterOverrides.push(match[1]);
   }
   if (new Set(interfaceMethods).size !== interfaceMethods.length) {
