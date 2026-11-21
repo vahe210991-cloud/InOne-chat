@@ -3307,6 +3307,21 @@ impl Client {
         crash_at_test_failpoint("attachment_before_history_commit");
         transaction.commit().map_err(text)?;
         crash_at_test_failpoint("attachment_after_history_commit");
+        // A sync immediately before outbox recovery may already have queued this
+        // event as incoming. Once the durable outbox confirms it is ours, correct
+        // the in-memory handoff as well as the SQLCipher history row.
+        for item in &mut self.inbox {
+            if let Incoming::Attachment {
+                event_id: queued_event_id,
+                mine,
+                ..
+            } = item
+            {
+                if queued_event_id == &event_id {
+                    *mine = true;
+                }
+            }
+        }
         self.processed.insert(event_id.clone());
         Ok(event_id)
     }
