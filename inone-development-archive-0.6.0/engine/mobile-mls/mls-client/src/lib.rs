@@ -2394,7 +2394,9 @@ impl Client {
             )
             .map_err(text)?;
         if removed != 1 {
-            return Err("durable outgoing message journal disappeared before completion".to_string());
+            return Err(
+                "durable outgoing message journal disappeared before completion".to_string(),
+            );
         }
         transaction.commit().map_err(text)?;
         self.processed.insert(event_id.to_string());
@@ -2433,7 +2435,10 @@ impl Client {
             .map_err(text)?;
         if let Some((stored_room, stored_body, event_id)) = completed {
             if stored_room != room_id || stored_body != plaintext {
-                return Err("clientMessageId is already completed with a different room or payload".to_string());
+                return Err(
+                    "clientMessageId is already completed with a different room or payload"
+                        .to_string(),
+                );
             }
             return Ok(event_id);
         }
@@ -2458,7 +2463,10 @@ impl Client {
             .map_err(text)?;
         let persisted_message = if let Some((stored_room, stored_body, message)) = existing {
             if stored_room != room_id || stored_body != plaintext {
-                return Err("clientMessageId is already reserved for a different room or payload".to_string());
+                return Err(
+                    "clientMessageId is already reserved for a different room or payload"
+                        .to_string(),
+                );
             }
             message
         } else {
