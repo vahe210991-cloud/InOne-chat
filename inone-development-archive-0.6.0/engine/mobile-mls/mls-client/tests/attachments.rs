@@ -154,6 +154,11 @@ fn attachment_retry_reuses_the_exact_mls_message_after_server_commit() {
     let mut alice = resume_with_session(&engine.base, ALICE, "A_PHONE", &alice_db, &keys).unwrap();
     assert_eq!(alice.flush_outbox().unwrap(), 1);
     assert_eq!(alice.outbox_len().unwrap(), 0);
+    let resumed_handoff = alice.take_incoming();
+    assert!(
+        matches!(resumed_handoff.as_slice(), [Incoming::Attachment { mine: true, .. }]),
+        "the sender's own recovered attachment must retain outgoing direction in the in-memory handoff"
+    );
     let sender_history = alice.messages_for_room(ROOM).unwrap();
     let event_id = sender_history.iter().find_map(|item| match item {
         Incoming::Attachment { event_id, mine: true, .. } => Some(event_id.clone()),
