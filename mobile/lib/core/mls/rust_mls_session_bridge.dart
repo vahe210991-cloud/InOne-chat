@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:inone_mobile/src/rust/api/session.dart' as rust;
 import 'package:inone_mobile/src/rust/frb_generated.dart';
@@ -161,6 +162,40 @@ class RustMlsSessionBridge implements MlsSessionBridge {
       _requireSession().sendText(roomId: roomId, plaintext: plaintext);
 
   @override
+  Future<String> sendAttachment({
+    required String roomId,
+    required String name,
+    required String mimeType,
+    required Uint8List plaintext,
+  }) =>
+      _requireSession().sendAttachment(
+        roomId: roomId,
+        name: name,
+        mimeType: mimeType,
+        plaintext: plaintext,
+      );
+
+  @override
+  Future<String> sendAttachmentWithId({
+    required String roomId,
+    required String name,
+    required String mimeType,
+    required Uint8List plaintext,
+    required String clientMessageId,
+  }) =>
+      _requireSession().sendAttachmentWithId(
+        roomId: roomId,
+        name: name,
+        mimeType: mimeType,
+        plaintext: plaintext,
+        clientMessageId: clientMessageId,
+      );
+
+  @override
+  Future<Uint8List> downloadAttachment(String fileId) =>
+      _requireSession().downloadAttachment(fileId: fileId);
+
+  @override
   Future<String> enqueueText(String roomId, String plaintext) =>
       _requireSession().enqueueText(roomId: roomId, plaintext: plaintext);
 
@@ -193,9 +228,14 @@ class RustMlsSessionBridge implements MlsSessionBridge {
       final kind = value['type'];
       final roomId = value['room_id'];
       final eventId = value['event_id'];
+      final mineValue = value['mine'];
       if (roomId is! String || eventId is! String) {
         throw const FormatException('Native MLS message has no room/event identity');
       }
+      if (mineValue != null && mineValue is! bool) {
+        throw const FormatException('Native MLS message has an invalid sender direction');
+      }
+      final mine = mineValue == true;
       if (kind == 'text') {
         final text = value['text'];
         if (text is! String) {
@@ -205,10 +245,32 @@ class RustMlsSessionBridge implements MlsSessionBridge {
           roomId: roomId,
           eventId: eventId,
           text: text,
+          mine: mine,
+        );
+      }
+      if (kind == 'attachment') {
+        final fileId = value['file_id'];
+        final name = value['name'];
+        final mimeType = value['mime_type'];
+        final size = value['size'];
+        if (fileId is! String || fileId.isEmpty ||
+            name is! String || name.isEmpty ||
+            mimeType is! String || mimeType.isEmpty ||
+            size is! int || size <= 0) {
+          throw const FormatException('Native MLS attachment metadata is invalid');
+        }
+        return MlsIncomingMessage(
+          roomId: roomId,
+          eventId: eventId,
+          fileId: fileId,
+          name: name,
+          mimeType: mimeType,
+          size: size,
+          mine: mine,
         );
       }
       if (kind == 'unreadable') {
-        return MlsIncomingMessage(roomId: roomId, eventId: eventId);
+        return MlsIncomingMessage(roomId: roomId, eventId: eventId, mine: mine);
       }
       throw const FormatException('Native MLS returned an unknown message kind');
     }).toList(growable: false);
