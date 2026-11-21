@@ -1,76 +1,84 @@
-# InOne Beta 1.0 Backend
+# InOne Beta 1.0 Backend — canonical source
 
-## Canonical identity
+**Canonical Node.js backend:** this directory is the active backend source for InOne Beta 1.0. Its npm package is `inone-backend` (private, version `0.6.0`). The historical directory name `inone-development-archive-0.6.0` is retained for compatibility; it does not mean this code is archived or inactive.
 
-This directory is the **canonical Node.js backend source for InOne Beta 1.0**.
+**Architecture source of truth:** [Backend source-of-truth map](../../../docs/continuity/BACKEND-SOURCE-OF-TRUTH.md) and [ADR-004](../../../development/architecture/ADR-004-CANONICAL-BACKEND-IDENTITY.md).
 
-- Canonical repository path: `inone-development-archive-0.6.0/engine/`
-- npm package name: `inone-backend`
-- Package version: `0.6.0`
-- Runtime: Node.js `>=22`
-- Package is private and is not published to the npm registry.
+**Important:** the legacy implementation notes below are retained as historical context for the earlier Variant A / Matrix SDK prototype. They are not authoritative descriptions of the current Beta 1.0 backend architecture, package identity, persistence, or release status. Use the current package scripts and source-of-truth documents above for development and validation instructions.
 
-The directory name is retained for repository-path compatibility and historical provenance. The word `archive` in that path does **not** mean that this source is inactive, read-only, or superseded. Backend implementation, migrations, and Node.js backend tests are maintained here.
+---
 
-## Repository ownership boundaries
+# InOne — рабочий срез: шифрование, вход, PIN, восстановление, группы
 
-The repository also contains `inone-engine-poc-0.6.0/`. It is a separate historical/experimental tree and must not be treated as the canonical Node.js backend.
+Версия 0.5.0.
 
-The Flutter-connected persistent Rust MLS client currently has a separate canonical location:
+## Что это
+Проверка основных свойств чатов на уровне протокола:
+- личные чаты: два пользователя переписываются через сервер, сервер видит только шифротекст;
+- группы: владелец, администраторы и участники; добавление без истории; удаление с обновлением ключей; посторонние не получают беседу;
+- вход по паролю с защитой от перебора; каждое устройство отключается отдельно;
+- вход с нового устройства подтверждается кодом с уже подключённого устройства;
+- PIN: хранится хэшем с секретным перцем, блокируется после неверных попыток;
+- восстановление после кражи: код на почте, задержка 48 часов, отмена с любого устройства, PIN (если задан), отключение всех устройств;
+- после восстановления и удаления участника старые ключи не читают новые сообщения.
 
-`inone-engine-poc-0.6.0/mobile-mls/mls-client/`
+## Статус: ВРЕМЕННЫЙ ДВИЖОК
+Шифрование работает на движке `matrix-sdk-crypto-wasm` (вариант A, решение заказчика). Это временное решение. После обкатки в бета-версии Propo движок будет заменён на собственный (вариант B). Все вызовы движка проходят через `src/crypto-engine.js`, замена затронет только его.
 
-That Rust path is consumed by `mobile/rust/Cargo.toml`. Its presence does not make the Node.js backend in the POC tree canonical. Do not copy or replace Node backend files between these trees without a separately reviewed migration and source-diff audit.
+Условия замены: собственный движок проходит те же тесты; бета в Propo работает без критических инцидентов не меньше нескольких недель; пройден внешний аудит криптографии.
 
-| Responsibility | Canonical source |
-|---|---|
-| Node.js HTTP API and backend runtime | `inone-development-archive-0.6.0/engine/` |
-| PostgreSQL schema and migrations | `inone-development-archive-0.6.0/engine/` |
-| Node.js backend tests | `inone-development-archive-0.6.0/engine/test/` |
-| Flutter-connected persistent Rust MLS client | `inone-engine-poc-0.6.0/mobile-mls/mls-client/` |
-| Flutter Rust Bridge wrapper | `mobile/rust/` |
+## Структура
+- `src/crypto-engine.js` — временный адаптер к движку шифрования.
+- `src/client.js` — клиент: вход (в том числе с подтверждением), PIN, беседы и участники, отправка и чтение.
+- `src/server.js` — временный сервер: аккаунты, устройства, подтверждение входа, PIN, беседы, доставка, восстановление. Всё в памяти.
+- `test/e2e.test.js` — переписка, посторонний, подмена ключей, открытый текст (4 теста).
+- `test/recovery.test.js` — вход по паролю, отключение устройств, восстановление, украденное устройство (5 тестов).
+- `test/security.test.js` — подтверждение входа, ограничения, PIN, перебор, восстановление с PIN (9 тестов).
+- `test/groups.test.js` — группы: три участника, новичок без истории, удаление, посторонние (4 теста).
+- `test/roles.test.js` — роли: администраторы, понижение, права владельца (5 тестов).
+- `test/bruteforce.test.js` — защита от перебора пароля, одинаковые ответы для неизвестного логина, подключаемая почта (4 теста).
 
-## Install and run
+## Как запустить
+Нужен Node.js версии 22 или новее.
+1. В папке проекта: `npm install` (скачивает движок, около 8 МБ).
+2. `npm test` (31 тест).
 
-From the repository root:
+Сервер требует секретный перец для PIN (`PIN_PEPPER`, не короче 32 символов). Без него сервер не запускается. В тестах он задан явно.
 
-```sh
-cd inone-development-archive-0.6.0/engine
-node --version
-npm ci
-npm test
-```
+## Что проверено
+Тесты проверяют свойства, а не только успешный путь. Каждое правило дополнительно проверено намеренной поломкой: тест должен упасть. Проверены поломки: открытый текст в запросе, загрузка чужих ключей, приём открытого текста сервером, отключённая смена ключа при изменении устройств, нарушенная задержка 48 часов, восстановление, не отключающее устройства, разный ответ при неверном пароле и неизвестном логине, вход без подтверждения, отключённая блокировка PIN, восстановление без PIN, хранение PIN открытым текстом, отключённая смена ключа при удалении участника, выдача беседы посторонним, добавление людей любым участником, удаление администратора администратором, назначение ролей участником, отключённая блокировка входа, неучтённый неизвестный логин.
 
-Start the backend with:
+## Модель групп и ролей
+- Беседа создаётся владельцем. Читать и писать могут только участники.
+- Роли: владелец (один), администраторы (назначает владелец), участники.
+- Владелец добавляет и удаляет кого угодно, кроме себя. Назначает администраторов.
+- Администратор добавляет участников и удаляет обычных участников, но не администраторов и не владельца.
+- Участник может выйти сам. Владельца удалить или понизить нельзя.
+- Новичок получает текущий ключ отправителя, поэтому видит сообщения с этого момента, но не историю.
+- После удаления каждый оставшийся участник меняет свой ключ. Удалённый не читает новые сообщения, даже имея их копию.
+- Назначение роли не меняет состав беседы и не требует смены ключей.
 
-```sh
-npm start
-```
+## Почта и Email Delivery
 
-Database-backed tests use `DATABASE_URL` and the configured PostgreSQL test database:
+- Все продуктовые письма проходят через единый внутренний Email Delivery Service. Registration/Identity создают и проверяют коды; доставка не генерирует и не валидирует credentials.
+- Транспорт текущего этапа — SMTP через Nodemailer. Провайдер и домен выбираются отдельно; адаптер Email API остаётся расширением интерфейса, не второй параллельной реализацией.
+- Production использует PostgreSQL durable queue: одна запись на получателя, идемпотентность, AES-256-GCM шифрование адреса и содержимого, ограниченный retry/backoff, dead-letter, срок годности сообщений и 30-дневное хранение terminal records.
+- Письма используют версионированные HY/RU/EN templates. Язык письма совпадает с выбранным языком интерфейса: регистрация передаёт locale до создания профиля; успешный login сохраняет ожидающий локальный выбор до постановки security-письма; authenticated-события используют locale профиля; pre-auth recovery-события используют locale текущего запроса. Для legacy-клиентов без locale используется сохранённый профильный язык, а `hy` — только последний fallback. Locale фиксируется в зашифрованном payload очереди. Каждый шаблон отправляется как multipart plain-text + HTML и использует утверждённые InOne design-system tokens. Визуальный preview доступен в `../../development/design/email-delivery-preview.html`; owner approval ещё ожидается. Коды, ссылки, адреса и тела не пишутся в логи; тестовый transport не выводит содержимое в stdout.
+- Существующие use cases: регистрация, запасная почта, step-up, вход после восстановления, ожидание нового устройства, recovery code/link, отмена/завершение восстановления и отзыв старых устройств.
+- Runtime acceptance не заявлена: Node/PostgreSQL tests на актуальном SHA должны быть запущены; реальная доставка требует домена, провайдера, SPF/DKIM/DMARC и проверки на контролируемом адресе.
 
-```sh
-npm run test:db
-```
+## Что НЕ сделано (следующие этапы)
+- Масштаб: проверено на нескольких участниках. Цель — до 500 участников, это не измерено.
+- Production SMTP acceptance: SMTP adapter и durable queue реализованы, но выбор домена/провайдера, реальная отправка, SPF/DKIM/DMARC и проверка на контролируемых адресах остаются отдельным operational gate. Runtime Node/PostgreSQL tests должны быть запущены на точном финальном SHA.
+- PostgreSQL вместо памяти (следующий шаг). Счётчики PIN и входа переносятся в базу одной атомарной операцией.
+- TLS, журналирование, ограничение запросов по адресу.
+- Подтверждение доставки: события удаляются при первом получении.
+- Уведомления о новых сообщениях (push).
+- Сейчас клиент меняет ключ беседы при любом изменении устройств участника. Это строже, чем нужно, и даёт лишний трафик. Позже сделаем более точное правило.
+- Медиа, веб-интерфейс, языки HY/EN/RU, отметки доставки, правка в течение 15 минут и правила удаления.
 
-Apply database migrations with:
-
-```sh
-npm run migrate
-```
-
-The backend requires a sufficiently strong `PIN_PEPPER` (at least 32 characters) for PIN-related secret derivation. Use environment-specific secrets; never commit credentials or production secrets.
-
-## Validation and release status
-
-The package scripts define the Node.js unit/integration suite and the database-backed suite. CI workflows also validate PostgreSQL integration and the related Rust/OpenMLS components on their configured toolchains.
-
-A passing source test suite is not, by itself, production deployment acceptance. Production SMTP/domain delivery, deployment and reverse-proxy configuration, backup/restore, monitoring, operational secrets, and real-device/mobile MLS acceptance remain separate release gates. Do not describe the backend as production-ready unless those gates have been evidenced on the exact release candidate.
-
-## Change policy
-
-1. Make Node.js backend, migration, and backend-test changes in this directory.
-2. Keep `package.json` and `package-lock.json` package identity synchronized.
-3. Preserve database migration history and existing P0/security regression tests.
-4. Do not move this directory or rename its path as part of a metadata-only cleanup.
-5. Keep the POC Rust MLS client on its separately approved path until an explicit migration is reviewed and tested.
+## Ограничения, которые нельзя убрать технически
+- Сообщения, которые украденное устройство получило до кражи, остаются на нём читаемыми. Это свойство шифрования: ключи уже у устройства. Защита касается только новых сообщений.
+- Схема Megolm, которую использует движок, даёт слабее восстановление после кражи, чем Double Ratchet у WhatsApp и Viber для личных чатов. Поэтому ключ беседы меняется при изменении устройств, и это важно сохранить при переходе на собственный движок.
+- Для групп выбранный движок меняет ключ каждого отправителя при удалении участника. При большом числе участников это много работы и трафика. Схема MLS из нашего документа 02 работает эффективнее (логарифмически по размеру группы). Поэтому для групп из сотен участников собственный движок должен использовать MLS, а не Megolm. Это записываем в требования к варианту B.
+- Сервер здесь однопоточный, и последовательная обработка запросов сама не даёт параллельному перебору PIN больше попыток. В боевой системе с несколькими процессами счётчик попыток нужно обновлять одной атомарной операцией в базе данных.
