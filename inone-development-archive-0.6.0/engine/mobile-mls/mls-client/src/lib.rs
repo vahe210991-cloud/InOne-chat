@@ -130,6 +130,12 @@ struct Group {
 
 struct SessionTokens(String, String);
 
+impl SessionTokens {
+    fn into_tuple(mut self) -> (String, String) {
+        (std::mem::take(&mut self.0), std::mem::take(&mut self.1))
+    }
+}
+
 impl Drop for SessionTokens {
     fn drop(&mut self) {
         self.0.zeroize();
@@ -703,7 +709,7 @@ pub fn resume_with_session(
     let tokens = load_session_tokens(&meta)?;
     drop(meta);
     let agent = ureq::AgentBuilder::new().redirects(0).build();
-    build_client(agent, base.trim(), (tokens.0, tokens.1), user_id, device_id, db_path, &db_key)
+    build_client(agent, base.trim(), tokens.into_tuple(), user_id, device_id, db_path, &db_key)
 }
 
 fn build_client(
