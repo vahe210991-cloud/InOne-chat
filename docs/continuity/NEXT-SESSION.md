@@ -602,3 +602,13 @@ Continue on PR #128 branch `integration/g2-pr90-engine-b-main-2026-11-22-r1`. Th
 PR #90, #128 and CI mirror #129 stay open Draft. No merge without explicit owner approval.
 
 ---
+
+# Next action — latest exact-SHA CI and remaining attachment work
+
+- Current implementation PR: #128. CI mirror PR: #129, fast-forwarded to the same exact head SHA as #128. Both are Draft; do not merge.
+- First poll all latest exact-SHA Actions (Flutter mobile, iOS, FRB, P0 Node/PostgreSQL/Rust/OpenMLS, exact-SHA gate). If still queued, record the runner assignment blocker; do not claim test success.
+- Fix any failures, re-trigger on the exact latest SHA via the CI mirror branch, and inspect all job logs.
+- Remaining implementation: stable-ID encrypted attachment picker/send/download UI, tests for retries and device/membership revocation, then Android/iOS and two-device runtime acceptance.
+- Keep native MLS disabled by default until all gates pass and owner approves.
+
+---
