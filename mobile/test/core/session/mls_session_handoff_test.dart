@@ -66,6 +66,53 @@ void main() {
     expect(attachment.size, 1024);
   });
 
+  test('durable text enqueue and pending outbox use the native SQLCipher bridge', () async {
+    final httpClient = MockClient((request) async {
+      if (request.url.path == '/login') {
+        return http.Response(
+          jsonEncode({'token': 'access-1', 'refreshToken': 'refresh-1'}),
+          200,
+        );
+      }
+      if (request.url.path == '/profile') {
+        return http.Response(jsonEncode({'userId': '@alice:inone.test'}), 200);
+      }
+      return http.Response('{}', 404);
+    });
+    final bridge = _FakeMlsSessionBridge()
+      ..pendingOutboxItems = [
+        const MlsPendingOutboxItem(
+          localId: 'stable-local-id',
+          roomId: '!room:inone.test',
+          kind: 'text',
+          text: 'queued message',
+        ),
+      ];
+    final session = InOneSession(
+      baseUrl: 'https://api.inone.test',
+      httpClient: httpClient,
+      readDeviceId: () async => 'device-1',
+      writeDeviceId: (_) async {},
+      readMlsUserId: () async => null,
+      writeMlsUserId: (_) async {},
+      deleteMlsUserId: () async {},
+    );
+
+    await session.login(email: 'alice@example.test', password: 'not-used-in-test');
+    await session.adoptMlsSession(bridge);
+
+    final localId = await session.enqueueMlsText('!room:inone.test', 'queued message');
+    final pending = await session.pendingMlsOutbox('!room:inone.test');
+    final flushed = await session.flushMlsOutbox();
+
+    expect(localId, 'local-1');
+    expect(pending.single.localId, 'stable-local-id');
+    expect(pending.single.text, 'queued message');
+    expect(flushed, 0);
+    expect(bridge.flushCalls, 1);
+    session.dispose();
+  });
+
   test('concurrent initialize calls share one device identity creation', () async {
     final readGate = Completer<String?>();
     var readCalls = 0;
@@ -458,6 +505,8 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
   int purgeCalls = 0;
   int closeCalls = 0;
   int openCalls = 0;
+  int flushCalls = 0;
+  List<MlsPendingOutboxItem> pendingOutboxItems = const [];
   Completer<void>? openStarted;
   Completer<void>? openGate;
 
@@ -539,7 +588,7 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
   ) async => clientMessageId;
 
   @override
-  Future<List<MlsPendingOutboxItem>> pendingOutbox(String roomId) async => const [];
+  Future<List<MlsPendingOutboxItem>> pendingOutbox(String roomId) async => pendingOutboxItems;
 
   @override
   Future<String> sendAttachment({
@@ -577,7 +626,10 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
   Future<void> acknowledgeIncoming(List<String> eventIds) async {}
 
   @override
-  Future<int> flushOutbox() async => 0;
+  Future<int> flushOutbox() async {
+    flushCalls++;
+    return 0;
+  }
 
   @override
   Future<int> outboxLength() async => 0;
