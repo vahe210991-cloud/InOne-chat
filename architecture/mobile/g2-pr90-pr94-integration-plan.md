@@ -2,7 +2,7 @@
 
 Date: 2026-11-22
 Baseline: `main` at `36ee2c464bc0259ecc302a21bd6cbf321ac25896`
-Status: integration branch only; no production code ported yet; PRs #90 and #94 remain Draft.
+Status: selective Engine B integration implemented in Draft PR #124; exact-head CI is pending. Source PRs #90 and #94 remain Draft.
 
 ## Objective
 
@@ -11,49 +11,50 @@ Integrate the useful Flutter messaging and encrypted-attachment UI work from PR 
 ## Non-negotiable baseline
 
 - `mobile/rust/Cargo.toml` on main uses canonical Engine B at `inone-development-archive-0.6.0/engine/mobile-mls/mls-client`.
-- Keep current main's Rust FFI implementation, identity reservation, operation-id/idempotency APIs, SQLCipher key lifecycle, and logout cleanup. Do not copy PR #90's older Rust FFI or Cargo dependency wholesale.
-- Keep current Firebase Core/Messaging dependencies, push lifecycle observers/handlers, app lifecycle behavior, SDK constraints, and all current lockfile constraints.
+- Keep current main's Rust FFI implementation, identity reservation, operation-ID/idempotency APIs, SQLCipher key lifecycle, and logout cleanup. Do not copy PR #90's older Rust FFI or Cargo dependency wholesale.
+- Keep current Firebase Core/Messaging dependencies, push lifecycle observers/handlers, app lifecycle behavior, SDK constraints, and lockfile constraints.
 - Keep native MLS feature activation opt-in until runtime acceptance is complete.
 - No secrets, plaintext attachment bytes, attachment file keys, or refresh tokens may be sent to the backend or logged.
 
 ## PR #90 — feature-by-feature port
 
-### Already present on main (preserve and verify)
+### Implemented in PR #124
 
-- Engine B persistent session open/resume and platform key storage.
-- SQLCipher-backed local session state.
-- Rust FFI session lifecycle, attachment send/download entry points, local room history and outbox support.
-- Stable operation IDs for text and attachment sends.
-- Active identity reservation and safe local session purge/logout.
+- Added validated `InOneSession` orchestration for room operations, key-package setup, invitations, text enqueue/send, inbox/outbox, ACK/retry, epoch/member inspection and device lifecycle.
+- Connected the native MLS chat list and thread UI while preserving Firebase push lifecycle and push-route handling.
+- Added attachment picker/download flow. The UI keeps a conservative 50 MiB in-memory selection limit.
+- Attachment sends now pass a caller-generated stable `clientMessageId` to Engine B's durable attachment outbox; the facade validates the key before crossing FFI.
+- Exposed Engine B `local_room_ids()` through Rust FFI, FRB and Dart. If the server room-list request fails after a cold start, the app restores room IDs from the SQLCipher-backed local client.
+- Added focused session handoff tests, including stable attachment-ID forwarding and local-room-list facade coverage.
+- Kept the authenticated `GET /rooms/mine` repository adapter for online room metadata.
 
-### Port candidates from PR #90
+### Preserved from main
 
-- Dart `InOneSession` orchestration/wrappers for room operations, send/enqueue, local room restoration, pending outbox, ACK/retry and device lifecycle, adapted to current bridge contracts.
-- Chat-screen orchestration that replaces disabled/placeholder message-send and attachment flows.
-- File picker/save integration and focused UI regression tests.
+- Canonical Engine B dependency and generated FRB runtime.
+- Persistent Rust-owned sessions, platform key storage, SQLCipher, inbox/outbox and attachment journal.
+- Existing Firebase initialization, push handlers, foreground notification behavior and recovery deep links.
+- `INONE_MLS_NATIVE_ENABLED` remains false by default.
 
 ### Explicit regression guards
 
-- Do not replace current `mobile/lib/app/inone_mobile_app.dart` with the PR version: it removes current Firebase push lifecycle and foreground notification behavior.
-- Do not replace current `mobile/lib/core/mls/rust_mls_session_bridge.dart` or Rust FFI wholesale; preserve current APIs including `sendTextWithId`, `sendAttachmentWithId`, `pendingOutbox`, and `purgeLocalSession`.
-- Add any required dependency (for example `file_picker`) selectively and resolve it without lowering current Dart/Flutter SDK constraints or removing Firebase dependencies.
-- Inspect all chat UI changes for duplicate send paths, plaintext fallback, optimistic bubble reconciliation, and idempotent retry behavior.
+- Do not copy PR #90's Engine A Rust code, Cargo dependency, or older FFI wholesale.
+- Do not replace current `mobile/lib/app/inone_mobile_app.dart` with the PR #90 version; it removes current Firebase push lifecycle and foreground notification behavior.
+- Keep attachment payloads encrypted end-to-end; no plaintext fallback or backend-visible file key.
+- Preserve the durable Engine B outbox and stable operation IDs so retry after restart does not create a second logical send.
 
 ## PR #94 — Android PathProvider/JNI decision
 
-- Current main pins `path_provider_android: 2.2.23` and documents the JNI regression in newer 2.3.x.
-- First run Android API 35 emulator smoke against current main with that pin.
-- If it passes, retain the pin and do not add a redundant MethodChannel.
-- If it fails with the specific JNI context lookup regression, port the workaround narrowly, using current Android package `com.inone.app`, not PR #94's stale `com.inone.inone_mobile` path.
-- Preserve `super.configureFlutterEngine` and generated plugin registration.
-- Add a real channel/runtime test; a source-generation check alone is insufficient.
+- Current main pins `path_provider_android: 2.2.23` and avoids the JNI regression reported against newer 2.3.x.
+- PR #124 does not add the custom MethodChannel workaround from PR #94.
+- Earlier PR #124 exact-head Android runtime smoke passed with the current pin. The latest exact-head Android runtime check must pass again before this decision is final.
+- If the latest API 35 emulator run fails with the specific JNI context lookup regression, port the workaround narrowly, using the current Android package and preserving `super.configureFlutterEngine` and generated plugin registration.
 
 ## Required validation gates
 
 1. Formatting, static analysis, unit and widget tests for changed Dart code.
-2. Rust formatting, clippy (where configured), unit/integration tests and Engine B API compatibility.
-3. Flutter Rust Bridge generation/reproducibility check.
-4. Android debug/release build and API 35 emulator tests: app launch, support-directory resolution, Keystore key lifecycle, SQLCipher open/resume/logout.
+2. Rust formatting, clippy where configured, unit/integration tests and Engine B API compatibility.
+3. Flutter Rust Bridge generation/reproducibility check, including the new `localRoomIds` contract.
+4. Android build and API 35 emulator tests: app launch, support-directory resolution, Keystore key lifecycle, SQLCipher open/resume/logout and local room restoration.
 5. iOS simulator build/tests and Keychain lifecycle tests.
 6. Two independent devices: bidirectional MLS text exchange, encrypted attachment send/download/decrypt, process restart, retry without duplicate message, membership/device revocation.
 7. Backend authorization checks: attachment access scoped to authenticated device and current room membership; no plaintext attachment or key leakage.
@@ -62,15 +63,24 @@ Integrate the useful Flutter messaging and encrypted-attachment UI work from PR 
 ## Work sequence
 
 - [x] Create isolated integration branch from current main.
-- [x] Record the source audit and port constraints.
-- [x] Compare PR #90 changed Dart files against main and port only missing behavior.
-- [x] Add focused session handoff tests for the newly exposed persistent MLS operations.\n- [ ] Add focused widget/integration tests for message and attachment UI orchestration.
-- [ ] Run the complete Flutter/Rust/FRB CI matrix on the final integration head (currently queued behind earlier runs).
-- [ ] Run Android API 35 baseline smoke before deciding whether PR #94 workaround is needed.
-- [ ] Port narrowly only if runtime evidence demonstrates the JNI failure.
-- [ ] Run iOS simulator and two-device acceptance.
-- [ ] Open an integration PR only after exact-head checks are green; keep source PRs Draft until disposition is agreed.
+- [x] Audit PR #90 and PR #94 against the accepted Engine B baseline.
+- [x] Port Flutter session facade and chat UI without copying Engine A.
+- [x] Add stable attachment operation IDs at the UI/FFI boundary.
+- [x] Expose local Engine B room IDs through FFI/FRB and restore the offline room list after cold start.
+- [x] Preserve the existing PathProvider pin instead of adding a redundant MethodChannel.
+- [ ] Complete exact-head Android, iOS, FRB, Native MLS and P0 CI on the latest PR #124 SHA.
+- [ ] Run physical two-device acceptance for text, attachments, restart/retry and revocation.
+- [ ] Keep native MLS opt-in disabled until all runtime/security acceptance gates pass.
 
-## Progress update — 2026-11-22\n\n- Created Draft integration PR #124 from the exact current main baseline.\n- Ported the missing Flutter session facade and chat-thread/chat-list UI wiring while preserving current main push lifecycle and Engine B FFI.\n- Added the authenticated room-list repository call and pinned `file_picker 11.0.3` with a selectively merged lockfile; kept `path_provider_android 2.2.23` unchanged.\n- No offline local-room-list fallback was added because the current FRB surface does not expose that Engine B API; previously loaded room metadata is retained in memory.\n- Latest exact-head Actions are queued; an earlier pre-UI head completed Rust format, Rust bridge, OpenMLS, backend Node, PostgreSQL, and P0 room-list regression jobs successfully. Those results do not validate the latest head.\n\n## Current evidence boundary
+## Progress update — 2026-11-22
 
-This plan records source-level findings from repository inspection. Creating this branch and plan does not mean code was ported, builds were run, emulator/device tests passed, or either source PR is merge-ready.
+- Draft PR #124 is based on the exact main baseline from PR #119.
+- Latest code head before this documentation refresh: `bda3b6b7919151eda81b035940a1e2e8811f6515`.
+- The latest code changes expose `local_room_ids()` through Rust FFI/FRB/Dart and wire the app's offline fallback to the SQLCipher-backed room list.
+- Attachment UI now sends a stable operation ID and the session handoff test verifies it reaches the Rust bridge.
+- Exact-head CI for the latest code SHA was queued; this documentation commit will require a fresh exact-head CI run.
+- PR #126's independent integration SHA `97e1b14d9405f2dac4e1fafcfe3270fc2552825a` has completed 9/9 workflows successfully. PR #126 remains Draft and unmerged.
+
+## Current evidence boundary
+
+Source-level integration is implemented in PR #124, but this does not prove physical-device or two-device acceptance. CI results from older SHAs are not evidence for the latest head. Keep PR #124 Draft and keep `INONE_MLS_NATIVE_ENABLED` false until the final exact-head CI and required runtime/security gates pass.
