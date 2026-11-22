@@ -29,6 +29,68 @@ void main() {
   });
 
 
+  test('requests authenticated rooms and parses the verified room DTO', () async {
+    final session = _ProfileSession({
+      'rooms': [
+        {
+          'roomId': 'room-1',
+          'kind': 'group',
+          'name': 'Project room',
+          'role': 'member',
+        },
+      ],
+    });
+
+    final rooms = await InOneRepositories(session).myRooms();
+
+    expect(session.method, 'GET');
+    expect(session.path, '/rooms/mine');
+    expect(session.authenticated, isTrue);
+    expect(rooms, hasLength(1));
+    expect(rooms.single.roomId, 'room-1');
+    expect(rooms.single.kind, 'group');
+    expect(rooms.single.name, 'Project room');
+    expect(rooms.single.role, 'member');
+    session.dispose();
+  });
+
+  test('rejects a malformed rooms response instead of showing fake chats', () async {
+    final session = _ProfileSession({'rooms': [{'roomId': ''}]});
+
+    await expectLater(
+      InOneRepositories(session).myRooms(),
+      throwsA(isA<ApiException>().having(
+        (error) => error.code,
+        'code',
+        'invalid_response',
+      )),
+    );
+    session.dispose();
+  });
+
+  test('propagates unauthorized rooms responses from the existing session', () async {
+    final session = _ProfileSession(
+      const {},
+      error: const ApiException(
+        code: 'unauthorized',
+        statusCode: 401,
+        retryable: false,
+      ),
+    );
+
+    await expectLater(
+      InOneRepositories(session).myRooms(),
+      throwsA(isA<ApiException>().having(
+        (error) => error.statusCode,
+        'statusCode',
+        401,
+      )),
+    );
+    expect(session.path, '/rooms/mine');
+    expect(session.authenticated, isTrue);
+    session.dispose();
+  });
+
   test('updates the authenticated profile locale through session persistence', () async {
     final session = _ProfileSession({'locale': 'en'});
     final result = await InOneRepositories(session).updateLocale('en');
