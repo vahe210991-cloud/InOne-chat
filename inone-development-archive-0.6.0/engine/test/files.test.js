@@ -3,6 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, randomBytes } from 'node:crypto';
+import { request as nodeRequest } from 'node:http';
 import { createServer } from '../src/server.js';
 import { ChatClient, DEFAULT_PASSWORD as PW } from '../src/client.js';
 import { storeForTest } from './helpers.js';
@@ -262,6 +263,47 @@ test('очистка: брошенные загрузки старше суто�
     await s.alice.renewSession(); // сутки прошли: сессия обновляется, как в приложении
     assert.equal((await http(s.base, 'GET', `/files/${enc(abandoned)}/url`, { token: s.alice.token })).status, 404, 'брошенная пропала');
     assert.equal((await http(s.base, 'GET', `/files/${enc(kept)}/url`, { token: s.alice.token })).status, 200, 'готовая осталась');
+  } finally {
+    await s.stop();
+  }
+});
+
+test('подмена Host не влияет на origin подписанной ссылки', async () => {
+  const s = await start();
+  try {
+    const bytes = randomBytes(64);
+    const payload = JSON.stringify({
+      kind: 'file',
+      size: bytes.length,
+      sha256: sha(bytes),
+      roomId: ROOM,
+    });
+    const result = await new Promise((resolve, reject) => {
+      const request = nodeRequest({
+        hostname: '127.0.0.1',
+        port: s.srv.server.address().port,
+        method: 'POST',
+        path: '/files',
+        headers: {
+          host: 'attacker.invalid',
+          authorization: `Bearer ${s.alice.token}`,
+          'content-type': 'application/json',
+          'content-length': String(Buffer.byteLength(payload)),
+        },
+      }, (response) => {
+        const chunks = [];
+        response.on('data', (chunk) => chunks.push(chunk));
+        response.on('end', () => {
+          const body = Buffer.concat(chunks).toString('utf8');
+          resolve({ status: response.statusCode, json: body ? JSON.parse(body) : {} });
+        });
+      });
+      request.on('error', reject);
+      request.end(payload);
+    });
+    assert.equal(result.status, 200);
+    assert.equal(new URL(result.json.uploadUrl).origin, 'https://inone.test',
+      'внешний Host не должен попадать в подписанный URL');
   } finally {
     await s.stop();
   }

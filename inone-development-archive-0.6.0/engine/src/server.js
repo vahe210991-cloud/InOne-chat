@@ -444,7 +444,25 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
       const y = Buffer.from(String(b));
       return x.length === y.length && timingSafeEqual(x, y);
     };
-    const absoluteUrl = (req, path) => `${req.socket.encrypted ? 'https' : 'http'}://${req.headers.host}${path}`;
+    const absoluteUrl = (req, path) => {
+      const localAddress = req.socket.localAddress || '127.0.0.1';
+      const localHost = localAddress.includes(':') ? `[${localAddress}]` : localAddress;
+      const localPort = req.socket.localPort;
+      const localAuthority = `${localHost}${localPort ? `:${localPort}` : ''}`.toLowerCase();
+      const requestAuthority = String(req.headers.host || '').toLowerCase();
+      const normalizedLocalAddress = localAddress.toLowerCase();
+      const isLoopbackAddress = normalizedLocalAddress === '::1'
+        || normalizedLocalAddress.startsWith('127.')
+        || normalizedLocalAddress.startsWith('::ffff:127.');
+      // Accept Host only when it exactly identifies a loopback socket endpoint.
+      // For every non-loopback bind (including reverse proxies), use configured
+      // publicUrl; an attacker-controlled Host header is never reflected.
+      // Host and X-Forwarded-Host are not trusted proxy metadata.
+      const origin = isLoopbackAddress && requestAuthority === localAuthority
+        ? `${req.socket.encrypted ? 'https' : 'http'}://${localAuthority}`
+        : new URL(publicUrl).origin;
+      return new URL(path, origin).toString();
+    };
 
     async function handleObjectRequest(req, res) {
       const url = new URL(req.url, 'http://localhost');

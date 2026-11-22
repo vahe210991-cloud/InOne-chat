@@ -2877,9 +2877,9 @@ impl Client {
         {
             return Err("invalid attachment MIME type".to_string());
         }
-        if plaintext.is_empty() || plaintext.len() as u64 > 50 * 1024 * 1024 - 16 {
+        if plaintext.is_empty() || plaintext.len() as u64 > 250 * 1024 * 1024 - 16 {
             return Err(
-                "attachment size must be between 1 byte and 50 MiB minus the GCM tag".to_string(),
+                "attachment size must be between 1 byte and 250 MiB minus the GCM tag".to_string(),
             );
         }
 
