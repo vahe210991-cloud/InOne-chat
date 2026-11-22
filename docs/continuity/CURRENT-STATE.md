@@ -618,3 +618,15 @@ Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone
 - No backend source modules, schema/migrations, Rust/FFI source, directory paths or database data were changed. Do not merge to `main` without owner approval.
 
 - PR #120 remains open as Draft against `main`, not merged. Its README received a preservation correction after review; re-read the latest PR head and require fresh exact-head CI before acceptance.
+
+# G2 PR #90 integration — current state (2026-11-22, port matrix completed)
+
+- Main/base SHA: `a23f9624b8dfcf6234c1770178cff503eff38553`; integration branch: `integration/g2-pr90-engine-b-main-2026-11-22-r1`.
+- Draft PR #128 remains open. PR #90 remains open Draft and untouched; source branch diverged 115 ahead / 325 behind main (merge base `a174f794535ab09699d38292acb4919308873fd7`).
+- Port matrix: [G2 / PR #90 selective port matrix](../../architecture/mobile/G2-PR90-PORT-MATRIX.md). Stage report: [2026-11-22 port matrix report](../../development/reports/2026-11-22-g2-pr90-port-matrix.md).
+- Core Engine B persistent MLS, stable-ID messaging/attachment retry, encrypted download, SQLCipher/protected-key lifecycle and backend device/membership/Host hardening are already present on main. Do not port Engine A or duplicate these features.
+- First remaining product slice: typed `GET /rooms/mine` wrapper and Flutter messages-list integration. Current messages screen remains empty; preserve Firebase Push and existing session/navigation lifecycle.
+- Preparation Actions #45004656466 (6/6 jobs) and #45004656438 (exact-SHA acceptance) completed SUCCESS on the prepared documentation SHA only. Product-code checks NOT RUN.
+- Status: source/API matrix PASS; product port NOT STARTED; G2 NOT ACCEPTED; native MLS remains disabled by default. No merge or source PR mutation.
+
+---
