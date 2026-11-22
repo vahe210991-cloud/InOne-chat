@@ -15,14 +15,16 @@
 - **PASS:** verified current Engine B API and Rust FFI/Dart bridge signatures at source level.
 - **PASS:** confirmed backend device-bound download, authorization re-checks and Host-header hardening are already present on main, with current regression tests.
 - **PASS:** confirmed main already exposes stable-ID attachment send/retry, encrypted download, durable text outbox, pending inbox and ACK methods through Engine B/FFI/Dart.
-- **IN PROGRESS:** created a file-by-file port matrix. First missing slice is typed `GET /rooms/mine` repository wiring and Flutter messages list; then persisted room history and durable text outbox.
-- **NOT STARTED:** product-code port and new regressions.
-- **NOT RUN:** new Flutter/Rust/backend/Android/iOS checks for this stage.
+- **IMPLEMENTED ON #128:** `InOneRepositories.myRooms()` now calls authenticated `GET /rooms/mine` and reuses the existing validated `InOneRoomList` DTO.
+- **IMPLEMENTED ON #128:** repository regressions cover authenticated route/method, valid DTO mapping, malformed response and 401 propagation.
+- **IMPLEMENTED ON #128:** native messages screen now maps authenticated room names/IDs into the approved `InOneChatPreview` model. Firebase Push, auth/session/navigation and default-off MLS gate are preserved.
+- **PENDING:** exact-SHA Flutter/iOS/FRB/P0/acceptance Actions on the product-code head; no current-head job has yet been confirmed green.
+- **NOT STARTED:** room history, durable text send, attachment UI and two-device acceptance.
 - **NOT ACCEPTED:** G2 remains unaccepted; native MLS remains disabled by default.
 
 ## Key CTO decision
 
-Do not copy Engine A or the old PR #90 Rust/bridge/session implementation. Main already contains the critical Engine B persistence, stable-ID and security primitives. The remaining visible gap is UI/API wiring, so the next code change must be a narrow vertical slice on top of current main. Preserve Firebase Push, authentication/session lifecycle, navigation, SQLCipher and durable-before-ACK.
+Do not copy Engine A or the old PR #90 Rust/bridge/session implementation. Main already contains the critical Engine B persistence, stable-ID and security primitives. The first native room-list slice is now implemented on #128; the next code changes must connect room history and durable messaging through Engine B. Preserve Firebase Push, authentication/session lifecycle, navigation, SQLCipher and durable-before-ACK.
 
 ## Exact files
 
@@ -49,11 +51,11 @@ Do not copy Engine A or the old PR #90 Rust/bridge/session implementation. Main 
 
 ## Five next tasks
 
-1. Verify `GET /rooms/mine` response DTO and existing backend regression, then add typed `myRooms()`.
-2. Connect the Flutter messages list to typed room data without disturbing Firebase Push or navigation.
+1. Inspect current-head Actions and fix Flutter analyze/test/build failures until green.
+2. Add a deterministic native messages-screen regression if the existing widget harness supports injection.
 3. Connect room history to persisted Engine B inbox data; preserve durable persistence before ACK.
 4. Wire durable text outbox and flush using stable client message IDs.
-5. Add focused regressions and run all applicable exact-SHA GitHub Actions before advancing to attachment UI.
+5. Add focused regressions and rerun applicable exact-SHA Actions before advancing to attachment UI.
 
 ## Owner controls
 
