@@ -733,6 +733,10 @@ class InOneSession extends ChangeNotifier {
     return bridge.messagesForRoom(roomId);
   }
 
+  /// Returns room IDs from the persistent SQLCipher-backed OpenMLS client.
+  Future<List<String>> localMlsRoomIds() =>
+      _requireNativeMlsBridge().localRoomIds();
+
   /// Returns persisted diagnostics for MLS events that could not be decrypted.
   Future<List<MlsUndecryptableEvent>> mlsUndecryptableEvents() async {
     final bridge = _mlsBridge;
