@@ -661,3 +661,11 @@ Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone
 - Attachment UI and platform/two-device acceptance remain incomplete. `INONE_MLS_NATIVE_ENABLED=false`; G2 NOT ACCEPTED.
 
 ---
+
+## Inbox ACK safety checkpoint (2026-11-22)
+
+- SQLCipher history-before-ACK is now centralized in `InOneSession.loadMlsRoomHistory()`. It reads durable history before ACK and acknowledges only readable pending events from the requested room. Unreadable/other-room events remain pending.
+- Both normal room opening and push-open use this path. Regression test checks call order and filtering; exact-head execution pending.
+- Text send is source-wired via stable SQLCipher outbox operation IDs, app-resume retry and queued bubble restoration. Native MLS remains disabled by default; attachments/platform acceptance remain incomplete.
+
+---
