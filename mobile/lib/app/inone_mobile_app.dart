@@ -381,8 +381,8 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       final profile = await _repositories.profile();
       final organizationResponse = await _repositories.myOrganizations();
       final organizations = InOneOrganizationList.fromJson(organizationResponse).orgs;
-      final rooms = await _repositories.myRooms();
-      final chats = rooms.map((room) {
+      final roomList = await _repositories.myRooms();
+      final chats = roomList.rooms.map((room) {
         final roomKind = room.kind.toLowerCase();
         final kind = switch (roomKind) {
           'direct' || 'dm' || 'person' => InOneChatKind.person,
@@ -391,9 +391,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         };
         return InOneChatPreview(
           id: room.roomId,
-          name: room.name?.trim().isNotEmpty == true
-              ? room.name!.trim()
-              : room.roomId,
+          name: room.displayName,
           lastMessage: null,
           time: '',
           kind: kind,
