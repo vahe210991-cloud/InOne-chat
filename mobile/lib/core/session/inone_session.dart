@@ -733,6 +733,26 @@ class InOneSession extends ChangeNotifier {
     return bridge.messagesForRoom(roomId);
   }
 
+  /// Reads durable SQLCipher history before acknowledging readable inbox items.
+  Future<List<MlsIncomingMessage>> loadMlsRoomHistory(String roomId) async {
+    _validateMlsRoomId(roomId);
+    final bridge = _requireNativeMlsBridge();
+    final messages = await bridge.messagesForRoom(roomId);
+    final persistedEventIds = messages.map((message) => message.eventId).toSet();
+    final pending = await bridge.pendingIncoming();
+    final acceptedEventIds = pending
+        .where((message) =>
+            message.roomId == roomId &&
+            message.isReadable &&
+            persistedEventIds.contains(message.eventId))
+        .map((message) => message.eventId)
+        .toList(growable: false);
+    if (acceptedEventIds.isNotEmpty) {
+      await bridge.acknowledgeIncoming(acceptedEventIds);
+    }
+    return messages;
+  }
+
   /// Returns persisted diagnostics for MLS events that could not be decrypted.
   Future<List<MlsUndecryptableEvent>> mlsUndecryptableEvents() async {
     final bridge = _mlsBridge;
@@ -792,6 +812,12 @@ class InOneSession extends ChangeNotifier {
       throw ArgumentError.value(plaintext, 'plaintext', 'Message text cannot be empty');
     }
     return _requireNativeMlsBridge().enqueueText(roomId, plaintext);
+  }
+
+  /// Returns durable SQLCipher-backed outbox items for restoring pending bubbles.
+  Future<List<MlsPendingOutboxItem>> pendingMlsOutbox(String roomId) {
+    _validateMlsRoomId(roomId);
+    return _requireNativeMlsBridge().pendingOutbox(roomId);
   }
 
   Future<String> sendMlsAttachment(

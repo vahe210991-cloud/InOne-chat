@@ -1,3 +1,23 @@
+
+# Next execution — G2 / PR #90 selective Engine B integration (2026-11-22)
+
+Continue on Draft PR [#128](https://github.com/vahe210991-cloud/InOne-chat/pull/128), branch `integration/g2-pr90-engine-b-main-2026-11-22-r1`, created from `main` SHA `a23f9624b8dfcf6234c1770178cff503eff38553`. Read first:
+- [Mandatory AI-agent integration policy](../../development/AI-AGENT-GIT-INTEGRATION-POLICY.md)
+- [G2 / PR #90 Engine B integration plan](../../architecture/mobile/G2-PR90-ENGINE-B-INTEGRATION-PLAN.md)
+- [Preparation report](../../development/reports/2026-11-22-g2-agent-policy-and-pr90-integration-branch.md)
+
+1. Re-fetch live main, integration branch, and PR #90 head; record exact SHAs.
+2. Build a per-file/per-feature port matrix from PR #90 patch, checking each item against canonical Engine B and current Flutter app/session/push lifecycle.
+3. Verify Engine B API signatures and current Rust FFI/Dart bridge contract before editing.
+4. Implement one minimal vertical slice at a time: durable text outbox, then stable-ID attachment send/retry, then encrypted download/auth behavior, with regression tests.
+5. Preserve Engine B, Firebase Push, authorization, SQLCipher, durable-before-ACK, and native MLS disabled by default.
+6. Open/maintain a Draft PR and run every applicable Rust/FRB/backend/Flutter/Android/iOS GitHub Actions workflow on the exact final SHA. Inspect all jobs/logs; no inherited test claims.
+7. Keep PR #90 OPEN/DRAFT. No merge without explicit owner authorization.
+
+Current status: policy and branch preparation PASS; code port NOT STARTED; exact-SHA Actions NOT RUN; G2 NOT ACCEPTED.
+
+---
+
 # Next execution — P2 Push and Profile (2026-11-20)
 
 Continue on `audit/p2-push-profile-2026-11-20`. Read [the P2 audit report](../../development/reports/2026-11-20-P2-push-profile-audit.md) first. A2 is already merged; do not repeat it.
@@ -510,3 +530,85 @@ Required next work:
 - Preserve existing Beta 1.0, identity, database, MLS, and security decisions unless explicitly superseded by a separate owner decision.
 
 Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone-and-inone-business--2026-11-13).
+
+# Next execution — G2 / PR #90 selective Engine B integration (2026-11-22)
+
+Continue on Draft PR [#128](https://github.com/vahe210991-cloud/InOne-chat/pull/128), branch `integration/g2-pr90-engine-b-main-2026-11-22-r1`, based on `main` SHA `a23f9624b8dfcf6234c1770178cff503eff38553`. Read the [port matrix](../../architecture/mobile/G2-PR90-PORT-MATRIX.md) and [stage report](../../development/reports/2026-11-22-g2-pr90-port-matrix.md).
+
+1. Verify current `GET /rooms/mine` backend DTO and its existing HTTP regression; do not invent or change the endpoint.
+2. Add typed `InOneRepositories.myRooms()` and focused repository/contract regression.
+3. Connect the messages list to returned rooms, retaining Firebase Push, app navigation and auth/session lifecycle.
+4. Connect room history to Engine B persisted inbox; ACK only after durable persistence.
+5. Wire durable text outbox/flush with stable message IDs and retry idempotency.
+6. Add focused tests; run applicable backend/Rust/FRB/Flutter/Android/iOS Actions on the exact final SHA and inspect every job.
+7. Keep native MLS disabled by default; keep PR #90 and PR #128 Draft/open; no merge without explicit owner authorization.
+
+Current status: port matrix and source API review PASS; product-code port NOT STARTED; product checks NOT RUN; G2 NOT ACCEPTED.
+
+---
+
+# Next execution — G2 current-head CI and messaging vertical slices (2026-11-22)
+
+Continue on [PR #128](https://github.com/vahe210991-cloud/InOne-chat/pull/128), branch `integration/g2-pr90-engine-b-main-2026-11-22-r1`. Read [room-list vertical-slice report](../../development/reports/2026-11-22-g2-room-list-vertical-slice.md), [port matrix](../../architecture/mobile/G2-PR90-PORT-MATRIX.md), and the historical test evidence baseline.
+
+1. Re-fetch the exact PR head SHA and all Actions runs; inspect every job/step/log. Treat queued, skipped, absent or nonterminal jobs as pending, never green.
+2. Fix all Flutter analyze/test/Android build, iOS, FRB, P0/backend/Rust/DB or exact-SHA acceptance failures on the branch; rerun on the new exact head after every change.
+3. Add a deterministic messages-screen regression where the existing Flutter test harness allows it.
+4. Connect room history to Engine B persisted incoming messages. Do not decrypt outside Engine B and do not ACK before durable local persistence.
+5. Connect durable text outbox/flush using stable message IDs and retry idempotency; then stable-ID encrypted attachments.
+
+Keep `INONE_MLS_NATIVE_ENABLED=false`. Keep PR #90 and PR #128 open Draft; no merge without explicit owner authorization. G2 remains NOT ACCEPTED until all exact-SHA gates and platform/two-device criteria pass.
+
+---
+
+# Next execution — G2 exact-SHA CI and durable messaging (2026-11-22)
+
+Continue on [PR #128](https://github.com/vahe210991-cloud/InOne-chat/pull/128), branch `integration/g2-pr90-engine-b-main-2026-11-22-r1`. Read the [room-list vertical-slice report](../../development/reports/2026-11-22-g2-room-list-vertical-slice.md), [port matrix](../../architecture/mobile/G2-PR90-PORT-MATRIX.md), and historical test evidence baseline.
+
+1. Poll current exact-head Flutter mobile, iOS, FRB, P0/backend/PostgreSQL/Rust/OpenMLS and exact-SHA gate jobs. Inspect logs and artifacts; queued/skipped/absent jobs are not PASS.
+2. Fix every failure and rerun all applicable checks on the new exact head.
+3. Add deterministic room-list/thread-screen regression coverage if supported by the existing Flutter harness.
+4. Wire durable text outbox and flush using stable message IDs and retry idempotency; no plaintext fallback.
+5. Wire stable-ID encrypted attachment send/download UI and complete Android/iOS + two-device offline/restart/revocation acceptance.
+
+Room history read path is source-wired behind native MLS gate; SQLCipher read precedes ACK. Keep `INONE_MLS_NATIVE_ENABLED=false`. PR #90 and #128 stay open Draft; no merge without explicit owner authorization.
+
+---
+
+# Next execution — G2 current-head CI and encrypted attachments (2026-11-22)
+
+Continue on PR #128, branch `integration/g2-pr90-engine-b-main-2026-11-22-r1`. Read [the G2 vertical-slice report](../../development/reports/2026-11-22-g2-room-list-vertical-slice.md), the port matrix and historical test baseline.
+
+1. Poll exact-head Flutter, iOS, FRB, P0/backend/PostgreSQL/Rust/OpenMLS and acceptance jobs. Inspect logs; queued/skipped/absent is not PASS.
+2. Fix every current-head failure and rerun on the new exact SHA.
+3. Implement stable-ID encrypted attachment picker/send/download UI using existing Engine B APIs; no plaintext upload or unstable retry IDs.
+4. Add focused attachment regressions and verify ciphertext-only transport, authenticated/device-bound downloads, membership/revocation and retry idempotency.
+5. Complete Android/iOS SQLCipher/Keystore/Keychain, recovery, two-device offline/restart/duplicate-delivery and revocation acceptance. Keep native MLS disabled until owner acceptance.
+
+Room list/history/text outbox are source-wired behind the native-session gate. PR #90 and #128 remain open Draft; no merge without explicit owner authorization.
+
+---
+
+# Next execution — G2 exact-SHA CI and attachment integration (2026-11-22)
+
+Continue on PR #128 branch `integration/g2-pr90-engine-b-main-2026-11-22-r1`. The latest code checkpoint includes room list, SQLCipher history-before-ACK, durable text outbox, room mapper and session regression tests. Read the G2 vertical-slice report and historical test baseline.
+
+1. Reuse/update the CI mirror PR #129 to point at the latest exact PR #128 SHA, then poll all Flutter/iOS/FRB/P0/backend/PostgreSQL/Rust/OpenMLS/acceptance jobs and inspect logs.
+2. Fix all failures; rerun on the new exact SHA. No queued/skipped/absent jobs count as PASS.
+3. Implement stable-ID encrypted attachment picker/send/download UI using existing Engine B APIs and ciphertext-only transport.
+4. Add attachment retry/auth/revocation regressions; verify device-bound downloads and stable operation IDs.
+5. Complete Android/iOS SQLCipher/Keystore/Keychain, recovery and two-device offline/restart/duplicate-delivery/revocation acceptance. Keep native MLS disabled until owner acceptance.
+
+PR #90, #128 and CI mirror #129 stay open Draft. No merge without explicit owner approval.
+
+---
+
+# Next action — latest exact-SHA CI and remaining attachment work
+
+- Current implementation PR: #128. CI mirror PR: #129, fast-forwarded to the same exact head SHA as #128. Both are Draft; do not merge.
+- First poll all latest exact-SHA Actions (Flutter mobile, iOS, FRB, P0 Node/PostgreSQL/Rust/OpenMLS, exact-SHA gate). If still queued, record the runner assignment blocker; do not claim test success.
+- Fix any failures, re-trigger on the exact latest SHA via the CI mirror branch, and inspect all job logs.
+- Remaining implementation: stable-ID encrypted attachment picker/send/download UI, tests for retries and device/membership revocation, then Android/iOS and two-device runtime acceptance.
+- Keep native MLS disabled by default until all gates pass and owner approves.
+
+---

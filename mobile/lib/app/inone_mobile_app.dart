@@ -3,17 +3,18 @@ import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 
-import '../core/data/inone_profile.dart';
-import '../core/data/inone_push_repository.dart';
-import '../core/data/inone_public_config.dart';
+import '../core/data/inone_chat_preview_mapper.dart';
 import '../core/data/inone_organization.dart';
+import '../core/data/inone_profile.dart';
+import '../core/data/inone_public_config.dart';
+import '../core/data/inone_push_repository.dart';
 import '../core/data/inone_repositories.dart';
 import '../core/mls/rust_mls_session_bridge.dart';
 import '../core/network/api_environment.dart';
 import '../core/network/api_exception.dart';
-import '../core/session/inone_session.dart';
 import '../core/session/inone_push_lifecycle.dart';
 import '../core/session/inone_push_receive_lifecycle.dart';
+import '../core/session/inone_session.dart';
 import '../core/session/recovery_deep_link.dart';
 import '../ui_dart_source/inone.dart';
 
@@ -43,6 +44,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   final InOnePushRouteQueue _pendingPushRoutes = InOnePushRouteQueue();
   bool _pushRouteInFlight = false;
   String? _pushRoomId;
+  String? _pushRoomName;
   List<InOneThreadItem> _pushThreadItems = const [];
 
   String _screen = 'login';
@@ -54,6 +56,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   String _waitingActivateAt = '';
   InOneProfile? _profile;
   List<InOneOrganization> _organizations = const [];
+  List<InOneChatPreview> _chats = const [];
   InOneOrganization? _selectedOrganization;
   InOneSystemStatus? _systemStatus;
   bool _darkMode = false;
@@ -119,6 +122,9 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     final pushLifecycle = _pushLifecycle;
     if (pushLifecycle != null) {
       unawaited(pushLifecycle.refreshRegistration().catchError((Object _) {}));
+    }
+    if (_session.hasNativeMlsSession) {
+      unawaited(_flushMlsOutbox(refreshRoomId: _pushRoomId));
     }
   }
 
@@ -261,7 +267,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       }
 
       await _session.syncMlsMessages();
-      final incoming = await _session.mlsMessagesForRoom(route.roomId);
+      final incoming = await _session.loadMlsRoomHistory(route.roomId);
       final target = incoming.where((message) => message.eventId == route.eventId).toList(growable: false);
       if (target.isEmpty || target.every((message) => !message.isReadable)) {
         if (mounted) setState(() => _screen = 'messages');
@@ -271,14 +277,22 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
 
       final items = target
           .where((message) => message.isReadable)
-          .map((message) => InOneThreadItem(
-                kind: InOneThreadItemKind.text,
-                text: message.text,
-              ))
+          .map((message) => message.isAttachment
+              ? InOneThreadItem(
+                  kind: InOneThreadItemKind.file,
+                  fileLabel: message.name ?? 'Encrypted attachment',
+                  mine: message.mine,
+                )
+              : InOneThreadItem(
+                  kind: InOneThreadItemKind.text,
+                  text: message.text,
+                  mine: message.mine,
+                ))
           .toList(growable: false);
       if (!mounted) return;
       setState(() {
         _pushRoomId = route.roomId;
+        _pushRoomName = route.roomId;
         _pushThreadItems = items;
         _screen = 'pushChat';
       });
@@ -295,6 +309,131 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       }
     }
   }
+  Future<List<InOneThreadItem>> _loadThreadItems(String roomId) async {
+    // The session reads SQLCipher history before acknowledging durable inbox items.
+    final messages = await _session.loadMlsRoomHistory(roomId);
+
+    final pendingOutbox = await _session.pendingMlsOutbox(roomId);
+    final historyItems = messages
+        .where((message) => message.isReadable)
+        .map((message) => message.isAttachment
+            ? InOneThreadItem(
+                kind: InOneThreadItemKind.file,
+                fileLabel: message.name ?? 'Encrypted attachment',
+                mine: message.mine,
+              )
+            : InOneThreadItem(
+                kind: InOneThreadItemKind.text,
+                text: message.text,
+                mine: message.mine,
+              ));
+    final queuedItems = pendingOutbox.map((item) {
+      if (item.kind == 'attachment' || item.fileId != null) {
+        return InOneThreadItem(
+          kind: InOneThreadItemKind.file,
+          fileLabel: item.name ?? 'Encrypted attachment',
+          mine: true,
+          meta: 'Queued',
+        );
+      }
+      if (item.kind == 'text' && item.text != null) {
+        return InOneThreadItem(
+          kind: InOneThreadItemKind.text,
+          text: item.text,
+          mine: true,
+          meta: 'Queued',
+        );
+      }
+      return null;
+    }).whereType<InOneThreadItem>();
+    return List<InOneThreadItem>.unmodifiable([
+      ...historyItems,
+      ...queuedItems,
+    ]);
+  }
+
+  Future<void> _sendChatText(String plaintext) async {
+    final roomId = _pushRoomId;
+    if (roomId == null || !_session.hasNativeMlsSession) {
+      throw StateError('Native MLS session is not open');
+    }
+
+    // Engine B creates a stable local operation ID and durably stores the
+    // plaintext only inside SQLCipher before any network send is attempted.
+    await _session.enqueueMlsText(roomId, plaintext);
+    if (mounted && _pushRoomId == roomId) {
+      setState(() {
+        _pushThreadItems = [
+          ..._pushThreadItems,
+          InOneThreadItem(
+            kind: InOneThreadItemKind.text,
+            text: plaintext,
+            mine: true,
+            meta: 'Queued',
+          ),
+        ];
+      });
+    }
+    unawaited(_flushMlsOutbox(refreshRoomId: roomId));
+  }
+
+  Future<void> _flushMlsOutbox({String? refreshRoomId}) async {
+    if (!_session.hasNativeMlsSession) return;
+    try {
+      await _session.flushMlsOutbox();
+      await _session.syncMlsMessages();
+      if (refreshRoomId == null) return;
+      final items = await _loadThreadItems(refreshRoomId);
+      if (mounted && _pushRoomId == refreshRoomId) {
+        setState(() => _pushThreadItems = items);
+      }
+    } catch (_) {
+      // The SQLCipher outbox keeps its stable operation IDs for a later retry.
+    }
+  }
+
+  Future<void> _openChat(InOneChatPreview chat) async {
+    if (!_session.hasNativeMlsSession) {
+      _notice('Комната загружена. Для просмотра истории необходимо активировать и принять нативный MLS-сеанс на этом устройстве.');
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      _pushRoomId = chat.id;
+      _pushRoomName = chat.name;
+      _pushThreadItems = const [];
+      _screen = 'chatLoading';
+    });
+    try {
+      // Backend returns ciphertext only and enforces current room membership.
+      final history = await _session.request(
+        'GET',
+        '/rooms/${Uri.encodeComponent(chat.id)}/events',
+      );
+      if (history['events'] is! List) {
+        throw StateError('room history response is invalid');
+      }
+
+      // Engine B owns decryption and durable inbox processing.
+      await _session.syncMlsMessages();
+      final items = await _loadThreadItems(chat.id);
+      if (!mounted) return;
+      setState(() {
+        _pushThreadItems = items;
+        _screen = 'pushChat';
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _pushRoomId = null;
+        _pushRoomName = null;
+        _pushThreadItems = const [];
+        _screen = 'messages';
+      });
+      _notice('Не удалось безопасно загрузить историю комнаты. Проверьте подключение и членство в комнате.');
+    }
+  }
+
   String _formatActivationTime(String raw) {
     final parsed = DateTime.tryParse(raw)?.toLocal();
     if (parsed == null) return raw;
@@ -380,11 +519,14 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       final profile = await _repositories.profile();
       final organizationResponse = await _repositories.myOrganizations();
       final organizations = InOneOrganizationList.fromJson(organizationResponse).orgs;
+      final roomList = await _repositories.myRooms();
+      final chats = mapInOneRoomsToChatPreviews(roomList);
       if (!mounted) return;
       setState(() {
         _profile = profile;
         _organizations = organizations;
         _selectedOrganization = organizations.isEmpty ? null : organizations.first;
+        _chats = chats;
         _screen = 'messages';
       });
       if (_pendingPushRoutes.next != null) {
@@ -452,11 +594,13 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     setState(() {
       _profile = null;
       _organizations = const [];
+      _chats = const [];
       _selectedOrganization = null;
       _systemStatus = null;
       _registrationEmail = '';
       _pendingPushRoutes.clear();
       _pushRoomId = null;
+      _pushRoomName = null;
       _pushThreadItems = const [];
       _screen = 'login';
     });
@@ -693,29 +837,30 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           status: _systemStatus!,
           onMenu: () => setState(() => _screen = 'workspace'),
         );
+      case 'chatLoading':
+        return const Scaffold(body: Center(child: CircularProgressIndicator()));
       case 'pushChat':
         return InOneChatThreadScreen(
           header: InOneThreadHeader(
-            name: _pushRoomId ?? 'InOne chat',
+            name: _pushRoomName ?? _pushRoomId ?? 'InOne chat',
             statusLabel: 'End-to-end encrypted',
             online: false,
           ),
           items: _pushThreadItems,
-          onSend: (_) => _notice('Отправка сообщений остаётся заблокированной до принятия полного native MLS send pipeline.'),
+          onSend: _sendChatText,
           onBack: () => setState(() {
             _screen = 'messages';
             _pushRoomId = null;
+            _pushRoomName = null;
             _pushThreadItems = const [];
           }),
           onAttach: () => _notice('Вложения доступны только после подключения полного MLS encrypted attachment flow.'),
         );
       case 'messages':
         return InOneMessagesScreen(
-          chats: const [],
+          chats: _chats,
           unreadCountsAvailable: false,
-          onOpenChat: (_) => _notice(
-            'История и отправка сообщений заблокированы до подключения нативного MLS-клиента и зашифрованного локального хранилища. Сообщение не отправлено.',
-          ),
+          onOpenChat: (chat) => unawaited(_openChat(chat)),
           onSearch: () => _notice('Поиск по содержимому сообщений пока не реализован.'),
           onFilter: () => _notice('Дополнительные фильтры пока недоступны.'),
           onTab: _selectTab,

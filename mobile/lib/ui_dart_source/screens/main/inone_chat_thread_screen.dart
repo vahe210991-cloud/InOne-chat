@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../models/inone_models.dart';
@@ -23,7 +25,7 @@ class InOneChatThreadScreen extends StatefulWidget {
   final List<InOneThreadItem> items;
 
   /// Отправка текста. Пустые сообщения не отправляются.
-  final ValueChanged<String> onSend;
+  final FutureOr<void> Function(String) onSend;
   final VoidCallback onBack;
   final VoidCallback? onCall;
   final VoidCallback? onMore;
@@ -43,11 +45,18 @@ class _InOneChatThreadScreenState extends State<InOneChatThreadScreen> {
     super.dispose();
   }
 
-  void _send() {
+  Future<void> _send() async {
     final text = _input.text.trim();
     if (text.isEmpty) return;
-    widget.onSend(text);
-    _input.clear();
+    try {
+      await widget.onSend(text);
+      _input.clear();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        const SnackBar(content: Text('Не удалось сохранить сообщение. Повторите попытку.')),
+      );
+    }
   }
 
   @override

@@ -1,3 +1,16 @@
+
+## 2026-11-22 — Repository-wide AI-agent integration policy and PR #90 branch preparation
+
+- Owner directed that the main-first, selective integration decision be recorded so every agent can discover it regardless of assignment.
+- Added `development/AI-AGENT-GIT-INTEGRATION-POLICY.md` to `main`; root `AGENTS.md` now makes it mandatory, and `development/README.md` links it. Main documentation commits: `ada6a32d0a52bf22f8877f263c82b7da2d1992e1`, `7613bd9d39c5a62dbfee0891dda8942c58ea5a69`, `a23f9624b8dfcf6234c1770178cff503eff38553`.
+- Created fresh branch `integration/g2-pr90-engine-b-main-2026-11-22-r1` from exact main SHA `a23f9624b8dfcf6234c1770178cff503eff38553`.
+- Opened Draft integration PR #128 (no merge). Added integration plan `architecture/mobile/G2-PR90-ENGINE-B-INTEGRATION-PLAN.md` and report `development/reports/2026-11-22-g2-agent-policy-and-pr90-integration-branch.md`.
+- PR #90 remains OPEN/DRAFT and untouched. Its source head reviewed: `074e76014f33f46085d46cad93007a0fbc849215`; branch diverged from main (115 ahead / 322 behind at last comparison). No wholesale merge or code port was performed.
+- Canonical Engine B, Firebase Push, stable-ID messaging/attachment retries, SQLCipher, authorization and native MLS disabled-by-default are mandatory integration invariants.
+- Status: policy publication PASS; fresh branch creation PASS; source mapping PARTIAL; product code port NOT STARTED; Actions NOT RUN on this branch; G2 NOT ACCEPTED. No tests/builds are claimed.
+- Next: prepare per-feature/per-file port matrix; verify Engine B and FFI/Dart signatures; port one vertical slice at a time with regressions; run all applicable Actions on exact final SHA; preserve owner merge gate.
+- No local machine commands, product-code changes, merge, force-push, or PR #90 closure.
+
 ## 2026-11-19 — A2 FRB reconciliation audit started
 
 - Verified `main` remains at A1 merge commit `c939634288db1e7105cfe8d6a7182d4469da1dc4`; A1 PR #95 is merged. Post-merge runs #44519837539, #44519837547 and #44519837614 were not all terminal/successful at inspection; see the A2 report for job-level states.
@@ -623,3 +636,56 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Pre-sync checks on `cd43c60` are superseded. The first synchronize-triggered runs on the new head were created with conclusion `action_required` and no jobs because the branch update was pushed by `GITHUB_TOKEN`; GitHub requires a repository writer to approve these PR workflow runs. Do not treat them as test failures or successful validation.
 - Next: create a normal repository-authenticated head update (not via Actions `GITHUB_TOKEN`) so the exact-head PR workflows can run without the approval gate; then review all nine required workflows on the resulting SHA.
 - PR #119 remains Draft and unmerged.
+
+## 2026-11-22 — G2 PR #90 selective port matrix
+
+- Re-fetched main and PR refs. Main/base SHA: `a23f9624b8dfcf6234c1770178cff503eff38553`; integration branch remains based on that SHA. PR #90 source remains open Draft; source branch is diverged (115 ahead / 325 behind, merge base `a174f794535ab09699d38292acb4919308873fd7`).
+- Inspected all 27 changed paths and full PR patch; verified canonical Engine B, Rust FFI, Dart bridge/session API signatures.
+- Confirmed main already contains Engine B attachment crypto, durable text/attachment outboxes, stable-ID send/retry, encrypted download, protected SQLCipher key lifecycle, inbox/ACK APIs, device-bound backend downloads, authorization re-checks and Host hardening. Do not port Engine A or duplicate backend/security code.
+- Identified next missing vertical slice: typed `GET /rooms/mine` repository wrapper and Flutter messages-list integration. The current app's messages screen remains empty; preserve Firebase Push/session/navigation lifecycle.
+- Added matrix `architecture/mobile/G2-PR90-PORT-MATRIX.md` and report `development/reports/2026-11-22-g2-pr90-port-matrix.md`.
+- PR #128 preparation Actions runs #45004656466 (6 jobs) and #45004656438 (exact-SHA acceptance) are SUCCESS on their prepared documentation SHA; these are not product-code validation and do not accept G2.
+- Product-code port NOT STARTED; new tests NOT RUN; G2 NOT ACCEPTED. Native MLS remains disabled. PR #90 and #128 remain open Draft; no merge/force-push/branch deletion.
+- Next: verify `GET /rooms/mine` DTO and regression, implement typed repository wrapper + messages list as one narrow slice, add focused tests, then run applicable exact-SHA Actions.
+
+## 2026-11-22 — G2 native room-list vertical slice
+
+- Branch `integration/g2-pr90-engine-b-main-2026-11-22-r1`; base `main` SHA `a23f9624b8dfcf6234c1770178cff503eff38553`; PR #128 remains Draft.
+- Reused existing `InOneRoom` / `InOneRoomList` parser and tests. Added authenticated `InOneRepositories.myRooms()` calling existing `GET /rooms/mine`.
+- Added repository regressions for route/method/auth, valid room DTO, malformed response and 401 propagation.
+- Connected authenticated app loading to typed room list and mapped room name/ID to existing chat preview. Preserved Firebase Push, app/session/navigation lifecycle, and native MLS disabled-by-default. Cached chat previews clear on logout.
+- Updated empty-state text, mobile API contract, README, port matrix and report.
+- Existing backend `rooms-mine.test.js` source evidence covers membership scoping and unauthenticated 401; no backend code/endpoint changed.
+- Product code committed on branch; exact-head Actions pending. New tests authored but NOT RUN until GitHub Actions completes. No current-head PASS claim.
+- Report: [G2 room-list vertical slice](reports/2026-11-22-g2-room-list-vertical-slice.md).
+- Next: fix all exact-SHA CI failures; then room history through Engine B, durable text outbox/ACK, stable-ID attachments and platform/two-device acceptance. G2 NOT ACCEPTED; PR #90 and #128 remain open Draft; no merge.
+
+## 2026-11-22 — G2 native room history and durable ACK path
+
+- Extended the native room list slice: selecting a room now calls the existing authenticated ciphertext-only `GET /rooms/:id/events`, then Engine B sync and SQLCipher-backed `messagesForRoom`; UI maps only readable decrypted text and attachment metadata.
+- Pending readable event IDs are ACKed only after the durable SQLCipher history read succeeds. Unreadable events are not ACKed. Push-open path now follows the same persistence-before-ACK order and renders encrypted attachment metadata as file rows.
+- Native MLS remains disabled by default; these paths are source-wired behind `hasNativeMlsSession` and are NOT runtime-accepted. Text send/outbox and attachment transfer remain blocked.
+- Updated API contract, mobile README, port matrix and vertical-slice report. Existing Engine B/Rust methods reused; no backend route or Engine A code changed.
+- Current-head GitHub Actions remain queued as of last poll; no green result claimed. Continue exact-head polling and fix all failures.
+
+## 2026-11-22 — G2 durable text outbox wiring
+
+- Added `InOneSession.pendingMlsOutbox(roomId)` over the existing native bridge pending-outbox API.
+- Native chat composer now awaits a durable enqueue before clearing the draft. Engine B creates and persists the stable local operation ID in SQLCipher; flush sends with that same ID. Queued bubbles are restored from pending outbox, and the app retries flush/sync on resume.
+- Added session regression for enqueue/pending-outbox/flush bridge contract and room-to-chat preview mapper tests (group/direct/support, empty list, immutable result).
+- Thread history loads only Engine B persisted/decrypted messages; readable pending events are ACKed only after SQLCipher history read. Attachments remain display-only metadata and send/download UI stays blocked.
+- Native MLS remains disabled by default. All code is source-wired behind the native-session gate; no platform runtime acceptance claimed. Current-head GitHub Actions still need exact-SHA execution; no green result claimed.
+- Report: [G2 room-list vertical slice](reports/2026-11-22-g2-room-list-vertical-slice.md).
+
+## 2026-11-22 — centralized SQLCipher history-before-ACK contract
+
+- Added `InOneSession.loadMlsRoomHistory(roomId)`: reads Engine B SQLCipher history first, then checks pending inbox and ACKs only readable items belonging to the requested room. Unreadable and other-room events remain pending.
+- Normal room-open and push-open now share this session boundary; no UI-level direct ACK remains.
+- Added a session regression asserting call order `history → pending → ack` and selected-room/readable-only ACK filtering.
+- Source changes are in the current PR #128 branch; tests authored, not yet executed. Native MLS remains disabled by default. Exact-SHA Actions must pass before acceptance.
+
+## 2026-11-22 — tightened persisted-event ACK filter
+
+- Tightened `InOneSession.loadMlsRoomHistory()`: after reading SQLCipher history, it builds the set of persisted event IDs and ACKs only readable pending events in the selected room whose IDs are actually present in that history result.
+- Unreadable events, events from other rooms, and readable pending IDs absent from the durable history read are not ACKed.
+- Expanded the session regression to include an event absent from persisted history. Tests remain authored / NOT RUN until exact-SHA Actions execute.

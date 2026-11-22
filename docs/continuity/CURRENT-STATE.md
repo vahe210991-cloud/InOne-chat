@@ -1,3 +1,17 @@
+
+# G2 PR #90 integration — current state (2026-11-22)
+
+- Repository-wide policy: `development/AI-AGENT-GIT-INTEGRATION-POLICY.md` is committed on `main` and mandatory via root `AGENTS.md`; linked from `development/README.md`.
+- Main policy commits: `ada6a32d0a52bf22f8877f263c82b7da2d1992e1`, `7613bd9d39c5a62dbfee0891dda8942c58ea5a69`, latest main at branch creation `a23f9624b8dfcf6234c1770178cff503eff38553`.
+- Draft integration PR: [#128](https://github.com/vahe210991-cloud/InOne-chat/pull/128), open and unmerged.\n- Fresh integration branch: `integration/g2-pr90-engine-b-main-2026-11-22-r1`, created from exact main SHA `a23f9624b8dfcf6234c1770178cff503eff38553`.
+- Integration plan: [G2 / PR #90 Engine B integration plan](../../architecture/mobile/G2-PR90-ENGINE-B-INTEGRATION-PLAN.md), commit `32ba94552d532bfc2e0373e1175690017e36e4f8`.
+- Preparation report: [2026-11-22 G2 agent policy and PR #90 branch preparation](../../development/reports/2026-11-22-g2-agent-policy-and-pr90-integration-branch.md), commit `7b17d05fceb3fd02732b74e9dc84f31c992b45f9`.
+- PR #90 remains OPEN/DRAFT; source head reviewed `074e76014f33f46085d46cad93007a0fbc849215`. No source code was ported yet. Its old Engine A branch is a source for selective behavior only; production baseline remains Engine B.
+- Preserve Firebase Push, current session/navigation lifecycle, stable IDs, SQLCipher, authorization, encrypted-only attachments and `INONE_MLS_NATIVE_ENABLED=false`.
+- Policy and branch preparation PASS. Product port NOT STARTED; exact-SHA Actions NOT RUN; G2 NOT ACCEPTED. No merge or PR #90 closure authorized.
+
+---
+
 # Current state — P2 Push and Profile audit (2026-11-20)
 
 - A2 PR #102 is already merged to `main`: `df20bef8df05b3ab2e11b20cb91e8f2bca60eec0`. Do not repeat A2.
@@ -604,3 +618,61 @@ Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone
 - No backend source modules, schema/migrations, Rust/FFI source, directory paths or database data were changed. Do not merge to `main` without owner approval.
 
 - PR #120 remains open as Draft against `main`, not merged. Its README received a preservation correction after review; re-read the latest PR head and require fresh exact-head CI before acceptance.
+
+# G2 PR #90 integration — current state (2026-11-22, port matrix completed)
+
+- Main/base SHA: `a23f9624b8dfcf6234c1770178cff503eff38553`; integration branch: `integration/g2-pr90-engine-b-main-2026-11-22-r1`.
+- Draft PR #128 remains open. PR #90 remains open Draft and untouched; source branch diverged 115 ahead / 325 behind main (merge base `a174f794535ab09699d38292acb4919308873fd7`).
+- Port matrix: [G2 / PR #90 selective port matrix](../../architecture/mobile/G2-PR90-PORT-MATRIX.md). Stage report: [2026-11-22 port matrix report](../../development/reports/2026-11-22-g2-pr90-port-matrix.md).
+- Core Engine B persistent MLS, stable-ID messaging/attachment retry, encrypted download, SQLCipher/protected-key lifecycle and backend device/membership/Host hardening are already present on main. Do not port Engine A or duplicate these features.
+- First remaining product slice: typed `GET /rooms/mine` wrapper and Flutter messages-list integration. Current messages screen remains empty; preserve Firebase Push and existing session/navigation lifecycle.
+- Preparation Actions #45004656466 (6/6 jobs) and #45004656438 (exact-SHA acceptance) completed SUCCESS on the prepared documentation SHA only. Product-code checks NOT RUN.
+- Status: source/API matrix PASS; product port NOT STARTED; G2 NOT ACCEPTED; native MLS remains disabled by default. No merge or source PR mutation.
+
+---
+
+# G2 — latest execution checkpoint (2026-11-22)
+
+- Active branch: `integration/g2-pr90-engine-b-main-2026-11-22-r1`; base main SHA `a23f9624b8dfcf6234c1770178cff503eff38553`; PR [#128](https://github.com/vahe210991-cloud/InOne-chat/pull/128) open Draft.
+- First native room-list slice implemented: `InOneRepositories.myRooms()` reuses canonical `InOneRoomList`; repository tests cover authenticated GET, valid response, malformed response and unauthorized propagation; native messages screen renders authenticated room names/IDs.
+- Existing backend `GET /rooms/mine` and `rooms-mine.test.js` reused; no backend endpoint or Engine A code added.
+- Firebase Push/session/navigation preserved; cached chat list cleared on logout; `INONE_MLS_NATIVE_ENABLED=false` preserved.
+- Exact-head Flutter/iOS/FRB/P0/exact-SHA Actions pending. Authored tests NOT RUN until jobs complete; no current-head CI PASS claimed.
+- Room history, durable text send, attachment UI and two-device acceptance remain incomplete. G2 NOT ACCEPTED.
+- Latest report: [G2 room-list vertical slice](../../development/reports/2026-11-22-g2-room-list-vertical-slice.md).
+
+---
+
+## G2 native room history — latest source checkpoint (2026-11-22)
+
+- PR #128 now includes authenticated room-list repository/UI wiring and a room-opening path behind the native MLS session gate.
+- Room opening uses backend ciphertext-only history + Engine B sync + SQLCipher history read. Readable pending IDs are ACKed only after durable history read; unreadable items remain pending. Push-open uses the same order.
+- Native MLS remains disabled by default. Text send/outbox, attachment UI and two-device runtime acceptance remain incomplete. G2 NOT ACCEPTED.
+- Current-head Actions are queued/pending; no current-head green status is claimed.
+- Report: [G2 room-list vertical slice](../../development/reports/2026-11-22-g2-room-list-vertical-slice.md).
+
+---
+
+## G2 durable text outbox — latest implementation checkpoint (2026-11-22)
+
+- Chat list and room-history read path are source-wired. History uses authenticated ciphertext-only backend route, Engine B sync and SQLCipher history read; ACK readable events only after durable read.
+- Text send is source-wired behind native MLS gate: durable SQLCipher enqueue, stable local operation ID reused by Engine B flush/retry, queued bubble restoration and app-resume retry. Composer clears only after enqueue succeeds.
+- Added mapper and session/outbox regressions; execution awaits current exact-SHA GitHub Actions.
+- Attachment UI and platform/two-device acceptance remain incomplete. `INONE_MLS_NATIVE_ENABLED=false`; G2 NOT ACCEPTED.
+
+---
+
+## Inbox ACK safety checkpoint (2026-11-22)
+
+- SQLCipher history-before-ACK is now centralized in `InOneSession.loadMlsRoomHistory()`. It reads durable history before ACK and acknowledges only readable pending events from the requested room. Unreadable/other-room events remain pending.
+- Both normal room opening and push-open use this path. Regression test checks call order and filtering; exact-head execution pending.
+- Text send is source-wired via stable SQLCipher outbox operation IDs, app-resume retry and queued bubble restoration. Native MLS remains disabled by default; attachments/platform acceptance remain incomplete.
+
+---
+
+## ACK filter hardening (2026-11-22)
+
+- `loadMlsRoomHistory` now ACKs only readable pending IDs that are confirmed present in the selected room's SQLCipher history read. Unreadable, cross-room and not-yet-persisted IDs remain pending.
+- Session regression covers ordering and these negative cases. Exact-SHA Actions execution remains pending.
+
+---
