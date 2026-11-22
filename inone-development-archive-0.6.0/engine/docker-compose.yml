@@ -1,11 +1,11 @@
-# Local/CI backend stack. Secrets are supplied through the untracked .env file.
+# Local/CI backend stack. Runtime configuration is injected through environment variables.
 services:
   db:
     image: postgres:16
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-inone}
       POSTGRES_USER: ${POSTGRES_USER:-inone}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -14,9 +14,21 @@ services:
       retries: 20
   app:
     build: .
-    env_file: .env
     environment:
-      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be set in .env}
+      NODE_ENV: production
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-inone}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@db:5432/${POSTGRES_DB:-inone}"
+      INONE_PIN_PEPPER: "${INONE_PIN_PEPPER:?INONE_PIN_PEPPER must be set}"
+      INONE_PUBLIC_URL: ${INONE_PUBLIC_URL:-https://inone.invalid}
+      INONE_REGISTRATION_MODE: verified
+      INONE_MAIL_TRANSPORT: smtp
+      INONE_SMTP_HOST: ${INONE_SMTP_HOST:-127.0.0.1}
+      INONE_SMTP_PORT: ${INONE_SMTP_PORT:-587}
+      INONE_SMTP_SECURE: "false"
+      INONE_SMTP_REQUIRE_TLS: "true"
+      INONE_SMTP_FROM: ${INONE_SMTP_FROM:-ci@inone.invalid}
+      INONE_EMAIL_ENCRYPTION_KEY: ${INONE_EMAIL_ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
+      INONE_FILES_DIR: ${INONE_FILES_DIR:-/tmp/inone-files}
+      INONE_DOCS_SECRET: ${INONE_DOCS_SECRET:-ci-docs-secret-not-for-production-2026}
     depends_on:
       db:
         condition: service_healthy
