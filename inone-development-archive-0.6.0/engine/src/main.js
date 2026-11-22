@@ -8,6 +8,8 @@ import { createStore } from './store.js';
 import { createServer } from './server.js';
 import { createSmtpMailer } from './mail-smtp.js';
 import { createEmailDelivery } from './email-delivery.js';
+import { createFirebaseAdminPushSender } from './firebase-admin-push.js';
+import { createPushDelivery } from './push-delivery.js';
 
 /** Запускает сервер. pool = null — память (только для тестов и разработки). */
 export async function startServer({ config, logger = createLogger({ level: config.logLevel }), pool = null }) {
@@ -16,6 +18,23 @@ export async function startServer({ config, logger = createLogger({ level: confi
     if (config.runMigrations) await migrate(pool, { logger });
     store = createStore({ pool, pinPepper: config.pinPepper });
   }
+  const pushSender = config.firebaseProjectId && pool
+    ? await createFirebaseAdminPushSender({
+      projectId: config.firebaseProjectId,
+      serviceAccountJson: config.firebaseServiceAccountJson,
+    })
+    : null;
+  const pushDelivery = pushSender
+    ? createPushDelivery({
+      pool,
+      sender: pushSender,
+      encryptionKey: config.pushEncryptionKey,
+      logger,
+      pollIntervalMs: config.pushWorkerPollMs,
+      maxAttempts: config.pushMaxAttempts,
+    })
+    : undefined;
+  if (pushDelivery) await pushDelivery.backfillLegacyRegistrations();
   const smtpMailer = config.mailTransport === 'smtp'
     ? createSmtpMailer({
       host: config.smtpHost,
@@ -52,6 +71,7 @@ export async function startServer({ config, logger = createLogger({ level: confi
     bodyLimit: config.bodyLimitBytes,
         requirePhone: config.requirePhone,
     mailer,
+    pushDelivery,
     devEmailCode: config.devEmailCode,
         smsEnabled: config.smsEnabled,
         phoneBlockedCountries: config.phoneBlockedCountries,
@@ -73,6 +93,7 @@ export async function startServer({ config, logger = createLogger({ level: confi
   });
   const port = app.server.address().port;
   mailer?.start?.();
+  pushDelivery?.start?.();
   logger.info('server started', { port, environment: config.nodeEnv });
   if (config.devEmailCode) logger.warn('development email code is enabled: never use this in production', { environment: config.nodeEnv });
   let stopping = null;
@@ -83,6 +104,7 @@ export async function startServer({ config, logger = createLogger({ level: confi
       cleanupTimer = null;
       await new Promise((resolve) => app.server.close(resolve));
       await mailer?.stop?.();
+      await pushDelivery?.stop?.();
       if (pool) await pool.end();
       logger.info('stopped');
     })();

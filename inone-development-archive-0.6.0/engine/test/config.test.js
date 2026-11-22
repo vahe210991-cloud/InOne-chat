@@ -11,6 +11,8 @@ const GOOD = {
   INONE_PIN_PEPPER: 'q8Lw2rT6vN1zXc4bH9mK0pJs7dFg5aYe',
   INONE_DOCS_SECRET: DOCS_SECRET,
   INONE_EMAIL_ENCRYPTION_KEY: randomBytes(32).toString('hex'),
+  INONE_FIREBASE_PROJECT_ID: 'inone-messenger',
+  INONE_PUSH_ENCRYPTION_KEY: randomBytes(32).toString('hex'),
   INONE_PUBLIC_URL: 'https://inone.example',
   INONE_FILES_DIR: '/var/lib/inone/objects',
 };
