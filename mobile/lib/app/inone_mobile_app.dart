@@ -8,6 +8,7 @@ import '../core/data/inone_push_repository.dart';
 import '../core/data/inone_public_config.dart';
 import '../core/data/inone_organization.dart';
 import '../core/data/inone_repositories.dart';
+import '../core/data/inone_chat_preview_mapper.dart';
 import '../core/mls/rust_mls_session_bridge.dart';
 import '../core/network/api_environment.dart';
 import '../core/network/api_exception.dart';
@@ -463,21 +464,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       final organizationResponse = await _repositories.myOrganizations();
       final organizations = InOneOrganizationList.fromJson(organizationResponse).orgs;
       final roomList = await _repositories.myRooms();
-      final chats = roomList.rooms.map((room) {
-        final roomKind = room.kind.toLowerCase();
-        final kind = switch (roomKind) {
-          'direct' || 'dm' || 'person' => InOneChatKind.person,
-          'support' => InOneChatKind.support,
-          _ => InOneChatKind.group,
-        };
-        return InOneChatPreview(
-          id: room.roomId,
-          name: room.displayName,
-          lastMessage: null,
-          time: '',
-          kind: kind,
-        );
-      }).toList(growable: false);
+      final chats = mapInOneRoomsToChatPreviews(roomList);
       if (!mounted) return;
       setState(() {
         _profile = profile;
