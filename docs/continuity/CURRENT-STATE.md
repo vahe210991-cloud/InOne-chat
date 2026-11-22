@@ -652,3 +652,12 @@ Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone
 - Report: [G2 room-list vertical slice](../../development/reports/2026-11-22-g2-room-list-vertical-slice.md).
 
 ---
+
+## G2 durable text outbox — latest implementation checkpoint (2026-11-22)
+
+- Chat list and room-history read path are source-wired. History uses authenticated ciphertext-only backend route, Engine B sync and SQLCipher history read; ACK readable events only after durable read.
+- Text send is source-wired behind native MLS gate: durable SQLCipher enqueue, stable local operation ID reused by Engine B flush/retry, queued bubble restoration and app-resume retry. Composer clears only after enqueue succeeds.
+- Added mapper and session/outbox regressions; execution awaits current exact-SHA GitHub Actions.
+- Attachment UI and platform/two-device acceptance remain incomplete. `INONE_MLS_NATIVE_ENABLED=false`; G2 NOT ACCEPTED.
+
+---
