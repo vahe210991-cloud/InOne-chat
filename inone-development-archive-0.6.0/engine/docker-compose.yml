@@ -1,4 +1,4 @@
-# Local/CI backend stack. Runtime configuration is injected through environment variables.
+# Local/CI backend stack. The service environment is explicit; no ignored .env file is required for CI.
 services:
   db:
     image: postgres:16
