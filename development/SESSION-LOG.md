@@ -683,3 +683,9 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Normal room-open and push-open now share this session boundary; no UI-level direct ACK remains.
 - Added a session regression asserting call order `history → pending → ack` and selected-room/readable-only ACK filtering.
 - Source changes are in the current PR #128 branch; tests authored, not yet executed. Native MLS remains disabled by default. Exact-SHA Actions must pass before acceptance.
+
+## 2026-11-22 — tightened persisted-event ACK filter
+
+- Tightened `InOneSession.loadMlsRoomHistory()`: after reading SQLCipher history, it builds the set of persisted event IDs and ACKs only readable pending events in the selected room whose IDs are actually present in that history result.
+- Unreadable events, events from other rooms, and readable pending IDs absent from the durable history read are not ACKed.
+- Expanded the session regression to include an event absent from persisted history. Tests remain authored / NOT RUN until exact-SHA Actions execute.
