@@ -50,11 +50,17 @@ Existing files reused without changes:
 - Exact-SHA acceptance gate: **PENDING**.
 - No current-head test is claimed green yet. Any Actions run on an earlier SHA is superseded and cannot satisfy the final-head gate.
 
+## Room history implementation checkpoint
+
+- Room opening requests the existing authenticated `GET /rooms/:id/events` route (ciphertext only; backend membership checks remain authoritative).
+- It invokes Engine B sync and reads only messages already persisted in the SQLCipher inbox. Text and attachment metadata are mapped into the existing thread UI.
+- Pending readable event IDs are ACKed only after the durable SQLCipher history read succeeds. Unreadable events are not ACKed. Push-open follows the same persistence-before-ACK ordering.
+- This is source implementation only. Native MLS remains disabled by default, so the path is not runtime-accepted or available as a product feature until platform/security gates pass.
+
 ## Not implemented / acceptance boundary
 
-- Room history remains unavailable in the UI until the Engine B incoming/persisted message path is connected and validated.
-- Message sending remains blocked until durable outbox, stable message IDs, retry idempotency and ACK-after-durable-persistence are wired.
-- Attachments remain blocked pending the stable-ID encrypted attachment flow and platform acceptance.
+- Message sending remains blocked until durable outbox, stable message IDs, retry idempotency and acceptance of the native runtime are complete.
+- Attachments remain blocked for sending/downloading until the stable-ID encrypted attachment UI and platform acceptance pass.
 - Native MLS remains disabled by default.
 - G2 remains **NOT ACCEPTED**.
 
@@ -70,7 +76,7 @@ Existing files reused without changes:
 
 1. Inspect all current-head Actions jobs and logs; fix Flutter analyze/test/build failures until green.
 2. Add deterministic messages-screen regression if supported by the existing widget harness.
-3. Connect room history to persisted Engine B incoming messages; ACK only after durable local persistence.
+3. Wire durable text outbox and flush with stable message IDs and idempotent retries.
 4. Wire durable text outbox and flush with stable message IDs and idempotent retries.
 5. Implement stable-ID encrypted attachment UI/download and complete Android/iOS plus two-device acceptance.
 
