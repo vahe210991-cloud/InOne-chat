@@ -450,9 +450,10 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
       const localPort = req.socket.localPort;
       const localAuthority = `${localHost}${localPort ? `:${localPort}` : ''}`.toLowerCase();
       const requestAuthority = String(req.headers.host || '').toLowerCase();
-      const isLoopbackAddress = localAddress === '::1'
-        || localAddress.startsWith('127.')
-        || /^::ffff:127(?:\\.\\d{1,3}){3}$/i.test(localAddress);
+      const normalizedLocalAddress = localAddress.toLowerCase();
+      const isLoopbackAddress = normalizedLocalAddress === '::1'
+        || normalizedLocalAddress.startsWith('127.')
+        || normalizedLocalAddress.startsWith('::ffff:127.');
       // Accept Host only when it exactly identifies a loopback socket endpoint.
       // For every non-loopback bind (including reverse proxies), use configured
       // publicUrl; an attacker-controlled Host header is never reflected.
