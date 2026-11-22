@@ -177,6 +177,7 @@ abstract interface class MlsSessionBridge {
   Future<List<MlsIncomingMessage>> sync();
   Future<List<MlsIncomingMessage>> pendingIncoming();
   Future<List<MlsIncomingMessage>> messagesForRoom(String roomId);
+  Future<List<String>> localRoomIds();
   Future<void> acknowledgeIncoming(List<String> eventIds);
   Future<int> flushOutbox();
   Future<int> outboxLength();
