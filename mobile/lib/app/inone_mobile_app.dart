@@ -54,6 +54,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   String _waitingActivateAt = '';
   InOneProfile? _profile;
   List<InOneOrganization> _organizations = const [];
+  List<InOneChatPreview> _chats = const [];
   InOneOrganization? _selectedOrganization;
   InOneSystemStatus? _systemStatus;
   bool _darkMode = false;
@@ -380,11 +381,30 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       final profile = await _repositories.profile();
       final organizationResponse = await _repositories.myOrganizations();
       final organizations = InOneOrganizationList.fromJson(organizationResponse).orgs;
+      final rooms = await _repositories.myRooms();
+      final chats = rooms.map((room) {
+        final roomKind = room.kind.toLowerCase();
+        final kind = switch (roomKind) {
+          'direct' || 'dm' || 'person' => InOneChatKind.person,
+          'support' => InOneChatKind.support,
+          _ => InOneChatKind.group,
+        };
+        return InOneChatPreview(
+          id: room.roomId,
+          name: room.name?.trim().isNotEmpty == true
+              ? room.name!.trim()
+              : room.roomId,
+          lastMessage: null,
+          time: '',
+          kind: kind,
+        );
+      }).toList(growable: false);
       if (!mounted) return;
       setState(() {
         _profile = profile;
         _organizations = organizations;
         _selectedOrganization = organizations.isEmpty ? null : organizations.first;
+        _chats = chats;
         _screen = 'messages';
       });
       if (_pendingPushRoutes.next != null) {
@@ -452,6 +472,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     setState(() {
       _profile = null;
       _organizations = const [];
+      _chats = const [];
       _selectedOrganization = null;
       _systemStatus = null;
       _registrationEmail = '';
@@ -711,10 +732,10 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         );
       case 'messages':
         return InOneMessagesScreen(
-          chats: const [],
+          chats: _chats,
           unreadCountsAvailable: false,
-          onOpenChat: (_) => _notice(
-            'История и отправка сообщений заблокированы до подключения нативного MLS-клиента и зашифрованного локального хранилища. Сообщение не отправлено.',
+          onOpenChat: (chat) => _notice(
+            'Комната «${chat.name}» загружена. История и отправка останутся закрыты, пока не будет активирован и принят нативный MLS-сеанс на этом устройстве.',
           ),
           onSearch: () => _notice('Поиск по содержимому сообщений пока не реализован.'),
           onFilter: () => _notice('Дополнительные фильтры пока недоступны.'),
