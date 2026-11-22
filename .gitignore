@@ -4,3 +4,6 @@
 **/serviceAccountKey.json
 **/AuthKey_*.p8
 **/*.p8
+
+# Rust build artifacts (including the mobile Flutter/Rust bridge crate).
+target/
