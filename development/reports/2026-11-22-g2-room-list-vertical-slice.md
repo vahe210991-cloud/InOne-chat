@@ -6,7 +6,7 @@
 **Branch:** `integration/g2-pr90-engine-b-main-2026-11-22-r1`  
 **PR:** [#128 — Draft](https://github.com/vahe210991-cloud/InOne-chat/pull/128)  
 **Source PR:** [#90 — Open/Draft, unchanged](https://github.com/vahe210991-cloud/InOne-chat/pull/90)  
-**Code-slice SHA before documentation updates:** `1110e0b1a9083932cfa6bbaff54dc1045f8f0f5d`
+**Code-slice SHA before documentation updates:** `131175e765fb4ec6bb1079a03796be53e0969033`
 
 ## Scope / approved WBS mapping
 
@@ -29,9 +29,14 @@
 ## Changed product paths
 
 - `mobile/lib/core/data/inone_repositories.dart`
+- `mobile/lib/core/data/inone_chat_preview_mapper.dart`
 - `mobile/test/core/data/inone_repositories_test.dart`
+- `mobile/test/core/data/inone_chat_preview_mapper_test.dart`
+- `mobile/lib/core/session/inone_session.dart`
+- `mobile/test/core/session/mls_session_handoff_test.dart`
 - `mobile/lib/app/inone_mobile_app.dart`
 - `mobile/lib/ui_dart_source/screens/main/inone_messages_screen.dart`
+- `mobile/lib/ui_dart_source/screens/main/inone_chat_thread_screen.dart`
 
 Existing files reused without changes:
 - `mobile/lib/core/data/inone_room.dart`
@@ -42,7 +47,7 @@ Existing files reused without changes:
 
 - Backend route/DTO contract: **SOURCE REVIEW PASS**. Existing `rooms-mine.test.js` verifies authenticated room listing, membership scoping, non-member isolation and unauthenticated 401.
 - Existing DTO parser tests: historical source tests present; exact current branch Flutter suite pending.
-- New repository tests: authored; execution **PENDING**.
+- New repository, room-to-preview mapper and outbox bridge tests: authored; execution **PENDING**.
 - Flutter analyze/test/Android build: **PENDING** exact-SHA GitHub Actions.
 - iOS validation: **PENDING** exact-SHA GitHub Actions.
 - FRB generation: **PENDING** exact-SHA GitHub Actions.
@@ -59,8 +64,8 @@ Existing files reused without changes:
 
 ## Not implemented / acceptance boundary
 
-- Message sending remains blocked until durable outbox, stable message IDs, retry idempotency and acceptance of the native runtime are complete.
-- Attachments remain blocked for sending/downloading until the stable-ID encrypted attachment UI and platform acceptance pass.
+- Text sending is now source-wired behind the native-session gate: durable enqueue in Engine B SQLCipher outbox, stable local operation ID reused by flush/retry, queued bubble restoration, and retry on app resume. Composer clears only after enqueue succeeds.
+- Attachment sending/downloading remains blocked until the stable-ID encrypted attachment UI and platform acceptance pass.
 - Native MLS remains disabled by default.
 - G2 remains **NOT ACCEPTED**.
 
@@ -76,9 +81,9 @@ Existing files reused without changes:
 
 1. Inspect all current-head Actions jobs and logs; fix Flutter analyze/test/build failures until green.
 2. Add deterministic messages-screen regression if supported by the existing widget harness.
-3. Wire durable text outbox and flush with stable message IDs and idempotent retries.
-4. Wire durable text outbox and flush with stable message IDs and idempotent retries.
-5. Implement stable-ID encrypted attachment UI/download and complete Android/iOS plus two-device acceptance.
+3. Implement stable-ID encrypted attachment picker/send/download UI using existing Engine B APIs.
+4. Complete Android/iOS runtime, SQLCipher/KeyStore, recovery and two-device offline/restart/duplicate-delivery/revocation acceptance.
+5. Keep native MLS disabled until owner accepts all exact-SHA and platform gates; no merge without explicit approval.
 
 ## Owner controls
 
