@@ -91,8 +91,10 @@ test('CH-02 message delivery uses MLS and rejects legacy room-event POST', () =>
   assert.match(server, /epoch is outdated/u);
 });
 
-test('native Flutter production entry does not depend on WebView', () => {
-  assert.match(mobileEntry, /runApp\(const InOneMobileApp\(\)\)/u);
+test('native Flutter production entry gates push by platform and does not depend on WebView', () => {
+  assert.match(mobileEntry, /Platform\.isAndroid \|\| Platform\.isIOS/u);
+  assert.match(mobileEntry, /runApp\(InOneMobileApp\(enablePush:\s*supportsPush\)\)/u);
+  assert.match(mobileEntry, /FirebaseMessaging\.onBackgroundMessage\(inOneFirebaseMessagingBackgroundHandler\)/u);
   assert.doesNotMatch(mobileApp, /WebView/u);
 });
 
