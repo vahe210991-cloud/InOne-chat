@@ -676,3 +676,10 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Thread history loads only Engine B persisted/decrypted messages; readable pending events are ACKed only after SQLCipher history read. Attachments remain display-only metadata and send/download UI stays blocked.
 - Native MLS remains disabled by default. All code is source-wired behind the native-session gate; no platform runtime acceptance claimed. Current-head GitHub Actions still need exact-SHA execution; no green result claimed.
 - Report: [G2 room-list vertical slice](reports/2026-11-22-g2-room-list-vertical-slice.md).
+
+## 2026-11-22 — centralized SQLCipher history-before-ACK contract
+
+- Added `InOneSession.loadMlsRoomHistory(roomId)`: reads Engine B SQLCipher history first, then checks pending inbox and ACKs only readable items belonging to the requested room. Unreadable and other-room events remain pending.
+- Normal room-open and push-open now share this session boundary; no UI-level direct ACK remains.
+- Added a session regression asserting call order `history → pending → ack` and selected-room/readable-only ACK filtering.
+- Source changes are in the current PR #128 branch; tests authored, not yet executed. Native MLS remains disabled by default. Exact-SHA Actions must pass before acceptance.
