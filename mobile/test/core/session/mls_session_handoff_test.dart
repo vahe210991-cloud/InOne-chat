@@ -280,6 +280,7 @@ void main() {
     expect(await session.mlsOutboxLength(), 0);
     expect(await session.mlsLocalEpoch('room-1'), isNull);
     expect(await session.mlsMembersOf('room-1'), isEmpty);
+    expect(await session.localMlsRoomIds(), ['room-1']);
     await session.revokeMlsDevice('device-2');
     expect(await session.removeRevokedMlsDevices(), 0);
 
@@ -638,6 +639,9 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
 
   @override
   Future<List<MlsIncomingMessage>> messagesForRoom(String roomId) async => const [];
+
+  @override
+  Future<List<String>> localRoomIds() async => const ['room-1'];
 
   @override
   Future<void> acknowledgeIncoming(List<String> eventIds) async {}
