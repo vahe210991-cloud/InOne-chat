@@ -1,22 +1,22 @@
-# Сервер и база для проверки. Пароли — в файле .env, не в этом файле. Не проверено в этой среде.
+# Local/CI backend stack. Secrets are supplied through the untracked .env file.
 services:
   db:
     image: postgres:16
     environment:
-      POSTGRES_DB: change-me-set-in-your-environment
-      POSTGRES_USER: change-me-set-in-your-environment
-      POSTGRES_PASSWORD: change-me-set-in-your-environment
+      POSTGRES_DB: ${POSTGRES_DB:-inone}
+      POSTGRES_USER: ${POSTGRES_USER:-inone}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U inone -d inone"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-inone} -d ${POSTGRES_DB:-inone}"]
       interval: 5s
       retries: 20
   app:
     build: .
     env_file: .env
     environment:
-      DATABASE_URL: postgresql://HOST:5432/DATABASE (логин и пароль задаются переменной окружения)
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be set in .env}
     depends_on:
       db:
         condition: service_healthy
