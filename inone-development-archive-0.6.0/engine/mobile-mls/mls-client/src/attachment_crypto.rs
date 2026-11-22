@@ -17,7 +17,7 @@ const GCM_NONCE_LEN: usize = 12;
 const AES256_KEY_LEN: usize = 32;
 const GCM_TAG_LEN: usize = 16;
 const MAX_MANIFEST_SIZE: usize = 4 * 1024;
-const MAX_FILE_SIZE: u64 = 50 * 1024 * 1024 - GCM_TAG_LEN as u64;
+const MAX_FILE_SIZE: u64 = 250 * 1024 * 1024 - GCM_TAG_LEN as u64;
 
 /// Encrypt bytes with a fresh per-file AES-256-GCM key and nonce supplied by
 /// the caller's CSPRNG (the MLS provider's random source).
@@ -29,7 +29,7 @@ pub fn encrypt(
 ) -> Result<Vec<u8>, String> {
     validate_identity(room_id, "roomId")?;
     if plaintext.is_empty() || plaintext.len() as u64 > MAX_FILE_SIZE {
-        return Err("attachment size must be between 1 byte and 50 MiB".to_string());
+        return Err("attachment size must be between 1 byte and 250 MiB".to_string());
     }
     let aad = associated_data(room_id, plaintext.len() as u64);
     let cipher = Aes256Gcm::new_from_slice(key).map_err(|_| "invalid attachment key")?;
@@ -59,7 +59,7 @@ pub fn build_manifest(
     validate_identity(file_id, "fileId")?;
     validate_identity(room_id, "roomId")?;
     if plaintext.is_empty() || plaintext.len() as u64 > MAX_FILE_SIZE {
-        return Err("attachment size must be between 1 byte and 50 MiB".to_string());
+        return Err("attachment size must be between 1 byte and 250 MiB".to_string());
     }
     if ciphertext.len() != plaintext.len() + GCM_TAG_LEN {
         return Err("ciphertext length does not match AES-GCM payload".to_string());
