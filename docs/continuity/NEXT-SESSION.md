@@ -1,3 +1,23 @@
+
+# Next execution — G2 / PR #90 selective Engine B integration (2026-11-22)
+
+Continue on `integration/g2-pr90-engine-b-main-2026-11-22-r1`, created from `main` SHA `a23f9624b8dfcf6234c1770178cff503eff38553`. Read first:
+- [Mandatory AI-agent integration policy](../../development/AI-AGENT-GIT-INTEGRATION-POLICY.md)
+- [G2 / PR #90 Engine B integration plan](../../architecture/mobile/G2-PR90-ENGINE-B-INTEGRATION-PLAN.md)
+- [Preparation report](../../development/reports/2026-11-22-g2-agent-policy-and-pr90-integration-branch.md)
+
+1. Re-fetch live main, integration branch, and PR #90 head; record exact SHAs.
+2. Build a per-file/per-feature port matrix from PR #90 patch, checking each item against canonical Engine B and current Flutter app/session/push lifecycle.
+3. Verify Engine B API signatures and current Rust FFI/Dart bridge contract before editing.
+4. Implement one minimal vertical slice at a time: durable text outbox, then stable-ID attachment send/retry, then encrypted download/auth behavior, with regression tests.
+5. Preserve Engine B, Firebase Push, authorization, SQLCipher, durable-before-ACK, and native MLS disabled by default.
+6. Open/maintain a Draft PR and run every applicable Rust/FRB/backend/Flutter/Android/iOS GitHub Actions workflow on the exact final SHA. Inspect all jobs/logs; no inherited test claims.
+7. Keep PR #90 OPEN/DRAFT. No merge without explicit owner authorization.
+
+Current status: policy and branch preparation PASS; code port NOT STARTED; exact-SHA Actions NOT RUN; G2 NOT ACCEPTED.
+
+---
+
 # Next execution — P2 Push and Profile (2026-11-20)
 
 Continue on `audit/p2-push-profile-2026-11-20`. Read [the P2 audit report](../../development/reports/2026-11-20-P2-push-profile-audit.md) first. A2 is already merged; do not repeat it.
