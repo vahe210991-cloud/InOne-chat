@@ -659,3 +659,11 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Product code committed on branch; exact-head Actions pending. New tests authored but NOT RUN until GitHub Actions completes. No current-head PASS claim.
 - Report: [G2 room-list vertical slice](reports/2026-11-22-g2-room-list-vertical-slice.md).
 - Next: fix all exact-SHA CI failures; then room history through Engine B, durable text outbox/ACK, stable-ID attachments and platform/two-device acceptance. G2 NOT ACCEPTED; PR #90 and #128 remain open Draft; no merge.
+
+## 2026-11-22 — G2 native room history and durable ACK path
+
+- Extended the native room list slice: selecting a room now calls the existing authenticated ciphertext-only `GET /rooms/:id/events`, then Engine B sync and SQLCipher-backed `messagesForRoom`; UI maps only readable decrypted text and attachment metadata.
+- Pending readable event IDs are ACKed only after the durable SQLCipher history read succeeds. Unreadable events are not ACKed. Push-open path now follows the same persistence-before-ACK order and renders encrypted attachment metadata as file rows.
+- Native MLS remains disabled by default; these paths are source-wired behind `hasNativeMlsSession` and are NOT runtime-accepted. Text send/outbox and attachment transfer remain blocked.
+- Updated API contract, mobile README, port matrix and vertical-slice report. Existing Engine B/Rust methods reused; no backend route or Engine A code changed.
+- Current-head GitHub Actions remain queued as of last poll; no green result claimed. Continue exact-head polling and fix all failures.
