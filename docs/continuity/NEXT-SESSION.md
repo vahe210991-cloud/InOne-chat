@@ -530,3 +530,19 @@ Required next work:
 - Preserve existing Beta 1.0, identity, database, MLS, and security decisions unless explicitly superseded by a separate owner decision.
 
 Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone-and-inone-business--2026-11-13).
+
+# Next execution — G2 / PR #90 selective Engine B integration (2026-11-22)
+
+Continue on Draft PR [#128](https://github.com/vahe210991-cloud/InOne-chat/pull/128), branch `integration/g2-pr90-engine-b-main-2026-11-22-r1`, based on `main` SHA `a23f9624b8dfcf6234c1770178cff503eff38553`. Read the [port matrix](../../architecture/mobile/G2-PR90-PORT-MATRIX.md) and [stage report](../../development/reports/2026-11-22-g2-pr90-port-matrix.md).
+
+1. Verify current `GET /rooms/mine` backend DTO and its existing HTTP regression; do not invent or change the endpoint.
+2. Add typed `InOneRepositories.myRooms()` and focused repository/contract regression.
+3. Connect the messages list to returned rooms, retaining Firebase Push, app navigation and auth/session lifecycle.
+4. Connect room history to Engine B persisted inbox; ACK only after durable persistence.
+5. Wire durable text outbox/flush with stable message IDs and retry idempotency.
+6. Add focused tests; run applicable backend/Rust/FRB/Flutter/Android/iOS Actions on the exact final SHA and inspect every job.
+7. Keep native MLS disabled by default; keep PR #90 and PR #128 Draft/open; no merge without explicit owner authorization.
+
+Current status: port matrix and source API review PASS; product-code port NOT STARTED; product checks NOT RUN; G2 NOT ACCEPTED.
+
+---
