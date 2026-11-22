@@ -4,7 +4,7 @@
 - Owner directed that the main-first, selective integration decision be recorded so every agent can discover it regardless of assignment.
 - Added `development/AI-AGENT-GIT-INTEGRATION-POLICY.md` to `main`; root `AGENTS.md` now makes it mandatory, and `development/README.md` links it. Main documentation commits: `ada6a32d0a52bf22f8877f263c82b7da2d1992e1`, `7613bd9d39c5a62dbfee0891dda8942c58ea5a69`, `a23f9624b8dfcf6234c1770178cff503eff38553`.
 - Created fresh branch `integration/g2-pr90-engine-b-main-2026-11-22-r1` from exact main SHA `a23f9624b8dfcf6234c1770178cff503eff38553`.
-- Added integration plan `architecture/mobile/G2-PR90-ENGINE-B-INTEGRATION-PLAN.md` and report `development/reports/2026-11-22-g2-agent-policy-and-pr90-integration-branch.md`.
+- Opened Draft integration PR #128 (no merge). Added integration plan `architecture/mobile/G2-PR90-ENGINE-B-INTEGRATION-PLAN.md` and report `development/reports/2026-11-22-g2-agent-policy-and-pr90-integration-branch.md`.
 - PR #90 remains OPEN/DRAFT and untouched. Its source head reviewed: `074e76014f33f46085d46cad93007a0fbc849215`; branch diverged from main (115 ahead / 322 behind at last comparison). No wholesale merge or code port was performed.
 - Canonical Engine B, Firebase Push, stable-ID messaging/attachment retries, SQLCipher, authorization and native MLS disabled-by-default are mandatory integration invariants.
 - Status: policy publication PASS; fresh branch creation PASS; source mapping PARTIAL; product code port NOT STARTED; Actions NOT RUN on this branch; G2 NOT ACCEPTED. No tests/builds are claimed.
