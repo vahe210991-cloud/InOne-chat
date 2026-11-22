@@ -636,3 +636,14 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Pre-sync checks on `cd43c60` are superseded. The first synchronize-triggered runs on the new head were created with conclusion `action_required` and no jobs because the branch update was pushed by `GITHUB_TOKEN`; GitHub requires a repository writer to approve these PR workflow runs. Do not treat them as test failures or successful validation.
 - Next: create a normal repository-authenticated head update (not via Actions `GITHUB_TOKEN`) so the exact-head PR workflows can run without the approval gate; then review all nine required workflows on the resulting SHA.
 - PR #119 remains Draft and unmerged.
+
+## 2026-11-22 — G2 PR #90 selective port matrix
+
+- Re-fetched main and PR refs. Main/base SHA: `a23f9624b8dfcf6234c1770178cff503eff38553`; integration branch remains based on that SHA. PR #90 source remains open Draft; source branch is diverged (115 ahead / 325 behind, merge base `a174f794535ab09699d38292acb4919308873fd7`).
+- Inspected all 27 changed paths and full PR patch; verified canonical Engine B, Rust FFI, Dart bridge/session API signatures.
+- Confirmed main already contains Engine B attachment crypto, durable text/attachment outboxes, stable-ID send/retry, encrypted download, protected SQLCipher key lifecycle, inbox/ACK APIs, device-bound backend downloads, authorization re-checks and Host hardening. Do not port Engine A or duplicate backend/security code.
+- Identified next missing vertical slice: typed `GET /rooms/mine` repository wrapper and Flutter messages-list integration. The current app's messages screen remains empty; preserve Firebase Push/session/navigation lifecycle.
+- Added matrix `architecture/mobile/G2-PR90-PORT-MATRIX.md` and report `development/reports/2026-11-22-g2-pr90-port-matrix.md`.
+- PR #128 preparation Actions runs #45004656466 (6 jobs) and #45004656438 (exact-SHA acceptance) are SUCCESS on their prepared documentation SHA; these are not product-code validation and do not accept G2.
+- Product-code port NOT STARTED; new tests NOT RUN; G2 NOT ACCEPTED. Native MLS remains disabled. PR #90 and #128 remain open Draft; no merge/force-push/branch deletion.
+- Next: verify `GET /rooms/mine` DTO and regression, implement typed repository wrapper + messages list as one narrow slice, add focused tests, then run applicable exact-SHA Actions.
