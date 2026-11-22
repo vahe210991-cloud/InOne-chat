@@ -145,6 +145,11 @@ void main() {
           eventId: 'event-unreadable',
         ),
         MlsIncomingMessage(
+          roomId: '!room:inone.test',
+          eventId: 'event-not-in-history',
+          text: 'not yet durable',
+        ),
+        MlsIncomingMessage(
           roomId: '!other:inone.test',
           eventId: 'event-other-room',
           text: 'other room',
