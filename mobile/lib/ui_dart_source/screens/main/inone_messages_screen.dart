@@ -92,7 +92,7 @@ class _InOneMessagesScreenState extends State<InOneMessagesScreen> {
                       child: InOneEmptyState(
                         icon: InOneIcons.chat,
                         title: 'No chats yet',
-                        text: 'Your rooms are loaded from the InOne account. Encrypted message history and sending are available only after the native MLS session is active on this device.',
+                        text: 'No rooms are linked to this account yet. Rooms you belong to will appear here. Message history and sending require an active native MLS session on this device.',
                       ),
                     )
                   : ListView.builder(
