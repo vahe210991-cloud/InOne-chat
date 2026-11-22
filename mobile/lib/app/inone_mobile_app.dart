@@ -267,19 +267,13 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       }
 
       await _session.syncMlsMessages();
-      final incoming = await _session.mlsMessagesForRoom(route.roomId);
+      final incoming = await _session.loadMlsRoomHistory(route.roomId);
       final target = incoming.where((message) => message.eventId == route.eventId).toList(growable: false);
       if (target.isEmpty || target.every((message) => !message.isReadable)) {
         if (mounted) setState(() => _screen = 'messages');
         _notice('Сообщение ещё не расшифровано на этом устройстве или недоступно.');
         return;
       }
-
-      // sync() commits the incoming event to the SQLCipher inbox. ACK only
-      // after the durable room-history read confirms the message is present.
-      await _session.acknowledgeMlsMessages(
-        target.where((message) => message.isReadable).map((message) => message.eventId).toList(growable: false),
-      );
 
       final items = target
           .where((message) => message.isReadable)
@@ -316,17 +310,8 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     }
   }
   Future<List<InOneThreadItem>> _loadThreadItems(String roomId) async {
-    // Reading history from Engine B confirms that incoming messages are already
-    // committed to SQLCipher before any delivery ACK is issued.
-    final messages = await _session.mlsMessagesForRoom(roomId);
-    final pendingIncoming = await _session.pendingMlsMessages();
-    final acceptedEventIds = pendingIncoming
-        .where((message) => message.roomId == roomId && message.isReadable)
-        .map((message) => message.eventId)
-        .toList(growable: false);
-    if (acceptedEventIds.isNotEmpty) {
-      await _session.acknowledgeMlsMessages(acceptedEventIds);
-    }
+    // The session reads SQLCipher history before acknowledging durable inbox items.
+    final messages = await _session.loadMlsRoomHistory(roomId);
 
     final pendingOutbox = await _session.pendingMlsOutbox(roomId);
     final historyItems = messages
