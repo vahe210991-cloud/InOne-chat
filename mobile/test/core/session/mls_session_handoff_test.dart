@@ -267,9 +267,11 @@ void main() {
         'proof.txt',
         'text/plain',
         Uint8List.fromList([1, 2]),
+        'attachment-operation-1',
       ),
       'attachment-event-1',
     );
+    expect(bridge.attachmentClientMessageId, 'attachment-operation-1');
     expect(await session.downloadMlsAttachment('file-1'), isEmpty);
     expect(await session.pendingMlsMessages(), isEmpty);
     expect(await session.pendingMlsOutbox('room-1'), isEmpty);
@@ -510,6 +512,7 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
   Map<String, String>? openArguments;
   Map<String, String>? resumeArguments;
   String accessToken = 'access-1';
+  String? attachmentClientMessageId;
   bool failOpen = false;
   bool failResume = false;
   Map<String, String>? purgeArguments;
@@ -616,7 +619,10 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
     required String mimeType,
     required Uint8List plaintext,
     required String clientMessageId,
-  }) async => 'attachment-event-1';
+  }) async {
+    attachmentClientMessageId = clientMessageId;
+    return 'attachment-event-1';
+  }
 
   @override
   Future<Uint8List> downloadAttachment(String fileId) async => Uint8List(0);
