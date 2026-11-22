@@ -831,16 +831,8 @@ class InOneSession extends ChangeNotifier {
     return _requireNativeMlsBridge().downloadAttachment(fileId);
   }
 
-  Future<List<MlsIncomingMessage>> syncMlsMessages() =>
-      _requireNativeMlsBridge().sync();
-
   Future<List<MlsIncomingMessage>> pendingMlsMessages() =>
       _requireNativeMlsBridge().pendingIncoming();
-
-  Future<List<MlsIncomingMessage>> mlsMessagesForRoom(String roomId) {
-    _validateMlsRoomId(roomId);
-    return _requireNativeMlsBridge().messagesForRoom(roomId);
-  }
 
   Future<void> acknowledgeMlsMessages(List<String> eventIds) {
     if (eventIds.any((id) => id.trim().isEmpty || id.length > 128)) {
