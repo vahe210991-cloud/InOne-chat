@@ -58,7 +58,7 @@ Port only after confirming each behavior is still absent on this branch's curren
 |---|---|---|
 | G0 | Repository-wide agent policy committed and discoverable | PASS |
 | G1 | Fresh integration branch created from exact live main SHA | PASS |
-| G2 | PR #90 patch mapped against current Engine B and app lifecycle | PARTIAL — source inventory done; per-feature diff mapping pending |
+| G2 | PR #90 patch mapped against current Engine B and app lifecycle | PASS — 27 changed paths classified; API signatures verified at source level |
 | G3 | Minimal product-code port and regression tests | NOT STARTED |
 | G4 | Rust/FRB, backend, Flutter, Android and iOS validation on one exact SHA | NOT RUN |
 | G5 | Source review, security review, acceptance report | NOT STARTED |
@@ -66,11 +66,11 @@ Port only after confirming each behavior is still absent on this branch's curren
 
 ## Next actions
 
-1. Re-fetch live `main`, PR #90 head, and this branch head before touching overlapping files.
-2. Produce a per-file/per-feature port matrix from the complete PR #90 patch, classifying each change as already present, required, obsolete, or blocked.
-3. Inspect Engine B API signatures and current Dart/Rust bridge signatures from this branch; write a typed mapping before editing.
-4. Implement one small vertical slice at a time, with focused tests, and review each complete diff.
-5. Open/maintain a Draft integration PR and run every applicable GitHub Actions workflow on the exact proposed head SHA. Inspect job logs and artifacts; no inherited CI claims.
+1. Verify the existing `GET /rooms/mine` response DTO and backend regression; do not invent an endpoint.
+2. Add the typed `InOneRepositories.myRooms()` wrapper and focused regression.
+3. Connect the Flutter messages list while preserving Firebase Push, auth/session and navigation lifecycle.
+4. Connect room history and durable text outbox through Engine B; ACK only after durable local persistence and preserve stable message IDs.
+5. Add focused regressions and run applicable backend/Rust/FRB/Flutter/Android/iOS Actions on the exact proposed head SHA.
 6. Keep PR #90 open Draft as source provenance. Do not merge either PR without explicit owner approval.
 
 ## Acceptance rule
