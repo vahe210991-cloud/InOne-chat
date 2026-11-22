@@ -26,6 +26,8 @@ Main documentation commits:
 
 ## Integration branch
 
+- Draft integration PR: [#128](https://github.com/vahe210991-cloud/InOne-chat/pull/128). It remains open and unmerged.
+
 - Base branch: `main`
 - Exact base SHA: `a23f9624b8dfcf6234c1770178cff503eff38553`
 - New branch: `integration/g2-pr90-engine-b-main-2026-11-22-r1`
