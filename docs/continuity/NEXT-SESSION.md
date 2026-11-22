@@ -546,3 +546,17 @@ Continue on Draft PR [#128](https://github.com/vahe210991-cloud/InOne-chat/pull/
 Current status: port matrix and source API review PASS; product-code port NOT STARTED; product checks NOT RUN; G2 NOT ACCEPTED.
 
 ---
+
+# Next execution — G2 current-head CI and messaging vertical slices (2026-11-22)
+
+Continue on [PR #128](https://github.com/vahe210991-cloud/InOne-chat/pull/128), branch `integration/g2-pr90-engine-b-main-2026-11-22-r1`. Read [room-list vertical-slice report](../../development/reports/2026-11-22-g2-room-list-vertical-slice.md), [port matrix](../../architecture/mobile/G2-PR90-PORT-MATRIX.md), and the historical test evidence baseline.
+
+1. Re-fetch the exact PR head SHA and all Actions runs; inspect every job/step/log. Treat queued, skipped, absent or nonterminal jobs as pending, never green.
+2. Fix all Flutter analyze/test/Android build, iOS, FRB, P0/backend/Rust/DB or exact-SHA acceptance failures on the branch; rerun on the new exact head after every change.
+3. Add a deterministic messages-screen regression where the existing Flutter test harness allows it.
+4. Connect room history to Engine B persisted incoming messages. Do not decrypt outside Engine B and do not ACK before durable local persistence.
+5. Connect durable text outbox/flush using stable message IDs and retry idempotency; then stable-ID encrypted attachments.
+
+Keep `INONE_MLS_NATIVE_ENABLED=false`. Keep PR #90 and PR #128 open Draft; no merge without explicit owner authorization. G2 remains NOT ACCEPTED until all exact-SHA gates and platform/two-device criteria pass.
+
+---
