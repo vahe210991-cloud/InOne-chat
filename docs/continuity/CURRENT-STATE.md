@@ -3,7 +3,7 @@
 
 - Repository-wide policy: `development/AI-AGENT-GIT-INTEGRATION-POLICY.md` is committed on `main` and mandatory via root `AGENTS.md`; linked from `development/README.md`.
 - Main policy commits: `ada6a32d0a52bf22f8877f263c82b7da2d1992e1`, `7613bd9d39c5a62dbfee0891dda8942c58ea5a69`, latest main at branch creation `a23f9624b8dfcf6234c1770178cff503eff38553`.
-- Fresh integration branch: `integration/g2-pr90-engine-b-main-2026-11-22-r1`, created from exact main SHA `a23f9624b8dfcf6234c1770178cff503eff38553`.
+- Draft integration PR: [#128](https://github.com/vahe210991-cloud/InOne-chat/pull/128), open and unmerged.\n- Fresh integration branch: `integration/g2-pr90-engine-b-main-2026-11-22-r1`, created from exact main SHA `a23f9624b8dfcf6234c1770178cff503eff38553`.
 - Integration plan: [G2 / PR #90 Engine B integration plan](../../architecture/mobile/G2-PR90-ENGINE-B-INTEGRATION-PLAN.md), commit `32ba94552d532bfc2e0373e1175690017e36e4f8`.
 - Preparation report: [2026-11-22 G2 agent policy and PR #90 branch preparation](../../development/reports/2026-11-22-g2-agent-policy-and-pr90-integration-branch.md), commit `7b17d05fceb3fd02732b74e9dc84f31c992b45f9`.
 - PR #90 remains OPEN/DRAFT; source head reviewed `074e76014f33f46085d46cad93007a0fbc849215`. No source code was ported yet. Its old Engine A branch is a source for selective behavior only; production baseline remains Engine B.
