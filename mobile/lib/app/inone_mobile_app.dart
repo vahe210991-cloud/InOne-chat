@@ -44,6 +44,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   late final InOneDocumentPreview _documentPreview;
   String? _documentOwnerId;
   bool _wasAuthenticated = false;
+  Future<void>? _revocationCleanupInFlight;
   InOnePushLifecycle? _pushLifecycle;
   InOnePushReceiveLifecycle? _pushReceiveLifecycle;
   final InOnePushRouteQueue _pendingPushRoutes = InOnePushRouteQueue();
@@ -159,6 +160,58 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     final owner = _documentOwnerId ?? _profile?.userId ?? _session.userId;
     _documentOwnerId = null;
     if (owner != null) unawaited(_purgeOwnerDocuments(owner));
+    if (mounted) {
+      setState(() {
+        _profile = null;
+        _organizations = const [];
+        _selectedOrganization = null;
+        _selectedAdminRequest = null;
+        _adminRequests = const [];
+        _adminDocuments = const [];
+        _screen = 'login';
+      });
+    }
+  }
+
+  Future<void> _handleUnauthorizedSession([String? requestedOwnerUserId]) {
+    final active = _revocationCleanupInFlight;
+    if (active != null) return active;
+    final operation = _handleUnauthorizedSessionOnce(requestedOwnerUserId);
+    _revocationCleanupInFlight = operation;
+    return operation.whenComplete(() {
+      if (identical(_revocationCleanupInFlight, operation)) {
+        _revocationCleanupInFlight = null;
+      }
+    });
+  }
+
+  Future<void> _handleUnauthorizedSessionOnce(String? requestedOwnerUserId) async {
+    final ownerUserId = requestedOwnerUserId ?? _session.userId ?? _profile?.userId;
+    if (ownerUserId != null) {
+      try {
+        await _documentStore.purgeOwner(ownerUserId);
+      } catch (_) {
+        // Continue with logout and temporary preview cleanup.
+      }
+    }
+    await _clearStaleDocumentPreviews();
+    try {
+      await _session.logout();
+    } catch (_) {
+      // A revoked device may not be able to complete remote logout.
+    }
+    if (mounted) {
+      setState(() {
+        _profile = null;
+        _organizations = const [];
+        _selectedOrganization = null;
+        _selectedAdminRequest = null;
+        _adminRequests = const [];
+        _adminDocuments = const [];
+        _screen = 'login';
+      });
+      _notice('Сессия завершена. Локальные документы очищены. Войдите снова.');
+    }
   }
 
   Future<void> _clearStaleDocumentPreviews() async {
@@ -487,6 +540,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   }
 
   Future<void> _openAdminRequests() async {
+    final ownerUserId = _session.userId ?? _profile?.userId;
     if (!(_profile?.canViewPlatformRequests ?? false)) {
       _notice('Недостаточно прав для просмотра заявок платформы.');
       return;
@@ -505,6 +559,10 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         _screen = 'adminRequests';
       });
     } catch (error) {
+      if (error is ApiException && error.statusCode == 401) {
+        await _handleUnauthorizedSession(ownerUserId);
+        return;
+      }
       if (!mounted) return;
       final failure = _toFailure(error);
       setState(() => _screen = 'adminRequestsError');
@@ -513,6 +571,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   }
 
   Future<void> _openAdminRequest(InOneOrgRequest request) async {
+    final ownerUserId = _session.userId ?? _profile?.userId;
     if (!(_profile?.canViewPlatformRequests ?? false)) return;
     setState(() {
       _selectedAdminRequest = request;
@@ -559,6 +618,10 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         _screen = 'adminRequestDetails';
       });
     } catch (error) {
+      if (error is ApiException && error.statusCode == 401) {
+        await _handleUnauthorizedSession(ownerUserId);
+        return;
+      }
       if (!mounted) return;
       final failure = _toFailure(error);
       setState(() => _screen = 'adminRequestsError');
@@ -567,6 +630,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   }
 
   Future<InOneFailure?> _decideAdminRequest(InOneDecision decision) async {
+    final ownerUserId = _session.userId ?? _profile?.userId;
     final request = _selectedAdminRequest;
     if (request == null || !(_profile?.canDecidePlatformRequests ?? false)) {
       return const InOneFailure(InOneScreenState.error, message: 'Решение доступно только владельцу платформы.');
@@ -582,11 +646,14 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       }
       return null;
     } catch (error) {
+      if (error is ApiException && error.statusCode == 401) {
+        await _handleUnauthorizedSession(ownerUserId);
+      }
       return _toFailure(error);
     }
   }
 
-  Future<InOneFailure?> _downloadAdminDocument(InOneDocument document) async {
+  Future<InOneFailure?> _openAdminDocument(InOneDocument document) async {
     final request = _selectedAdminRequest;
     final ownerUserId = _profile?.userId ?? _session.userId;
     if (request == null || ownerUserId == null || !(_profile?.canViewPlatformRequests ?? false)) {
@@ -627,6 +694,9 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       if (mounted) _notice('Документ открыт в системном просмотрщике.');
       return null;
     } catch (error) {
+      if (error is ApiException && error.statusCode == 401) {
+        await _handleUnauthorizedSession(ownerUserId);
+      }
       return _toFailure(error);
     }
   }
@@ -904,7 +974,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           request: _selectedAdminRequest!,
           documents: _adminDocuments,
           isOwner: _profile?.canDecidePlatformRequests ?? false,
-          onDownload: _downloadAdminDocument,
+          onOpen: _openAdminDocument,
           onDecide: () => setState(() => _screen = 'adminRequestDecision'),
           onBack: () => unawaited(_openAdminRequests()),
           onMenu: () => setState(() => _screen = 'profile'),
