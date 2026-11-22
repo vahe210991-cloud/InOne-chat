@@ -67,7 +67,12 @@ jobs:
           set -euo pipefail
           git diff --exit-code
           git diff --cached --exit-code
-          test -z "$(git status --porcelain)"
+          echo "Working-tree status after validation:"
+          git status --short --untracked-files=all
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::Validation modified the checkout; see the exact paths above."
+            exit 1
+          fi
       - name: Publish validated source SHA
         id: commit
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
