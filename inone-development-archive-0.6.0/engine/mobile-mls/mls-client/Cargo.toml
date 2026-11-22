@@ -16,3 +16,4 @@ urlencoding = "2"
 openmls_sqlite_storage = "=0.2.0"
 rusqlite = { version = "0.32", features = ["bundled-sqlcipher-vendored-openssl"] }
 serde = "1"
+zeroize = "1.9.1"
