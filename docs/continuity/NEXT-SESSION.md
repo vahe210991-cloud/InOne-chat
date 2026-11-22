@@ -588,3 +588,17 @@ Continue on PR #128, branch `integration/g2-pr90-engine-b-main-2026-11-22-r1`. R
 Room list/history/text outbox are source-wired behind the native-session gate. PR #90 and #128 remain open Draft; no merge without explicit owner authorization.
 
 ---
+
+# Next execution — G2 exact-SHA CI and attachment integration (2026-11-22)
+
+Continue on PR #128 branch `integration/g2-pr90-engine-b-main-2026-11-22-r1`. The latest code checkpoint includes room list, SQLCipher history-before-ACK, durable text outbox, room mapper and session regression tests. Read the G2 vertical-slice report and historical test baseline.
+
+1. Reuse/update the CI mirror PR #129 to point at the latest exact PR #128 SHA, then poll all Flutter/iOS/FRB/P0/backend/PostgreSQL/Rust/OpenMLS/acceptance jobs and inspect logs.
+2. Fix all failures; rerun on the new exact SHA. No queued/skipped/absent jobs count as PASS.
+3. Implement stable-ID encrypted attachment picker/send/download UI using existing Engine B APIs and ciphertext-only transport.
+4. Add attachment retry/auth/revocation regressions; verify device-bound downloads and stable operation IDs.
+5. Complete Android/iOS SQLCipher/Keystore/Keychain, recovery and two-device offline/restart/duplicate-delivery/revocation acceptance. Keep native MLS disabled until owner acceptance.
+
+PR #90, #128 and CI mirror #129 stay open Draft. No merge without explicit owner approval.
+
+---
