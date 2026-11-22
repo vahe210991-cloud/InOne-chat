@@ -4,7 +4,20 @@ set -eu
 diag_dir="/tmp/inone-android-runtime-diagnostics"
 mkdir -p "$diag_dir"
 
-timeout 60 adb wait-for-device
+# Keep Flutter and the shell on the same Android SDK / ADB server. The
+# emulator runner can start QEMU before the ADB daemon is ready; without
+# explicitly selecting this SDK Flutter may list only desktop/web devices.
+adb_bin="$(command -v adb)"
+android_sdk="$(CDPATH= cd -- "$(dirname -- "$adb_bin")/.." && pwd)"
+export ANDROID_HOME="$android_sdk"
+export ANDROID_SDK_ROOT="$android_sdk"
+export PATH="$(dirname "$adb_bin"):$PATH"
+flutter config --android-sdk "$android_sdk"
+
+adb start-server
+timeout 90 adb wait-for-device
+adb -s emulator-5554 get-state
+timeout 60 flutter devices --device-timeout 60
 adb install -r build/app/outputs/flutter-apk/app-debug.apk
 adb shell pm grant com.inone.app android.permission.POST_NOTIFICATIONS
 adb logcat -c || true
@@ -21,6 +34,13 @@ wait "$logcat_pid" 2>/dev/null || true
 
 if [ "$smoke_status" -ne 0 ]; then
   {
+    echo "=== Android SDK / ADB selection ==="
+    echo "ANDROID_HOME=$ANDROID_HOME"
+    echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+    command -v adb || true
+    adb version || true
+    echo "=== Flutter device discovery ==="
+    flutter devices --device-timeout 30 || true
     echo "=== adb devices ==="
     adb devices -l || true
     echo "=== app process memory ==="
