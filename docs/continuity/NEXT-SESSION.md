@@ -574,3 +574,17 @@ Continue on [PR #128](https://github.com/vahe210991-cloud/InOne-chat/pull/128), 
 Room history read path is source-wired behind native MLS gate; SQLCipher read precedes ACK. Keep `INONE_MLS_NATIVE_ENABLED=false`. PR #90 and #128 stay open Draft; no merge without explicit owner authorization.
 
 ---
+
+# Next execution — G2 current-head CI and encrypted attachments (2026-11-22)
+
+Continue on PR #128, branch `integration/g2-pr90-engine-b-main-2026-11-22-r1`. Read [the G2 vertical-slice report](../../development/reports/2026-11-22-g2-room-list-vertical-slice.md), the port matrix and historical test baseline.
+
+1. Poll exact-head Flutter, iOS, FRB, P0/backend/PostgreSQL/Rust/OpenMLS and acceptance jobs. Inspect logs; queued/skipped/absent is not PASS.
+2. Fix every current-head failure and rerun on the new exact SHA.
+3. Implement stable-ID encrypted attachment picker/send/download UI using existing Engine B APIs; no plaintext upload or unstable retry IDs.
+4. Add focused attachment regressions and verify ciphertext-only transport, authenticated/device-bound downloads, membership/revocation and retry idempotency.
+5. Complete Android/iOS SQLCipher/Keystore/Keychain, recovery, two-device offline/restart/duplicate-delivery and revocation acceptance. Keep native MLS disabled until owner acceptance.
+
+Room list/history/text outbox are source-wired behind the native-session gate. PR #90 and #128 remain open Draft; no merge without explicit owner authorization.
+
+---
