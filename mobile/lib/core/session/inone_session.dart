@@ -738,9 +738,13 @@ class InOneSession extends ChangeNotifier {
     _validateMlsRoomId(roomId);
     final bridge = _requireNativeMlsBridge();
     final messages = await bridge.messagesForRoom(roomId);
+    final persistedEventIds = messages.map((message) => message.eventId).toSet();
     final pending = await bridge.pendingIncoming();
     final acceptedEventIds = pending
-        .where((message) => message.roomId == roomId && message.isReadable)
+        .where((message) =>
+            message.roomId == roomId &&
+            message.isReadable &&
+            persistedEventIds.contains(message.eventId))
         .map((message) => message.eventId)
         .toList(growable: false);
     if (acceptedEventIds.isNotEmpty) {
