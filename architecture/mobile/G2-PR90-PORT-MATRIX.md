@@ -11,7 +11,7 @@
 
 The core persistent MLS capabilities are already present on main and Engine B: protected SQLCipher key lifecycle, session adoption/resume, durable text outbox, stable-ID text send, stable-ID attachment send/retry, encrypted attachment download, inbox persistence/ACK APIs, and device/member controls. The Rust FFI and Dart bridge already expose the stable-ID attachment API. These are not to be copied from PR #90.
 
-The main functional gap visible in the current Flutter app is the production chat UI integration: the messages screen still renders an empty chat list, and the push-chat thread explicitly blocks send/attachments. The backend already has `GET /rooms/mine`; the current typed repository wrapper does not expose it. This is the first candidate vertical slice, subject to adapting the PR UI to current main rather than copying it.
+The main functional gap was the native Flutter integration: the repository already had a validated `InOneRoom` / `InOneRoomList` DTO and unit tests, but the active `InOneRepositories` wrapper did not call `GET /rooms/mine`, and the native app did not populate its chat list. This branch now adds that repository method, focused request/DTO regressions, and live room-list binding in the native app. History and sending remain MLS-gated.
 
 ## Per-file / feature matrix
 
@@ -23,8 +23,8 @@ The main functional gap visible in the current Flutter app is the production cha
 | `mobile/lib/core/mls/mls_session_bridge.dart` | Main interface already exposes `sendAttachmentWithId`, `downloadAttachment`, `enqueueText`, `pendingOutbox`, inbox and ACK APIs. | **ALREADY PRESENT**. Do not add the non-stable attachment send API as a retry path. |
 | `mobile/lib/core/mls/rust_mls_session_bridge.dart` | Main adapter maps the stable-ID attachment API to generated Rust session bindings and exposes download. | **ALREADY PRESENT**. `localRoomIds` is not currently exposed. Add only if offline room restoration is an approved, evidenced requirement. |
 | `mobile/lib/core/session/inone_session.dart` | Main session already adopts/resumes the native session and wraps stable-ID send, enqueue, flush, download, pending inbox and ACK. | **ALREADY PRESENT** for core operations. Preserve existing auth/refresh/logout sequencing. No wholesale session replacement. |
-| `mobile/lib/core/data/inone_repositories.dart` | Backend `GET /rooms/mine` exists, but this typed repository currently lacks `myRooms()`. | **CANDIDATE — FIRST SMALL SLICE**. Add typed wrapper only after checking DTO/route contract and its existing regression. |
-| `mobile/lib/app/inone_mobile_app.dart` | Main preserves Firebase Push and session/navigation lifecycle, but normal messages UI is empty and push-chat send/attachments are deliberately blocked. PR #90 adds ~457 lines of chat UI/session orchestration. | **PARTIAL PORT REQUIRED**. Rework in small slices against current lifecycle; do not replace app host, push routing, auth or navigation. First list rooms; then open/load a room and render persisted messages; then durable text outbox. |
+| `mobile/lib/core/data/inone_repositories.dart` | Main already contains `InOneRoom` / `InOneRoomList` DTO validation and DTO unit tests, but the repository wrapper lacks `myRooms()`. | **IMPLEMENTED ON #128**. Added authenticated `myRooms()` returning the canonical validated `InOneRoomList`; added request, parsing, malformed response and unauthorized regressions. |
+| `mobile/lib/app/inone_mobile_app.dart` | Main preserves Firebase Push and session/navigation lifecycle, but normal messages UI is empty and push-chat send/attachments are deliberately blocked. PR #90 adds ~457 lines of chat UI/session orchestration. | **ROOM LIST IMPLEMENTED ON #128**. Authenticated app startup now loads typed rooms and maps them into the existing approved chat preview model. Opening a room remains gated until the native MLS history path is accepted; preserve the current host, push, auth and navigation lifecycle. |
 | `mobile/lib/ui_dart_source/models/inone_models.dart` | Main UI model currently lacks some attachment presentation fields added by PR #90. Rust bridge DTO already carries attachment metadata. | **DEFER** until attachment UI slice; map only fields needed by approved screen contract. |
 | `mobile/lib/ui_dart_source/screens/main/inone_chat_thread_screen.dart` | PR #90 changes send callback to async and adds attachment download callback. | **CANDIDATE**. Adapt async send/error/loading behavior without changing approved layout; test duplicate taps and stable operation IDs. |
 | `mobile/lib/ui_dart_source/screens/main/inone_messages_screen.dart` | PR #90 changes placeholder copy only. | **LOW VALUE**. Do not port copy alone; connect real typed room data first. |
@@ -49,9 +49,9 @@ The main functional gap visible in the current Flutter app is the production cha
 
 ## Next implementation order
 
-1. Verify the `GET /rooms/mine` response DTO and current backend route test; add `InOneRepositories.myRooms()` with focused regression.
-2. Connect the messages list to that typed repository result, retaining current Firebase Push and navigation handling.
-3. Connect room opening to Engine B persisted messages; do not ACK until the client has durably persisted incoming events.
+1. **Completed on #128:** typed authenticated `myRooms()` wrapper using the pre-existing `InOneRoomList` DTO; request/response validation regressions.
+2. **Completed on #128:** native messages screen now displays authenticated room names/IDs while preserving Firebase Push and app/session/navigation lifecycle.
+3. Connect room history to Engine B persisted messages; do not ACK until the client has durably persisted incoming events.
 4. Wire durable text outbox and flush; preserve client message IDs and retry semantics.
 5. Only then review stable-ID attachment UI, picker dependency, download callbacks and iOS Keychain runtime smoke.
 
