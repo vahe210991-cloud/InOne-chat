@@ -79,6 +79,74 @@ class ApiClient {
   }) =>
       request('POST', path, body: body, authenticated: authenticated);
 
+  /// Downloads an authenticated binary resource only when the server marks it as a
+  /// private attachment and supplies the security headers required by the API contract.
+  Future<http.Response> download(
+    String path, {
+    bool authenticated = true,
+  }) async {
+    final uri = _resolve(path);
+    final headers = <String, String>{'accept': 'application/octet-stream'};
+    if (authenticated) {
+      final token = await _accessTokenProvider();
+      if (token == null || token.isEmpty) {
+        throw const ApiException(
+          code: 'unauthenticated',
+          statusCode: 401,
+          retryable: false,
+        );
+      }
+      headers['authorization'] = 'Bearer $token';
+    }
+
+    final request = http.Request('GET', uri)
+      ..followRedirects = false
+      ..headers.addAll(headers);
+    try {
+      final streamed = await _http.send(request).timeout(timeout);
+      final response = await http.Response.fromStream(streamed).timeout(timeout);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        final payload = _decodePayload(utf8.decode(response.bodyBytes));
+        throw ApiException(
+          code: _errorCode(payload, response.statusCode),
+          statusCode: response.statusCode,
+          retryable: _isRetryable(response.statusCode),
+        );
+      }
+
+      final contentType = response.headers['content-type']?.split(';').first.trim().toLowerCase();
+      final disposition = response.headers['content-disposition']?.toLowerCase() ?? '';
+      final options = response.headers['x-content-type-options']?.toLowerCase();
+      final cacheControl = response.headers['cache-control']?.toLowerCase() ?? '';
+      final expectedLength = int.tryParse(response.headers['content-length'] ?? '');
+      if (response.bodyBytes.isEmpty ||
+          !const ['application/pdf', 'image/jpeg', 'image/png', 'application/octet-stream'].contains(contentType) ||
+          !disposition.startsWith('attachment;') ||
+          options != 'nosniff' ||
+          !cacheControl.split(',').map((value) => value.trim()).contains('no-store') ||
+          (expectedLength != null && expectedLength != response.bodyBytes.length)) {
+        throw const ApiException(
+          code: 'invalid_download_response',
+          statusCode: 502,
+          retryable: false,
+        );
+      }
+      return response;
+    } on ApiException {
+      rethrow;
+    } on TimeoutException {
+      throw const ApiException(code: 'request_timeout', retryable: true);
+    } on SocketException {
+      throw const ApiException(code: 'network_unavailable', retryable: true);
+    } on http.ClientException {
+      throw const ApiException(code: 'network_unavailable', retryable: true);
+    } on FormatException {
+      throw const ApiException(code: 'invalid_response', retryable: false);
+    } finally {
+      _clearRequestSecrets(request, headers);
+    }
+  }
+
   Future<Map<String, dynamic>> request(
     String method,
     String path, {
