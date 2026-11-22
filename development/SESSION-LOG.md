@@ -667,3 +667,12 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Native MLS remains disabled by default; these paths are source-wired behind `hasNativeMlsSession` and are NOT runtime-accepted. Text send/outbox and attachment transfer remain blocked.
 - Updated API contract, mobile README, port matrix and vertical-slice report. Existing Engine B/Rust methods reused; no backend route or Engine A code changed.
 - Current-head GitHub Actions remain queued as of last poll; no green result claimed. Continue exact-head polling and fix all failures.
+
+## 2026-11-22 — G2 durable text outbox wiring
+
+- Added `InOneSession.pendingMlsOutbox(roomId)` over the existing native bridge pending-outbox API.
+- Native chat composer now awaits a durable enqueue before clearing the draft. Engine B creates and persists the stable local operation ID in SQLCipher; flush sends with that same ID. Queued bubbles are restored from pending outbox, and the app retries flush/sync on resume.
+- Added session regression for enqueue/pending-outbox/flush bridge contract and room-to-chat preview mapper tests (group/direct/support, empty list, immutable result).
+- Thread history loads only Engine B persisted/decrypted messages; readable pending events are ACKed only after SQLCipher history read. Attachments remain display-only metadata and send/download UI stays blocked.
+- Native MLS remains disabled by default. All code is source-wired behind the native-session gate; no platform runtime acceptance claimed. Current-head GitHub Actions still need exact-SHA execution; no green result claimed.
+- Report: [G2 room-list vertical slice](reports/2026-11-22-g2-room-list-vertical-slice.md).
