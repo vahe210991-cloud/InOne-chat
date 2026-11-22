@@ -630,3 +630,15 @@ Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone
 - Status: source/API matrix PASS; product port NOT STARTED; G2 NOT ACCEPTED; native MLS remains disabled by default. No merge or source PR mutation.
 
 ---
+
+# G2 — latest execution checkpoint (2026-11-22)
+
+- Active branch: `integration/g2-pr90-engine-b-main-2026-11-22-r1`; base main SHA `a23f9624b8dfcf6234c1770178cff503eff38553`; PR [#128](https://github.com/vahe210991-cloud/InOne-chat/pull/128) open Draft.
+- First native room-list slice implemented: `InOneRepositories.myRooms()` reuses canonical `InOneRoomList`; repository tests cover authenticated GET, valid response, malformed response and unauthorized propagation; native messages screen renders authenticated room names/IDs.
+- Existing backend `GET /rooms/mine` and `rooms-mine.test.js` reused; no backend endpoint or Engine A code added.
+- Firebase Push/session/navigation preserved; cached chat list cleared on logout; `INONE_MLS_NATIVE_ENABLED=false` preserved.
+- Exact-head Flutter/iOS/FRB/P0/exact-SHA Actions pending. Authored tests NOT RUN until jobs complete; no current-head CI PASS claimed.
+- Room history, durable text send, attachment UI and two-device acceptance remain incomplete. G2 NOT ACCEPTED.
+- Latest report: [G2 room-list vertical slice](../../development/reports/2026-11-22-g2-room-list-vertical-slice.md).
+
+---
