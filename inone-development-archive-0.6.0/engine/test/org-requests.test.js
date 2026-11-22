@@ -17,10 +17,10 @@ const STAFF = '@staff-req:inone.test';
 const OWNER = '@owner-req:inone.test';
 const JSON_HEADERS = { 'content-type': 'application/json' };
 
-async function start() {
+async function start({ objectStore } = {}) {
   const db = await storeForTest(PEPPER);
   const store = db?.store ?? createMemoryStore({ pinPepper: PEPPER });
-  const srv = createServer({ defaultOrgAutoJoin: true, registrationMode: 'open', requirePhone: false, pinPepper: PEPPER, store, docsSecret: 'test-docs-secret-0123456789-abcdefgh' });
+  const srv = createServer({ defaultOrgAutoJoin: true, registrationMode: 'open', requirePhone: false, pinPepper: PEPPER, store, objectStore, docsSecret: 'test-docs-secret-0123456789-abcdefgh' });
   await new Promise((resolve) => srv.server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${srv.server.address().port}`;
   const dir = await ChatClient.create(base, DIR, 'D_PHONE', PW);
@@ -41,7 +41,7 @@ async function call(base, method, p, token, body) {
   } catch {
     json = null;
   }
-  return { status: res.status, json, buf };
+  return { status: res.status, json, buf, headers: Object.fromEntries(res.headers.entries()) };
 }
 
 test('заявитель загружает документ и видит его; посторонний не видит; администрация открывает на просмотр и это записано', async () => {
@@ -126,6 +126,23 @@ test('содержимое документа не попадает в журн�
   }
 });
 
+
+test('authenticated profile exposes platform role for role-aware navigation', async () => {
+  const s = await start();
+  try {
+    const ownerProfile = await call(s.base, 'GET', '/profile', s.owner.token);
+    const adminProfile = await call(s.base, 'GET', '/profile', s.staff.token);
+    const applicantProfile = await call(s.base, 'GET', '/profile', s.dir.token);
+    assert.equal(ownerProfile.status, 200);
+    assert.equal(ownerProfile.json.platformRole, 'owner');
+    assert.equal(adminProfile.json.platformRole, 'admin');
+    assert.equal(applicantProfile.json.platformRole, null);
+  } finally {
+    await s.stop();
+  }
+});
+
+
 test('concurrent owner decisions serialize and exactly one decision is committed', async () => {
   const s = await start();
   try {
@@ -152,6 +169,191 @@ test('concurrent owner decisions serialize and exactly one decision is committed
       assert.equal(request.status, 'rejected');
       assert.equal(request.orgId, null);
     }
+  } finally {
+    await s.stop();
+  }
+});
+
+
+test('document metadata is validated, persisted and returned as a safe attachment', async () => {
+  const s = await start();
+  try {
+    const created = await call(s.base, 'POST', '/org-requests', s.dir.token, { name: 'Документы' });
+    assert.equal(created.status, 200);
+    const requestId = created.json.requestId;
+    const pdf = Buffer.from('%PDF-1.7\nInOne test document\n%%EOF', 'utf8');
+    const uploaded = await call(s.base, 'POST', `/org-requests/${requestId}/documents`, s.dir.token, {
+      kind: 'registration',
+      filename: '../../Заявление.pdf',
+      mimeType: 'application/pdf',
+      contentBase64: pdf.toString('base64'),
+    });
+    assert.equal(uploaded.status, 200);
+    assert.equal(uploaded.json.filename, 'Заявление.pdf');
+    assert.equal(uploaded.json.mimeType, 'application/pdf');
+
+    const listed = await call(s.base, 'GET', `/org-requests/${requestId}`, s.staff.token);
+    assert.equal(listed.status, 200);
+    assert.equal(listed.json.documents[0].filename, 'Заявление.pdf');
+    assert.equal(listed.json.documents[0].mimeType, 'application/pdf');
+
+    const downloaded = await call(s.base, 'GET', `/org-requests/${requestId}/documents/${uploaded.json.docId}`, s.staff.token);
+    assert.equal(downloaded.status, 200);
+    assert.ok(downloaded.buf.equals(pdf));
+    assert.equal(downloaded.headers['content-type'], 'application/pdf');
+    assert.match(downloaded.headers['content-disposition'], /^attachment;/);
+    assert.match(downloaded.headers['content-disposition'], /filename\*=UTF-8''/);
+    assert.equal(downloaded.headers['x-content-type-options'], 'nosniff');
+    assert.equal(downloaded.headers['cache-control'], 'no-store');
+
+    const spoofed = await call(s.base, 'POST', `/org-requests/${requestId}/documents`, s.dir.token, {
+      kind: 'other',
+      filename: 'fake.pdf',
+      mimeType: 'application/pdf',
+      contentBase64: Buffer.from('not a pdf').toString('base64'),
+    });
+    assert.equal(spoofed.status, 400, 'declared PDF MIME type must match the file signature');
+  } finally {
+    await s.stop();
+  }
+});
+
+
+test('accepts the documented 5 MiB organization document limit', async () => {
+  const s = await start();
+  try {
+    const created = await call(s.base, 'POST', '/org-requests', s.dir.token, { name: 'Maximum size document' });
+    assert.equal(created.status, 200);
+    const pdf = Buffer.alloc(5 * 1024 * 1024, 0x20);
+    pdf.set(Buffer.from('%PDF-1.7'), 0);
+    const uploaded = await call(
+      s.base,
+      'POST',
+      `/org-requests/${created.json.requestId}/documents`,
+      s.dir.token,
+      {
+        kind: 'registration',
+        filename: 'maximum.pdf',
+        mimeType: 'application/pdf',
+        contentBase64: pdf.toString('base64'),
+      },
+    );
+    assert.equal(uploaded.status, 200);
+    assert.equal(uploaded.json.size, 5 * 1024 * 1024);
+  } finally {
+    await s.stop();
+  }
+});
+
+test('an upload racing with a request decision is rejected and its encrypted blob is removed', async () => {
+  const objects = new Map();
+  let signalPutStarted;
+  let releasePut;
+  const putStarted = new Promise((resolve) => { signalPutStarted = resolve; });
+  const putGate = new Promise((resolve) => { releasePut = resolve; });
+  const objectStore = {
+    async put(key, value) {
+      signalPutStarted();
+      await putGate;
+      objects.set(key, Buffer.from(value));
+    },
+    async get(key) { return objects.get(key) ?? null; },
+    async remove(key) { objects.delete(key); },
+  };
+  const s = await start({ objectStore });
+  try {
+    const created = await call(s.base, 'POST', '/org-requests', s.dir.token, { name: 'Upload race' });
+    assert.equal(created.status, 200);
+    const requestId = created.json.requestId;
+    const pdf = Buffer.from('%PDF-1.7\\nconcurrent upload\\n%%EOF');
+    const uploadPromise = call(
+      s.base,
+      'POST',
+      `/org-requests/${requestId}/documents`,
+      s.dir.token,
+      {
+        kind: 'registration',
+        filename: 'registration.pdf',
+        mimeType: 'application/pdf',
+        contentBase64: pdf.toString('base64'),
+      },
+    );
+
+    await putStarted;
+    const decision = await call(
+      s.base,
+      'POST',
+      `/org-requests/${requestId}/decision`,
+      s.owner.token,
+      { decision: 'reject' },
+    );
+    assert.equal(decision.status, 200);
+    releasePut();
+
+    const upload = await uploadPromise;
+    assert.equal(upload.status, 409);
+    assert.equal(objects.size, 0, 'the rejected upload blob is removed');
+    assert.deepEqual(await s.store.listOrgRequestDocuments(requestId), []);
+  } finally {
+    releasePut();
+    await s.stop();
+  }
+});
+
+test('owner/admin/applicant authorization matrix isolates queue and details and gates decisions', async () => {
+  const s = await start();
+  try {
+    const applicantRequest = await call(s.base, 'POST', '/org-requests', s.dir.token, { name: 'Applicant private request' });
+    const outsiderRequest = await call(s.base, 'POST', '/org-requests', s.out.token, { name: 'Outsider private request' });
+    assert.equal(applicantRequest.status, 200);
+    assert.equal(outsiderRequest.status, 200);
+    const requestId = applicantRequest.json.requestId;
+    const outsiderRequestId = outsiderRequest.json.requestId;
+
+    const [ownerQueue, adminQueue, applicantQueue, outsiderQueue] = await Promise.all([
+      call(s.base, 'GET', '/org-requests', s.owner.token),
+      call(s.base, 'GET', '/org-requests', s.staff.token),
+      call(s.base, 'GET', '/org-requests', s.dir.token),
+      call(s.base, 'GET', '/org-requests', s.out.token),
+    ]);
+    for (const queue of [ownerQueue, adminQueue, applicantQueue, outsiderQueue]) {
+      assert.equal(queue.status, 200);
+    }
+    const ids = (queue) => queue.json.requests.map((request) => request.requestId);
+    assert.ok(ids(ownerQueue).includes(requestId));
+    assert.ok(ids(ownerQueue).includes(outsiderRequestId));
+    assert.ok(ids(adminQueue).includes(requestId));
+    assert.ok(ids(adminQueue).includes(outsiderRequestId));
+    assert.deepEqual(ids(applicantQueue), [requestId]);
+    assert.deepEqual(ids(outsiderQueue), [outsiderRequestId]);
+
+    const [ownerDetails, adminDetails, applicantDetails, outsiderDetails] = await Promise.all([
+      call(s.base, 'GET', `/org-requests/${requestId}`, s.owner.token),
+      call(s.base, 'GET', `/org-requests/${requestId}`, s.staff.token),
+      call(s.base, 'GET', `/org-requests/${requestId}`, s.dir.token),
+      call(s.base, 'GET', `/org-requests/${requestId}`, s.out.token),
+    ]);
+    assert.equal(ownerDetails.status, 200);
+    assert.equal(adminDetails.status, 200);
+    assert.equal(applicantDetails.status, 200);
+    assert.equal(outsiderDetails.status, 404, 'another applicant cannot enumerate request details');
+
+    const adminDecision = await call(
+      s.base, 'POST', `/org-requests/${requestId}/decision`, s.staff.token, { decision: 'approve' },
+    );
+    const applicantDecision = await call(
+      s.base, 'POST', `/org-requests/${requestId}/decision`, s.dir.token, { decision: 'approve' },
+    );
+    assert.equal(adminDecision.status, 403);
+    assert.equal(adminDecision.json.code, 'not_platform_owner');
+    assert.equal(applicantDecision.status, 403);
+    assert.equal(applicantDecision.json.code, 'not_platform_owner');
+
+    const ownerDecision = await call(
+      s.base, 'POST', `/org-requests/${requestId}/decision`, s.owner.token, { decision: 'approve' },
+    );
+    assert.equal(ownerDecision.status, 200);
+    assert.equal(ownerDecision.json.status, 'approved');
   } finally {
     await s.stop();
   }
