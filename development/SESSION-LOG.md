@@ -614,3 +614,12 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Runtime tests and CI are not yet evidenced; inspect exact-head checks before accepting or merging.
 
 - Draft PR #120 remains open against `main`, not merged. The backend README was corrected to preserve legacy notes under a clear canonical-source banner; fresh exact-head CI is required for this final follow-up.
+
+## 2026-11-22 — PR #119 synchronized with main
+
+- Synchronized `feat/issue-114-engine-b-session-resume-2026-11-21` with `main` using a temporary, branch-scoped GitHub Actions workflow based on the repository's previously used one-time merge procedure.
+- The runner fetched current `origin/main`, performed a real Git merge, removed the temporary workflow file, and pushed the resulting branch. No conflict was reported by the merge job; the final PR diff contains no temporary workflow.
+- Verified compare: feature branch is 125 commits ahead and 0 behind; merge base equals `main` SHA `96bf053d0f713e97d1018d6022b15915d46cb3e8`.
+- Pre-sync checks on `cd43c60` are superseded. The first synchronize-triggered runs on the new head were created with conclusion `action_required` and no jobs because the branch update was pushed by `GITHUB_TOKEN`; GitHub requires a repository writer to approve these PR workflow runs. Do not treat them as test failures or successful validation.
+- Next: create a normal repository-authenticated head update (not via Actions `GITHUB_TOKEN`) so the exact-head PR workflows can run without the approval gate; then review all nine required workflows on the resulting SHA.
+- PR #119 remains Draft and unmerged.
