@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:inone_mobile/core/data/inone_profile.dart';
+import 'package:inone_mobile/core/data/inone_room.dart';
 import 'package:inone_mobile/core/data/inone_repositories.dart';
 import 'package:inone_mobile/core/network/api_exception.dart';
 import 'package:inone_mobile/core/session/inone_session.dart';
@@ -46,11 +47,12 @@ void main() {
     expect(session.method, 'GET');
     expect(session.path, '/rooms/mine');
     expect(session.authenticated, isTrue);
-    expect(rooms, hasLength(1));
-    expect(rooms.single.roomId, 'room-1');
-    expect(rooms.single.kind, 'group');
-    expect(rooms.single.name, 'Project room');
-    expect(rooms.single.role, 'member');
+    expect(rooms, isA<InOneRoomList>());
+    expect(rooms.rooms, hasLength(1));
+    expect(rooms.rooms.single.roomId, 'room-1');
+    expect(rooms.rooms.single.kind, 'group');
+    expect(rooms.rooms.single.displayName, 'Project room');
+    expect(rooms.rooms.single.role, 'member');
     session.dispose();
   });
 
