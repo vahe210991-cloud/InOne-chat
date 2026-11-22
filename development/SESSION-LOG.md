@@ -647,3 +647,15 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - PR #128 preparation Actions runs #45004656466 (6 jobs) and #45004656438 (exact-SHA acceptance) are SUCCESS on their prepared documentation SHA; these are not product-code validation and do not accept G2.
 - Product-code port NOT STARTED; new tests NOT RUN; G2 NOT ACCEPTED. Native MLS remains disabled. PR #90 and #128 remain open Draft; no merge/force-push/branch deletion.
 - Next: verify `GET /rooms/mine` DTO and regression, implement typed repository wrapper + messages list as one narrow slice, add focused tests, then run applicable exact-SHA Actions.
+
+## 2026-11-22 — G2 native room-list vertical slice
+
+- Branch `integration/g2-pr90-engine-b-main-2026-11-22-r1`; base `main` SHA `a23f9624b8dfcf6234c1770178cff503eff38553`; PR #128 remains Draft.
+- Reused existing `InOneRoom` / `InOneRoomList` parser and tests. Added authenticated `InOneRepositories.myRooms()` calling existing `GET /rooms/mine`.
+- Added repository regressions for route/method/auth, valid room DTO, malformed response and 401 propagation.
+- Connected authenticated app loading to typed room list and mapped room name/ID to existing chat preview. Preserved Firebase Push, app/session/navigation lifecycle, and native MLS disabled-by-default. Cached chat previews clear on logout.
+- Updated empty-state text, mobile API contract, README, port matrix and report.
+- Existing backend `rooms-mine.test.js` source evidence covers membership scoping and unauthenticated 401; no backend code/endpoint changed.
+- Product code committed on branch; exact-head Actions pending. New tests authored but NOT RUN until GitHub Actions completes. No current-head PASS claim.
+- Report: [G2 room-list vertical slice](reports/2026-11-22-g2-room-list-vertical-slice.md).
+- Next: fix all exact-SHA CI failures; then room history through Engine B, durable text outbox/ACK, stable-ID attachments and platform/two-device acceptance. G2 NOT ACCEPTED; PR #90 and #128 remain open Draft; no merge.
