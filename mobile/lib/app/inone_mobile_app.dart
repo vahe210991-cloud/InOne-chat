@@ -279,10 +279,17 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
 
       final items = target
           .where((message) => message.isReadable)
-          .map((message) => InOneThreadItem(
-                kind: InOneThreadItemKind.text,
-                text: message.text,
-              ))
+          .map((message) => message.isAttachment
+              ? InOneThreadItem(
+                  kind: InOneThreadItemKind.file,
+                  fileLabel: message.name ?? 'Encrypted attachment',
+                  mine: message.mine,
+                )
+              : InOneThreadItem(
+                  kind: InOneThreadItemKind.text,
+                  text: message.text,
+                  mine: message.mine,
+                ))
           .toList(growable: false);
       if (!mounted) return;
       setState(() {
