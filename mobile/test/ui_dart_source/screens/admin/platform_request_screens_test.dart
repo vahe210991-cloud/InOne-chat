@@ -50,14 +50,14 @@ void main() {
   });
 
   testWidgets('PS-02 exposes decision navigation to owner only', (tester) async {
-    Future<InOneFailure?> noDownload(InOneDocument document) async => null;
+    Future<InOneFailure?> noOpen(InOneDocument document) async => null;
     Widget screen({required bool isOwner}) => MaterialApp(
           theme: InOneTheme.light(),
           home: InOneRequestAdminDetailsScreen(
             request: pending,
             documents: const [],
             isOwner: isOwner,
-            onDownload: noDownload,
+            onOpen: noOpen,
             onDecide: () {},
             onBack: () {},
             onMenu: () {},
