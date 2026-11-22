@@ -1,5 +1,5 @@
-import 'inone_room.dart';
 import '../../ui_dart_source/models/inone_models.dart';
+import 'inone_room.dart';
 
 /// Maps verified backend room DTOs to the existing approved chat-list view model.
 List<InOneChatPreview> mapInOneRoomsToChatPreviews(InOneRoomList roomList) {
