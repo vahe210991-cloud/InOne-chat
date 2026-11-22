@@ -239,6 +239,9 @@ class RustMlsSessionBridge implements MlsSessionBridge {
       _decodeIncoming(await _requireSession().messagesForRoomJson(roomId: roomId));
 
   @override
+  Future<List<String>> localRoomIds() => _requireSession().localRoomIds();
+
+  @override
   Future<void> acknowledgeIncoming(List<String> eventIds) =>
       _requireSession().acknowledgeIncoming(eventIds: eventIds);
 
