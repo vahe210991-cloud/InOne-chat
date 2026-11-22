@@ -1,7 +1,7 @@
 
 # Next execution — G2 / PR #90 selective Engine B integration (2026-11-22)
 
-Continue on `integration/g2-pr90-engine-b-main-2026-11-22-r1`, created from `main` SHA `a23f9624b8dfcf6234c1770178cff503eff38553`. Read first:
+Continue on Draft PR [#128](https://github.com/vahe210991-cloud/InOne-chat/pull/128), branch `integration/g2-pr90-engine-b-main-2026-11-22-r1`, created from `main` SHA `a23f9624b8dfcf6234c1770178cff503eff38553`. Read first:
 - [Mandatory AI-agent integration policy](../../development/AI-AGENT-GIT-INTEGRATION-POLICY.md)
 - [G2 / PR #90 Engine B integration plan](../../architecture/mobile/G2-PR90-ENGINE-B-INTEGRATION-PLAN.md)
 - [Preparation report](../../development/reports/2026-11-22-g2-agent-policy-and-pr90-integration-branch.md)
