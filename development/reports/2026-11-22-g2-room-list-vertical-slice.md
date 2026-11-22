@@ -6,7 +6,7 @@
 **Branch:** `integration/g2-pr90-engine-b-main-2026-11-22-r1`  
 **PR:** [#128 — Draft](https://github.com/vahe210991-cloud/InOne-chat/pull/128)  
 **Source PR:** [#90 — Open/Draft, unchanged](https://github.com/vahe210991-cloud/InOne-chat/pull/90)  
-**Code-slice SHA before documentation updates:** `eddf03c4b478617331d818898f6d94cabc4b2d1d`
+**Code-slice SHA before documentation updates:** `c3d1c0bffd5ea4b71a104abf5d6b905a1b0b0c93`
 
 ## Scope / approved WBS mapping
 
@@ -59,8 +59,8 @@ Existing files reused without changes:
 
 - Room opening requests the existing authenticated `GET /rooms/:id/events` route (ciphertext only; backend membership checks remain authoritative).
 - It invokes Engine B sync and reads only messages already persisted in the SQLCipher inbox. Text and attachment metadata are mapped into the existing thread UI.
-- `InOneSession.loadMlsRoomHistory()` centralizes the read-before-ACK boundary: read SQLCipher history, inspect pending inbox, then ACK only readable events for that room. Unreadable and other-room events remain pending. Push-open and normal room-open both use this path.
-- A Dart session regression verifies the call order (`history` → `pending` → `ack`) and that only the readable event for the selected room is acknowledged.
+- `InOneSession.loadMlsRoomHistory()` centralizes the read-before-ACK boundary: read SQLCipher history, inspect pending inbox, then ACK only readable events for that room whose IDs are present in the persisted history result. Unreadable, other-room, and not-yet-persisted events remain pending. Push-open and normal room-open both use this path.
+- A Dart session regression verifies the call order (`history` → `pending` → `ack`) and that only a readable, persisted event for the selected room is acknowledged.
 - This is source implementation only. Native MLS remains disabled by default, so the path is not runtime-accepted or available as a product feature until platform/security gates pass.
 
 ## Not implemented / acceptance boundary
