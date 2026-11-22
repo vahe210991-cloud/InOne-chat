@@ -1,0 +1,40 @@
+name: One-time merge current main
+
+on:
+  push:
+    branches:
+      - feat/issue-114-engine-b-session-resume-2026-11-21
+    paths:
+      - ".github/workflows/merge-main-once.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: merge-main-pr-119
+  cancel-in-progress: false
+
+jobs:
+  merge:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Merge current main into PR #119 branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${GITHUB_REF_NAME}" = "feat/issue-114-engine-b-session-resume-2026-11-21"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git merge --no-edit origin/main
+          git rm .github/workflows/merge-main-once.yml
+          git commit -m "chore: remove one-time main merge workflow"
+          auth="$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 | tr -d '\n')"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" push origin "HEAD:${GITHUB_REF_NAME}"
