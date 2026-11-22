@@ -85,7 +85,7 @@ const DOCUMENT_TYPES = new Map([
 
 function normalizeDocumentMetadata(filename, mimeType, bytes) {
   const rawName = typeof filename === 'string' ? filename.normalize('NFC').replace(/\\/g, '/') : 'document.bin';
-  const safeName = rawName.split('/').at(-1).replace(/[\\u0000-\\u001f\\u007f]/g, '').trim();
+  const safeName = rawName.split('/').at(-1).replace(/[\u0000-\u001f\u007f]/g, '').trim();
   if (!safeName || safeName === '.' || safeName === '..' || Buffer.byteLength(safeName, 'utf8') > 180) return null;
   const type = typeof mimeType === 'string' ? mimeType.trim().toLowerCase() : 'application/octet-stream';
   const verify = DOCUMENT_TYPES.get(type);
@@ -94,9 +94,13 @@ function normalizeDocumentMetadata(filename, mimeType, bytes) {
 }
 
 function contentDispositionAttachment(filename) {
-  const fallback = filename.replace(/[^\\x20-\\x7e]/g, '_').replace(/[\\\\\\";]/g, '_');
+  const fallback = filename
+    .replace(/[^\x20-\x7e]/g, '_')
+    .replaceAll('\\', '_')
+    .replaceAll('"', '_')
+    .replaceAll(';', '_');
   const encoded = encodeURIComponent(filename).replace(/[!'()*]/g, (char) => '%' + char.charCodeAt(0).toString(16).toUpperCase());
-  return 'attachment; filename="' + fallback + '"; filename*=UTF-8\\'\\'' + encoded;
+  return "attachment; filename=\"" + fallback + "\"; filename*=UTF-8''" + encoded;
 }
 
 /** Длительность блокировки PIN: 1, 2, 4… минуты, не больше суток. */
