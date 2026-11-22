@@ -794,6 +794,12 @@ class InOneSession extends ChangeNotifier {
     return _requireNativeMlsBridge().enqueueText(roomId, plaintext);
   }
 
+  /// Returns durable SQLCipher-backed outbox items for restoring pending bubbles.
+  Future<List<MlsPendingOutboxItem>> pendingMlsOutbox(String roomId) {
+    _validateMlsRoomId(roomId);
+    return _requireNativeMlsBridge().pendingOutbox(roomId);
+  }
+
   Future<String> sendMlsAttachment(
     String roomId,
     String name,
