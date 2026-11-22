@@ -51,7 +51,7 @@ The main functional gap was the native Flutter integration: the repository alrea
 
 1. **Completed on #128:** typed authenticated `myRooms()` wrapper using the pre-existing `InOneRoomList` DTO; request/response validation regressions.
 2. **Completed on #128:** native messages screen now displays authenticated room names/IDs while preserving Firebase Push and app/session/navigation lifecycle.
-3. Connect room history to Engine B persisted messages; do not ACK until the client has durably persisted incoming events.
+3. **Implemented behind native-session gate on #128:** authenticated ciphertext-only history read → Engine B sync → SQLCipher room-history read → ACK only readable pending IDs after durable read. Runtime acceptance remains pending.
 4. Wire durable text outbox and flush; preserve client message IDs and retry semantics.
 5. Only then review stable-ID attachment UI, picker dependency, download callbacks and iOS Keychain runtime smoke.
 
@@ -61,6 +61,7 @@ The main functional gap was the native Flutter integration: the repository alrea
 - Engine B / FFI / Dart API signatures inspected: **PASS** (source-level only).
 - Core MLS and backend hardening gaps from PR #90: **ALREADY PRESENT** on main.
 - Typed authenticated room-list repository + native messages-list integration: **IMPLEMENTED ON #128**; exact-SHA Actions pending.
-- Room history, durable text send, attachments: **NOT STARTED**.
+- Room history read/decrypt/presentation + ACK-after-SQLCipher-read path: **IMPLEMENTED BEHIND NATIVE MLS GATE**; runtime acceptance pending.
+- Durable text send/outbox UI and attachment UI: **NOT STARTED**.
 - G2: **NOT ACCEPTED**.
 - PR #90 remains OPEN/DRAFT; PR #128 remains OPEN/DRAFT. No merge or source-branch mutation.
