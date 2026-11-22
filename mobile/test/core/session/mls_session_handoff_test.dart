@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -407,6 +408,67 @@ void main() {
     );
     session.dispose();
   });
+  test('MLS attachment service forwards stable id and encrypted-bridge bytes', () async {
+    final bridge = _FakeMlsSessionBridge();
+    final session = InOneSession(
+      baseUrl: 'https://api.inone.test',
+      httpClient: MockClient((request) async {
+        expect(request.method, 'GET');
+        expect(request.url.path, '/profile');
+        return http.Response('{"locale":"en"}', 200);
+      }),
+      nativeMlsBridge: bridge,
+      readDeviceId: () async => 'device-1',
+      writeDeviceId: (_) async {},
+      readMlsUserId: () async => 'user-1',
+      writeMlsUserId: (_) async {},
+      deleteMlsUserId: () async {},
+      readLocale: () async => null,
+      readLocaleSyncPending: () async => null,
+      writeLocale: (_) async {},
+      writeLocaleSyncPending: (_) async {},
+    );
+    await session.initialize();
+    final bytes = Uint8List.fromList([1, 2, 3, 4]);
+    expect(
+      () => session.sendMlsAttachment(
+        'room-1',
+        'photo.jpg',
+        'image/jpeg',
+        bytes,
+        'invalid!id',
+      ),
+      throwsArgumentError,
+    );
+
+    final eventId = await session.sendMlsAttachment(
+      'room-1',
+      'photo.jpg',
+      'image/jpeg',
+      bytes,
+      'retry-001',
+    );
+
+    expect(eventId, 'attachment-event-1');
+    expect(bridge.lastAttachmentRoomId, 'room-1');
+    expect(bridge.lastAttachmentName, 'photo.jpg');
+    expect(bridge.lastAttachmentMimeType, 'image/jpeg');
+    expect(bridge.lastAttachmentBytes, bytes);
+    expect(bridge.lastAttachmentClientMessageId, 'retry-001');
+    // A retry after background sync keeps the same operation identity.
+
+    expect(
+      () => session.downloadMlsAttachment(''),
+      throwsArgumentError,
+    );
+    bridge.downloadResult = Uint8List.fromList([9, 8, 7]);
+    expect(
+      await session.downloadMlsAttachment('file-1'),
+      orderedEquals([9, 8, 7]),
+    );
+    session.dispose();
+  });
+
 }
 
 class _FakeMlsSessionBridge implements MlsSessionBridge {
@@ -420,6 +482,12 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
   int logoutCalls = 0;
   int purgeCalls = 0;
   int closeCalls = 0;
+  String? lastAttachmentRoomId;
+  String? lastAttachmentName;
+  String? lastAttachmentMimeType;
+  Uint8List lastAttachmentBytes = Uint8List(0);
+  String? lastAttachmentClientMessageId;
+  Uint8List downloadResult = Uint8List(0);
   int openCalls = 0;
   Completer<void>? openStarted;
   Completer<void>? openGate;
@@ -493,6 +561,25 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
 
   @override
   Future<String> sendText(String roomId, String plaintext) async => 'event-1';
+
+  @override
+  Future<String> sendAttachment(
+    String roomId,
+    String name,
+    String mimeType,
+    Uint8List plaintext,
+    String clientMessageId,
+  ) async {
+    lastAttachmentRoomId = roomId;
+    lastAttachmentName = name;
+    lastAttachmentMimeType = mimeType;
+    lastAttachmentBytes = plaintext;
+    lastAttachmentClientMessageId = clientMessageId;
+    return 'attachment-event-1';
+  }
+
+  @override
+  Future<Uint8List> downloadAttachment(String fileId) async => downloadResult;
 
   @override
   Future<String> enqueueText(String roomId, String plaintext) async => 'local-1';
