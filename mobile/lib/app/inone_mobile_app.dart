@@ -376,9 +376,18 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     // Engine B creates a stable local operation ID and durably stores the
     // plaintext only inside SQLCipher before any network send is attempted.
     await _session.enqueueMlsText(roomId, plaintext);
-    final items = await _loadThreadItems(roomId);
     if (mounted && _pushRoomId == roomId) {
-      setState(() => _pushThreadItems = items);
+      setState(() {
+        _pushThreadItems = [
+          ..._pushThreadItems,
+          InOneThreadItem(
+            kind: InOneThreadItemKind.text,
+            text: plaintext,
+            mine: true,
+            meta: 'Queued',
+          ),
+        ];
+      });
     }
     unawaited(_flushMlsOutbox(refreshRoomId: roomId));
   }
