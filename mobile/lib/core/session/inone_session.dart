@@ -741,6 +741,7 @@ class InOneSession extends ChangeNotifier {
     return bridge.undecryptable();
   }
 
+  /// Resolves only an adopted persistent Rust bridge; there is no plaintext fallback.
   MlsSessionBridge _requireNativeMlsBridge() {
     final bridge = _mlsBridge;
     if (bridge == null) {
