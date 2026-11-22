@@ -60,7 +60,7 @@ The main functional gap was the native Flutter integration: the repository alrea
 - Source PR ancestry/changed paths inspected: **PASS**.
 - Engine B / FFI / Dart API signatures inspected: **PASS** (source-level only).
 - Core MLS and backend hardening gaps from PR #90: **ALREADY PRESENT** on main.
-- Flutter chat UI integration: **NOT STARTED**.
-- New product code/tests: **NOT RUN**.
+- Typed authenticated room-list repository + native messages-list integration: **IMPLEMENTED ON #128**; exact-SHA Actions pending.
+- Room history, durable text send, attachments: **NOT STARTED**.
 - G2: **NOT ACCEPTED**.
 - PR #90 remains OPEN/DRAFT; PR #128 remains OPEN/DRAFT. No merge or source-branch mutation.
