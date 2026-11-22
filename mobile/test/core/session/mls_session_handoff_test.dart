@@ -457,6 +457,7 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
   int logoutCalls = 0;
   int purgeCalls = 0;
   int closeCalls = 0;
+  Object? refreshError;
   int openCalls = 0;
   Completer<void>? openStarted;
   Completer<void>? openGate;
@@ -600,6 +601,7 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
   @override
   Future<String> refreshSession() async {
     refreshCalls++;
+    if (refreshError != null) throw refreshError!;
     accessToken = 'access-2';
     return accessToken;
   }
