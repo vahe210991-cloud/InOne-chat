@@ -5314,3 +5314,37 @@ mod session_persistence_tests {
         remove_db(&database);
     }
 }
+
+
+#[cfg(test)]
+mod key_store_contract_tests {
+    use super::{KeyStore, MemoryKeyStore};
+
+    #[test]
+    fn key_store_distinguishes_missing_key_from_existing_key() {
+        let keys = MemoryKeyStore::default();
+        assert!(!keys.has_database_key("user/device").unwrap());
+        assert_eq!(keys.existing_database_key("user/device").unwrap(), None);
+
+        let created = keys.database_key("user/device").unwrap();
+        assert!(keys.has_database_key("user/device").unwrap());
+        assert_eq!(
+            keys.existing_database_key("user/device").unwrap(),
+            Some(created)
+        );
+        assert_eq!(keys.database_key("user/device").unwrap(), created);
+    }
+
+    #[test]
+    fn deleting_key_is_idempotent_and_next_creation_is_new() {
+        let keys = MemoryKeyStore::default();
+        let original = keys.database_key("user/device").unwrap();
+        keys.delete_database_key("user/device").unwrap();
+        keys.delete_database_key("user/device").unwrap();
+        assert!(!keys.has_database_key("user/device").unwrap());
+        assert_eq!(keys.existing_database_key("user/device").unwrap(), None);
+
+        let replacement = keys.database_key("user/device").unwrap();
+        assert_ne!(replacement, original);
+    }
+}
