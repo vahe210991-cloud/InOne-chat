@@ -27,6 +27,12 @@ UI integration rules:
 If you cannot comply, stop and record the exact blocker. Do not claim completion without evidence.
 
 
+## Mandatory main-first integration policy (owner decision 2026-11-22)
+
+Every agent and automation must follow `development/AI-AGENT-GIT-INTEGRATION-POLICY.md`, regardless of assigned task. Read it before creating branches or integrating work. The required default is: start a unique task branch from the exact live `main` SHA; inspect PR ancestry and complete patches; port only still-missing behavior; preserve canonical architecture and existing lifecycle; validate all applicable GitHub Actions on the exact proposed SHA; keep PRs Draft until accepted; never merge product code without explicit owner authorization. Do not wholesale-copy stale/diverged branches or fabricate merge trees.
+
+For G2/PR #90, preserve Engine B, Firebase Push, stable-ID messaging/attachment retries, authorization, SQLCipher, and native MLS disabled-by-default. PR #90 must remain open and unmerged unless the owner explicitly changes that instruction. The policy document contains the complete procedure and safeguards.
+
 ## Owner-approved repository-native workflow (2026-11-11)
 
 The repository is the shared source of truth so that every agent can retrieve the latest files and concurrent work does not overwrite another agent.
