@@ -281,7 +281,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       if (!mounted) return;
       setState(() {
         _pushRoomId = route.roomId;
-        _pushRoomName = _chats.where((chat) => chat.id == route.roomId).map((chat) => chat.name).firstOrNull ?? route.roomId;
+        _pushRoomName = route.roomId;
         _pushThreadItems = items;
         _screen = 'pushChat';
       });
