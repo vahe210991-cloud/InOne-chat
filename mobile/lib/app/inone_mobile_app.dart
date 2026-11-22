@@ -602,17 +602,17 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         }
         rows = remoteRows;
       } catch (error) {
-        // Keep the last successfully loaded room list in memory. The native
-        // SQLCipher history remains available for those rooms, but this
-        // baseline does not yet expose a local-room-list FFI endpoint.
-        rows = _mlsChats
-            .map((chat) => <String, dynamic>{
-                  'roomId': chat.id,
-                  'name': chat.name,
-                  'kind': chat.kind == InOneChatKind.person ? 'person' : 'group',
+        // Restore room IDs from the persistent SQLCipher-backed Engine B store.
+        // This also works after a cold start while the server is unreachable.
+        final localRoomIds = await _session.localMlsRoomIds();
+        rows = localRoomIds
+            .map((roomId) => <String, dynamic>{
+                  'roomId': roomId,
+                  'name': roomId,
+                  'kind': 'group',
                 })
             .toList(growable: false);
-        _notice('Серверный список комнат недоступен; сохранён ранее загруженный список: $error');
+        _notice('Серверный список комнат недоступен; восстановлены локальные комнаты из SQLCipher: $error');
       }
       final pendingIncoming = await _session.pendingMlsMessages();
       final chats = <InOneChatPreview>[];
