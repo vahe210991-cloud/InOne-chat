@@ -560,3 +560,17 @@ Continue on [PR #128](https://github.com/vahe210991-cloud/InOne-chat/pull/128), 
 Keep `INONE_MLS_NATIVE_ENABLED=false`. Keep PR #90 and PR #128 open Draft; no merge without explicit owner authorization. G2 remains NOT ACCEPTED until all exact-SHA gates and platform/two-device criteria pass.
 
 ---
+
+# Next execution — G2 exact-SHA CI and durable messaging (2026-11-22)
+
+Continue on [PR #128](https://github.com/vahe210991-cloud/InOne-chat/pull/128), branch `integration/g2-pr90-engine-b-main-2026-11-22-r1`. Read the [room-list vertical-slice report](../../development/reports/2026-11-22-g2-room-list-vertical-slice.md), [port matrix](../../architecture/mobile/G2-PR90-PORT-MATRIX.md), and historical test evidence baseline.
+
+1. Poll current exact-head Flutter mobile, iOS, FRB, P0/backend/PostgreSQL/Rust/OpenMLS and exact-SHA gate jobs. Inspect logs and artifacts; queued/skipped/absent jobs are not PASS.
+2. Fix every failure and rerun all applicable checks on the new exact head.
+3. Add deterministic room-list/thread-screen regression coverage if supported by the existing Flutter harness.
+4. Wire durable text outbox and flush using stable message IDs and retry idempotency; no plaintext fallback.
+5. Wire stable-ID encrypted attachment send/download UI and complete Android/iOS + two-device offline/restart/revocation acceptance.
+
+Room history read path is source-wired behind native MLS gate; SQLCipher read precedes ACK. Keep `INONE_MLS_NATIVE_ENABLED=false`. PR #90 and #128 stay open Draft; no merge without explicit owner authorization.
+
+---
