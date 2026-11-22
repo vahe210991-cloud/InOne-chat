@@ -271,6 +271,12 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         return;
       }
 
+      // sync() commits the incoming event to the SQLCipher inbox. ACK only
+      // after the durable room-history read confirms the message is present.
+      await _session.acknowledgeMlsMessages(
+        target.where((message) => message.isReadable).map((message) => message.eventId).toList(growable: false),
+      );
+
       final items = target
           .where((message) => message.isReadable)
           .map((message) => InOneThreadItem(
@@ -324,6 +330,15 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       // only messages already made available by the native client.
       await _session.syncMlsMessages();
       final messages = await _session.mlsMessagesForRoom(chat.id);
+      final pending = await _session.pendingMlsMessages();
+      final acceptedEventIds = pending
+          .where((message) => message.roomId == chat.id && message.isReadable)
+          .map((message) => message.eventId)
+          .toList(growable: false);
+      if (acceptedEventIds.isNotEmpty) {
+        // SQLCipher is the durable source of truth; ACK only after history read.
+        await _session.acknowledgeMlsMessages(acceptedEventIds);
+      }
       final items = messages
           .where((message) => message.isReadable)
           .map((message) => message.isAttachment
