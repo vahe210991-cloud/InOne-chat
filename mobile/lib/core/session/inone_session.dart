@@ -733,6 +733,22 @@ class InOneSession extends ChangeNotifier {
     return bridge.messagesForRoom(roomId);
   }
 
+  /// Reads durable SQLCipher history before acknowledging readable inbox items.
+  Future<List<MlsIncomingMessage>> loadMlsRoomHistory(String roomId) async {
+    _validateMlsRoomId(roomId);
+    final bridge = _requireNativeMlsBridge();
+    final messages = await bridge.messagesForRoom(roomId);
+    final pending = await bridge.pendingIncoming();
+    final acceptedEventIds = pending
+        .where((message) => message.roomId == roomId && message.isReadable)
+        .map((message) => message.eventId)
+        .toList(growable: false);
+    if (acceptedEventIds.isNotEmpty) {
+      await bridge.acknowledgeIncoming(acceptedEventIds);
+    }
+    return messages;
+  }
+
   /// Returns persisted diagnostics for MLS events that could not be decrypted.
   Future<List<MlsUndecryptableEvent>> mlsUndecryptableEvents() async {
     final bridge = _mlsBridge;
