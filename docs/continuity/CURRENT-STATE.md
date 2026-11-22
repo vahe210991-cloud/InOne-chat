@@ -669,3 +669,10 @@ Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone
 - Text send is source-wired via stable SQLCipher outbox operation IDs, app-resume retry and queued bubble restoration. Native MLS remains disabled by default; attachments/platform acceptance remain incomplete.
 
 ---
+
+## ACK filter hardening (2026-11-22)
+
+- `loadMlsRoomHistory` now ACKs only readable pending IDs that are confirmed present in the selected room's SQLCipher history read. Unreadable, cross-room and not-yet-persisted IDs remain pending.
+- Session regression covers ordering and these negative cases. Exact-SHA Actions execution remains pending.
+
+---
