@@ -645,7 +645,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
       const chunks = [];
       let received = 0;
       const isOrganizationDocumentUpload =
-        req.method === 'POST' && /^\\/org-requests\\/[^/]+\\/documents$/.test(pathOnly);
+        req.method === 'POST' && /^\/org-requests\/[^/]+\/documents$/.test(pathOnly);
       const requestBodyLimit = isOrganizationDocumentUpload ? documentBodyLimit : bodyLimit;
       for await (const c of req) {
         received += c.length;
