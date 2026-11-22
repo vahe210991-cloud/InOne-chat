@@ -22,11 +22,11 @@ The main functional gap was the native Flutter integration: the repository alrea
 | `mobile/rust/src/api/session.rs` | Main FFI already has panic guard, identity reservation, absolute app-private DB path validation, fail-closed key handling, `send_attachment_with_id`, download, sync, pending inbox, ACK and outbox APIs. Incoming attachment DTO is present. | **MOSTLY ALREADY PRESENT**. Do not transplant file. Review exact edge-case test gaps only. |
 | `mobile/lib/core/mls/mls_session_bridge.dart` | Main interface already exposes `sendAttachmentWithId`, `downloadAttachment`, `enqueueText`, `pendingOutbox`, inbox and ACK APIs. | **ALREADY PRESENT**. Do not add the non-stable attachment send API as a retry path. |
 | `mobile/lib/core/mls/rust_mls_session_bridge.dart` | Main adapter maps the stable-ID attachment API to generated Rust session bindings and exposes download. | **ALREADY PRESENT**. `localRoomIds` is not currently exposed. Add only if offline room restoration is an approved, evidenced requirement. |
-| `mobile/lib/core/session/inone_session.dart` | Main session already adopts/resumes the native session and wraps stable-ID send, enqueue, flush, download, pending inbox and ACK. | **ALREADY PRESENT** for core operations. Preserve existing auth/refresh/logout sequencing. No wholesale session replacement. |
+| `mobile/lib/core/session/inone_session.dart` | Main session already adopts/resumes the native session and wraps stable-ID send, enqueue, flush, download, pending inbox and ACK. | **EXTENDED ON #128** with typed `pendingMlsOutbox(roomId)` so the UI can restore queued operations; existing auth/refresh/logout sequencing preserved. |
 | `mobile/lib/core/data/inone_repositories.dart` | Main already contains `InOneRoom` / `InOneRoomList` DTO validation and DTO unit tests, but the repository wrapper lacks `myRooms()`. | **IMPLEMENTED ON #128**. Added authenticated `myRooms()` returning the canonical validated `InOneRoomList`; added request, parsing, malformed response and unauthorized regressions. |
-| `mobile/lib/app/inone_mobile_app.dart` | Main preserves Firebase Push and session/navigation lifecycle, but normal messages UI is empty and push-chat send/attachments are deliberately blocked. PR #90 adds ~457 lines of chat UI/session orchestration. | **ROOM LIST IMPLEMENTED ON #128**. Authenticated app startup now loads typed rooms and maps them into the existing approved chat preview model. Opening a room remains gated until the native MLS history path is accepted; preserve the current host, push, auth and navigation lifecycle. |
+| `mobile/lib/app/inone_mobile_app.dart` | Main preserves Firebase Push and session/navigation lifecycle, but normal messages UI is empty and push-chat send/attachments are deliberately blocked. PR #90 adds ~457 lines of chat UI/session orchestration. | **ROOM LIST + HISTORY + TEXT OUTBOX IMPLEMENTED ON #128 BEHIND NATIVE GATE**. App loads typed rooms; room opening uses ciphertext history + Engine B sync + SQLCipher history; ACK after durable read; text enqueue persists in Engine B outbox with stable local operation ID and flush/retry on app resume. Preserve current host/push/auth/navigation lifecycle. Attachments remain blocked. |
 | `mobile/lib/ui_dart_source/models/inone_models.dart` | Main UI model currently lacks some attachment presentation fields added by PR #90. Rust bridge DTO already carries attachment metadata. | **DEFER** until attachment UI slice; map only fields needed by approved screen contract. |
-| `mobile/lib/ui_dart_source/screens/main/inone_chat_thread_screen.dart` | PR #90 changes send callback to async and adds attachment download callback. | **CANDIDATE**. Adapt async send/error/loading behavior without changing approved layout; test duplicate taps and stable operation IDs. |
+| `mobile/lib/ui_dart_source/screens/main/inone_chat_thread_screen.dart` | PR #90 changes send callback to async and adds attachment download callback. | **IMPLEMENTED ON #128**: send callback accepts `FutureOr<void>`; composer clears only after durable enqueue succeeds, and failed persistence leaves the draft available. Existing approved layout preserved. |
 | `mobile/lib/ui_dart_source/screens/main/inone_messages_screen.dart` | PR #90 changes placeholder copy only. | **LOW VALUE**. Do not port copy alone; connect real typed room data first. |
 | `mobile/pubspec.yaml` / `mobile/pubspec.lock` (`file_picker`) | Current main does not declare `file_picker`; PR #90 adds v11.0.3. | **DEFER** until attachment picker implementation is approved and API use is verified. Never transplant lockfile wholesale. |
 | `mobile/rust/Cargo.lock` | PR #90 changes transitive versions and zeroize graph. Main has its own locked Engine B graph and CI enforces it. | **EXCLUDE** source lockfile. Regenerate only from the selected Engine B manifest with pinned toolchain if dependencies actually change. |
@@ -52,8 +52,8 @@ The main functional gap was the native Flutter integration: the repository alrea
 1. **Completed on #128:** typed authenticated `myRooms()` wrapper using the pre-existing `InOneRoomList` DTO; request/response validation regressions.
 2. **Completed on #128:** native messages screen now displays authenticated room names/IDs while preserving Firebase Push and app/session/navigation lifecycle.
 3. **Implemented behind native-session gate on #128:** authenticated ciphertext-only history read → Engine B sync → SQLCipher room-history read → ACK only readable pending IDs after durable read. Runtime acceptance remains pending.
-4. Wire durable text outbox and flush; preserve client message IDs and retry semantics.
-5. Only then review stable-ID attachment UI, picker dependency, download callbacks and iOS Keychain runtime smoke.
+4. **Implemented behind native gate:** text is enqueued to Engine B SQLCipher outbox, displayed as queued, flushed with durable local operation ID, and retried on app resume; queued bubbles restore from pending outbox.
+5. Implement stable-ID encrypted attachment UI/download and complete platform/two-device acceptance. Exact-SHA CI remains pending.
 
 ## Acceptance status
 
@@ -62,6 +62,7 @@ The main functional gap was the native Flutter integration: the repository alrea
 - Core MLS and backend hardening gaps from PR #90: **ALREADY PRESENT** on main.
 - Typed authenticated room-list repository + native messages-list integration: **IMPLEMENTED ON #128**; exact-SHA Actions pending.
 - Room history read/decrypt/presentation + ACK-after-SQLCipher-read path: **IMPLEMENTED BEHIND NATIVE MLS GATE**; runtime acceptance pending.
-- Durable text send/outbox UI and attachment UI: **NOT STARTED**.
+- Durable text send/outbox UI: **IMPLEMENTED BEHIND NATIVE MLS GATE**; exact-SHA/runtime acceptance pending.
+- Attachment UI: **NOT STARTED**.
 - G2: **NOT ACCEPTED**.
 - PR #90 remains OPEN/DRAFT; PR #128 remains OPEN/DRAFT. No merge or source-branch mutation.
