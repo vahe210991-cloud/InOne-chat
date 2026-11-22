@@ -642,3 +642,13 @@ Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone
 - Latest report: [G2 room-list vertical slice](../../development/reports/2026-11-22-g2-room-list-vertical-slice.md).
 
 ---
+
+## G2 native room history — latest source checkpoint (2026-11-22)
+
+- PR #128 now includes authenticated room-list repository/UI wiring and a room-opening path behind the native MLS session gate.
+- Room opening uses backend ciphertext-only history + Engine B sync + SQLCipher history read. Readable pending IDs are ACKed only after durable history read; unreadable items remain pending. Push-open uses the same order.
+- Native MLS remains disabled by default. Text send/outbox, attachment UI and two-device runtime acceptance remain incomplete. G2 NOT ACCEPTED.
+- Current-head Actions are queued/pending; no current-head green status is claimed.
+- Report: [G2 room-list vertical slice](../../development/reports/2026-11-22-g2-room-list-vertical-slice.md).
+
+---
