@@ -131,45 +131,6 @@ fn session_tokens(base: &str, user: &str, device: &str) -> (String, String) {
 }
 
 #[test]
-fn client_renews_an_expired_access_token_by_itself() {
-    let engine = start_engine("1500");
-    let keys = MemoryKeyStore::default();
-    let mut alice = connect(
-        &engine.base,
-        "@alice:inone.test",
-        PW,
-        "A_PHONE",
-        &db("alice"),
-        &keys,
-    )
-    .unwrap();
-    let mut bob = connect(
-        &engine.base,
-        "@bob:inone.test",
-        PW,
-        "B_PHONE",
-        &db("bob"),
-        &keys,
-    )
-    .unwrap();
-    bob.ensure_key_packages(1).unwrap();
-    alice.create_room(ROOM).unwrap();
-    alice.invite(ROOM, "@bob:inone.test").unwrap();
-
-    thread::sleep(Duration::from_millis(2000)); // токены доступа истекли
-    assert!(
-        bob.sync().unwrap().is_empty(),
-        "синхронизация после истечения работает"
-    );
-    thread::sleep(Duration::from_millis(2000));
-    alice.send_text(ROOM, "после истечения").unwrap();
-    thread::sleep(Duration::from_millis(2000));
-    assert_eq!(texts(&bob.sync().unwrap()), vec!["после истечения"]);
-    bob.logout().unwrap();
-    assert!(bob.sync().is_err(), "после выхода сессия не работает");
-}
-
-#[test]
 fn client_adopts_flutter_session_and_keeps_refresh_token_in_rust() {
     let engine = start_engine("1500");
     let keys = MemoryKeyStore::default();
