@@ -13,6 +13,7 @@ void main() {
       'backupEmail': {'email': 'backup@example.test', 'verified': true},
       'securityHints': ['offer_biometric'],
       'locale': 'ru',
+      'platformRole': 'owner',
     });
 
     expect(profile.userId, 'user-1');
@@ -24,6 +25,9 @@ void main() {
     expect(profile.backupEmail?.verified, isTrue);
     expect(profile.securityHints, ['offer_biometric']);
     expect(profile.locale, 'ru');
+    expect(profile.platformRole, 'owner');
+    expect(profile.canViewPlatformRequests, isTrue);
+    expect(profile.canDecidePlatformRequests, isTrue);
     expect(profile.isEmpty, isFalse);
   });
 
@@ -43,6 +47,9 @@ void main() {
     expect(profile.email, isNull);
     expect(profile.backupEmail, isNull);
     expect(profile.locale, 'hy');
+    expect(profile.platformRole, isNull);
+    expect(profile.canViewPlatformRequests, isFalse);
+    expect(profile.canDecidePlatformRequests, isFalse);
   });
 
   test('rejects invalid backend profile shapes', () {
@@ -104,4 +111,19 @@ void main() {
       )),
     );
   });
+  test('accepts admin role for platform queue but never grants decisions', () {
+    final profile = InOneProfile.fromJson({
+      'userId': 'admin-1',
+      'nickname': 'Platform Admin',
+      'email': 'admin@example.test',
+      'verificationLevel': 1,
+      'providers': [],
+      'backupEmail': null,
+      'securityHints': [],
+      'platformRole': 'admin',
+    });
+    expect(profile.canViewPlatformRequests, isTrue);
+    expect(profile.canDecidePlatformRequests, isFalse);
+  });
+
 }

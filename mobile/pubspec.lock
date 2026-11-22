@@ -161,6 +161,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.0.8"
+  cryptography:
+    dependency: "direct main"
+    description:
+      name: cryptography
+      sha256: "3eda3029d34ec9095a27a198ac9785630fe525c0eb6a49f3d575272f8e792ef0"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.9.0"
   dart_style:
     dependency: transitive
     description:
@@ -527,6 +535,13 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "9.6.3"
+  open_filex:
+    dependency: "direct main"
+    description:
+      name: open_filex
+      url: "https://pub.dev"
+    source: hosted
+    version: "5.0.0"
   package_config:
     dependency: transitive
     description:
@@ -844,6 +859,7 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.1.4"
+
 sdks:
   dart: ">=3.13.0 <4.0.0"
   flutter: ">=3.44.0"

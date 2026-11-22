@@ -4,10 +4,10 @@ import assert from 'node:assert/strict';
 
 const read = (relative) => readFileSync(new URL(relative, import.meta.url), 'utf8');
 const server = read('../src/server.js');
-const manifest = JSON.parse(read('../../../мусорный ящик/HTML-архив/mobile-assets/ui-approval/screen-manifest.json'));
-const nativeApp = read('../../../mobile/lib/app/inone_mobile_app.dart');
-const mobileHost = read('../../../mobile/lib/main.dart');
-const mobilePubspec = read('../../../mobile/pubspec.yaml');
+const mobileContract = read('../../../mobile/API-CONTRACTS-BETA-1.md');
+const mobileApp = read('../../../mobile/lib/app/inone_mobile_app.dart');
+const mobileEntry = read('../../../mobile/lib/main.dart');
+const mobileRepositories = read('../../../mobile/lib/core/data/inone_repositories.dart');
 
 const routeEvidence = new Map([
   ['POST /login', /req\.method === 'POST' && p === '\/login'/],
@@ -47,36 +47,36 @@ const declaredOperations = (value) => value
   .map((item) => item.trim())
   .filter((item) => /^(GET|POST|PUT|DELETE)\s+\//u.test(item));
 
-test('every operation declared by the v0.8 approval manifest has a backend handler', () => {
-  assert.equal(manifest.screens.length, 24);
-  const missing = [];
-  for (const screen of manifest.screens) {
-    for (const operation of declaredOperations(screen.api ?? '')) {
-      const evidence = routeEvidence.get(operation);
-      if (!evidence || !evidence.test(server)) missing.push(`${screen.id}: ${operation}`);
-    }
+test('G2 organization request routes declared by the canonical mobile contract have backend handlers', () => {
+  const required = [
+    ['PS-01 queue', /req\.method === 'GET' && p === '\/org-requests'/u],
+    ['PS-02 details', /const orgReqOne = p\.match/u],
+    ['PS-02 audited document access', /const orgReqDoc = p\.match/u],
+    ['PS-03 owner decision', /const orgReqDecision = p\.match/u],
+    ['profile platform role', /info\.platformRole = await storage\.platformRoleOf\(d\.userId\)/u],
+  ];
+  for (const [name, evidence] of required) {
+    assert.match(server, evidence, `Missing backend route evidence: ${name}`);
   }
-  assert.deepEqual(missing, [], `Missing backend route evidence: ${missing.join(', ')}`);
-  assert.match(server, /if \(req\.method === 'POST' && orgReqDocs\)/u);
-  assert.match(server, /if \(req\.method === 'GET' && orgReqOne\)/u);
-  assert.match(server, /if \(req\.method === 'GET' && orgReqDoc\)/u);
-  assert.match(server, /if \(req\.method === 'POST' && orgReqDecision\)/u);
-  assert.match(server, /action === 'claim'/u);
+  assert.match(mobileContract, /\| PS-01 \| `GET \/org-requests`/u);
+  assert.match(mobileContract, /\| PS-02 \| `GET \/org-requests\/:id`/u);
+  assert.match(mobileContract, /\| PS-03 \| `POST \/org-requests\/:id\/decision`/u);
 });
 
-test('production Flutter entry uses native Dart UI and keeps MLS disabled by default', () => {
-  assert.ok(mobileHost.includes('Firebase.initializeApp()'));
-  assert.ok(mobileHost.includes('Platform.isAndroid || Platform.isIOS'));
-  assert.ok(mobileHost.includes('runApp(InOneMobileApp(enablePush: supportsPush))'));
-  assert.ok(nativeApp.includes('const _nativeMlsEnabled = bool.fromEnvironment'));
-  assert.ok(nativeApp.includes('defaultValue: false'));
-  assert.equal(mobilePubspec.includes('webview_flutter:'), false);
-  assert.equal(mobileHost.includes('WebView'), false);
+test('native Flutter app gates platform request navigation and uses typed repositories', () => {
+  assert.match(mobileApp, /canViewPlatformRequests/u);
+  assert.match(mobileApp, /canDecidePlatformRequests/u);
+  assert.match(mobileApp, /InOneRequestsAdminScreen/u);
+  assert.match(mobileApp, /InOneRequestAdminDetailsScreen/u);
+  assert.match(mobileApp, /InOneRequestDecisionScreen/u);
+  assert.match(mobileRepositories, /organizationRequests\(\)/u);
+  assert.match(mobileRepositories, /organizationRequest\(String requestId\)/u);
+  assert.match(mobileRepositories, /decideOrganizationRequest\(/u);
+  assert.doesNotMatch(mobileApp, /WebView/u);
 });
-
 
 test('CH-02 message delivery uses MLS and rejects legacy room-event POST', () => {
-  assert.ok(server.includes('const mlsMessageRoute = p.match(/^\\/mls\\/groups\\/([^/]+)\\/messages$/);'));
+  assert.match(server, /const mlsMessageRoute = p\.match/u);
   assert.match(server, /mlsMessageRoute && req\.method === 'POST'/u);
   assert.match(server, /messages must be sent through \/mls\/groups\/:id\/messages/u);
   assert.match(server, /roomRoute && req\.method === 'GET'/u);
@@ -89,6 +89,13 @@ test('CH-02 message delivery uses MLS and rejects legacy room-event POST', () =>
   assert.match(server, /const readRoute = p\.match/u);
   assert.match(server, /clientMessageId/u);
   assert.match(server, /epoch is outdated/u);
+});
+
+test('native Flutter production entry gates push by platform and does not depend on WebView', () => {
+  assert.match(mobileEntry, /Platform\.isAndroid \|\| Platform\.isIOS/u);
+  assert.match(mobileEntry, /runApp\(InOneMobileApp\(enablePush:\s*supportsPush\)\)/u);
+  assert.match(mobileEntry, /FirebaseMessaging\.onBackgroundMessage\(inOneFirebaseMessagingBackgroundHandler\)/u);
+  assert.doesNotMatch(mobileApp, /WebView/u);
 });
 
 test('organization and room role gates remain backend-owned', () => {

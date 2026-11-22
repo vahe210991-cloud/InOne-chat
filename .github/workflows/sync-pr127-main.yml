@@ -1,0 +1,36 @@
+name: Sync PR 127 with main
+
+on:
+  push:
+    branches:
+      - integration/g2-org-requests-main-2026-11-22
+    paths:
+      - .github/workflows/sync-pr127-main.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-pr127-main
+  cancel-in-progress: false
+
+jobs:
+  merge-main:
+    if: github.event_name == 'push' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout PR branch with full history
+        uses: actions/checkout@v4
+        with:
+          ref: integration/g2-org-requests-main-2026-11-22
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Merge current main into PR branch
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git merge --no-edit --no-ff origin/main
+          git push origin HEAD:integration/g2-org-requests-main-2026-11-22
