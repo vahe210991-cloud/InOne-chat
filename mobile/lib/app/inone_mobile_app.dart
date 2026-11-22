@@ -790,6 +790,13 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     }
   }
 
+  String _newMlsClientMessageId() {
+    final random = math.Random.secure();
+    return List<int>.generate(16, (_) => random.nextInt(256))
+        .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
+        .join();
+  }
+
   String _attachmentMimeType(String name) {
     final extension = name.split('.').last.toLowerCase();
     return switch (extension) {
@@ -843,11 +850,13 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           _notice('Файл пустой или превышает допустимый размер.');
           return;
         }
+        final clientMessageId = _newMlsClientMessageId();
         await _session.sendMlsAttachment(
           roomId,
           displayName,
           _attachmentMimeType(displayName),
           bytes,
+          clientMessageId,
         );
         await _refreshActiveMlsChat();
         if (mounted) _notice('Вложение отправлено через MLS.');
