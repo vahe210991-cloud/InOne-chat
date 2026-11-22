@@ -759,7 +759,6 @@ class InOneSession extends ChangeNotifier {
     }
   }
 
-  /// Creates the server room and local OpenMLS group through the persistent Rust client.
   Future<void> createMlsRoom(String roomId) {
     _validateMlsRoomId(roomId);
     return _requireNativeMlsBridge().createRoom(roomId);
@@ -809,158 +808,7 @@ class InOneSession extends ChangeNotifier {
     }
     if (clientMessageId.isEmpty ||
         clientMessageId.length > 60 ||
-        !RegExp(r'^[A-Za-z0-9_-]{1,60}
-  Future<String?> mlsQuarantinedCommitReason(String roomId, int epoch) async {
-    final bridge = _mlsBridge;
-    if (bridge == null) return null;
-    return bridge.quarantinedCommitReason(roomId, epoch);
-  }
-
-  /// Cancels an invite only when the native client can safely release its claim.
-  Future<void> cancelMlsInvite(String roomId, String userId) async {
-    final bridge = _mlsBridge;
-    if (bridge == null) {
-      throw StateError('Native MLS session is not open');
-    }
-    await bridge.cancelInvite(roomId, userId);
-  }
-
-  Future<void> logout() {
-    final active = _logoutInFlight;
-    if (active != null) return active;
-    _loggingOut = true;
-    final operation = _logoutOnce();
-    _logoutInFlight = operation;
-    return operation.whenComplete(() {
-      if (identical(_logoutInFlight, operation)) _logoutInFlight = null;
-      _loggingOut = false;
-    });
-  }
-
-  Future<void> _logoutOnce() async {
-    _registrationToken = null;
-    final login = _loginInFlight;
-    if (login != null) {
-      try {
-        await login;
-      } catch (_) {
-        // Continue with local cleanup even if authentication failed.
-      }
-    }
-    final initialization = _initializing;
-    if (initialization != null) {
-      try {
-        await initialization;
-      } catch (_) {
-        // Continue with local cleanup even if session restoration failed.
-      }
-    }
-    final adoption = _adoptionInFlight;
-    if (adoption != null) {
-      try {
-        await adoption;
-      } catch (_) {
-        // The handoff may fail; the saved identity is still cleared below.
-      }
-    }
-    final handoff = _handoffGate;
-    if (handoff != null) await handoff.future;
-    final refresh = _refreshInFlight;
-    if (refresh != null) {
-      try {
-        await refresh;
-      } catch (_) {
-        // Logout must not be blocked by a failed token rotation.
-      }
-    }
-    final nativeRefresh = _nativeRefreshInFlight;
-    if (nativeRefresh != null) {
-      try {
-        await nativeRefresh;
-      } catch (_) {
-        // Local native cleanup remains mandatory.
-      }
-    }
-
-    final bridge = _mlsBridge;
-    final savedUserId = _savedMlsUserId;
-    try {
-      if (bridge != null) {
-        try {
-          await bridge.logout();
-        } finally {
-          if (savedUserId != null) {
-            final deviceId = _deviceId;
-            if (deviceId == null) {
-              throw StateError(
-                'Native MLS cleanup requires the persisted device identity',
-              );
-            }
-            await bridge.purgeLocalSession(
-              userId: savedUserId,
-              deviceId: deviceId,
-            );
-          }
-        }
-      } else if (savedUserId != null) {
-        final native = _nativeMlsBridge;
-        final deviceId = _deviceId;
-        if (native == null || deviceId == null) {
-          throw StateError(
-            'Native MLS cleanup unavailable; saved identity will not be resumed',
-          );
-        }
-        await native.purgeLocalSession(
-          userId: savedUserId,
-          deviceId: deviceId,
-        );
-      } else if (isAuthenticated) {
-        await _client.post('/logout');
-      }
-    } finally {
-      _mlsBridge = null;
-      try {
-        if (bridge != null) await bridge.close();
-      } finally {
-        try {
-          if (savedUserId != null) {
-            // Never auto-resume a session after an explicit logout attempt,
-            // even if native storage cleanup reports an error. The encrypted
-            // database/key may remain for a later explicit recovery, but the
-            // persisted identity must not silently authenticate on next launch.
-            _savedMlsUserId = null;
-            await _deleteMlsUserId();
-          }
-        } finally {
-          try {
-            await _writeLocaleSyncPending(false);
-          } catch (_) {
-            // Locale preference remains local; logout must still clear credentials.
-          }
-          _localeSyncPending = false;
-          _clearSession();
-        }
-      }
-    }
-  }
-
-  void _clearSession() {
-    _mlsError = null;
-    _accessToken = null;
-    _refreshToken = null;
-    _userId = null;
-    notifyListeners();
-  }
-
-  @override
-  void dispose() {
-    final bridge = _mlsBridge;
-    if (bridge != null) unawaited(bridge.close());
-    _client.close();
-    super.dispose();
-  }
-}
-).hasMatch(clientMessageId)) {
+        !RegExp(r'^[A-Za-z0-9_-]{1,60}$').hasMatch(clientMessageId)) {
       throw ArgumentError.value(
         clientMessageId,
         'clientMessageId',
@@ -994,7 +842,6 @@ class InOneSession extends ChangeNotifier {
     return _requireNativeMlsBridge().messagesForRoom(roomId);
   }
 
-  /// Call only after the app has accepted the already SQLCipher-persisted messages.
   Future<void> acknowledgeMlsMessages(List<String> eventIds) {
     if (eventIds.any((id) => id.trim().isEmpty || id.length > 128)) {
       throw ArgumentError.value(eventIds, 'eventIds', 'Invalid MLS event ID');
@@ -1025,7 +872,6 @@ class InOneSession extends ChangeNotifier {
 
   Future<int> removeRevokedMlsDevices() =>
       _requireNativeMlsBridge().removeRevokedDevices();
-
 
   /// Returns the quarantined Commit reason for a room epoch, when present.
   Future<String?> mlsQuarantinedCommitReason(String roomId, int epoch) async {
