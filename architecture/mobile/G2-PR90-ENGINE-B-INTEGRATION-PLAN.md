@@ -76,3 +76,15 @@ Port only after confirming each behavior is still absent on this branch's curren
 ## Acceptance rule
 
 This plan is not an implementation or test result. PR #90 integration remains **NOT ACCEPTED** until all required behavior is ported to canonical Engine B, all applicable exact-SHA checks pass, security/regression criteria are satisfied, and the owner accepts the result.
+
+## Port-matrix checkpoint — 2026-11-22
+
+The detailed per-file decisions are recorded in [G2 / PR #90 selective port matrix](G2-PR90-PORT-MATRIX.md).
+
+- **PASS:** all 27 source PR changed paths and patches inspected.
+- **PASS:** canonical Engine B, FFI, Dart bridge and session API signatures verified at source level.
+- **ALREADY PRESENT:** Engine B attachment crypto, stable-ID text/attachment operations, durable outboxes, encrypted download, SQLCipher/protected key lifecycle, backend device-bound download authorization and Host hardening.
+- **DO NOT PORT:** Engine A tree, its manifests/lockfiles, duplicate backend hardening, duplicate current bridge/session APIs.
+- **FIRST MISSING PRODUCT SLICE:** typed `GET /rooms/mine` repository wrapper and Flutter messages-list wiring. The backend route exists; do not invent a new endpoint.
+- Product-code port remains NOT STARTED; G2 remains NOT ACCEPTED. Native MLS remains disabled by default.
+- Next: implement the rooms-list vertical slice, then persisted room history/durable text outbox, with regressions and exact-SHA Actions.
