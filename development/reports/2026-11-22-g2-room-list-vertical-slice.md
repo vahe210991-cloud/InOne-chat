@@ -6,7 +6,7 @@
 **Branch:** `integration/g2-pr90-engine-b-main-2026-11-22-r1`  
 **PR:** [#128 — Draft](https://github.com/vahe210991-cloud/InOne-chat/pull/128)  
 **Source PR:** [#90 — Open/Draft, unchanged](https://github.com/vahe210991-cloud/InOne-chat/pull/90)  
-**Code-slice SHA before documentation updates:** `131175e765fb4ec6bb1079a03796be53e0969033`
+**Code-slice SHA before documentation updates:** `eddf03c4b478617331d818898f6d94cabc4b2d1d`
 
 ## Scope / approved WBS mapping
 
@@ -47,7 +47,7 @@ Existing files reused without changes:
 
 - Backend route/DTO contract: **SOURCE REVIEW PASS**. Existing `rooms-mine.test.js` verifies authenticated room listing, membership scoping, non-member isolation and unauthenticated 401.
 - Existing DTO parser tests: historical source tests present; exact current branch Flutter suite pending.
-- New repository, room-to-preview mapper and outbox bridge tests: authored; execution **PENDING**.
+- New repository, room-to-preview mapper, durable outbox and read-before-ACK session tests: authored; execution **PENDING**.
 - Flutter analyze/test/Android build: **PENDING** exact-SHA GitHub Actions.
 - iOS validation: **PENDING** exact-SHA GitHub Actions.
 - FRB generation: **PENDING** exact-SHA GitHub Actions.
@@ -59,7 +59,8 @@ Existing files reused without changes:
 
 - Room opening requests the existing authenticated `GET /rooms/:id/events` route (ciphertext only; backend membership checks remain authoritative).
 - It invokes Engine B sync and reads only messages already persisted in the SQLCipher inbox. Text and attachment metadata are mapped into the existing thread UI.
-- Pending readable event IDs are ACKed only after the durable SQLCipher history read succeeds. Unreadable events are not ACKed. Push-open follows the same persistence-before-ACK ordering.
+- `InOneSession.loadMlsRoomHistory()` centralizes the read-before-ACK boundary: read SQLCipher history, inspect pending inbox, then ACK only readable events for that room. Unreadable and other-room events remain pending. Push-open and normal room-open both use this path.
+- A Dart session regression verifies the call order (`history` → `pending` → `ack`) and that only the readable event for the selected room is acknowledged.
 - This is source implementation only. Native MLS remains disabled by default, so the path is not runtime-accepted or available as a product feature until platform/security gates pass.
 
 ## Not implemented / acceptance boundary
