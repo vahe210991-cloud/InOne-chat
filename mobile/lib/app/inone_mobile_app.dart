@@ -123,6 +123,9 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     if (pushLifecycle != null) {
       unawaited(pushLifecycle.refreshRegistration().catchError((Object _) {}));
     }
+    if (_session.hasNativeMlsSession) {
+      unawaited(_flushMlsOutbox(refreshRoomId: _pushRoomId));
+    }
   }
 
   @override
@@ -312,6 +315,89 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       }
     }
   }
+  Future<List<InOneThreadItem>> _loadThreadItems(String roomId) async {
+    // Reading history from Engine B confirms that incoming messages are already
+    // committed to SQLCipher before any delivery ACK is issued.
+    final messages = await _session.mlsMessagesForRoom(roomId);
+    final pendingIncoming = await _session.pendingMlsMessages();
+    final acceptedEventIds = pendingIncoming
+        .where((message) => message.roomId == roomId && message.isReadable)
+        .map((message) => message.eventId)
+        .toList(growable: false);
+    if (acceptedEventIds.isNotEmpty) {
+      await _session.acknowledgeMlsMessages(acceptedEventIds);
+    }
+
+    final pendingOutbox = await _session.pendingMlsOutbox(roomId);
+    final historyItems = messages
+        .where((message) => message.isReadable)
+        .map((message) => message.isAttachment
+            ? InOneThreadItem(
+                kind: InOneThreadItemKind.file,
+                fileLabel: message.name ?? 'Encrypted attachment',
+                mine: message.mine,
+              )
+            : InOneThreadItem(
+                kind: InOneThreadItemKind.text,
+                text: message.text,
+                mine: message.mine,
+              ));
+    final queuedItems = pendingOutbox.map((item) {
+      if (item.kind == 'attachment' || item.fileId != null) {
+        return InOneThreadItem(
+          kind: InOneThreadItemKind.file,
+          fileLabel: item.name ?? 'Encrypted attachment',
+          mine: true,
+          meta: 'Queued',
+        );
+      }
+      if (item.kind == 'text' && item.text != null) {
+        return InOneThreadItem(
+          kind: InOneThreadItemKind.text,
+          text: item.text,
+          mine: true,
+          meta: 'Queued',
+        );
+      }
+      return null;
+    }).whereType<InOneThreadItem>();
+    return List<InOneThreadItem>.unmodifiable([
+      ...historyItems,
+      ...queuedItems,
+    ]);
+  }
+
+  Future<void> _sendChatText(String plaintext) async {
+    final roomId = _pushRoomId;
+    if (roomId == null || !_session.hasNativeMlsSession) {
+      throw StateError('Native MLS session is not open');
+    }
+
+    // Engine B creates a stable local operation ID and durably stores the
+    // plaintext only inside SQLCipher before any network send is attempted.
+    await _session.enqueueMlsText(roomId, plaintext);
+    final items = await _loadThreadItems(roomId);
+    if (mounted && _pushRoomId == roomId) {
+      setState(() => _pushThreadItems = items);
+    }
+    unawaited(_flushMlsOutbox(refreshRoomId: roomId));
+  }
+
+  Future<void> _flushMlsOutbox({String? refreshRoomId}) async {
+    if (!_session.hasNativeMlsSession) return;
+    try {
+      await _session.flushMlsOutbox();
+      await _session.syncMlsMessages();
+      if (refreshRoomId == null) return;
+      final items = await _loadThreadItems(refreshRoomId);
+      if (mounted && _pushRoomId == refreshRoomId) {
+        setState(() => _pushThreadItems = items);
+      }
+    } catch (_) {
+      // The SQLCipher outbox keeps its stable operation IDs for a later retry.
+    }
+  }
+
   Future<void> _openChat(InOneChatPreview chat) async {
     if (!_session.hasNativeMlsSession) {
       _notice('Комната загружена. Для просмотра истории необходимо активировать и принять нативный MLS-сеанс на этом устройстве.');
@@ -334,33 +420,9 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         throw StateError('room history response is invalid');
       }
 
-      // Engine B owns decryption and durable inbox processing. The UI reads
-      // only messages already made available by the native client.
+      // Engine B owns decryption and durable inbox processing.
       await _session.syncMlsMessages();
-      final messages = await _session.mlsMessagesForRoom(chat.id);
-      final pending = await _session.pendingMlsMessages();
-      final acceptedEventIds = pending
-          .where((message) => message.roomId == chat.id && message.isReadable)
-          .map((message) => message.eventId)
-          .toList(growable: false);
-      if (acceptedEventIds.isNotEmpty) {
-        // SQLCipher is the durable source of truth; ACK only after history read.
-        await _session.acknowledgeMlsMessages(acceptedEventIds);
-      }
-      final items = messages
-          .where((message) => message.isReadable)
-          .map((message) => message.isAttachment
-              ? InOneThreadItem(
-                  kind: InOneThreadItemKind.file,
-                  fileLabel: message.name ?? 'Encrypted attachment',
-                  mine: message.mine,
-                )
-              : InOneThreadItem(
-                  kind: InOneThreadItemKind.text,
-                  text: message.text,
-                  mine: message.mine,
-                ))
-          .toList(growable: false);
+      final items = await _loadThreadItems(chat.id);
       if (!mounted) return;
       setState(() {
         _pushThreadItems = items;
@@ -791,7 +853,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
             online: false,
           ),
           items: _pushThreadItems,
-          onSend: (_) => _notice('Отправка сообщений остаётся заблокированной до принятия полного native MLS send pipeline.'),
+          onSend: _sendChatText,
           onBack: () => setState(() {
             _screen = 'messages';
             _pushRoomId = null;
