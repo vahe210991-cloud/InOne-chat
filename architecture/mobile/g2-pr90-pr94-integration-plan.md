@@ -63,14 +63,14 @@ Integrate the useful Flutter messaging and encrypted-attachment UI work from PR 
 
 - [x] Create isolated integration branch from current main.
 - [x] Record the source audit and port constraints.
-- [ ] Compare PR #90 changed Dart files against main and port only missing behavior.
-- [ ] Add focused tests for message and attachment UI orchestration.
-- [ ] Run the complete Flutter/Rust/FRB CI matrix.
+- [x] Compare PR #90 changed Dart files against main and port only missing behavior.
+- [x] Add focused session handoff tests for the newly exposed persistent MLS operations.\n- [ ] Add focused widget/integration tests for message and attachment UI orchestration.
+- [ ] Run the complete Flutter/Rust/FRB CI matrix on the final integration head (currently queued behind earlier runs).
 - [ ] Run Android API 35 baseline smoke before deciding whether PR #94 workaround is needed.
 - [ ] Port narrowly only if runtime evidence demonstrates the JNI failure.
 - [ ] Run iOS simulator and two-device acceptance.
 - [ ] Open an integration PR only after exact-head checks are green; keep source PRs Draft until disposition is agreed.
 
-## Current evidence boundary
+## Progress update — 2026-11-22\n\n- Created Draft integration PR #124 from the exact current main baseline.\n- Ported the missing Flutter session facade and chat-thread/chat-list UI wiring while preserving current main push lifecycle and Engine B FFI.\n- Added the authenticated room-list repository call and pinned `file_picker 11.0.3` with a selectively merged lockfile; kept `path_provider_android 2.2.23` unchanged.\n- No offline local-room-list fallback was added because the current FRB surface does not expose that Engine B API; previously loaded room metadata is retained in memory.\n- Latest exact-head Actions are queued; an earlier pre-UI head completed Rust format, Rust bridge, OpenMLS, backend Node, PostgreSQL, and P0 room-list regression jobs successfully. Those results do not validate the latest head.\n\n## Current evidence boundary
 
 This plan records source-level findings from repository inspection. Creating this branch and plan does not mean code was ported, builds were run, emulator/device tests passed, or either source PR is merge-ready.
