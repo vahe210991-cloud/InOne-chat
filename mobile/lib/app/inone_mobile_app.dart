@@ -3,18 +3,18 @@ import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 
-import '../core/data/inone_profile.dart';
-import '../core/data/inone_push_repository.dart';
-import '../core/data/inone_public_config.dart';
-import '../core/data/inone_organization.dart';
 import '../core/data/inone_chat_preview_mapper.dart';
+import '../core/data/inone_organization.dart';
+import '../core/data/inone_profile.dart';
+import '../core/data/inone_public_config.dart';
+import '../core/data/inone_push_repository.dart';
 import '../core/data/inone_repositories.dart';
 import '../core/mls/rust_mls_session_bridge.dart';
 import '../core/network/api_environment.dart';
 import '../core/network/api_exception.dart';
-import '../core/session/inone_session.dart';
 import '../core/session/inone_push_lifecycle.dart';
 import '../core/session/inone_push_receive_lifecycle.dart';
+import '../core/session/inone_session.dart';
 import '../core/session/recovery_deep_link.dart';
 import '../ui_dart_source/inone.dart';
 
