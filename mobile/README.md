@@ -61,7 +61,7 @@ The native Flutter app uses the local development backend by default in debug bu
 - iOS simulator / desktop: `http://127.0.0.1:8080`.
 - Physical device: pass the host computer's private LAN address explicitly.
 
-Run the canonical Beta 1.0 Node.js backend from `../inone-development-archive-0.6.0/engine` on port `8080` using its development instructions. The separate `inone-engine-poc-0.6.0` tree is not the active Node.js backend; it contains the Flutter-connected persistent Rust MLS client at `mobile-mls/mls-client/`. Then start the app:
+Run the backend from `../inone-engine-poc-0.6.0` on port `8080` using its development instructions, then start the app:
 
 ```sh
 cd mobile
@@ -145,13 +145,14 @@ The current engine deployment guide describes the checked-in server build as dev
 
 The repository-root Firebase client files are validated and copied by `tool/generate_flutter_platforms.sh` into the generated native projects on every run. Android receives `android/app/google-services.json`; iOS receives `ios/Runner/GoogleService-Info.plist`. The helper rejects missing files or mismatched Firebase project/App IDs and package/bundle identifiers before platform builds. See [platform identifier and Firebase configuration details](PLATFORM-IDENTIFIERS.md).
 
-**Important integration boundary:** the current Flutter dependency manifest and application entry point do not yet include Firebase Core or Firebase Messaging initialization, FCM permission/token handling, or automatic calls to the existing `InOnePushRepository`. The copied client files therefore establish native configuration placement only; they do not mean push registration or delivery is active. Do not log FCM/APNs tokens or commit Firebase Admin service-account credentials or APNs private keys. Backend push delivery remains separately gated by the existing `push.enabled` feature flag and provider credentials.
+**Integration status:** Firebase Core and Firebase Messaging runtime initialization, FCM permission/FID registration, receive/tap lifecycle and MLS-gated navigation are implemented in this branch. End-to-end delivery is not yet accepted until FCM/APNs physical-device smoke tests pass. Do not log FCM/APNs identifiers or commit Firebase Admin service-account credentials or APNs private keys.
 
 ## Firebase Messaging runtime
 
 - `main.dart` initializes Firebase Core from the generated Android/iOS native configuration before creating the app.
 - After an authenticated session is restored or created, `InOnePushLifecycle` requests notification permission, waits for an APNs token on iOS, obtains the Firebase Installation ID (FID), and registers it through the existing authenticated `InOnePushRepository` (`PUT /devices/me/push`).
 - Firebase Installation ID registration refreshes are synchronized to the same current-device endpoint. Explicit logout attempts `DELETE /devices/me/push` before logout; backend logout and device revocation remain authoritative cleanup paths.
-- Tokens are not written to Flutter storage, analytics, or logs. Denied permission removes any prior server registration. iOS registration is retried when the app resumes if APNs registration was not ready.
+- FIDs are not written to Flutter storage, analytics, or logs. Denied permission removes any prior server registration. iOS registration is retried when the app resumes if APNs registration was not ready.
+- InOnePushReceiveLifecycle handles foreground messages, notification taps and terminated launches. It validates the room/event route, waits for an authenticated session, verifies room membership through the server and displays content only after native MLS decryption. If native MLS is not active, it safely returns to Chats without exposing ciphertext or plaintext.
 - Native generation installs the Google Services Gradle plugin, sets Android minSdk to 24 for Firebase Messaging 26.x and adds Android permissions; on iOS it embeds `GoogleService-Info.plist`, adds the APNs entitlement and remote-notification background mode.
 - iOS delivery still requires an Apple Developer App ID with Push Notifications enabled and the APNs authentication key uploaded to Firebase. The repository's push sender is not implemented yet, so this client work registers devices but does not claim end-to-end notification delivery.

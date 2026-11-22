@@ -567,18 +567,44 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
       const { rows } = await pool.query("DELETE FROM files WHERE status IN ('pending', 'uploaded') AND created_at < $1 RETURNING file_id", [cutoffMs]);
       return rows.map((r) => r.file_id);
     },
-    async setPushToken(deviceKey, provider, token, nowMs) {
-      await pool.query('INSERT INTO push_tokens (device_key, provider, token, updated_at) VALUES ($1, $2, $3, $4) ON CONFLICT (device_key) DO UPDATE SET provider = EXCLUDED.provider, token = EXCLUDED.token, updated_at = EXCLUDED.updated_at', [deviceKey, provider, token, nowMs]);
+    async setPushToken(deviceKey, provider, registration, nowMs) {
+      if (!registration || !Buffer.isBuffer(registration.tokenCiphertext) || !Buffer.isBuffer(registration.tokenIv) || !Buffer.isBuffer(registration.tokenTag)) {
+        throw new Error('encrypted push registration is required');
+      }
+      await pool.query(
+        `INSERT INTO push_tokens
+         (device_key, provider, token, token_ciphertext, token_iv, token_tag, identifier_kind, updated_at)
+         VALUES ($1, $2, NULL, $3, $4, $5, $6, $7)
+         ON CONFLICT (device_key) DO UPDATE SET provider = EXCLUDED.provider, token = NULL,
+           token_ciphertext = EXCLUDED.token_ciphertext, token_iv = EXCLUDED.token_iv,
+           token_tag = EXCLUDED.token_tag, identifier_kind = EXCLUDED.identifier_kind, updated_at = EXCLUDED.updated_at`,
+        [deviceKey, provider, registration.tokenCiphertext, registration.tokenIv, registration.tokenTag, registration.identifierKind, nowMs],
+      );
     },
     async deletePushToken(deviceKey) {
-      await pool.query('DELETE FROM push_tokens WHERE device_key = $1', [deviceKey]);
+      await inTransaction(async (c) => {
+        await c.query('DELETE FROM push_tokens WHERE device_key = $1', [deviceKey]);
+        await c.query(
+          `UPDATE push_deliveries SET status = 'cancelled', locked_at = NULL, locked_by = NULL,
+           last_error_code = 'registration_removed', updated_at = now()
+           WHERE device_key = $1 AND status IN ('queued', 'failed', 'processing')`,
+          [deviceKey],
+        );
+      });
     },
     async devicesToNotify(roomId, excludeDeviceKey) {
-      const { rows } = await pool.query('SELECT d.device_key, p.provider, p.token FROM push_tokens p JOIN devices d ON d.device_key = p.device_key JOIN room_members m ON m.user_id = d.user_id WHERE m.room_id = $1 AND d.revoked = FALSE AND p.device_key <> $2', [roomId, excludeDeviceKey]);
-      return rows.map((r) => ({ deviceKey: r.device_key, provider: r.provider, token: r.token }));
+      const { rows } = await pool.query(
+        `SELECT d.device_key, p.provider, p.identifier_kind
+         FROM push_tokens p JOIN devices d ON d.device_key = p.device_key
+         JOIN room_members m ON m.user_id = d.user_id
+         WHERE m.room_id = $1 AND d.revoked = FALSE AND p.device_key <> $2
+           AND p.provider = 'fcm' AND p.identifier_kind = 'fid'`,
+        [roomId, excludeDeviceKey],
+      );
+      return rows.map((r) => ({ deviceKey: r.device_key, provider: r.provider, identifierKind: r.identifier_kind }));
     },
     async listDevicesFor(userId) {
-      const { rows } = await pool.query('SELECT d.device_id, d.label, d.revoked, (p.device_key IS NOT NULL) AS push FROM devices d LEFT JOIN push_tokens p ON p.device_key = d.device_key WHERE d.user_id = $1 ORDER BY d.device_id', [userId]);
+      const { rows } = await pool.query(`SELECT d.device_id, d.label, d.revoked, (p.device_key IS NOT NULL) AS push FROM devices d LEFT JOIN push_tokens p ON p.device_key = d.device_key AND p.provider = 'fcm' AND p.identifier_kind = 'fid' AND p.token_ciphertext IS NOT NULL WHERE d.user_id = $1 ORDER BY d.device_id`, [userId]);
       return rows.map((r) => ({ deviceId: r.device_id, label: r.label, revoked: r.revoked, pushRegistered: r.push }));
     },
     async flagOverrides() {
@@ -607,6 +633,12 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
         await c.query('DELETE FROM one_time_keys WHERE device_key = $1', [deviceKey]);
         await c.query('DELETE FROM inbox WHERE device_key = $1', [deviceKey]);
         await c.query('DELETE FROM push_tokens WHERE device_key = $1', [deviceKey]);
+        await c.query(
+          `UPDATE push_deliveries SET status = 'cancelled', locked_at = NULL, locked_by = NULL,
+           last_error_code = 'device_revoked', updated_at = now()
+           WHERE device_key = $1 AND status IN ('queued', 'failed', 'processing')`,
+          [deviceKey],
+        );
       });
     },
 
@@ -937,7 +969,7 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
      * the resulting sequence. Concurrent retries serialize on the unique key;
      * a failed transaction leaves neither a pending reservation nor an event.
      */
-    async appendClientMessageEvent(roomId, userId, clientId, sender, type, content, nowMs) {
+    async appendClientMessageEvent(roomId, userId, clientId, sender, type, content, nowMs, afterAppend = null) {
       return inTransaction(async (c) => {
         const inserted = await c.query(
           'INSERT INTO mls_client_messages (room_id, user_id, client_message_id, seq) VALUES ($1, $2, $3, NULL) ON CONFLICT DO NOTHING RETURNING client_message_id',
@@ -959,6 +991,7 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
           'INSERT INTO room_events (seq, room_id, sender, origin_ts, type, content) VALUES ($1, $2, $3, $4, $5, $6::jsonb)',
           [seq, roomId, sender, nowMs, type, JSON.stringify(content ?? null)],
         );
+        if (afterAppend) await afterAppend(c, { seq, roomId, eventId: `$${seq}` });
 
         // A deterministic fault-injection seam used only by PostgreSQL tests.
         // It runs before the idempotency row is completed, inside the transaction.
@@ -1369,7 +1402,7 @@ async mlsPendingRemovalsFor(userId) {
       return true;
     },
 
-    async appendRoomEvent(roomId, sender, type, content, nowMs) {
+    async appendRoomEvent(roomId, sender, type, content, nowMs, afterAppend = null) {
       return inTransaction(async (c) => {
         const { rows } = await c.query("UPDATE counters SET value = value + 1 WHERE name = 'event_seq' RETURNING value");
         const seq = Number(rows[0].value);
@@ -1377,6 +1410,7 @@ async mlsPendingRemovalsFor(userId) {
           'INSERT INTO room_events (seq, room_id, sender, origin_ts, type, content) VALUES ($1, $2, $3, $4, $5, $6::jsonb)',
           [seq, roomId, sender, nowMs, type, JSON.stringify(content ?? null)],
         );
+        if (afterAppend) await afterAppend(c, { seq, roomId, eventId: `$${seq}` });
         return seq;
       });
     },
