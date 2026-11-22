@@ -53,6 +53,9 @@ jobs:
       - name: Generate Android and iOS platform projects
         working-directory: mobile
         run: bash tool/generate_flutter_platforms.sh android,ios
+      - name: Apply file_picker AGP 9 Kotlin compatibility workaround
+        working-directory: mobile
+        run: bash tool/patch_file_picker_agp9.sh
       - name: Verify Flutter project generation preserves dependency manifests
         run: git diff --exit-code -- mobile/pubspec.yaml mobile/pubspec.lock
 

@@ -326,6 +326,7 @@ class InOneThreadItem {
     this.mine = false,
     this.meta,
     this.fileLabel,
+    this.fileId,
   });
   final InOneThreadItemKind kind;
   final String? text;
@@ -336,6 +337,7 @@ class InOneThreadItem {
 
   /// Подпись вложения (для [InOneThreadItemKind.file]).
   final String? fileLabel;
+  final String? fileId;
 }
 
 @immutable

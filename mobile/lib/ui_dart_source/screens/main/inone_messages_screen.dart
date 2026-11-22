@@ -92,7 +92,7 @@ class _InOneMessagesScreenState extends State<InOneMessagesScreen> {
                       child: InOneEmptyState(
                         icon: InOneIcons.chat,
                         title: 'No chats yet',
-                        text: 'The current Beta 1.0 backend does not expose a room-list endpoint. Chat history and sending stay unavailable until the native MLS workflow is accepted.',
+                        text: 'Your MLS chats will appear here after you receive a room invitation or join a group.',
                       ),
                     )
                   : ListView.builder(

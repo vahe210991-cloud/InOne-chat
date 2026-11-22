@@ -733,12 +733,157 @@ class InOneSession extends ChangeNotifier {
     return bridge.messagesForRoom(roomId);
   }
 
+  /// Returns room IDs from the persistent SQLCipher-backed OpenMLS client.
+  Future<List<String>> localMlsRoomIds() =>
+      _requireNativeMlsBridge().localRoomIds();
+
   /// Returns persisted diagnostics for MLS events that could not be decrypted.
   Future<List<MlsUndecryptableEvent>> mlsUndecryptableEvents() async {
     final bridge = _mlsBridge;
     if (bridge == null) return const [];
     return bridge.undecryptable();
   }
+
+  /// Resolves only an adopted persistent Rust bridge; there is no plaintext fallback.
+  MlsSessionBridge _requireNativeMlsBridge() {
+    final bridge = _mlsBridge;
+    if (bridge == null) {
+      throw const ApiException(
+        code: 'native_mls_session_unavailable',
+        statusCode: 503,
+        retryable: false,
+      );
+    }
+    return bridge;
+  }
+
+  void _validateMlsRoomId(String roomId) {
+    if (roomId.trim().isEmpty || roomId.length > 255) {
+      throw ArgumentError.value(roomId, 'roomId', 'A valid MLS room ID is required');
+    }
+  }
+
+  /// Creates the server room and local OpenMLS group through the persistent Rust client.
+  Future<void> createMlsRoom(String roomId) {
+    _validateMlsRoomId(roomId);
+    return _requireNativeMlsBridge().createRoom(roomId);
+  }
+
+  Future<void> ensureMlsKeyPackages(int target) {
+    if (target < 1 || target > 100) {
+      throw RangeError.range(target, 1, 100, 'target');
+    }
+    return _requireNativeMlsBridge().ensureKeyPackages(target);
+  }
+
+  Future<void> inviteMlsMember(String roomId, String userId) {
+    _validateMlsRoomId(roomId);
+    if (userId.trim().isEmpty || userId.length > 255) {
+      throw ArgumentError.value(userId, 'userId', 'A valid user ID is required');
+    }
+    return _requireNativeMlsBridge().invite(roomId, userId);
+  }
+
+  /// Sends immediately through OpenMLS. For offline-safe UI submission use
+  /// enqueueMlsText followed by flushMlsOutbox instead.
+  Future<String> sendMlsText(String roomId, String plaintext) {
+    _validateMlsRoomId(roomId);
+    if (plaintext.trim().isEmpty) {
+      throw ArgumentError.value(plaintext, 'plaintext', 'Message text cannot be empty');
+    }
+    return _requireNativeMlsBridge().sendText(roomId, plaintext);
+  }
+
+  /// Durably queues plaintext inside SQLCipher before attempting network delivery.
+  Future<String> enqueueMlsText(String roomId, String plaintext) {
+    _validateMlsRoomId(roomId);
+    if (plaintext.trim().isEmpty) {
+      throw ArgumentError.value(plaintext, 'plaintext', 'Message text cannot be empty');
+    }
+    return _requireNativeMlsBridge().enqueueText(roomId, plaintext);
+  }
+
+  Future<String> sendMlsAttachment(
+    String roomId,
+    String name,
+    String mimeType,
+    Uint8List plaintext,
+    String clientMessageId,
+  ) {
+    _validateMlsRoomId(roomId);
+    if (name.trim().isEmpty || mimeType.trim().isEmpty || plaintext.isEmpty) {
+      throw ArgumentError('Attachment name, MIME type and bytes are required');
+    }
+    final validId = clientMessageId.isNotEmpty &&
+        clientMessageId.length <= 60 &&
+        clientMessageId.codeUnits.every((unit) =>
+            (unit >= 48 && unit <= 57) ||
+            (unit >= 65 && unit <= 90) ||
+            (unit >= 97 && unit <= 122) ||
+            unit == 45 ||
+            unit == 95);
+    if (!validId) {
+      throw ArgumentError.value(
+        clientMessageId,
+        'clientMessageId',
+        'A stable 1-60 character idempotency key is required',
+      );
+    }
+    return _requireNativeMlsBridge().sendAttachmentWithId(
+      roomId: roomId,
+      name: name,
+      mimeType: mimeType,
+      plaintext: plaintext,
+      clientMessageId: clientMessageId,
+    );
+  }
+
+  Future<Uint8List> downloadMlsAttachment(String fileId) {
+    if (fileId.trim().isEmpty || fileId.length > 128) {
+      throw ArgumentError.value(fileId, 'fileId', 'A valid attachment ID is required');
+    }
+    return _requireNativeMlsBridge().downloadAttachment(fileId);
+  }
+
+  Future<List<MlsIncomingMessage>> pendingMlsMessages() =>
+      _requireNativeMlsBridge().pendingIncoming();
+
+  Future<List<MlsPendingOutboxItem>> pendingMlsOutbox(String roomId) {
+    _validateMlsRoomId(roomId);
+    return _requireNativeMlsBridge().pendingOutbox(roomId);
+  }
+
+  /// Call only after the app has accepted the already SQLCipher-persisted messages.
+  Future<void> acknowledgeMlsMessages(List<String> eventIds) {
+    if (eventIds.any((id) => id.trim().isEmpty || id.length > 128)) {
+      throw ArgumentError.value(eventIds, 'eventIds', 'Invalid MLS event ID');
+    }
+    return _requireNativeMlsBridge().acknowledgeIncoming(eventIds);
+  }
+
+  Future<int> flushMlsOutbox() => _requireNativeMlsBridge().flushOutbox();
+
+  Future<int> mlsOutboxLength() => _requireNativeMlsBridge().outboxLength();
+
+  Future<int?> mlsLocalEpoch(String roomId) {
+    _validateMlsRoomId(roomId);
+    return _requireNativeMlsBridge().localEpoch(roomId);
+  }
+
+  Future<List<String>> mlsMembersOf(String roomId) {
+    _validateMlsRoomId(roomId);
+    return _requireNativeMlsBridge().membersOf(roomId);
+  }
+
+  Future<void> revokeMlsDevice(String deviceId) {
+    if (deviceId.trim().isEmpty || deviceId.length > 255) {
+      throw ArgumentError.value(deviceId, 'deviceId', 'A valid device ID is required');
+    }
+    return _requireNativeMlsBridge().revokeDevice(deviceId);
+  }
+
+  Future<int> removeRevokedMlsDevices() =>
+      _requireNativeMlsBridge().removeRevokedDevices();
 
   /// Returns the quarantined Commit reason for a room epoch, when present.
   Future<String?> mlsQuarantinedCommitReason(String roomId, int epoch) async {

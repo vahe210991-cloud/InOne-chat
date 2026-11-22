@@ -228,6 +228,69 @@ void main() {
     session.dispose();
   });
 
+  test('adopted session exposes validated persistent MLS operations', () async {
+    final httpClient = MockClient((request) async {
+      if (request.url.path == '/login') {
+        return http.Response(
+          jsonEncode({'token': 'access-1', 'refreshToken': 'refresh-1'}),
+          200,
+        );
+      }
+      if (request.url.path == '/profile') {
+        return http.Response(jsonEncode({'userId': '@alice:inone.test'}), 200);
+      }
+      return http.Response('{}', 404);
+    });
+    final bridge = _FakeMlsSessionBridge();
+    final session = InOneSession(
+      baseUrl: 'https://api.inone.test',
+      httpClient: httpClient,
+      nativeMlsBridge: bridge,
+      readDeviceId: () async => 'device-1',
+      writeDeviceId: (_) async {},
+      readMlsUserId: () async => null,
+      writeMlsUserId: (_) async {},
+      deleteMlsUserId: () async {},
+    );
+
+    await session.login(email: 'alice@example.test', password: 'not-used-in-test');
+    expect(session.hasNativeMlsSession, isTrue);
+
+    await session.createMlsRoom('room-1');
+    await session.ensureMlsKeyPackages(10);
+    await session.inviteMlsMember('room-1', '@bob:inone.test');
+    expect(await session.sendMlsText('room-1', 'hello'), 'event-1');
+    expect(await session.enqueueMlsText('room-1', 'queued'), 'local-1');
+    expect(
+      await session.sendMlsAttachment(
+        'room-1',
+        'proof.txt',
+        'text/plain',
+        Uint8List.fromList([1, 2]),
+        'attachment-operation-1',
+      ),
+      'attachment-event-1',
+    );
+    expect(bridge.attachmentClientMessageId, 'attachment-operation-1');
+    expect(await session.downloadMlsAttachment('file-1'), isEmpty);
+    expect(await session.pendingMlsMessages(), isEmpty);
+    expect(await session.pendingMlsOutbox('room-1'), isEmpty);
+    await session.acknowledgeMlsMessages(['event-1']);
+    expect(await session.flushMlsOutbox(), 0);
+    expect(await session.mlsOutboxLength(), 0);
+    expect(await session.mlsLocalEpoch('room-1'), isNull);
+    expect(await session.mlsMembersOf('room-1'), isEmpty);
+    expect(await session.localMlsRoomIds(), ['room-1']);
+    await session.revokeMlsDevice('device-2');
+    expect(await session.removeRevokedMlsDevices(), 0);
+
+    expect(() => session.sendMlsText('', 'invalid'), throwsArgumentError);
+    expect(() => session.sendMlsText('room-1', '  '), throwsArgumentError);
+    expect(() => session.ensureMlsKeyPackages(0), throwsRangeError);
+    expect(() => session.downloadMlsAttachment(''), throwsArgumentError);
+    session.dispose();
+  });
+
   test('failed automatic MLS adoption is visible and does not enable fallback messaging', () async {
     final httpClient = MockClient((request) async {
       if (request.url.path == '/login') {
@@ -450,6 +513,7 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
   Map<String, String>? openArguments;
   Map<String, String>? resumeArguments;
   String accessToken = 'access-1';
+  String? attachmentClientMessageId;
   bool failOpen = false;
   bool failResume = false;
   Map<String, String>? purgeArguments;
@@ -556,7 +620,10 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
     required String mimeType,
     required Uint8List plaintext,
     required String clientMessageId,
-  }) async => 'attachment-event-1';
+  }) async {
+    attachmentClientMessageId = clientMessageId;
+    return 'attachment-event-1';
+  }
 
   @override
   Future<Uint8List> downloadAttachment(String fileId) async => Uint8List(0);
@@ -572,6 +639,9 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
 
   @override
   Future<List<MlsIncomingMessage>> messagesForRoom(String roomId) async => const [];
+
+  @override
+  Future<List<String>> localRoomIds() async => const ['room-1'];
 
   @override
   Future<void> acknowledgeIncoming(List<String> eventIds) async {}
