@@ -97,6 +97,41 @@ class InOneOrgProfileScreen extends StatelessWidget {
                 ],
               ),
             ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Organization members (' + (profile.members?.toString() ?? '—') + ')',
+                      style: InOneText.style(14, FontWeight.w700, c.text)),
+                  const SizedBox(height: 8),
+                  if (profile.organizationMembers.isEmpty)
+                    Text('Member list is unavailable or the organization has no members.',
+                        style: InOneText.style(11.5, FontWeight.w400, c.muted))
+                  else
+                    for (final member in profile.organizationMembers)
+                      Container(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        decoration: BoxDecoration(
+                          border: Border(bottom: BorderSide(color: c.rowLine)),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(member.userId,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: InOneText.style(12, FontWeight.w600, c.text)),
+                            ),
+                            const SizedBox(width: 12),
+                            Text(member.role,
+                                style: InOneText.style(11, FontWeight.w600, c.muted)),
+                          ],
+                        ),
+                      ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
