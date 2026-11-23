@@ -1,9 +1,9 @@
 // Очередь без связи, повторы при сбоях сети и отправка с идентификатором клиента.
 // Прокси между клиентом и сервером можно выключить: тогда связи нет.
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{Shutdown, TcpListener, TcpStream};
 use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -104,6 +104,91 @@ fn start_proxy(upstream: &str) -> Proxy {
         base: format!("http://{addr}"),
         online,
         open,
+    }
+}
+
+struct StatusProxy {
+    base: String,
+    status: Arc<AtomicU16>,
+}
+
+impl StatusProxy {
+    fn set_status(&self, status: u16) {
+        self.status.store(status, Ordering::SeqCst);
+    }
+}
+
+fn start_status_proxy(upstream: &str) -> StatusProxy {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("status proxy");
+    let addr = listener.local_addr().expect("status proxy address");
+    let upstream = upstream.trim_start_matches("http://").to_string();
+    let status = Arc::new(AtomicU16::new(0));
+    let shared_status = status.clone();
+
+    thread::spawn(move || {
+        for incoming in listener.incoming() {
+            let Ok(mut client) = incoming else { continue };
+            let status = shared_status.clone();
+            let upstream = upstream.clone();
+            thread::spawn(move || {
+                let mut request = Vec::new();
+                let mut chunk = [0_u8; 1024];
+                loop {
+                    let Ok(read) = client.read(&mut chunk) else { return };
+                    if read == 0 {
+                        return;
+                    }
+                    request.extend_from_slice(&chunk[..read]);
+                    if request.windows(4).any(|window| window == b"\r\n\r\n") {
+                        break;
+                    }
+                }
+
+                let request_line = String::from_utf8_lossy(&request)
+                    .lines()
+                    .next()
+                    .unwrap_or_default()
+                    .to_string();
+                let mut parts = request_line.split_whitespace();
+                let method = parts.next().unwrap_or_default();
+                let path = parts.next().unwrap_or_default();
+                let injected_status = status.load(Ordering::SeqCst);
+                if method == "GET" && path.contains("/rooms/") && path.contains("/events") && injected_status != 0 {
+                    let (reason, body) = match injected_status {
+                        401 => ("Unauthorized", r#"{"error":"device_revoked"}"#),
+                        403 => ("Forbidden", r#"{"code":"permission_denied"}"#),
+                        404 => ("Not Found", r#"{"error":"room_deleted"}"#),
+                        _ => ("Service Unavailable", r#"{"error":"unavailable"}"#),
+                    };
+                    let response = format!(
+                        "HTTP/1.1 {injected_status} {reason}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    );
+                    let _ = client.write_all(response.as_bytes());
+                    let _ = client.shutdown(Shutdown::Both);
+                    return;
+                }
+
+                let Ok(mut server) = TcpStream::connect(&upstream) else {
+                    let _ = client.shutdown(Shutdown::Both);
+                    return;
+                };
+                if server.write_all(&request).is_err() {
+                    let _ = client.shutdown(Shutdown::Both);
+                    return;
+                }
+                let (client_read, server_write) =
+                    (client.try_clone().unwrap(), server.try_clone().unwrap());
+                let (server_read, client_write) = (server, client);
+                thread::spawn(move || pipe(client_read, server_write));
+                thread::spawn(move || pipe(server_read, client_write));
+            });
+        }
+    });
+
+    StatusProxy {
+        base: format!("http://{addr}"),
+        status,
     }
 }
 
@@ -1034,4 +1119,66 @@ fn invalid_utf8_event_is_quarantined_without_poisoning_room_or_later_messages() 
     assert!(bob.pending_incoming().unwrap().is_empty());
     assert!(bob.sync().unwrap().is_empty());
     assert_eq!(bob.desync_reason(room).unwrap(), None);
+}
+
+
+#[test]
+fn room_sync_access_and_not_found_errors_never_mark_recovery_required() {
+    for (index, status) in [401_u16, 403, 404].into_iter().enumerate() {
+        let engine = start_engine();
+        let proxy = start_status_proxy(&engine.base);
+        let keys = MemoryKeyStore::default();
+        let alice_db = db(&format!("sync-access-{index}-alice"));
+        let bob_db = db(&format!("sync-access-{index}-bob"));
+        let mut alice = connect(
+            &proxy.base,
+            ALICE,
+            PW,
+            &format!("A_ACCESS_{index}"),
+            &alice_db,
+            &keys,
+        )
+        .unwrap();
+        let mut bob = connect(
+            &proxy.base,
+            BOB,
+            PW,
+            &format!("B_ACCESS_{index}"),
+            &bob_db,
+            &keys,
+        )
+        .unwrap();
+
+        bob.ensure_key_packages(2).unwrap();
+        let room = format!("!room-sync-access-{index}:inone.test");
+        alice.create_room(&room).unwrap();
+        alice.invite(&room, BOB).unwrap();
+        assert!(bob.sync().unwrap().is_empty());
+        alice
+            .send_text(&room, "access failures must not poison the room")
+            .unwrap();
+
+        proxy.set_status(status);
+        let failure = bob
+            .sync()
+            .expect_err("injected access/not-found response must be returned");
+        assert!(
+            failure.contains(&format!("-> {status}")),
+            "unexpected error for HTTP {status}: {failure}"
+        );
+        assert_eq!(
+            bob.desync_reason(&room).unwrap(),
+            None,
+            "HTTP {status} must not create RecoveryRequired"
+        );
+
+        proxy.set_status(0);
+        assert_eq!(
+            texts(&bob.sync().unwrap()),
+            vec!["access failures must not poison the room"],
+            "the same room must recover when access is restored after HTTP {status}"
+        );
+        assert_eq!(bob.desync_reason(&room).unwrap(), None);
+        assert_eq!(bob.local_epoch(&room), alice.local_epoch(&room));
+    }
 }
