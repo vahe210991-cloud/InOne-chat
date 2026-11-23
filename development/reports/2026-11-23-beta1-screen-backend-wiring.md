@@ -26,6 +26,7 @@ PR #128 and PR #130 both touch the Flutter app, repositories, session and messag
 - Added InOneRepositories.organizationMembers(orgId) for the existing authenticated GET /orgs/:id/members route.
 - The organization screen reads the member list and displays only its validated count.
 - The workspace summary receives the count when available; access/network/shape failures leave it unknown rather than inventing a value.
+- The workspace group count is derived from the typed authenticated room list and remains unknown while that list is loading or in an error state.
 - The app retains server-side role enforcement; this slice adds no organization mutation controls.
 
 ### 3. Profile locale selector
