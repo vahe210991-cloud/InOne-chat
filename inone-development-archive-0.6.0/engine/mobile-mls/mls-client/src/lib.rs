@@ -2399,7 +2399,7 @@ impl Client {
         self.meta.execute(
             "INSERT INTO client_invite_intents (operation_id, room_id, target_user_id, state, created_at, is_join_request)
              VALUES (?1, ?2, ?3, 'claim_pending', ?4, ?5)",
-            rusqlite::params![operation_id, room_id, user_id, created_at, i64::from(is_join_request)],
+            rusqlite::params![operation_id, room_id, user_id, created_at, if is_join_request { 1_i64 } else { 0_i64 }],
         ).map_err(text)?;
         Ok((operation_id, "claim_pending".to_string()))
     }
