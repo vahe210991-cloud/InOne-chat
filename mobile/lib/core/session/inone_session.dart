@@ -896,6 +896,15 @@ class InOneSession extends ChangeNotifier {
     return _requireNativeMlsBridge().membersOf(roomId);
   }
 
+  /// Removes every device of an account from the MLS room via a native Commit.
+  Future<void> removeMlsMember(String roomId, String userId) {
+    _validateMlsRoomId(roomId);
+    if (userId.trim().isEmpty || userId.length > 255) {
+      throw ArgumentError.value(userId, 'userId', 'A valid user ID is required');
+    }
+    return _requireNativeMlsBridge().removeMember(roomId, userId);
+  }
+
   Future<void> revokeMlsDevice(String deviceId) {
     if (deviceId.trim().isEmpty || deviceId.length > 255) {
       throw ArgumentError.value(deviceId, 'deviceId', 'A valid device ID is required');
