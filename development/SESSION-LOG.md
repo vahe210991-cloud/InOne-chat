@@ -623,3 +623,13 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Pre-sync checks on `cd43c60` are superseded. The first synchronize-triggered runs on the new head were created with conclusion `action_required` and no jobs because the branch update was pushed by `GITHUB_TOKEN`; GitHub requires a repository writer to approve these PR workflow runs. Do not treat them as test failures or successful validation.
 - Next: create a normal repository-authenticated head update (not via Actions `GITHUB_TOKEN`) so the exact-head PR workflows can run without the approval gate; then review all nine required workflows on the resulting SHA.
 - PR #119 remains Draft and unmerged.
+
+## 2026-11-23 — isolated Beta 1.0 screen/backend wiring
+
+- Owner instruction: continue connecting native Dart screens to existing backend contracts; do not run tests, analyzers, builds or GitHub Actions until PR #128 and PR #130 are fully green.
+- PR #128 and PR #130 overlap on Flutter app/session/repository/chat paths. Created isolated child branch `feature/beta1-screen-backend-wiring-2026-11-23` from PR #130 head `dff0786bd8f920b902495e94fec46c297b110899`; did not modify either queued PR and did not open a new PR.
+- Connected the messages list to typed authenticated `GET /rooms/mine` independently of native MLS opt-in. Room content/send remain gated by the canonical Engine B session; no plaintext fallback.
+- Added organization member read wrapper for existing `GET /orgs/:id/members`; organization/workspace member counts remain unknown when the API read fails.
+- Added a profile-menu language selector (`hy`, `ru`, `en`) using the existing authenticated `PATCH /profile/locale` session path.
+- Updated mobile API contract matrix and README to reflect the current screen wiring; detailed report: `development/reports/2026-11-23-beta1-screen-backend-wiring.md`.
+- Validation: intentionally NOT RUN. No workflow dispatch, PR open, test, analyzer or build was performed. Native MLS remains disabled by default.
