@@ -25,7 +25,7 @@ Status:
 
 | Screen | Required API / flow | Backend contract evidence | Current integration status |
 |---|---|---|---|
-| SC-00 | Client-side menu; role-gated entries | Roles are exposed by authenticated domain reads; server enforces every operation | Client only; menu must not infer platform-owner access |
+| SC-00 | Client-side menu; role-gated entries | Roles are exposed by authenticated domain reads; server enforces every operation | Client-only navigation exposes only connected Beta 1.0 sections; Feed/Calls and publication actions remain hidden until their backend flows exist |
 | SC-01 | `POST /login` | Email/password + device metadata; returns access and refresh tokens, expiry metadata | Backend + host; verify complete error mapping |
 | SC-02 | `POST /register/email` | `202 {ok:true}`; same response for existing/non-existing email; rate limited | Backend + host |
 | SC-03 | `POST /register/email/confirm` | `200 {registrationToken}`; invalid/expired/locked code returns 403/410 | Backend + host; response navigation is host-driven |
