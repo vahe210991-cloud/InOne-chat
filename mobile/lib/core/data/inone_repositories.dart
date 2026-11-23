@@ -69,6 +69,51 @@ class InOneRepositories {
     return InOneOrganizationSettings.fromJson(Map<String, dynamic>.from(raw));
   }
 
+  Future<List<InOneOrganizationLink>> organizationLinks(String orgId) async {
+    final response = await session.request(
+      'GET', '/orgs/${Uri.encodeComponent(orgId)}/links',
+    );
+    final raw = response['links'];
+    if (raw is! List || raw.any((entry) => entry is! Map)) {
+      throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false);
+    }
+    return List<InOneOrganizationLink>.unmodifiable(raw.map((entry) =>
+        InOneOrganizationLink.fromJson(Map<String, dynamic>.from(entry as Map))));
+  }
+
+  Future<void> proposeOrganizationLink(String orgId, String targetOrgId) async {
+    final target = targetOrgId.trim();
+    if (target.isEmpty || target == orgId) {
+      throw ArgumentError.value(targetOrgId, 'targetOrgId');
+    }
+    final response = await session.request(
+      'POST',
+      '/orgs/${Uri.encodeComponent(orgId)}/links',
+      body: {'targetOrgId': target},
+    );
+    if (response['status'] != 'proposed' || response['linkId'] is! String) {
+      throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false);
+    }
+  }
+
+  Future<void> actOnOrganizationLink(
+    String orgId,
+    String linkId,
+    String action,
+  ) async {
+    if (!const {'accept', 'revoke'}.contains(action)) {
+      throw ArgumentError.value(action, 'action');
+    }
+    final response = await session.request(
+      'POST',
+      '/orgs/${Uri.encodeComponent(orgId)}/links/${Uri.encodeComponent(linkId)}/$action',
+    );
+    final expected = action == 'accept' ? 'active' : 'revoked';
+    if (response['status'] != expected) {
+      throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false);
+    }
+  }
+
   Future<List<InOneOrganizationSettingLogEntry>> organizationSettingsLog(String orgId) async {
     final response = await session.request(
       'GET', '/orgs/${Uri.encodeComponent(orgId)}/settings/log',
