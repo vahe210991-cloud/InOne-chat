@@ -218,6 +218,40 @@ void main() {
     expect(await file.exists(), isFalse);
   });
 
+  test('legacy cleanup removes unscoped data but preserves hashed owner directories', () async {
+    var legacyKeyDeleted = false;
+    final legacyStore = InOneEncryptedDocumentStore(
+      rootDirectory: () async => root,
+      readKey: (keyName) async => storedKeys[keyName],
+      writeKey: (keyName, value) async => storedKeys[keyName] = value,
+      deleteKey: (keyName) async => storedKeys.remove(keyName),
+      deleteLegacyKey: () async {
+        legacyKeyDeleted = true;
+      },
+    );
+    final ownerFile = await legacyStore.save(
+      ownerUserId: '@owner:inone.test',
+      requestId: 'request-123',
+      documentId: 'document-legacy-test',
+      filename: 'owner.pdf',
+      bytes: utf8.encode('owner document'),
+    );
+    final legacyDirectory = Directory(
+      '${root.path}${Platform.pathSeparator}InOne'
+      '${Platform.pathSeparator}organization-documents'
+      '${Platform.pathSeparator}legacy-request',
+    );
+    await legacyDirectory.create(recursive: true);
+    await File('${legacyDirectory.path}${Platform.pathSeparator}plain.tmp')
+        .writeAsString('legacy plaintext');
+
+    await legacyStore.purgeLegacyUnscopedData();
+
+    expect(legacyKeyDeleted, isTrue);
+    expect(await legacyDirectory.exists(), isFalse);
+    expect(await ownerFile.exists(), isTrue);
+  });
+
   test('purge is idempotent when account has no local documents or key', () async {
     await store.purgeAccount('@empty:inone.test');
     await store.purgeAccount('@empty:inone.test');
