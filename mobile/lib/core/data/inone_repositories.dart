@@ -1,10 +1,10 @@
 import 'package:http/http.dart' as http;
 
+import '../network/api_exception.dart';
 import '../session/inone_session.dart';
 import 'inone_device.dart';
 import 'inone_organization.dart';
 import 'inone_profile.dart';
-import '../network/api_exception.dart';
 import 'inone_room.dart';
 
 /// Typed read repositories shared by approved screens and the test-screen host.
@@ -382,29 +382,6 @@ class InOneRepositories {
         '/org-requests/${Uri.encodeComponent(requestId)}/decision',
         body: {'decision': decision},
       );
-  Future<Map<String, dynamic>> publicConfig() =>
-      session.request('GET', '/config/public', authenticated: false);
-
-  Future<Map<String, dynamic>> get(
-    String path, {
-    bool authenticated = true,
-  }) =>
-      session.request('GET', path, authenticated: authenticated);
-}
-).hasMatch(upToEventId)) {
-      throw ArgumentError.value(upToEventId, 'upToEventId', 'Expected a server event ID');
-    }
-    await session.request(
-      'POST',
-      '/rooms/${Uri.encodeComponent(roomId)}/read',
-      body: {'upTo': upToEventId},
-    );
-  }
-
-  Future<Map<String, dynamic>> loginApprovals() =>
-      session.request('GET', '/approvals');
-  Future<Map<String, dynamic>> organizationRequests() =>
-      session.request('GET', '/org-requests');
   Future<Map<String, dynamic>> publicConfig() =>
       session.request('GET', '/config/public', authenticated: false);
 
