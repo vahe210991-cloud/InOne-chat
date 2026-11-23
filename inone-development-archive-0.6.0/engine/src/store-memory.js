@@ -1004,7 +1004,7 @@ export function createMemoryStore({ pinPepper }) {
       return { ok: true, epoch: previous.epoch, replayed: true };
     },
     /** Применяет коммит и idempotency receipt одним синхронным шагом. */
-    mlsApplyCommit(roomId, baseEpoch, { senderId, deviceId, clientOperationId, requestFingerprint, keyPackageClaimId, commit, welcomes, changes = { adds: [], removes: [] } }, nowMs) {
+    mlsApplyCommit(roomId, baseEpoch, { senderId, deviceId, clientOperationId, requestFingerprint, keyPackageClaimId, joinRequestUserId, commit, welcomes, changes = { adds: [], removes: [] } }, nowMs) {
       const operationKey = clientOperationId ? JSON.stringify([roomId, senderId, deviceId, clientOperationId]) : null;
       if (operationKey) {
         const previous = mlsCommitOperations.get(operationKey);
@@ -1015,6 +1015,11 @@ export function createMemoryStore({ pinPepper }) {
       }
       const current = mlsGroups.get(roomId) ?? 0;
       if (current !== baseEpoch) return { ok: false, reason: 'epoch_outdated', epoch: current };
+      const room = rooms.get(roomId);
+      if (joinRequestUserId) {
+        if (changes.adds?.length !== 1 || changes.adds[0] !== joinRequestUserId) return { ok: false, reason: 'join_request_mismatch', epoch: current };
+        if (!room?.joinRequests.has(joinRequestUserId)) return { ok: false, reason: 'join_request_not_pending', epoch: current };
+      }
       let reservedClaim = null;
       if (keyPackageClaimId) {
         const targetUserId = changes.adds?.length === 1 ? changes.adds[0] : null;
@@ -1029,7 +1034,6 @@ export function createMemoryStore({ pinPepper }) {
         const welcomeDevices = welcomes.filter((item) => item.userId === targetUserId).map((item) => item.deviceId).sort();
         if (JSON.stringify(claimedDevices) !== JSON.stringify(welcomeDevices)) return { ok: false, reason: 'claim_mismatch', epoch: current };
       }
-      const room = rooms.get(roomId);
       for (const deviceId of changes.removeDevices ?? []) {
         for (const r of deviceRemovals) if (r.roomId === roomId && r.deviceId === deviceId && r.doneAt === null) r.doneAt = nowMs;
       }
@@ -1047,6 +1051,7 @@ export function createMemoryStore({ pinPepper }) {
       }
       if (operationKey) mlsCommitOperations.set(operationKey, { requestFingerprint, epoch: next });
       if (reservedClaim) reservedClaim.state = 'committed';
+      if (joinRequestUserId) room.joinRequests.delete(joinRequestUserId);
       return { ok: true, epoch: next, replayed: false };
     },
     mlsCommitsSince(roomId, since, limit) {
