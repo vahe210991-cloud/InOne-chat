@@ -59,6 +59,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   InOneProfile? _profile;
   List<InOneOrganization> _organizations = const [];
   InOneOrganization? _selectedOrganization;
+  int? _organizationMemberCount;
   InOneSystemStatus? _systemStatus;
   List<InOneChatPreview> _mlsChats = const [];
   String? _activeMlsRoomId;
@@ -395,9 +396,13 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         _profile = profile;
         _organizations = organizations;
         _selectedOrganization = organizations.isEmpty ? null : organizations.first;
+        _organizationMemberCount = null;
         _screen = 'messages';
       });
-      if (_session.hasNativeMlsSession) await _loadMlsRooms();
+      if (organizations.isNotEmpty) {
+        unawaited(_refreshOrganizationMemberCount(organizations.first));
+      }
+      await _loadMlsRooms();
       if (_pendingPushRoutes.next != null) {
         unawaited(_processPendingPushRoute());
       }
@@ -495,7 +500,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         name: _selectedOrganization?.name ?? 'Личное пространство',
         activeProjects: null,
         tasksDue: null,
-        teamMembers: null,
+        teamMembers: _organizationMemberCount,
         activeGroups: null,
         projectsCaption: '',
       );
@@ -505,7 +510,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     return InOneOrgProfile(
       name: org.name,
       subtitle: '${org.role} · ${org.status}',
-      members: null,
+      members: _organizationMemberCount,
       projects: null,
       teams: null,
       about: null,
@@ -570,10 +575,6 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   }
 
   Future<void> _loadMlsRooms() async {
-    if (!_session.hasNativeMlsSession) {
-      if (mounted) setState(() => _mlsChats = const []);
-      return;
-    }
     if (mounted) {
       setState(() {
         _messagesLoading = true;
@@ -581,33 +582,34 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       });
     }
     try {
-      // Prefer fresh server state, but never hide the SQLCipher-backed local
-      // history merely because the device is temporarily offline.
-      try {
-        await _session.syncMlsMessages();
-      } catch (error) {
-        _notice('Серверная синхронизация недоступна; показываю локальную MLS-историю: $error');
+      // The authenticated room directory is a backend read and remains
+      // available even while native MLS is opt-in/disabled. Only message
+      // content, sync and outbox operations require the native Engine B session.
+      if (_session.hasNativeMlsSession) {
+        try {
+          await _session.syncMlsMessages();
+        } catch (error) {
+          _notice('Серверная синхронизация недоступна; показываю локальную MLS-историю: $error');
+        }
+        try {
+          await _session.flushMlsOutbox();
+        } catch (error) {
+          _notice('Исходящие MLS-сообщения останутся в защищённой очереди: $error');
+        }
       }
-      try {
-        await _session.flushMlsOutbox();
-      } catch (error) {
-        // A transient outage must not hide the room list or discard queued text.
-        _notice('Исходящие MLS-сообщения останутся в защищённой очереди: $error');
-      }
+
       late final List<InOneRoom> rows;
       try {
-        final remoteRooms = await _repositories.myRooms();
-        rows = remoteRooms.rooms;
+        rows = (await _repositories.myRooms()).rooms;
       } catch (error) {
-        // Authentication and malformed successful responses must not be hidden
-        // by a local cache fallback. Only transport outages may use SQLCipher.
-        if (error is ApiException &&
-            error.code != 'network_unavailable' &&
-            error.code != 'request_timeout') {
+        // Local SQLCipher room recovery is permitted only when a native
+        // Engine B session is present, and only for transport outages.
+        if (!_session.hasNativeMlsSession ||
+            (error is ApiException &&
+                error.code != 'network_unavailable' &&
+                error.code != 'request_timeout')) {
           rethrow;
         }
-        // Restore room IDs from the persistent SQLCipher-backed Engine B store.
-        // This also works after a cold start while the server is unreachable.
         final localRoomIds = await _session.localMlsRoomIds();
         rows = localRoomIds
             .map((roomId) => InOneRoom(
@@ -619,30 +621,31 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
             .toList(growable: false);
         _notice('Серверный список комнат недоступен; восстановлены локальные комнаты из SQLCipher: $error');
       }
+
       final chats = <InOneChatPreview>[];
       for (final row in rows) {
-        final roomId = row.roomId;
-        final name = row.displayName;
-        final messages = await _session.loadMlsRoomHistory(roomId);
-        final pendingOutgoing = await _session.pendingMlsOutbox(roomId);
         String? lastMessage;
-        for (final message in messages) {
-          if (message.text != null) {
-            lastMessage = message.text;
-          } else if (message.isAttachment) {
-            lastMessage = '📎 ${message.name ?? 'Вложение'}';
+        if (_session.hasNativeMlsSession) {
+          final messages = await _session.loadMlsRoomHistory(row.roomId);
+          final pendingOutgoing = await _session.pendingMlsOutbox(row.roomId);
+          for (final message in messages) {
+            if (message.text != null) {
+              lastMessage = message.text;
+            } else if (message.isAttachment) {
+              lastMessage = '📎 ${message.name ?? 'Вложение'}';
+            }
           }
-        }
-        if (pendingOutgoing.isNotEmpty) {
-          lastMessage = pendingOutgoing.last.text ?? '📎 Вложение в очереди';
+          if (pendingOutgoing.isNotEmpty) {
+            lastMessage = pendingOutgoing.last.text ?? '📎 Вложение в очереди';
+          }
         }
         final normalizedKind = row.kind.toLowerCase();
         final kind = const {'person', 'direct', 'dm'}.contains(normalizedKind)
             ? InOneChatKind.person
             : InOneChatKind.group;
         chats.add(InOneChatPreview(
-          id: roomId,
-          name: name,
+          id: row.roomId,
+          name: row.displayName,
           lastMessage: lastMessage,
           time: '—',
           kind: kind,
@@ -658,7 +661,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       if (!mounted) return;
       setState(() {
         _messagesLoading = false;
-        _messagesError = 'Не удалось синхронизировать MLS-чаты: $error';
+        _messagesError = 'Не удалось загрузить список комнат: $error';
       });
     }
   }
@@ -962,12 +965,49 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     }
   }
 
-  void _openOrganization() {
-    if (_selectedOrganization == null) {
+  Future<int> _readOrganizationMemberCount(String orgId) async {
+    final response = await _repositories.organizationMembers(orgId);
+    final members = response['members'];
+    if (members is! List || members.any((member) => member is! Map)) {
+      throw const ApiException(
+        code: 'invalid_response',
+        statusCode: 502,
+        retryable: false,
+      );
+    }
+    return members.length;
+  }
+
+  Future<void> _refreshOrganizationMemberCount(InOneOrganization org) async {
+    try {
+      final count = await _readOrganizationMemberCount(org.orgId);
+      if (!mounted || _selectedOrganization?.orgId != org.orgId) return;
+      setState(() => _organizationMemberCount = count);
+    } catch (_) {
+      // The workspace keeps an explicit unknown value when the read is denied
+      // or temporarily unavailable; it never fabricates a member count.
+    }
+  }
+
+  Future<void> _openOrganization() async {
+    final org = _selectedOrganization;
+    if (org == null) {
       _notice('У этой учётной записи пока нет подтверждённых организаций.');
       return;
     }
-    setState(() => _screen = 'organization');
+    setState(() => _screen = 'organizationLoading');
+    try {
+      final count = await _readOrganizationMemberCount(org.orgId);
+      if (!mounted || _selectedOrganization?.orgId != org.orgId) return;
+      setState(() {
+        _organizationMemberCount = count;
+        _screen = 'organization';
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _screen = 'organizationError');
+      _notice('Не удалось загрузить состав организации: ${_toFailure(error).message}');
+    }
   }
 
   Future<void> _chooseOrganization() async {
@@ -999,8 +1039,44 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     if (selected != null && mounted) {
       setState(() {
         _selectedOrganization = selected;
+        _organizationMemberCount = null;
         _screen = 'workspace';
       });
+      unawaited(_refreshOrganizationMemberCount(selected));
+    }
+  }
+
+  Future<void> _chooseLocale() async {
+    final selected = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Язык приложения'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final option in const [
+              ('hy', 'Հայերեն'),
+              ('ru', 'Русский'),
+              ('en', 'English'),
+            ])
+              RadioListTile<String>(
+                value: option.$1,
+                groupValue: _session.locale,
+                title: Text(option.$2),
+                onChanged: (value) => Navigator.of(dialogContext).pop(value),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (selected == null || selected == _session.locale) return;
+    try {
+      await _repositories.updateLocale(selected);
+      if (!mounted) return;
+      setState(() {});
+      _notice('Язык приложения сохранён в профиле аккаунта.');
+    } catch (_) {
+      _notice('Не удалось сохранить язык приложения. Проверьте соединение и повторите попытку.');
     }
   }
 
@@ -1111,6 +1187,10 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           onTab: _selectTab,
           onAdd: () => _notice('Создание публикаций не входит в Beta 1.0.'),
         );
+      case 'organizationLoading':
+        return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      case 'organizationError':
+        return InOneLoadingErrorScreen(onRetry: () => unawaited(_openOrganization()));
       case 'organization':
         if (_selectedOrganization == null) {
           return InOneLoadingErrorScreen(onRetry: () => unawaited(_loadAuthenticatedData()));
@@ -1158,17 +1238,6 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         if (_messagesError != null) {
           return InOneLoadingErrorScreen(onRetry: () => unawaited(_loadMlsRooms()));
         }
-        if (!_session.hasNativeMlsSession) {
-          return InOneMessagesScreen(
-            chats: const [],
-            unreadCountsAvailable: false,
-            onOpenChat: (_) => _notice('Нативная MLS-сессия не открыта.'),
-            onSearch: () => _notice('Поиск по содержимому сообщений пока не реализован.'),
-            onFilter: () => _notice('Дополнительные фильтры пока недоступны.'),
-            onTab: _selectTab,
-            onAdd: () => unawaited(_createMlsRoomAndInvite()),
-          );
-        }
         return InOneMessagesScreen(
           chats: _mlsChats,
           unreadCountsAvailable: false,
@@ -1208,6 +1277,11 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
               label: 'Организация',
               icon: Icons.business_outlined,
               onTap: _openOrganization,
+            ),
+            InOneProfileMenuItem(
+              label: 'Язык приложения · ${_session.locale.toUpperCase()}',
+              icon: Icons.language,
+              onTap: () => unawaited(_chooseLocale()),
             ),
             InOneProfileMenuItem(
               label: 'Состояние системы',
