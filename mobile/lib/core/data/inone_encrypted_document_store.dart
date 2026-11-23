@@ -26,6 +26,7 @@ class InOneEncryptedDocumentStore {
         _deleteKeyOverride = deleteKey;
 
   static const _keyNamePrefix = 'inone.organization_document_key.v1.';
+  static const _legacyKeyName = 'inone.organization_document_key.v1';
   static const List<int> _magic = [0x49, 0x4e, 0x31, 0x44, 0x4f, 0x43, 0x30, 0x31];
   static const _nonceLength = 12;
   static const _macLength = 16;
@@ -290,11 +291,61 @@ class InOneEncryptedDocumentStore {
         // A failed initialization must not prevent key deletion.
       }
     }
-    // Delete the key first: if file cleanup is interrupted, remaining ciphertext
-    // is cryptographically inaccessible rather than recoverable on next login.
-    await _deleteKey(keyName);
+    final failures = <Object>[];
+    // Crypto-erase first, but still attempt file deletion if secure storage fails.
+    try {
+      await _deleteKey(keyName);
+    } catch (error) {
+      failures.add(error);
+    }
     _keyInFlight.remove(keyName);
-    final directory = await _ownerDirectory(ownerUserId);
-    if (await directory.exists()) await directory.delete(recursive: true);
+    try {
+      final directory = await _ownerDirectory(ownerUserId);
+      if (await directory.exists()) await directory.delete(recursive: true);
+    } catch (error) {
+      failures.add(error);
+    }
+    if (failures.isNotEmpty) {
+      throw StateError('Account document purge incomplete (${failures.length} failure(s))');
+    }
+  }
+
+  /// Removes the legacy unscoped key/cache without touching hashed owner directories.
+  Future<void> purgeLegacyUnscopedData() async {
+    final failures = <Object>[];
+    try {
+      await _secureStorage.delete(key: _legacyKeyName);
+    } catch (error) {
+      failures.add(error);
+    }
+    try {
+      final root = await _rootDirectory();
+      final directory = Directory(
+        '${root.path}${Platform.pathSeparator}InOne'
+        '${Platform.pathSeparator}organization-documents',
+      );
+      if (await directory.exists()) {
+        await for (final entity in directory.list(followLinks: false)) {
+          if (entity is! Directory) continue;
+          final name = entity.uri.pathSegments.where((part) => part.isNotEmpty).last;
+          final children = await entity.list(followLinks: false).toList();
+          final isOwnerScope = RegExp(r'^[0-9a-f]{64}
+).hasMatch(name) &&
+              children.every((child) => child is Directory);
+          if (!isOwnerScope) {
+            try {
+              await entity.delete(recursive: true);
+            } catch (error) {
+              failures.add(error);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      failures.add(error);
+    }
+    if (failures.isNotEmpty) {
+      throw StateError('Legacy document cache cleanup incomplete (${failures.length} failure(s))');
+    }
   }
 }
