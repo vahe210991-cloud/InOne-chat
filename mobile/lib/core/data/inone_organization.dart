@@ -69,3 +69,64 @@ class InOneOrganizationMember {
     return InOneOrganizationMember(userId: userId, role: role);
   }
 }
+
+
+class InOneOrganizationSettings {
+  const InOneOrganizationSettings({
+    required this.maxGroupMembers,
+    required this.channelsEnabled,
+    required this.fileQuotaBytes,
+  });
+
+  final int? maxGroupMembers;
+  final bool channelsEnabled;
+  final int? fileQuotaBytes;
+
+  factory InOneOrganizationSettings.fromJson(Map<String, dynamic> json) {
+    final maxGroupMembers = json['maxGroupMembers'];
+    final channelsEnabled = json['channelsEnabled'];
+    final fileQuotaBytes = json['fileQuotaBytes'];
+    if (maxGroupMembers != null && (maxGroupMembers is! int || maxGroupMembers < 2) ||
+        channelsEnabled is! bool ||
+        fileQuotaBytes != null && (fileQuotaBytes is! int || fileQuotaBytes < 1)) {
+      throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false);
+    }
+    return InOneOrganizationSettings(
+      maxGroupMembers: maxGroupMembers as int?,
+      channelsEnabled: channelsEnabled,
+      fileQuotaBytes: fileQuotaBytes as int?,
+    );
+  }
+}
+
+class InOneOrganizationSettingLogEntry {
+  const InOneOrganizationSettingLogEntry({
+    required this.actor,
+    required this.field,
+    required this.oldValue,
+    required this.newValue,
+    required this.at,
+  });
+
+  final String actor;
+  final String field;
+  final Object? oldValue;
+  final Object? newValue;
+  final int at;
+
+  factory InOneOrganizationSettingLogEntry.fromJson(Map<String, dynamic> json) {
+    final actor = json['actor'];
+    final field = json['field'];
+    final at = json['at'];
+    if (actor is! String || field is! String || at is! num || !at.isFinite || at < 0) {
+      throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false);
+    }
+    return InOneOrganizationSettingLogEntry(
+      actor: actor,
+      field: field,
+      oldValue: json['old'],
+      newValue: json['new'],
+      at: at.toInt(),
+    );
+  }
+}
