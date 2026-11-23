@@ -14,12 +14,12 @@ class InOneBottomNav extends StatelessWidget {
     super.key,
     required this.selected,
     required this.onSelected,
-    required this.onAdd,
+    this.onAdd,
   });
 
   final InOneTab? selected;
   final ValueChanged<InOneTab> onSelected;
-  final VoidCallback onAdd;
+  final VoidCallback? onAdd;
 
   static const String feedLabel = 'Лента';
   static const String callsLabel = 'Звонки';
@@ -44,7 +44,7 @@ class InOneBottomNav extends StatelessWidget {
           children: [
             _item(context, InOneTab.feed, InOneIcons.feed, feedLabel),
             _item(context, InOneTab.calls, InOneIcons.calls, callsLabel),
-            _AddButton(onTap: onAdd),
+            if (onAdd != null) _AddButton(onTap: onAdd!),
             _item(context, InOneTab.messages, InOneIcons.messages, messagesLabel),
             _item(context, InOneTab.profile, InOneIcons.profile, profileLabel),
           ],
