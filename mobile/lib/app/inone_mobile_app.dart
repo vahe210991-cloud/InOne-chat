@@ -528,13 +528,16 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     );
   }
 
-  Future<String?> _promptMlsInvitee() async {
+  Future<String?> _promptMlsInvitee({
+    String title = 'Новый защищённый чат',
+    String actionLabel = 'Создать',
+  }) async {
     final controller = TextEditingController();
     try {
       return await showDialog<String>(
         context: context,
         builder: (dialogContext) => AlertDialog(
-          title: const Text('Новый защищённый чат'),
+          title: Text(title),
           content: TextField(
             controller: controller,
             autofocus: true,
@@ -551,7 +554,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
             ),
             FilledButton(
               onPressed: () => Navigator.of(dialogContext).pop(controller.text.trim()),
-              child: const Text('Создать'),
+              child: Text(actionLabel),
             ),
           ],
         ),
@@ -1133,6 +1136,29 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
                   onPressed: () => Navigator.of(dialogContext).pop(),
                   child: const Text('Закрыть'),
                 ),
+                if (details.capabilities[currentUserId]?.contains('invite_members') == true &&
+                    _session.hasNativeMlsSession)
+                  TextButton(
+                    onPressed: saving ? null : () async {
+                      final invitee = await _promptMlsInvitee(
+                        title: 'Пригласить в группу',
+                        actionLabel: 'Пригласить',
+                      );
+                      if (invitee == null || invitee.trim().isEmpty || !mounted) return;
+                      try {
+                        await _session.inviteMlsMember(roomId, invitee.trim());
+                        if (!mounted || !dialogContext.mounted) return;
+                        Navigator.of(dialogContext).pop();
+                        await _refreshActiveMlsChat();
+                        _notice('MLS-приглашение отправлено. Новый участник получит доступ после обработки защищённого приглашения.');
+                      } catch (error) {
+                        if (dialogContext.mounted) {
+                          setDialogState(() => errorMessage = _toFailure(error).message);
+                        }
+                      }
+                    },
+                    child: const Text('Пригласить участника'),
+                  ),
                 if (canRename)
                   FilledButton(
                     onPressed: saving ? null : () async {
