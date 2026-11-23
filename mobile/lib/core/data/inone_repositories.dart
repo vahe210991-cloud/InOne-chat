@@ -20,8 +20,17 @@ class InOneRepositories {
   }
   Future<Map<String, dynamic>> myOrganizations() =>
       session.request('GET', '/orgs/mine');
-  Future<Map<String, dynamic>> organizationMembers(String orgId) =>
-      session.request('GET', '/orgs/${Uri.encodeComponent(orgId)}/members');
+  Future<List<InOneOrganizationMember>> organizationMembers(String orgId) async {
+    final response = await session.request(
+      'GET', '/orgs/${Uri.encodeComponent(orgId)}/members',
+    );
+    final raw = response['members'];
+    if (raw is! List || raw.any((member) => member is! Map)) {
+      throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false);
+    }
+    return List<InOneOrganizationMember>.unmodifiable(raw.map((member) =>
+        InOneOrganizationMember.fromJson(Map<String, dynamic>.from(member as Map))));
+  }
   Future<Map<String, dynamic>> myDevices() =>
       session.request('GET', '/devices/mine');
   /// Returns the validated room-list DTO for the authenticated account.
