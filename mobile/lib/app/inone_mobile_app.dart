@@ -60,6 +60,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   List<InOneOrganization> _organizations = const [];
   InOneOrganization? _selectedOrganization;
   int? _organizationMemberCount;
+  List<InOneOrganizationMember> _organizationMembers = const [];
   InOneSystemStatus? _systemStatus;
   List<InOneChatPreview> _mlsChats = const [];
   String? _activeMlsRoomId;
@@ -513,6 +514,9 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       name: org.name,
       subtitle: '${org.role} · ${org.status}',
       members: _organizationMemberCount,
+      organizationMembers: _organizationMembers
+          .map((member) => (userId: member.userId, role: member.role))
+          .toList(growable: false),
       projects: null,
       teams: null,
       about: null,
@@ -967,27 +971,19 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     }
   }
 
-  Future<int> _readOrganizationMemberCount(String orgId) async {
-    final response = await _repositories.organizationMembers(orgId);
-    final members = response['members'];
-    if (members is! List || members.any((member) => member is! Map)) {
-      throw const ApiException(
-        code: 'invalid_response',
-        statusCode: 502,
-        retryable: false,
-      );
-    }
-    return members.length;
-  }
+  Future<List<InOneOrganizationMember>> _readOrganizationMembers(String orgId) =>
+      _repositories.organizationMembers(orgId);
 
   Future<void> _refreshOrganizationMemberCount(InOneOrganization org) async {
     try {
-      final count = await _readOrganizationMemberCount(org.orgId);
+      final members = await _readOrganizationMembers(org.orgId);
       if (!mounted || _selectedOrganization?.orgId != org.orgId) return;
-      setState(() => _organizationMemberCount = count);
+      setState(() {
+        _organizationMembers = members;
+        _organizationMemberCount = members.length;
+      });
     } catch (_) {
-      // The workspace keeps an explicit unknown value when the read is denied
-      // or temporarily unavailable; it never fabricates a member count.
+      // Keep the roster unknown when access is denied or the server is offline.
     }
   }
 
@@ -999,10 +995,11 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     }
     setState(() => _screen = 'organizationLoading');
     try {
-      final count = await _readOrganizationMemberCount(org.orgId);
+      final members = await _readOrganizationMembers(org.orgId);
       if (!mounted || _selectedOrganization?.orgId != org.orgId) return;
       setState(() {
-        _organizationMemberCount = count;
+        _organizationMembers = members;
+        _organizationMemberCount = members.length;
         _screen = 'organization';
       });
     } catch (error) {
@@ -1042,6 +1039,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       setState(() {
         _selectedOrganization = selected;
         _organizationMemberCount = null;
+        _organizationMembers = const [];
         _screen = 'workspace';
       });
       unawaited(_refreshOrganizationMemberCount(selected));
