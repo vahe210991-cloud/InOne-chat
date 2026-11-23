@@ -730,3 +730,11 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Added an additional P1 regression on draft PR #132 branch: malformed UTF-8 followed by a valid message in the same room must produce an Unreadable record, preserve room epoch, deliver the later valid message and leave no RecoveryRequired marker. Test not yet compiled/executed.
 - Current audit branch has no workflow runs returned for its latest commit; all new Rust changes remain unvalidated. No changes to main.
 
+
+
+## 2026-11-23 — PR #132 exact-SHA workflow queue
+
+- PR #132 code-validation head `988d537d7fb3acf812781e67ac598cb5954ed958` triggered nine PR workflows, including the exact-SHA acceptance gate; all nine were queued at 16:19Z.
+- The audit report was added as a documentation-only commit `2d7754e29d31aa0cedf004ae9fee988d45e2dbb0`; no new workflow runs were returned for that report-only head.
+- Continuity docs now distinguish the code-validation SHA from the later report-only head. No test result for the new Welcome or invalid-UTF-8 regressions is yet available. Do not mark the branch accepted until the exact-SHA gate completes on the final PR head.
+
