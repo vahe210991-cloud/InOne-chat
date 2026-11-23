@@ -1231,6 +1231,26 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
                         setDialogState(() => errorMessage = 'Изменений нет.');
                         return;
                       }
+                      if (visibilityChanged && visibility == 'private') {
+                        final confirmed = await showDialog<bool>(
+                          context: dialogContext,
+                          builder: (confirmContext) => AlertDialog(
+                            title: const Text('Сделать группу приватной?'),
+                            content: const Text('Сервер удалит ожидающие заявки на вступление. Продолжить?'),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.of(confirmContext).pop(false),
+                                child: const Text('Отмена'),
+                              ),
+                              FilledButton(
+                                onPressed: () => Navigator.of(confirmContext).pop(true),
+                                child: const Text('Продолжить'),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (confirmed != true || !dialogContext.mounted) return;
+                      }
                       setDialogState(() {
                         saving = true;
                         errorMessage = null;
