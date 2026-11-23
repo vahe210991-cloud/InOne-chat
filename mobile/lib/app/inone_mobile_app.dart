@@ -51,6 +51,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   late final InOneEncryptedDocumentStore _documentStore;
   String? _documentOwnerId;
   bool _wasAuthenticated = false;
+  bool _manualLogoutInProgress = false;
   bool _documentViewerHandOffActive = false;
   Future<void>? _revocationCleanupInFlight;
   InOnePushLifecycle? _pushLifecycle;
@@ -175,6 +176,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     }
     if (!_wasAuthenticated) return;
     _wasAuthenticated = false;
+    if (_manualLogoutInProgress) return;
     final owner = _documentOwnerId ?? _profile?.userId ?? _session.userId;
     _documentOwnerId = null;
     if (owner != null) unawaited(_handleUnauthorizedSession(owner));
@@ -805,15 +807,20 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   Future<InOneFailure?> _logout() async {
     final ownerUserId = _documentOwnerId ?? _profile?.userId ?? _session.userId;
     InOneFailure? failure;
+    _manualLogoutInProgress = true;
     try {
-      await _pushLifecycle?.unregisterBeforeLogout();
-    } catch (_) {
-      // Continue: local logout must not be blocked by push-service availability.
-    }
-    try {
-      await _session.logout();
-    } catch (error) {
-      failure = _toFailure(error);
+      try {
+        await _pushLifecycle?.unregisterBeforeLogout();
+      } catch (_) {
+        // Continue: local logout must not be blocked by push-service availability.
+      }
+      try {
+        await _session.logout();
+      } catch (error) {
+        failure = _toFailure(error);
+      }
+    } finally {
+      _manualLogoutInProgress = false;
     }
     try {
       await _clearDocumentPreviewCache();
