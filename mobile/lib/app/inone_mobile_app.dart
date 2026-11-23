@@ -1100,6 +1100,87 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     }
   }
 
+  Future<void> _changeRoomMemberRole(String roomId, String memberId, String role) async {
+    final roleLabel = role == 'admin' ? 'администратором' : 'участником';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Изменить роль?'),
+        content: Text('Назначить участника $memberId: $roleLabel?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('Отмена')),
+          FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('Подтвердить')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await _repositories.updateRoomMemberRole(roomId, userId: memberId, role: role);
+      if (!mounted) return;
+      _notice('Роль участника обновлена на сервере.');
+      await _showMlsRoomDetails();
+    } catch (error) {
+      if (mounted) _notice('Не удалось изменить роль: ${_toFailure(error).message}');
+    }
+  }
+
+  Future<void> _showRoomJoinRequests(String roomId) async {
+    List<InOneRoomJoinRequest> requests;
+    try {
+      requests = await _repositories.roomJoinRequests(roomId);
+    } catch (error) {
+      if (mounted) _notice('Не удалось загрузить заявки: ${_toFailure(error).message}');
+      return;
+    }
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Заявки на вступление'),
+          content: SizedBox(
+            width: 420,
+            child: requests.isEmpty
+                ? const Text('Новых заявок нет.')
+                : ListView(
+                    shrinkWrap: true,
+                    children: [
+                      for (final request in requests)
+                        ListTile(
+                          dense: true,
+                          title: Text(request.userId, maxLines: 1, overflow: TextOverflow.ellipsis),
+                          subtitle: Text('Заявка: ${DateTime.fromMillisecondsSinceEpoch(request.createdAt).toLocal()}'),
+                          trailing: IconButton(
+                            tooltip: 'Отклонить заявку',
+                            icon: const Icon(Icons.close),
+                            onPressed: () async {
+                              try {
+                                await _repositories.rejectRoomJoinRequest(roomId, request.userId);
+                                if (!dialogContext.mounted) return;
+                                setDialogState(() {
+                                  requests = requests.where((item) => item.userId != request.userId).toList(growable: false);
+                                });
+                              } catch (error) {
+                                if (dialogContext.mounted) {
+                                  ScaffoldMessenger.of(dialogContext).showSnackBar(
+                                    SnackBar(content: Text('Не удалось отклонить заявку: ${_toFailure(error).message}')),
+                                  );
+                                }
+                              }
+                            },
+                          ),
+                        ),
+                    ],
+                  ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('Закрыть')),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _editRoomMemberCapabilities(String roomId, String memberId, List<String> currentCapabilities) async {
     const labels = <String, String>{
       'invite_members': 'Приглашать участников',
@@ -1253,15 +1334,50 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
                                         : 'Участник'} · ${details.readUpTo[memberId] == null ? 'Нет отметки прочтения' : 'Прочитано до ${details.readUpTo[memberId]}'}',
                               ),
                               trailing: currentUserId == details.owner && memberId != details.owner
-                                  ? IconButton(
-                                      tooltip: 'Изменить права участника',
-                                      icon: const Icon(Icons.tune),
-                                      onPressed: saving ? null : () async {
-                                        Navigator.of(dialogContext).pop();
-                                        await _editRoomMemberCapabilities(
-                                          roomId, memberId, details.capabilities[memberId] ?? const [],
-                                        );
-                                      },
+                                  ? Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        PopupMenuButton<String>(
+                                          tooltip: 'Изменить роль',
+                                          enabled: !saving,
+                                          onSelected: (role) async {
+                                            Navigator.of(dialogContext).pop();
+                                            await _changeRoomMemberRole(roomId, memberId, role);
+                                          },
+                                          itemBuilder: (context) => [
+                                            PopupMenuItem(
+                                              value: 'member',
+                                              child: Row(children: [
+                                                const Text('Участник'),
+                                                if (!details.admins.contains(memberId)) ...[
+                                                  const Spacer(),
+                                                  const Icon(Icons.check, size: 18),
+                                                ],
+                                              ]),
+                                            ),
+                                            PopupMenuItem(
+                                              value: 'admin',
+                                              child: Row(children: [
+                                                const Text('Администратор'),
+                                                if (details.admins.contains(memberId)) ...[
+                                                  const Spacer(),
+                                                  const Icon(Icons.check, size: 18),
+                                                ],
+                                              ]),
+                                            ),
+                                          ],
+                                        ),
+                                        IconButton(
+                                          tooltip: 'Изменить права участника',
+                                          icon: const Icon(Icons.tune),
+                                          onPressed: saving ? null : () async {
+                                            Navigator.of(dialogContext).pop();
+                                            await _editRoomMemberCapabilities(
+                                              roomId, memberId, details.capabilities[memberId] ?? const [],
+                                            );
+                                          },
+                                        ),
+                                      ],
                                     )
                                   : null,
                             ),
@@ -1286,6 +1402,15 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
                   onPressed: () => Navigator.of(dialogContext).pop(),
                   child: const Text('Закрыть'),
                 ),
+                if (currentUserId != null &&
+                    (details.capabilities[currentUserId]?.contains('invite_members') ?? false))
+                  TextButton(
+                    onPressed: saving ? null : () async {
+                      Navigator.of(dialogContext).pop();
+                      await _showRoomJoinRequests(roomId);
+                    },
+                    child: const Text('Заявки'),
+                  ),
                 if (currentUserId != null &&
                     (details.capabilities[currentUserId]?.contains('invite_members') ?? false) &&
                     _session.hasNativeMlsSession)
