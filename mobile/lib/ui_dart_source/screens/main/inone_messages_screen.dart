@@ -57,7 +57,7 @@ class _InOneMessagesScreenState extends State<InOneMessagesScreen> {
     final c = context.inone;
     final chats = _visible;
     return InOneShell(
-      nav: InOneBottomNav(selected: InOneTab.messages, onSelected: widget.onTab),
+      nav: InOneBottomNav(selected: InOneTab.messages, onSelected: widget.onTab, availableTabs: const {InOneTab.messages, InOneTab.profile}),
       body: Padding(
         padding: const EdgeInsets.fromLTRB(20, 6, 20, 0),
         child: Column(
