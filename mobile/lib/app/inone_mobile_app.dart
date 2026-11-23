@@ -670,9 +670,9 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
                         child: Text(errorMessage!, style: const TextStyle(color: Colors.red)),
                       ),
                     if (!loading && results.isNotEmpty)
-                      Flexible(
+                      SizedBox(
+                        height: 260,
                         child: ListView(
-                          shrinkWrap: true,
                           children: [
                             for (final room in results)
                               ListTile(
@@ -1098,9 +1098,9 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
                     const SizedBox(height: 12),
                     const Text('Участники', style: TextStyle(fontWeight: FontWeight.w700)),
                     const SizedBox(height: 6),
-                    Flexible(
+                    SizedBox(
+                      height: 240,
                       child: ListView(
-                        shrinkWrap: true,
                         children: [
                           for (final memberId in details.members)
                             ListTile(
