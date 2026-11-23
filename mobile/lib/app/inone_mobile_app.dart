@@ -1791,11 +1791,11 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           ],
           activity: const [],
           onSwitchWorkspace: _chooseOrganization,
-          onNotifications: () => _notice('Лента уведомлений пока не подключена к серверному контракту.'),
-          onCustomize: () => _notice('Настройка модулей пока недоступна.'),
-          onSeeAll: () => _notice('Лента активности пока не предоставляется backend.'),
+          onNotifications: null,
+          onCustomize: null,
+          onSeeAll: null,
           onTab: _selectTab,
-          onAdd: () => _notice('Создание публикаций не входит в Beta 1.0.'),
+          onAdd: null,
         );
       case 'organizationLoading':
         return const Scaffold(body: Center(child: CircularProgressIndicator()));
@@ -1811,7 +1811,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           onMore: _chooseOrganization,
           onEditCover: null,
           onTab: _selectTab,
-          onAdd: () => _notice('Создание публикаций не входит в Beta 1.0.'),
+          onAdd: null,
           onAddMember: _organizationProfile.canAddMembers ? _addOrganizationMember : null,
           onChangeMemberRole: _organizationProfile.canChangeMemberRoles
               ? _changeOrganizationMemberRole
@@ -1918,11 +1918,9 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
             ),
           ],
           onToggleTheme: () => setState(() => _darkMode = !_darkMode),
-          onEditAvatar: () => _notice(
-            'Изменение аватара недоступно: серверный endpoint обновления профиля не подтверждён.',
-          ),
+          onEditAvatar: null,
           onTab: _selectTab,
-          onAdd: () => _notice('Создание публикаций не входит в Beta 1.0.'),
+          onAdd: null,
         );
       default:
         return InOneLoginScreen(
