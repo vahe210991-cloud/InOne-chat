@@ -560,6 +560,164 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     }
   }
 
+  Future<void> _discoverPublicRooms() async {
+    final controller = TextEditingController();
+    var loading = false;
+    var joiningRoomId = '';
+    String? errorMessage;
+    List<InOnePublicRoom> results = const [];
+    final statuses = <String, String>{};
+
+    try {
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (context, setDialogState) {
+            Future<void> search() async {
+              final query = controller.text.trim();
+              if (query.length < 2 || query.length > 50) {
+                setDialogState(() => errorMessage = 'Введите от 2 до 50 символов.');
+                return;
+              }
+              setDialogState(() {
+                loading = true;
+                errorMessage = null;
+                results = const [];
+              });
+              try {
+                final rooms = await _repositories.searchPublicRooms(query);
+                if (!dialogContext.mounted) return;
+                setDialogState(() => results = rooms);
+              } catch (error) {
+                if (!dialogContext.mounted) return;
+                setDialogState(() => errorMessage = _toFailure(error).message);
+              } finally {
+                if (dialogContext.mounted) {
+                  setDialogState(() => loading = false);
+                }
+              }
+            }
+
+            Future<void> join(InOnePublicRoom room) async {
+              setDialogState(() {
+                joiningRoomId = room.roomId;
+                errorMessage = null;
+              });
+              try {
+                final status = await _repositories.joinPublicRoom(room.roomId);
+                if (!dialogContext.mounted) return;
+                setDialogState(() => statuses[room.roomId] = status);
+                if (status == 'joined') {
+                  await _loadMlsRooms();
+                  if (!mounted || !dialogContext.mounted) return;
+                  _notice('Вы вступили в группу. Для чтения её истории этому устройству ещё требуется MLS Welcome.');
+                } else {
+                  setDialogState(() {});
+                }
+              } catch (error) {
+                if (!dialogContext.mounted) return;
+                final failure = _toFailure(error);
+                setDialogState(() => errorMessage = failure.message);
+                if (error is ApiException && error.statusCode == 409) {
+                  setDialogState(() => statuses[room.roomId] = 'already_member');
+                  await _loadMlsRooms();
+                }
+              } finally {
+                if (dialogContext.mounted) {
+                  setDialogState(() => joiningRoomId = '');
+                }
+              }
+            }
+
+            return AlertDialog(
+              title: const Text('Найти публичную группу'),
+              content: SizedBox(
+                width: 420,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: controller,
+                      autofocus: true,
+                      maxLength: 50,
+                      textInputAction: TextInputAction.search,
+                      onSubmitted: (_) => unawaited(search()),
+                      decoration: const InputDecoration(
+                        labelText: 'Название группы',
+                        hintText: 'Введите минимум 2 символа',
+                        counterText: '',
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: FilledButton(
+                        onPressed: loading ? null : () => unawaited(search()),
+                        child: const Text('Искать'),
+                      ),
+                    ),
+                    if (loading) const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: CircularProgressIndicator(),
+                    ),
+                    if (errorMessage != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(errorMessage!, style: const TextStyle(color: Colors.red)),
+                      ),
+                    if (!loading && results.isNotEmpty)
+                      Flexible(
+                        child: ListView(
+                          shrinkWrap: true,
+                          children: [
+                            for (final room in results)
+                              ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                title: Text(room.name),
+                                subtitle: Text(
+                                  '${room.members} участников · ${room.joinPolicy == 'open' ? 'Свободное вступление' : 'По заявке'}',
+                                ),
+                                trailing: statuses[room.roomId] == 'joined' ||
+                                        statuses[room.roomId] == 'requested' ||
+                                        statuses[room.roomId] == 'already_member'
+                                    ? Text(switch (statuses[room.roomId]) {
+                                        'joined' => 'Вы вступили',
+                                        'requested' => 'Заявка отправлена',
+                                        _ => 'Уже участник',
+                                      })
+                                    : TextButton(
+                                        onPressed: joiningRoomId.isNotEmpty
+                                            ? null
+                                            : () => unawaited(join(room)),
+                                        child: Text(room.joinPolicy == 'open' ? 'Вступить' : 'Запросить'),
+                                      ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    if (!loading && results.isEmpty && errorMessage == null)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 12),
+                        child: Text('Введите название и выполните поиск публичных групп.'),
+                      ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Закрыть'),
+                ),
+              ],
+            );
+          },
+        ),
+      );
+    } finally {
+      controller.dispose();
+    }
+  }
+
   Future<void> _createMlsRoomAndInvite() async {
     if (!_session.hasNativeMlsSession) {
       _notice('Нативная MLS-сессия недоступна.');
@@ -1245,7 +1403,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           chats: _mlsChats,
           unreadCountsAvailable: false,
           onOpenChat: _openMlsChat,
-          onSearch: () => _notice('Поиск по содержимому сообщений пока не реализован.'),
+          onSearch: () => unawaited(_discoverPublicRooms()),
           onFilter: () => _notice('Дополнительные фильтры пока недоступны.'),
           onTab: _selectTab,
           onAdd: () => unawaited(_createMlsRoomAndInvite()),
