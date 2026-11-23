@@ -2363,6 +2363,12 @@ if (req.method === 'POST' && p === '/login') {
               if (!result.ok && result.reason?.startsWith('claim_')) {
                 return send(res, 409, { error: result.reason, code: result.reason });
               }
+              if (!result.ok && result.reason === 'join_request_not_pending') {
+                return send(res, 409, { error: 'join request is no longer pending', code: 'join_request_not_pending' });
+              }
+              if (!result.ok && result.reason === 'join_request_mismatch') {
+                return send(res, 400, { error: 'join request approval does not match the added member', code: 'join_request_mismatch' });
+              }
               if (result.ok && !result.replayed && (adds.length > 0 || removes.length > 0)) {
                 await markRoomChanged(roomId, [...new Set([...r.members, ...adds])]);
               }
