@@ -627,6 +627,77 @@ fn crash_child_sync_if_requested() {
     panic!("configured crash failpoint did not terminate child; sync result: {result:?}");
 }
 
+fn run_membership_crash_child(
+    test_name: &str,
+    base: &str,
+    db_path: &str,
+    room_id: &str,
+    point: &str,
+) -> std::process::Output {
+    std::process::Command::new(std::env::current_exe().expect("current test executable"))
+        .args(["--exact", test_name, "--nocapture"])
+        .env("INONE_MLS_MEMBERSHIP_CRASH_CHILD_BASE", base)
+        .env("INONE_MLS_MEMBERSHIP_CRASH_CHILD_DB", db_path)
+        .env("INONE_MLS_MEMBERSHIP_CRASH_CHILD_ROOM", room_id)
+        .env("INONE_MLS_TEST_CRASH_POINT", point)
+        .output()
+        .expect("spawn membership crash-test child")
+}
+
+fn crash_child_membership_invite_if_requested() {
+    let (Ok(base), Ok(db_path), Ok(room_id)) = (
+        std::env::var("INONE_MLS_MEMBERSHIP_CRASH_CHILD_BASE"),
+        std::env::var("INONE_MLS_MEMBERSHIP_CRASH_CHILD_DB"),
+        std::env::var("INONE_MLS_MEMBERSHIP_CRASH_CHILD_ROOM"),
+    ) else {
+        return;
+    };
+    let keys = FixedCrashKeyStore;
+    let mut alice = connect(
+        &base,
+        ALICE,
+        PW,
+        "A_MEMBERSHIP_CRASH_P0",
+        &db_path,
+        &keys,
+    )
+    .expect("child reopens the prepared inviter SQLCipher database");
+    let result = alice.invite(&room_id, BOB);
+    panic!("configured membership crash failpoint did not terminate child; invite result: {result:?}");
+}
+
+fn run_ack_crash_child(
+    test_name: &str,
+    base: &str,
+    db_path: &str,
+    event_id: &str,
+    point: &str,
+) -> std::process::Output {
+    std::process::Command::new(std::env::current_exe().expect("current test executable"))
+        .args(["--exact", test_name, "--nocapture"])
+        .env("INONE_MLS_ACK_CRASH_CHILD_BASE", base)
+        .env("INONE_MLS_ACK_CRASH_CHILD_DB", db_path)
+        .env("INONE_MLS_ACK_CRASH_CHILD_EVENT", event_id)
+        .env("INONE_MLS_TEST_CRASH_POINT", point)
+        .output()
+        .expect("spawn inbox ACK crash-test child")
+}
+
+fn crash_child_acknowledge_if_requested() {
+    let (Ok(base), Ok(db_path), Ok(event_id)) = (
+        std::env::var("INONE_MLS_ACK_CRASH_CHILD_BASE"),
+        std::env::var("INONE_MLS_ACK_CRASH_CHILD_DB"),
+        std::env::var("INONE_MLS_ACK_CRASH_CHILD_EVENT"),
+    ) else {
+        return;
+    };
+    let keys = FixedCrashKeyStore;
+    let mut bob = connect(&base, BOB, PW, "B_CRASH_P0", &db_path, &keys)
+        .expect("child reopens the prepared recipient SQLCipher database");
+    let result = bob.acknowledge_incoming(&[event_id]);
+    panic!("configured inbox ACK crash failpoint did not terminate child; ACK result: {result:?}");
+}
+
 #[test]
 fn process_crash_after_application_ratchet_write_rolls_back_and_redelivers() {
     crash_child_sync_if_requested();
@@ -853,6 +924,235 @@ fn process_crash_immediately_after_inbound_commit_transaction_commit_keeps_epoch
         .unwrap()
         .iter()
         .any(|member| member == &format!("{CAROL}/C_COMMIT_AFTER_P0")));
+}
+
+#[test]
+fn process_crash_at_outbound_membership_commit_boundaries_replays_exact_operation_once() {
+    crash_child_membership_invite_if_requested();
+    crash_child_sync_if_requested();
+
+    let crash_points = [
+        "after_membership_commit_journal_commit",
+        "after_outbound_membership_commit_server_acceptance",
+    ];
+
+    for (index, point) in crash_points.iter().enumerate() {
+        let engine = start_engine();
+        let keys = FixedCrashKeyStore;
+        let alice_db = db(&format!("p0-membership-crash-{index}-alice"));
+        let bob_db = db(&format!("p0-membership-crash-{index}-bob"));
+        let mut alice = connect(
+            &engine.base,
+            ALICE,
+            PW,
+            "A_MEMBERSHIP_CRASH_P0",
+            &alice_db,
+            &keys,
+        )
+        .unwrap();
+        let mut bob = connect(
+            &engine.base,
+            BOB,
+            PW,
+            "B_MEMBERSHIP_CRASH_P0",
+            &bob_db,
+            &keys,
+        )
+        .unwrap();
+        bob.ensure_key_packages(1).unwrap();
+
+        let room = format!("!room-p0-membership-crash-{index}:inone.test");
+        alice.create_room(&room).unwrap();
+        drop(alice);
+
+        let status = run_membership_crash_child(
+            "process_crash_at_outbound_membership_commit_boundaries_replays_exact_operation_once",
+            &engine.base,
+            &alice_db,
+            &room,
+            point,
+        );
+        assert!(
+            !status.status.success(),
+            "child must be forcibly terminated at {point}"
+        );
+        assert!(
+            String::from_utf8_lossy(&status.stderr)
+                .contains(&format!("INONE_MLS_TEST_CRASH_POINT_REACHED={point}")),
+            "child did not reach {point}; stderr: {}",
+            String::from_utf8_lossy(&status.stderr)
+        );
+
+        let database = open_encrypted_db(&alice_db, &CRASH_DB_KEY);
+        let journal_rows: i64 = database
+            .query_row(
+                "SELECT COUNT(*) FROM client_membership_commits WHERE room_id = ?1",
+                [&room],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let intent_rows: i64 = database
+            .query_row(
+                "SELECT COUNT(*) FROM client_invite_intents
+                 WHERE room_id = ?1 AND state = 'commit_pending'",
+                [&room],
+                |row| row.get(0),
+            )
+            .unwrap();
+        drop(database);
+        assert_eq!(journal_rows, 1, "the exact staged Commit journal must survive {point}");
+        assert_eq!(intent_rows, 1, "the matching invite intent must survive {point}");
+
+        let expected_server_commits = if *point == "after_outbound_membership_commit_server_acceptance" {
+            1
+        } else {
+            0
+        };
+        assert_eq!(
+            engine.command(&format!("COMMIT_COUNT {room}")),
+            expected_server_commits.to_string(),
+            "server acceptance boundary must be observable"
+        );
+
+        let mut recovered = connect(
+            &engine.base,
+            ALICE,
+            PW,
+            "A_MEMBERSHIP_CRASH_P0",
+            &alice_db,
+            &keys,
+        )
+        .expect("inviter SQLCipher database remains readable after process death");
+        assert_eq!(recovered.local_epoch(&room), Some(0));
+        recovered
+            .sync()
+            .expect("restart must replay the exact durable operation and settle locally");
+        assert_eq!(recovered.local_epoch(&room), Some(1));
+        assert_eq!(
+            engine.command(&format!("COMMIT_COUNT {room}")),
+            "1",
+            "server must accept exactly one membership Commit"
+        );
+        assert_eq!(recovered.desync_reason(&room).unwrap(), None);
+
+        let database = open_encrypted_db(&alice_db, &CRASH_DB_KEY);
+        let journal_rows: i64 = database
+            .query_row(
+                "SELECT COUNT(*) FROM client_membership_commits WHERE room_id = ?1",
+                [&room],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let intent_rows: i64 = database
+            .query_row(
+                "SELECT COUNT(*) FROM client_invite_intents WHERE room_id = ?1",
+                [&room],
+                |row| row.get(0),
+            )
+            .unwrap();
+        drop(database);
+        assert_eq!(journal_rows, 0, "settled operation journal must be removed");
+        assert_eq!(intent_rows, 0, "settled invite intent must be removed");
+
+        bob.sync().expect("recipient must process the single Welcome after replay");
+        assert_eq!(bob.local_epoch(&room), Some(1));
+        assert!(bob
+            .members_of(&room)
+            .unwrap()
+            .iter()
+            .any(|member| member == &format!("{BOB}/B_MEMBERSHIP_CRASH_P0")));
+        assert_eq!(engine.command(&format!("COMMIT_COUNT {room}")), "1");
+    }
+}
+
+#[test]
+fn process_crash_before_and_after_durable_inbox_ack_commit_preserves_ack_state() {
+    crash_child_acknowledge_if_requested();
+    crash_child_sync_if_requested();
+
+    let crash_points = [
+        "before_inbox_ack_transaction_commit",
+        "after_inbox_ack_transaction_commit",
+    ];
+
+    for (index, point) in crash_points.iter().enumerate() {
+        let engine = start_engine();
+        let keys = FixedCrashKeyStore;
+        let alice_db = db(&format!("p0-ack-crash-{index}-alice"));
+        let bob_db = db(&format!("p0-ack-crash-{index}-bob"));
+        let mut alice = connect(
+            &engine.base,
+            ALICE,
+            PW,
+            &format!("A_ACK_CRASH_{index}"),
+            &alice_db,
+            &keys,
+        )
+        .unwrap();
+        let mut bob = connect(&engine.base, BOB, PW, "B_CRASH_P0", &bob_db, &keys).unwrap();
+        bob.ensure_key_packages(1).unwrap();
+
+        let room = format!("!room-p0-ack-crash-{index}:inone.test");
+        alice.create_room(&room).unwrap();
+        alice.invite(&room, BOB).unwrap();
+        assert!(bob.sync().unwrap().is_empty());
+        let event_id = alice
+            .send_text_with_id(&room, "durable ACK crash boundary", &format!("ack-crash-{index}"))
+            .unwrap();
+        let delivered = bob.sync().unwrap();
+        assert!(delivered.iter().any(|item| matches!(
+            item,
+            Incoming::Text { event_id: delivered_id, .. } if delivered_id == &event_id
+        )));
+        assert_eq!(bob.pending_incoming().unwrap().len(), 1);
+        drop(bob);
+
+        let status = run_ack_crash_child(
+            "process_crash_before_and_after_durable_inbox_ack_commit_preserves_ack_state",
+            &engine.base,
+            &bob_db,
+            &event_id,
+            point,
+        );
+        assert!(
+            !status.status.success(),
+            "child must be forcibly terminated at {point}"
+        );
+        assert!(
+            String::from_utf8_lossy(&status.stderr)
+                .contains(&format!("INONE_MLS_TEST_CRASH_POINT_REACHED={point}")),
+            "child did not reach {point}; stderr: {}",
+            String::from_utf8_lossy(&status.stderr)
+        );
+
+        let mut recovered = connect(&engine.base, BOB, PW, "B_CRASH_P0", &bob_db, &keys)
+            .expect("recipient SQLCipher database remains readable after ACK process death");
+        let expected_pending = if *point == "after_inbox_ack_transaction_commit" { 0 } else { 1 };
+        assert_eq!(
+            recovered.pending_incoming().unwrap().len(),
+            expected_pending,
+            "ACK durability must match the transaction boundary at {point}"
+        );
+        assert!(
+            recovered.sync().unwrap().is_empty(),
+            "an acknowledged or already durable inbox event must not be replayed"
+        );
+        if expected_pending == 1 {
+            recovered.acknowledge_incoming(&[event_id.clone()]).unwrap();
+        }
+        assert!(recovered.pending_incoming().unwrap().is_empty());
+
+        let database = open_encrypted_db(&bob_db, &CRASH_DB_KEY);
+        let acknowledged: i64 = database
+            .query_row(
+                "SELECT acknowledged FROM client_inbox WHERE event_id = ?1",
+                [&event_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        drop(database);
+        assert_eq!(acknowledged, 1, "recovered ACK must be durable");
+    }
 }
 
 #[test]
