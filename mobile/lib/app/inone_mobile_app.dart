@@ -551,7 +551,11 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       if (_pendingPushRoutes.next != null) {
         unawaited(_processPendingPushRoute());
       }
-    } catch (_) {
+    } catch (error) {
+      if (error is ApiException && error.statusCode == 401) {
+        await _handleUnauthorizedSession(_documentOwnerId ?? _session.userId);
+        return;
+      }
       if (mounted) setState(() => _screen = 'loadError');
     }
   }
@@ -661,6 +665,10 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         _screen = 'adminRequestDetails';
       });
     } catch (error) {
+      if (error is ApiException && error.statusCode == 401) {
+        await _handleUnauthorizedSession(_documentOwnerId ?? _session.userId);
+        return;
+      }
       if (!mounted) return;
       final failure = _toFailure(error);
       setState(() => _screen = 'adminRequestsError');
