@@ -12,8 +12,8 @@
 
 - PR #131 exact-head checks were reported as 19/19 PASS.
 - PR #131 head `984d9e2afa6734ac14269fdee6ad787df84b123b`: 19/19 individual check jobs PASS across the retrieved PR-head workflow runs.
-- On merge SHA `2430b0365ab71c60b0926b27854d17a9090e1fba`, the Actions REST run list returns 9 push workflows: 7 completed PASS (Backend Docker Compose, OpenMLS client, Dev Container Compose, Email/PostgreSQL, recovered P0 source, Flutter iOS, Flutter mobile).
-- `OpenMLS Flutter Rust Bridge generation`: main job PASS; iOS native-assets compile remains IN_PROGRESS. Android build and Android Keystore emulator smoke passed.
+- On merge SHA `2430b0365ab71c60b0926b27854d17a9090e1fba`, the Actions REST run list returns 9 push workflows: 8 completed PASS (Backend Docker Compose, OpenMLS client, Dev Container Compose, Email/PostgreSQL, recovered P0 source, Flutter iOS, Flutter mobile, OpenMLS Flutter Rust Bridge including iOS native assets).
+- `OpenMLS Flutter Rust Bridge generation`: main job PASS, including iOS native-assets compile. Android build and Android Keystore emulator smoke passed.
 - `Native MLS client validation`: exact-source check, canonical Engine B regression tests, persistent bridge host tests and attachment/session integration tests passed. The iOS Keychain native-target build was cancelled in attempt 1; its job log was unavailable. A targeted job rerun was accepted and is QUEUED in attempt 2.
 - The exact-SHA acceptance gate is configured for pull_request events only, so it is N/A for a main push; each applicable main workflow verifies its own exact source SHA. Do not claim main exact-SHA validation complete while the two iOS-related jobs remain pending.
 - PR #132 code-validation head `87930a5997b9ceb7aea44409b1e0d07020d3c82f` triggered nine PR workflows (including the exact-SHA acceptance gate); all nine were QUEUED at 16:23Z. The latest follow-up commits only update reports/continuity docs; they do not change Rust/Flutter source. No completed test result is available yet for the Welcome, invalid-UTF-8 or 401/403/404 regressions.
