@@ -14,7 +14,7 @@ Keep `INONE_MLS_NATIVE_ENABLED=false` by default. The source implementation is e
 
 - PR #131 is merged into main at the baseline SHA above.
 - PR #131 head checks: 19/19 PASS.
-- Main push runs on the merge SHA: seven completed PASS; OpenMLS FRB iOS native-assets compile is IN_PROGRESS; Native MLS iOS Keychain target job was cancelled in attempt 1 and targeted rerun is QUEUED in attempt 2.
+- Main push runs on the merge SHA: eight completed PASS, including OpenMLS FRB iOS native-assets compile; Native MLS iOS Keychain target job was cancelled in attempt 1 and targeted rerun is QUEUED in attempt 2.
 - Production mobile Rust dependency points to canonical Engine B at `inone-development-archive-0.6.0/engine/mobile-mls/mls-client`. Engine A is not production.
 - OpenMLS provider and client journal share one SQLCipher connection; inbound application and inbound Commit processing use a transaction-aware provider. Child-process SQLCipher restart tests for these paths and inbox journal boundaries exist on main.
 - SQLite default journal mode is used by canonical Engine B. WAL is not enabled and WAL-specific crash recovery is not claimed.
