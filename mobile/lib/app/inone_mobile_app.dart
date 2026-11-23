@@ -1140,6 +1140,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           title: const Text('Заявки на вступление'),
           content: SizedBox(
             width: 420,
+            height: 360,
             child: requests.isEmpty
                 ? const Text('Новых заявок нет.')
                 : ListView(
@@ -1179,6 +1180,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         ),
       ),
     );
+    if (mounted) await _showMlsRoomDetails();
   }
 
   Future<void> _editRoomMemberCapabilities(String roomId, String memberId, List<String> currentCapabilities) async {
