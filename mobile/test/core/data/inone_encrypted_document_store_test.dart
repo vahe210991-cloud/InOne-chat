@@ -16,7 +16,9 @@ void main() {
       rootDirectory: () async => root,
       readKey: (keyName) async => storedKeys[keyName],
       writeKey: (keyName, value) async => storedKeys[keyName] = value,
-      deleteKey: (keyName) async => storedKeys.remove(keyName),
+      deleteKey: (keyName) async {
+        storedKeys.remove(keyName);
+      },
     );
   });
 
