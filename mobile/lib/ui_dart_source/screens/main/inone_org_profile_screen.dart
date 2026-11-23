@@ -38,7 +38,7 @@ class InOneOrgProfileScreen extends StatelessWidget {
     final c = context.inone;
     return InOneShell(
       // Экран организации не относится ни к одному из разделов нижней навигации.
-      nav: InOneBottomNav(selected: null, onSelected: onTab, onAdd: onAdd),
+      nav: InOneBottomNav(selected: null, onSelected: onTab, onAdd: onAdd, availableTabs: const {InOneTab.messages, InOneTab.profile}),
       body: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
