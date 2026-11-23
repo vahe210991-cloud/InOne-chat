@@ -92,8 +92,10 @@ class _InOneChatThreadScreenState extends State<InOneChatThreadScreen> {
                       ],
                     ),
                   ),
-                  InOneIconAction(icon: InOneIcons.call, semanticLabel: 'Call', onTap: widget.onCall),
-                  InOneIconAction(icon: InOneIcons.more, semanticLabel: 'More', onTap: widget.onMore),
+                  if (widget.onCall != null)
+                    InOneIconAction(icon: InOneIcons.call, semanticLabel: 'Call', onTap: widget.onCall),
+                  if (widget.onMore != null)
+                    InOneIconAction(icon: InOneIcons.more, semanticLabel: 'More', onTap: widget.onMore),
                 ],
               ),
             ),
@@ -143,14 +145,15 @@ class _InOneChatThreadScreenState extends State<InOneChatThreadScreen> {
             ),
           ),
           const SizedBox(width: 11),
-          GestureDetector(
-            onTap: widget.onViewProject,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-              decoration: BoxDecoration(color: c.bg, borderRadius: BorderRadius.circular(InOneRadius.pill)),
-              child: Text('View', style: InOneText.style(11.5, FontWeight.w700, c.text)),
+          if (widget.onViewProject != null)
+            GestureDetector(
+              onTap: widget.onViewProject,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                decoration: BoxDecoration(color: c.bg, borderRadius: BorderRadius.circular(InOneRadius.pill)),
+                child: Text('View', style: InOneText.style(11.5, FontWeight.w700, c.text)),
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -160,20 +163,22 @@ class _InOneChatThreadScreenState extends State<InOneChatThreadScreen> {
     final c = context.inone;
     return Row(
       children: [
-        Semantics(
-          button: true,
-          label: 'Attach',
-          child: GestureDetector(
-            onTap: widget.onAttach,
-            child: Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(color: c.fill, shape: BoxShape.circle),
-              child: Icon(InOneIcons.attach, size: 22, color: c.textSoft),
+        if (widget.onAttach != null) ...[
+          Semantics(
+            button: true,
+            label: 'Attach',
+            child: GestureDetector(
+              onTap: widget.onAttach,
+              child: Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(color: c.fill, shape: BoxShape.circle),
+                child: Icon(InOneIcons.attach, size: 22, color: c.textSoft),
+              ),
             ),
           ),
-        ),
-        const SizedBox(width: 10),
+          const SizedBox(width: 10),
+        ],
         Expanded(
           child: SizedBox(
             height: 44,
