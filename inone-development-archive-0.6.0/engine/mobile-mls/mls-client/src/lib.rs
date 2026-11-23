@@ -1450,6 +1450,17 @@ fn response_error_code(error: &str) -> Option<String> {
 
 /// A policy rejection for a pure account-removal Commit is definitive: the server
 /// has not accepted the Commit, so the staged local proposal can be safely discarded.
+/// A join request removed by a moderator is a definitive pre-commit rejection.
+/// Release its still-reserved KeyPackages before clearing the durable local proposal.
+fn is_join_request_not_pending_rejection(payload: &Value, error: &str) -> bool {
+    let target = payload["joinRequestUserId"].as_str();
+    let adds = payload["changes"]["adds"].as_array();
+    target.is_some()
+        && adds.is_some_and(|items| items.len() == 1 && items[0].as_str() == target)
+        && payload["keyPackageClaimId"].as_str().is_some()
+        && response_error_code(error).as_deref() == Some("join_request_not_pending")
+}
+
 fn is_account_removal_policy_rejection(payload: &Value, error: &str) -> bool {
     let changes = &payload["changes"];
     let removes_account = changes["removes"]
@@ -2335,6 +2346,57 @@ impl Client {
                     if let Err(commit_error) = tx.commit() {
                         self.reload_group(&room_id)?;
                         return Err(format!("temporary local storage error while committing rejected account removal cleanup: {}", text(commit_error)));
+                    }
+                    return Err(error);
+                }
+                Err(error) if is_join_request_not_pending_rejection(&payload, &error) => {
+                    let target_user_id = payload["joinRequestUserId"].as_str().ok_or("join approval payload has no target user")?.to_string();
+                    let claim_id = payload["keyPackageClaimId"].as_str().ok_or("join approval payload has no KeyPackage claim ID")?.to_string();
+                    let staged_fingerprint = {
+                        let group = self.groups.get(&room_id).ok_or("membership journal room disappeared")?;
+                        let staged = group.mls.pending_commit().ok_or("pending StagedCommit missing during rejected join approval")?;
+                        membership_commit_fingerprint(&self.provider, &room_id, &operation_id, base_epoch, &payload, staged)?
+                    };
+                    if staged_fingerprint != fingerprint {
+                        let reason = format!("pending StagedCommit fingerprint mismatch while clearing rejected join approval {operation_id}");
+                        self.record_desync(&room_id, &reason)?;
+                        return Err(format!("RecoveryRequired: {reason}"));
+                    }
+                    let released = self.call(
+                        "DELETE",
+                        &format!("/mls/key-packages/claims/{}", urlencoding::encode(&claim_id)),
+                        None,
+                    )?;
+                    if released["released"].as_bool() != Some(true) {
+                        return Err("server did not confirm release of KeyPackage claim for rejected join approval".to_string());
+                    }
+                    let tx = self.meta.unchecked_transaction().map_err(text)?;
+                    let clearing = (|| -> Result<(), String> {
+                        let group = self.groups.get_mut(&room_id).ok_or("membership journal room disappeared")?;
+                        let staged = group.mls.pending_commit().ok_or("pending StagedCommit disappeared during rejected join approval cleanup")?;
+                        let actual = membership_commit_fingerprint(&self.provider, &room_id, &operation_id, base_epoch, &payload, staged)?;
+                        if actual != fingerprint {
+                            return Err("pending StagedCommit fingerprint changed during rejected join approval cleanup".to_string());
+                        }
+                        group.mls.clear_pending_commit(self.provider.storage()).map_err(text)?;
+                        tx.execute("DELETE FROM client_membership_commits WHERE operation_id = ?1", [&operation_id]).map_err(text)?;
+                        tx.execute("DELETE FROM client_invite_intents WHERE operation_id = ?1", [&operation_id]).map_err(text)?;
+                        tx.execute(
+                            "DELETE FROM client_key_package_claims WHERE room_id = ?1 AND user_id = ?2 AND claim_id = ?3",
+                            rusqlite::params![room_id, target_user_id, claim_id],
+                        ).map_err(text)?;
+                        Ok(())
+                    })();
+                    if let Err(clear_error) = clearing {
+                        let _ = tx.rollback();
+                        self.reload_group(&room_id)?;
+                        let reason = format!("failed to clear rejected join approval {operation_id}: {clear_error}");
+                        self.record_desync(&room_id, &reason)?;
+                        return Err(format!("RecoveryRequired: {reason}"));
+                    }
+                    if let Err(commit_error) = tx.commit() {
+                        self.reload_group(&room_id)?;
+                        return Err(format!("local storage error while committing rejected join approval cleanup: {}", text(commit_error)));
                     }
                     return Err(error);
                 }
