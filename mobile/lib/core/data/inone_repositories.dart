@@ -230,15 +230,37 @@ class InOneRepositories {
         'GET', '/rooms/${Uri.encodeComponent(roomId)}/members',
       ));
 
-  Future<void> updateRoomName(String roomId, String name) async {
-    final normalized = name.trim();
-    if (normalized.isEmpty || normalized.length > 100) {
-      throw ArgumentError.value(name, 'name', 'Room name must contain 1 to 100 characters');
+  Future<void> updateRoomSettings(
+    String roomId, {
+    String? name,
+    String? visibility,
+    String? joinPolicy,
+  }) async {
+    final body = <String, dynamic>{};
+    if (name != null) {
+      final normalized = name.trim();
+      if (normalized.isEmpty || normalized.length > 100) {
+        throw ArgumentError.value(name, 'name', 'Room name must contain 1 to 100 characters');
+      }
+      body['name'] = normalized;
     }
+    if (visibility != null) {
+      if (!const {'public', 'private'}.contains(visibility)) {
+        throw ArgumentError.value(visibility, 'visibility');
+      }
+      body['visibility'] = visibility;
+    }
+    if (joinPolicy != null) {
+      if (!const {'open', 'approval'}.contains(joinPolicy)) {
+        throw ArgumentError.value(joinPolicy, 'joinPolicy');
+      }
+      body['joinPolicy'] = joinPolicy;
+    }
+    if (body.isEmpty) throw ArgumentError('At least one room setting must change');
     await session.request(
       'POST',
       '/rooms/${Uri.encodeComponent(roomId)}/settings',
-      body: {'name': normalized},
+      body: body,
     );
   }
   Future<void> markRoomRead(String roomId, String upToEventId) async {
