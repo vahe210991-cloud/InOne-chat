@@ -172,3 +172,41 @@ class InOneOrganizationLink {
     );
   }
 }
+
+
+class InOneOrganizationAdminAction {
+  const InOneOrganizationAdminAction({
+    required this.actor,
+    required this.action,
+    required this.target,
+    required this.detail,
+    required this.at,
+  });
+
+  final String actor;
+  final String action;
+  final String? target;
+  final String? detail;
+  final int at;
+
+  factory InOneOrganizationAdminAction.fromJson(Map<String, dynamic> json) {
+    final actor = json['actor'];
+    final action = json['action'];
+    final target = json['target'];
+    final detail = json['detail'];
+    final at = json['at'];
+    if (actor is! String || action is! String ||
+        target != null && target is! String ||
+        detail != null && detail is! String ||
+        at is! num || !at.isFinite || at < 0) {
+      throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false);
+    }
+    return InOneOrganizationAdminAction(
+      actor: actor,
+      action: action,
+      target: target as String?,
+      detail: detail as String?,
+      at: at.toInt(),
+    );
+  }
+}
