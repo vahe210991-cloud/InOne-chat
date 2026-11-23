@@ -398,6 +398,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         _organizations = organizations;
         _selectedOrganization = organizations.isEmpty ? null : organizations.first;
         _organizationMemberCount = null;
+        _organizationMembers = const [];
         _screen = 'messages';
       });
       if (organizations.isNotEmpty) {
@@ -470,6 +471,8 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       _profile = null;
       _organizations = const [];
       _selectedOrganization = null;
+      _organizationMemberCount = null;
+      _organizationMembers = const [];
       _systemStatus = null;
       _registrationEmail = '';
       _pendingPushRoutes.clear();
