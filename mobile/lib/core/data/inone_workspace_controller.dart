@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 
-import '../data/inone_workspace_repository.dart';
-import '../data/inone_workspace_screen_data.dart';
+import 'inone_workspace_repository.dart';
+import 'inone_workspace_screen_data.dart';
 
 /// Owns the asynchronous workspace snapshot independently of app navigation.
 /// The app shell can listen to this controller without duplicating API mapping.
