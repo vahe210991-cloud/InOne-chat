@@ -92,7 +92,7 @@ class _InOneMessagesScreenState extends State<InOneMessagesScreen> {
                       child: InOneEmptyState(
                         icon: InOneIcons.chat,
                         title: 'No chats yet',
-                        text: 'Your MLS chats will appear here after you receive a room invitation or join a group.',
+                        text: 'Your MLS chats appear after this device receives and processes a valid MLS Welcome.',
                       ),
                     )
                   : ListView.builder(
