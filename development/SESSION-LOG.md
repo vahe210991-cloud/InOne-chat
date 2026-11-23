@@ -650,3 +650,11 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Replaced the misleading “Search messages” affordance with public group discovery. The group filter toggles All/Groups; unread filtering remains disabled because `GET /rooms/mine` has no unread counts. The call control is hidden because no Beta 1.0 call contract is connected.
 - Verified source contract semantics: open public join checks organization membership/capacity but does not provision MLS Welcome. UI keeps the room unreadable until a valid Engine B local epoch exists.
 - No tests, analyzer, builds, device checks, workflow dispatches or GitHub Actions were run. PR #128 and #130 remain untouched.
+
+
+## 2026-11-23 — organization member administration
+
+- Connected existing organization member mutations: add (`POST /orgs/:id/members`), role change (`POST /orgs/:id/members/:userId/role`) and removal (`DELETE /orgs/:id/members/:userId`).
+- Added role-aware UI: owners can add all supported roles, change roles and remove other members; admins can add/remove ordinary members only. Mutations require confirmation where destructive or privilege-changing.
+- After a self-role change, the selected organization's role is refreshed in local app state so stale owner controls are not retained. Server continues enforcing last-owner and owned-room constraints.
+- No tests/analyzers/builds/Actions run.
