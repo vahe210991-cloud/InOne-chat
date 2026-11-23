@@ -131,6 +131,15 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     if (pushLifecycle != null) {
       unawaited(pushLifecycle.refreshRegistration().catchError((Object _) {}));
     }
+    if (_session.hasNativeMlsSession) {
+      // Resume retries durable Engine B outbox work and refreshes the active
+      // room (or the room list) without creating a second logical send.
+      if (_activeMlsRoomId != null) {
+        unawaited(_refreshActiveMlsChat());
+      } else {
+        unawaited(_loadMlsRooms());
+      }
+    }
   }
 
   @override
@@ -935,7 +944,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       } catch (error) {
         _notice('Очередь MLS сохранена до восстановления связи: $error');
       }
-      final messages = await _session.mlsMessagesForRoom(roomId);
+      final messages = await _session.loadMlsRoomHistory(roomId);
       final pending = await _session.pendingMlsOutbox(roomId);
       if (!mounted) return;
       setState(() {
