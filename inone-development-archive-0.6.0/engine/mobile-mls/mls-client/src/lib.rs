@@ -1433,6 +1433,25 @@ fn response_error_code(error: &str) -> Option<String> {
         .map(str::to_string)
 }
 
+/// A policy rejection for a pure account-removal Commit is definitive: the server
+/// has not accepted the Commit, so the staged local proposal can be safely discarded.
+fn is_account_removal_policy_rejection(payload: &Value, error: &str) -> bool {
+    let changes = &payload["changes"];
+    let removes_account = changes["removes"]
+        .as_array()
+        .is_some_and(|items| !items.is_empty());
+    let no_adds = changes["adds"].as_array().is_some_and(Vec::is_empty);
+    let no_device_removals = changes["removeDevices"].as_array().is_some_and(Vec::is_empty);
+    if !(removes_account && no_adds && no_device_removals) {
+        return false;
+    }
+    matches!(
+        response_error_code(error).as_deref(),
+        Some("an admin cannot remove another admin" | "owner cannot be removed")
+    ) || response_error_code(error)
+        .is_some_and(|code| code.starts_with("missing capability: remove_members"))
+}
+
 impl Client {
     /// Вызов API. Если токен доступа истёк, токен обновляется и запрос повторяется один раз.
     fn call(&self, method: &str, path: &str, body: Option<Value>) -> Result<Value, String> {
@@ -2248,6 +2267,60 @@ impl Client {
                         return Err(format!("временная ошибка локального хранилища при фиксации stale membership commit: {}", text(error)));
                     }
                     stale_cleared += 1;
+                }
+                Err(error) if is_account_removal_policy_rejection(&payload, &error) => {
+                    // The server definitively rejected this account-removal proposal before
+                    // mlsApplyCommit. Clear only the matching verified staged proposal so a
+                    // capability/role race cannot strand the room behind a permanent journal row.
+                    let tx = self.meta.unchecked_transaction().map_err(text)?;
+                    let mut integrity_error: Option<String> = None;
+                    let clearing = (|| -> Result<(), String> {
+                        let group = self
+                            .groups
+                            .get_mut(&room_id)
+                            .ok_or("membership journal room disappeared")?;
+                        let staged = group
+                            .mls
+                            .pending_commit()
+                            .ok_or("pending StagedCommit missing during rejected account removal")?;
+                        let actual = membership_commit_fingerprint(
+                            &self.provider,
+                            &room_id,
+                            &operation_id,
+                            base_epoch,
+                            &payload,
+                            staged,
+                        )?;
+                        if actual != fingerprint {
+                            let reason = format!("pending StagedCommit fingerprint mismatch while clearing rejected account removal {operation_id}");
+                            integrity_error = Some(reason.clone());
+                            return Err(reason);
+                        }
+                        group
+                            .mls
+                            .clear_pending_commit(self.provider.storage())
+                            .map_err(text)?;
+                        tx.execute(
+                            "DELETE FROM client_membership_commits WHERE operation_id = ?1",
+                            [&operation_id],
+                        )
+                        .map_err(text)?;
+                        Ok(())
+                    })();
+                    if let Err(clear_error) = clearing {
+                        let _ = tx.rollback();
+                        self.reload_group(&room_id)?;
+                        if let Some(reason) = integrity_error {
+                            self.record_desync(&room_id, &reason)?;
+                            return Err(format!("RecoveryRequired: {reason}"));
+                        }
+                        return Err(format!("temporary local storage error while clearing rejected account removal: {clear_error}"));
+                    }
+                    if let Err(commit_error) = tx.commit() {
+                        self.reload_group(&room_id)?;
+                        return Err(format!("temporary local storage error while committing rejected account removal cleanup: {}", text(commit_error)));
+                    }
+                    return Err(error);
                 }
                 Err(error)
                     if response_error_code(&error).as_deref() == Some("operation_id_reused") =>
