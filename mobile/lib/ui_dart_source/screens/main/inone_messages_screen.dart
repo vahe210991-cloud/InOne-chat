@@ -76,7 +76,7 @@ class _InOneMessagesScreenState extends State<InOneMessagesScreen> {
               ],
             ),
             const SizedBox(height: 16),
-            InOneSearchBar(hint: 'Search messages', onTap: widget.onSearch),
+            InOneSearchBar(hint: 'Find public groups', onTap: widget.onSearch),
             const SizedBox(height: 14),
             InOneFilterChips(
               labels: widget.unreadCountsAvailable
