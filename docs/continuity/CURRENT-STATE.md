@@ -11,10 +11,12 @@
 ## Post-merge CI state
 
 - PR #131 exact-head checks were reported as 19/19 PASS.
-- Nine PR-head workflow runs were independently retrieved and their jobs concluded PASS: Docker Compose acceptance, Native MLS client validation, email/PostgreSQL validation, Dev Container Compose validation, recovered P0 source validation, Flutter mobile, Flutter iOS, exact-SHA acceptance gate and OpenMLS Flutter Rust Bridge generation.
-- Those runs are tied to PR #131 head `984d9e2afa6734ac14269fdee6ad787df84b123b`, not merge SHA `2430b...`.
-- At the merge checkpoint, post-merge main had 9 PASS and 4 IN_PROGRESS. Final conclusions for those four on merge SHA have not been confirmed. The available Actions query currently exposes PR-triggered runs only; combined commit status returned no status contexts. Do not claim main exact-SHA acceptance complete.
-- Current audit branch commits have not had tests or CI confirmed by this audit. The branch workflow query returned no PR-triggered runs.
+- PR #131 head `984d9e2afa6734ac14269fdee6ad787df84b123b`: 19/19 individual check jobs PASS across the retrieved PR-head workflow runs.
+- On merge SHA `2430b0365ab71c60b0926b27854d17a9090e1fba`, the Actions REST run list returns 9 push workflows: 7 completed PASS (Backend Docker Compose, OpenMLS client, Dev Container Compose, Email/PostgreSQL, recovered P0 source, Flutter iOS, Flutter mobile).
+- `OpenMLS Flutter Rust Bridge generation`: main job PASS; iOS native-assets compile remains IN_PROGRESS. Android build and Android Keystore emulator smoke passed.
+- `Native MLS client validation`: exact-source check, canonical Engine B regression tests, persistent bridge host tests and attachment/session integration tests passed. The iOS Keychain native-target build was cancelled in attempt 1; its job log was unavailable. A targeted job rerun was accepted and is QUEUED in attempt 2.
+- The exact-SHA acceptance gate is configured for pull_request events only, so it is N/A for a main push; each applicable main workflow verifies its own exact source SHA. Do not claim main exact-SHA validation complete while the two iOS-related jobs remain pending.
+- Current audit branch commits (including Welcome and invalid UTF-8 regressions) have no workflow runs returned for their head SHA and have not been compiled or executed.
 
 ## Architecture and implementation facts
 
