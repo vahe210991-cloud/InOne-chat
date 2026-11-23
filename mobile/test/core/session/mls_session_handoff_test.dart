@@ -695,6 +695,9 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
 
   @override
   Future<void> invite(String roomId, String userId) async {}
+
+  @override
+  Future<void> approveJoinRequest(String roomId, String userId) async {}
   @override
   Future<void> cancelInvite(String roomId, String userId) async {}
 
