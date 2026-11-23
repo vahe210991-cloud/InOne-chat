@@ -15,14 +15,12 @@ class InOneMessagesScreen extends StatefulWidget {
     required this.onSearch,
     required this.onTab,
     this.onAdd,
-    this.onFilter,
     this.unreadCountsAvailable = true,
   });
 
   final List<InOneChatPreview> chats;
   final ValueChanged<InOneChatPreview> onOpenChat;
   final VoidCallback onSearch;
-  final VoidCallback? onFilter;
   final bool unreadCountsAvailable;
   final ValueChanged<InOneTab> onTab;
 
