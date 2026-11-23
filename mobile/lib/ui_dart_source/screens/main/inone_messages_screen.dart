@@ -14,7 +14,7 @@ class InOneMessagesScreen extends StatefulWidget {
     required this.onOpenChat,
     required this.onSearch,
     required this.onTab,
-    required this.onAdd,
+    this.onAdd,
     this.onFilter,
     this.unreadCountsAvailable = true,
   });
@@ -26,8 +26,8 @@ class InOneMessagesScreen extends StatefulWidget {
   final bool unreadCountsAvailable;
   final ValueChanged<InOneTab> onTab;
 
-  /// «+» — добавить публикацию.
-  final VoidCallback onAdd;
+  /// Starts a protected MLS room when the native Engine B session is active.
+  final VoidCallback? onAdd;
 
   @override
   State<InOneMessagesScreen> createState() => _InOneMessagesScreenState();
@@ -57,7 +57,7 @@ class _InOneMessagesScreenState extends State<InOneMessagesScreen> {
     final c = context.inone;
     final chats = _visible;
     return InOneShell(
-      nav: InOneBottomNav(selected: InOneTab.messages, onSelected: widget.onTab, onAdd: widget.onAdd),
+      nav: InOneBottomNav(selected: InOneTab.messages, onSelected: widget.onTab),
       body: Padding(
         padding: const EdgeInsets.fromLTRB(20, 6, 20, 0),
         child: Column(
@@ -73,6 +73,8 @@ class _InOneMessagesScreenState extends State<InOneMessagesScreen> {
                 ),
                 InOneIconAction(icon: InOneIcons.filter, semanticLabel: 'Toggle group filter', onTap: () => setState(() => _filter = _filter == 0 ? 1 : 0)),
                 InOneIconAction(icon: InOneIcons.search, semanticLabel: 'Search', onTap: widget.onSearch),
+                if (widget.onAdd != null)
+                  InOneIconAction(icon: InOneIcons.plus, semanticLabel: 'New protected chat', onTap: widget.onAdd),
               ],
             ),
             const SizedBox(height: 16),
