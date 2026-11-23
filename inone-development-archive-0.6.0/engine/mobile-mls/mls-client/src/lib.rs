@@ -5088,7 +5088,9 @@ impl Client {
                 )
                 .map_err(text)?;
         }
+        crash_at_test_failpoint("before_inbox_ack_transaction_commit");
         transaction.commit().map_err(text)?;
+        crash_at_test_failpoint("after_inbox_ack_transaction_commit");
         Ok(())
     }
 
