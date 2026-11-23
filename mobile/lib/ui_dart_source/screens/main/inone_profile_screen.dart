@@ -14,6 +14,7 @@ class InOneProfileScreen extends StatelessWidget {
     required this.menu,
     required this.onToggleTheme,
     required this.onEditAvatar,
+    this.avatarEditingAvailable = false,
     required this.onTab,
     required this.onAdd,
   });
@@ -22,6 +23,8 @@ class InOneProfileScreen extends StatelessWidget {
   final List<InOneProfileMenuItem> menu;
   final VoidCallback onToggleTheme;
   final VoidCallback? onEditAvatar;
+  /// Keep the edit affordance hidden until a real avatar-update endpoint is wired.
+  final bool avatarEditingAvailable;
   final ValueChanged<InOneTab> onTab;
   final VoidCallback onAdd;
 
@@ -76,7 +79,7 @@ class InOneProfileScreen extends StatelessWidget {
                               : InOneStripeBox(circle: true, borderColor: c.line),
                         ),
                       ),
-                      if (onEditAvatar != null)
+                      if (avatarEditingAvailable && onEditAvatar != null)
                         Positioned(
                           right: -2,
                           bottom: -2,
