@@ -954,7 +954,7 @@ fn process_crash_at_outbound_membership_commit_boundaries_replays_exact_operatio
     ];
 
     for (index, point) in crash_points.iter().enumerate() {
-        let engine = start_engine();
+        let mut engine = start_engine();
         let keys = FixedCrashKeyStore;
         let alice_db = db(&format!("p0-membership-crash-{index}-alice"));
         let bob_db = db(&format!("p0-membership-crash-{index}-bob"));
