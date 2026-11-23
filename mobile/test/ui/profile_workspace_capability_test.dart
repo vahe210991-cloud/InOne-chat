@@ -34,7 +34,35 @@ void main() {
     expect(find.text('My tasks'), findsNothing);
     expect(find.text('Activity'), findsNothing);
     expect(find.text('Projects'), findsNothing);
-    expect(find.byIcon(Icons.add), findsNothing);
+    expect(find.bySemanticsLabel('Edit avatar'), findsNothing);
+  });
+
+
+  testWidgets('profile invokes avatar callback only when capability is enabled',
+      (tester) async {
+    var editCalls = 0;
+    await tester.pumpWidget(_host(
+      InOneProfileScreen(
+        profile: const InOneUserProfile(
+          name: 'Test User',
+          handle: 'user@example.test',
+          myTasks: '—',
+          activity: '—',
+          projects: '—',
+        ),
+        menu: const [],
+        onToggleTheme: () {},
+        onEditAvatar: () => editCalls++,
+        avatarEditingAvailable: true,
+        onTab: (_) {},
+        onAdd: () {},
+      ),
+    ));
+
+    final editAvatar = find.bySemanticsLabel('Edit avatar');
+    expect(editAvatar, findsOneWidget);
+    await tester.tap(editAvatar);
+    expect(editCalls, 1);
   });
 
   testWidgets('workspace hides unsupported notifications, customization and feed actions',
