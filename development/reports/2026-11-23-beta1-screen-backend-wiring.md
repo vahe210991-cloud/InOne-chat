@@ -70,7 +70,7 @@ The five-screen scope is now explicit:
 |---|---|---|
 | Messages / room directory | Authenticated `GET /rooms/mine`; `GET /rooms/search`; `POST /rooms/:id/join`; group filter; loading/error/retry | Server-backed unread counts are not included in `/rooms/mine`; public-group discovery is wired. An approval join records a request; an open join still requires a valid native MLS Welcome before history can open |
 | Chat thread | Engine B MLS text send, durable outbox, encrypted attachment send/download; `GET /rooms/:id/members`; `POST /rooms/:id/settings`; `POST /rooms/:id/read`; permission-gated native MLS invite | Metadata/member roster and effective capabilities render; rename and MLS invite are capability-gated; read marker posts only after readable history has been durably loaded. Member removal/role changes and moderation remain pending |
-| Organization profile | `GET /orgs/mine`, `GET /orgs/:id/members` | Member roster now typed and rendered; owner/admin mutations, settings, links and audit views still need explicit permission-aware UI and confirmations |
+| Organization profile | `GET /orgs/mine`, `GET /orgs/:id/members`, `POST /orgs/:id/members`, `POST /orgs/:id/members/:userId/role`, `DELETE /orgs/:id/members/:userId` | Typed roster plus owner/admin-aware add/remove and owner-only role changes are connected with confirmations. Organization settings, links and audit views remain pending |
 | Workspace | Organization switch, member count, room-derived group count, public system config | Notifications, project/task/activity statistics and customization must be mapped to actual Beta 1.0 backend routes; unavailable modules must not show fabricated metrics |
 | User profile | `GET /profile`, persisted `PATCH /profile/locale`, logout | Device inventory/revocation and account security surfaces; profile editing/avatar must remain unavailable until a real backend mutation contract exists |
 
@@ -109,3 +109,14 @@ The backend's public open-join operation adds room membership and emits a room-c
 - Server unread counts are not returned by `GET /rooms/mine`; the UI keeps unread filtering disabled rather than inventing counts.
 - The full room settings form (visibility/join policy), member role changes/removal, join-request moderation, invite-link management and message edit/redact controls are not yet wired.
 - Search is for public group names only; message-content search remains unavailable because ciphertext is not searchable by the server.
+
+
+## 2026-11-23 — organization member administration
+
+- Added typed repository mutations for existing organization routes: add member, change member role, and remove member.
+- Organization profile now exposes Add member for owner/admin; admin can add only ordinary members, owner can assign owner/admin/member.
+- Owner sees role selector and may change roles; owner can remove other members; admin can remove ordinary members only. The current account cannot remove itself from this control.
+- Role changes and removals require confirmation. Roster and count refresh from the authenticated server response after each successful mutation.
+- If the owner changes their own role, the active organization role is updated immediately so the UI no longer exposes owner-only controls.
+- Last-owner, owned-room transfer and other business constraints remain enforced by the backend; errors are surfaced rather than bypassed.
+- Organization settings, linked organizations and admin/audit log actions remain unconnected.
