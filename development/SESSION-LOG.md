@@ -675,3 +675,11 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Organization screen More now opens settings; workspace switch remains on the workspace header control.
 - Server remains authoritative for allowed values, global group limits and audit recording. No new backend routes added.
 - No tests/analyzers/builds/Actions run.
+
+
+## 2026-11-23 — organization links
+
+- Connected owner/admin organization link listing, proposal, acceptance and revocation using existing backend routes.
+- UI distinguishes proposer from receiving organization; proposer cannot accept its own proposal. Accept/revoke actions require confirmation and refresh server state.
+- Backend transition/CAS and cross-organization membership cleanup remain authoritative. No route added.
+- No tests/analyzers/builds/Actions run.
