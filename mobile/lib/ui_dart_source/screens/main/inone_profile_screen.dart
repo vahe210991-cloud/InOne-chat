@@ -103,7 +103,7 @@ class InOneProfileScreen extends StatelessWidget {
                 ),
               ],
             ),
-            if (profile.accountEmail != null || profile.backupEmail != null) ...[
+            if (profile.accountEmail != null || profile.backupEmail != null || profile.locale.isNotEmpty) ...[
               const SizedBox(height: 16),
               Container(
                 padding: const EdgeInsets.all(14),
