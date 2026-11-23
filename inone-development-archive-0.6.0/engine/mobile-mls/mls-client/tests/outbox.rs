@@ -653,17 +653,12 @@ fn crash_child_membership_invite_if_requested() {
         return;
     };
     let keys = FixedCrashKeyStore;
-    let mut alice = connect(
-        &base,
-        ALICE,
-        PW,
-        "A_MEMBERSHIP_CRASH_P0",
-        &db_path,
-        &keys,
-    )
-    .expect("child reopens the prepared inviter SQLCipher database");
+    let mut alice = connect(&base, ALICE, PW, "A_MEMBERSHIP_CRASH_P0", &db_path, &keys)
+        .expect("child reopens the prepared inviter SQLCipher database");
     let result = alice.invite(&room_id, BOB);
-    panic!("configured membership crash failpoint did not terminate child; invite result: {result:?}");
+    panic!(
+        "configured membership crash failpoint did not terminate child; invite result: {result:?}"
+    );
 }
 
 fn run_ack_crash_child(
@@ -1000,14 +995,21 @@ fn process_crash_at_outbound_membership_commit_boundaries_replays_exact_operatio
             )
             .unwrap();
         drop(database);
-        assert_eq!(journal_rows, 1, "the exact staged Commit journal must survive {point}");
-        assert_eq!(intent_rows, 1, "the matching invite intent must survive {point}");
+        assert_eq!(
+            journal_rows, 1,
+            "the exact staged Commit journal must survive {point}"
+        );
+        assert_eq!(
+            intent_rows, 1,
+            "the matching invite intent must survive {point}"
+        );
 
-        let expected_server_commits = if *point == "after_outbound_membership_commit_server_acceptance" {
-            1
-        } else {
-            0
-        };
+        let expected_server_commits =
+            if *point == "after_outbound_membership_commit_server_acceptance" {
+                1
+            } else {
+                0
+            };
         assert_eq!(
             engine.command(&format!("COMMIT_COUNT {room}")),
             expected_server_commits.to_string(),
@@ -1051,10 +1053,17 @@ fn process_crash_at_outbound_membership_commit_boundaries_replays_exact_operatio
             )
             .unwrap();
         drop(database);
-        assert_eq!(journal_rows, 0, "settled operation journal must be removed");
-        assert_eq!(intent_rows, 0, "settled invite intent must be removed");
+        assert_eq!(
+            journal_rows, 0,
+            "settled operation journal must be removed"
+        );
+        assert_eq!(
+            intent_rows, 0,
+            "settled invite intent must be removed"
+        );
 
-        bob.sync().expect("recipient must process the single Welcome after replay");
+        bob.sync()
+            .expect("recipient must process the single Welcome after replay");
         assert_eq!(bob.local_epoch(&room), Some(1));
         assert!(bob
             .members_of(&room)
@@ -1097,7 +1106,11 @@ fn process_crash_before_and_after_durable_inbox_ack_commit_preserves_ack_state()
         alice.invite(&room, BOB).unwrap();
         assert!(bob.sync().unwrap().is_empty());
         let event_id = alice
-            .send_text_with_id(&room, "durable ACK crash boundary", &format!("ack-crash-{index}"))
+            .send_text_with_id(
+                &room,
+                "durable ACK crash boundary",
+                &format!("ack-crash-{index}"),
+            )
             .unwrap();
         let delivered = bob.sync().unwrap();
         assert!(delivered.iter().any(|item| matches!(
@@ -1127,7 +1140,11 @@ fn process_crash_before_and_after_durable_inbox_ack_commit_preserves_ack_state()
 
         let mut recovered = connect(&engine.base, BOB, PW, "B_CRASH_P0", &bob_db, &keys)
             .expect("recipient SQLCipher database remains readable after ACK process death");
-        let expected_pending = if *point == "after_inbox_ack_transaction_commit" { 0 } else { 1 };
+        let expected_pending = if *point == "after_inbox_ack_transaction_commit" {
+            0
+        } else {
+            1
+        };
         assert_eq!(
             recovered.pending_incoming().unwrap().len(),
             expected_pending,
