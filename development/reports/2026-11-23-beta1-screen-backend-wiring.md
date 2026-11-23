@@ -235,3 +235,13 @@ No tests, analyzer, build, device run, workflow dispatch or Actions rerun was pe
 - The legacy `/rooms/:roomId/requests/:userId/approve` route now returns `409 mls_approval_required` without deleting the request or changing membership. Rejection remains unchanged.
 - The native client does not yet send `joinRequestUserId`; the existing `invite()` flow remains distinct. No approval button was exposed. Next implementation slice is a durable native `approve_join_request` intent using the same KeyPackage/Add Commit/Welcome machinery, followed by FFI/Dart wiring.
 - Static source inspection only. No tests, analyzers, builds, codegen or GitHub Actions were run, per the queue restriction.
+
+
+## 2026-11-23 — native durable join-request approval
+
+- Added `is_join_request` to the SQLCipher `client_invite_intents` table with a backward-compatible migration; existing invite rows default to `false`.
+- The native invite workflow now has an explicit `approve_join_request` entrypoint while sharing the existing durable KeyPackage claim, per-device Welcome generation, staged OpenMLS Commit and membership journal.
+- The operation type is checked when reusing an existing intent and restored on startup; a regular invite intent cannot silently be repurposed as an approval (or vice versa).
+- Approval payloads carry `joinRequestUserId`; the server performs exact-operation replay lookup before checking that the request remains pending, so a lost ACK can be retried after the request was atomically consumed.
+- Added Rust FFI, Dart bridge/session facade, and confirmation action in the join-request UI. Success is reported only after the native call completes its Commit ACK/merge/sync sequence.
+- Static source review only so far. Full Rust/Flutter/Android/iOS workflows are to be run after the branch update; generated FRB output is intentionally produced by the pinned workflow and is not hand-edited.
