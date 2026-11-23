@@ -15,6 +15,7 @@ import '../core/data/inone_room.dart';
 import '../core/data/inone_push_repository.dart';
 import '../core/data/inone_public_config.dart';
 import '../core/data/inone_organization.dart';
+import '../core/data/inone_chat_preview_mapper.dart';
 import '../core/data/inone_encrypted_document_store.dart';
 import '../core/data/inone_repositories.dart';
 import '../core/mls/mls_session_bridge.dart';
@@ -58,9 +59,6 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   InOnePushReceiveLifecycle? _pushReceiveLifecycle;
   final InOnePushRouteQueue _pendingPushRoutes = InOnePushRouteQueue();
   bool _pushRouteInFlight = false;
-  String? _pushRoomId;
-  List<InOneThreadItem> _pushThreadItems = const [];
-
   String _screen = 'login';
   String _registrationEmail = '';
   String _recoveryEmail = '';
@@ -154,6 +152,15 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     final pushLifecycle = _pushLifecycle;
     if (pushLifecycle != null) {
       unawaited(pushLifecycle.refreshRegistration().catchError((Object _) {}));
+    }
+    if (_session.hasNativeMlsSession) {
+      // Resume retries durable Engine B outbox work and refreshes the active
+      // room (or the room list) without creating a second logical send.
+      if (_activeMlsRoomId != null) {
+        unawaited(_refreshActiveMlsChat());
+      } else {
+        unawaited(_loadMlsRooms());
+      }
     }
   }
 
@@ -414,26 +421,43 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       }
 
       await _session.syncMlsMessages();
-      final incoming = await _session.mlsMessagesForRoom(route.roomId);
-      final target = incoming.where((message) => message.eventId == route.eventId).toList(growable: false);
+      // Read the durable SQLCipher history first. This acknowledges only
+      // readable inbox events that are already persisted for this room.
+      final incoming = await _session.loadMlsRoomHistory(route.roomId);
+      final target = incoming
+          .where((message) => message.eventId == route.eventId)
+          .toList(growable: false);
       if (target.isEmpty || target.every((message) => !message.isReadable)) {
         if (mounted) setState(() => _screen = 'messages');
         _notice('Сообщение ещё не расшифровано на этом устройстве или недоступно.');
         return;
       }
 
+      final epoch = await _session.mlsLocalEpoch(route.roomId);
       final items = target
           .where((message) => message.isReadable)
-          .map((message) => InOneThreadItem(
-                kind: InOneThreadItemKind.text,
-                text: message.text,
-              ))
+          .map((message) => message.isAttachment
+              ? InOneThreadItem(
+                  kind: InOneThreadItemKind.file,
+                  fileId: message.fileId,
+                  fileLabel: message.name ?? 'Вложение',
+                  text: '${message.size ?? 0} bytes · ${message.mimeType ?? 'file'}',
+                  mine: message.mine,
+                  meta: 'MLS · epoch ${epoch ?? '—'}',
+                )
+              : InOneThreadItem(
+                  kind: InOneThreadItemKind.text,
+                  text: message.text,
+                  mine: message.mine,
+                  meta: 'MLS · epoch ${epoch ?? '—'}',
+                ))
           .toList(growable: false);
       if (!mounted) return;
       setState(() {
-        _pushRoomId = route.roomId;
-        _pushThreadItems = items;
-        _screen = 'pushChat';
+        _activeMlsRoomId = route.roomId;
+        _activeMlsRoomName = route.roomId;
+        _activeMlsThread = items;
+        _screen = 'chatThread';
       });
     } catch (_) {
       if (mounted) {
@@ -860,8 +884,12 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       _systemStatus = null;
       _registrationEmail = '';
       _pendingPushRoutes.clear();
-      _pushRoomId = null;
-      _pushThreadItems = const [];
+      _activeMlsRoomId = null;
+      _activeMlsRoomName = '';
+      _activeMlsThread = const [];
+      _mlsChats = const [];
+      _messagesLoading = false;
+      _messagesError = null;
       _screen = 'login';
     });
   }
@@ -1206,10 +1234,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
             lastMessage = pendingOutgoing.last.text ?? '📎 Вложение в очереди';
           }
         }
-        final normalizedKind = row.kind.toLowerCase();
-        final kind = const {'person', 'direct', 'dm'}.contains(normalizedKind)
-            ? InOneChatKind.person
-            : InOneChatKind.group;
+        final kind = mapInOneRoomKind(row.kind);
         chats.add(InOneChatPreview(
           id: row.roomId,
           name: row.displayName,
@@ -3061,22 +3086,6 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         return InOneSystemStatusScreen(
           status: _systemStatus!,
           onMenu: () => setState(() => _screen = 'workspace'),
-        );
-      case 'pushChat':
-        return InOneChatThreadScreen(
-          header: InOneThreadHeader(
-            name: _pushRoomId ?? 'InOne chat',
-            statusLabel: 'End-to-end encrypted',
-            online: false,
-          ),
-          items: _pushThreadItems,
-          onSend: (_) async => false,
-          onBack: () => setState(() {
-            _screen = 'messages';
-            _pushRoomId = null;
-            _pushThreadItems = const [];
-          }),
-          onAttach: () => _notice('Вложения доступны только после подключения полного MLS encrypted attachment flow.'),
         );
       case 'messages':
         if (_messagesLoading) {
