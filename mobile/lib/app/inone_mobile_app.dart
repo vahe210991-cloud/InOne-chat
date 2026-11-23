@@ -882,6 +882,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         return;
       }
       final messages = await _session.loadMlsRoomHistory(chat.id);
+      await _markMlsRoomReadAfterPersistence(chat.id, messages);
       final pending = await _session.pendingMlsOutbox(chat.id);
       final items = messages.map((message) => message.isAttachment
           ? InOneThreadItem(
@@ -1221,7 +1222,8 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       } catch (error) {
         _notice('Очередь MLS сохранена до восстановления связи: $error');
       }
-      final messages = await _session.mlsMessagesForRoom(roomId);
+      final messages = await _session.loadMlsRoomHistory(roomId);
+      await _markMlsRoomReadAfterPersistence(roomId, messages);
       final pending = await _session.pendingMlsOutbox(roomId);
       if (!mounted) return;
       setState(() {
