@@ -203,3 +203,13 @@ No tests, analyzer, build, device run, workflow dispatch or Actions rerun was pe
 - That implementation is scoped to revoked devices belonging to the current account. It is not an account-member removal API and must not be repurposed by sending a raw `DELETE /rooms/:id/members/:userId`.
 - Next required slice: add account-member removal in the native Rust client by resolving every leaf for the target account, generating and verifying one removal Commit, persisting it in the existing membership-commit journal, submitting through the canonical `/mls/groups/:roomId/commits` flow, then expose it through Rust FFI and Flutter. Only after the server ACK and local epoch reconciliation should the UI report success.
 - Required regressions before runtime acceptance: target with multiple devices, stale epoch/rebase, network failure after local commit persistence, duplicate operation replay, owner protection, unauthorized admin/member, and no plaintext/server-only membership fallback.
+
+
+## 2026-11-23 — native MLS account-removal operation
+
+- Added `Client::remove_member(room_id, target_user_id)` in the persistent OpenMLS client.
+- The method reconciles first, requires server and MLS account membership to match, checks the owner/admin capability policy before staging, protects owner/self, resolves all target account device leaves, and verifies the resulting OpenMLS Commit against `changes.removes`.
+- The exact Commit and fingerprint are persisted in the existing SQLCipher `client_membership_commits` journal before the canonical MLS commit request. Network failures therefore retain the staged operation for retry; no raw HTTP member DELETE is used.
+- Added Rust FFI session method, Dart MLS bridge contract, production adapter method, and `InOneSession.removeMlsMember` facade. The generated FRB bindings are intentionally left to the pinned generation workflow.
+- The operation reports success only after commit ACK, local merge, sync, and confirmation that both server and MLS membership exclude the target.
+- Source-level review only. Rust/Flutter tests, analyzer, FRB generation, builds and GitHub Actions were not run due to the existing queue restriction. This change is not yet runtime-verified.
