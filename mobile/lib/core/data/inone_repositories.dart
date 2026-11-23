@@ -1,5 +1,6 @@
 import '../session/inone_session.dart';
 import 'inone_profile.dart';
+import 'inone_room.dart';
 
 /// Typed read repositories shared by approved screens and the test-screen host.
 class InOneRepositories {
@@ -21,8 +22,9 @@ class InOneRepositories {
       session.request('GET', '/orgs/mine');
   Future<Map<String, dynamic>> myDevices() =>
       session.request('GET', '/devices/mine');
-  Future<Map<String, dynamic>> myRooms() =>
-      session.request('GET', '/rooms/mine');
+  /// Returns the validated room-list DTO for the authenticated account.
+  Future<InOneRoomList> myRooms() async =>
+      InOneRoomList.fromJson(await session.request('GET', '/rooms/mine'));
   Future<Map<String, dynamic>> loginApprovals() =>
       session.request('GET', '/approvals');
   Future<Map<String, dynamic>> organizationRequests() =>
