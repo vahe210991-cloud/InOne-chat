@@ -1037,10 +1037,25 @@ fn build_client(
             target_user_id TEXT NOT NULL,
             state TEXT NOT NULL CHECK (state IN ('claim_pending', 'commit_pending')),
             created_at INTEGER NOT NULL,
+            is_join_request INTEGER NOT NULL DEFAULT 0 CHECK (is_join_request IN (0, 1)),
             UNIQUE (room_id, target_user_id)
           )",
     )
     .map_err(text)?;
+
+    let has_join_request_intent: bool = meta
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('client_invite_intents') WHERE name = 'is_join_request')",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(text)?;
+    if !has_join_request_intent {
+        meta.execute_batch(
+            "ALTER TABLE client_invite_intents ADD COLUMN is_join_request INTEGER NOT NULL DEFAULT 0 CHECK (is_join_request IN (0, 1))",
+        )
+        .map_err(text)?;
+    }
 
     // Upgrade databases created by earlier Engine B builds without replacing any
     // existing inbox/outbox rows or OpenMLS storage.
@@ -2359,18 +2374,22 @@ impl Client {
         &mut self,
         room_id: &str,
         user_id: &str,
+        is_join_request: bool,
     ) -> Result<(String, String), String> {
-        let existing: Option<(String, String)> = match self.meta.query_row(
-            "SELECT operation_id, state FROM client_invite_intents WHERE room_id = ?1 AND target_user_id = ?2",
+        let existing: Option<(String, String, bool)> = match self.meta.query_row(
+            "SELECT operation_id, state, is_join_request FROM client_invite_intents WHERE room_id = ?1 AND target_user_id = ?2",
             rusqlite::params![room_id, user_id],
-            |row| Ok((row.get(0)?, row.get(1)?)),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get::<_, i64>(2)? != 0)),
         ) {
             Ok(row) => Some(row),
             Err(rusqlite::Error::QueryReturnedNoRows) => None,
             Err(error) => return Err(text(error)),
         };
-        if let Some(intent) = existing {
-            return Ok(intent);
+        if let Some((operation_id, state, existing_is_join_request)) = existing {
+            if existing_is_join_request != is_join_request {
+                return Err("an invite intent already exists for this user with a different operation type".to_string());
+            }
+            return Ok((operation_id, state));
         }
         let operation_id = hex_encode(&self.provider.rand().random_vec(16).map_err(text)?);
         let created_at = std::time::SystemTime::now()
@@ -2378,9 +2397,9 @@ impl Client {
             .unwrap_or_default()
             .as_millis() as i64;
         self.meta.execute(
-            "INSERT INTO client_invite_intents (operation_id, room_id, target_user_id, state, created_at)
-             VALUES (?1, ?2, ?3, 'claim_pending', ?4)",
-            rusqlite::params![operation_id, room_id, user_id, created_at],
+            "INSERT INTO client_invite_intents (operation_id, room_id, target_user_id, state, created_at, is_join_request)
+             VALUES (?1, ?2, ?3, 'claim_pending', ?4, ?5)",
+            rusqlite::params![operation_id, room_id, user_id, created_at, i64::from(is_join_request)],
         ).map_err(text)?;
         Ok((operation_id, "claim_pending".to_string()))
     }
@@ -2390,6 +2409,7 @@ impl Client {
         room_id: &str,
         user_id: &str,
         operation_id: &str,
+        is_join_request: bool,
     ) -> Result<bool, String> {
         let state: String = self
             .meta
@@ -2494,7 +2514,7 @@ impl Client {
                 .map(|device| json!({ "userId": user_id, "deviceId": device, "welcome": welcome_b64 }))
                 .collect();
             let changes = json!({ "adds": [user_id], "removes": [], "removeDevices": [] });
-            let payload = json!({
+            let mut payload = json!({
                 "epoch": base_epoch,
                 "commit": B64.encode(&commit_bytes),
                 "changes": changes,
@@ -2502,6 +2522,9 @@ impl Client {
                 "clientOperationId": operation_id,
                 "keyPackageClaimId": operation_id,
             });
+            if is_join_request {
+                payload["joinRequestUserId"] = json!(user_id);
+            }
             let recipients: Vec<Value> = devices
                 .iter()
                 .map(|device| json!({ "userId": user_id, "deviceId": device }))
@@ -2560,23 +2583,23 @@ impl Client {
     }
 
     fn resume_claim_pending_invites(&mut self) -> Result<(), String> {
-        let intents: Vec<(String, String, String)> = {
+        let intents: Vec<(String, String, String, bool)> = {
             let mut stmt = self
                 .meta
                 .prepare(
-                    "SELECT operation_id, room_id, target_user_id FROM client_invite_intents
+                    "SELECT operation_id, room_id, target_user_id, is_join_request FROM client_invite_intents
                  WHERE state = 'claim_pending' ORDER BY created_at, operation_id",
                 )
                 .map_err(text)?;
             let rows = stmt
-                .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+                .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get::<_, i64>(3)? != 0)))
                 .map_err(text)?;
             rows.collect::<Result<_, _>>().map_err(text)?
         };
-        for (operation_id, room_id, user_id) in intents {
+        for (operation_id, room_id, user_id, is_join_request) in intents {
             let mut completed = false;
             for attempt in 0..3 {
-                if self.resume_claim_pending_invite(&room_id, &user_id, &operation_id)? {
+                if self.resume_claim_pending_invite(&room_id, &user_id, &operation_id, is_join_request)? {
                     completed = true;
                     break;
                 }
@@ -2650,13 +2673,13 @@ impl Client {
         Ok(())
     }
 
-    pub fn invite(&mut self, room_id: &str, user_id: &str) -> Result<(), String> {
+    fn invite_with_mode(&mut self, room_id: &str, user_id: &str, is_join_request: bool) -> Result<(), String> {
         self.ensure_writable()?;
         if let Some(reason) = self.desync_reason(room_id)? {
             return Err(format!("комната требует восстановления: {reason}"));
         }
         self.flush_pending_membership_commits()?;
-        let (operation_id, state) = self.ensure_invite_intent(room_id, user_id)?;
+        let (operation_id, state) = self.ensure_invite_intent(room_id, user_id, is_join_request)?;
         if state == "commit_pending" {
             self.flush_pending_membership_commits()?;
             let next_state: Option<String> = match self.meta.query_row(
@@ -2681,7 +2704,7 @@ impl Client {
             }
         }
         for attempt in 0..3 {
-            if self.resume_claim_pending_invite(room_id, user_id, &operation_id)? {
+            if self.resume_claim_pending_invite(room_id, user_id, &operation_id, is_join_request)? {
                 return Ok(());
             }
             if attempt == 2 {
@@ -2691,6 +2714,15 @@ impl Client {
             }
         }
         Err("invite не удалось применить".to_string())
+    }
+
+    pub fn invite(&mut self, room_id: &str, user_id: &str) -> Result<(), String> {
+        self.invite_with_mode(room_id, user_id, false)
+    }
+
+    /// Approves a pending room join request through the durable MLS Add Commit + Welcome flow.
+    pub fn approve_join_request(&mut self, room_id: &str, user_id: &str) -> Result<(), String> {
+        self.invite_with_mode(room_id, user_id, true)
     }
 
     /// Отправляет UTF-8 текст в комнату. Устройство должно быть на эпохе сервера.
