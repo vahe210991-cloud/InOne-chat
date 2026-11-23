@@ -341,7 +341,44 @@ class InOneEncryptedDocumentStore {
           if (entity is! Directory) continue;
           final name = entity.uri.pathSegments.where((part) => part.isNotEmpty).last;
           final children = await entity.list(followLinks: false).toList();
-          final isOwnerScope = RegExp(r'^[0-9a-f]{64} &&
+          final isOwnerScope = RegExp(r'^[0-9a-f]{64}
+          if (!isOwnerScope) {
+            try {
+              await entity.delete(recursive: true);
+            } catch (error) {
+              failures.add(error);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      failures.add(error);
+    }
+    if (failures.isNotEmpty) {
+      throw StateError('Legacy document cache cleanup incomplete (${failures.length} failure(s))');
+    }
+  }
+}
+).hasMatch(name) &&
+              children.every((child) => child is Directory);
+          if (!isOwnerScope) {
+            try {
+              await entity.delete(recursive: true);
+            } catch (error) {
+              failures.add(error);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      failures.add(error);
+    }
+    if (failures.isNotEmpty) {
+      throw StateError('Legacy document cache cleanup incomplete (${failures.length} failure(s))');
+    }
+  }
+}
+).hasMatch(name) &&
               children.every((child) => child is Directory);
           if (!isOwnerScope) {
             try {
