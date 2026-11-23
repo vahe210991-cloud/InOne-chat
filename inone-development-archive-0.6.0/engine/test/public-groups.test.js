@@ -96,6 +96,7 @@ test('публичная группа находится по названию; 
   const { base, stop } = await start();
   try {
     const c = await clubWith(base);
+    await c.dave.publishKeys();
     await makePublic(c.alice, 'Соседи квартала');
     const found = (await search(c.dave, 'сосед')).rooms;
     assert.equal(found.length, 1);
@@ -113,6 +114,7 @@ test('вступление по умолчанию по заявке: заявк
   const { base, stop } = await start();
   try {
     const c = await clubWith(base);
+    await c.dave.publishKeys();
     await makePublic(c.alice, 'Соседи квартала');
     assert.equal((await post(c.dave, '/join', {})).status, 'requested');
     assert.deepEqual((await requestsOf(c.alice)).requests.map((r) => r.userId), [DAVE]);
@@ -149,6 +151,7 @@ test('одобрить заявку может только тот, у кого 
   const { base, stop } = await start();
   try {
     const c = await clubWith(base);
+    await c.dave.publishKeys();
     await makePublic(c.alice, 'Соседи квартала');
     await post(c.dave, '/join', {});
     await assert.rejects(decide(c.bob, DAVE, 'approve'), (e) => e.status === 403);
@@ -163,6 +166,7 @@ test('повторная заявка не создаёт дубликата; п
   const { base, stop } = await start();
   try {
     const c = await clubWith(base);
+    await c.dave.publishKeys();
     await makePublic(c.alice, 'Соседи квартала');
     await post(c.dave, '/join', {});
     await post(c.dave, '/join', {});
@@ -179,6 +183,7 @@ test('участник, вступивший по заявке, получает
   const { base, stop } = await start();
   try {
     const c = await clubWith(base);
+    await c.dave.publishKeys();
     await makePublic(c.alice, 'Соседи квартала');
     await post(c.dave, '/join', {});
     await approveJoinRequestViaMls(c.alice, DAVE, 'join-approval-default-rights-0002');
@@ -194,6 +199,7 @@ test('поиск: короткий запрос отклоняется, симв
   const { base, stop } = await start();
   try {
     const c = await clubWith(base);
+    await c.dave.publishKeys();
     await makePublic(c.alice, 'Соседи квартала');
     await assert.rejects(search(c.dave, 'с'), (e) => e.status === 400);
     assert.deepEqual((await search(c.dave, '%%')).rooms, []);
