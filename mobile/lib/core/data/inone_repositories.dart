@@ -20,6 +20,8 @@ class InOneRepositories {
   }
   Future<Map<String, dynamic>> myOrganizations() =>
       session.request('GET', '/orgs/mine');
+  Future<Map<String, dynamic>> organizationMembers(String orgId) =>
+      session.request('GET', '/orgs/${Uri.encodeComponent(orgId)}/members');
   Future<Map<String, dynamic>> myDevices() =>
       session.request('GET', '/devices/mine');
   /// Returns the validated room-list DTO for the authenticated account.
