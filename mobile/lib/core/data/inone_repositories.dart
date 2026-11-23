@@ -299,6 +299,50 @@ class InOneRepositories {
     return List<String>.unmodifiable(raw.cast<String>());
   }
 
+  /// Owner-only room role update. The server rejects owner-role changes.
+  Future<void> updateRoomMemberRole(
+    String roomId, {
+    required String userId,
+    required String role,
+  }) async {
+    if (userId.trim().isEmpty || !const {'admin', 'member'}.contains(role)) {
+      throw ArgumentError('Invalid room member role update');
+    }
+    final response = await session.request(
+      'POST',
+      '/rooms/${Uri.encodeComponent(roomId)}/roles',
+      body: {'userId': userId, 'role': role},
+    );
+    if (response['ok'] != true) {
+      throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false);
+    }
+  }
+
+  /// Requests are readable only to members with invite_members.
+  Future<List<InOneRoomJoinRequest>> roomJoinRequests(String roomId) async {
+    final response = await session.request(
+      'GET', '/rooms/${Uri.encodeComponent(roomId)}/requests',
+    );
+    final raw = response['requests'];
+    if (raw is! List || raw.any((entry) => entry is! Map)) {
+      throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false);
+    }
+    return List<InOneRoomJoinRequest>.unmodifiable(raw.map((entry) =>
+      InOneRoomJoinRequest.fromJson(Map<String, dynamic>.from(entry as Map))));
+  }
+
+  /// Rejecting a request does not change MLS membership or epoch.
+  Future<void> rejectRoomJoinRequest(String roomId, String userId) async {
+    if (userId.trim().isEmpty) throw ArgumentError.value(userId, 'userId');
+    final response = await session.request(
+      'POST',
+      '/rooms/${Uri.encodeComponent(roomId)}/requests/${Uri.encodeComponent(userId)}/reject',
+    );
+    if (response['status'] != 'rejected') {
+      throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false);
+    }
+  }
+
   Future<void> markRoomRead(String roomId, String upToEventId) async {
     final prefix = String.fromCharCode(36);
     final sequence = upToEventId.startsWith(prefix) && upToEventId.length > 1
