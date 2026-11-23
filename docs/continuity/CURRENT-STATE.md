@@ -16,7 +16,7 @@
 - `OpenMLS Flutter Rust Bridge generation`: main job PASS; iOS native-assets compile remains IN_PROGRESS. Android build and Android Keystore emulator smoke passed.
 - `Native MLS client validation`: exact-source check, canonical Engine B regression tests, persistent bridge host tests and attachment/session integration tests passed. The iOS Keychain native-target build was cancelled in attempt 1; its job log was unavailable. A targeted job rerun was accepted and is QUEUED in attempt 2.
 - The exact-SHA acceptance gate is configured for pull_request events only, so it is N/A for a main push; each applicable main workflow verifies its own exact source SHA. Do not claim main exact-SHA validation complete while the two iOS-related jobs remain pending.
-- Current audit branch commits (including Welcome and invalid UTF-8 regressions) have no workflow runs returned for their head SHA and have not been compiled or executed.
+- PR #132 code-validation head `988d537d7fb3acf812781e67ac598cb5954ed958` triggered nine PR workflows (including the exact-SHA acceptance gate); all nine were QUEUED at 16:19Z. The audit report was then added as a documentation-only commit `2d7754e29d31aa0cedf004ae9fee988d45e2dbb0`; no new workflows were returned for that report-only head. No completed test result is available yet for the Welcome or invalid-UTF-8 regressions.
 
 ## Architecture and implementation facts
 
