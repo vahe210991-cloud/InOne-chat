@@ -49,13 +49,13 @@ Status:
 | ST-01 | `PUT /devices/me/push`; `DELETE /devices/me/push` | Authenticated current-device FID registration/unregister; FCM accepts a 22-character FID plus legacy-token compatibility; feature flag applies | Flutter Firebase Messaging FID registration/refresh, permission gating, APNs readiness, Firebase unregister and logout cleanup are connected; sender delivery remains separate |
 | ST-02 | `GET /config/public`; `GET /config` | Public config unauthenticated; private config authenticated | Backend + host |
 | ST-03 | Shared state and public config | No separate screen-specific mutation | Client/shared host state |
-| CH-01 | `GET /rooms/mine` | Authenticated user's rooms | Screen-scoped Flutter dispatch + typed repository/response validation + safe HTML data binding implemented; new-branch tests NOT RUN and live Flutter→Node E2E NOT RUN |
+| CH-01 | `GET /rooms/mine` | Authenticated user's rooms | Typed repository + native messages list load independently of MLS opt-in; room contents remain MLS-gated. Tests and live Flutter→Node E2E intentionally NOT RUN on the screen-wiring branch |
 | CH-02 | `GET /rooms/:id/events`; `GET /mls/groups/:id/commits?since=N`; `GET /mls/welcomes`; `POST /mls/welcomes/:id/ack`; `POST /mls/groups/:id/messages`; `GET /sync?since=N&signal_since=M`; `POST /rooms/:id/read` | Room event history is ciphertext only; MLS commits/messages are epoch-checked; membership checked | Backend + protocol integration pending; no WebView direct send |
 | GR-01 | `GET /rooms/mine` | Authenticated user's rooms/groups | Backend + host; group-specific presentation pending |
 | GR-02 | `POST /rooms` | `roomId`, `kind`, optional `name`, members and org/feature gates | Backend only; typed create form and validation pending |
 | GR-04 | `GET /rooms/:id/members`; `POST /rooms/:id/settings`; `PUT /rooms/:id/name`; roles/capabilities/owner endpoints as allowed by action | Per-capability authorization; owner/admin restrictions | Backend only; map each control to one explicit action |
-| OR-01 | `GET /orgs/mine` | Current user's organization memberships and roles | Backend + host |
-| PR-01 | `GET /profile`; `PATCH /profile/locale` | Current account profile includes persisted `locale` (`hy`, `ru`, `en`); locale mutation is authenticated and account-scoped | Backend + typed repository; app-level selector persists locally and synchronizes with backend |
+| OR-01 | `GET /orgs/mine`; `GET /orgs/:id/members` | Current user's organization memberships, roles and organization member list | Backend + typed repository; organization/workspace member count is loaded on demand and remains unknown on denied/error responses |
+| PR-01 | `GET /profile`; `PATCH /profile/locale` | Current account profile includes persisted `locale` (`hy`, `ru`, `en`); locale mutation is authenticated and account-scoped | Backend + typed repository + visible profile-menu locale selector; update is persisted through the authenticated session |
 
 The v0.8 approval manifest contains 24 screen IDs (SC/RQ/PS/SR/ST). The Flutter handoff catalog adds 7 chat/room/profile/organization screen IDs. The manifest's declared `api` string is a design declaration, not an authorization grant or proof of Flutter dispatch.
 
