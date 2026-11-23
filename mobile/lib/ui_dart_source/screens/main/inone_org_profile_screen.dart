@@ -15,7 +15,7 @@ class InOneOrgProfileScreen extends StatelessWidget {
     required this.onMore,
     required this.onEditCover,
     required this.onTab,
-    required this.onAdd,
+    this.onAdd,
     this.onAddMember,
     this.onChangeMemberRole,
     this.onRemoveMember,
@@ -28,7 +28,7 @@ class InOneOrgProfileScreen extends StatelessWidget {
   /// «Edit cover» (показывать только пользователям с правом редактирования).
   final VoidCallback? onEditCover;
   final ValueChanged<InOneTab> onTab;
-  final VoidCallback onAdd;
+  final VoidCallback? onAdd;
   final VoidCallback? onAddMember;
   final void Function(String userId, String role)? onChangeMemberRole;
   final ValueChanged<String>? onRemoveMember;
