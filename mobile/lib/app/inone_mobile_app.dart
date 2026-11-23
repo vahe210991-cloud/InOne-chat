@@ -1111,7 +1111,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
                       const SizedBox(height: 8),
                       TextField(
                         controller: controller,
-                        maxLength: 80,
+                        maxLength: 100,
                         decoration: const InputDecoration(labelText: 'Название группы'),
                       ),
                     ],
@@ -1129,8 +1129,8 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
                   FilledButton(
                     onPressed: saving ? null : () async {
                       final newName = controller.text.trim();
-                      if (newName.isEmpty || newName.length > 80) {
-                        setDialogState(() => errorMessage = 'Название должно содержать от 1 до 80 символов.');
+                      if (newName.isEmpty || newName.length > 100) {
+                        setDialogState(() => errorMessage = 'Название должно содержать от 1 до 100 символов.');
                         return;
                       }
                       setDialogState(() {
