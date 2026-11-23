@@ -245,3 +245,24 @@ No tests, analyzer, build, device run, workflow dispatch or Actions rerun was pe
 - Approval payloads carry `joinRequestUserId`; the server performs exact-operation replay lookup before checking that the request remains pending, so a lost ACK can be retried after the request was atomically consumed.
 - Added Rust FFI, Dart bridge/session facade, and confirmation action in the join-request UI. Success is reported only after the native call completes its Commit ACK/merge/sync sequence.
 - Static source review only so far. Full Rust/Flutter/Android/iOS workflows are to be run after the branch update; generated FRB output is intentionally produced by the pinned workflow and is not hand-edited.
+
+
+## PR #131 integration update — 2026-11-23
+
+**Integration target:** PR #131, branch feature/beta1-screen-backend-wiring-2026-11-23. Main was synchronized into the branch through a two-parent merge commit; the PR is now based on the current main head and reports mergeable. This is a branch sync only; PR #131 has not been merged into main.
+
+### Changes now present in PR #131
+
+- Selected G2 PS-01/PS-02/PS-03 functionality from PR #87 and the document lifecycle/security follow-up from PR #89: role-aware queue, request details, owner-only decisions, binary document transport, account-scoped encrypted local storage, temporary preview and cleanup on startup/resume/logout/revocation.
+- Backend document metadata validation, safe filename/content-disposition handling, MIME signature checks, 5 MiB object cap with a dedicated 7 MiB base64 request-body limit, and transactional pending-state recheck when attaching a document.
+- Migration 0033-org-request-document-metadata.sql. Migration 0032 remains assigned to push-delivery-queue. Fresh schema, migration marker and fresh/legacy database tests are aligned.
+- Four-role authorization tests, controlled staging smoke script plus syntax test, mobile role/repository/API/session tests, encrypted document-store tests and admin screen tests.
+- Selected PR #90 application glue retained on Engine B: stable IDs, durable SQLCipher inbox/outbox, local room restoration, retry on resume, ACK after readable history is persisted, MLS attachment send/download and push deep links into the durable chat thread. Engine A was not copied.
+- Canonical group/direct/support room preview mapper and tests added. MLS remains opt-in and disabled by default.
+
+### Validation state at this checkpoint
+
+- The PR was changed from Draft to Ready solely to enable repository workflows; this does not authorize merging.
+- Exact-head CI runs are being requested by the next branch update. No workflow result is considered green until it is returned for the final SHA.
+- The live staging authorization script is not run without the four distinct staging credentials. Physical Android/iOS and two-device MLS acceptance remain separate manual gates.
+- PR #87 and #90 remain open and unmerged. They are to be closed without merging only after all required exact-SHA checks pass. PR #89 remains untouched/open. PR #131 remains unmerged into main.
