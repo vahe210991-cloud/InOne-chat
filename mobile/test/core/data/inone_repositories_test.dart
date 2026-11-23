@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:inone_mobile/core/data/inone_profile.dart';
+import 'package:inone_mobile/core/data/inone_room.dart';
 import 'package:inone_mobile/core/data/inone_repositories.dart';
 import 'package:inone_mobile/core/network/api_exception.dart';
 import 'package:inone_mobile/core/session/inone_session.dart';
@@ -28,6 +29,69 @@ void main() {
     session.dispose();
   });
 
+
+  test('requests authenticated rooms and parses the verified room DTO', () async {
+    final session = _ProfileSession({
+      'rooms': [
+        {
+          'roomId': 'room-1',
+          'kind': 'group',
+          'name': 'Project room',
+          'role': 'member',
+        },
+      ],
+    });
+
+    final rooms = await InOneRepositories(session).myRooms();
+
+    expect(session.method, 'GET');
+    expect(session.path, '/rooms/mine');
+    expect(session.authenticated, isTrue);
+    expect(rooms, isA<InOneRoomList>());
+    expect(rooms.rooms, hasLength(1));
+    expect(rooms.rooms.single.roomId, 'room-1');
+    expect(rooms.rooms.single.kind, 'group');
+    expect(rooms.rooms.single.displayName, 'Project room');
+    expect(rooms.rooms.single.role, 'member');
+    session.dispose();
+  });
+
+  test('rejects a malformed rooms response instead of showing fake chats', () async {
+    final session = _ProfileSession({'rooms': [{'roomId': ''}]});
+
+    await expectLater(
+      InOneRepositories(session).myRooms(),
+      throwsA(isA<ApiException>().having(
+        (error) => error.code,
+        'code',
+        'invalid_response',
+      )),
+    );
+    session.dispose();
+  });
+
+  test('propagates unauthorized rooms responses from the existing session', () async {
+    final session = _ProfileSession(
+      const {},
+      error: const ApiException(
+        code: 'unauthorized',
+        statusCode: 401,
+        retryable: false,
+      ),
+    );
+
+    await expectLater(
+      InOneRepositories(session).myRooms(),
+      throwsA(isA<ApiException>().having(
+        (error) => error.statusCode,
+        'statusCode',
+        401,
+      )),
+    );
+    expect(session.path, '/rooms/mine');
+    expect(session.authenticated, isTrue);
+    session.dispose();
+  });
 
   test('updates the authenticated profile locale through session persistence', () async {
     final session = _ProfileSession({'locale': 'en'});
