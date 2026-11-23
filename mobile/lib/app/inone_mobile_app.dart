@@ -1058,6 +1058,128 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     }
   }
 
+  Future<void> _showMlsRoomDetails() async {
+    final roomId = _activeMlsRoomId;
+    if (roomId == null) return;
+    try {
+      final details = await _repositories.roomDetails(roomId);
+      if (!mounted) return;
+      final currentUserId = _session.userId;
+      final canRename = currentUserId != null &&
+          (details.capabilities[currentUserId]?.contains('edit_group_name') ?? false);
+      final controller = TextEditingController(text: details.name ?? _activeMlsRoomName);
+      var saving = false;
+      String? errorMessage;
+      try {
+        await showDialog<void>(
+          context: context,
+          builder: (dialogContext) => StatefulBuilder(
+            builder: (context, setDialogState) => AlertDialog(
+              title: const Text('Параметры группы'),
+              content: SizedBox(
+                width: 420,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Видимость: ${details.visibility == 'public' ? 'публичная' : 'приватная'}'),
+                    Text('Вступление: ${details.joinPolicy == 'open' ? 'свободное' : 'по заявке'}'),
+                    const SizedBox(height: 12),
+                    const Text('Участники', style: TextStyle(fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 6),
+                    Flexible(
+                      child: ListView(
+                        shrinkWrap: true,
+                        children: [
+                          for (final memberId in details.members)
+                            ListTile(
+                              dense: true,
+                              contentPadding: EdgeInsets.zero,
+                              title: Text(memberId, maxLines: 1, overflow: TextOverflow.ellipsis),
+                              subtitle: Text(
+                                memberId == details.owner
+                                    ? 'Владелец'
+                                    : details.admins.contains(memberId)
+                                        ? 'Администратор'
+                                        : 'Участник',
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    if (canRename) ...[
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: controller,
+                        maxLength: 80,
+                        decoration: const InputDecoration(labelText: 'Название группы'),
+                      ),
+                    ],
+                    if (errorMessage != null)
+                      Text(errorMessage!, style: const TextStyle(color: Colors.red)),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Закрыть'),
+                ),
+                if (canRename)
+                  FilledButton(
+                    onPressed: saving ? null : () async {
+                      final newName = controller.text.trim();
+                      if (newName.isEmpty || newName.length > 80) {
+                        setDialogState(() => errorMessage = 'Название должно содержать от 1 до 80 символов.');
+                        return;
+                      }
+                      setDialogState(() {
+                        saving = true;
+                        errorMessage = null;
+                      });
+                      try {
+                        await _repositories.updateRoomName(roomId, newName);
+                        if (!mounted || !dialogContext.mounted) return;
+                        setState(() {
+                          _activeMlsRoomName = newName;
+                          _mlsChats = _mlsChats.map((chat) => chat.id == roomId
+                              ? InOneChatPreview(
+                                  id: chat.id,
+                                  name: newName,
+                                  lastMessage: chat.lastMessage,
+                                  time: chat.time,
+                                  kind: chat.kind,
+                                  unread: chat.unread,
+                                  initials: chat.initials,
+                                )
+                              : chat).toList(growable: false);
+                        });
+                        Navigator.of(dialogContext).pop();
+                        _notice('Название группы обновлено на сервере.');
+                      } catch (error) {
+                        if (dialogContext.mounted) {
+                          setDialogState(() => errorMessage = _toFailure(error).message);
+                        }
+                      } finally {
+                        if (dialogContext.mounted) {
+                          setDialogState(() => saving = false);
+                        }
+                      }
+                    },
+                    child: const Text('Сохранить'),
+                  ),
+              ],
+            ),
+          ),
+        );
+      } finally {
+        controller.dispose();
+      }
+    } catch (error) {
+      _notice('Не удалось загрузить параметры группы: ${_toFailure(error).message}');
+    }
+  }
+
   Future<void> _refreshActiveMlsChat() async {
     final roomId = _activeMlsRoomId;
     if (roomId == null) return;
@@ -1418,7 +1540,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           items: _activeMlsThread,
           onSend: _sendMlsMessage,
           onBack: () => setState(() => _screen = 'messages'),
-          onMore: () => unawaited(_refreshActiveMlsChat()),
+          onMore: () => unawaited(_showMlsRoomDetails()),
           onAttach: () => unawaited(_pickAndSendMlsAttachment()),
           onDownloadAttachment: (fileId) => unawaited(_downloadMlsAttachment(fileId)),
         );
