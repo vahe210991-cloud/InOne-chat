@@ -10,6 +10,7 @@ class InOneProfile {
     required this.backupEmail,
     required this.securityHints,
     this.locale = 'hy',
+    this.platformRole,
   });
 
   final String userId;
@@ -20,6 +21,11 @@ class InOneProfile {
   final BackupEmail? backupEmail;
   final List<String> securityHints;
   final String locale;
+  final String? platformRole;
+
+  bool get canViewPlatformRequests =>
+      platformRole == 'owner' || platformRole == 'admin';
+  bool get canDecidePlatformRequests => platformRole == 'owner';
 
   bool get isEmpty =>
       (nickname == null || nickname!.isEmpty) &&
@@ -34,6 +40,7 @@ class InOneProfile {
     final backupEmail = json['backupEmail'];
     final securityHints = json['securityHints'];
     final locale = json['locale'] ?? 'hy';
+    final platformRole = json['platformRole'];
 
     if (!json.containsKey('userId') ||
         !json.containsKey('nickname') ||
@@ -55,6 +62,7 @@ class InOneProfile {
         securityHints is! List ||
         locale is! String ||
         !const ['hy', 'ru', 'en'].contains(locale) ||
+        (platformRole != null && !const ['owner', 'admin'].contains(platformRole)) ||
         securityHints.any((hint) => hint is! String)) {
       throw const ApiException(
         code: 'invalid_response',
@@ -87,6 +95,7 @@ class InOneProfile {
       backupEmail: parsedBackupEmail,
       securityHints: List<String>.unmodifiable(securityHints.cast<String>()),
       locale: locale,
+      platformRole: platformRole as String?,
     );
   }
 }
