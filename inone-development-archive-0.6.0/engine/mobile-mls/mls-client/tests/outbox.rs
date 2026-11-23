@@ -980,3 +980,58 @@ fn process_crash_at_welcome_transaction_boundaries_preserves_atomic_join() {
         assert_eq!(recovered.local_epoch(&room), alice.local_epoch(&room));
     }
 }
+
+
+#[test]
+fn invalid_utf8_event_is_quarantined_without_poisoning_room_or_later_messages() {
+    let engine = start_engine();
+    let keys = MemoryKeyStore::default();
+    let alice_db = db("invalid-utf8-alice");
+    let bob_db = db("invalid-utf8-bob");
+    let mut alice = connect(&engine.base, ALICE, PW, "A_INVALID_UTF8", &alice_db, &keys).unwrap();
+    let mut bob = connect(&engine.base, BOB, PW, "B_INVALID_UTF8", &bob_db, &keys).unwrap();
+
+    bob.ensure_key_packages(2).unwrap();
+    let room = "!room-invalid-utf8:inone.test";
+    alice.create_room(room).unwrap();
+    alice.invite(room, BOB).unwrap();
+    assert!(bob.sync().unwrap().is_empty());
+
+    let unreadable_id = alice
+        .send_application_payload_with_id(room, &[0xff, 0xfe, 0xfd], "invalid-utf8-event")
+        .unwrap();
+    let valid_id = alice
+        .send_application_payload_with_id(room, b"valid message after invalid UTF-8", "valid-after-invalid-utf8")
+        .unwrap();
+
+    let incoming = bob
+        .sync()
+        .expect("invalid UTF-8 must not make the room enter RecoveryRequired");
+    assert!(matches!(
+        incoming.as_slice(),
+        [
+            Incoming::Unreadable { event_id: invalid_id, .. },
+            Incoming::Text { event_id: next_id, text, .. }
+        ] if invalid_id == &unreadable_id
+            && next_id == &valid_id
+            && text == "valid message after invalid UTF-8"
+    ));
+    assert_eq!(bob.desync_reason(room).unwrap(), None);
+    assert_eq!(bob.local_epoch(room), alice.local_epoch(room));
+    assert_eq!(
+        texts(&bob.pending_incoming().unwrap()),
+        vec!["valid message after invalid UTF-8"]
+    );
+    assert!(
+        bob.undecryptable()
+            .unwrap()
+            .iter()
+            .any(|row| row.0 == unreadable_id && row.1 == room),
+        "invalid UTF-8 must remain visible as a room-scoped unreadable diagnostic"
+    );
+
+    bob.acknowledge_incoming(&[unreadable_id, valid_id]).unwrap();
+    assert!(bob.pending_incoming().unwrap().is_empty());
+    assert!(bob.sync().unwrap().is_empty());
+    assert_eq!(bob.desync_reason(room).unwrap(), None);
+}
