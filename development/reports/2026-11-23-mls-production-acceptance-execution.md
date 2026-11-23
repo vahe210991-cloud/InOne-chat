@@ -97,3 +97,22 @@ Backup/restore scripts and tests exist, but DB and FILES_DIR archives are separa
 - Physical acceptance: NOT RUN.
 - Implementation / verification / release readiness estimates: 90% / 73% / 58%.
 - Release recommendation: **NOT READY**.
+
+
+## CTO continuation — outbound membership Commit uncertain outcome (2026-11-23)
+
+Source change committed as `120f5e47bc2d2e6f1b55ce1d12654529d46c056e`:
+
+- Added debug-only failpoint `after_membership_commit_journal_commit` after the durable staged Commit + operation journal transaction commits and before network submission.
+- Added debug-only failpoint `after_outbound_membership_commit_server_acceptance` after the server returns the accepted epoch receipt and before the local OpenMLS merge/settlement transaction starts.
+- The existing durable journal retains `operation_id`, payload, base epoch and staged-commit fingerprint until the local merge transaction commits. Server API contract documents exact operation replay returning the original epoch receipt and rejecting changed-payload reuse.
+
+**Verification status:** the source failpoints are present; a dedicated child-process integration test for both crash phases has not yet been committed or run. This is NOT accepted evidence. Existing server-side idempotency tests are not a substitute for exercising the actual Rust client restart/replay path.
+
+Exact-commit CI for `120f5e47bc2d2e6f1b55ce1d12654529d46c056e` was triggered:
+- OpenMLS client validation — queued at last observation.
+- P0 source validation — queued at last observation.
+- Exact-SHA acceptance gate — queued at last observation.
+- Flutter Rust Bridge generation, Flutter mobile/iOS and backend/runtime workflows — queued at last observation.
+
+Do not mark any queued workflow as PASS. Issue #1 remains OPEN. Next required implementation is a dedicated SQLCipher child-process test that stages a membership operation, terminates after server acceptance but before local merge, reopens the inviter session, replays the same operation ID/fingerprint, and proves exactly one server epoch advance plus local journal settlement. Physical-device and WAL-specific acceptance remain separate.
