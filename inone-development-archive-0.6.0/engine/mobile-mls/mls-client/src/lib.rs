@@ -1467,7 +1467,9 @@ fn is_account_removal_policy_rejection(payload: &Value, error: &str) -> bool {
         .as_array()
         .is_some_and(|items| !items.is_empty());
     let no_adds = changes["adds"].as_array().is_some_and(Vec::is_empty);
-    let no_device_removals = changes["removeDevices"].as_array().is_some_and(Vec::is_empty);
+    let no_device_removals = changes["removeDevices"]
+        .as_array()
+        .is_some_and(Vec::is_empty);
     if !(removes_account && no_adds && no_device_removals) {
         return false;
     }
@@ -2306,10 +2308,9 @@ impl Client {
                             .groups
                             .get_mut(&room_id)
                             .ok_or("membership journal room disappeared")?;
-                        let staged = group
-                            .mls
-                            .pending_commit()
-                            .ok_or("pending StagedCommit missing during rejected account removal")?;
+                        let staged = group.mls.pending_commit().ok_or(
+                            "pending StagedCommit missing during rejected account removal",
+                        )?;
                         let actual = membership_commit_fingerprint(
                             &self.provider,
                             &room_id,
@@ -2350,12 +2351,31 @@ impl Client {
                     return Err(error);
                 }
                 Err(error) if is_join_request_not_pending_rejection(&payload, &error) => {
-                    let target_user_id = payload["joinRequestUserId"].as_str().ok_or("join approval payload has no target user")?.to_string();
-                    let claim_id = payload["keyPackageClaimId"].as_str().ok_or("join approval payload has no KeyPackage claim ID")?.to_string();
+                    let target_user_id = payload["joinRequestUserId"]
+                        .as_str()
+                        .ok_or("join approval payload has no target user")?
+                        .to_string();
+                    let claim_id = payload["keyPackageClaimId"]
+                        .as_str()
+                        .ok_or("join approval payload has no KeyPackage claim ID")?
+                        .to_string();
                     let staged_fingerprint = {
-                        let group = self.groups.get(&room_id).ok_or("membership journal room disappeared")?;
-                        let staged = group.mls.pending_commit().ok_or("pending StagedCommit missing during rejected join approval")?;
-                        membership_commit_fingerprint(&self.provider, &room_id, &operation_id, base_epoch, &payload, staged)?
+                        let group = self
+                            .groups
+                            .get(&room_id)
+                            .ok_or("membership journal room disappeared")?;
+                        let staged = group
+                            .mls
+                            .pending_commit()
+                            .ok_or("pending StagedCommit missing during rejected join approval")?;
+                        membership_commit_fingerprint(
+                            &self.provider,
+                            &room_id,
+                            &operation_id,
+                            base_epoch,
+                            &payload,
+                            staged,
+                        )?
                     };
                     if staged_fingerprint != fingerprint {
                         let reason = format!("pending StagedCommit fingerprint mismatch while clearing rejected join approval {operation_id}");
@@ -2364,7 +2384,10 @@ impl Client {
                     }
                     let released = self.call(
                         "DELETE",
-                        &format!("/mls/key-packages/claims/{}", urlencoding::encode(&claim_id)),
+                        &format!(
+                            "/mls/key-packages/claims/{}",
+                            urlencoding::encode(&claim_id)
+                        ),
                         None,
                     )?;
                     if released["released"].as_bool().is_none() {
@@ -2372,15 +2395,36 @@ impl Client {
                     }
                     let tx = self.meta.unchecked_transaction().map_err(text)?;
                     let clearing = (|| -> Result<(), String> {
-                        let group = self.groups.get_mut(&room_id).ok_or("membership journal room disappeared")?;
+                        let group = self
+                            .groups
+                            .get_mut(&room_id)
+                            .ok_or("membership journal room disappeared")?;
                         let staged = group.mls.pending_commit().ok_or("pending StagedCommit disappeared during rejected join approval cleanup")?;
-                        let actual = membership_commit_fingerprint(&self.provider, &room_id, &operation_id, base_epoch, &payload, staged)?;
+                        let actual = membership_commit_fingerprint(
+                            &self.provider,
+                            &room_id,
+                            &operation_id,
+                            base_epoch,
+                            &payload,
+                            staged,
+                        )?;
                         if actual != fingerprint {
                             return Err("pending StagedCommit fingerprint changed during rejected join approval cleanup".to_string());
                         }
-                        group.mls.clear_pending_commit(self.provider.storage()).map_err(text)?;
-                        tx.execute("DELETE FROM client_membership_commits WHERE operation_id = ?1", [&operation_id]).map_err(text)?;
-                        tx.execute("DELETE FROM client_invite_intents WHERE operation_id = ?1", [&operation_id]).map_err(text)?;
+                        group
+                            .mls
+                            .clear_pending_commit(self.provider.storage())
+                            .map_err(text)?;
+                        tx.execute(
+                            "DELETE FROM client_membership_commits WHERE operation_id = ?1",
+                            [&operation_id],
+                        )
+                        .map_err(text)?;
+                        tx.execute(
+                            "DELETE FROM client_invite_intents WHERE operation_id = ?1",
+                            [&operation_id],
+                        )
+                        .map_err(text)?;
                         tx.execute(
                             "DELETE FROM client_key_package_claims WHERE room_id = ?1 AND user_id = ?2 AND claim_id = ?3",
                             rusqlite::params![room_id, target_user_id, claim_id],
@@ -2390,7 +2434,9 @@ impl Client {
                     if let Err(clear_error) = clearing {
                         let _ = tx.rollback();
                         self.reload_group(&room_id)?;
-                        let reason = format!("failed to clear rejected join approval {operation_id}: {clear_error}");
+                        let reason = format!(
+                            "failed to clear rejected join approval {operation_id}: {clear_error}"
+                        );
                         self.record_desync(&room_id, &reason)?;
                         return Err(format!("RecoveryRequired: {reason}"));
                     }
@@ -2449,7 +2495,10 @@ impl Client {
         };
         if let Some((operation_id, state, existing_is_join_request)) = existing {
             if existing_is_join_request != is_join_request {
-                return Err("an invite intent already exists for this user with a different operation type".to_string());
+                return Err(
+                    "an invite intent already exists for this user with a different operation type"
+                        .to_string(),
+                );
             }
             return Ok((operation_id, state));
         }
@@ -2654,14 +2703,26 @@ impl Client {
                 )
                 .map_err(text)?;
             let rows = stmt
-                .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get::<_, i64>(3)? != 0)))
+                .query_map([], |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get::<_, i64>(3)? != 0,
+                    ))
+                })
                 .map_err(text)?;
             rows.collect::<Result<_, _>>().map_err(text)?
         };
         for (operation_id, room_id, user_id, is_join_request) in intents {
             let mut completed = false;
             for attempt in 0..3 {
-                if self.resume_claim_pending_invite(&room_id, &user_id, &operation_id, is_join_request)? {
+                if self.resume_claim_pending_invite(
+                    &room_id,
+                    &user_id,
+                    &operation_id,
+                    is_join_request,
+                )? {
                     completed = true;
                     break;
                 }
@@ -2735,7 +2796,12 @@ impl Client {
         Ok(())
     }
 
-    fn invite_with_mode(&mut self, room_id: &str, user_id: &str, is_join_request: bool) -> Result<(), String> {
+    fn invite_with_mode(
+        &mut self,
+        room_id: &str,
+        user_id: &str,
+        is_join_request: bool,
+    ) -> Result<(), String> {
         self.ensure_writable()?;
         if let Some(reason) = self.desync_reason(room_id)? {
             return Err(format!("комната требует восстановления: {reason}"));
@@ -5010,7 +5076,9 @@ impl Client {
             return Err("an account cannot remove itself through this operation".to_string());
         }
         if let Some(reason) = self.desync_reason(room_id)? {
-            return Err(format!("RecoveryRequired: room requires recovery: {reason}"));
+            return Err(format!(
+                "RecoveryRequired: room requires recovery: {reason}"
+            ));
         }
 
         // Resolve any earlier durable operation and reconcile before taking a membership snapshot.
@@ -5027,18 +5095,27 @@ impl Client {
                 .as_array()
                 .ok_or("room member response has no members array")?
                 .iter()
-                .map(|value| value.as_str().map(str::to_string).ok_or("room member ID is not a string"))
+                .map(|value| {
+                    value
+                        .as_str()
+                        .map(str::to_string)
+                        .ok_or("room member ID is not a string")
+                })
                 .collect::<Result<_, _>>()?;
             let mls_members = self.mls_users(room_id)?;
             if server_members != mls_members {
                 self.check_consistency(room_id)?;
-                return Err("RecoveryRequired: server and MLS membership differ before removal".to_string());
+                return Err(
+                    "RecoveryRequired: server and MLS membership differ before removal".to_string(),
+                );
             }
             if !server_members.contains(target_user_id) {
                 return Ok(());
             }
 
-            let owner = snapshot["owner"].as_str().ok_or("room member response has no owner")?;
+            let owner = snapshot["owner"]
+                .as_str()
+                .ok_or("room member response has no owner")?;
             if owner == target_user_id {
                 return Err("the room owner cannot be removed".to_string());
             }
@@ -5046,22 +5123,37 @@ impl Client {
                 .as_array()
                 .ok_or("room member response has no admins array")?
                 .iter()
-                .map(|value| value.as_str().map(str::to_string).ok_or("room admin ID is not a string"))
+                .map(|value| {
+                    value
+                        .as_str()
+                        .map(str::to_string)
+                        .ok_or("room admin ID is not a string")
+                })
                 .collect::<Result<_, _>>()?;
             let capabilities = snapshot["capabilities"][self.user_id.as_str()]
                 .as_array()
                 .ok_or("current user capabilities are missing from room snapshot")?;
-            let can_remove = capabilities.iter().any(|value| value.as_str() == Some("remove_members"));
+            let can_remove = capabilities
+                .iter()
+                .any(|value| value.as_str() == Some("remove_members"));
             if self.user_id != owner && (!can_remove || admins.contains(target_user_id)) {
-                return Err("server policy does not allow this account to remove the selected member".to_string());
+                return Err(
+                    "server policy does not allow this account to remove the selected member"
+                        .to_string(),
+                );
             }
 
             let server_epoch = self.server_epoch(room_id)?;
-            let local_epoch = self.local_epoch(room_id).ok_or("room is not loaded on this device")?;
+            let local_epoch = self
+                .local_epoch(room_id)
+                .ok_or("room is not loaded on this device")?;
             if local_epoch != server_epoch {
                 self.sync()?;
                 if attempt == 2 {
-                    return Err("epoch_outdated: unable to reconcile room before member removal".to_string());
+                    return Err(
+                        "epoch_outdated: unable to reconcile room before member removal"
+                            .to_string(),
+                    );
                 }
                 continue;
             }
@@ -5081,7 +5173,9 @@ impl Client {
                     .map(|member| member.index)
                     .collect();
                 if leaves.is_empty() {
-                    return Err(format!("MLS membership has no device leaves for target account {target_user_id}"));
+                    return Err(format!(
+                        "MLS membership has no device leaves for target account {target_user_id}"
+                    ));
                 }
 
                 let (commit, _, _) = group
@@ -5139,7 +5233,10 @@ impl Client {
             }
             if let Err(error) = tx.commit() {
                 self.reload_group(room_id)?;
-                return Err(format!("failed to persist account-removal journal: {}", text(error)));
+                return Err(format!(
+                    "failed to persist account-removal journal: {}",
+                    text(error)
+                ));
             }
 
             // A network error leaves the exact staged Commit in SQLCipher for safe retry.
@@ -5153,7 +5250,9 @@ impl Client {
             if stale_cleared > 0 && attempt < 2 {
                 continue;
             }
-            return Err("membership Commit was not acknowledged as a completed account removal".to_string());
+            return Err(
+                "membership Commit was not acknowledged as a completed account removal".to_string(),
+            );
         }
         Err("epoch_outdated: account removal exhausted safe rebase attempts".to_string())
     }
