@@ -1080,13 +1080,13 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
                 });
                 try {
                   final found = await _repositories.searchPublicRooms(query);
-                  if (!mounted) return;
+                  if (!stateContext.mounted) return;
                   setDialogState(() {
                     rooms = found;
                     loading = false;
                   });
                 } catch (error) {
-                  if (!mounted) return;
+                  if (!stateContext.mounted) return;
                   setDialogState(() {
                     failure = _toFailure(error).message;
                     loading = false;
@@ -1101,7 +1101,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
                 });
                 try {
                   final result = await _repositories.joinPublicRoom(room.roomId);
-                  if (!mounted) return;
+                  if (!stateContext.mounted) return;
                   Navigator.of(dialogContext).pop();
                   if (result == 'joined') {
                     await _loadMlsRooms();
@@ -1110,7 +1110,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
                     _notice('Заявка на вступление в «${room.name}» отправлена.');
                   }
                 } catch (error) {
-                  if (!mounted) return;
+                  if (!stateContext.mounted) return;
                   setDialogState(() {
                     failure = _toFailure(error).message;
                     loading = false;
