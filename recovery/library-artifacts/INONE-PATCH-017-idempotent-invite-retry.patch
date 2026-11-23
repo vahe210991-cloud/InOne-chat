@@ -1,0 +1,79 @@
+--- a/src/server.js
++++ b/src/server.js
+@@ -2419,7 +2419,7 @@
+         if (!claim.ok && claim.reason === 'claim-expired') return send(res, 409, { error: 'key package claim expired; start a new membership operation', code: 'key_package_claim_expired' });
+         if (!claim.ok && claim.reason === 'claim-operation-reused') return send(res, 409, { error: 'clientOperationId was already used with a different existingDeviceIds roster', code: 'key_package_claim_operation_reused' });
+         if (!claim.ok && claim.reason === 'no-active-devices') return send(res, 409, { error: 'target account has no active devices' });
+-        if (!claim.ok && claim.reason === 'no-new-devices') return send(res, 409, { error: 'all active target devices are already in this room' });
++        if (!claim.ok && claim.reason === 'no-new-devices') return send(res, 409, { error: 'all active target devices are already in this room', code: 'key_package_no_new_devices' });
+         if (!claim.ok && claim.reason === 'stale-device-roster') return send(res, 409, { error: 'target device roster changed; refresh the room roster and retry', code: 'key_package_roster_stale' });
+         if (!claim.ok && claim.reason === 'missing-key-package') return send(res, 409, { error: `active device has no available KeyPackage: ${claim.deviceId}`, code: 'key_package_missing' });
+         return send(res, 200, {
+--- a/mobile-mls/mls-client/src/lib.rs
++++ b/mobile-mls/mls-client/src/lib.rs
+@@ -1193,6 +1193,17 @@
+                 "existingDeviceIds": existing_device_ids,
+             }))) {
+                 Ok(claim) => claim,
++                Err(error) if http_status_code(&error) == Some(409) && error.contains("key_package_no_new_devices") => {
++                    // A previous attempt may have reached the server and been ACKed while
++                    // the client lost the response. After replaying that ACK above, every
++                    // active target device is already in the MLS roster: the requested
++                    // invite is complete, so treat this retry as an idempotent success.
++                    self.meta.execute(
++                        "DELETE FROM client_key_package_intents WHERE client_operation_id = ?1",
++                        [&operation_id],
++                    ).map_err(text)?;
++                    return Ok(());
++                }
+                 Err(error) => {
+                     // A definitive 4xx means no usable claim was returned. Preserve only
+                     // transient/ambiguous outcomes so the same operation ID can be replayed.
+--- a/mobile-mls/mls-client/tests/membership_outbox.rs
++++ b/mobile-mls/mls-client/tests/membership_outbox.rs
+@@ -95,6 +95,31 @@
+ }
+ 
+ #[test]
++fn retrying_invite_after_commit_ack_loss_is_an_idempotent_success() {
++    let mut engine = Engine::start();
++    let keys = MemoryKeyStore::default();
++    let mut alice = connect(&engine.base, ALICE, PW, "A_PHONE", &db("invite-retry-alice"), &keys).unwrap();
++    let mut bob = connect(&engine.base, BOB, PW, "B_PHONE", &db("invite-retry-bob"), &keys).unwrap();
++    bob.ensure_key_packages(1).unwrap();
++    alice.create_room(ROOM).unwrap();
++
++    // The server commits the invite but loses its ACK. A user retry first replays
++    // the exact pending Commit; the now-complete invitation must not surface as 409.
++    engine.command("FAIL_COMMIT_RESPONSE");
++    let first = alice.invite(ROOM, BOB).expect_err("first Commit ACK must be lost");
++    assert!(first.contains("500"), "expected injected response loss: {first}");
++    assert_eq!(alice.pending_membership_commits().unwrap(), 1);
++    assert_eq!(alice.pending_key_package_intents().unwrap(), 1);
++
++    alice.invite(ROOM, BOB).expect("retry after replayed ACK is an idempotent success");
++    assert_eq!(alice.pending_membership_commits().unwrap(), 0);
++    assert_eq!(alice.pending_key_package_intents().unwrap(), 0);
++    assert_eq!(alice.local_epoch(ROOM), Some(1));
++    bob.sync().unwrap();
++    assert!(bob.members_of(ROOM).unwrap().iter().any(|member| member == "@bob:inone.test/B_PHONE"));
++}
++
++#[test]
+ fn device_removal_replays_identical_commit_after_server_accepts_but_response_is_lost() {
+     use mls_client::connect_with_approval;
+ 
+--- a/test/mls-key-package-claims.test.js
++++ b/test/mls-key-package-claims.test.js
+@@ -84,6 +84,11 @@
+     assert.equal(claimReplay.committed, true);
+     assert.deepEqual(claimReplay.packages, claim.packages);
+     await assert.rejects(
++      s.alice.raw('POST', claimPath, { roomId: room, existingDeviceIds: ['B_PHONE'], clientOperationId: 'claim-already-member-02' }),
++      (error) => error.status === 409 && error.message.includes('key_package_no_new_devices'),
++      'a completed invitation has a stable machine-readable no-op result on retry',
++    );
++    await assert.rejects(
+       s.alice.raw('POST', claimPath, { roomId: room, existingDeviceIds: [], clientOperationId: 'claim-after-commit-03' }),
+       (error) => error.status === 409 && error.message.includes('key_package_missing'),
+       'the regular KeyPackage cannot be consumed by a second membership operation',
