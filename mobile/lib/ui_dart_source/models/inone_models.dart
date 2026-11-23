@@ -60,10 +60,12 @@ class InOneOrgProfile {
     this.verified = false,
     this.cover,
     this.logo,
+    this.organizationMembers = const [],
   });
   final String name;
   final String subtitle;
   final int? members;
+  final List<({String userId, String role})> organizationMembers;
   final int? projects;
   final int? teams;
   final String? about;
