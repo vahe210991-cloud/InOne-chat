@@ -2367,7 +2367,7 @@ impl Client {
                         &format!("/mls/key-packages/claims/{}", urlencoding::encode(&claim_id)),
                         None,
                     )?;
-                    if released["released"].as_bool() != Some(true) {
+                    if released["released"].as_bool().is_none() {
                         return Err("server did not confirm release of KeyPackage claim for rejected join approval".to_string());
                     }
                     let tx = self.meta.unchecked_transaction().map_err(text)?;
