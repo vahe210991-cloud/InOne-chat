@@ -16,7 +16,7 @@
 - `OpenMLS Flutter Rust Bridge generation`: main job PASS; iOS native-assets compile remains IN_PROGRESS. Android build and Android Keystore emulator smoke passed.
 - `Native MLS client validation`: exact-source check, canonical Engine B regression tests, persistent bridge host tests and attachment/session integration tests passed. The iOS Keychain native-target build was cancelled in attempt 1; its job log was unavailable. A targeted job rerun was accepted and is QUEUED in attempt 2.
 - The exact-SHA acceptance gate is configured for pull_request events only, so it is N/A for a main push; each applicable main workflow verifies its own exact source SHA. Do not claim main exact-SHA validation complete while the two iOS-related jobs remain pending.
-- PR #132 code-validation head `988d537d7fb3acf812781e67ac598cb5954ed958` triggered nine PR workflows (including the exact-SHA acceptance gate); all nine were QUEUED at 16:19Z. The audit report was then added as a documentation-only commit `2d7754e29d31aa0cedf004ae9fee988d45e2dbb0`; no new workflows were returned for that report-only head. No completed test result is available yet for the Welcome or invalid-UTF-8 regressions.
+- PR #132 code-validation head `87930a5997b9ceb7aea44409b1e0d07020d3c82f` triggered nine PR workflows (including the exact-SHA acceptance gate); all nine were QUEUED at 16:23Z. The latest follow-up commits only update reports/continuity docs; they do not change Rust/Flutter source. No completed test result is available yet for the Welcome, invalid-UTF-8 or 401/403/404 regressions.
 
 ## Architecture and implementation facts
 
@@ -39,7 +39,7 @@
 - #114: canonical Engine B production dependency and current FFI/Dart adapter are present. No Engine A migration is required. Keep open for exact-SHA and physical runtime proof.
 - #6: durable SQLCipher inbox, pending replay and explicit ACK are present; child-process and restart tests exist. Keep open for exact-SHA and Flutter/native physical ACK proof.
 - #5: invalid UTF-8 maps to an unreadable inbox record; crash-boundary test includes invalid bytes. A same-room follow-up-valid-message regression was added on PR #132 branch; it asserts no desync and unchanged epoch, but has not been compiled/executed.
-- #9: typed API failure classification exists. Add/execute real sync-path 401/403/404 regressions proving no RecoveryRequired.
+- #9: typed API failure classification exists. A real sync-path 401/403/404 TCP-proxy regression was added on PR #132; it must still execute and pass to prove no RecoveryRequired.
 - None of these issues is closed.
 
 ## Push, recovery and operations
