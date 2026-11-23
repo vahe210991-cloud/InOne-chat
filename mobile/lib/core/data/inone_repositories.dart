@@ -69,6 +69,18 @@ class InOneRepositories {
     return InOneOrganizationSettings.fromJson(Map<String, dynamic>.from(raw));
   }
 
+  Future<List<InOneOrganizationAdminAction>> organizationAdminLog(String orgId) async {
+    final response = await session.request(
+      'GET', '/orgs/${Uri.encodeComponent(orgId)}/admin-log',
+    );
+    final raw = response['actions'];
+    if (raw is! List || raw.any((entry) => entry is! Map)) {
+      throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false);
+    }
+    return List<InOneOrganizationAdminAction>.unmodifiable(raw.map((entry) =>
+        InOneOrganizationAdminAction.fromJson(Map<String, dynamic>.from(entry as Map))));
+  }
+
   Future<List<InOneOrganizationLink>> organizationLinks(String orgId) async {
     final response = await session.request(
       'GET', '/orgs/${Uri.encodeComponent(orgId)}/links',
