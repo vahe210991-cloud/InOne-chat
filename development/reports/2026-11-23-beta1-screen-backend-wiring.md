@@ -194,3 +194,12 @@ No tests, analyzer, build, device run, workflow dispatch or Actions rerun was pe
 - Approval remains deliberately hidden: the current `POST /rooms/:id/requests/:userId/approve` route directly inserts server membership and emits a room-change signal, but does not require an MLS Welcome. Direct `DELETE /rooms/:id/members/:userId` likewise removes server membership without an MLS commit. Neither path is safe to expose for encrypted rooms.
 - Safe member removal must be implemented through the existing MLS commit flow (`POST /mls/groups/:roomId/commits`) with a `changes.removes` entry, a fresh epoch, and accepted commit semantics. This stage does not create a parallel removal path.
 - No tests, analyzer, build, device run, workflow dispatch or Actions rerun was performed, per the queue restriction. Source-level changes only; not runtime accepted.
+
+
+### MLS removal implementation boundary
+
+- Confirmed that `MlsSessionBridge`, `RustMlsSessionBridge`, `InOneSession` and the Dart-facing Rust `MlsSession` API currently expose invite, local membership inspection and revoked-device removal, but no account-level `removeMember(roomId, userId)` operation.
+- The underlying OpenMLS client already has a durable membership-commit journal and a revoked-device removal implementation that stages a Commit, verifies the staged membership metadata, persists the operation before network delivery and flushes it through the canonical MLS commit endpoint.
+- That implementation is scoped to revoked devices belonging to the current account. It is not an account-member removal API and must not be repurposed by sending a raw `DELETE /rooms/:id/members/:userId`.
+- Next required slice: add account-member removal in the native Rust client by resolving every leaf for the target account, generating and verifying one removal Commit, persisting it in the existing membership-commit journal, submitting through the canonical `/mls/groups/:roomId/commits` flow, then expose it through Rust FFI and Flutter. Only after the server ACK and local epoch reconciliation should the UI report success.
+- Required regressions before runtime acceptance: target with multiple devices, stale epoch/rebase, network failure after local commit persistence, duplicate operation replay, owner protection, unauthorized admin/member, and no plaintext/server-only membership fallback.
