@@ -21,7 +21,7 @@ class InOneProfileScreen extends StatelessWidget {
   final InOneUserProfile profile;
   final List<InOneProfileMenuItem> menu;
   final VoidCallback onToggleTheme;
-  final VoidCallback onEditAvatar;
+  final VoidCallback? onEditAvatar;
   final ValueChanged<InOneTab> onTab;
   final VoidCallback onAdd;
 
@@ -49,21 +49,20 @@ class InOneProfileScreen extends StatelessWidget {
             const SizedBox(height: 18),
             Row(
               children: [
-                GestureDetector(
-                  onTap: onEditAvatar,
-                  child: SizedBox(
-                    width: 64,
-                    height: 64,
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        Positioned.fill(
-                          child: ClipOval(
-                            child: profile.avatar != null
-                                ? Image(image: profile.avatar!, fit: BoxFit.cover)
-                                : InOneStripeBox(circle: true, borderColor: c.line),
-                          ),
+                SizedBox(
+                  width: 64,
+                  height: 64,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Positioned.fill(
+                        child: ClipOval(
+                          child: profile.avatar != null
+                              ? Image(image: profile.avatar!, fit: BoxFit.cover)
+                              : InOneStripeBox(circle: true, borderColor: c.line),
                         ),
+                      ),
+                      if (onEditAvatar != null)
                         Positioned(
                           right: -2,
                           bottom: -2,
@@ -78,8 +77,7 @@ class InOneProfileScreen extends StatelessWidget {
                             child: Icon(InOneIcons.plus, size: 14, color: c.onAccent),
                           ),
                         ),
-                      ],
-                    ),
+                    ],
                   ),
                 ),
                 const SizedBox(width: 14),
@@ -105,22 +103,25 @@ class InOneProfileScreen extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 18),
-            Row(
-              children: [
-                Expanded(
-                  child: InOneStatTile(label: 'My tasks', value: profile.myTasks, valueSize: 16, center: true),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: InOneStatTile(label: 'Activity', value: profile.activity, valueSize: 16, center: true),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: InOneStatTile(label: 'Projects', value: profile.projects, valueSize: 16, center: true),
-                ),
-              ],
-            ),
+            if ([profile.myTasks, profile.activity, profile.projects]
+                .any((value) => value.isNotEmpty && value != '—')) ...[
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Expanded(
+                    child: InOneStatTile(label: 'My tasks', value: profile.myTasks, valueSize: 16, center: true),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: InOneStatTile(label: 'Activity', value: profile.activity, valueSize: 16, center: true),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: InOneStatTile(label: 'Projects', value: profile.projects, valueSize: 16, center: true),
+                  ),
+                ],
+              ),
+            ],
             const SizedBox(height: 20),
             for (var i = 0; i < menu.length; i++) _MenuRow(item: menu[i], last: i == menu.length - 1),
           ],
