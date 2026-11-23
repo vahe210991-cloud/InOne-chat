@@ -134,7 +134,9 @@ fn start_status_proxy(upstream: &str) -> StatusProxy {
                 let mut request = Vec::new();
                 let mut chunk = [0_u8; 1024];
                 loop {
-                    let Ok(read) = client.read(&mut chunk) else { return };
+                    let Ok(read) = client.read(&mut chunk) else {
+                        return;
+                    };
                     if read == 0 {
                         return;
                     }
@@ -153,7 +155,11 @@ fn start_status_proxy(upstream: &str) -> StatusProxy {
                 let method = parts.next().unwrap_or_default();
                 let path = parts.next().unwrap_or_default();
                 let injected_status = status.load(Ordering::SeqCst);
-                if method == "GET" && path.contains("/rooms/") && path.contains("/events") && injected_status != 0 {
+                if method == "GET"
+                    && path.contains("/rooms/")
+                    && path.contains("/events")
+                    && injected_status != 0
+                {
                     let (reason, body) = match injected_status {
                         401 => ("Unauthorized", r#"{"error":"device_revoked"}"#),
                         403 => ("Forbidden", r#"{"code":"permission_denied"}"#),
@@ -173,7 +179,31 @@ fn start_status_proxy(upstream: &str) -> StatusProxy {
                     let _ = client.shutdown(Shutdown::Both);
                     return;
                 };
-                if server.write_all(&request).is_err() {
+
+                // Force the upstream to close this HTTP/1.1 connection after the
+                // response. Otherwise ureq may reuse the already-tunneled socket,
+                // bypassing the status injector on subsequent sync requests.
+                let Some(header_end) = request.windows(4).position(|window| window == b"\r\n\r\n") else {
+                    let _ = client.shutdown(Shutdown::Both);
+                    return;
+                };
+                let header = String::from_utf8_lossy(&request[..header_end]);
+                let mut lines = header.lines();
+                let Some(request_line) = lines.next() else {
+                    let _ = client.shutdown(Shutdown::Both);
+                    return;
+                };
+                let mut forwarded = format!("{request_line}\r\n");
+                for line in lines {
+                    if !line.to_ascii_lowercase().starts_with("connection:") {
+                        forwarded.push_str(line);
+                        forwarded.push_str("\r\n");
+                    }
+                }
+                forwarded.push_str("Connection: close\r\n\r\n");
+                if server.write_all(forwarded.as_bytes()).is_err()
+                    || server.write_all(&request[header_end + 4..]).is_err()
+                {
                     let _ = client.shutdown(Shutdown::Both);
                     return;
                 }
@@ -951,7 +981,6 @@ fn process_crash_at_each_inbox_journal_boundary_preserves_atomic_delivery() {
     }
 }
 
-
 #[test]
 fn process_crash_at_welcome_transaction_boundaries_preserves_atomic_join() {
     crash_child_sync_if_requested();
@@ -1021,11 +1050,23 @@ fn process_crash_at_welcome_transaction_boundaries_preserves_atomic_join() {
         drop(database);
 
         if *point == "after_welcome_transaction_commit" {
-            assert_eq!(room_count, 1, "committed room index must survive process death");
-            assert_eq!(receipt_count, 1, "committed Welcome receipt must survive process death");
+            assert_eq!(
+                room_count, 1,
+                "committed room index must survive process death"
+            );
+            assert_eq!(
+                receipt_count, 1,
+                "committed Welcome receipt must survive process death"
+            );
         } else {
-            assert_eq!(room_count, 0, "uncommitted room index must roll back at {point}");
-            assert_eq!(receipt_count, 0, "uncommitted Welcome receipt must roll back at {point}");
+            assert_eq!(
+                room_count, 0,
+                "uncommitted room index must roll back at {point}"
+            );
+            assert_eq!(
+                receipt_count, 0,
+                "uncommitted Welcome receipt must roll back at {point}"
+            );
         }
 
         let mut recovered = connect(&engine.base, BOB, PW, "B_CRASH_P0", &bob_db, &keys)
@@ -1066,7 +1107,6 @@ fn process_crash_at_welcome_transaction_boundaries_preserves_atomic_join() {
     }
 }
 
-
 #[test]
 fn invalid_utf8_event_is_quarantined_without_poisoning_room_or_later_messages() {
     let engine = start_engine();
@@ -1086,7 +1126,11 @@ fn invalid_utf8_event_is_quarantined_without_poisoning_room_or_later_messages() 
         .send_application_payload_with_id(room, &[0xff, 0xfe, 0xfd], "invalid-utf8-event")
         .unwrap();
     let valid_id = alice
-        .send_application_payload_with_id(room, b"valid message after invalid UTF-8", "valid-after-invalid-utf8")
+        .send_application_payload_with_id(
+            room,
+            b"valid message after invalid UTF-8",
+            "valid-after-invalid-utf8",
+        )
         .unwrap();
 
     let incoming = bob
@@ -1115,12 +1159,12 @@ fn invalid_utf8_event_is_quarantined_without_poisoning_room_or_later_messages() 
         "invalid UTF-8 must remain visible as a room-scoped unreadable diagnostic"
     );
 
-    bob.acknowledge_incoming(&[unreadable_id, valid_id]).unwrap();
+    bob.acknowledge_incoming(&[unreadable_id, valid_id])
+        .unwrap();
     assert!(bob.pending_incoming().unwrap().is_empty());
     assert!(bob.sync().unwrap().is_empty());
     assert_eq!(bob.desync_reason(room).unwrap(), None);
 }
-
 
 #[test]
 fn room_sync_access_and_not_found_errors_never_mark_recovery_required() {
