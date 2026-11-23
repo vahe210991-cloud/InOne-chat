@@ -1,116 +1,99 @@
-# MLS production acceptance — CTO execution plan
+# MLS production acceptance — execution tracker
 
-Date: 2026-11-23  
-Base: `main` at `2430b0365ab71c60b0926b27854d17a9090e1fba`  
-Working branch: `work/mls-production-acceptance-2026-11-23`
+**Date:** 2026-11-23  
+**Main baseline:** `2430b0365ab71c60b0926b27854d17a9090e1fba`  
+**Working branch:** `work/mls-production-acceptance-2026-11-23`  
+**Draft PR:** #132  
+**Detailed audit:** [Post-PR #131 Beta 1.0 acceptance audit](2026-11-23-post-pr131-beta1-acceptance-audit.md)
 
 ## Executive decision
 
-Keep `INONE_MLS_NATIVE_ENABLED=false` by default. Engine B integration and passing CI are necessary but insufficient for production acceptance. No release-gate change, production enablement, main merge, or claim of physical acceptance is authorized by this work.
-
-This execution lane covers the remaining implementation and evidence gaps without replacing already merged Engine B, Firebase client registration, G2 encrypted attachment transport, or current app lifecycle.
+Keep `INONE_MLS_NATIVE_ENABLED=false` by default. The source implementation is extensive, but P0 Welcome crash consistency, exact-SHA validation, physical two-device Android/iOS acceptance and production operations remain open. **NOT READY** for Beta 1.0 release acceptance.
 
 ## Verified baseline
 
-- `mobile/rust/Cargo.toml` links the canonical Engine B client at `inone-development-archive-0.6.0/engine/mobile-mls/mls-client`.
-- Flutter's production adapter exposes stable message/attachment IDs, durable inbox/outbox, pending incoming records, ACK, local room restoration, and device operations.
-- Engine B uses a shared SQLCipher SQLite connection for the OpenMLS provider and client metadata/journal. Migrations run before the shared connection is opened.
-- A transaction-scoped adapter exists (`TransactionConnection`) and debug-only process-kill failpoints exist.
-- `INONE_MLS_NATIVE_ENABLED` is explicitly `false` by default in the mobile app.
-- Firebase Messaging initialization, authenticated FID registration and client receive/tap lifecycle exist. The FCM/APNs sender and end-to-end delivery are not accepted.
-- PR #131 is represented in the base commit. No claim is made here that physical two-device testing has happened.
+- PR #131 is merged into main at the baseline SHA above.
+- PR #131 head checks: 19/19 PASS.
+- Main push runs on the merge SHA: seven completed PASS; OpenMLS FRB iOS native-assets compile is IN_PROGRESS; Native MLS iOS Keychain target job was cancelled in attempt 1 and targeted rerun is QUEUED in attempt 2.
+- Production mobile Rust dependency points to canonical Engine B at `inone-development-archive-0.6.0/engine/mobile-mls/mls-client`. Engine A is not production.
+- OpenMLS provider and client journal share one SQLCipher connection; inbound application and inbound Commit processing use a transaction-aware provider. Child-process SQLCipher restart tests for these paths and inbox journal boundaries exist on main.
+- SQLite default journal mode is used by canonical Engine B. WAL is not enabled and WAL-specific crash recovery is not claimed.
+- `INONE_MLS_NATIVE_ENABLED` is explicitly false by default.
+- Production FCM sender and encrypted PostgreSQL `push_deliveries` outbox already exist and are wired by `engine/src/main.js`. Live provider/device delivery remains unaccepted.
+- Beta recovery custom scheme `inone://recovery/confirm` is configured by generated Android/iOS build scripts. Production App Links/Universal Links are not configured without a real owner-supplied domain.
+- No physical two-device Android/iOS acceptance has been performed.
 
-## Workstreams and acceptance gates
+## A. P0 — MLS crash consistency, Issue #1
 
-### A. MLS transactionality and crash consistency — P0, Issue #1
+### Main evidence
 
-1. Map every durable mutation for inbound application messages, inbound Commit, outbound Commit, Welcome materialization, inbox ACK and outbox ACK.
-2. Prove that OpenMLS writes and the corresponding application journal/cursor updates use the same SQLite transaction and connection. A transaction around only metadata is not sufficient.
-3. Add deterministic failpoints immediately before and after each durable write/commit boundary, including WAL recovery and child-process termination.
-4. On restart, assert exactly one valid outcome: old epoch + retryable pending operation, or new epoch + committed journal/receipt. Never a mixed state.
-5. Cover outbound Commit accepted by server but response lost; reconcile by stable operation identity/fingerprint without regenerating or replaying a different Commit.
-6. Cover Welcome received/materialized but local ACK response lost; replay must be idempotent and must not create duplicate groups or lose the Welcome.
-7. Cover incoming app event persisted before ACK and crash after ACK; no loss and no duplicate visible delivery.
-8. Run against real SQLCipher SQLite, not only memory stores or mocks.
+- Inbound application event: shared SQLCipher transaction for OpenMLS state + inbox + processed marker; child-process restart tests exist.
+- Inbound Commit: transaction-backed OpenMLS merge + client journal; child-process restart tests exist.
+- Durable inbox: persists before application ACK; restart/ACK idempotency tests exist.
+- Actual SQLCipher files are used in child-process tests, not only memory stores.
 
-Required outputs: transaction map, ADR/update if the current design has a gap, failpoint tests, restart evidence, WAL recovery evidence, and independent review. Issue #1 stays open until all criteria pass.
+### Gap found and branch implementation
 
-### B. Mobile two-device acceptance — P0
+Welcome group materialization, `client_rooms` and Welcome receipt were not in one transaction on main. PR #132 changes the Welcome path to use a transaction-backed OpenMLS provider and commit group state, room index and receipt together. ACK is sent only after COMMIT; pending ACK retry remains available.
 
-Use two physical devices with distinct device identities and fresh installs. Execute and retain a timestamped test record for:
+Added five failpoints and a child-process SQLCipher restart test for:
+1. after OpenMLS group materialization;
+2. after room-index write;
+3. after Welcome receipt write;
+4. before transaction COMMIT;
+5. after transaction COMMIT.
 
-- Device A sends text to B; B receives, decrypts, durably stores and displays it.
-- Device B replies; A receives and displays it.
-- Send a binary attachment in each direction; verify ciphertext-only upload, authorized download, decryption and plaintext integrity.
-- Kill/restart each app at queued, uploaded, sent, received, persisted and ACK-pending boundaries; retry with the same stable operation ID/ciphertext.
-- Revoke one device; prove revoked credentials cannot sync, send, download protected attachments, or receive further push. Confirm remaining device/group state remains usable.
-- Reinstall/recovery cases must distinguish a recoverable local session from a new device requiring explicit approval. No silent key regeneration or plaintext fallback.
+**Not yet compiled or executed.** Outbound Commit accepted/response-lost reconciliation, Flutter/native ACK lifecycle and WAL-specific behaviour remain proof gaps. Issue #1 remains OPEN.
 
-Emulator CI is supporting evidence only and cannot satisfy this gate.
+## B. P1 — regressions added on this branch
 
-### C. Push end-to-end
+- Issue #5: invalid UTF-8 followed by a valid message in the same room; asserts Unreadable record, later valid delivery, unchanged epoch and no RecoveryRequired.
+- Issue #9: local TCP proxy injects HTTP 401/403/404 for the room-events sync request; asserts sync returns the access/not-found error without RecoveryRequired, then restores access and verifies delivery in the same room.
+- Issue #114: canonical Engine B dependency and current Rust FFI/Dart adapter are present; physical platform/runtime proof remains.
+- Issue #6: durable SQLCipher inbox and ACK/replay tests exist; Flutter/native physical ACK lifecycle remains.
 
-1. Preserve the existing Firebase FID registration lifecycle and server-side device association/revocation semantics.
-2. Implement a production sender using the documented FID-capable Firebase direct-send path; do not assume legacy APNs/FCM registration tokens are deliverable as FIDs.
-3. Use the durable server push outbox, bounded retries/backoff, provider response classification, invalid-FID cleanup, cancellation on logout/revocation, and idempotent delivery state.
-4. Payloads contain only opaque routing/event hints; never plaintext message content, MLS keys, access tokens or sensitive previews.
-5. Test Android FCM and iOS FCM→APNs on physical devices: foreground, background, terminated, permission denied, token/FID rotation, logout, revocation and provider failure.
-6. Verify that push is a wake-up hint only; the app fetches authenticated ciphertext and relies on MLS for content.
+These new P1 regressions have not yet been compiled or executed. Issues #114, #6, #5 and #9 remain OPEN.
 
-Do not add service-account JSON, APNs private keys or provider credentials to the repository. Secrets must be provisioned through the deployment secret manager by the owner/operator.
+## C. Exact-SHA validation
 
-### D. Backup and recovery
+Code-validation SHA on PR #132: `87930a5997b9ceb7aea44409b1e0d07020d3c82f`. Nine PR workflows, including the exact-SHA acceptance gate, were queued at 16:23Z. Subsequent commits on this branch update only documentation and do not change Rust/Flutter source. No completed test result for the new Welcome/P1 regressions is available yet.
 
-- Specify backup scope and exclusions: SQLCipher database, platform-protected key material, account/device binding, attachment cache and server-side state.
-- Verify whether the platform backup can restore the database without its protected key; fail closed if the key is absent or device-bound and unavailable.
-- Test backup restore on the same device, fresh install, another device, corrupted/truncated database, wrong key, stale schema and revoked device.
-- Do not copy raw platform key material into ordinary app backup or cloud files.
-- Define user-visible recovery/re-enrolment behavior and prove no silent database-key regeneration.
+Do not treat a queued workflow as PASS. If any job fails, download its logs, identify the precise cause, fix on this branch (still separate from main), and rerun applicable exact-SHA checks.
 
-### E. Production links and operations
+## D. Physical two-device acceptance
 
-- Keep the existing beta custom scheme for development/test.
-- Add production Universal Links (iOS) and Android App Links only after the owner supplies the production domain and controls DNS/hosting.
-- Generate and serve exact `apple-app-site-association` and `assetlinks.json` files over HTTPS; bind the real bundle ID, team ID, package name and signing-certificate SHA-256.
-- Verify association files from the public internet and exercise install/open/deferred-open behavior on physical devices.
-- Add operational monitoring for push queue age/failure, invalid registrations, MLS sync/commit failures, recovery-required rooms, outbox/inbox backlog, attachment failures and crash/restart loops. Redact identifiers and secrets.
-- Define alert thresholds, retention, runbooks, ownership and rollback procedure before production acceptance.
+Not run. Use the detailed matrix in the post-PR131 audit report. Required: Android and iOS devices with distinct identities; Welcome; bidirectional text; offline outbox/retry/dedup; encrypted attachments; forced process death at send/receive/ACK boundaries; device revocation and participant removal; session restore; logout/key purge; 401/403/404; unreadable event.
 
-## Dependency and execution order
+CI Android emulator Keystore smoke and unsigned iOS simulator/device-target builds are supporting evidence only.
 
-1. Complete source audit and transaction map for Issue #1; implement missing transaction boundaries and crash tests.
-2. Complete outbound operation journal/reconciliation and Welcome/ACK idempotency.
-3. Reconcile any mobile bridge gaps against canonical Engine B and add automated integration regressions.
-4. Implement push sender and provider delivery state using the existing registration/outbox contracts.
-5. Complete backup/recovery implementation and test matrix.
-6. Obtain production domain and signing/provider configuration; implement association files and production link verification.
-7. Run exact-head CI and security review.
-8. Conduct physical two-device acceptance and production operational rehearsal.
-9. Submit an acceptance dossier for owner review. Only after explicit owner acceptance may the release gate be changed.
+## E. Push, recovery and operations
 
-## Evidence rules
+### Push
 
-- Every result is tied to an exact commit SHA, device/OS/build, test case and timestamp.
-- Distinguish PASS, FAIL, NOT RUN and BLOCKED. Missing evidence is not PASS.
-- CI/emulator evidence is not physical-device evidence.
-- No credentials or secret values in logs, test artifacts or commits.
-- Do not weaken tests, remove failpoints, or redefine acceptance criteria to make a gate green.
-- No changes to `main`, branch protection, production secrets, Firebase project settings, Apple Developer settings or DNS without the relevant owner/operator authorization.
+The production sender exists. Do not implement a duplicate sender. Remaining: configure Firebase project and independent push encryption key in a secret manager; run live provider smoke; verify real Android FCM and iOS FCM→APNs foreground/background/terminated receive, tap, token refresh, logout and revocation. No plaintext in payload.
 
-## External dependencies / owner inputs
+### Recovery
 
-The following cannot be completed solely by source changes in this repository:
+Test generated custom-scheme intent/URL registration on physical devices, confirmation, repeat-open, expired/reused token and revoked-device recovery. Production Universal/App Links require the real domain, package/signing fingerprint and iOS app/team identifiers; do not invent them.
 
-- Two physical iOS/Android devices and a coordinated test window.
-- Production domain and DNS/hosting ownership for association files.
-- Apple Developer App ID/team/signing configuration and APNs key provisioned to Firebase.
-- Firebase project/service identity with permission to send FID-addressed messages.
-- A production-like backend environment with push outbox and observability access.
-- Backup-provider/device environment for restore testing.
+### Infrastructure
+
+Backup/restore scripts and tests exist, but DB and FILES_DIR archives are separate, not atomic. External encrypted backup, WAL/PITR, production restore rehearsal, alerting/monitoring, HTTPS/proxy, SMTP provider/domain SPF/DKIM/DMARC, production secrets and runbook remain open.
+
+## F. Rules
+
+- No changes to main and no merge of PR #132 without owner approval.
+- No issue or PR closures without owner approval and evidence.
+- No Engine A production dependency, plaintext fallback or weakened SQLCipher/Keychain/Keystore controls.
+- No new backend routes without an approved contract.
+- No production enablement of native MLS without separate owner permission.
+- WBS v1.1 remains unchanged.
 
 ## Current status
 
-- Branch created from the exact `main` base above.
-- Source audit started; this report records the verified baseline and gates.
-- No source implementation, test execution, physical-device test, push delivery, backup restore, domain association or production deployment is claimed by this report.
-- Release gate remains OFF.
+- Main SHA: `2430b0365ab71c60b0926b27854d17a9090e1fba`.
+- PR #132 remains draft; no merge.
+- P0 Issue #1 and P1 Issues #114/#6/#5/#9 remain open.
+- Physical acceptance: NOT RUN.
+- Implementation / verification / release readiness estimates: 90% / 73% / 58%.
+- Release recommendation: **NOT READY**.
