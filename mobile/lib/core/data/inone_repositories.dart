@@ -79,7 +79,20 @@ class InOneRepositories {
     );
   }
   Future<void> markRoomRead(String roomId, String upToEventId) async {
-    if (!RegExp(r'^\$[0-9]+
+    final prefix = String.fromCharCode(36);
+    final sequence = upToEventId.startsWith(prefix) && upToEventId.length > 1
+        ? int.tryParse(upToEventId.substring(1))
+        : null;
+    if (sequence == null || sequence < 0) {
+      throw ArgumentError.value(upToEventId, 'upToEventId', 'Expected a server event ID');
+    }
+    await session.request(
+      'POST',
+      '/rooms/${Uri.encodeComponent(roomId)}/read',
+      body: {'upTo': upToEventId},
+    );
+  }
+
   Future<Map<String, dynamic>> loginApprovals() =>
       session.request('GET', '/approvals');
   Future<Map<String, dynamic>> organizationRequests() =>
