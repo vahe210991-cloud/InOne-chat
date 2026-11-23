@@ -61,6 +61,23 @@ class InOneRepositories {
     }
     return status as String;
   }
+  
+  Future<InOneRoomDetails> roomDetails(String roomId) async =>
+      InOneRoomDetails.fromJson(await session.request(
+        'GET', '/rooms/${Uri.encodeComponent(roomId)}/members',
+      ));
+
+  Future<void> updateRoomName(String roomId, String name) async {
+    final normalized = name.trim();
+    if (normalized.isEmpty || normalized.length > 80) {
+      throw ArgumentError.value(name, 'name', 'Room name must contain 1 to 80 characters');
+    }
+    await session.request(
+      'POST',
+      '/rooms/${Uri.encodeComponent(roomId)}/settings',
+      body: {'name': normalized},
+    );
+  }
   Future<Map<String, dynamic>> loginApprovals() =>
       session.request('GET', '/approvals');
   Future<Map<String, dynamic>> organizationRequests() =>
