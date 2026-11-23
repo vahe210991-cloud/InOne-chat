@@ -649,6 +649,11 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    const Text(
+                      'Вступление фиксирует членство на сервере. Зашифрованная история откроется только после получения устройством MLS Welcome.',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                    const SizedBox(height: 8),
                     TextField(
                       controller: controller,
                       autofocus: true,
