@@ -183,7 +183,8 @@ fn start_status_proxy(upstream: &str) -> StatusProxy {
                 // Force the upstream to close this HTTP/1.1 connection after the
                 // response. Otherwise ureq may reuse the already-tunneled socket,
                 // bypassing the status injector on subsequent sync requests.
-                let Some(header_end) = request.windows(4).position(|window| window == b"\r\n\r\n") else {
+                let Some(header_end) = request.windows(4).position(|window| window == b"\r\n\r\n")
+                else {
                     let _ = client.shutdown(Shutdown::Both);
                     return;
                 };
