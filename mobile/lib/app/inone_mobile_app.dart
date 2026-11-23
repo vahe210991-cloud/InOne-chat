@@ -491,8 +491,12 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       _systemStatus = null;
       _registrationEmail = '';
       _pendingPushRoutes.clear();
-      _pushRoomId = null;
-      _pushThreadItems = const [];
+      _activeMlsRoomId = null;
+      _activeMlsRoomName = '';
+      _activeMlsThread = const [];
+      _mlsChats = const [];
+      _messagesLoading = false;
+      _messagesError = null;
       _screen = 'login';
     });
   }
