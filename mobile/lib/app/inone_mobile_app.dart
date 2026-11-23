@@ -6,6 +6,7 @@ import 'package:file_picker/file_picker.dart';
 
 import 'package:flutter/material.dart';
 
+import '../core/data/inone_chat_preview_mapper.dart';
 import '../core/data/inone_profile.dart';
 import '../core/data/inone_room.dart';
 import '../core/data/inone_push_repository.dart';
@@ -653,10 +654,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         if (pendingOutgoing.isNotEmpty) {
           lastMessage = pendingOutgoing.last.text ?? '📎 Вложение в очереди';
         }
-        final normalizedKind = row.kind.toLowerCase();
-        final kind = const {'person', 'direct', 'dm'}.contains(normalizedKind)
-            ? InOneChatKind.person
-            : InOneChatKind.group;
+        final kind = mapInOneRoomKind(row.kind);
         chats.add(InOneChatPreview(
           id: roomId,
           name: name,
