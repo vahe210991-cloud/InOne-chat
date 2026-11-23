@@ -60,8 +60,10 @@ function grant(owner, userId, capabilities) {
 }
 
 const b64 = (value) => Buffer.from(value, 'utf8').toString('base64');
+const pkg = (name) => Buffer.from(`KEYPACKAGE-${name}-${'x'.repeat(40)}`).toString('base64');
 
-async function approveJoinRequestViaMls(owner, targetUserId, claimId) {
+async function approveJoinRequestViaMls(owner, requester, targetUserId, claimId) {
+  await requester.raw('POST', '/mls/key-packages', { packages: [pkg(`${targetUserId}-${claimId}`)] });
   const claim = await owner.raw('POST', `/mls/key-packages/${enc(targetUserId)}/claims`, { claimId, roomId: ROOM });
   assert.ok(claim.packages.length > 0, 'requester has uploaded a KeyPackage');
   const welcomes = claim.packages.map((item) => ({
@@ -96,7 +98,6 @@ test('публичная группа находится по названию; 
   const { base, stop } = await start();
   try {
     const c = await clubWith(base);
-    await c.dave.publishKeys();
     await makePublic(c.alice, 'Соседи квартала');
     const found = (await search(c.dave, 'сосед')).rooms;
     assert.equal(found.length, 1);
@@ -120,7 +121,7 @@ test('вступление по умолчанию по заявке: заявк
     assert.deepEqual((await requestsOf(c.alice)).requests.map((r) => r.userId), [DAVE]);
     await assert.rejects(requestsOf(c.bob), (e) => e.status === 403);
     await assert.rejects(decide(c.alice, DAVE, 'approve'), (error) => error.status === 409);
-    assert.equal((await approveJoinRequestViaMls(c.alice, DAVE, 'join-approval-public-dave-0003')).epoch, 1);
+    assert.equal((await approveJoinRequestViaMls(c.alice, c.dave, DAVE, 'join-approval-public-dave-0003')).epoch, 1);
     assert.ok((await membersOf(c.alice)).members.includes(DAVE));
     assert.equal((await post(c.eve, '/join', {})).status, 'requested');
     assert.equal((await decide(c.alice, EVE, 'reject')).status, 'rejected');
@@ -156,7 +157,7 @@ test('одобрить заявку может только тот, у кого 
     await post(c.dave, '/join', {});
     await assert.rejects(decide(c.bob, DAVE, 'approve'), (e) => e.status === 403);
     await grant(c.alice, BOB, ['send_messages', 'invite_members']);
-    assert.equal((await approveJoinRequestViaMls(c.bob, DAVE, 'join-approval-bob-dave-0001')).epoch, 1);
+    assert.equal((await approveJoinRequestViaMls(c.bob, c.dave, DAVE, 'join-approval-bob-dave-0001')).epoch, 1);
   } finally {
     await stop();
   }
