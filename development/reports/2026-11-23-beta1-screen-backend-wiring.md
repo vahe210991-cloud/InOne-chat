@@ -68,8 +68,8 @@ The five-screen scope is now explicit:
 
 | Screen | Existing live wiring | Current source gaps to close |
 |---|---|---|
-| Messages / room directory | Authenticated `GET /rooms/mine`; canonical Engine B history/outbox remains gated | Public-room search and join flow; server-backed unread/read state where contract permits; loading/empty/error/retry and role/capability-aware actions |
-| Chat thread | Engine B MLS text send, durable outbox, encrypted attachment send/download | Room metadata/member/settings actions; message read marker; supported moderation actions only where MLS/event contract allows; no plaintext editing/send fallback |
+| Messages / room directory | Authenticated `GET /rooms/mine`; `GET /rooms/search`; `POST /rooms/:id/join`; group filter; loading/error/retry | Server-backed unread counts are not included in `/rooms/mine`; public-group discovery is wired. An approval join records a request; an open join still requires a valid native MLS Welcome before history can open |
+| Chat thread | Engine B MLS text send, durable outbox, encrypted attachment send/download; `GET /rooms/:id/members`; `POST /rooms/:id/settings`; `POST /rooms/:id/read`; permission-gated native MLS invite | Metadata/member roster and effective capabilities render; rename and MLS invite are capability-gated; read marker posts only after readable history has been durably loaded. Member removal/role changes and moderation remain pending |
 | Organization profile | `GET /orgs/mine`, `GET /orgs/:id/members` | Member roster now typed and rendered; owner/admin mutations, settings, links and audit views still need explicit permission-aware UI and confirmations |
 | Workspace | Organization switch, member count, room-derived group count, public system config | Notifications, project/task/activity statistics and customization must be mapped to actual Beta 1.0 backend routes; unavailable modules must not show fabricated metrics |
 | User profile | `GET /profile`, persisted `PATCH /profile/locale`, logout | Device inventory/revocation and account security surfaces; profile editing/avatar must remain unavailable until a real backend mutation contract exists |
@@ -84,3 +84,28 @@ The five-screen scope is now explicit:
 ### Acceptance boundary
 
 This is source implementation only. No test, analyzer, build, device run, workflow dispatch or Actions rerun was performed. The roster is not runtime-accepted. The five screens are **not yet fully connected**: the remaining gaps above are tracked as implementation work, not marked complete. Backend contracts that do not exist (for example, a general profile/avatar update or workspace project/task feed in the current Beta 1.0 contract) will not be fabricated on the client.
+
+
+## 2026-11-23 — next implementation pass: public groups and chat thread
+
+### Implemented
+
+- Added strict DTOs for public-room search and authenticated room details, including owner, admins, members, per-member effective capabilities, visibility, join policy and read markers.
+- Added typed repository operations for `GET /rooms/search?q=`, `POST /rooms/:id/join`, `GET /rooms/:id/members`, `POST /rooms/:id/settings` (name only), and `POST /rooms/:id/read`.
+- Messages screen search now opens a public-group discovery dialog. It enforces the server's 2–50 character query range, displays member count and join policy, and handles open joins, approval requests, already-member conflicts and server errors.
+- The group filter control now toggles All / Groups locally. The search label accurately says “Find public groups”; it does not claim to search message plaintext.
+- Chat thread “More” loads server member/capability/settings/read-marker metadata. The dialog shows owner/admin/member roles and each member's latest server read marker.
+- Room rename is displayed only when the current user's server-provided capabilities include `edit_group_name`; mutation uses existing `POST /rooms/:id/settings` and the backend remains authoritative.
+- “Invite member” is displayed only when `invite_members` is granted and native MLS is active; it calls the existing Engine B invite bridge, not a plaintext or non-MLS membership shortcut.
+- Read markers are posted only after `loadMlsRoomHistory` has returned readable messages from the native client after durable persistence. The marker is derived from the server event ID; no marker is sent for unknown IDs.
+- The call action is hidden because no Beta 1.0 call backend contract is connected.
+
+### Important protocol boundary
+
+The backend's public open-join operation adds room membership and emits a room-change signal, but it does not itself establish an MLS epoch or deliver a Welcome to this device. The UI therefore reports that a device MLS Welcome is still required and the thread continues to fail closed until the native Engine B client has a local epoch. Do not weaken this boundary.
+
+### Remaining chat/group gaps
+
+- Server unread counts are not returned by `GET /rooms/mine`; the UI keeps unread filtering disabled rather than inventing counts.
+- The full room settings form (visibility/join policy), member role changes/removal, join-request moderation, invite-link management and message edit/redact controls are not yet wired.
+- Search is for public group names only; message-content search remains unavailable because ciphertext is not searchable by the server.
