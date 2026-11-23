@@ -691,3 +691,10 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Hid unsupported publication actions, avatar/cover editing and Feed/Calls navigation in the active Beta 1.0 screens. Protected-chat creation is shown as a Messages header action only when native Engine B MLS is active.
 - Workspace continues to show server-derived organization member/group counts; project/task metrics remain unknown.
 - No tests, analyzer, builds, device checks or GitHub Actions were run.
+
+
+## 2026-11-23 — organization admin-action log
+
+- Connected owner/admin-only `GET /orgs/:id/admin-log` with a typed action DTO and a read-only UI dialog in organization settings.
+- Displays server actor/action/target/detail/timestamp fields. No client-generated audit entries.
+- No tests/analyzers/builds/Actions run.
