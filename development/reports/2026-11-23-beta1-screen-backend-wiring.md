@@ -107,7 +107,7 @@ The backend's public open-join operation adds room membership and emits a room-c
 ### Remaining chat/group gaps
 
 - Server unread counts are not returned by `GET /rooms/mine`; the UI keeps unread filtering disabled rather than inventing counts.
-- Room member role changes/removal, join-request moderation, invite-link management and message edit/redact controls are not yet wired.
+- Room member role changes/removal, join-request moderation and message edit/redact controls are not yet wired. Invite-link creation/join is deliberately deferred: the current invite join route adds server membership but does not provision an MLS Welcome, so exposing it would create a misleading path to an unreadable encrypted room.
 - Search is for public group names only; message-content search remains unavailable because ciphertext is not searchable by the server.
 
 
