@@ -33,6 +33,52 @@ class InOneRepositories {
     return List<InOneOrganizationMember>.unmodifiable(raw.map((member) =>
         InOneOrganizationMember.fromJson(Map<String, dynamic>.from(member as Map))));
   }
+  Future<void> addOrganizationMember(
+    String orgId, {
+    required String userId,
+    String role = 'member',
+  }) async {
+    if (userId.trim().isEmpty || !const {'owner', 'admin', 'member'}.contains(role)) {
+      throw ArgumentError('A valid user ID and organization role are required');
+    }
+    final response = await session.request(
+      'POST',
+      '/orgs/${Uri.encodeComponent(orgId)}/members',
+      body: {'userId': userId.trim(), 'role': role},
+    );
+    if (response['userId'] != userId.trim() || response['role'] != role) {
+      throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false);
+    }
+  }
+
+  Future<void> updateOrganizationMemberRole(
+    String orgId,
+    String userId,
+    String role,
+  ) async {
+    if (!const {'owner', 'admin', 'member'}.contains(role)) {
+      throw ArgumentError.value(role, 'role');
+    }
+    final response = await session.request(
+      'POST',
+      '/orgs/${Uri.encodeComponent(orgId)}/members/${Uri.encodeComponent(userId)}/role',
+      body: {'role': role},
+    );
+    if (response['userId'] != userId || response['role'] != role) {
+      throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false);
+    }
+  }
+
+  Future<void> removeOrganizationMember(String orgId, String userId) async {
+    final response = await session.request(
+      'DELETE',
+      '/orgs/${Uri.encodeComponent(orgId)}/members/${Uri.encodeComponent(userId)}',
+    );
+    if (response['removed'] != true) {
+      throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false);
+    }
+  }
+
   Future<Map<String, dynamic>> myDevices() =>
       session.request('GET', '/devices/mine');
   /// Returns the validated room-list DTO for the authenticated account.
