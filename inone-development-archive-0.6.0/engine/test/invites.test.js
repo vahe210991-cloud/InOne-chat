@@ -45,8 +45,10 @@ function joinByToken(client, token) {
 }
 
 const b64 = (value) => Buffer.from(value, 'utf8').toString('base64');
+const pkg = (name) => Buffer.from(`KEYPACKAGE-${name}-${'x'.repeat(40)}`).toString('base64');
 
-async function approveJoinRequestViaMls(owner, targetUserId, claimId) {
+async function approveJoinRequestViaMls(owner, requester, targetUserId, claimId) {
+  await requester.raw('POST', '/mls/key-packages', { packages: [pkg(`${targetUserId}-${claimId}`)] });
   const claim = await owner.raw('POST', `/mls/key-packages/${enc(targetUserId)}/claims`, { claimId, roomId: ROOM });
   assert.ok(claim.packages.length > 0, 'requester has uploaded a KeyPackage');
   const welcomes = claim.packages.map((item) => ({
@@ -108,7 +110,6 @@ test('ссылка с заявкой: вступление создаёт зая
   const { base, stop } = await start();
   try {
     const c = await clubWith(base);
-    await c.dave.publishKeys();
     const invite = await post(c.alice, '/invites', { requiresApproval: true });
     assert.equal((await joinByToken(c.dave, tokenOf(invite))).status, 'requested');
     assert.equal((await joinByToken(c.dave, tokenOf(invite))).status, 'requested');
@@ -119,7 +120,7 @@ test('ссылка с заявкой: вступление создаёт зая
       (error) => error.status === 409,
       'legacy approval without MLS Add Commit is blocked',
     );
-    const approval = await approveJoinRequestViaMls(c.alice, DAVE, 'join-approval-invite-dave-0004');
+    const approval = await approveJoinRequestViaMls(c.alice, c.dave, DAVE, 'join-approval-invite-dave-0004');
     assert.equal(approval.epoch, 1);
     assert.ok((await membersOf(c.alice)).members.includes(DAVE));
   } finally {
