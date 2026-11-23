@@ -28,10 +28,11 @@ class InOneOrgRequest {
 
 @immutable
 class InOneDocument {
-  const InOneDocument({required this.id, required this.name, required this.typeLabel});
+  const InOneDocument({required this.id, required this.name, required this.typeLabel, this.mimeType});
   final String id;
   final String name;
   final String typeLabel;
+  final String? mimeType;
 }
 
 @immutable
