@@ -74,18 +74,20 @@ class InOneOrgProfileScreen extends StatelessWidget {
                 );
               },
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-              child: Row(
-                children: [
-                  _Stat(value: profile.members?.toString() ?? '—', label: 'Members'),
-                  if (profile.projects != null)
-                    _Stat(value: profile.projects.toString(), label: 'Projects'),
-                  if (profile.teams != null)
-                    _Stat(value: profile.teams.toString(), label: 'Teams'),
-                ],
+            if (profile.members != null || profile.projects != null || profile.teams != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                child: Row(
+                  children: [
+                    if (profile.members != null)
+                      _Stat(value: profile.members.toString(), label: 'Members'),
+                    if (profile.projects != null)
+                      _Stat(value: profile.projects.toString(), label: 'Projects'),
+                    if (profile.teams != null)
+                      _Stat(value: profile.teams.toString(), label: 'Teams'),
+                  ],
+                ),
               ),
-            ),
             if (profile.about?.isNotEmpty == true)
               Container(
                 margin: const EdgeInsets.fromLTRB(20, 14, 20, 20),
