@@ -2207,6 +2207,7 @@ impl Client {
                             .mls
                             .merge_pending_commit(&self.provider)
                             .map_err(text)?;
+                        crash_at_test_failpoint("after_outbound_membership_commit_local_merge");
                         if group.mls.epoch().as_u64() != accepted_epoch {
                             let reason = format!("merged local epoch {} differs from accepted server epoch {accepted_epoch}", group.mls.epoch().as_u64());
                             integrity_error = Some(reason.clone());
@@ -2228,6 +2229,7 @@ impl Client {
                                 rusqlite::params![room_id, claim_id],
                             ).map_err(text)?;
                         }
+                        crash_at_test_failpoint("after_outbound_membership_commit_journal_settlement");
                         Ok(())
                     })();
                     if let Err(error) = settlement {
@@ -2239,10 +2241,12 @@ impl Client {
                         }
                         return Err(format!("временная ошибка локального хранилища при завершении membership commit: {error}"));
                     }
+                    crash_at_test_failpoint("before_outbound_membership_commit_transaction_commit");
                     if let Err(error) = tx.commit() {
                         self.reload_group(&room_id)?;
                         return Err(format!("временная ошибка локального хранилища при фиксации membership commit: {}", text(error)));
                     }
+                    crash_at_test_failpoint("after_outbound_membership_commit_transaction_commit");
                 }
                 Err(error) if response_error_code(&error).as_deref() == Some("epoch_outdated") => {
                     let tx = self.meta.unchecked_transaction().map_err(text)?;
