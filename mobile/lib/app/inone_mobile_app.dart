@@ -106,7 +106,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     _repositories = InOneRepositories(_session);
     _documentStore = InOneEncryptedDocumentStore();
     _session.addListener(_handleSessionStateChanged);
-    unawaited(_clearDocumentPreviewCache());
+    unawaited(_clearDocumentPreviewCache().catchError((Object _) {}));
     unawaited(_purgeLegacyDocumentCache());
     if (widget.enablePush) {
       _pushLifecycle = InOnePushLifecycle.firebase(
@@ -148,7 +148,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && _documentViewerHandOffActive) {
       _documentViewerHandOffActive = false;
-      unawaited(_clearDocumentPreviewCache());
+      unawaited(_clearDocumentPreviewCache().catchError((Object _) {}));
     }
     if (state != AppLifecycleState.resumed) return;
     final pushLifecycle = _pushLifecycle;
@@ -161,7 +161,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _session.removeListener(_handleSessionStateChanged);
-    unawaited(_clearDocumentPreviewCache());
+    unawaited(_clearDocumentPreviewCache().catchError((Object _) {}));
     _pushLifecycle?.dispose();
     unawaited(_pushReceiveLifecycle?.dispose() ?? Future<void>.value());
     _session.dispose();
