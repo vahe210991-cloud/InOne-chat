@@ -107,7 +107,7 @@ The backend's public open-join operation adds room membership and emits a room-c
 ### Remaining chat/group gaps
 
 - Server unread counts are not returned by `GET /rooms/mine`; the UI keeps unread filtering disabled rather than inventing counts.
-- The full room settings form (visibility/join policy), member role changes/removal, join-request moderation, invite-link management and message edit/redact controls are not yet wired.
+- Room member role changes/removal, join-request moderation, invite-link management and message edit/redact controls are not yet wired.
 - Search is for public group names only; message-content search remains unavailable because ciphertext is not searchable by the server.
 
 
@@ -164,3 +164,10 @@ The backend's public open-join operation adds room membership and emits a room-c
 - Added typed DTO/repository for owner/admin-only `GET /orgs/:id/admin-log`.
 - Organization settings panel now exposes the server admin-action log alongside settings history and organization links.
 - UI displays actor, action, target, detail and timestamp from the server; no local audit records are fabricated.
+
+
+## 2026-11-23 — full room settings controls
+
+- Extended the chat thread details panel to expose visibility (`public/private`) and join policy (`open/approval`) only when the server-provided effective capabilities include `edit_group_settings`.
+- Room name remains separately gated by `edit_group_name`; the UI submits only changed fields through existing `POST /rooms/:id/settings`.
+- Server remains authoritative and clears pending join requests when visibility is changed to private.
