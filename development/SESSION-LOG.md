@@ -738,3 +738,12 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - The audit report was added as a documentation-only commit `2d7754e29d31aa0cedf004ae9fee988d45e2dbb0`; no new workflow runs were returned for that report-only head.
 - Continuity docs now distinguish the code-validation SHA from the later report-only head. No test result for the new Welcome or invalid-UTF-8 regressions is yet available. Do not mark the branch accepted until the exact-SHA gate completes on the final PR head.
 
+
+
+## 2026-11-23 — P1 #9 real sync-path regression
+
+- Added `room_sync_access_and_not_found_errors_never_mark_recovery_required` to canonical Engine B `tests/outbox.rs` on PR #132 branch.
+- The test uses a local TCP proxy to inject HTTP 401, 403 and 404 responses specifically for `GET /rooms/:id/events`, asserts `sync()` returns the access/not-found error without a durable `RecoveryRequired` marker, then restores access and asserts the same room delivers the pending valid message with unchanged epoch.
+- Updated Issue #9 description. Issue remains OPEN until the regression passes on an exact SHA and physical revocation/re-auth is accepted.
+- New code-validation SHA: `87930a5997b9ceb7aea44409b1e0d07020d3c82f`; nine PR workflows (including exact-SHA gate) were queued at 16:23Z. No completed result yet.
+
