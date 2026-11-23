@@ -92,7 +92,8 @@ class _InOneChatThreadScreenState extends State<InOneChatThreadScreen> {
                       ],
                     ),
                   ),
-                  InOneIconAction(icon: InOneIcons.call, semanticLabel: 'Call', onTap: widget.onCall),
+                  if (widget.onCall != null)
+                    InOneIconAction(icon: InOneIcons.call, semanticLabel: 'Call', onTap: widget.onCall),
                   InOneIconAction(icon: InOneIcons.more, semanticLabel: 'More', onTap: widget.onMore),
                 ],
               ),
