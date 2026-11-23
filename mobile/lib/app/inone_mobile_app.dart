@@ -1261,6 +1261,40 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     }
   }
 
+  Future<void> _removeMlsRoomMember(String roomId, String memberId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Удалить участника из группы?'),
+        content: Text(
+          'Все устройства пользователя $memberId будут удалены из MLS-группы. '
+          'После подтверждённого Commit участник потеряет доступ к новым сообщениям.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Удалить'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await _session.removeMlsMember(roomId, memberId);
+      if (!mounted) return;
+      _notice('Участник удалён из защищённой группы. MLS Commit подтверждён.');
+      await _showMlsRoomDetails();
+    } catch (error) {
+      if (mounted) {
+        _notice('Не удалось удалить участника: ${_toFailure(error).message}');
+      }
+    }
+  }
+
   Future<void> _showMlsRoomDetails() async {
     final roomId = _activeMlsRoomId;
     if (roomId == null) return;
@@ -1335,11 +1369,17 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
                                         ? 'Администратор'
                                         : 'Участник'} · ${details.readUpTo[memberId] == null ? 'Нет отметки прочтения' : 'Прочитано до ${details.readUpTo[memberId]}'}',
                               ),
-                              trailing: currentUserId == details.owner && memberId != details.owner
+                              trailing: currentUserId != null &&
+                                      memberId != details.owner &&
+                                      memberId != currentUserId &&
+                                      (currentUserId == details.owner ||
+                                          ((details.capabilities[currentUserId]?.contains('remove_members') ?? false) &&
+                                              !details.admins.contains(memberId)))
                                   ? Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        PopupMenuButton<String>(
+                                        if (currentUserId == details.owner)
+                                          PopupMenuButton<String>(
                                           tooltip: 'Изменить роль',
                                           enabled: !saving,
                                           onSelected: (role) async {
@@ -1369,14 +1409,23 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
                                             ),
                                           ],
                                         ),
+                                        if (currentUserId == details.owner)
+                                          IconButton(
+                                            tooltip: 'Изменить права участника',
+                                            icon: const Icon(Icons.tune),
+                                            onPressed: saving ? null : () async {
+                                              Navigator.of(dialogContext).pop();
+                                              await _editRoomMemberCapabilities(
+                                                roomId, memberId, details.capabilities[memberId] ?? const [],
+                                              );
+                                            },
+                                          ),
                                         IconButton(
-                                          tooltip: 'Изменить права участника',
-                                          icon: const Icon(Icons.tune),
+                                          tooltip: 'Удалить участника из MLS-группы',
+                                          icon: const Icon(Icons.person_remove_alt_1),
                                           onPressed: saving ? null : () async {
                                             Navigator.of(dialogContext).pop();
-                                            await _editRoomMemberCapabilities(
-                                              roomId, memberId, details.capabilities[memberId] ?? const [],
-                                            );
+                                            await _removeMlsRoomMember(roomId, memberId);
                                           },
                                         ),
                                       ],
