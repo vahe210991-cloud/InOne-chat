@@ -14,6 +14,7 @@ class InOneProfileScreen extends StatelessWidget {
     required this.menu,
     required this.onToggleTheme,
     required this.onEditAvatar,
+    this.avatarEditingAvailable = false,
     required this.onTab,
     required this.onAdd,
   });
@@ -21,7 +22,9 @@ class InOneProfileScreen extends StatelessWidget {
   final InOneUserProfile profile;
   final List<InOneProfileMenuItem> menu;
   final VoidCallback onToggleTheme;
-  final VoidCallback onEditAvatar;
+  final VoidCallback? onEditAvatar;
+  /// Keep the edit affordance hidden until a real avatar-update endpoint is wired.
+  final bool avatarEditingAvailable;
   final ValueChanged<InOneTab> onTab;
   final VoidCallback onAdd;
 
@@ -29,6 +32,20 @@ class InOneProfileScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.inone;
     final dark = Theme.of(context).brightness == Brightness.dark;
+    final visibleStats = <Widget>[];
+    void addStat(String label, String value) {
+      if (value.isEmpty || value == '—') return;
+      if (visibleStats.isNotEmpty) visibleStats.add(const SizedBox(width: 10));
+      visibleStats.add(
+        Expanded(
+          child: InOneStatTile(label: label, value: value, valueSize: 16, center: true),
+        ),
+      );
+    }
+
+    addStat('My tasks', profile.myTasks);
+    addStat('Activity', profile.activity);
+    addStat('Projects', profile.projects);
     return InOneShell(
       nav: InOneBottomNav(selected: InOneTab.profile, onSelected: onTab, onAdd: onAdd),
       body: SingleChildScrollView(
@@ -49,21 +66,20 @@ class InOneProfileScreen extends StatelessWidget {
             const SizedBox(height: 18),
             Row(
               children: [
-                GestureDetector(
-                  onTap: onEditAvatar,
-                  child: SizedBox(
-                    width: 64,
-                    height: 64,
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        Positioned.fill(
-                          child: ClipOval(
-                            child: profile.avatar != null
-                                ? Image(image: profile.avatar!, fit: BoxFit.cover)
-                                : InOneStripeBox(circle: true, borderColor: c.line),
-                          ),
+                SizedBox(
+                  width: 64,
+                  height: 64,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Positioned.fill(
+                        child: ClipOval(
+                          child: profile.avatar != null
+                              ? Image(image: profile.avatar!, fit: BoxFit.cover)
+                              : InOneStripeBox(circle: true, borderColor: c.line),
                         ),
+                      ),
+                      if (avatarEditingAvailable && onEditAvatar != null)
                         Positioned(
                           right: -2,
                           bottom: -2,
@@ -78,8 +94,7 @@ class InOneProfileScreen extends StatelessWidget {
                             child: Icon(InOneIcons.plus, size: 14, color: c.onAccent),
                           ),
                         ),
-                      ],
-                    ),
+                    ],
                   ),
                 ),
                 const SizedBox(width: 14),
@@ -105,22 +120,10 @@ class InOneProfileScreen extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 18),
-            Row(
-              children: [
-                Expanded(
-                  child: InOneStatTile(label: 'My tasks', value: profile.myTasks, valueSize: 16, center: true),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: InOneStatTile(label: 'Activity', value: profile.activity, valueSize: 16, center: true),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: InOneStatTile(label: 'Projects', value: profile.projects, valueSize: 16, center: true),
-                ),
-              ],
-            ),
+            if (visibleStats.isNotEmpty) ...[
+              const SizedBox(height: 18),
+              Row(children: visibleStats),
+            ],
             const SizedBox(height: 20),
             for (var i = 0; i < menu.length; i++) _MenuRow(item: menu[i], last: i == menu.length - 1),
           ],
