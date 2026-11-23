@@ -238,6 +238,11 @@ impl MlsSession {
         self.with_client(|client| client.invite(&room_id, &user_id))
     }
 
+    /// Approves a pending room join request through a durable MLS Add Commit + Welcome.
+    pub fn approve_join_request(&self, room_id: String, user_id: String) -> Result<(), String> {
+        self.with_client(|client| client.approve_join_request(&room_id, &user_id))
+    }
+
     /// Cancels an invite only when its server-side KeyPackage claim can be safely released.
     pub fn cancel_invite(&self, room_id: String, user_id: String) -> Result<(), String> {
         self.with_client(|client| client.cancel_invite(&room_id, &user_id))
