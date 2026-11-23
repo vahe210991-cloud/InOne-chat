@@ -230,7 +230,14 @@ jobs:
             cd mobile
             adb devices
             adb wait-for-device
-            adb shell pm grant com.inone.app android.permission.POST_NOTIFICATIONS
+            apk="build/app/outputs/flutter-apk/app-debug.apk"
+            test -f "$apk"
+            aapt="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)"
+            test -x "$aapt"
+            package_name="$("$aapt" dump badging "$apk" | sed -n "s/^package: name='\\([^']*\\)'.*/\\1/p" | head -n 1)"
+            test -n "$package_name"
+            adb install -r "$apk"
+            adb shell pm grant "$package_name" android.permission.POST_NOTIFICATIONS
             flutter test integration_test/mls_secure_store_test.dart -d emulator-5554 || {
               adb logcat -d -t 5000 || true
               exit 1
