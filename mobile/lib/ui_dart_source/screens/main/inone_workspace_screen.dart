@@ -17,6 +17,9 @@ class InOneWorkspaceScreen extends StatelessWidget {
     required this.onNotifications,
     required this.onCustomize,
     required this.onSeeAll,
+    this.notificationsAvailable = false,
+    this.moduleCustomizationAvailable = false,
+    this.activityFeedAvailable = false,
     required this.onTab,
     required this.onAdd,
   });
@@ -25,9 +28,13 @@ class InOneWorkspaceScreen extends StatelessWidget {
   final List<InOneModuleTile> modules;
   final List<InOneActivityItem> activity;
   final VoidCallback onSwitchWorkspace;
-  final VoidCallback onNotifications;
-  final VoidCallback onCustomize;
-  final VoidCallback onSeeAll;
+  final VoidCallback? onNotifications;
+  final VoidCallback? onCustomize;
+  final VoidCallback? onSeeAll;
+  /// Capability flags default to false; callbacks alone do not imply server support.
+  final bool notificationsAvailable;
+  final bool moduleCustomizationAvailable;
+  final bool activityFeedAvailable;
   final ValueChanged<InOneTab> onTab;
   final VoidCallback onAdd;
 
@@ -44,12 +51,22 @@ class InOneWorkspaceScreen extends StatelessWidget {
             const SizedBox(height: 14),
             _hero(context),
             const SizedBox(height: 18),
-            _sectionHeader(context, 'Modules', 'Customize', onCustomize),
+            _sectionHeader(
+              context,
+              'Modules',
+              'Customize',
+              moduleCustomizationAvailable ? onCustomize : null,
+            ),
             const SizedBox(height: 11),
             _modulesGrid(context),
             if (activity.isNotEmpty) ...[
               const SizedBox(height: 20),
-              _sectionHeader(context, 'Recent activity', 'See all', onSeeAll),
+              _sectionHeader(
+                  context,
+                  'Recent activity',
+                  'See all',
+                  activityFeedAvailable ? onSeeAll : null,
+                ),
               const SizedBox(height: 10),
               for (var i = 0; i < activity.length; i++) ...[
                 if (i > 0) const SizedBox(height: 12),
@@ -96,39 +113,41 @@ class InOneWorkspaceScreen extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(width: 10),
-        Semantics(
-          button: true,
-          label: 'Notifications',
-          child: GestureDetector(
-            onTap: onNotifications,
-            child: Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: c.line)),
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Icon(InOneIcons.bell, size: 20, color: c.text),
-                  if (summary.hasUnread)
-                    Positioned(
-                      right: 8,
-                      top: 7,
-                      child: Container(
-                        width: 7,
-                        height: 7,
-                        decoration: BoxDecoration(
-                          color: c.danger,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: c.bg, width: 1.5),
+        if (notificationsAvailable && onNotifications != null) ...[
+          const SizedBox(width: 10),
+          Semantics(
+            button: true,
+            label: 'Notifications',
+            child: GestureDetector(
+              onTap: onNotifications,
+              child: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: c.line)),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Icon(InOneIcons.bell, size: 20, color: c.text),
+                    if (summary.hasUnread)
+                      Positioned(
+                        right: 8,
+                        top: 7,
+                        child: Container(
+                          width: 7,
+                          height: 7,
+                          decoration: BoxDecoration(
+                            color: c.danger,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: c.bg, width: 1.5),
+                          ),
                         ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
-        ),
+        ],
       ],
     );
   }
@@ -152,53 +171,68 @@ class InOneWorkspaceScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Active projects', style: InOneText.style(11.5, FontWeight.w600, c.heroMuted)),
-          const SizedBox(height: 5),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                summary.activeProjects?.toString() ?? '—',
-                style: InOneText.style(34, FontWeight.w700, c.heroFg, height: 1, letterSpacing: -0.68),
-              ),
-              const SizedBox(width: 9),
-              if (summary.projectsCaption.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: c.heroPillBg,
-                      borderRadius: BorderRadius.circular(InOneRadius.pill),
-                    ),
-                    child: Text(
-                      summary.projectsCaption,
-                      style: InOneText.style(11, FontWeight.w700, c.heroPillFg),
+          Text(
+            summary.activeProjects != null ? 'Active projects' : 'Workspace overview',
+            style: InOneText.style(11.5, FontWeight.w600, c.heroMuted),
+          ),
+          if (summary.activeProjects != null) ...[
+            const SizedBox(height: 5),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  summary.activeProjects.toString(),
+                  style: InOneText.style(34, FontWeight.w700, c.heroFg, height: 1, letterSpacing: -0.68),
+                ),
+                const SizedBox(width: 9),
+                if (summary.projectsCaption.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: c.heroPillBg,
+                        borderRadius: BorderRadius.circular(InOneRadius.pill),
+                      ),
+                      child: Text(
+                        summary.projectsCaption,
+                        style: InOneText.style(11, FontWeight.w700, c.heroPillFg),
+                      ),
                     ),
                   ),
-                ),
-            ],
-          ),
+              ],
+            ),
+          ],
           const SizedBox(height: 16),
-          Row(
-            children: [
-              stat(summary.tasksDue?.toString() ?? '—', 'Tasks due'),
-              const SizedBox(width: 14),
-              divider(),
-              const SizedBox(width: 14),
-              stat(summary.teamMembers?.toString() ?? '—', 'Team members'),
-              const SizedBox(width: 14),
-              divider(),
-              const SizedBox(width: 14),
-              stat(summary.activeGroups?.toString() ?? '—', 'Active groups'),
-            ],
-          ),
+          if (summary.tasksDue != null || summary.teamMembers != null || summary.activeGroups != null)
+            Row(
+              children: [
+                if (summary.tasksDue != null) ...[
+                  stat(summary.tasksDue.toString(), 'Tasks due'),
+                  if (summary.teamMembers != null || summary.activeGroups != null) ...[
+                    const SizedBox(width: 14),
+                    divider(),
+                    const SizedBox(width: 14),
+                  ],
+                ],
+                if (summary.teamMembers != null) ...[
+                  stat(summary.teamMembers.toString(), 'Team members'),
+                  if (summary.activeGroups != null) ...[
+                    const SizedBox(width: 14),
+                    divider(),
+                    const SizedBox(width: 14),
+                  ],
+                ],
+                if (summary.activeGroups != null)
+                  stat(summary.activeGroups.toString(), 'Active groups'),
+              ],
+            ),
         ],
       ),
     );
   }
 
-  Widget _sectionHeader(BuildContext context, String title, String action, VoidCallback onAction) {
+  Widget _sectionHeader(BuildContext context, String title, String action, VoidCallback? onAction) {
     final c = context.inone;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.baseline,
@@ -206,10 +240,11 @@ class InOneWorkspaceScreen extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(title, style: InOneText.style(15, FontWeight.w700, c.text)),
-        GestureDetector(
-          onTap: onAction,
-          child: Text(action, style: InOneText.style(12, FontWeight.w600, c.link)),
-        ),
+        if (onAction != null)
+          GestureDetector(
+            onTap: onAction,
+            child: Text(action, style: InOneText.style(12, FontWeight.w600, c.link)),
+          ),
       ],
     );
   }
