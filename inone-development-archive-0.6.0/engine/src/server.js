@@ -2280,16 +2280,8 @@ if (req.method === 'POST' && p === '/login') {
               const checked = parseCommitRequest(body);
               if (checked.error) return send(res, 400, { error: checked.error });
               const { clientOperationId, joinRequestUserId } = checked.value;
-              if (joinRequestUserId !== null) {
-                if (checked.value.changes.adds.length !== 1 || checked.value.changes.adds[0] !== joinRequestUserId) {
-                  return send(res, 400, { error: 'join request approval must add exactly its requester' });
-                }
-                if (!(await storage.hasJoinRequest(roomId, joinRequestUserId))) {
-                  return send(res, 409, { error: 'join request is no longer pending', code: 'join_request_not_pending' });
-                }
-                const approvalOrgId = await storage.roomOrg(roomId);
-                const approvalGate = await orgGate(joinRequestUserId, approvalOrgId);
-                if (approvalGate) return send(res, approvalGate.status, { error: approvalGate.error, code: approvalGate.code });
+              if (joinRequestUserId !== null && (checked.value.changes.adds.length !== 1 || checked.value.changes.adds[0] !== joinRequestUserId)) {
+                return send(res, 400, { error: 'join request approval must add exactly its requester' });
               }
               const requestFingerprint = clientOperationId
                 ? mlsCommitFingerprint(roomId, d.userId, d.deviceId, checked.value)
@@ -2317,6 +2309,14 @@ if (req.method === 'POST' && p === '/login') {
                   }
                   return send(res, 200, { epoch: replay.epoch, replayed: true });
                 }
+              }
+              if (joinRequestUserId !== null) {
+                if (!(await storage.hasJoinRequest(roomId, joinRequestUserId))) {
+                  return send(res, 409, { error: 'join request is no longer pending', code: 'join_request_not_pending' });
+                }
+                const approvalOrgId = await storage.roomOrg(roomId);
+                const approvalGate = await orgGate(joinRequestUserId, approvalOrgId);
+                if (approvalGate) return send(res, approvalGate.status, { error: approvalGate.error, code: approvalGate.code });
               }
               if (!r.members.includes(d.userId)) return send(res, 403, { error: 'not a member' });
               // The epoch check is repeated under the PostgreSQL room lock in mlsApplyCommit.
