@@ -43,6 +43,10 @@ export function parseCommitRequest(input) {
   if (clientOperationId !== null && (typeof clientOperationId !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(clientOperationId))) {
     return { error: 'clientOperationId must be 16-128 URL-safe characters' };
   }
+  const joinRequestUserId = input.joinRequestUserId ?? null;
+  if (joinRequestUserId !== null && (typeof joinRequestUserId !== 'string' || joinRequestUserId.length < 1 || joinRequestUserId.length > 200)) {
+    return { error: 'joinRequestUserId must be a user id' };
+  }
   const keyPackageClaimId = input.keyPackageClaimId ?? null;
   if (keyPackageClaimId !== null && (typeof keyPackageClaimId !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(keyPackageClaimId))) {
     return { error: 'keyPackageClaimId must be 16-128 URL-safe characters' };
@@ -80,7 +84,10 @@ export function parseCommitRequest(input) {
   if (keyPackageClaimId !== null && adds.value.length !== 1) {
     return { error: 'a KeyPackage claim must add exactly one target user' };
   }
-  return { value: { epoch: input.epoch, commit: commit.value, welcomes, changes: { adds: adds.value, removes: removes.value, removeDevices: removeDevices.value }, clientOperationId, keyPackageClaimId } };
+  if (joinRequestUserId !== null && (adds.value.length !== 1 || adds.value[0] !== joinRequestUserId || keyPackageClaimId === null)) {
+    return { error: 'join request approval must add exactly its requester with a KeyPackage claim' };
+  }
+  return { value: { epoch: input.epoch, commit: commit.value, welcomes, changes: { adds: adds.value, removes: removes.value, removeDevices: removeDevices.value }, clientOperationId, keyPackageClaimId, joinRequestUserId } };
 }
 
 // Сообщения группы: шифротекст MLS в поле message, до 64 КБ.
