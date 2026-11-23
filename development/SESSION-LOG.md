@@ -698,3 +698,10 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Connected owner/admin-only `GET /orgs/:id/admin-log` with a typed action DTO and a read-only UI dialog in organization settings.
 - Displays server actor/action/target/detail/timestamp fields. No client-generated audit entries.
 - No tests/analyzers/builds/Actions run.
+
+
+## 2026-11-23 — room visibility and join policy settings
+
+- Chat thread settings now include visibility and join-policy controls when effective capabilities include `edit_group_settings`; room name remains separately gated by `edit_group_name`.
+- The client sends only changed fields through existing `POST /rooms/:id/settings`. Backend remains authoritative, including clearing join requests when a room becomes private.
+- No tests/analyzers/builds/Actions run.
