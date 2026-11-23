@@ -20,7 +20,7 @@ Current work branch: `work/mls-production-acceptance-2026-11-23` (draft PR #132)
 ## Known verified facts at handoff
 
 - PR #131 merged at main SHA `2430b0365ab71c60b0926b27854d17a9090e1fba`.
-- PR #131 head `984d9e2afa6734ac14269fdee6ad787df84b123b`: 19/19 individual check jobs PASS. On main merge SHA `2430b...`, seven of nine push workflows are complete PASS; the OpenMLS FRB iOS native-assets compile is IN_PROGRESS and the Native MLS iOS Keychain target rerun is QUEUED after a cancelled first attempt.
+- PR #131 head `984d9e2afa6734ac14269fdee6ad787df84b123b`: 19/19 individual check jobs PASS. On main merge SHA `2430b...`, eight of nine push workflows are complete PASS, including OpenMLS FRB generation and iOS native-assets compile; the Native MLS iOS Keychain target rerun is QUEUED after a cancelled first attempt.
 - Production mobile Rust dependency is canonical Engine B at `inone-development-archive-0.6.0/engine/mobile-mls/mls-client`.
 - FCM sender and server push worker are implemented; live provider/device delivery is not accepted.
 - Recovery custom scheme is configured in generated Android/iOS projects; production association links are not configured.
