@@ -2229,7 +2229,9 @@ impl Client {
                                 rusqlite::params![room_id, claim_id],
                             ).map_err(text)?;
                         }
-                        crash_at_test_failpoint("after_outbound_membership_commit_journal_settlement");
+                        crash_at_test_failpoint(
+                            "after_outbound_membership_commit_journal_settlement",
+                        );
                         Ok(())
                     })();
                     if let Err(error) = settlement {
