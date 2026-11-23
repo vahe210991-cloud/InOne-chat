@@ -1124,6 +1124,32 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     }
   }
 
+  Future<void> _approveRoomJoinRequest(String roomId, String userId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Одобрить заявку?'),
+        content: Text(
+          'Пользователь $userId будет добавлен в защищённую MLS-группу. '
+          'Каждое его устройство получит Welcome после подтверждения Commit.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('Отмена')),
+          FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('Одобрить')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await _session.approveMlsJoinRequest(roomId, userId);
+      if (!mounted) return;
+      _notice('Заявка одобрена: MLS Commit подтверждён, Welcome поставлен на доставку.');
+      await _showMlsRoomDetails();
+    } catch (error) {
+      if (mounted) _notice('Не удалось одобрить заявку: ${_toFailure(error).message}');
+    }
+  }
+
   Future<void> _showRoomJoinRequests(String roomId) async {
     List<InOneRoomJoinRequest> requests;
     try {
@@ -1151,24 +1177,43 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
                           dense: true,
                           title: Text(request.userId, maxLines: 1, overflow: TextOverflow.ellipsis),
                           subtitle: Text('Заявка: ${DateTime.fromMillisecondsSinceEpoch(request.createdAt).toLocal()}'),
-                          trailing: IconButton(
-                            tooltip: 'Отклонить заявку',
-                            icon: const Icon(Icons.close),
-                            onPressed: () async {
-                              try {
-                                await _repositories.rejectRoomJoinRequest(roomId, request.userId);
-                                if (!dialogContext.mounted) return;
-                                setDialogState(() {
-                                  requests = requests.where((item) => item.userId != request.userId).toList(growable: false);
-                                });
-                              } catch (error) {
-                                if (dialogContext.mounted) {
-                                  ScaffoldMessenger.of(dialogContext).showSnackBar(
-                                    SnackBar(content: Text('Не удалось отклонить заявку: ${_toFailure(error).message}')),
-                                  );
-                                }
-                              }
-                            },
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                tooltip: 'Одобрить через MLS',
+                                icon: const Icon(Icons.check_circle_outline),
+                                onPressed: () async {
+                                  await _approveRoomJoinRequest(roomId, request.userId);
+                                  if (!dialogContext.mounted) return;
+                                  try {
+                                    final refreshed = await _repositories.roomJoinRequests(roomId);
+                                    setDialogState(() => requests = refreshed);
+                                  } catch (_) {
+                                    // Keep the current list visible; the next open reloads server state.
+                                  }
+                                },
+                              ),
+                              IconButton(
+                                tooltip: 'Отклонить заявку',
+                                icon: const Icon(Icons.close),
+                                onPressed: () async {
+                                  try {
+                                    await _repositories.rejectRoomJoinRequest(roomId, request.userId);
+                                    if (!dialogContext.mounted) return;
+                                    setDialogState(() {
+                                      requests = requests.where((item) => item.userId != request.userId).toList(growable: false);
+                                    });
+                                  } catch (error) {
+                                    if (dialogContext.mounted) {
+                                      ScaffoldMessenger.of(dialogContext).showSnackBar(
+                                        SnackBar(content: Text('Не удалось отклонить заявку: ${_toFailure(error).message}')),
+                                      );
+                                    }
+                                  }
+                                },
+                              ),
+                            ],
                           ),
                         ),
                     ],
