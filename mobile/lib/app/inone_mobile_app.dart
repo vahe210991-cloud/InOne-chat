@@ -501,7 +501,9 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         activeProjects: null,
         tasksDue: null,
         teamMembers: _organizationMemberCount,
-        activeGroups: null,
+        activeGroups: _messagesLoading || _messagesError != null
+            ? null
+            : _mlsChats.where((chat) => chat.kind == InOneChatKind.group).length,
         projectsCaption: '',
       );
 
