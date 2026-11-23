@@ -641,3 +641,12 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Source audit found non-wired controls and missing data: public room search/join, thread room/member/settings actions, full organization roster and management, workspace notifications/activity/project/task data, and profile device/security management. Some metrics and profile/avatar mutations have no confirmed Beta 1.0 route and must remain unavailable rather than fabricated.
 - Implemented typed immutable organization member parsing from existing GET /orgs/:id/members; organization profile now renders the authenticated member roster and roles. Roster is cleared on account/organization switch.
 - PR #128 and #130 remain open and unmerged. Work remains on the isolated screen branch; no PR opened. Tests, analyzers, builds and Actions remain intentionally not run.
+
+
+## 2026-11-23 — public groups and chat-thread actions
+
+- Connected typed public group search (`GET /rooms/search`) and join/request (`POST /rooms/:id/join`) to the Messages screen. Search validates 2–50 characters and displays member count/join policy; UI distinguishes joined, requested and already-member states.
+- Connected chat room metadata (`GET /rooms/:id/members`), permission-aware rename (`POST /rooms/:id/settings`), native Engine B member invite (only with `invite_members` capability and an active native MLS session), and room read marker (`POST /rooms/:id/read`) after readable messages have been loaded through the durable SQLCipher history path.
+- Replaced the misleading “Search messages” affordance with public group discovery. The group filter toggles All/Groups; unread filtering remains disabled because `GET /rooms/mine` has no unread counts. The call control is hidden because no Beta 1.0 call contract is connected.
+- Verified source contract semantics: open public join checks organization membership/capacity but does not provision MLS Welcome. UI keeps the room unreadable until a valid Engine B local epoch exists.
+- No tests, analyzer, builds, device checks, workflow dispatches or GitHub Actions were run. PR #128 and #130 remain untouched.
