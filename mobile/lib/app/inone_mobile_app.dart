@@ -2360,7 +2360,6 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           unreadCountsAvailable: false,
           onOpenChat: _openMlsChat,
           onSearch: () => unawaited(_discoverPublicRooms()),
-          onFilter: () => _notice('Дополнительные фильтры пока недоступны.'),
           onTab: _selectTab,
           onAdd: _session.hasNativeMlsSession
               ? () => unawaited(_createMlsRoomAndInvite())
