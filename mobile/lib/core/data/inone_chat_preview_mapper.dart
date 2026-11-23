@@ -1,4 +1,4 @@
-import '../ui_dart_source/models/inone_models.dart';
+import '../../ui_dart_source/models/inone_models.dart';
 import 'inone_room.dart';
 
 /// Maps the backend room category to the canonical native chat presentation.
