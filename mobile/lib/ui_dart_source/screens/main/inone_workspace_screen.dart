@@ -44,12 +44,12 @@ class InOneWorkspaceScreen extends StatelessWidget {
             const SizedBox(height: 14),
             _hero(context),
             const SizedBox(height: 18),
-            if (onCustomize != null) _sectionHeader(context, 'Modules', 'Customize', onCustomize),
+            _sectionHeader(context, 'Modules', onCustomize == null ? null : 'Customize', onCustomize),
             const SizedBox(height: 11),
             _modulesGrid(context),
             if (activity.isNotEmpty) ...[
               const SizedBox(height: 20),
-              if (onSeeAll != null) _sectionHeader(context, 'Recent activity', 'See all', onSeeAll),
+              _sectionHeader(context, 'Recent activity', onSeeAll == null ? null : 'See all', onSeeAll),
               const SizedBox(height: 10),
               for (var i = 0; i < activity.length; i++) ...[
                 if (i > 0) const SizedBox(height: 12),
@@ -199,7 +199,7 @@ class InOneWorkspaceScreen extends StatelessWidget {
     );
   }
 
-  Widget _sectionHeader(BuildContext context, String title, String action, VoidCallback onAction) {
+  Widget _sectionHeader(BuildContext context, String title, String? action, VoidCallback? onAction) {
     final c = context.inone;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.baseline,
@@ -207,10 +207,11 @@ class InOneWorkspaceScreen extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(title, style: InOneText.style(15, FontWeight.w700, c.text)),
-        GestureDetector(
-          onTap: onAction,
-          child: Text(action, style: InOneText.style(12, FontWeight.w600, c.link)),
-        ),
+        if (action != null && onAction != null)
+          GestureDetector(
+            onTap: onAction,
+            child: Text(action, style: InOneText.style(12, FontWeight.w600, c.link)),
+          ),
       ],
     );
   }
