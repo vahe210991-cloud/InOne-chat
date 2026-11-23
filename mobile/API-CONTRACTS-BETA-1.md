@@ -169,3 +169,11 @@ Code-validation head: `3d288777135d0c12145f18407e8768a02ae80a9f`.
 See [Stage 3 API / Backend acceptance report](../development/reports/2026-11-11-stage-3-api-backend-audit.md) and PR [#44](https://github.com/vahe210991-cloud/InOne-chat/pull/44) for exact run references and scope boundaries.
 
 The fixes are independently implemented against the committed repository source. The original untransferred Codespaces working tree was not available; this branch does not claim to contain the original unpublished agent diff.
+
+
+### Room administration — roles and join-request moderation
+
+- Connected owner-only member role changes through `POST /rooms/:id/roles`; only `admin` and `member` are selectable, while owner transfer remains a separate server operation.
+- Connected the capability-gated join-request list through `GET /rooms/:id/requests` and rejection through `POST /rooms/:id/requests/:userId/reject`.
+- Approval is intentionally not exposed: the current server approval route inserts the account into the room and emits a room-change signal but does not require or deliver an MLS Welcome. Enabling it would desynchronize server membership from encrypted group membership.
+- Direct `DELETE /rooms/:id/members/:userId` is intentionally not exposed for the same reason: it removes server membership without requiring an MLS commit. Member removal must be driven by an MLS commit containing the removal and epoch transition.
