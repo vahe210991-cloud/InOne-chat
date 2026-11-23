@@ -33,6 +33,7 @@ export 'screens/settings/st02_system_status_screen.dart';
 export 'screens/settings/st03_banners_states_screen.dart';
 export 'screens/main/inone_org_profile_screen.dart';
 export 'screens/main/inone_workspace_screen.dart';
+export 'screens/main/inone_connected_workspace_screen.dart';
 export 'screens/main/inone_messages_screen.dart';
 export 'screens/main/inone_notifications_screen.dart';
 export 'screens/main/inone_leads_screen.dart';
