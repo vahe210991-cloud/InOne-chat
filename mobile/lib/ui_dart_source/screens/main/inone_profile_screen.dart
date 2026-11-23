@@ -30,7 +30,7 @@ class InOneProfileScreen extends StatelessWidget {
     final c = context.inone;
     final dark = Theme.of(context).brightness == Brightness.dark;
     return InOneShell(
-      nav: InOneBottomNav(selected: InOneTab.profile, onSelected: onTab, onAdd: onAdd),
+      nav: InOneBottomNav(selected: InOneTab.profile, onSelected: onTab, onAdd: onAdd, availableTabs: const {InOneTab.messages, InOneTab.profile}),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 6, 20, 20),
         child: Column(
