@@ -177,3 +177,11 @@ The fixes are independently implemented against the committed repository source.
 - Connected the capability-gated join-request list through `GET /rooms/:id/requests` and rejection through `POST /rooms/:id/requests/:userId/reject`.
 - Approval is intentionally not exposed: the current server approval route inserts the account into the room and emits a room-change signal but does not require or deliver an MLS Welcome. Enabling it would desynchronize server membership from encrypted group membership.
 - Direct `DELETE /rooms/:id/members/:userId` is intentionally not exposed for the same reason: it removes server membership without requiring an MLS commit. Member removal must be driven by an MLS commit containing the removal and epoch transition.
+
+
+### Native MLS account removal
+
+- Added the native OpenMLS client operation `remove_member(roomId, userId)`. It checks server/MLS membership equality, protects the room owner and self-removal, preflights current `remove_members` authorization (including the admin-vs-admin restriction), locates every MLS leaf for the target account, stages one OpenMLS Commit, verifies the staged membership metadata, and persists the exact operation in the existing SQLCipher membership journal before network delivery.
+- The operation is submitted only through the existing `POST /mls/groups/:roomId/commits` path. Success requires server ACK, local Commit merge, and post-sync agreement that the target is absent from both server and MLS membership.
+- Added the Rust session API and Dart bridge contract/adapter entrypoints. Generated Flutter Rust Bridge bindings are produced by the repository's pinned generation workflow and are not hand-edited.
+- No server-only member deletion route, plaintext fallback, or direct local MLS state mutation is used.
