@@ -14,12 +14,14 @@ class InOneWorkspaceController extends ChangeNotifier {
   Object? _error;
   bool _loading = false;
   int _requestGeneration = 0;
+  bool _disposed = false;
 
   InOneWorkspaceScreenData? get data => _data;
   Object? get error => _error;
   bool get isLoading => _loading;
 
   Future<void> load({String? selectedOrganizationId}) async {
+    if (_disposed) return;
     final generation = ++_requestGeneration;
     _loading = true;
     _error = null;
@@ -45,4 +47,11 @@ class InOneWorkspaceController extends ChangeNotifier {
 
   Future<void> selectOrganization(String organizationId) =>
       load(selectedOrganizationId: organizationId);
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _requestGeneration++;
+    super.dispose();
+  }
 }
