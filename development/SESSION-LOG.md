@@ -719,3 +719,14 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Audited old PRs #127/#87/#89/#90/#124/#116/#117/#125/#94/#129/#110/#97. No stale PR or branch was merged or closed. Selected changes from #87/#89/#90 are already represented by PR #131; old Engine A is not to be copied.
 - No local test runner or physical devices were available through the current GitHub connector. No Rust/Flutter/Node/PostgreSQL tests, native builds or physical-device tests were run in this audit branch. WBS v1.1 unchanged; current engineering estimates 90% implementation / 73% verification / 58% release readiness; recommendation NOT READY.
 
+
+
+## 2026-11-23 — exact merge-SHA Actions recheck and P1 UTF-8 regression
+
+- Queried GitHub Actions REST runs for exact main SHA `2430b0365ab71c60b0926b27854d17a9090e1fba` (push event): nine workflows exist. Seven completed PASS: Backend Docker Compose, OpenMLS client, Dev Container Compose, Email/PostgreSQL, recovered P0 source, Flutter iOS and Flutter mobile.
+- OpenMLS Flutter Rust Bridge generation: main validation and Android build/Keystore emulator smoke passed; iOS native-assets compile remains IN_PROGRESS.
+- Native MLS client validation: exact source verification, canonical Engine B regression tests, persistent bridge host tests and OpenMLS attachment/session integration tests passed. The iOS Keychain target build was cancelled on attempt 1; logs for the cancelled job are unavailable. A targeted rerun was accepted and attempt 2 is QUEUED. Do not call this workflow complete yet.
+- The exact-SHA acceptance gate is configured for PR events, not main push; it is N/A for main. Individual main workflows verify their exact source SHA.
+- Added an additional P1 regression on draft PR #132 branch: malformed UTF-8 followed by a valid message in the same room must produce an Unreadable record, preserve room epoch, deliver the later valid message and leave no RecoveryRequired marker. Test not yet compiled/executed.
+- Current audit branch has no workflow runs returned for its latest commit; all new Rust changes remain unvalidated. No changes to main.
+
