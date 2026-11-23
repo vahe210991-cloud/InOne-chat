@@ -196,6 +196,28 @@ void main() {
     }
   });
 
+  test('purge still deletes ciphertext when secure-key deletion fails', () async {
+    final file = await store.save(
+      ownerUserId: '@owner:inone.test',
+      requestId: 'request-123',
+      documentId: 'document-key-failure',
+      filename: 'private.pdf',
+      bytes: utf8.encode('private document'),
+    );
+    final failingStore = InOneEncryptedDocumentStore(
+      rootDirectory: () async => root,
+      readKey: (keyName) async => storedKeys[keyName],
+      writeKey: (keyName, value) async => storedKeys[keyName] = value,
+      deleteKey: (_) async => throw StateError('platform key store unavailable'),
+    );
+
+    await expectLater(
+      failingStore.purgeAccount('@owner:inone.test'),
+      throwsA(isA<StateError>()),
+    );
+    expect(await file.exists(), isFalse);
+  });
+
   test('purge is idempotent when account has no local documents or key', () async {
     await store.purgeAccount('@empty:inone.test');
     await store.purgeAccount('@empty:inone.test');
