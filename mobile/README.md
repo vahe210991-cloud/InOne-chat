@@ -165,3 +165,6 @@ The active implementation branch is `feature/beta1-screen-backend-wiring-2026-11
 Public group membership does not imply that the device has an MLS Welcome. A room remains unreadable until the canonical Engine B client has a valid local epoch. Do not add a plaintext or legacy event fallback.
 
 Source changes are not runtime-accepted: the owner has paused all tests, analyzers, builds and GitHub Actions until PR #128 and PR #130 are fully green. See `development/reports/2026-11-23-beta1-screen-backend-wiring.md` for remaining gaps and exact acceptance boundaries.
+
+
+The active Beta 1.0 host hides workspace notification/activity/customization controls, publication actions, profile/avatar editing and Feed/Calls navigation when no corresponding backend operation is available. It does not substitute mock metrics or local-only mutations for missing server contracts.
