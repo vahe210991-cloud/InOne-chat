@@ -50,3 +50,22 @@ class InOneOrganizationList {
     );
   }
 }
+
+
+/// A member returned by the authenticated organization roster endpoint.
+class InOneOrganizationMember {
+  const InOneOrganizationMember({required this.userId, required this.role});
+
+  final String userId;
+  final String role;
+
+  factory InOneOrganizationMember.fromJson(Map<String, dynamic> json) {
+    final userId = json['userId'];
+    final role = json['role'];
+    if (userId is! String || userId.trim().isEmpty ||
+        role is! String || !const {'owner', 'admin', 'member'}.contains(role)) {
+      throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false);
+    }
+    return InOneOrganizationMember(userId: userId, role: role);
+  }
+}
