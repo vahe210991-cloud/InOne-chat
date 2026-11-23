@@ -1476,6 +1476,170 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     }
   }
 
+  Future<void> _showOrganizationLinks() async {
+    final org = _selectedOrganization;
+    if (org == null || (org.role != 'owner' && org.role != 'admin')) return;
+    List<InOneOrganizationLink> links;
+    try {
+      links = await _repositories.organizationLinks(org.orgId);
+    } catch (error) {
+      _notice('Не удалось загрузить связи организаций: ${_toFailure(error).message}');
+      return;
+    }
+    if (!mounted) return;
+    final targetController = TextEditingController();
+    var busy = false;
+    String? errorMessage;
+    try {
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (context, setDialogState) {
+            Future<void> refresh() async {
+              final updated = await _repositories.organizationLinks(org.orgId);
+              if (dialogContext.mounted) setDialogState(() => links = updated);
+            }
+
+            Future<void> propose() async {
+              final target = targetController.text.trim();
+              if (target.isEmpty || target == org.orgId) {
+                setDialogState(() => errorMessage = 'Укажите ID другой организации.');
+                return;
+              }
+              setDialogState(() {
+                busy = true;
+                errorMessage = null;
+              });
+              try {
+                await _repositories.proposeOrganizationLink(org.orgId, target);
+                targetController.clear();
+                await refresh();
+              } catch (error) {
+                if (dialogContext.mounted) {
+                  setDialogState(() => errorMessage = _toFailure(error).message);
+                }
+              } finally {
+                if (dialogContext.mounted) setDialogState(() => busy = false);
+              }
+            }
+
+            Future<void> act(InOneOrganizationLink link, String action) async {
+              final other = link.otherOrganization(org.orgId);
+              final confirmed = await showDialog<bool>(
+                context: dialogContext,
+                builder: (confirmContext) => AlertDialog(
+                  title: Text(action == 'accept' ? 'Принять связь?' : 'Отозвать связь?'),
+                  content: Text('Организация: $other'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(confirmContext).pop(false),
+                      child: const Text('Отмена'),
+                    ),
+                    FilledButton(
+                      onPressed: () => Navigator.of(confirmContext).pop(true),
+                      child: const Text('Подтвердить'),
+                    ),
+                  ],
+                ),
+              );
+              if (confirmed != true || !dialogContext.mounted) return;
+              setDialogState(() {
+                busy = true;
+                errorMessage = null;
+              });
+              try {
+                await _repositories.actOnOrganizationLink(org.orgId, link.linkId, action);
+                await refresh();
+              } catch (error) {
+                if (dialogContext.mounted) {
+                  setDialogState(() => errorMessage = _toFailure(error).message);
+                }
+              } finally {
+                if (dialogContext.mounted) setDialogState(() => busy = false);
+              }
+            }
+
+            return AlertDialog(
+              title: const Text('Связи организаций'),
+              content: SizedBox(
+                width: 460,
+                height: 360,
+                child: Column(
+                  children: [
+                    TextField(
+                      controller: targetController,
+                      enabled: !busy,
+                      decoration: const InputDecoration(
+                        labelText: 'ID организации для связи',
+                      ),
+                    ),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: busy ? null : () => unawaited(propose()),
+                        child: const Text('Предложить связь'),
+                      ),
+                    ),
+                    if (errorMessage != null)
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(errorMessage!, style: const TextStyle(color: Colors.red)),
+                      ),
+                    Expanded(
+                      child: links.isEmpty
+                          ? const Center(child: Text('Связей организаций пока нет.'))
+                          : ListView(
+                              children: [
+                                for (final link in links)
+                                  ListTile(
+                                    contentPadding: EdgeInsets.zero,
+                                    title: Text(link.otherOrganization(org.orgId)),
+                                    subtitle: Text(
+                                      link.status == 'active'
+                                          ? 'Активна'
+                                          : link.status == 'revoked'
+                                              ? 'Отозвана'
+                                              : link.proposingOrg == org.orgId
+                                                  ? 'Ожидает принятия другой стороной'
+                                                  : 'Ожидает вашего решения',
+                                    ),
+                                    trailing: Wrap(
+                                      spacing: 2,
+                                      children: [
+                                        if (link.status == 'proposed' && link.proposingOrg != org.orgId)
+                                          TextButton(
+                                            onPressed: busy ? null : () => unawaited(act(link, 'accept')),
+                                            child: const Text('Принять'),
+                                          ),
+                                        if (link.status != 'revoked')
+                                          TextButton(
+                                            onPressed: busy ? null : () => unawaited(act(link, 'revoke')),
+                                            child: const Text('Отозвать'),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                              ],
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Закрыть'),
+                ),
+              ],
+            );
+          },
+        ),
+      );
+    } finally {
+      targetController.dispose();
+    }
+  }
+
   Future<void> _showOrganizationSettings() async {
     final org = _selectedOrganization;
     if (org == null) return;
@@ -1655,6 +1819,11 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
                     TextButton(
                       onPressed: saving ? null : () => unawaited(showLog()),
                       child: const Text('Журнал изменений'),
+                    ),
+                  if (canEdit)
+                    TextButton(
+                      onPressed: saving ? null : () => unawaited(_showOrganizationLinks()),
+                      child: const Text('Связи организаций'),
                     ),
                   TextButton(
                     onPressed: () => Navigator.of(dialogContext).pop(),
