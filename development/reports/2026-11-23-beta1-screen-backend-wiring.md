@@ -119,7 +119,7 @@ The backend's public open-join operation adds room membership and emits a room-c
 - Role changes and removals require confirmation. Roster and count refresh from the authenticated server response after each successful mutation.
 - If the owner changes their own role, the active organization role is updated immediately so the UI no longer exposes owner-only controls.
 - Last-owner, owned-room transfer and other business constraints remain enforced by the backend; errors are surfaced rather than bypassed.
-- General organization admin-log views remain unconnected; settings audit history and organization-link management are connected in the later implementation sections below.
+- Settings audit history, organization admin-action log and organization-link management are connected in the later implementation sections below.
 
 
 ## 2026-11-23 — user profile device management
@@ -147,7 +147,7 @@ The backend's public open-join operation adds room membership and emits a room-c
 - The organization settings panel exposes link management only to owners/admins. It displays counterpart organization ID and proposal/active/revoked state.
 - A link proposed by the current organization cannot be accepted by that same side; only the other side receives the Accept action. Either authorized side can revoke a non-revoked link, with confirmation.
 - The server's atomic state transition and cross-organization membership cleanup remain authoritative; conflicts are surfaced and the list can be refreshed.
-- General organization admin-log views remain pending.
+- The organization admin-action log is now connected; remaining organization work is primarily broader approval and ownership workflows.
 
 
 ## 2026-11-23 — unavailable workspace actions and navigation
@@ -157,3 +157,10 @@ The backend's public open-join operation adds room membership and emits a room-c
 - Unsupported publication plus actions are hidden on workspace, organization and profile. Protected-chat creation is a header action on Messages and appears only when native MLS is active.
 - Bottom navigation in the active Beta 1.0 screens exposes only connected Messages and Profile sections; Feed and Calls are hidden until their server flows are in scope.
 - Avatar/cover edit actions remain hidden without a confirmed upload/update contract.
+
+
+## 2026-11-23 — organization admin-action log
+
+- Added typed DTO/repository for owner/admin-only `GET /orgs/:id/admin-log`.
+- Organization settings panel now exposes the server admin-action log alongside settings history and organization links.
+- UI displays actor, action, target, detail and timestamp from the server; no local audit records are fabricated.
