@@ -395,6 +395,11 @@ impl MlsSession {
         self.with_client(|client| client.members_of(&room_id))
     }
 
+    /// Removes an account from an MLS room using a durable OpenMLS membership Commit.
+    pub fn remove_member(&self, room_id: String, user_id: String) -> Result<(), String> {
+        self.with_client(|client| client.remove_member(&room_id, &user_id))
+    }
+
     pub fn revoke_device(&self, device_id: String) -> Result<(), String> {
         self.with_client(|client| client.revoke_device(&device_id))
     }
