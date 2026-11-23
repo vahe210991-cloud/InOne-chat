@@ -6,7 +6,7 @@ Current work branch: `work/mls-production-acceptance-2026-11-23` (draft PR #132)
 
 ## Immediate execution order
 
-1. **Finish exact-SHA CI verification.** Obtain the final four post-merge workflow conclusions for main SHA `2430b...`. The current GitHub Actions connector only returns PR-triggered runs; use GitHub Actions UI/API access with push-run listing if available. Never substitute PR #131 head results for merge-SHA results. For any failure, download logs, fix in a separate branch and rerun.
+1. **Finish exact-SHA CI verification.** The GitHub REST run list now exposes all nine push workflows for main SHA `2430b...`: seven completed PASS, OpenMLS FRB generation has its iOS native-assets compile IN_PROGRESS, and Native MLS validation has four passing jobs plus an iOS Keychain target job whose first attempt was cancelled. A targeted rerun is queued. Recheck these two jobs, inspect logs if the rerun fails, and do not substitute PR #131 head results for merge-SHA results. The exact-SHA acceptance gate is PR-only and N/A for main push.
 2. **Validate the current PR #132 code.** Run Rust formatting/checks and the canonical MLS client suite, especially `process_crash_at_welcome_transaction_boundaries_preserves_atomic_join`. Then run Native MLS, OpenMLS client, FRB generation, Flutter mobile/iOS and exact-SHA acceptance. Current audit branch commits have no confirmed test results yet.
 3. **Complete P0 Issue #1.** Review Welcome transaction implementation and its child-process SQLCipher tests. Add remaining tests for outbound Commit server-accepted/response-lost reconciliation and Flutter/native ACK lifecycle. Document the default SQLite journal mode; do not claim WAL coverage unless WAL is explicitly enabled and tested. Keep issue open until every write boundary is proven.
 4. **Complete P1 regressions.** For #5, assert malformed UTF-8 yields Unreadable, no desync, and a later valid message in the same room. For #9, drive 401/403/404 through real `sync()` and assert no RecoveryRequired. For #6, verify Flutter/native ACK lifecycle on restart. For #114, prove current production FFI stays on canonical Engine B. Do not close any issue on source inspection alone.
@@ -20,7 +20,7 @@ Current work branch: `work/mls-production-acceptance-2026-11-23` (draft PR #132)
 ## Known verified facts at handoff
 
 - PR #131 merged at main SHA `2430b0365ab71c60b0926b27854d17a9090e1fba`.
-- Nine PR-head workflows were retrieved as PASS on PR #131 head `984d9e2afa6734ac14269fdee6ad787df84b123b`; post-merge main had 9 PASS / 4 IN_PROGRESS at the checkpoint, with final four not confirmed.
+- PR #131 head `984d9e2afa6734ac14269fdee6ad787df84b123b`: 19/19 individual check jobs PASS. On main merge SHA `2430b...`, seven of nine push workflows are complete PASS; the OpenMLS FRB iOS native-assets compile is IN_PROGRESS and the Native MLS iOS Keychain target rerun is QUEUED after a cancelled first attempt.
 - Production mobile Rust dependency is canonical Engine B at `inone-development-archive-0.6.0/engine/mobile-mls/mls-client`.
 - FCM sender and server push worker are implemented; live provider/device delivery is not accepted.
 - Recovery custom scheme is configured in generated Android/iOS projects; production association links are not configured.
