@@ -191,21 +191,21 @@ class InOneWorkspaceScreen extends StatelessWidget {
             Row(
               children: [
                 if (summary.tasksDue != null) ...[
-                stat(summary.tasksDue.toString(), 'Tasks due'),
-                if (summary.teamMembers != null || summary.activeGroups != null) ...[
-                  const SizedBox(width: 14),
-                  divider(),
-                  const SizedBox(width: 14),
+                  stat(summary.tasksDue.toString(), 'Tasks due'),
+                  if (summary.teamMembers != null || summary.activeGroups != null) ...[
+                    const SizedBox(width: 14),
+                    divider(),
+                    const SizedBox(width: 14),
+                  ],
                 ],
-              ],
-              if (summary.teamMembers != null) ...[
-                stat(summary.teamMembers.toString(), 'Team members'),
-                if (summary.activeGroups != null) ...[
-                  const SizedBox(width: 14),
-                  divider(),
-                  const SizedBox(width: 14),
+                if (summary.teamMembers != null) ...[
+                  stat(summary.teamMembers.toString(), 'Team members'),
+                  if (summary.activeGroups != null) ...[
+                    const SizedBox(width: 14),
+                    divider(),
+                    const SizedBox(width: 14),
+                  ],
                 ],
-              ],
                 if (summary.activeGroups != null)
                   stat(summary.activeGroups.toString(), 'Active groups'),
               ],
@@ -215,7 +215,7 @@ class InOneWorkspaceScreen extends StatelessWidget {
     );
   }
 
-  Widget _sectionHeader(BuildContext context, String title, String action, VoidCallback onAction) {
+  Widget _sectionHeader(BuildContext context, String title, String action, VoidCallback? onAction) {
     final c = context.inone;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.baseline,
