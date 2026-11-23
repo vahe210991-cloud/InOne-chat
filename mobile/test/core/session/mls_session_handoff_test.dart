@@ -368,6 +368,9 @@ void main() {
     await session.createMlsRoom('room-1');
     await session.ensureMlsKeyPackages(10);
     await session.inviteMlsMember('room-1', '@bob:inone.test');
+    await session.approveMlsJoinRequest('room-1', '@carol:inone.test');
+    expect(bridge.approvedJoinRequestRoomId, 'room-1');
+    expect(bridge.approvedJoinRequestUserId, '@carol:inone.test');
     expect(await session.sendMlsText('room-1', 'hello'), 'event-1');
     expect(await session.enqueueMlsText('room-1', 'queued'), 'local-1');
     expect(
@@ -623,6 +626,8 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
   Map<String, String>? resumeArguments;
   String accessToken = 'access-1';
   String? attachmentClientMessageId;
+  String? approvedJoinRequestRoomId;
+  String? approvedJoinRequestUserId;
   List<MlsPendingOutboxItem> pendingOutboxItems = const [];
   List<MlsIncomingMessage> historyMessages = const [];
   List<MlsIncomingMessage> pendingIncomingMessages = const [];
@@ -697,7 +702,10 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
   Future<void> invite(String roomId, String userId) async {}
 
   @override
-  Future<void> approveJoinRequest(String roomId, String userId) async {}
+  Future<void> approveJoinRequest(String roomId, String userId) async {
+    approvedJoinRequestRoomId = roomId;
+    approvedJoinRequestUserId = userId;
+  }
   @override
   Future<void> cancelInvite(String roomId, String userId) async {}
 
