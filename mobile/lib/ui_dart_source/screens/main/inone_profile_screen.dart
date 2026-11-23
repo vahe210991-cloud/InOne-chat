@@ -21,7 +21,7 @@ class InOneProfileScreen extends StatelessWidget {
   final InOneUserProfile profile;
   final List<InOneProfileMenuItem> menu;
   final VoidCallback onToggleTheme;
-  final VoidCallback onEditAvatar;
+  final VoidCallback? onEditAvatar;
   final ValueChanged<InOneTab> onTab;
   final VoidCallback onAdd;
 
@@ -49,21 +49,20 @@ class InOneProfileScreen extends StatelessWidget {
             const SizedBox(height: 18),
             Row(
               children: [
-                GestureDetector(
-                  onTap: onEditAvatar,
-                  child: SizedBox(
-                    width: 64,
-                    height: 64,
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        Positioned.fill(
-                          child: ClipOval(
-                            child: profile.avatar != null
-                                ? Image(image: profile.avatar!, fit: BoxFit.cover)
-                                : InOneStripeBox(circle: true, borderColor: c.line),
-                          ),
+                SizedBox(
+                  width: 64,
+                  height: 64,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Positioned.fill(
+                        child: ClipOval(
+                          child: profile.avatar != null
+                              ? Image(image: profile.avatar!, fit: BoxFit.cover)
+                              : InOneStripeBox(circle: true, borderColor: c.line),
                         ),
+                      ),
+                      if (onEditAvatar != null)
                         Positioned(
                           right: -2,
                           bottom: -2,
@@ -78,8 +77,7 @@ class InOneProfileScreen extends StatelessWidget {
                             child: Icon(InOneIcons.plus, size: 14, color: c.onAccent),
                           ),
                         ),
-                      ],
-                    ),
+                    ],
                   ),
                 ),
                 const SizedBox(width: 14),
@@ -105,6 +103,36 @@ class InOneProfileScreen extends StatelessWidget {
                 ),
               ],
             ),
+            if (profile.accountEmail != null || profile.backupEmail != null) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(color: c.fill, borderRadius: BorderRadius.circular(14)),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Account details', style: InOneText.style(13, FontWeight.w700, c.text)),
+                    const SizedBox(height: 9),
+                    Text('Email', style: InOneText.style(10.5, FontWeight.w600, c.muted)),
+                    const SizedBox(height: 2),
+                    Text(profile.accountEmail ?? '—', style: InOneText.style(12, FontWeight.w500, c.text)),
+                    const SizedBox(height: 8),
+                    Text('Language', style: InOneText.style(10.5, FontWeight.w600, c.muted)),
+                    const SizedBox(height: 2),
+                    Text(profile.locale.toUpperCase(), style: InOneText.style(12, FontWeight.w500, c.text)),
+                    if (profile.backupEmail != null) ...[
+                      const SizedBox(height: 8),
+                      Text('Backup email', style: InOneText.style(10.5, FontWeight.w600, c.muted)),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${profile.backupEmail} · ${profile.backupEmailVerified ? 'verified' : 'not verified'}',
+                        style: InOneText.style(12, FontWeight.w500, c.text),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 18),
             Row(
               children: [
