@@ -1033,9 +1033,9 @@ fn process_crash_at_outbound_membership_commit_boundaries_replays_exact_operatio
             Some(if committed_locally { 1 } else { 0 }),
             "MLS state must roll back with the journal before local COMMIT"
         );
-        recovered
-            .sync()
-            .expect("restart must replay or recognize the exact durable operation and settle locally");
+        recovered.sync().expect(
+            "restart must replay or recognize the exact durable operation and settle locally",
+        );
         assert_eq!(recovered.local_epoch(&room), Some(1));
         assert_eq!(
             engine.command(&format!("COMMIT_COUNT {room}")),
