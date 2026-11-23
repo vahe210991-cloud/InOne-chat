@@ -156,3 +156,12 @@ The repository-root Firebase client files are validated and copied by `tool/gene
 - InOnePushReceiveLifecycle handles foreground messages, notification taps and terminated launches. It validates the room/event route, waits for an authenticated session, verifies room membership through the server and displays content only after native MLS decryption. If native MLS is not active, it safely returns to Chats without exposing ciphertext or plaintext.
 - Native generation installs the Google Services Gradle plugin, sets Android minSdk to 24 for Firebase Messaging 26.x and adds Android permissions; on iOS it embeds `GoogleService-Info.plist`, adds the APNs entitlement and remote-notification background mode.
 - iOS delivery still requires an Apple Developer App ID with Push Notifications enabled and the APNs authentication key uploaded to Firebase. The repository's push sender is not implemented yet, so this client work registers devices but does not claim end-to-end notification delivery.
+
+
+## Beta 1.0 screen/backend wiring — current isolated branch
+
+The active implementation branch is `feature/beta1-screen-backend-wiring-2026-11-23`. It connects the authenticated room directory, public group discovery/join requests, room metadata, capability-gated room rename, native MLS invitations, and read markers after durable SQLCipher history loading. Organization roster and account locale are also connected.
+
+Public group membership does not imply that the device has an MLS Welcome. A room remains unreadable until the canonical Engine B client has a valid local epoch. Do not add a plaintext or legacy event fallback.
+
+Source changes are not runtime-accepted: the owner has paused all tests, analyzers, builds and GitHub Actions until PR #128 and PR #130 are fully green. See `development/reports/2026-11-23-beta1-screen-backend-wiring.md` for remaining gaps and exact acceptance boundaries.
