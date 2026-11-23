@@ -1037,10 +1037,25 @@ fn build_client(
             target_user_id TEXT NOT NULL,
             state TEXT NOT NULL CHECK (state IN ('claim_pending', 'commit_pending')),
             created_at INTEGER NOT NULL,
+            is_join_request INTEGER NOT NULL DEFAULT 0 CHECK (is_join_request IN (0, 1)),
             UNIQUE (room_id, target_user_id)
           )",
     )
     .map_err(text)?;
+
+    let has_join_request_intent: bool = meta
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('client_invite_intents') WHERE name = 'is_join_request')",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(text)?;
+    if !has_join_request_intent {
+        meta.execute_batch(
+            "ALTER TABLE client_invite_intents ADD COLUMN is_join_request INTEGER NOT NULL DEFAULT 0 CHECK (is_join_request IN (0, 1))",
+        )
+        .map_err(text)?;
+    }
 
     // Upgrade databases created by earlier Engine B builds without replacing any
     // existing inbox/outbox rows or OpenMLS storage.
@@ -1431,6 +1446,39 @@ fn response_error_code(error: &str) -> Option<String> {
         .or_else(|| body.get("error"))
         .and_then(Value::as_str)
         .map(str::to_string)
+}
+
+/// A policy rejection for a pure account-removal Commit is definitive: the server
+/// has not accepted the Commit, so the staged local proposal can be safely discarded.
+/// A join request removed by a moderator is a definitive pre-commit rejection.
+/// Release its still-reserved KeyPackages before clearing the durable local proposal.
+fn is_join_request_not_pending_rejection(payload: &Value, error: &str) -> bool {
+    let target = payload["joinRequestUserId"].as_str();
+    let adds = payload["changes"]["adds"].as_array();
+    target.is_some()
+        && adds.is_some_and(|items| items.len() == 1 && items[0].as_str() == target)
+        && payload["keyPackageClaimId"].as_str().is_some()
+        && response_error_code(error).as_deref() == Some("join_request_not_pending")
+}
+
+fn is_account_removal_policy_rejection(payload: &Value, error: &str) -> bool {
+    let changes = &payload["changes"];
+    let removes_account = changes["removes"]
+        .as_array()
+        .is_some_and(|items| !items.is_empty());
+    let no_adds = changes["adds"].as_array().is_some_and(Vec::is_empty);
+    let no_device_removals = changes["removeDevices"]
+        .as_array()
+        .is_some_and(Vec::is_empty);
+    if !(removes_account && no_adds && no_device_removals) {
+        return false;
+    }
+    let code = response_error_code(error).unwrap_or_default();
+    matches!(
+        code.as_str(),
+        "an admin cannot remove another admin" | "owner cannot be removed"
+    ) || code.starts_with("missing capability: remove_members")
+        || code.starts_with("not a member: ")
 }
 
 impl Client {
@@ -2249,6 +2297,155 @@ impl Client {
                     }
                     stale_cleared += 1;
                 }
+                Err(error) if is_account_removal_policy_rejection(&payload, &error) => {
+                    // The server definitively rejected this account-removal proposal before
+                    // mlsApplyCommit. Clear only the matching verified staged proposal so a
+                    // capability/role race cannot strand the room behind a permanent journal row.
+                    let tx = self.meta.unchecked_transaction().map_err(text)?;
+                    let mut integrity_error: Option<String> = None;
+                    let clearing = (|| -> Result<(), String> {
+                        let group = self
+                            .groups
+                            .get_mut(&room_id)
+                            .ok_or("membership journal room disappeared")?;
+                        let staged = group.mls.pending_commit().ok_or(
+                            "pending StagedCommit missing during rejected account removal",
+                        )?;
+                        let actual = membership_commit_fingerprint(
+                            &self.provider,
+                            &room_id,
+                            &operation_id,
+                            base_epoch,
+                            &payload,
+                            staged,
+                        )?;
+                        if actual != fingerprint {
+                            let reason = format!("pending StagedCommit fingerprint mismatch while clearing rejected account removal {operation_id}");
+                            integrity_error = Some(reason.clone());
+                            return Err(reason);
+                        }
+                        group
+                            .mls
+                            .clear_pending_commit(self.provider.storage())
+                            .map_err(text)?;
+                        tx.execute(
+                            "DELETE FROM client_membership_commits WHERE operation_id = ?1",
+                            [&operation_id],
+                        )
+                        .map_err(text)?;
+                        Ok(())
+                    })();
+                    if let Err(clear_error) = clearing {
+                        let _ = tx.rollback();
+                        self.reload_group(&room_id)?;
+                        if let Some(reason) = integrity_error {
+                            self.record_desync(&room_id, &reason)?;
+                            return Err(format!("RecoveryRequired: {reason}"));
+                        }
+                        return Err(format!("temporary local storage error while clearing rejected account removal: {clear_error}"));
+                    }
+                    if let Err(commit_error) = tx.commit() {
+                        self.reload_group(&room_id)?;
+                        return Err(format!("temporary local storage error while committing rejected account removal cleanup: {}", text(commit_error)));
+                    }
+                    return Err(error);
+                }
+                Err(error) if is_join_request_not_pending_rejection(&payload, &error) => {
+                    let target_user_id = payload["joinRequestUserId"]
+                        .as_str()
+                        .ok_or("join approval payload has no target user")?
+                        .to_string();
+                    let claim_id = payload["keyPackageClaimId"]
+                        .as_str()
+                        .ok_or("join approval payload has no KeyPackage claim ID")?
+                        .to_string();
+                    let staged_fingerprint = {
+                        let group = self
+                            .groups
+                            .get(&room_id)
+                            .ok_or("membership journal room disappeared")?;
+                        let staged = group
+                            .mls
+                            .pending_commit()
+                            .ok_or("pending StagedCommit missing during rejected join approval")?;
+                        membership_commit_fingerprint(
+                            &self.provider,
+                            &room_id,
+                            &operation_id,
+                            base_epoch,
+                            &payload,
+                            staged,
+                        )?
+                    };
+                    if staged_fingerprint != fingerprint {
+                        let reason = format!("pending StagedCommit fingerprint mismatch while clearing rejected join approval {operation_id}");
+                        self.record_desync(&room_id, &reason)?;
+                        return Err(format!("RecoveryRequired: {reason}"));
+                    }
+                    let released = self.call(
+                        "DELETE",
+                        &format!(
+                            "/mls/key-packages/claims/{}",
+                            urlencoding::encode(&claim_id)
+                        ),
+                        None,
+                    )?;
+                    if released["released"].as_bool().is_none() {
+                        return Err("server did not confirm release of KeyPackage claim for rejected join approval".to_string());
+                    }
+                    let tx = self.meta.unchecked_transaction().map_err(text)?;
+                    let clearing = (|| -> Result<(), String> {
+                        let group = self
+                            .groups
+                            .get_mut(&room_id)
+                            .ok_or("membership journal room disappeared")?;
+                        let staged = group.mls.pending_commit().ok_or("pending StagedCommit disappeared during rejected join approval cleanup")?;
+                        let actual = membership_commit_fingerprint(
+                            &self.provider,
+                            &room_id,
+                            &operation_id,
+                            base_epoch,
+                            &payload,
+                            staged,
+                        )?;
+                        if actual != fingerprint {
+                            return Err("pending StagedCommit fingerprint changed during rejected join approval cleanup".to_string());
+                        }
+                        group
+                            .mls
+                            .clear_pending_commit(self.provider.storage())
+                            .map_err(text)?;
+                        tx.execute(
+                            "DELETE FROM client_membership_commits WHERE operation_id = ?1",
+                            [&operation_id],
+                        )
+                        .map_err(text)?;
+                        tx.execute(
+                            "DELETE FROM client_invite_intents WHERE operation_id = ?1",
+                            [&operation_id],
+                        )
+                        .map_err(text)?;
+                        tx.execute(
+                            "DELETE FROM client_key_package_claims WHERE room_id = ?1 AND user_id = ?2 AND claim_id = ?3",
+                            rusqlite::params![room_id, target_user_id, claim_id],
+                        ).map_err(text)?;
+                        Ok(())
+                    })();
+                    if let Err(clear_error) = clearing {
+                        let _ = tx.rollback();
+                        self.reload_group(&room_id)?;
+                        let reason = format!(
+                            "failed to clear rejected join approval {operation_id}: {clear_error}"
+                        );
+                        self.record_desync(&room_id, &reason)?;
+                        return Err(format!("RecoveryRequired: {reason}"));
+                    }
+                    if let Err(commit_error) = tx.commit() {
+                        self.reload_group(&room_id)?;
+                        return Err(format!("local storage error while committing rejected join approval cleanup: {}", text(commit_error)));
+                    }
+                    return Err(error);
+                }
                 Err(error)
                     if response_error_code(&error).as_deref() == Some("operation_id_reused") =>
                 {
@@ -2285,18 +2482,25 @@ impl Client {
         &mut self,
         room_id: &str,
         user_id: &str,
+        is_join_request: bool,
     ) -> Result<(String, String), String> {
-        let existing: Option<(String, String)> = match self.meta.query_row(
-            "SELECT operation_id, state FROM client_invite_intents WHERE room_id = ?1 AND target_user_id = ?2",
+        let existing: Option<(String, String, bool)> = match self.meta.query_row(
+            "SELECT operation_id, state, is_join_request FROM client_invite_intents WHERE room_id = ?1 AND target_user_id = ?2",
             rusqlite::params![room_id, user_id],
-            |row| Ok((row.get(0)?, row.get(1)?)),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get::<_, i64>(2)? != 0)),
         ) {
             Ok(row) => Some(row),
             Err(rusqlite::Error::QueryReturnedNoRows) => None,
             Err(error) => return Err(text(error)),
         };
-        if let Some(intent) = existing {
-            return Ok(intent);
+        if let Some((operation_id, state, existing_is_join_request)) = existing {
+            if existing_is_join_request != is_join_request {
+                return Err(
+                    "an invite intent already exists for this user with a different operation type"
+                        .to_string(),
+                );
+            }
+            return Ok((operation_id, state));
         }
         let operation_id = hex_encode(&self.provider.rand().random_vec(16).map_err(text)?);
         let created_at = std::time::SystemTime::now()
@@ -2304,9 +2508,9 @@ impl Client {
             .unwrap_or_default()
             .as_millis() as i64;
         self.meta.execute(
-            "INSERT INTO client_invite_intents (operation_id, room_id, target_user_id, state, created_at)
-             VALUES (?1, ?2, ?3, 'claim_pending', ?4)",
-            rusqlite::params![operation_id, room_id, user_id, created_at],
+            "INSERT INTO client_invite_intents (operation_id, room_id, target_user_id, state, created_at, is_join_request)
+             VALUES (?1, ?2, ?3, 'claim_pending', ?4, ?5)",
+            rusqlite::params![operation_id, room_id, user_id, created_at, if is_join_request { 1_i64 } else { 0_i64 }],
         ).map_err(text)?;
         Ok((operation_id, "claim_pending".to_string()))
     }
@@ -2316,6 +2520,7 @@ impl Client {
         room_id: &str,
         user_id: &str,
         operation_id: &str,
+        is_join_request: bool,
     ) -> Result<bool, String> {
         let state: String = self
             .meta
@@ -2420,7 +2625,7 @@ impl Client {
                 .map(|device| json!({ "userId": user_id, "deviceId": device, "welcome": welcome_b64 }))
                 .collect();
             let changes = json!({ "adds": [user_id], "removes": [], "removeDevices": [] });
-            let payload = json!({
+            let mut payload = json!({
                 "epoch": base_epoch,
                 "commit": B64.encode(&commit_bytes),
                 "changes": changes,
@@ -2428,6 +2633,9 @@ impl Client {
                 "clientOperationId": operation_id,
                 "keyPackageClaimId": operation_id,
             });
+            if is_join_request {
+                payload["joinRequestUserId"] = json!(user_id);
+            }
             let recipients: Vec<Value> = devices
                 .iter()
                 .map(|device| json!({ "userId": user_id, "deviceId": device }))
@@ -2486,23 +2694,35 @@ impl Client {
     }
 
     fn resume_claim_pending_invites(&mut self) -> Result<(), String> {
-        let intents: Vec<(String, String, String)> = {
+        let intents: Vec<(String, String, String, bool)> = {
             let mut stmt = self
                 .meta
                 .prepare(
-                    "SELECT operation_id, room_id, target_user_id FROM client_invite_intents
+                    "SELECT operation_id, room_id, target_user_id, is_join_request FROM client_invite_intents
                  WHERE state = 'claim_pending' ORDER BY created_at, operation_id",
                 )
                 .map_err(text)?;
             let rows = stmt
-                .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+                .query_map([], |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get::<_, i64>(3)? != 0,
+                    ))
+                })
                 .map_err(text)?;
             rows.collect::<Result<_, _>>().map_err(text)?
         };
-        for (operation_id, room_id, user_id) in intents {
+        for (operation_id, room_id, user_id, is_join_request) in intents {
             let mut completed = false;
             for attempt in 0..3 {
-                if self.resume_claim_pending_invite(&room_id, &user_id, &operation_id)? {
+                if self.resume_claim_pending_invite(
+                    &room_id,
+                    &user_id,
+                    &operation_id,
+                    is_join_request,
+                )? {
                     completed = true;
                     break;
                 }
@@ -2576,13 +2796,18 @@ impl Client {
         Ok(())
     }
 
-    pub fn invite(&mut self, room_id: &str, user_id: &str) -> Result<(), String> {
+    fn invite_with_mode(
+        &mut self,
+        room_id: &str,
+        user_id: &str,
+        is_join_request: bool,
+    ) -> Result<(), String> {
         self.ensure_writable()?;
         if let Some(reason) = self.desync_reason(room_id)? {
             return Err(format!("комната требует восстановления: {reason}"));
         }
         self.flush_pending_membership_commits()?;
-        let (operation_id, state) = self.ensure_invite_intent(room_id, user_id)?;
+        let (operation_id, state) = self.ensure_invite_intent(room_id, user_id, is_join_request)?;
         if state == "commit_pending" {
             self.flush_pending_membership_commits()?;
             let next_state: Option<String> = match self.meta.query_row(
@@ -2607,7 +2832,7 @@ impl Client {
             }
         }
         for attempt in 0..3 {
-            if self.resume_claim_pending_invite(room_id, user_id, &operation_id)? {
+            if self.resume_claim_pending_invite(room_id, user_id, &operation_id, is_join_request)? {
                 return Ok(());
             }
             if attempt == 2 {
@@ -2617,6 +2842,15 @@ impl Client {
             }
         }
         Err("invite не удалось применить".to_string())
+    }
+
+    pub fn invite(&mut self, room_id: &str, user_id: &str) -> Result<(), String> {
+        self.invite_with_mode(room_id, user_id, false)
+    }
+
+    /// Approves a pending room join request through the durable MLS Add Commit + Welcome flow.
+    pub fn approve_join_request(&mut self, room_id: &str, user_id: &str) -> Result<(), String> {
+        self.invite_with_mode(room_id, user_id, true)
     }
 
     /// Отправляет UTF-8 текст в комнату. Устройство должно быть на эпохе сервера.
@@ -4828,6 +5062,199 @@ impl Client {
             .members()
             .map(|m| String::from_utf8_lossy(m.credential.serialized_content()).to_string())
             .collect())
+    }
+
+    /// Removes every MLS leaf belonging to one account through a durable membership Commit.
+    /// The server remains the authority for owner/admin capability checks; this preflight avoids
+    /// staging a Commit for an operation the current actor is already known not to be allowed to do.
+    pub fn remove_member(&mut self, room_id: &str, target_user_id: &str) -> Result<(), String> {
+        self.ensure_writable()?;
+        if target_user_id.trim().is_empty() || target_user_id.len() > 255 {
+            return Err("invalid target user ID".to_string());
+        }
+        if target_user_id == self.user_id {
+            return Err("an account cannot remove itself through this operation".to_string());
+        }
+        if let Some(reason) = self.desync_reason(room_id)? {
+            return Err(format!(
+                "RecoveryRequired: room requires recovery: {reason}"
+            ));
+        }
+
+        // Resolve any earlier durable operation and reconcile before taking a membership snapshot.
+        self.flush_pending_membership_commits()?;
+        self.sync()?;
+
+        for attempt in 0..3 {
+            let snapshot = self.call(
+                "GET",
+                &format!("/rooms/{}/members", urlencoding::encode(room_id)),
+                None,
+            )?;
+            let server_members: BTreeSet<String> = snapshot["members"]
+                .as_array()
+                .ok_or("room member response has no members array")?
+                .iter()
+                .map(|value| {
+                    value
+                        .as_str()
+                        .map(str::to_string)
+                        .ok_or("room member ID is not a string")
+                })
+                .collect::<Result<_, _>>()?;
+            let mls_members = self.mls_users(room_id)?;
+            if server_members != mls_members {
+                self.check_consistency(room_id)?;
+                return Err(
+                    "RecoveryRequired: server and MLS membership differ before removal".to_string(),
+                );
+            }
+            if !server_members.contains(target_user_id) {
+                return Ok(());
+            }
+
+            let owner = snapshot["owner"]
+                .as_str()
+                .ok_or("room member response has no owner")?;
+            if owner == target_user_id {
+                return Err("the room owner cannot be removed".to_string());
+            }
+            let admins: BTreeSet<String> = snapshot["admins"]
+                .as_array()
+                .ok_or("room member response has no admins array")?
+                .iter()
+                .map(|value| {
+                    value
+                        .as_str()
+                        .map(str::to_string)
+                        .ok_or("room admin ID is not a string")
+                })
+                .collect::<Result<_, _>>()?;
+            let capabilities = snapshot["capabilities"][self.user_id.as_str()]
+                .as_array()
+                .ok_or("current user capabilities are missing from room snapshot")?;
+            let can_remove = capabilities
+                .iter()
+                .any(|value| value.as_str() == Some("remove_members"));
+            if self.user_id != owner && (!can_remove || admins.contains(target_user_id)) {
+                return Err(
+                    "server policy does not allow this account to remove the selected member"
+                        .to_string(),
+                );
+            }
+
+            let server_epoch = self.server_epoch(room_id)?;
+            let local_epoch = self
+                .local_epoch(room_id)
+                .ok_or("room is not loaded on this device")?;
+            if local_epoch != server_epoch {
+                self.sync()?;
+                if attempt == 2 {
+                    return Err(
+                        "epoch_outdated: unable to reconcile room before member removal"
+                            .to_string(),
+                    );
+                }
+                continue;
+            }
+
+            let target_prefix = format!("{target_user_id}/");
+            let operation_id = hex_encode(&self.provider.rand().random_vec(16).map_err(text)?);
+            let tx = self.meta.unchecked_transaction().map_err(text)?;
+            let staged = (|| -> Result<(), String> {
+                let group = self.groups.get_mut(room_id).ok_or("room is not loaded")?;
+                let leaves: Vec<LeafNodeIndex> = group
+                    .mls
+                    .members()
+                    .filter(|member| {
+                        std::str::from_utf8(member.credential.serialized_content())
+                            .is_ok_and(|identity| identity.starts_with(&target_prefix))
+                    })
+                    .map(|member| member.index)
+                    .collect();
+                if leaves.is_empty() {
+                    return Err(format!(
+                        "MLS membership has no device leaves for target account {target_user_id}"
+                    ));
+                }
+
+                let (commit, _, _) = group
+                    .mls
+                    .remove_members(&self.provider, &self.signer, &leaves)
+                    .map_err(text)?;
+                let commit_bytes = commit.tls_serialize_detached().map_err(text)?;
+                let changes = json!({
+                    "adds": [],
+                    "removes": [target_user_id],
+                    "removeDevices": [],
+                });
+                let payload = json!({
+                    "epoch": local_epoch,
+                    "commit": B64.encode(&commit_bytes),
+                    "changes": changes,
+                    "welcomes": [],
+                    "clientOperationId": operation_id,
+                });
+                let metadata = json!({
+                    "changes": changes,
+                    "welcomeRecipients": [],
+                });
+                let pending = group
+                    .mls
+                    .pending_commit()
+                    .ok_or("OpenMLS did not retain staged account-removal commit")?;
+                verify_staged_membership_metadata(&group.mls, pending, &metadata)?;
+                let fingerprint = membership_commit_fingerprint(
+                    &self.provider,
+                    room_id,
+                    &operation_id,
+                    local_epoch,
+                    &payload,
+                    pending,
+                )?;
+                let payload_json = serde_json::to_string(&payload).map_err(text)?;
+                let created_at = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as i64;
+                tx.execute(
+                    "INSERT INTO client_membership_commits
+                     (operation_id, room_id, base_epoch, fingerprint, payload, claim_ids, created_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, '[]', ?6)",
+                    rusqlite::params![operation_id, room_id, local_epoch as i64, fingerprint, payload_json, created_at],
+                ).map_err(text)?;
+                Ok(())
+            })();
+
+            if let Err(error) = staged {
+                let _ = tx.rollback();
+                self.reload_group(room_id)?;
+                return Err(error);
+            }
+            if let Err(error) = tx.commit() {
+                self.reload_group(room_id)?;
+                return Err(format!(
+                    "failed to persist account-removal journal: {}",
+                    text(error)
+                ));
+            }
+
+            // A network error leaves the exact staged Commit in SQLCipher for safe retry.
+            let stale_cleared = self.flush_pending_membership_commits()?;
+            self.sync()?;
+            if !self.server_users(room_id)?.contains(target_user_id)
+                && !self.mls_users(room_id)?.contains(target_user_id)
+            {
+                return Ok(());
+            }
+            if stale_cleared > 0 && attempt < 2 {
+                continue;
+            }
+            return Err(
+                "membership Commit was not acknowledged as a completed account removal".to_string(),
+            );
+        }
+        Err("epoch_outdated: account removal exhausted safe rebase attempts".to_string())
     }
 
     /// Отзывает устройство аккаунта на сервере: его сессии перестают работать.

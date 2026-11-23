@@ -14,20 +14,18 @@ class InOneMessagesScreen extends StatefulWidget {
     required this.onOpenChat,
     required this.onSearch,
     required this.onTab,
-    required this.onAdd,
-    this.onFilter,
+    this.onAdd,
     this.unreadCountsAvailable = true,
   });
 
   final List<InOneChatPreview> chats;
   final ValueChanged<InOneChatPreview> onOpenChat;
   final VoidCallback onSearch;
-  final VoidCallback? onFilter;
   final bool unreadCountsAvailable;
   final ValueChanged<InOneTab> onTab;
 
-  /// «+» — добавить публикацию.
-  final VoidCallback onAdd;
+  /// Starts a protected MLS room when the native Engine B session is active.
+  final VoidCallback? onAdd;
 
   @override
   State<InOneMessagesScreen> createState() => _InOneMessagesScreenState();
@@ -57,7 +55,7 @@ class _InOneMessagesScreenState extends State<InOneMessagesScreen> {
     final c = context.inone;
     final chats = _visible;
     return InOneShell(
-      nav: InOneBottomNav(selected: InOneTab.messages, onSelected: widget.onTab, onAdd: widget.onAdd),
+      nav: InOneBottomNav(selected: InOneTab.messages, onSelected: widget.onTab, availableTabs: const {InOneTab.messages, InOneTab.profile}),
       body: Padding(
         padding: const EdgeInsets.fromLTRB(20, 6, 20, 0),
         child: Column(
@@ -71,12 +69,14 @@ class _InOneMessagesScreenState extends State<InOneMessagesScreen> {
                     style: InOneText.style(24, FontWeight.w600, c.text, letterSpacing: -0.48),
                   ),
                 ),
-                InOneIconAction(icon: InOneIcons.filter, semanticLabel: 'Filter', onTap: widget.onFilter),
+                InOneIconAction(icon: InOneIcons.filter, semanticLabel: 'Toggle group filter', onTap: () => setState(() => _filter = _filter == 0 ? 1 : 0)),
                 InOneIconAction(icon: InOneIcons.search, semanticLabel: 'Search', onTap: widget.onSearch),
+                if (widget.onAdd != null)
+                  InOneIconAction(icon: InOneIcons.plus, semanticLabel: 'New protected chat', onTap: widget.onAdd),
               ],
             ),
             const SizedBox(height: 16),
-            InOneSearchBar(hint: 'Search messages', onTap: widget.onSearch),
+            InOneSearchBar(hint: 'Find public groups', onTap: widget.onSearch),
             const SizedBox(height: 14),
             InOneFilterChips(
               labels: widget.unreadCountsAvailable
@@ -92,7 +92,7 @@ class _InOneMessagesScreenState extends State<InOneMessagesScreen> {
                       child: InOneEmptyState(
                         icon: InOneIcons.chat,
                         title: 'No chats yet',
-                        text: 'Your MLS chats will appear here after you receive a room invitation or join a group.',
+                        text: 'Your MLS chats appear after this device receives and processes a valid MLS Welcome.',
                       ),
                     )
                   : ListView.builder(

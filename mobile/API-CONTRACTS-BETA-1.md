@@ -25,7 +25,7 @@ Status:
 
 | Screen | Required API / flow | Backend contract evidence | Current integration status |
 |---|---|---|---|
-| SC-00 | Client-side menu; role-gated entries | Roles are exposed by authenticated domain reads; server enforces every operation | Client only; menu must not infer platform-owner access |
+| SC-00 | Client-side menu; role-gated entries | Roles are exposed by authenticated domain reads; server enforces every operation | Client-only navigation exposes only connected Beta 1.0 sections; Feed/Calls and publication actions remain hidden until their backend flows exist |
 | SC-01 | `POST /login` | Email/password + device metadata; returns access and refresh tokens, expiry metadata | Backend + host; verify complete error mapping |
 | SC-02 | `POST /register/email` | `202 {ok:true}`; same response for existing/non-existing email; rate limited | Backend + host |
 | SC-03 | `POST /register/email/confirm` | `200 {registrationToken}`; invalid/expired/locked code returns 403/410 | Backend + host; response navigation is host-driven |
@@ -39,23 +39,23 @@ Status:
 | SC-11 | `POST /login` + `GET /approvals` + `POST /approvals/:id/claim` | Claim is bound to device approval; token pair is issued only after valid claim | Backend only / host partial; polling, activation and pollSecret lifecycle pending |
 | SC-12 | `POST /logout` | Revokes current device session; device registration remains | Backend + host |
 | RQ-01 | `POST /org-requests` | `200 {requestId,status}`; authenticated applicant | Backend only |
-| RQ-02 | `POST /org-requests/:id/documents` | `kind`, `contentBase64`; max 5 MB; secret/config and pending-request checks | Backend only; native picker, MIME/size checks, progress and retry pending |
-| RQ-03 | `GET /org-requests` | Applicant sees own requests; platform staff sees queue | Backend + host; role-aware presentation pending |
-| RQ-04 | `GET /org-requests/:id`; `GET /org-requests/:id/documents/:docId` | Applicant and authorized platform staff; document view is audited | Backend only / host partial; binary download adapter pending |
-| PS-01 | `GET /org-requests` | Platform queue; role checks server-side | Backend + host; staff-only navigation/presentation pending |
-| PS-02 | `GET /org-requests/:id`; `GET /org-requests/:id/documents/:docId` | Platform view is read-only and journaled | Backend only / host partial |
-| PS-03 | `POST /org-requests/:id/decision` | Platform owner only; admin receives 403 `not_platform_owner`; repeat decision 409 | Backend only; owner-only action and error text pending |
+| RQ-02 | `POST /org-requests/:id/documents` | `kind`, `filename`, `mimeType`, `contentBase64`; max 5 MiB; allowlisted MIME + magic-byte validation; upload is serialized against pending-request decision | Flutter binary upload adapter and per-owner AES-256-GCM local cache; backend stores encrypted object and audited metadata; preview plaintext is temporary and cleaned on startup/resume/logout/revocation |
+| RQ-03 | `GET /org-requests` | Applicant sees own requests; platform staff sees queue | Typed repository and role-gated platform queue connected; applicant scope and platform role are enforced by backend |
+| RQ-04 | `GET /org-requests/:id`; `GET /org-requests/:id/documents/:docId` | Applicant and authorized platform staff; document view is audited; downloads return validated MIME and safe attachment disposition | Detail screen, binary download adapter, owner-scoped encrypted storage and temporary preview connected; 401/revocation cleanup is wired |
+| PS-01 | `GET /org-requests` | Platform queue; role checks server-side | Connected: queue navigation is shown only to platform admin/owner; backend filters applicant and staff scope |
+| PS-02 | `GET /org-requests/:id`; `GET /org-requests/:id/documents/:docId` | Platform view is read-only and journaled | Connected: request detail, applicant metadata, document list and encrypted preview; temporary plaintext is cleaned after viewer handoff |
+| PS-03 | `POST /org-requests/:id/decision` | Platform owner only; admin receives 403 `not_platform_owner`; repeat decision 409 | Connected: owner-only decision UI; server transaction locks request row and rejects stale/repeated decisions; authorization matrix tests added |
 | SR-01 | `GET /users/search?nickname=...` | Rate limited; returns only userId/nickname/verificationLevel; requires shared org/link | Backend only; typed query/result UI pending |
 | ST-01 | `PUT /devices/me/push`; `DELETE /devices/me/push` | Authenticated current-device FID registration/unregister; FCM accepts a 22-character FID plus legacy-token compatibility; feature flag applies | Flutter Firebase Messaging FID registration/refresh, permission gating, APNs readiness, Firebase unregister and logout cleanup are connected; sender delivery remains separate |
 | ST-02 | `GET /config/public`; `GET /config` | Public config unauthenticated; private config authenticated | Backend + host |
 | ST-03 | Shared state and public config | No separate screen-specific mutation | Client/shared host state |
-| CH-01 | `GET /rooms/mine` | Authenticated user's rooms | Native Flutter authenticated repository + canonical `InOneRoomList` validation + room-list binding implemented in PR #130; exact-head CI reruns after final audit corrections pending; live backend/device E2E remains separate |
-| CH-02 | `GET /rooms/:id/events`; `GET /mls/groups/:id/commits?since=N`; `GET /mls/welcomes`; `POST /mls/welcomes/:id/ack`; `POST /mls/groups/:id/messages`; `GET /sync?since=N&signal_since=M`; `POST /rooms/:id/read` | Room event history is ciphertext only; MLS commits/messages are epoch-checked; membership checked | Native Flutter thread path on PR #130 verifies room access, processes ciphertext through Engine B, reads durable SQLCipher history before ACK, queues text with stable local IDs, and connects encrypted attachment send/download. Native MLS remains opt-in; exact-head CI reruns after final audit corrections pending; physical two-device acceptance remains outstanding |
-| GR-01 | `GET /rooms/mine` | Authenticated user's rooms/groups | Shared typed room-list repository is connected to the native Flutter chat list; group/direct/support room categories are mapped explicitly |
+| CH-01 | `GET /rooms/mine` | Authenticated user's rooms | Typed repository, native messages list and canonical group/direct/support preview mapping connected; on transport outage local room IDs restore from Engine B SQLCipher when native MLS is enabled |
+| CH-02 | `GET /rooms/:id/events`; `GET /mls/groups/:id/commits?since=N`; `GET /mls/welcomes`; `POST /mls/welcomes/:id/ack`; `POST /mls/groups/:id/messages`; `GET /sync?since=N&signal_since=M`; `GET /rooms/:id/members`; `POST /rooms/:id/read`; `POST /rooms/:id/settings`; native MLS invite | Room event history is ciphertext only; MLS commits/messages are epoch-checked; membership and effective capabilities checked | Engine B bridge uses stable message/attachment IDs, SQLCipher persistence, durable outbox/inbox, retry on resume, local room restoration, ACK after durable readable history, and MLS-encrypted attachment manifest/payload. UI remains behind `INONE_MLS_NATIVE_ENABLED` (default false); device/two-device acceptance remains pending; no plaintext fallback |
+| GR-01 | `GET /rooms/mine`; `GET /rooms/search?q=...`; `POST /rooms/:id/join` | Authenticated user's rooms; public-name search (2–50 chars); open join or approval request, with org membership/capacity enforced server-side | Typed room list plus public group search/join UI connected. Approval-only joins display request state. An open join does not itself provision a device MLS Welcome; room history remains closed until the native Engine B epoch is available |
 | GR-02 | `POST /rooms` | `roomId`, `kind`, optional `name`, members and org/feature gates | Backend only; typed create form and validation pending |
-| GR-04 | `GET /rooms/:id/members`; `POST /rooms/:id/settings`; `PUT /rooms/:id/name`; roles/capabilities/owner endpoints as allowed by action | Per-capability authorization; owner/admin restrictions | Backend only; map each control to one explicit action |
-| OR-01 | `GET /orgs/mine` | Current user's organization memberships and roles | Backend + host |
-| PR-01 | `GET /profile`; `PATCH /profile/locale` | Current account profile includes persisted `locale` (`hy`, `ru`, `en`); locale mutation is authenticated and account-scoped | Backend + typed repository; app-level selector persists locally and synchronizes with backend |
+| GR-04 | `GET /rooms/:id/members`; `POST /rooms/:id/settings`; `PUT /rooms/:id/name`; roles/capabilities/owner endpoints as allowed by action | Per-capability authorization; owner/admin restrictions | Room metadata/member/capability/read-marker display is connected; rename uses capability-checked `POST /rooms/:id/settings`; native MLS invitation is shown only to members with `invite_members`. Room visibility/join-policy settings are capability-gated; owner-only per-member capability editing is connected through POST /rooms/:id/capabilities. Room role changes/removals, approval queue and invite-link management remain pending |
+| OR-01 | `GET /orgs/mine`; `GET /orgs/:id/members`; `POST /orgs/:id/members`; `POST /orgs/:id/members/:userId/role`; `DELETE /orgs/:id/members/:userId`; `GET/POST /orgs/:id/settings`; `GET /orgs/:id/settings/log`; `GET /orgs/:id/admin-log`; `GET/POST /orgs/:id/links`; `POST /orgs/:id/links/:linkId/(accept|revoke)` | Current user's organization memberships, roles and member list; owner/admin add/remove rules; owner-only role changes; last-owner and owned-room safety constraints | Typed repository and role-aware organization UI connected: owner can add any supported role, change roles and remove other members; admin can add/remove ordinary members only. Owner/admin settings edits, settings audit log, organization admin-action log, and organization link proposal/accept/revoke actions are also connected. Backend remains authoritative for last-owner and owned-room conflicts |
+| PR-01 | `GET /profile`; `PATCH /profile/locale`; `GET /devices/mine`; `DELETE /devices/:deviceId` | Current account profile and locale; authenticated device inventory and per-account device revocation | Typed profile/locale flow plus device inventory and revocation dialog connected. Current device cannot be revoked from its own session; server revocation removes push registration and records MLS device removals. Profile/avatar mutation remains unavailable without a confirmed contract |
 
 The v0.8 approval manifest contains 24 screen IDs (SC/RQ/PS/SR/ST). The Flutter handoff catalog adds 7 chat/room/profile/organization screen IDs. The manifest's declared `api` string is a design declaration, not an authorization grant or proof of Flutter dispatch.
 
@@ -169,3 +169,41 @@ Code-validation head: `3d288777135d0c12145f18407e8768a02ae80a9f`.
 See [Stage 3 API / Backend acceptance report](../development/reports/2026-11-11-stage-3-api-backend-audit.md) and PR [#44](https://github.com/vahe210991-cloud/InOne-chat/pull/44) for exact run references and scope boundaries.
 
 The fixes are independently implemented against the committed repository source. The original untransferred Codespaces working tree was not available; this branch does not claim to contain the original unpublished agent diff.
+
+
+### Room administration — roles and join-request moderation
+
+- Connected owner-only member role changes through `POST /rooms/:id/roles`; only `admin` and `member` are selectable, while owner transfer remains a separate server operation.
+- Connected the capability-gated join-request list through `GET /rooms/:id/requests` and rejection through `POST /rooms/:id/requests/:userId/reject`.
+- Approval is intentionally not exposed: the current server approval route inserts the account into the room and emits a room-change signal but does not require or deliver an MLS Welcome. Enabling it would desynchronize server membership from encrypted group membership.
+- Direct `DELETE /rooms/:id/members/:userId` is intentionally not exposed for the same reason: it removes server membership without requiring an MLS commit. Member removal must be driven by an MLS commit containing the removal and epoch transition.
+
+
+### Native MLS account removal
+
+- Added the native OpenMLS client operation `remove_member(roomId, userId)`. It checks server/MLS membership equality, protects the room owner and self-removal, preflights current `remove_members` authorization (including the admin-vs-admin restriction), locates every MLS leaf for the target account, stages one OpenMLS Commit, verifies the staged membership metadata, and persists the exact operation in the existing SQLCipher membership journal before network delivery.
+- The operation is submitted only through the existing `POST /mls/groups/:roomId/commits` path. Success requires server ACK, local Commit merge, and post-sync agreement that the target is absent from both server and MLS membership.
+- Added the Rust session API and Dart bridge contract/adapter entrypoints. Generated Flutter Rust Bridge bindings are produced by the repository's pinned generation workflow and are not hand-edited.
+- No server-only member deletion route, plaintext fallback, or direct local MLS state mutation is used.
+
+
+- Room member details now expose removal only to the owner or a member with `remove_members` (non-admin targets only); the owner and current account are excluded from the action. The UI delegates to the native MLS operation and does not call the server's direct member DELETE route.
+
+
+## MLS approval of a pending room join request
+
+- `POST /rooms/:roomId/requests/:userId/approve` is intentionally fail-closed and returns `409 mls_approval_required`; it must not mutate room membership directly.
+- The supported approval transport is the canonical `POST /mls/groups/:roomId/commits` request with a verified Add Commit, per-device `welcomes`, `keyPackageClaimId` equal to `clientOperationId`, and `joinRequestUserId` equal to the single user in `changes.adds`.
+- The server validates that the request is still pending and that the target passes the room organization gate. The SQL store locks the pending request row and deletes it in the same transaction that records the MLS commit, advances the epoch, adds the member, stores every device Welcome, commits the KeyPackage claim and writes the idempotency receipt.
+- Exact operation replay returns the stored epoch receipt; reuse of the operation ID with a different request is rejected. The request is not consumed on epoch mismatch, claim mismatch, or transaction rollback.
+- The client must not display approval as complete until the durable membership journal receives the server ACK, the local OpenMLS Commit merges, and post-sync confirms the room state. The current Dart moderation UI remains rejection-only until the native approval operation and its FRB bridge are implemented and validated.
+
+
+## Native MLS approval of a room join request
+
+- The Flutter moderation action calls `approveMlsJoinRequest`; it does not call the legacy HTTP approval endpoint.
+- Rust persists the operation type (`is_join_request`) in SQLCipher before claiming KeyPackages. This flag survives process restart and is replayed when `sync()` resumes a `claim_pending` intent.
+- The native client uses the existing per-device KeyPackage claim and OpenMLS `add_members` path, creates a Welcome for every claimed device, and includes `joinRequestUserId` in the durable membership commit payload.
+- The server checks the pending request and organization gate only after checking the exact-operation receipt. This ordering is required: after a successful commit the request row is consumed, but an exact retry must still return the accepted receipt.
+- PostgreSQL locks and consumes the request atomically with room membership, epoch, Welcome, KeyPackage claim and idempotency receipt. The old direct-approval endpoint remains fail-closed.
+- The UI reports success only after native membership commit ACK, local merge and room sync complete. A missing KeyPackage or network failure leaves the request pending and the durable intent retryable.

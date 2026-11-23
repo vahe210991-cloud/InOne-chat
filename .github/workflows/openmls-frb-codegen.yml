@@ -211,15 +211,23 @@ jobs:
           api-level: 35
           target: google_apis
           arch: x86_64
-          profile: pixel_6
+          # Pixel 2 keeps the same API/Keystore behavior with a smaller graphics
+          # footprint than Pixel 6 on hosted KVM runners.
+          profile: pixel_2
           cores: 2
           emulator-boot-timeout: 900
           disable-linux-hw-accel: false
           disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-          # The emulator action executes script lines in separate shells; keep the
-          # working-directory change and all commands in one shell invocation.
-          script: cd mobile && adb install -r build/app/outputs/flutter-apk/app-debug.apk && adb shell pm grant com.inone.app android.permission.POST_NOTIFICATIONS && flutter drive --driver=test_driver/integration_test.dart --target=integration_test/mls_secure_store_test.dart
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -memory 2048
+          # Run integration_test through Android instrumentation rather than the
+          # legacy Flutter Driver VM Service. The old driver path intermittently
+          # lost the emulator transport while attaching to the VM Service, even
+          # though FRB, Rust, Flutter and both iOS builds had passed.
+          # android-emulator-runner starts each script line in a fresh shell.
+          # Keep cwd, variables, installation, permission grant and instrumentation
+          # test inside one POSIX shell process; use the workspace-absolute APK path.
+          script: |
+            sh -c 'set -eu; adb devices; adb wait-for-device; apk="$GITHUB_WORKSPACE/mobile/build/app/outputs/flutter-apk/app-debug.apk"; test -f "$apk"; aapt="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)"; test -x "$aapt"; package_name="$("$aapt" dump badging "$apk" | head -n 1 | cut -d " " -f 2 | cut -d "=" -f 2 | tr -d "\\047")"; test -n "$package_name"; adb install -r "$apk"; adb shell pm grant "$package_name" android.permission.POST_NOTIFICATIONS; cd "$GITHUB_WORKSPACE/mobile"; flutter test integration_test/mls_secure_store_test.dart -d emulator-5554 || { adb logcat -d -t 5000 || true; exit 1; }'
 
       - name: Upload Android preview APK
         uses: actions/upload-artifact@v4

@@ -89,7 +89,7 @@ The stable device identifier and selected app locale are persisted using platfor
 
 ### In-app language and email locale
 
-`InOneSession` supports `hy`, `ru`, and `en`, persists the selected locale in platform secure storage, sends it with verified email registration, and synchronizes it with the authenticated profile through `PATCH /profile/locale`. The current native shell still needs a visible locale selector; it must not infer the account language from the operating system.
+`InOneSession` supports `hy`, `ru`, and `en`, persists the selected locale in platform secure storage, sends it with verified email registration, and synchronizes it with the authenticated profile through `PATCH /profile/locale`. The native profile menu now exposes the supported `hy`, `ru`, and `en` choices and persists an authenticated change through `PATCH /profile/locale`; the app does not infer the account language from the operating system.
 
 ### Personal profile API integration
 
@@ -101,7 +101,7 @@ Loading, unauthenticated, empty-profile, and error states are rendered by native
 
 ## Current integration boundary
 
-- The native shell connects login, email registration, recovery, profile, organization-membership, public configuration and authenticated room-list reads to current API contracts. The messages screen calls `/rooms/mine` through `InOneRepositories.myRooms()` and validates the canonical `InOneRoomList` DTO. Room opening checks current server membership through the ciphertext-only `/rooms/:id/events` route when online, then processes MLS data through Engine B and reads SQLCipher history before acknowledging durable inbox events. Text is persisted to the Engine B SQLCipher outbox with stable local operation IDs before network delivery; retry and queued-message restoration use that durable outbox. Encrypted attachment send/download is wired through the native bridge. All MLS UI flows remain gated by `INONE_MLS_NATIVE_ENABLED=false` by default and are not product-accepted until physical-device/two-device security acceptance is complete.
+- The native shell connects login, email registration, recovery, profile, organization membership, public configuration and the authenticated room directory to existing Beta 1.0 contracts. `GET /rooms/mine` populates the native messages list even while native MLS is disabled; room contents, sending and attachment operations remain unavailable unless the canonical Engine B session is explicitly enabled. Organization profile/workspace member counts are read from `GET /orgs/:id/members`. Screens without a verified Beta 1.0 backend/native capability remain unreachable or explicitly blocked; UI previews do not fabricate successful actions.
 - The original 73-screen HTML gallery is retained only in the archive. CI checks approved HTML geometry from the archive, removes temporary imported HTML assets before Flutter analysis/tests, and verifies the native-only runtime boundary.
 - Generic API probing is read-only. POST/PUT/DELETE actions require dedicated forms, validated payloads and explicit confirmation.
 - `MlsSessionBridge` has a production `RustMlsSessionBridge` adapter over generated `flutter_rust_bridge` bindings. `INONE_MLS_NATIVE_ENABLED` defaults to `false` and remains opt-in until the owner accepts the Android/iOS runtime, persistence, recovery and security gates on the exact tested commit. When explicitly enabled, `InOneSession` transfers the refresh-token pair once to Rust and retains only a short-lived access-token snapshot in Dart; subsequent refreshes are Rust-owned. If Rust handoff fails, the mobile login fails closed, attempts server logout, clears Dart credentials and removes the resumable user marker; there is no Dart refresh fallback.
@@ -114,7 +114,7 @@ Loading, unauthenticated, empty-profile, and error states are rendered by native
 ## Remaining Beta 1 acceptance blockers
 
 - Production entry point is now `lib/main.dart` → `InOneMobileApp`, with the Dart UI source set under `lib/ui_dart_source/`. The WebView dependency and active HTML assets have been removed from the Flutter package; the 219 HTML/reference files are preserved under `../мусорный ящик/HTML-архив/mobile-assets/`. The G1 native UI migration remains under review until exact-head Flutter tests/builds and screen-parity checks pass.
-- The native Rust MLS bridge exposes session, room, encrypted text, inbox/outbox, device operations and G2 encrypted attachment APIs. The native shell now connects the authenticated room list, room-history view, durable text outbox and encrypted attachment UI to Engine B. These paths remain gated because `INONE_MLS_NATIVE_ENABLED` defaults to `false`; native MLS must stay opt-in until signed-device, recovery, security and two-device acceptance is complete.
+- The native Rust MLS bridge exposes session, room, encrypted text, inbox/outbox, device operations and G2 encrypted attachment APIs. The native shell preserves the opt-in `INONE_MLS_NATIVE_ENABLED` session handoff (default false). The authenticated `/rooms/mine` list is displayed without enabling MLS; message history, sync, sending and attachment operations remain gated by the native Engine B session and the outstanding Android/iOS runtime, recovery, security and two-device acceptance.
 - G2 encrypted attachment transfer is implemented in canonical Engine B and exposed through the Flutter/Rust bridge. It remains unavailable in the product while native MLS is disabled and until Android/iOS runtime, recovery, security and two-device acceptance gates pass. There is no plaintext fallback.
 - Provider OAuth callback handling is not yet connected in the active Flutter flow.
 - The recovery custom scheme is implemented for Beta 1 testing; verified production Universal/App Links still require the real domain and platform association metadata.
@@ -122,8 +122,8 @@ Loading, unauthenticated, empty-profile, and error states are rendered by native
 ## Recovery deep links and remaining acceptance blockers
 
 - Beta 1 testing supports `inone://recovery/confirm?user=...&token=...&locale=...`. Android/iOS preparation scripts register the scheme. The HTTPS preview page is non-mutating, localized and uses no-store/referrer protections; only an explicit app launch or POST confirms recovery. The unverified custom scheme is hidden in production; production requires verified Android App Links / iOS Universal Links with the actual public domain and association metadata.
-- The native Dart shell is now the production entry point. Provider authentication remains blocked until native provider callbacks are implemented; message history and sending remain blocked until the native MLS and encrypted-persistence acceptance gates pass.
-- The active UI does not yet drive MLS send/sync or attachment transfer through the Rust bridge. G2 attachment crypto, persistent journal/outbox and device-bound transfer APIs are implemented at the Engine B/bridge layer, but remain unavailable to users until native MLS runtime and two-device acceptance pass. No plaintext fallback is permitted. Provider OAuth callback handling is also not connected in the active Flutter flow.
+- The native Dart shell is the production entry point. Provider authentication remains blocked until native provider callbacks are implemented. When explicitly enabled, message history, send/sync and encrypted attachment transfer use Engine B; they remain opt-in and are not product-accepted until Android/iOS runtime, recovery, security and two-device acceptance pass.
+- When `INONE_MLS_NATIVE_ENABLED` is explicitly enabled, the active chat UI uses the Engine B Rust bridge for room history, inbox synchronization, durable text outbox and encrypted attachment send/download. These operations remain opt-in and are not runtime-accepted until the Android/iOS, recovery, security and two-device gates pass. No plaintext fallback is permitted. Provider OAuth callback handling is also not connected in the active Flutter flow.
 
 ## Tests
 
@@ -156,3 +156,28 @@ The repository-root Firebase client files are validated and copied by `tool/gene
 - InOnePushReceiveLifecycle handles foreground messages, notification taps and terminated launches. It validates the room/event route, waits for an authenticated session, verifies room membership through the server and displays content only after native MLS decryption. If native MLS is not active, it safely returns to Chats without exposing ciphertext or plaintext.
 - Native generation installs the Google Services Gradle plugin, sets Android minSdk to 24 for Firebase Messaging 26.x and adds Android permissions; on iOS it embeds `GoogleService-Info.plist`, adds the APNs entitlement and remote-notification background mode.
 - iOS delivery still requires an Apple Developer App ID with Push Notifications enabled and the APNs authentication key uploaded to Firebase. The repository's push sender is not implemented yet, so this client work registers devices but does not claim end-to-end notification delivery.
+
+
+## Beta 1.0 screen/backend wiring — current isolated branch
+
+The active implementation branch is `feature/beta1-screen-backend-wiring-2026-11-23`. It connects the authenticated room directory, public group discovery/join requests, room metadata, capability-gated room rename, native MLS invitations, and read markers after durable SQLCipher history loading. Organization roster and account locale are also connected.
+
+Public group membership does not imply that the device has an MLS Welcome. A room remains unreadable until the canonical Engine B client has a valid local epoch. Do not add a plaintext or legacy event fallback.
+
+Source changes are not runtime-accepted until exact-head validation completes. PR #131 is the integration target for the selected G2 organization-request work from PR #87/#89 and Engine B application glue selected from PR #90. Backend, Flutter, Rust/FRB and platform workflows must pass on one final SHA; physical-device/two-device acceptance remains separate. See `development/reports/2026-11-23-beta1-screen-backend-wiring.md` for the current validation record.
+
+
+The active Beta 1.0 host hides workspace notification/activity/customization controls, publication actions, profile/avatar editing and Feed/Calls navigation when no corresponding backend operation is available. It does not substitute mock metrics or local-only mutations for missing server contracts.
+
+
+The organization profile also exposes server-backed member administration (owner/admin rules), organization settings, settings/admin audit logs and organization-link proposal/accept/revoke. Chat thread settings include capability-gated name, visibility and join-policy updates; read markers are sent only after readable MLS history has been persisted locally. Remote device revocation is available from the user profile.
+
+
+## Platform organization requests and protected documents
+
+- PS-01/PS-02/PS-03 are connected in the native app: platform queue, request details, protected document open/preview and platform-owner-only decisions. The backend enforces applicant/staff scope and owner authorization; UI role checks are presentation only.
+- Organization request documents carry a sanitized filename and allowlisted MIME type. The backend validates supported file signatures, caps uploads at 5 MiB, encrypts stored objects and serializes document attachment against a concurrent request decision.
+- The mobile app keeps persistent document data only as account-scoped AES-256-GCM ciphertext. Per-owner keys are held in platform secure storage. Decrypted previews are written only to a temporary directory and cleaned on startup, viewer return, logout and session revocation.
+- The document metadata schema migration is 0033 because 0032 is already reserved by the push-delivery queue on main.
+- PR #90's Engine A runtime is not copied. The active branch uses canonical Engine B and keeps native MLS disabled by default.
+

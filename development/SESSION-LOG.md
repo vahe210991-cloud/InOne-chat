@@ -623,3 +623,85 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Pre-sync checks on `cd43c60` are superseded. The first synchronize-triggered runs on the new head were created with conclusion `action_required` and no jobs because the branch update was pushed by `GITHUB_TOKEN`; GitHub requires a repository writer to approve these PR workflow runs. Do not treat them as test failures or successful validation.
 - Next: create a normal repository-authenticated head update (not via Actions `GITHUB_TOKEN`) so the exact-head PR workflows can run without the approval gate; then review all nine required workflows on the resulting SHA.
 - PR #119 remains Draft and unmerged.
+
+## 2026-11-23 — isolated Beta 1.0 screen/backend wiring
+
+- Owner instruction: continue connecting native Dart screens to existing backend contracts; do not run tests, analyzers, builds or GitHub Actions until PR #128 and PR #130 are fully green.
+- PR #128 and PR #130 overlap on Flutter app/session/repository/chat paths. Created isolated child branch `feature/beta1-screen-backend-wiring-2026-11-23` from PR #130 head `dff0786bd8f920b902495e94fec46c297b110899`; did not modify either queued PR and did not open a new PR.
+- Connected the messages list to typed authenticated `GET /rooms/mine` independently of native MLS opt-in. Room content/send remain gated by the canonical Engine B session; no plaintext fallback.
+- Added organization member read wrapper for existing `GET /orgs/:id/members`; organization/workspace member counts remain unknown when the API read fails.
+- Added a profile-menu language selector (`hy`, `ru`, `en`) using the existing authenticated `PATCH /profile/locale` session path.
+- Updated mobile API contract matrix and README to reflect the current screen wiring; detailed report: `development/reports/2026-11-23-beta1-screen-backend-wiring.md`.
+- Validation: intentionally NOT RUN. No workflow dispatch, PR open, test, analyzer or build was performed. Native MLS remains disabled by default.
+
+
+## 2026-11-23 — five-screen integration expansion
+
+- Owner expanded scope to all five active Beta 1.0 screens: messages, chat thread, organization profile, workspace and user profile; target is every in-scope UI control backed by a real server operation.
+- Source audit found non-wired controls and missing data: public room search/join, thread room/member/settings actions, full organization roster and management, workspace notifications/activity/project/task data, and profile device/security management. Some metrics and profile/avatar mutations have no confirmed Beta 1.0 route and must remain unavailable rather than fabricated.
+- Implemented typed immutable organization member parsing from existing GET /orgs/:id/members; organization profile now renders the authenticated member roster and roles. Roster is cleared on account/organization switch.
+- PR #128 and #130 remain open and unmerged. Work remains on the isolated screen branch; no PR opened. Tests, analyzers, builds and Actions remain intentionally not run.
+
+
+## 2026-11-23 — public groups and chat-thread actions
+
+- Connected typed public group search (`GET /rooms/search`) and join/request (`POST /rooms/:id/join`) to the Messages screen. Search validates 2–50 characters and displays member count/join policy; UI distinguishes joined, requested and already-member states.
+- Connected chat room metadata (`GET /rooms/:id/members`), permission-aware rename (`POST /rooms/:id/settings`), native Engine B member invite (only with `invite_members` capability and an active native MLS session), and room read marker (`POST /rooms/:id/read`) after readable messages have been loaded through the durable SQLCipher history path.
+- Replaced the misleading “Search messages” affordance with public group discovery. The group filter toggles All/Groups; unread filtering remains disabled because `GET /rooms/mine` has no unread counts. The call control is hidden because no Beta 1.0 call contract is connected.
+- Verified source contract semantics: open public join checks organization membership/capacity but does not provision MLS Welcome. UI keeps the room unreadable until a valid Engine B local epoch exists.
+- No tests, analyzer, builds, device checks, workflow dispatches or GitHub Actions were run. PR #128 and #130 remain untouched.
+
+
+## 2026-11-23 — organization member administration
+
+- Connected existing organization member mutations: add (`POST /orgs/:id/members`), role change (`POST /orgs/:id/members/:userId/role`) and removal (`DELETE /orgs/:id/members/:userId`).
+- Added role-aware UI: owners can add all supported roles, change roles and remove other members; admins can add/remove ordinary members only. Mutations require confirmation where destructive or privilege-changing.
+- After a self-role change, the selected organization's role is refreshed in local app state so stale owner controls are not retained. Server continues enforcing last-owner and owned-room constraints.
+- No tests/analyzers/builds/Actions run.
+
+
+## 2026-11-23 — user profile device management
+
+- Added typed device inventory DTO and repository for authenticated `GET /devices/mine`.
+- Connected remote device revocation through `DELETE /devices/:deviceId`; UI confirms before revocation, refreshes inventory and never offers the current device as a target.
+- Device rows display only server-provided label/ID, revoked state and push-registration state; no token/key material is exposed.
+- Backend revocation remains responsible for deleting push registration and recording MLS device removals.
+- No tests, analyzers, builds, device checks or GitHub Actions were run.
+
+
+## 2026-11-23 — organization settings and audit log
+
+- Connected organization settings read/write and settings audit log using existing GET/POST routes. Only owner/admin UI exposes mutations and audit log; all members can view settings.
+- Organization screen More now opens settings; workspace switch remains on the workspace header control.
+- Server remains authoritative for allowed values, global group limits and audit recording. No new backend routes added.
+- No tests/analyzers/builds/Actions run.
+
+
+## 2026-11-23 — organization links
+
+- Connected owner/admin organization link listing, proposal, acceptance and revocation using existing backend routes.
+- UI distinguishes proposer from receiving organization; proposer cannot accept its own proposal. Accept/revoke actions require confirmation and refresh server state.
+- Backend transition/CAS and cross-organization membership cleanup remain authoritative. No route added.
+- No tests/analyzers/builds/Actions run.
+
+
+## 2026-11-23 — Beta 1.0 UI scope cleanup
+
+- Audited workspace route availability: no Beta 1.0 persistent notifications feed, project/task/activity feed or module customization endpoint was found. These controls are hidden rather than wired to notices or fake data.
+- Hid unsupported publication actions, avatar/cover editing and Feed/Calls navigation in the active Beta 1.0 screens. Protected-chat creation is shown as a Messages header action only when native Engine B MLS is active.
+- Workspace continues to show server-derived organization member/group counts; project/task metrics remain unknown.
+- No tests, analyzer, builds, device checks or GitHub Actions were run.
+
+
+## 2026-11-23 — organization admin-action log
+
+- Connected owner/admin-only `GET /orgs/:id/admin-log` with a typed action DTO and a read-only UI dialog in organization settings.
+- Displays server actor/action/target/detail/timestamp fields. No client-generated audit entries.
+- No tests/analyzers/builds/Actions run.
+
+
+## 2026-11-23 — room visibility and join policy settings
+
+- Chat thread settings now include visibility and join-policy controls when effective capabilities include `edit_group_settings`; room name remains separately gated by `edit_group_name`.
+- The client sends only changed fields through existing `POST /rooms/:id/settings`. Backend remains authoritative, including clearing join requests when a room becomes private.
+- No tests/analyzers/builds/Actions run.

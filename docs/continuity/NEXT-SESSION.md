@@ -510,3 +510,11 @@ Required next work:
 - Preserve existing Beta 1.0, identity, database, MLS, and security decisions unless explicitly superseded by a separate owner decision.
 
 Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone-and-inone-business--2026-11-13).
+
+## 2026-11-23 — isolated screen/backend work
+
+- Continue from branch `feature/beta1-screen-backend-wiring-2026-11-23`; fetch its current head before editing. Base is PR #130 head `dff0786bd8f920b902495e94fec46c297b110899`.
+- Owner instruction: do not run tests, analyzers, builds, workflow dispatches or CI reruns until PR #128 and PR #130 are fully green. Do not open a PR before that instruction changes, because pull_request workflows would consume the occupied queue.
+- Implemented in this branch: GET /rooms/mine; public group search/join; room metadata/member/capability reads; capability-gated name/visibility/join-policy settings; native MLS invite when Engine B is active; read markers after durable SQLCipher history; organization roster and owner/admin member add/remove/role changes; organization settings, settings audit log, admin-action log and organization links; profile locale and remote device inventory/revocation. Workspace actions without backend routes, unsupported avatar/publication actions and Feed/Calls navigation are hidden; see the latest sections in development/reports/2026-11-23-beta1-screen-backend-wiring.md.
+- Read `development/reports/2026-11-23-beta1-screen-backend-wiring.md` and `mobile/API-CONTRACTS-BETA-1.md` before further changes.
+- Keep PR #128 and #130 untouched, preserve Engine B, Firebase Push, existing session/navigation, stable IDs, SQLCipher and native MLS default-off. Continue only against verified existing Beta 1.0 backend routes; do not invent endpoints or wire Beta 2.0 placeholder screens.

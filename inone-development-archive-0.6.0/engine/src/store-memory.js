@@ -269,12 +269,20 @@ export function createMemoryStore({ pinPepper }) {
     listOrgRequests({ userId, all }) {
       return [...orgRequests.values()].filter((r) => all || r.applicantId === userId).map((r) => ({ requestId: r.requestId, applicantId: r.applicantId, name: r.name, status: r.status, createdAt: r.createdAt })).sort((a, b) => a.createdAt - b.createdAt);
     },
-    addOrgRequestDocument({ docId, requestId, kind, size, sha256, objectKey, uploadedBy, createdAt }) {
-      orgRequestDocs.set(docId, { docId, requestId, kind, size, sha256, objectKey, uploadedBy, createdAt });
+    addOrgRequestDocument({ docId, requestId, kind, size, sha256, filename, mimeType, objectKey, uploadedBy, createdAt }) {
+      const request = orgRequests.get(requestId);
+      if (!request || request.status !== 'pending') return false;
+      orgRequestDocs.set(docId, { docId, requestId, kind, size, sha256, filename, mimeType, objectKey, uploadedBy, createdAt });
       orgRequestLog.push({ requestId, actor: uploadedBy, action: 'document', at: createdAt });
+      return true;
     },
     listOrgRequestDocuments(requestId) {
-      return [...orgRequestDocs.values()].filter((x) => x.requestId === requestId).map((x) => ({ docId: x.docId, kind: x.kind, size: x.size, sha256: x.sha256, createdAt: x.createdAt })).sort((a, b) => a.createdAt - b.createdAt);
+      return [...orgRequestDocs.values()].filter((x) => x.requestId === requestId).map((x) => ({
+        docId: x.docId, kind: x.kind, size: x.size, sha256: x.sha256,
+        filename: x.filename ?? 'document.bin',
+        mimeType: x.mimeType ?? 'application/octet-stream',
+        createdAt: x.createdAt,
+      })).sort((a, b) => a.createdAt - b.createdAt);
     },
     getOrgRequestDocument(docId) { const x = orgRequestDocs.get(docId); return x ? { ...x } : null; },
     decideOrgRequest({ requestId, decision, decidedBy, decidedAt }) {
@@ -1004,7 +1012,7 @@ export function createMemoryStore({ pinPepper }) {
       return { ok: true, epoch: previous.epoch, replayed: true };
     },
     /** Применяет коммит и idempotency receipt одним синхронным шагом. */
-    mlsApplyCommit(roomId, baseEpoch, { senderId, deviceId, clientOperationId, requestFingerprint, keyPackageClaimId, commit, welcomes, changes = { adds: [], removes: [] } }, nowMs) {
+    mlsApplyCommit(roomId, baseEpoch, { senderId, deviceId, clientOperationId, requestFingerprint, keyPackageClaimId, joinRequestUserId, commit, welcomes, changes = { adds: [], removes: [] } }, nowMs) {
       const operationKey = clientOperationId ? JSON.stringify([roomId, senderId, deviceId, clientOperationId]) : null;
       if (operationKey) {
         const previous = mlsCommitOperations.get(operationKey);
@@ -1015,6 +1023,11 @@ export function createMemoryStore({ pinPepper }) {
       }
       const current = mlsGroups.get(roomId) ?? 0;
       if (current !== baseEpoch) return { ok: false, reason: 'epoch_outdated', epoch: current };
+      const room = rooms.get(roomId);
+      if (joinRequestUserId) {
+        if (changes.adds?.length !== 1 || changes.adds[0] !== joinRequestUserId) return { ok: false, reason: 'join_request_mismatch', epoch: current };
+        if (!room?.joinRequests.has(joinRequestUserId)) return { ok: false, reason: 'join_request_not_pending', epoch: current };
+      }
       let reservedClaim = null;
       if (keyPackageClaimId) {
         const targetUserId = changes.adds?.length === 1 ? changes.adds[0] : null;
@@ -1029,7 +1042,6 @@ export function createMemoryStore({ pinPepper }) {
         const welcomeDevices = welcomes.filter((item) => item.userId === targetUserId).map((item) => item.deviceId).sort();
         if (JSON.stringify(claimedDevices) !== JSON.stringify(welcomeDevices)) return { ok: false, reason: 'claim_mismatch', epoch: current };
       }
-      const room = rooms.get(roomId);
       for (const deviceId of changes.removeDevices ?? []) {
         for (const r of deviceRemovals) if (r.roomId === roomId && r.deviceId === deviceId && r.doneAt === null) r.doneAt = nowMs;
       }
@@ -1047,6 +1059,7 @@ export function createMemoryStore({ pinPepper }) {
       }
       if (operationKey) mlsCommitOperations.set(operationKey, { requestFingerprint, epoch: next });
       if (reservedClaim) reservedClaim.state = 'committed';
+      if (joinRequestUserId) room.joinRequests.delete(joinRequestUserId);
       return { ok: true, epoch: next, replayed: false };
     },
     mlsCommitsSince(roomId, since, limit) {

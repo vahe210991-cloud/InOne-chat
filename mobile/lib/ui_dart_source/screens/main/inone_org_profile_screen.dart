@@ -15,7 +15,10 @@ class InOneOrgProfileScreen extends StatelessWidget {
     required this.onMore,
     required this.onEditCover,
     required this.onTab,
-    required this.onAdd,
+    this.onAdd,
+    this.onAddMember,
+    this.onChangeMemberRole,
+    this.onRemoveMember,
   });
 
   final InOneOrgProfile profile;
@@ -25,14 +28,17 @@ class InOneOrgProfileScreen extends StatelessWidget {
   /// «Edit cover» (показывать только пользователям с правом редактирования).
   final VoidCallback? onEditCover;
   final ValueChanged<InOneTab> onTab;
-  final VoidCallback onAdd;
+  final VoidCallback? onAdd;
+  final VoidCallback? onAddMember;
+  final void Function(String userId, String role)? onChangeMemberRole;
+  final ValueChanged<String>? onRemoveMember;
 
   @override
   Widget build(BuildContext context) {
     final c = context.inone;
     return InOneShell(
       // Экран организации не относится ни к одному из разделов нижней навигации.
-      nav: InOneBottomNav(selected: null, onSelected: onTab, onAdd: onAdd),
+      nav: InOneBottomNav(selected: null, onSelected: onTab, onAdd: onAdd, availableTabs: const {InOneTab.messages, InOneTab.profile}),
       body: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -94,6 +100,76 @@ class InOneOrgProfileScreen extends StatelessWidget {
                   Text('About organization', style: InOneText.style(13, FontWeight.w700, c.text)),
                   const SizedBox(height: 6),
                   Text(profile.about?.isNotEmpty == true ? profile.about! : '—', style: InOneText.style(11.5, FontWeight.w400, c.sub, height: 1.5)),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text('Organization members (' + (profile.members?.toString() ?? '—') + ')',
+                            style: InOneText.style(14, FontWeight.w700, c.text)),
+                      ),
+                      if (profile.canAddMembers && onAddMember != null)
+                        TextButton.icon(
+                          onPressed: onAddMember,
+                          icon: const Icon(Icons.person_add_alt_1, size: 17),
+                          label: const Text('Add member'),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  if (profile.organizationMembers.isEmpty)
+                    Text('Member list is unavailable or the organization has no members.',
+                        style: InOneText.style(11.5, FontWeight.w400, c.muted))
+                  else
+                    for (final member in profile.organizationMembers)
+                      Container(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        decoration: BoxDecoration(
+                          border: Border(bottom: BorderSide(color: c.rowLine)),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(member.userId,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: InOneText.style(12, FontWeight.w600, c.text)),
+                            ),
+                            const SizedBox(width: 8),
+                            if (profile.canChangeMemberRoles && onChangeMemberRole != null)
+                              DropdownButton<String>(
+                                value: member.role,
+                                underline: const SizedBox.shrink(),
+                                items: const [
+                                  DropdownMenuItem(value: 'owner', child: Text('Owner')),
+                                  DropdownMenuItem(value: 'admin', child: Text('Admin')),
+                                  DropdownMenuItem(value: 'member', child: Text('Member')),
+                                ],
+                                onChanged: (role) {
+                                  if (role != null && role != member.role) {
+                                    onChangeMemberRole!(member.userId, role);
+                                  }
+                                },
+                              )
+                            else
+                              Text(member.role,
+                                  style: InOneText.style(11, FontWeight.w600, c.muted)),
+                            if (profile.removableMemberIds.contains(member.userId) &&
+                                onRemoveMember != null)
+                              IconButton(
+                                tooltip: 'Remove member',
+                                onPressed: () => onRemoveMember!(member.userId),
+                                icon: const Icon(Icons.person_remove_alt_1, size: 18),
+                              ),
+                          ],
+                        ),
+                      ),
                 ],
               ),
             ),

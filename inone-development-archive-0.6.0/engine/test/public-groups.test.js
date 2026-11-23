@@ -59,6 +59,29 @@ function grant(owner, userId, capabilities) {
   return post(owner, '/capabilities', { userId, capabilities });
 }
 
+const b64 = (value) => Buffer.from(value, 'utf8').toString('base64');
+const pkg = (name) => Buffer.from(`KEYPACKAGE-${name}-${'x'.repeat(40)}`).toString('base64');
+
+async function approveJoinRequestViaMls(owner, requester, targetUserId, claimId) {
+  await requester.raw('POST', '/mls/key-packages', { packages: [pkg(`${targetUserId}-${claimId}`)] });
+  const claim = await owner.raw('POST', `/mls/key-packages/${enc(targetUserId)}/claims`, { claimId, roomId: ROOM });
+  assert.ok(claim.packages.some((item) => item.deviceId === requester.deviceId), 'requester device KeyPackage is claimed');
+  const welcomes = claim.packages.map((item) => ({
+    userId: targetUserId,
+    deviceId: item.deviceId,
+    welcome: b64(`WELCOME-${claimId}-${item.deviceId}`),
+  }));
+  return owner.raw('POST', `/mls/groups/${enc(ROOM)}/commits`, {
+    epoch: 0,
+    commit: b64(`COMMIT-${claimId}`),
+    changes: { adds: [targetUserId], removes: [] },
+    welcomes,
+    clientOperationId: claimId,
+    keyPackageClaimId: claimId,
+    joinRequestUserId: targetUserId,
+  });
+}
+
 test('приватная группа не находится поиском, и посторонний не может в неё вступить', async () => {
   const { base, stop } = await start();
   try {
@@ -96,7 +119,8 @@ test('вступление по умолчанию по заявке: заявк
     assert.equal((await post(c.dave, '/join', {})).status, 'requested');
     assert.deepEqual((await requestsOf(c.alice)).requests.map((r) => r.userId), [DAVE]);
     await assert.rejects(requestsOf(c.bob), (e) => e.status === 403);
-    assert.equal((await decide(c.alice, DAVE, 'approve')).status, 'joined');
+    await assert.rejects(decide(c.alice, DAVE, 'approve'), (error) => error.status === 409);
+    assert.equal((await approveJoinRequestViaMls(c.alice, c.dave, DAVE, 'join-approval-public-dave-0003')).epoch, 1);
     assert.ok((await membersOf(c.alice)).members.includes(DAVE));
     assert.equal((await post(c.eve, '/join', {})).status, 'requested');
     assert.equal((await decide(c.alice, EVE, 'reject')).status, 'rejected');
@@ -127,11 +151,12 @@ test('одобрить заявку может только тот, у кого 
   const { base, stop } = await start();
   try {
     const c = await clubWith(base);
+    await c.dave.publishKeys();
     await makePublic(c.alice, 'Соседи квартала');
     await post(c.dave, '/join', {});
     await assert.rejects(decide(c.bob, DAVE, 'approve'), (e) => e.status === 403);
     await grant(c.alice, BOB, ['send_messages', 'invite_members']);
-    assert.equal((await decide(c.bob, DAVE, 'approve')).status, 'joined');
+    assert.equal((await approveJoinRequestViaMls(c.bob, c.dave, DAVE, 'join-approval-bob-dave-0001')).epoch, 1);
   } finally {
     await stop();
   }
@@ -141,6 +166,7 @@ test('повторная заявка не создаёт дубликата; п
   const { base, stop } = await start();
   try {
     const c = await clubWith(base);
+    await c.dave.publishKeys();
     await makePublic(c.alice, 'Соседи квартала');
     await post(c.dave, '/join', {});
     await post(c.dave, '/join', {});
@@ -157,9 +183,10 @@ test('участник, вступивший по заявке, получает
   const { base, stop } = await start();
   try {
     const c = await clubWith(base);
+    await c.dave.publishKeys();
     await makePublic(c.alice, 'Соседи квартала');
     await post(c.dave, '/join', {});
-    await decide(c.alice, DAVE, 'approve');
+    await approveJoinRequestViaMls(c.alice, c.dave, DAVE, 'join-approval-default-rights-0002');
     const caps = (await membersOf(c.alice)).capabilities[DAVE];
     assert.ok(caps.includes('send_messages'));
     assert.ok(!caps.includes('invite_members'));
@@ -172,6 +199,7 @@ test('поиск: короткий запрос отклоняется, симв
   const { base, stop } = await start();
   try {
     const c = await clubWith(base);
+    await c.dave.publishKeys();
     await makePublic(c.alice, 'Соседи квартала');
     await assert.rejects(search(c.dave, 'с'), (e) => e.status === 400);
     assert.deepEqual((await search(c.dave, '%%')).rooms, []);

@@ -241,19 +241,33 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
         : await pool.query('SELECT request_id, applicant_id, name, status, created_at FROM org_requests WHERE applicant_id = $1 ORDER BY created_at', [userId]);
       return rows.map((r) => ({ requestId: r.request_id, applicantId: r.applicant_id, name: r.name, status: r.status, createdAt: Number(r.created_at) }));
     },
-    async addOrgRequestDocument({ docId, requestId, kind, size, sha256, objectKey, uploadedBy, createdAt }) {
-      await pool.query('INSERT INTO org_request_documents (doc_id, request_id, kind, size, sha256, object_key, uploaded_by, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)', [docId, requestId, kind, size, sha256, objectKey, uploadedBy, createdAt]);
-      await pool.query("INSERT INTO org_request_log (request_id, actor, action, at) VALUES ($1, $2, 'document', $3)", [requestId, uploadedBy, createdAt]);
+    async addOrgRequestDocument({ docId, requestId, kind, size, sha256, filename, mimeType, objectKey, uploadedBy, createdAt }) {
+      return inTransaction(async (client) => {
+        const { rows } = await client.query(
+          'SELECT status FROM org_requests WHERE request_id = $1 FOR UPDATE',
+          [requestId],
+        );
+        if (!rows[0] || rows[0].status !== 'pending') return false;
+        await client.query(
+          'INSERT INTO org_request_documents (doc_id, request_id, kind, size, sha256, filename, mime_type, object_key, uploaded_by, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
+          [docId, requestId, kind, size, sha256, filename, mimeType, objectKey, uploadedBy, createdAt],
+        );
+        await client.query(
+          "INSERT INTO org_request_log (request_id, actor, action, at) VALUES ($1, $2, 'document', $3)",
+          [requestId, uploadedBy, createdAt],
+        );
+        return true;
+      });
     },
     async listOrgRequestDocuments(requestId) {
-      const { rows } = await pool.query('SELECT doc_id, kind, size, sha256, created_at FROM org_request_documents WHERE request_id = $1 ORDER BY created_at', [requestId]);
-      return rows.map((r) => ({ docId: r.doc_id, kind: r.kind, size: Number(r.size), sha256: r.sha256, createdAt: Number(r.created_at) }));
+      const { rows } = await pool.query('SELECT doc_id, kind, size, sha256, filename, mime_type, created_at FROM org_request_documents WHERE request_id = $1 ORDER BY created_at', [requestId]);
+      return rows.map((r) => ({ docId: r.doc_id, kind: r.kind, size: Number(r.size), sha256: r.sha256, filename: r.filename, mimeType: r.mime_type, createdAt: Number(r.created_at) }));
     },
     async getOrgRequestDocument(docId) {
-      const { rows } = await pool.query('SELECT doc_id, request_id, kind, size, sha256, object_key FROM org_request_documents WHERE doc_id = $1', [docId]);
+      const { rows } = await pool.query('SELECT doc_id, request_id, kind, size, sha256, filename, mime_type, object_key FROM org_request_documents WHERE doc_id = $1', [docId]);
       const r = rows[0];
       if (!r) return null;
-      return { docId: r.doc_id, requestId: r.request_id, kind: r.kind, size: Number(r.size), sha256: r.sha256, objectKey: r.object_key };
+      return { docId: r.doc_id, requestId: r.request_id, kind: r.kind, size: Number(r.size), sha256: r.sha256, filename: r.filename, mimeType: r.mime_type, objectKey: r.object_key };
     },
     async decideOrgRequest({ requestId, decision, decidedBy, decidedAt }) {
       return inTransaction(async (client) => {
@@ -1486,7 +1500,7 @@ async mlsPendingRemovalsFor(userId) {
     },
 
     /** Применяет коммит и idempotency receipt в одной транзакции. */
-    async mlsApplyCommit(roomId, baseEpoch, { senderId, deviceId, clientOperationId, requestFingerprint, keyPackageClaimId, commit, welcomes, changes = { adds: [], removes: [] } }, nowMs) {
+    async mlsApplyCommit(roomId, baseEpoch, { senderId, deviceId, clientOperationId, requestFingerprint, keyPackageClaimId, joinRequestUserId, commit, welcomes, changes = { adds: [], removes: [] } }, nowMs) {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
@@ -1509,6 +1523,20 @@ async mlsPendingRemovalsFor(userId) {
         if (current !== baseEpoch) {
           await client.query('ROLLBACK');
           return { ok: false, reason: 'epoch_outdated', epoch: current };
+        }
+        if (joinRequestUserId) {
+          if (changes.adds?.length !== 1 || changes.adds[0] !== joinRequestUserId) {
+            await client.query('ROLLBACK');
+            return { ok: false, reason: 'join_request_mismatch', epoch: current };
+          }
+          const { rows: requestRows } = await client.query(
+            'SELECT user_id FROM join_requests WHERE room_id = $1 AND user_id = $2 FOR UPDATE',
+            [roomId, joinRequestUserId],
+          );
+          if (!requestRows[0]) {
+            await client.query('ROLLBACK');
+            return { ok: false, reason: 'join_request_not_pending', epoch: current };
+          }
         }
         if (keyPackageClaimId) {
           const targetUserId = changes.adds?.length === 1 ? changes.adds[0] : null;
@@ -1583,6 +1611,16 @@ async mlsPendingRemovalsFor(userId) {
             'UPDATE mls_key_package_claims SET state = \'committed\', committed_at = $5 WHERE target_user_id = $1 AND requester_user_id = $2 AND requester_device_id = $3 AND claim_id = $4',
             [targetUserId, senderId, deviceId, keyPackageClaimId, nowMs],
           );
+        }
+        if (joinRequestUserId) {
+          const removedRequest = await client.query(
+            'DELETE FROM join_requests WHERE room_id = $1 AND user_id = $2',
+            [roomId, joinRequestUserId],
+          );
+          if (removedRequest.rowCount !== 1) {
+            await client.query('ROLLBACK');
+            return { ok: false, reason: 'join_request_not_pending', epoch: current };
+          }
         }
         await client.query('COMMIT');
         return { ok: true, epoch: next, replayed: false };

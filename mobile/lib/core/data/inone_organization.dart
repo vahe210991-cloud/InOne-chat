@@ -50,3 +50,163 @@ class InOneOrganizationList {
     );
   }
 }
+
+
+/// A member returned by the authenticated organization roster endpoint.
+class InOneOrganizationMember {
+  const InOneOrganizationMember({required this.userId, required this.role});
+
+  final String userId;
+  final String role;
+
+  factory InOneOrganizationMember.fromJson(Map<String, dynamic> json) {
+    final userId = json['userId'];
+    final role = json['role'];
+    if (userId is! String || userId.trim().isEmpty ||
+        role is! String || !const {'owner', 'admin', 'member'}.contains(role)) {
+      throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false);
+    }
+    return InOneOrganizationMember(userId: userId, role: role);
+  }
+}
+
+
+class InOneOrganizationSettings {
+  const InOneOrganizationSettings({
+    required this.maxGroupMembers,
+    required this.channelsEnabled,
+    required this.fileQuotaBytes,
+  });
+
+  final int? maxGroupMembers;
+  final bool channelsEnabled;
+  final int? fileQuotaBytes;
+
+  factory InOneOrganizationSettings.fromJson(Map<String, dynamic> json) {
+    final maxGroupMembers = json['maxGroupMembers'];
+    final channelsEnabled = json['channelsEnabled'];
+    final fileQuotaBytes = json['fileQuotaBytes'];
+    if (maxGroupMembers != null && (maxGroupMembers is! int || maxGroupMembers < 2) ||
+        channelsEnabled is! bool ||
+        fileQuotaBytes != null && (fileQuotaBytes is! int || fileQuotaBytes < 1)) {
+      throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false);
+    }
+    return InOneOrganizationSettings(
+      maxGroupMembers: maxGroupMembers as int?,
+      channelsEnabled: channelsEnabled,
+      fileQuotaBytes: fileQuotaBytes as int?,
+    );
+  }
+}
+
+class InOneOrganizationSettingLogEntry {
+  const InOneOrganizationSettingLogEntry({
+    required this.actor,
+    required this.field,
+    required this.oldValue,
+    required this.newValue,
+    required this.at,
+  });
+
+  final String actor;
+  final String field;
+  final Object? oldValue;
+  final Object? newValue;
+  final int at;
+
+  factory InOneOrganizationSettingLogEntry.fromJson(Map<String, dynamic> json) {
+    final actor = json['actor'];
+    final field = json['field'];
+    final at = json['at'];
+    if (actor is! String || field is! String || at is! num || !at.isFinite || at < 0) {
+      throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false);
+    }
+    return InOneOrganizationSettingLogEntry(
+      actor: actor,
+      field: field,
+      oldValue: json['old'],
+      newValue: json['new'],
+      at: at.toInt(),
+    );
+  }
+}
+
+
+class InOneOrganizationLink {
+  const InOneOrganizationLink({
+    required this.linkId,
+    required this.orgA,
+    required this.orgB,
+    required this.status,
+    required this.proposingOrg,
+  });
+
+  final String linkId;
+  final String orgA;
+  final String orgB;
+  final String status;
+  final String proposingOrg;
+
+  String otherOrganization(String currentOrgId) =>
+      orgA == currentOrgId ? orgB : orgA;
+
+  factory InOneOrganizationLink.fromJson(Map<String, dynamic> json) {
+    final linkId = json['linkId'];
+    final orgA = json['orgA'];
+    final orgB = json['orgB'];
+    final status = json['status'];
+    final proposingOrg = json['proposingOrg'];
+    if (linkId is! String || linkId.isEmpty ||
+        orgA is! String || orgA.isEmpty ||
+        orgB is! String || orgB.isEmpty ||
+        status is! String || !const {'proposed', 'active', 'revoked'}.contains(status) ||
+        proposingOrg is! String || proposingOrg.isEmpty) {
+      throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false);
+    }
+    return InOneOrganizationLink(
+      linkId: linkId,
+      orgA: orgA,
+      orgB: orgB,
+      status: status,
+      proposingOrg: proposingOrg,
+    );
+  }
+}
+
+
+class InOneOrganizationAdminAction {
+  const InOneOrganizationAdminAction({
+    required this.actor,
+    required this.action,
+    required this.target,
+    required this.detail,
+    required this.at,
+  });
+
+  final String actor;
+  final String action;
+  final String? target;
+  final String? detail;
+  final int at;
+
+  factory InOneOrganizationAdminAction.fromJson(Map<String, dynamic> json) {
+    final actor = json['actor'];
+    final action = json['action'];
+    final target = json['target'];
+    final detail = json['detail'];
+    final at = json['at'];
+    if (actor is! String || action is! String ||
+        target != null && target is! String ||
+        detail != null && detail is! String ||
+        at is! num || !at.isFinite || at < 0) {
+      throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false);
+    }
+    return InOneOrganizationAdminAction(
+      actor: actor,
+      action: action,
+      target: target as String?,
+      detail: detail as String?,
+      at: at.toInt(),
+    );
+  }
+}

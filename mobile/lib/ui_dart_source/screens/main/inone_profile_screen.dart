@@ -15,22 +15,22 @@ class InOneProfileScreen extends StatelessWidget {
     required this.onToggleTheme,
     required this.onEditAvatar,
     required this.onTab,
-    required this.onAdd,
+    this.onAdd,
   });
 
   final InOneUserProfile profile;
   final List<InOneProfileMenuItem> menu;
   final VoidCallback onToggleTheme;
-  final VoidCallback onEditAvatar;
+  final VoidCallback? onEditAvatar;
   final ValueChanged<InOneTab> onTab;
-  final VoidCallback onAdd;
+  final VoidCallback? onAdd;
 
   @override
   Widget build(BuildContext context) {
     final c = context.inone;
     final dark = Theme.of(context).brightness == Brightness.dark;
     return InOneShell(
-      nav: InOneBottomNav(selected: InOneTab.profile, onSelected: onTab, onAdd: onAdd),
+      nav: InOneBottomNav(selected: InOneTab.profile, onSelected: onTab, onAdd: onAdd, availableTabs: const {InOneTab.messages, InOneTab.profile}),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 6, 20, 20),
         child: Column(
@@ -64,20 +64,21 @@ class InOneProfileScreen extends StatelessWidget {
                                 : InOneStripeBox(circle: true, borderColor: c.line),
                           ),
                         ),
-                        Positioned(
-                          right: -2,
-                          bottom: -2,
-                          child: Container(
-                            width: 22,
-                            height: 22,
-                            decoration: BoxDecoration(
-                              color: c.accent,
-                              shape: BoxShape.circle,
-                              border: Border.all(color: c.bg, width: 2),
+                        if (onEditAvatar != null)
+                          Positioned(
+                            right: -2,
+                            bottom: -2,
+                            child: Container(
+                              width: 22,
+                              height: 22,
+                              decoration: BoxDecoration(
+                                color: c.accent,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: c.bg, width: 2),
+                              ),
+                              child: Icon(InOneIcons.plus, size: 14, color: c.onAccent),
                             ),
-                            child: Icon(InOneIcons.plus, size: 14, color: c.onAccent),
                           ),
-                        ),
                       ],
                     ),
                   ),

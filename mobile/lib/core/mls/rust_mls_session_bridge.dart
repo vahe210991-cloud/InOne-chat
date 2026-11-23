@@ -124,6 +124,10 @@ class RustMlsSessionBridge implements MlsSessionBridge {
       _requireSession().invite(roomId: roomId, userId: userId);
 
   @override
+  Future<void> approveJoinRequest(String roomId, String userId) =>
+      _requireSession().approveJoinRequest(roomId: roomId, userId: userId);
+
+  @override
   Future<void> cancelInvite(String roomId, String userId) =>
       _requireSession().cancelInvite(roomId: roomId, userId: userId);
 
@@ -323,6 +327,10 @@ class RustMlsSessionBridge implements MlsSessionBridge {
   @override
   Future<List<String>> membersOf(String roomId) =>
       _requireSession().membersOf(roomId: roomId);
+
+  @override
+  Future<void> removeMember(String roomId, String userId) =>
+      _requireSession().removeMember(roomId: roomId, userId: userId);
 
   @override
   Future<void> revokeDevice(String deviceId) =>

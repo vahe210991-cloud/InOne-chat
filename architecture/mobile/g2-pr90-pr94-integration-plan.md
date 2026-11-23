@@ -84,3 +84,31 @@ Integrate the useful Flutter messaging and encrypted-attachment UI work from PR 
 ## Current evidence boundary
 
 Source-level integration is implemented in PR #124, but this does not prove physical-device or two-device acceptance. CI results from older SHAs are not evidence for the latest head. Keep PR #124 Draft and keep `INONE_MLS_NATIVE_ENABLED` false until the final exact-head CI and required runtime/security gates pass.
+
+## PR #131 integration checkpoint — 2026-11-23
+
+PR #131 (feature/beta1-screen-backend-wiring-2026-11-23) is the only integration target. These changes are applied to its branch; PR #87, #89 and #90 source branches are not modified.
+
+### Selected G2 organization-request work from PR #87 / #89
+
+- PS-01/PS-02/PS-03 are wired into the native Flutter app: platform queue, request details, document list/preview, and owner-only decision actions.
+- Platform role is returned by the authenticated profile and used only for presentation; the server remains authoritative for every privileged request.
+- Document downloads use a binary authenticated client. Persistent local content is owner-scoped AES-256-GCM ciphertext; key material is held in platform secure storage. Preview plaintext is temporary and cleaned on startup, app resume after viewer handoff, logout and session revocation.
+- Backend upload metadata includes sanitized filename and allowlisted MIME type with magic-byte validation. Upload is serialized against the pending-request decision; an upload racing a decision is rejected and its object is removed.
+- The main branch already uses migration 0032-push-delivery-queue.sql. Therefore the document metadata migration is **0033**, not the conflicting 0032 proposed by the older PR #87 branch. SCHEMA_VERSION, the legacy marker, fresh schema and fresh/legacy migration tests are aligned to 0033.
+- PR #89's four-role staging authorization smoke script and syntax test are included. The live staging script is not run without the four distinct staging credentials.
+
+### Selected MLS work from PR #90
+
+- Engine A (inone-engine-poc-0.6.0/mobile-mls/mls-client) is deliberately excluded.
+- PR #131 retains Engine B (inone-development-archive-0.6.0/engine/mobile-mls/mls-client) and its Rust/FRB bridge.
+- The current branch already contains the selected application glue: stable message and attachment IDs, SQLCipher-backed durable inbox/outbox, local room recovery, retry on app resume, readable-history persistence before ACK, MLS-protected attachment manifests and encrypted attachment send/download.
+- Push deep links now open the durable MLS chat thread and support attachment items rather than the legacy read-only push-chat screen.
+- Canonical group/direct/support room preview mapping is shared and tested.
+
+### Acceptance gate and closure policy
+
+- Source changes above are present in PR #131, but source presence is not a green test result.
+- Backend Node/PostgreSQL, Flutter analyze/tests, Rust/OpenMLS/FRB codegen and Android/iOS build workflows must pass on the **same final PR #131 head SHA**. Physical-device and two-device MLS acceptance remains a separate manual gate.
+- PR #87 and #90 remain open until that exact-SHA validation is green and the transfer checklist is verified. They are then to be closed without merging. PR #89 is not included in the closure instruction and remains untouched.
+- PR #131 must not be merged into main without a separate explicit decision.

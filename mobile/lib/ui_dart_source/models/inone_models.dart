@@ -28,10 +28,11 @@ class InOneOrgRequest {
 
 @immutable
 class InOneDocument {
-  const InOneDocument({required this.id, required this.name, required this.typeLabel});
+  const InOneDocument({required this.id, required this.name, required this.typeLabel, this.mimeType});
   final String id;
   final String name;
   final String typeLabel;
+  final String? mimeType;
 }
 
 @immutable
@@ -60,10 +61,20 @@ class InOneOrgProfile {
     this.verified = false,
     this.cover,
     this.logo,
+    this.organizationMembers = const [],
+    this.currentUserId,
+    this.canAddMembers = false,
+    this.canChangeMemberRoles = false,
+    this.removableMemberIds = const {},
   });
   final String name;
   final String subtitle;
   final int? members;
+  final List<({String userId, String role})> organizationMembers;
+  final String? currentUserId;
+  final bool canAddMembers;
+  final bool canChangeMemberRoles;
+  final Set<String> removableMemberIds;
   final int? projects;
   final int? teams;
   final String? about;

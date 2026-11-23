@@ -44,6 +44,29 @@ function joinByToken(client, token) {
   return client.raw('POST', '/invites/join', { token });
 }
 
+const b64 = (value) => Buffer.from(value, 'utf8').toString('base64');
+const pkg = (name) => Buffer.from(`KEYPACKAGE-${name}-${'x'.repeat(40)}`).toString('base64');
+
+async function approveJoinRequestViaMls(owner, requester, targetUserId, claimId) {
+  await requester.raw('POST', '/mls/key-packages', { packages: [pkg(`${targetUserId}-${claimId}`)] });
+  const claim = await owner.raw('POST', `/mls/key-packages/${enc(targetUserId)}/claims`, { claimId, roomId: ROOM });
+  assert.ok(claim.packages.length > 0, 'requester has uploaded a KeyPackage');
+  const welcomes = claim.packages.map((item) => ({
+    userId: targetUserId,
+    deviceId: item.deviceId,
+    welcome: b64(`WELCOME-${claimId}-${item.deviceId}`),
+  }));
+  return owner.raw('POST', `/mls/groups/${enc(ROOM)}/commits`, {
+    epoch: 0,
+    commit: b64(`COMMIT-${claimId}`),
+    changes: { adds: [targetUserId], removes: [] },
+    welcomes,
+    clientOperationId: claimId,
+    keyPackageClaimId: claimId,
+    joinRequestUserId: targetUserId,
+  });
+}
+
 function tokenOf(invite) {
   return invite.url.split('/invite/')[1];
 }
@@ -92,7 +115,13 @@ test('ссылка с заявкой: вступление создаёт зая
     assert.equal((await joinByToken(c.dave, tokenOf(invite))).status, 'requested');
     assert.deepEqual((await c.alice.raw('GET', `/rooms/${enc(ROOM)}/requests`)).requests.map((r) => r.userId), [DAVE]);
     assert.ok(!(await membersOf(c.alice)).members.includes(DAVE));
-    await post(c.alice, `/requests/${enc(DAVE)}/approve`, {});
+    await assert.rejects(
+      post(c.alice, `/requests/${enc(DAVE)}/approve`, {}),
+      (error) => error.status === 409,
+      'legacy approval without MLS Add Commit is blocked',
+    );
+    const approval = await approveJoinRequestViaMls(c.alice, c.dave, DAVE, 'join-approval-invite-dave-0004');
+    assert.equal(approval.epoch, 1);
     assert.ok((await membersOf(c.alice)).members.includes(DAVE));
   } finally {
     await stop();

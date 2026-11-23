@@ -14,27 +14,27 @@ class InOneWorkspaceScreen extends StatelessWidget {
     required this.modules,
     required this.activity,
     required this.onSwitchWorkspace,
-    required this.onNotifications,
-    required this.onCustomize,
-    required this.onSeeAll,
+    this.onNotifications,
+    this.onCustomize,
+    this.onSeeAll,
     required this.onTab,
-    required this.onAdd,
+    this.onAdd,
   });
 
   final InOneWorkspaceSummary summary;
   final List<InOneModuleTile> modules;
   final List<InOneActivityItem> activity;
   final VoidCallback onSwitchWorkspace;
-  final VoidCallback onNotifications;
-  final VoidCallback onCustomize;
-  final VoidCallback onSeeAll;
+  final VoidCallback? onNotifications;
+  final VoidCallback? onCustomize;
+  final VoidCallback? onSeeAll;
   final ValueChanged<InOneTab> onTab;
-  final VoidCallback onAdd;
+  final VoidCallback? onAdd;
 
   @override
   Widget build(BuildContext context) {
     return InOneShell(
-      nav: InOneBottomNav(selected: null, onSelected: onTab, onAdd: onAdd),
+      nav: InOneBottomNav(selected: null, onSelected: onTab, onAdd: onAdd, availableTabs: const {InOneTab.messages, InOneTab.profile}),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
         child: Column(
@@ -44,12 +44,12 @@ class InOneWorkspaceScreen extends StatelessWidget {
             const SizedBox(height: 14),
             _hero(context),
             const SizedBox(height: 18),
-            _sectionHeader(context, 'Modules', 'Customize', onCustomize),
+            _sectionHeader(context, 'Modules', onCustomize == null ? null : 'Customize', onCustomize),
             const SizedBox(height: 11),
             _modulesGrid(context),
             if (activity.isNotEmpty) ...[
               const SizedBox(height: 20),
-              _sectionHeader(context, 'Recent activity', 'See all', onSeeAll),
+              _sectionHeader(context, 'Recent activity', onSeeAll == null ? null : 'See all', onSeeAll),
               const SizedBox(height: 10),
               for (var i = 0; i < activity.length; i++) ...[
                 if (i > 0) const SizedBox(height: 12),
@@ -97,38 +97,39 @@ class InOneWorkspaceScreen extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 10),
-        Semantics(
-          button: true,
-          label: 'Notifications',
-          child: GestureDetector(
-            onTap: onNotifications,
-            child: Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: c.line)),
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Icon(InOneIcons.bell, size: 20, color: c.text),
-                  if (summary.hasUnread)
-                    Positioned(
-                      right: 8,
-                      top: 7,
-                      child: Container(
-                        width: 7,
-                        height: 7,
-                        decoration: BoxDecoration(
-                          color: c.danger,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: c.bg, width: 1.5),
+        if (onNotifications != null)
+          Semantics(
+            button: true,
+            label: 'Notifications',
+            child: GestureDetector(
+              onTap: onNotifications,
+              child: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: c.line)),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Icon(InOneIcons.bell, size: 20, color: c.text),
+                    if (summary.hasUnread)
+                      Positioned(
+                        right: 8,
+                        top: 7,
+                        child: Container(
+                          width: 7,
+                          height: 7,
+                          decoration: BoxDecoration(
+                            color: c.danger,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: c.bg, width: 1.5),
+                          ),
                         ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
-        ),
       ],
     );
   }
@@ -198,7 +199,7 @@ class InOneWorkspaceScreen extends StatelessWidget {
     );
   }
 
-  Widget _sectionHeader(BuildContext context, String title, String action, VoidCallback onAction) {
+  Widget _sectionHeader(BuildContext context, String title, String? action, VoidCallback? onAction) {
     final c = context.inone;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.baseline,
@@ -206,10 +207,11 @@ class InOneWorkspaceScreen extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(title, style: InOneText.style(15, FontWeight.w700, c.text)),
-        GestureDetector(
-          onTap: onAction,
-          child: Text(action, style: InOneText.style(12, FontWeight.w600, c.link)),
-        ),
+        if (action != null && onAction != null)
+          GestureDetector(
+            onTap: onAction,
+            child: Text(action, style: InOneText.style(12, FontWeight.w600, c.link)),
+          ),
       ],
     );
   }
