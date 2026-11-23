@@ -130,3 +130,45 @@ class InOneOrganizationSettingLogEntry {
     );
   }
 }
+
+
+class InOneOrganizationLink {
+  const InOneOrganizationLink({
+    required this.linkId,
+    required this.orgA,
+    required this.orgB,
+    required this.status,
+    required this.proposingOrg,
+  });
+
+  final String linkId;
+  final String orgA;
+  final String orgB;
+  final String status;
+  final String proposingOrg;
+
+  String otherOrganization(String currentOrgId) =>
+      orgA == currentOrgId ? orgB : orgA;
+
+  factory InOneOrganizationLink.fromJson(Map<String, dynamic> json) {
+    final linkId = json['linkId'];
+    final orgA = json['orgA'];
+    final orgB = json['orgB'];
+    final status = json['status'];
+    final proposingOrg = json['proposingOrg'];
+    if (linkId is! String || linkId.isEmpty ||
+        orgA is! String || orgA.isEmpty ||
+        orgB is! String || orgB.isEmpty ||
+        status is! String || !const {'proposed', 'active', 'revoked'}.contains(status) ||
+        proposingOrg is! String || proposingOrg.isEmpty) {
+      throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false);
+    }
+    return InOneOrganizationLink(
+      linkId: linkId,
+      orgA: orgA,
+      orgB: orgB,
+      status: status,
+      proposingOrg: proposingOrg,
+    );
+  }
+}
