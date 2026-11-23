@@ -667,3 +667,11 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Device rows display only server-provided label/ID, revoked state and push-registration state; no token/key material is exposed.
 - Backend revocation remains responsible for deleting push registration and recording MLS device removals.
 - No tests, analyzers, builds, device checks or GitHub Actions were run.
+
+
+## 2026-11-23 — organization settings and audit log
+
+- Connected organization settings read/write and settings audit log using existing GET/POST routes. Only owner/admin UI exposes mutations and audit log; all members can view settings.
+- Organization screen More now opens settings; workspace switch remains on the workspace header control.
+- Server remains authoritative for allowed values, global group limits and audit recording. No new backend routes added.
+- No tests/analyzers/builds/Actions run.
