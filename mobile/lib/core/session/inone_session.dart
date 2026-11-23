@@ -733,6 +733,31 @@ class InOneSession extends ChangeNotifier {
     return bridge.messagesForRoom(roomId);
   }
 
+  /// Reads durable SQLCipher history before acknowledging readable inbox items.
+  Future<List<MlsIncomingMessage>> loadMlsRoomHistory(String roomId) async {
+    _validateMlsRoomId(roomId);
+    final bridge = _requireNativeMlsBridge();
+    final messages = await bridge.messagesForRoom(roomId);
+    final persistedEventIds = messages.map((message) => message.eventId).toSet();
+    final pending = await bridge.pendingIncoming();
+    final acceptedEventIds = pending
+        .where((message) =>
+            message.roomId == roomId &&
+            message.isReadable &&
+            persistedEventIds.contains(message.eventId))
+        .map((message) => message.eventId)
+        .toSet()
+        .toList(growable: false);
+    if (acceptedEventIds.isNotEmpty) {
+      await bridge.acknowledgeIncoming(acceptedEventIds);
+    }
+    return messages;
+  }
+
+  /// Returns room IDs from the persistent SQLCipher-backed OpenMLS client.
+  Future<List<String>> localMlsRoomIds() =>
+      _requireNativeMlsBridge().localRoomIds();
+
   /// Returns persisted diagnostics for MLS events that could not be decrypted.
   Future<List<MlsUndecryptableEvent>> mlsUndecryptableEvents() async {
     final bridge = _mlsBridge;
@@ -740,6 +765,7 @@ class InOneSession extends ChangeNotifier {
     return bridge.undecryptable();
   }
 
+  /// Resolves only an adopted persistent Rust bridge; there is no plaintext fallback.
   MlsSessionBridge _requireNativeMlsBridge() {
     final bridge = _mlsBridge;
     if (bridge == null) {
@@ -758,6 +784,7 @@ class InOneSession extends ChangeNotifier {
     }
   }
 
+  /// Creates the server room and local OpenMLS group through the persistent Rust client.
   Future<void> createMlsRoom(String roomId) {
     _validateMlsRoomId(roomId);
     return _requireNativeMlsBridge().createRoom(roomId);
@@ -778,6 +805,8 @@ class InOneSession extends ChangeNotifier {
     return _requireNativeMlsBridge().invite(roomId, userId);
   }
 
+  /// Sends immediately through OpenMLS. For offline-safe UI submission use
+  /// enqueueMlsText followed by flushMlsOutbox instead.
   Future<String> sendMlsText(String roomId, String plaintext) {
     _validateMlsRoomId(roomId);
     if (plaintext.trim().isEmpty) {
@@ -786,6 +815,7 @@ class InOneSession extends ChangeNotifier {
     return _requireNativeMlsBridge().sendText(roomId, plaintext);
   }
 
+  /// Durably queues plaintext inside SQLCipher before attempting network delivery.
   Future<String> enqueueMlsText(String roomId, String plaintext) {
     _validateMlsRoomId(roomId);
     if (plaintext.trim().isEmpty) {
@@ -805,9 +835,15 @@ class InOneSession extends ChangeNotifier {
     if (name.trim().isEmpty || mimeType.trim().isEmpty || plaintext.isEmpty) {
       throw ArgumentError('Attachment name, MIME type and bytes are required');
     }
-    if (clientMessageId.isEmpty ||
-        clientMessageId.length > 60 ||
-        !RegExp(r'^[A-Za-z0-9_-]{1,60}$').hasMatch(clientMessageId)) {
+    final validId = clientMessageId.isNotEmpty &&
+        clientMessageId.length <= 60 &&
+        clientMessageId.codeUnits.every((unit) =>
+            (unit >= 48 && unit <= 57) ||
+            (unit >= 65 && unit <= 90) ||
+            (unit >= 97 && unit <= 122) ||
+            unit == 45 ||
+            unit == 95);
+    if (!validId) {
       throw ArgumentError.value(
         clientMessageId,
         'clientMessageId',
@@ -833,6 +869,12 @@ class InOneSession extends ChangeNotifier {
   Future<List<MlsIncomingMessage>> pendingMlsMessages() =>
       _requireNativeMlsBridge().pendingIncoming();
 
+  Future<List<MlsPendingOutboxItem>> pendingMlsOutbox(String roomId) {
+    _validateMlsRoomId(roomId);
+    return _requireNativeMlsBridge().pendingOutbox(roomId);
+  }
+
+  /// Call only after the app has accepted the already SQLCipher-persisted messages.
   Future<void> acknowledgeMlsMessages(List<String> eventIds) {
     if (eventIds.any((id) => id.trim().isEmpty || id.length > 128)) {
       throw ArgumentError.value(eventIds, 'eventIds', 'Invalid MLS event ID');
