@@ -865,3 +865,118 @@ fn process_crash_at_each_inbox_journal_boundary_preserves_atomic_delivery() {
         assert!(recovered.pending_incoming().unwrap().is_empty());
     }
 }
+
+
+#[test]
+fn process_crash_at_welcome_transaction_boundaries_preserves_atomic_join() {
+    crash_child_sync_if_requested();
+
+    let crash_points = [
+        "after_welcome_group_materialization",
+        "after_welcome_room_index_write",
+        "after_welcome_receipt_write",
+        "before_welcome_transaction_commit",
+        "after_welcome_transaction_commit",
+    ];
+
+    for (index, point) in crash_points.iter().enumerate() {
+        let engine = start_engine();
+        let keys = FixedCrashKeyStore;
+        let alice_db = db(&format!("p0-crash-welcome-{index}-alice"));
+        let bob_db = db(&format!("p0-crash-welcome-{index}-bob"));
+        let mut alice = connect(
+            &engine.base,
+            ALICE,
+            PW,
+            &format!("A_WELCOME_{index}"),
+            &alice_db,
+            &keys,
+        )
+        .unwrap();
+        let mut bob = connect(&engine.base, BOB, PW, "B_CRASH_P0", &bob_db, &keys).unwrap();
+        bob.ensure_key_packages(2).unwrap();
+
+        let room = format!("!room-p0-welcome-boundary-{index}:inone.test");
+        alice.create_room(&room).unwrap();
+        alice.invite(&room, BOB).unwrap();
+        drop(bob);
+
+        let status = run_crash_child(
+            "process_crash_at_welcome_transaction_boundaries_preserves_atomic_join",
+            &engine.base,
+            &bob_db,
+            point,
+        );
+        assert!(
+            !status.status.success(),
+            "child must be forcibly terminated at {point}"
+        );
+        assert!(
+            String::from_utf8_lossy(&status.stderr)
+                .contains(&format!("INONE_MLS_TEST_CRASH_POINT_REACHED={point}")),
+            "child did not reach {point}; stderr: {}",
+            String::from_utf8_lossy(&status.stderr)
+        );
+
+        let database = open_encrypted_db(&bob_db, &CRASH_DB_KEY);
+        let room_count: i64 = database
+            .query_row(
+                "SELECT COUNT(*) FROM client_rooms WHERE room_id = ?1",
+                [&room],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let receipt_count: i64 = database
+            .query_row(
+                "SELECT COUNT(*) FROM client_welcome_receipts WHERE room_id = ?1 AND outcome = 'joined'",
+                [&room],
+                |row| row.get(0),
+            )
+            .unwrap();
+        drop(database);
+
+        if *point == "after_welcome_transaction_commit" {
+            assert_eq!(room_count, 1, "committed room index must survive process death");
+            assert_eq!(receipt_count, 1, "committed Welcome receipt must survive process death");
+        } else {
+            assert_eq!(room_count, 0, "uncommitted room index must roll back at {point}");
+            assert_eq!(receipt_count, 0, "uncommitted Welcome receipt must roll back at {point}");
+        }
+
+        let mut recovered = connect(&engine.base, BOB, PW, "B_CRASH_P0", &bob_db, &keys)
+            .expect("SQLCipher database remains readable after process death");
+        recovered
+            .sync()
+            .expect("Welcome must be safely replayed or its committed ACK retried after restart");
+        assert_eq!(
+            recovered.local_epoch(&room),
+            alice.local_epoch(&room),
+            "recovered device must materialize the exact invited group epoch"
+        );
+        assert!(recovered
+            .members_of(&room)
+            .unwrap()
+            .iter()
+            .any(|member| member == &format!("{BOB}/B_CRASH_P0")));
+
+        let database = open_encrypted_db(&bob_db, &CRASH_DB_KEY);
+        let welcome_id: i64 = database
+            .query_row(
+                "SELECT welcome_id FROM client_welcome_receipts WHERE room_id = ?1 AND outcome = 'joined'",
+                [&room],
+                |row| row.get(0),
+            )
+            .unwrap();
+        drop(database);
+        assert_eq!(
+            recovered.welcome_receipt_status(welcome_id).unwrap(),
+            Some(("joined".to_string(), None, true)),
+            "the committed Welcome receipt must be ACKed after recovery"
+        );
+        assert!(
+            recovered.sync().unwrap().is_empty(),
+            "a repeated sync must not re-materialize or duplicate the joined group"
+        );
+        assert_eq!(recovered.local_epoch(&room), alice.local_epoch(&room));
+    }
+}
