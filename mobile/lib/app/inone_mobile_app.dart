@@ -493,6 +493,10 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       activity: '—',
       projects: '—',
       verified: profile.verificationLevel > 0,
+      accountEmail: profile.email,
+      locale: profile.locale,
+      backupEmail: profile.backupEmail?.email,
+      backupEmailVerified: profile.backupEmail?.verified ?? false,
     );
   }
 
@@ -516,7 +520,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       projects: null,
       teams: null,
       about: null,
-      verified: false,
+      verified: org.status == 'approved',
     );
   }
 
@@ -1183,9 +1187,9 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           ],
           activity: const [],
           onSwitchWorkspace: _chooseOrganization,
-          onNotifications: () => _notice('Лента уведомлений пока не подключена к серверному контракту.'),
-          onCustomize: () => _notice('Настройка модулей пока недоступна.'),
-          onSeeAll: () => _notice('Лента активности пока не предоставляется backend.'),
+          onNotifications: null,
+          onCustomize: null,
+          onSeeAll: null,
           onTab: _selectTab,
           onAdd: () => _notice('Создание публикаций не входит в Beta 1.0.'),
         );
@@ -1298,9 +1302,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
             ),
           ],
           onToggleTheme: () => setState(() => _darkMode = !_darkMode),
-          onEditAvatar: () => _notice(
-            'Изменение аватара недоступно: серверный endpoint обновления профиля не подтверждён.',
-          ),
+          onEditAvatar: null,
           onTab: _selectTab,
           onAdd: () => _notice('Создание публикаций не входит в Beta 1.0.'),
         );
