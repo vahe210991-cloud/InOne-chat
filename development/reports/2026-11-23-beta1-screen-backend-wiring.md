@@ -184,3 +184,13 @@ The backend's public open-join operation adds room membership and emits a room-c
 Not yet implemented: room role promotion/demotion and removal UI, approval queue management, invite-link management, and the public backend room-create workflow. The current MLS room-create button creates a native MLS group and invites but does not safely provision the corresponding backend room; do not expose a backend create action until the full MLS + server provisioning sequence and rollback behavior are established.
 
 No tests, analyzer, build, device run, workflow dispatch or Actions rerun was performed, per the queue restriction. This is source-level implementation only and is not runtime accepted.
+
+
+## 2026-11-23 — room roles and safe join-request moderation
+
+- Added typed owner-only role updates through the existing `POST /rooms/:id/roles` route. The UI offers only admin/member for non-owner members; owner transfer is not mixed into this control.
+- Added typed parsing of the existing join-request response (`userId`, `created_at`) and connected the invite-capability-gated request list.
+- Connected request rejection. Rejection only deletes the pending request and does not mutate room membership or MLS epoch.
+- Approval remains deliberately hidden: the current `POST /rooms/:id/requests/:userId/approve` route directly inserts server membership and emits a room-change signal, but does not require an MLS Welcome. Direct `DELETE /rooms/:id/members/:userId` likewise removes server membership without an MLS commit. Neither path is safe to expose for encrypted rooms.
+- Safe member removal must be implemented through the existing MLS commit flow (`POST /mls/groups/:roomId/commits`) with a `changes.removes` entry, a fresh epoch, and accepted commit semantics. This stage does not create a parallel removal path.
+- No tests, analyzer, build, device run, workflow dispatch or Actions rerun was performed, per the queue restriction. Source-level changes only; not runtime accepted.
