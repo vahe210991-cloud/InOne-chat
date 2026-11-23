@@ -15,11 +15,13 @@ class InOneBottomNav extends StatelessWidget {
     required this.selected,
     required this.onSelected,
     this.onAdd,
+    this.availableTabs = const {InOneTab.feed, InOneTab.calls, InOneTab.messages, InOneTab.profile},
   });
 
   final InOneTab? selected;
   final ValueChanged<InOneTab> onSelected;
   final VoidCallback? onAdd;
+  final Set<InOneTab> availableTabs;
 
   static const String feedLabel = 'Лента';
   static const String callsLabel = 'Звонки';
@@ -42,11 +44,15 @@ class InOneBottomNav extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            _item(context, InOneTab.feed, InOneIcons.feed, feedLabel),
-            _item(context, InOneTab.calls, InOneIcons.calls, callsLabel),
+            if (availableTabs.contains(InOneTab.feed))
+              _item(context, InOneTab.feed, InOneIcons.feed, feedLabel),
+            if (availableTabs.contains(InOneTab.calls))
+              _item(context, InOneTab.calls, InOneIcons.calls, callsLabel),
             if (onAdd != null) _AddButton(onTap: onAdd!),
-            _item(context, InOneTab.messages, InOneIcons.messages, messagesLabel),
-            _item(context, InOneTab.profile, InOneIcons.profile, profileLabel),
+            if (availableTabs.contains(InOneTab.messages))
+              _item(context, InOneTab.messages, InOneIcons.messages, messagesLabel),
+            if (availableTabs.contains(InOneTab.profile))
+              _item(context, InOneTab.profile, InOneIcons.profile, profileLabel),
           ],
         ),
       ),
