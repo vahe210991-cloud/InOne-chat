@@ -21,7 +21,7 @@ class InOneProfileScreen extends StatelessWidget {
   final InOneUserProfile profile;
   final List<InOneProfileMenuItem> menu;
   final VoidCallback onToggleTheme;
-  final VoidCallback onEditAvatar;
+  final VoidCallback? onEditAvatar;
   final ValueChanged<InOneTab> onTab;
   final VoidCallback? onAdd;
 
