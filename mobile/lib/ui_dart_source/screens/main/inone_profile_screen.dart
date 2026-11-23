@@ -84,6 +84,7 @@ class InOneProfileScreen extends StatelessWidget {
                           right: -2,
                           bottom: -2,
                           child: Semantics(
+                            key: const ValueKey('profile-edit-avatar'),
                             button: true,
                             label: 'Edit avatar',
                             child: GestureDetector(
