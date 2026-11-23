@@ -929,6 +929,10 @@ fn process_crash_at_outbound_membership_commit_boundaries_replays_exact_operatio
     let crash_points = [
         "after_membership_commit_journal_commit",
         "after_outbound_membership_commit_server_acceptance",
+        "after_outbound_membership_commit_local_merge",
+        "after_outbound_membership_commit_journal_settlement",
+        "before_outbound_membership_commit_transaction_commit",
+        "after_outbound_membership_commit_transaction_commit",
     ];
 
     for (index, point) in crash_points.iter().enumerate() {
@@ -995,21 +999,20 @@ fn process_crash_at_outbound_membership_commit_boundaries_replays_exact_operatio
             )
             .unwrap();
         drop(database);
+        let committed_locally = *point == "after_outbound_membership_commit_transaction_commit";
+        let server_accepted = *point != "after_membership_commit_journal_commit";
         assert_eq!(
-            journal_rows, 1,
-            "the exact staged Commit journal must survive {point}"
+            journal_rows,
+            if committed_locally { 0 } else { 1 },
+            "journal row must match the local settlement transaction at {point}"
         );
         assert_eq!(
-            intent_rows, 1,
-            "the matching invite intent must survive {point}"
+            intent_rows,
+            if committed_locally { 0 } else { 1 },
+            "invite intent must match the local settlement transaction at {point}"
         );
 
-        let expected_server_commits =
-            if *point == "after_outbound_membership_commit_server_acceptance" {
-                1
-            } else {
-                0
-            };
+        let expected_server_commits = if server_accepted { 1 } else { 0 };
         assert_eq!(
             engine.command(&format!("COMMIT_COUNT {room}")),
             expected_server_commits.to_string(),
@@ -1025,10 +1028,14 @@ fn process_crash_at_outbound_membership_commit_boundaries_replays_exact_operatio
             &keys,
         )
         .expect("inviter SQLCipher database remains readable after process death");
-        assert_eq!(recovered.local_epoch(&room), Some(0));
+        assert_eq!(
+            recovered.local_epoch(&room),
+            Some(if committed_locally { 1 } else { 0 }),
+            "MLS state must roll back with the journal before local COMMIT"
+        );
         recovered
             .sync()
-            .expect("restart must replay the exact durable operation and settle locally");
+            .expect("restart must replay or recognize the exact durable operation and settle locally");
         assert_eq!(recovered.local_epoch(&room), Some(1));
         assert_eq!(
             engine.command(&format!("COMMIT_COUNT {room}")),
