@@ -13,6 +13,13 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const LEGACY_SCHEMA = readFileSync(path.join(here, 'fixtures', 'schema-alpha21.sql'), 'utf8');
 const URL_ = process.env.DATABASE_URL;
 
+async function assertOrgRequestDocumentMetadata(pool) {
+  const { rows } = await pool.query(
+    "SELECT column_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'org_request_documents' AND column_name IN ('filename', 'mime_type') ORDER BY column_name",
+  );
+  assert.deepEqual(rows.map((row) => row.column_name), ['filename', 'mime_type']);
+}
+
 async function isolatedPool() {
   const admin = new pg.Pool({ connectionString: URL_, max: 1 });
   const schema = `t_mig_${randomBytes(6).toString('hex')}`;
@@ -34,6 +41,7 @@ test('новая база создаётся из schema.sql и получает
     assert.deepEqual(await migrate(db.pool), []);
     const { rows } = await db.pool.query('SELECT version FROM schema_migrations ORDER BY version');
     assert.deepEqual(rows.map((r) => r.version), listMigrations());
+    await assertOrgRequestDocumentMetadata(db.pool);
     assert.deepEqual(await migrate(db.pool), [], 'повторный запуск ничего не меняет');
   } finally {
     await db.close();
@@ -55,6 +63,7 @@ test('старая база из выпуска alpha.21 обновляется,
     const room = (await db.pool.query("SELECT owner, visibility, join_policy FROM rooms WHERE room_id = '!club'")).rows[0];
     assert.deepEqual(room, { owner: '@alice', visibility: 'private', join_policy: 'approval' });
     assert.equal((await db.pool.query("SELECT to_regclass('group_assets') IS NOT NULL AS ok")).rows[0].ok, true);
+    await assertOrgRequestDocumentMetadata(db.pool);
   } finally {
     await db.close();
   }
