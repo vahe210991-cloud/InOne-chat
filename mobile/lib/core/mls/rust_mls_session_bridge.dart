@@ -325,6 +325,10 @@ class RustMlsSessionBridge implements MlsSessionBridge {
       _requireSession().membersOf(roomId: roomId);
 
   @override
+  Future<void> removeMember(String roomId, String userId) =>
+      _requireSession().removeMember(roomId: roomId, userId: userId);
+
+  @override
   Future<void> revokeDevice(String deviceId) =>
       _requireSession().revokeDevice(deviceId: deviceId);
 
