@@ -1125,11 +1125,11 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
                               contentPadding: EdgeInsets.zero,
                               title: Text(memberId, maxLines: 1, overflow: TextOverflow.ellipsis),
                               subtitle: Text(
-                                memberId == details.owner
+                                '${memberId == details.owner
                                     ? 'Владелец'
                                     : details.admins.contains(memberId)
                                         ? 'Администратор'
-                                        : 'Участник',
+                                        : 'Участник'} · ${details.readUpTo[memberId] == null ? 'Нет отметки прочтения' : 'Прочитано до ${details.readUpTo[memberId]}'}',
                               ),
                             ),
                         ],
