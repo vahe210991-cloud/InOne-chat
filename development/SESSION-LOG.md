@@ -747,3 +747,12 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Updated Issue #9 description. Issue remains OPEN until the regression passes on an exact SHA and physical revocation/re-auth is accepted.
 - New code-validation SHA: `87930a5997b9ceb7aea44409b1e0d07020d3c82f`; nine PR workflows (including exact-SHA gate) were queued at 16:23Z. No completed result yet.
 
+
+
+## 2026-11-23 — main merge-SHA FRB completion
+
+- Rechecked Actions REST runs for main SHA `2430b0365ab71c60b0926b27854d17a9090e1fba`.
+- `OpenMLS Flutter Rust Bridge generation` completed PASS, including both `generate-and-validate` and `iOS native assets compile (unsigned, no secrets)`.
+- Main now has 8/9 push workflows completed PASS. The only remaining workflow is `Native MLS client validation`: its four non-iOS jobs PASS; the iOS Keychain native-target job's first attempt was cancelled, and the targeted rerun remains QUEUED.
+- The cancelled job had no retrievable logs; the rerun is the next evidence point. Do not call main fully validated until it completes.
+
