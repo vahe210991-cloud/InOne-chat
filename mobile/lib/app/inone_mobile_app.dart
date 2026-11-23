@@ -521,6 +521,14 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       organizationMembers: _organizationMembers
           .map((member) => (userId: member.userId, role: member.role))
           .toList(growable: false),
+      currentUserId: _session.userId,
+      canAddMembers: org.role == 'owner' || org.role == 'admin',
+      canChangeMemberRoles: org.role == 'owner',
+      removableMemberIds: _organizationMembers
+          .where((member) => member.userId != _session.userId &&
+              (org.role == 'owner' || (org.role == 'admin' && member.role == 'member')))
+          .map((member) => member.userId)
+          .toSet(),
       projects: null,
       teams: null,
       about: null,
@@ -1323,6 +1331,134 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     }
   }
 
+  Future<void> _addOrganizationMember() async {
+    final org = _selectedOrganization;
+    if (org == null || (org.role != 'owner' && org.role != 'admin')) return;
+    final controller = TextEditingController();
+    var role = 'member';
+    try {
+      final selection = await showDialog<({String userId, String role})>(
+        context: context,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            title: const Text('Добавить участника'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: controller,
+                  autofocus: true,
+                  autocorrect: false,
+                  decoration: const InputDecoration(labelText: 'ID пользователя'),
+                ),
+                if (org.role == 'owner')
+                  DropdownButtonFormField<String>(
+                    value: role,
+                    decoration: const InputDecoration(labelText: 'Роль'),
+                    items: const [
+                      DropdownMenuItem(value: 'member', child: Text('Участник')),
+                      DropdownMenuItem(value: 'admin', child: Text('Администратор')),
+                      DropdownMenuItem(value: 'owner', child: Text('Владелец')),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) setDialogState(() => role = value);
+                    },
+                  ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('Отмена'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  final userId = controller.text.trim();
+                  if (userId.isNotEmpty) {
+                    Navigator.of(dialogContext).pop((userId: userId, role: role));
+                  }
+                },
+                child: const Text('Добавить'),
+              ),
+            ],
+          ),
+        ),
+      );
+      if (selection == null) return;
+      await _repositories.addOrganizationMember(
+        org.orgId,
+        userId: selection.userId,
+        role: org.role == 'admin' ? 'member' : selection.role,
+      );
+      await _refreshOrganizationMemberCount(org);
+      if (mounted) _notice('Участник добавлен в организацию.');
+    } catch (error) {
+      _notice('Не удалось добавить участника: ${_toFailure(error).message}');
+    } finally {
+      controller.dispose();
+    }
+  }
+
+  Future<void> _changeOrganizationMemberRole(String userId, String role) async {
+    final org = _selectedOrganization;
+    if (org == null || org.role != 'owner') return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Изменить роль участника?'),
+        content: Text('Назначить пользователю $userId роль «$role»?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Подтвердить'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await _repositories.updateOrganizationMemberRole(org.orgId, userId, role);
+      await _refreshOrganizationMemberCount(org);
+      if (mounted) _notice('Роль участника обновлена.');
+    } catch (error) {
+      _notice('Не удалось изменить роль: ${_toFailure(error).message}');
+    }
+  }
+
+  Future<void> _removeOrganizationMember(String userId) async {
+    final org = _selectedOrganization;
+    if (org == null || userId == _session.userId) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Удалить участника?'),
+        content: Text('Удалить $userId из организации? Сервер проверит права, владение комнатами и наличие других владельцев.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Удалить'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await _repositories.removeOrganizationMember(org.orgId, userId);
+      await _refreshOrganizationMemberCount(org);
+      if (mounted) _notice('Участник удалён из организации.');
+    } catch (error) {
+      _notice('Не удалось удалить участника: ${_toFailure(error).message}');
+    }
+  }
+
   Future<void> _openOrganization() async {
     final org = _selectedOrganization;
     if (org == null) {
@@ -1538,6 +1674,13 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           onEditCover: null,
           onTab: _selectTab,
           onAdd: () => _notice('Создание публикаций не входит в Beta 1.0.'),
+          onAddMember: _organizationProfile.canAddMembers ? _addOrganizationMember : null,
+          onChangeMemberRole: _organizationProfile.canChangeMemberRoles
+              ? _changeOrganizationMemberRole
+              : null,
+          onRemoveMember: _organizationProfile.removableMemberIds.isNotEmpty
+              ? _removeOrganizationMember
+              : null,
         );
       case 'systemStatusLoading':
         return const Scaffold(body: Center(child: CircularProgressIndicator()));
