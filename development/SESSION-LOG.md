@@ -658,3 +658,12 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Added role-aware UI: owners can add all supported roles, change roles and remove other members; admins can add/remove ordinary members only. Mutations require confirmation where destructive or privilege-changing.
 - After a self-role change, the selected organization's role is refreshed in local app state so stale owner controls are not retained. Server continues enforcing last-owner and owned-room constraints.
 - No tests/analyzers/builds/Actions run.
+
+
+## 2026-11-23 — user profile device management
+
+- Added typed device inventory DTO and repository for authenticated `GET /devices/mine`.
+- Connected remote device revocation through `DELETE /devices/:deviceId`; UI confirms before revocation, refreshes inventory and never offers the current device as a target.
+- Device rows display only server-provided label/ID, revoked state and push-registration state; no token/key material is exposed.
+- Backend revocation remains responsible for deleting push registration and recording MLS device removals.
+- No tests, analyzers, builds, device checks or GitHub Actions were run.
