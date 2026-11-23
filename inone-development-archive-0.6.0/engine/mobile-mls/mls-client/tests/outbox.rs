@@ -1053,14 +1053,8 @@ fn process_crash_at_outbound_membership_commit_boundaries_replays_exact_operatio
             )
             .unwrap();
         drop(database);
-        assert_eq!(
-            journal_rows, 0,
-            "settled operation journal must be removed"
-        );
-        assert_eq!(
-            intent_rows, 0,
-            "settled invite intent must be removed"
-        );
+        assert_eq!(journal_rows, 0, "settled operation journal must be removed");
+        assert_eq!(intent_rows, 0, "settled invite intent must be removed");
 
         bob.sync()
             .expect("recipient must process the single Welcome after replay");
