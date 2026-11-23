@@ -59,6 +59,7 @@ const mlsCommitFingerprint = (roomId, senderId, deviceId, request) => {
     version: 1, roomId, senderId, deviceId,
     clientOperationId: request.clientOperationId,
     keyPackageClaimId: request.keyPackageClaimId,
+    joinRequestUserId: request.joinRequestUserId,
     epoch: request.epoch,
     commit: request.commit.toString('base64'),
     changes: {
@@ -2191,16 +2192,13 @@ if (req.method === 'POST' && p === '/login') {
         const r = await storage.getRoom(roomId);
         if (!r || !hasCapability(r, d.userId, 'invite_members')) return send(res, 403, { error: 'missing capability: invite_members' });
         if (decideRoute[3] === 'approve') {
-          const approveOrgId = await storage.roomOrg(roomId);
-          const approveGate = await orgGate(target, approveOrgId);
-          if (approveGate) return send(res, approveGate.status, { error: approveGate.error, code: approveGate.code });
+          return send(res, 409, {
+            error: 'approval requires an MLS Add Commit and per-device Welcome',
+            code: 'mls_approval_required',
+          });
         }
         if (!(await storage.deleteJoinRequest(roomId, target))) return send(res, 404, { error: 'no such request' });
-        if (decideRoute[3] === 'reject') return send(res, 200, { status: 'rejected' });
-        if (await groupFull(roomId)) return send(res, 409, { error: 'group is full' });
-        await storage.addRoomMember(roomId, target);
-        await markRoomChanged(roomId, (await storage.getRoom(roomId)).members);
-        return send(res, 200, { status: 'joined' });
+        return send(res, 200, { status: 'rejected' });
       }
 
       // Ссылка-приглашение и QR-код с этой ссылкой. Право создавать и отзывать — invite_members.
@@ -2281,7 +2279,18 @@ if (req.method === 'POST' && p === '/login') {
               const roomId = decodeURIComponent(mlsCommitRoute[1]);
               const checked = parseCommitRequest(body);
               if (checked.error) return send(res, 400, { error: checked.error });
-              const { clientOperationId } = checked.value;
+              const { clientOperationId, joinRequestUserId } = checked.value;
+              if (joinRequestUserId !== null) {
+                if (checked.value.changes.adds.length !== 1 || checked.value.changes.adds[0] !== joinRequestUserId) {
+                  return send(res, 400, { error: 'join request approval must add exactly its requester' });
+                }
+                if (!(await storage.hasJoinRequest(roomId, joinRequestUserId))) {
+                  return send(res, 409, { error: 'join request is no longer pending', code: 'join_request_not_pending' });
+                }
+                const approvalOrgId = await storage.roomOrg(roomId);
+                const approvalGate = await orgGate(joinRequestUserId, approvalOrgId);
+                if (approvalGate) return send(res, approvalGate.status, { error: approvalGate.error, code: approvalGate.code });
+              }
               const requestFingerprint = clientOperationId
                 ? mlsCommitFingerprint(roomId, d.userId, d.deviceId, checked.value)
                 : null;
@@ -2342,6 +2351,7 @@ if (req.method === 'POST' && p === '/login') {
               }
               const result = await storage.mlsApplyCommit(roomId, checked.value.epoch, {
                 senderId: d.userId, deviceId: d.deviceId, clientOperationId, requestFingerprint, keyPackageClaimId: checked.value.keyPackageClaimId,
+                joinRequestUserId: checked.value.joinRequestUserId,
                 commit: checked.value.commit, welcomes: checked.value.welcomes, changes: checked.value.changes,
               }, now());
               if (!result.ok && result.reason === 'operation_id_reused') {
