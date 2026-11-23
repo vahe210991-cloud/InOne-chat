@@ -5,6 +5,17 @@
 - Scope: canonical source `inone-development-archive-0.6.0/engine/mobile-mls/mls-client`
 - Pinned storage dependencies: `openmls_sqlite_storage = 0.2.0`, `rusqlite = 0.32`
 
+## Post-PR #131 audit update — 2026-11-23
+
+Current `main` SHA: `2430b0365ab71c60b0926b27854d17a9090e1fba`. Production mobile FFI now depends on canonical Engine B; the former Engine A linkage note in older issue descriptions is stale.
+
+Source inspection confirms one shared SQLCipher connection for the OpenMLS provider and client journal, plus transaction-aware provider writes for inbound application processing and inbound Commit processing. `tests/outbox.rs` contains child-process restart tests against real SQLCipher files for application ratchet writes, inbound Commit merge and post-COMMIT recovery, and inbox journal boundaries. The database helper does not enable WAL; no WAL-specific recovery is claimed.
+
+The post-merge audit found that Welcome group materialization, the `client_rooms` index and the durable Welcome receipt still used separate write boundaries. Draft PR #132 now changes Welcome materialization to use a transaction-backed provider and commits the group state, room index and receipt together. It adds failpoints after group materialization, room-index write, receipt write, before COMMIT and after COMMIT, plus a child-process SQLCipher restart test for those five boundaries.
+
+**This Welcome change is not yet compiled or executed.** It is not accepted evidence and does not change this ADR's Proposed status. Outbound Commit server-acceptance/reconciliation, Flutter/native ACK lifecycle and WAL-specific crash behaviour remain unproven. Keep Issue #1 open until exact-SHA tests and independent review pass.
+
+
 ## Context
 
 OpenMLS group state and the InOne client journal must not commit independently. If an inbound application message advances the MLS receive ratchet but the durable inbox/event marker is not committed, replaying the same server event after restart can fail or be misclassified. The same failure window exists while applying an inbound staged Commit and advancing the group epoch.
