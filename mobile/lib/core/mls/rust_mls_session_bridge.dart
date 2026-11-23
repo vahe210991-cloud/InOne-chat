@@ -124,6 +124,10 @@ class RustMlsSessionBridge implements MlsSessionBridge {
       _requireSession().invite(roomId: roomId, userId: userId);
 
   @override
+  Future<void> approveJoinRequest(String roomId, String userId) =>
+      _requireSession().approveJoinRequest(roomId: roomId, userId: userId);
+
+  @override
   Future<void> cancelInvite(String roomId, String userId) =>
       _requireSession().cancelInvite(roomId: roomId, userId: userId);
 
