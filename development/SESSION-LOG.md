@@ -633,3 +633,11 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Added a profile-menu language selector (`hy`, `ru`, `en`) using the existing authenticated `PATCH /profile/locale` session path.
 - Updated mobile API contract matrix and README to reflect the current screen wiring; detailed report: `development/reports/2026-11-23-beta1-screen-backend-wiring.md`.
 - Validation: intentionally NOT RUN. No workflow dispatch, PR open, test, analyzer or build was performed. Native MLS remains disabled by default.
+
+
+## 2026-11-23 — five-screen integration expansion
+
+- Owner expanded scope to all five active Beta 1.0 screens: messages, chat thread, organization profile, workspace and user profile; target is every in-scope UI control backed by a real server operation.
+- Source audit found non-wired controls and missing data: public room search/join, thread room/member/settings actions, full organization roster and management, workspace notifications/activity/project/task data, and profile device/security management. Some metrics and profile/avatar mutations have no confirmed Beta 1.0 route and must remain unavailable rather than fabricated.
+- Implemented typed immutable organization member parsing from existing GET /orgs/:id/members; organization profile now renders the authenticated member roster and roles. Roster is cleared on account/organization switch.
+- PR #128 and #130 remain open and unmerged. Work remains on the isolated screen branch; no PR opened. Tests, analyzers, builds and Actions remain intentionally not run.
