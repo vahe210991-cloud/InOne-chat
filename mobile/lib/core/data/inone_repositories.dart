@@ -263,6 +263,42 @@ class InOneRepositories {
       body: body,
     );
   }
+  /// Owner-only capability update. The server remains authoritative for membership and ownership.
+  Future<List<String>> updateRoomMemberCapabilities(
+    String roomId, {
+    required String userId,
+    required List<String> capabilities,
+  }) async {
+    const allowed = {
+      'invite_members',
+      'remove_members',
+      'send_messages',
+      'send_stickers_gifs',
+      'forward_messages',
+      'edit_own_messages',
+      'delete_own_messages',
+      'delete_any_messages',
+      'edit_group_name',
+      'edit_group_appearance',
+      'edit_group_settings',
+    };
+    if (userId.trim().isEmpty ||
+        capabilities.any((capability) => !allowed.contains(capability))) {
+      throw ArgumentError('Invalid room member capability update');
+    }
+    final normalized = capabilities.toSet().toList()..sort();
+    final response = await session.request(
+      'POST',
+      '/rooms/${Uri.encodeComponent(roomId)}/capabilities',
+      body: {'userId': userId, 'capabilities': normalized},
+    );
+    final raw = response['capabilities'];
+    if (raw is! List || raw.any((value) => value is! String || !allowed.contains(value))) {
+      throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false);
+    }
+    return List<String>.unmodifiable(raw.cast<String>());
+  }
+
   Future<void> markRoomRead(String roomId, String upToEventId) async {
     final prefix = String.fromCharCode(36);
     final sequence = upToEventId.startsWith(prefix) && upToEventId.length > 1
