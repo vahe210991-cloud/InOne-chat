@@ -34,7 +34,7 @@ void main() {
     expect(find.text('My tasks'), findsNothing);
     expect(find.text('Activity'), findsNothing);
     expect(find.text('Projects'), findsNothing);
-    expect(find.bySemanticsLabel('Edit avatar'), findsNothing);
+    expect(find.byKey(const ValueKey('profile-edit-avatar')), findsNothing);
   });
 
 
@@ -59,7 +59,7 @@ void main() {
       ),
     ));
 
-    final editAvatar = find.bySemanticsLabel('Edit avatar');
+    final editAvatar = find.byKey(const ValueKey('profile-edit-avatar'));
     expect(editAvatar, findsOneWidget);
     await tester.tap(editAvatar);
     expect(editCalls, 1);
