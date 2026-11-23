@@ -122,7 +122,7 @@ Loading, unauthenticated, empty-profile, and error states are rendered by native
 ## Recovery deep links and remaining acceptance blockers
 
 - Beta 1 testing supports `inone://recovery/confirm?user=...&token=...&locale=...`. Android/iOS preparation scripts register the scheme. The HTTPS preview page is non-mutating, localized and uses no-store/referrer protections; only an explicit app launch or POST confirms recovery. The unverified custom scheme is hidden in production; production requires verified Android App Links / iOS Universal Links with the actual public domain and association metadata.
-- The native Dart shell is now the production entry point. Provider authentication remains blocked until native provider callbacks are implemented; message history and sending remain blocked until the native MLS and encrypted-persistence acceptance gates pass.
+- The native Dart shell is the production entry point. Provider authentication remains blocked until native provider callbacks are implemented. When explicitly enabled, message history, send/sync and encrypted attachment transfer use Engine B; they remain opt-in and are not product-accepted until Android/iOS runtime, recovery, security and two-device acceptance pass.
 - When `INONE_MLS_NATIVE_ENABLED` is explicitly enabled, the active chat UI uses the Engine B Rust bridge for room history, inbox synchronization, durable text outbox and encrypted attachment send/download. These operations remain opt-in and are not runtime-accepted until the Android/iOS, recovery, security and two-device gates pass. No plaintext fallback is permitted. Provider OAuth callback handling is also not connected in the active Flutter flow.
 
 ## Tests
@@ -164,10 +164,20 @@ The active implementation branch is `feature/beta1-screen-backend-wiring-2026-11
 
 Public group membership does not imply that the device has an MLS Welcome. A room remains unreadable until the canonical Engine B client has a valid local epoch. Do not add a plaintext or legacy event fallback.
 
-Source changes are not runtime-accepted: the owner has paused all tests, analyzers, builds and GitHub Actions until PR #128 and PR #130 are fully green. See `development/reports/2026-11-23-beta1-screen-backend-wiring.md` for remaining gaps and exact acceptance boundaries.
+Source changes are not runtime-accepted until exact-head validation completes. PR #131 is the integration target for the selected G2 organization-request work from PR #87/#89 and Engine B application glue selected from PR #90. Backend, Flutter, Rust/FRB and platform workflows must pass on one final SHA; physical-device/two-device acceptance remains separate. See `development/reports/2026-11-23-beta1-screen-backend-wiring.md` for the current validation record.
 
 
 The active Beta 1.0 host hides workspace notification/activity/customization controls, publication actions, profile/avatar editing and Feed/Calls navigation when no corresponding backend operation is available. It does not substitute mock metrics or local-only mutations for missing server contracts.
 
 
 The organization profile also exposes server-backed member administration (owner/admin rules), organization settings, settings/admin audit logs and organization-link proposal/accept/revoke. Chat thread settings include capability-gated name, visibility and join-policy updates; read markers are sent only after readable MLS history has been persisted locally. Remote device revocation is available from the user profile.
+
+
+## Platform organization requests and protected documents
+
+- PS-01/PS-02/PS-03 are connected in the native app: platform queue, request details, protected document open/preview and platform-owner-only decisions. The backend enforces applicant/staff scope and owner authorization; UI role checks are presentation only.
+- Organization request documents carry a sanitized filename and allowlisted MIME type. The backend validates supported file signatures, caps uploads at 5 MiB, encrypts stored objects and serializes document attachment against a concurrent request decision.
+- The mobile app keeps persistent document data only as account-scoped AES-256-GCM ciphertext. Per-owner keys are held in platform secure storage. Decrypted previews are written only to a temporary directory and cleaned on startup, viewer return, logout and session revocation.
+- The document metadata schema migration is 0033 because 0032 is already reserved by the push-delivery queue on main.
+- PR #90's Engine A runtime is not copied. The active branch uses canonical Engine B and keeps native MLS disabled by default.
+
