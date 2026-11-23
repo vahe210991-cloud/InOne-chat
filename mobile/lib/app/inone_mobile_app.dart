@@ -684,6 +684,24 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       return;
     }
     try {
+      // Enforce current server-side room membership before opening a room.
+      // A transport outage may use persisted SQLCipher history, but
+      // authorization failures and malformed successful responses fail closed.
+      try {
+        final serverHistory = await _session.request(
+          'GET',
+          '/rooms/${Uri.encodeComponent(chat.id)}/events',
+        );
+        if (serverHistory['events'] is! List) {
+          throw StateError('room history response is invalid');
+        }
+      } on ApiException catch (error) {
+        if (error.code != 'network_unavailable' &&
+            error.code != 'request_timeout') {
+          rethrow;
+        }
+        _notice('Серверная проверка недоступна; открываю только сохранённую локальную историю: $error');
+      }
       try {
         await _session.syncMlsMessages();
       } catch (error) {
