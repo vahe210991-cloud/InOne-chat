@@ -34,7 +34,7 @@ class InOneWorkspaceScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InOneShell(
-      nav: InOneBottomNav(selected: null, onSelected: onTab, onAdd: onAdd),
+      nav: InOneBottomNav(selected: null, onSelected: onTab, onAdd: onAdd, availableTabs: const {InOneTab.messages, InOneTab.profile}),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
         child: Column(
