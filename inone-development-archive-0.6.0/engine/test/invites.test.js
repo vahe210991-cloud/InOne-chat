@@ -47,7 +47,7 @@ function joinByToken(client, token) {
 const b64 = (value) => Buffer.from(value, 'utf8').toString('base64');
 
 async function approveJoinRequestViaMls(owner, targetUserId, claimId) {
-  const claim = await owner.raw('POST', `/mls/key-packages/${enc(targetUserId)}/claim`, { claimId });
+  const claim = await owner.raw('POST', `/mls/key-packages/${enc(targetUserId)}/claims`, { claimId, roomId: ROOM });
   assert.ok(claim.packages.length > 0, 'requester has uploaded a KeyPackage');
   const welcomes = claim.packages.map((item) => ({
     userId: targetUserId,
