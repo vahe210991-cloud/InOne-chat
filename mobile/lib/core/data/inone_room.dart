@@ -67,3 +67,64 @@ class InOneRoomList {
     ));
   }
 }
+
+
+/// Public group search result returned by GET /rooms/search.
+class InOnePublicRoom {
+  const InOnePublicRoom({
+    required this.roomId,
+    required this.name,
+    required this.joinPolicy,
+    required this.members,
+  });
+
+  final String roomId;
+  final String name;
+  final String joinPolicy;
+  final int members;
+
+  factory InOnePublicRoom.fromJson(Map<String, dynamic> json) {
+    final roomId = json['roomId'];
+    final name = json['name'];
+    final joinPolicy = json['join_policy'];
+    final members = json['members'];
+    if (roomId is! String || roomId.trim().isEmpty ||
+        name is! String || name.trim().isEmpty ||
+        joinPolicy is! String || !const {'open', 'approval'}.contains(joinPolicy) ||
+        members is! int || members < 0) {
+      throw const ApiException(
+        code: 'invalid_response',
+        statusCode: 200,
+        retryable: false,
+      );
+    }
+    return InOnePublicRoom(
+      roomId: roomId,
+      name: name,
+      joinPolicy: joinPolicy,
+      members: members,
+    );
+  }
+}
+
+/// Parses the exact public-room search response envelope.
+class InOnePublicRoomSearch {
+  const InOnePublicRoomSearch(this.rooms);
+  final List<InOnePublicRoom> rooms;
+
+  factory InOnePublicRoomSearch.fromJson(Map<String, dynamic> json) {
+    final raw = json['rooms'];
+    if (raw is! List || raw.any((room) => room is! Map)) {
+      throw const ApiException(
+        code: 'invalid_response',
+        statusCode: 200,
+        retryable: false,
+      );
+    }
+    return InOnePublicRoomSearch(List<InOnePublicRoom>.unmodifiable(
+      raw.map((room) => InOnePublicRoom.fromJson(
+        Map<String, dynamic>.from(room as Map),
+      )),
+    ));
+  }
+}
