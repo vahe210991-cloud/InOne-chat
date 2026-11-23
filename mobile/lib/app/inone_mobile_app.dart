@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 
 import '../core/data/inone_profile.dart';
 import '../core/data/inone_room.dart';
+import '../core/data/inone_public_room.dart';
 import '../core/data/inone_push_repository.dart';
 import '../core/data/inone_public_config.dart';
 import '../core/data/inone_organization.dart';
@@ -1052,6 +1053,145 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     }
   }
 
+  Future<void> _searchPublicRooms() async {
+    final controller = TextEditingController();
+    try {
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) {
+          var rooms = <InOnePublicRoom>[];
+          var loading = false;
+          String? failure;
+          return StatefulBuilder(
+            builder: (stateContext, setDialogState) {
+              Future<void> search() async {
+                final query = controller.text.trim();
+                if (query.length < 2 || query.length > 50) {
+                  setDialogState(() {
+                    failure = 'Введите от 2 до 50 символов для поиска.';
+                    rooms = [];
+                  });
+                  return;
+                }
+                setDialogState(() {
+                  loading = true;
+                  failure = null;
+                  rooms = [];
+                });
+                try {
+                  final found = await _repositories.searchPublicRooms(query);
+                  if (!mounted) return;
+                  setDialogState(() {
+                    rooms = found;
+                    loading = false;
+                  });
+                } catch (error) {
+                  if (!mounted) return;
+                  setDialogState(() {
+                    failure = _toFailure(error).message;
+                    loading = false;
+                  });
+                }
+              }
+
+              Future<void> join(InOnePublicRoom room) async {
+                setDialogState(() {
+                  loading = true;
+                  failure = null;
+                });
+                try {
+                  final result = await _repositories.joinPublicRoom(room.roomId);
+                  if (!mounted) return;
+                  Navigator.of(dialogContext).pop();
+                  if (result == 'joined') {
+                    await _loadMlsRooms();
+                    _notice('Вы вступили в группу «${room.name}».');
+                  } else {
+                    _notice('Заявка на вступление в «${room.name}» отправлена.');
+                  }
+                } catch (error) {
+                  if (!mounted) return;
+                  setDialogState(() {
+                    failure = _toFailure(error).message;
+                    loading = false;
+                  });
+                }
+              }
+
+              return AlertDialog(
+                title: const Text('Публичные группы'),
+                content: SizedBox(
+                  width: double.maxFinite,
+                  height: 380,
+                  child: Column(
+                    children: [
+                      TextField(
+                        controller: controller,
+                        autofocus: true,
+                        textInputAction: TextInputAction.search,
+                        onSubmitted: (_) => unawaited(search()),
+                        decoration: const InputDecoration(
+                          labelText: 'Название группы',
+                          hintText: 'Не менее 2 символов',
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      if (loading) const LinearProgressIndicator(),
+                      if (failure != null) ...[
+                        const SizedBox(height: 8),
+                        Text(failure!, style: TextStyle(color: Theme.of(stateContext).colorScheme.error)),
+                      ],
+                      const SizedBox(height: 8),
+                      Expanded(
+                        child: rooms.isEmpty
+                            ? Center(
+                                child: Text(
+                                  loading ? 'Поиск…' : 'Введите название и нажмите «Найти».',
+                                  textAlign: TextAlign.center,
+                                ),
+                              )
+                            : ListView.separated(
+                                itemCount: rooms.length,
+                                separatorBuilder: (_, __) => const Divider(height: 1),
+                                itemBuilder: (context, index) {
+                                  final room = rooms[index];
+                                  return ListTile(
+                                    contentPadding: EdgeInsets.zero,
+                                    title: Text(room.name),
+                                    subtitle: Text(
+                                      '${room.members} участников · ${room.joinPolicy == 'open' ? 'Свободный вход' : 'По заявке'}',
+                                    ),
+                                    trailing: TextButton(
+                                      onPressed: loading ? null : () => unawaited(join(room)),
+                                      child: Text(room.joinPolicy == 'open' ? 'Вступить' : 'Запросить'),
+                                    ),
+                                  );
+                                },
+                              ),
+                      ),
+                    ],
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(),
+                    child: const Text('Закрыть'),
+                  ),
+                  FilledButton(
+                    onPressed: loading ? null : () => unawaited(search()),
+                    child: const Text('Найти'),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+    } finally {
+      controller.dispose();
+    }
+  }
+
   Future<void> _chooseLocale() async {
     final selected = await showDialog<String>(
       context: context,
@@ -1248,8 +1388,8 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           chats: _mlsChats,
           unreadCountsAvailable: false,
           onOpenChat: _openMlsChat,
-          onSearch: () => _notice('Поиск по содержимому сообщений пока не реализован.'),
-          onFilter: () => _notice('Дополнительные фильтры пока недоступны.'),
+          onSearch: () => unawaited(_searchPublicRooms()),
+          onFilter: null,
           onTab: _selectTab,
           onAdd: () => unawaited(_createMlsRoomAndInvite()),
         );
