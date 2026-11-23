@@ -93,6 +93,33 @@ void main() {
     session.dispose();
   });
 
+  test('loads organization request details through the authenticated route', () async {
+    final session = _ProfileSession({
+      'request': {'requestId': 'request-1'},
+      'documents': [],
+    });
+    final result = await InOneRepositories(session).organizationRequest('request-1');
+    expect(session.method, 'GET');
+    expect(session.path, '/org-requests/request-1');
+    expect(session.authenticated, isTrue);
+    expect(result['request'], isA<Map<String, dynamic>>());
+    session.dispose();
+  });
+
+  test('submits an explicit organization decision to the owner-gated route', () async {
+    final session = _ProfileSession({'status': 'approved'});
+    final result = await InOneRepositories(session).decideOrganizationRequest(
+      'request/with space',
+      decision: 'approve',
+    );
+    expect(session.method, 'POST');
+    expect(session.path, '/org-requests/request%2Fwith%20space/decision');
+    expect(session.authenticated, isTrue);
+    expect(session.body, {'decision': 'approve'});
+    expect(result['status'], 'approved');
+    session.dispose();
+  });
+
   test('updates the authenticated profile locale through session persistence', () async {
     final session = _ProfileSession({'locale': 'en'});
     final result = await InOneRepositories(session).updateLocale('en');
