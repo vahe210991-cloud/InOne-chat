@@ -77,6 +77,28 @@ const sameHex = (a, b) => {
   const y = Buffer.from(b, 'hex');
   return x.length === y.length && timingSafeEqual(x, y);
 };
+const DOCUMENT_TYPES = new Map([
+  ['application/pdf', (bytes) => bytes.subarray(0, 5).toString('ascii') === '%PDF-'],
+  ['image/jpeg', (bytes) => bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff],
+  ['image/png', (bytes) => bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))],
+  ['application/octet-stream', () => true],
+]);
+
+function normalizeDocumentMetadata(filename, mimeType, bytes) {
+  const rawName = typeof filename === 'string' ? filename.normalize('NFC').replace(/\\/g, '/') : 'document.bin';
+  const safeName = rawName.split('/').at(-1).replace(/[\\u0000-\\u001f\\u007f]/g, '').trim();
+  if (!safeName || safeName === '.' || safeName === '..' || Buffer.byteLength(safeName, 'utf8') > 180) return null;
+  const type = typeof mimeType === 'string' ? mimeType.trim().toLowerCase() : 'application/octet-stream';
+  const verify = DOCUMENT_TYPES.get(type);
+  if (!verify || !verify(bytes)) return null;
+  return { filename: safeName, mimeType: type };
+}
+
+function contentDispositionAttachment(filename) {
+  const fallback = filename.replace(/[^\\x20-\\x7e]/g, '_').replace(/[\\\\\\";]/g, '_');
+  const encoded = encodeURIComponent(filename).replace(/[!'()*]/g, (char) => '%' + char.charCodeAt(0).toString(16).toUpperCase());
+  return 'attachment; filename="' + fallback + '"; filename*=UTF-8\\'\\'' + encoded;
+}
 
 /** Длительность блокировки PIN: 1, 2, 4… минуты, не больше суток. */
 export function lockDurationMs(attempt) {
@@ -139,7 +161,7 @@ const TEST_UI_FILES = {
   'common/state.mjs': { dir: 'client-screens', name: 'common/state.mjs', type: 'text/javascript; charset=utf-8' },
   'common/device.mjs': { dir: 'client-screens', name: 'common/device.mjs', type: 'text/javascript; charset=utf-8' },
 };
-export function createServer({ pinPepper, mailer: externalMailer, store, trustProxy = false, sms, requirePhone = false, registrationMode = 'verified', sessionTtl = {}, objectStore, objectSecret = randomBytes(32).toString('hex'), filesDir = null, quotaBytes = null, pushDelivery = null, docsSecret = null, defaultOrgAutoJoin = false, testUi = false, providers = {}, providerKeysSource = null, publicUrl = 'https://inone.test', rateLimits = {}, bodyLimit = 4 * 1024 * 1024, logger = null, wireLogLimit = 2000, smsEnabled = true, phoneBlockedCountries = [], phoneAllowedCountries = [], devEmailCode = '' } = {}) {
+export function createServer({ pinPepper, mailer: externalMailer, store, trustProxy = false, sms, requirePhone = false, registrationMode = 'verified', sessionTtl = {}, objectStore, objectSecret = randomBytes(32).toString('hex'), filesDir = null, quotaBytes = null, pushDelivery = null, docsSecret = null, defaultOrgAutoJoin = false, testUi = false, providers = {}, providerKeysSource = null, publicUrl = 'https://inone.test', rateLimits = {}, bodyLimit = 4 * 1024 * 1024, documentBodyLimit = 7 * 1024 * 1024, logger = null, wireLogLimit = 2000, smsEnabled = true, phoneBlockedCountries = [], phoneAllowedCountries = [], devEmailCode = '' } = {}) {
   // Аккаунты и PIN: в базе (store.js) или в памяти по умолчанию (store-memory.js).
   const storage = store ?? createMemoryStore({ pinPepper });
   // SMS-поставщик подключается снаружи; по умолчанию сообщения складываются в список (для тестов).
@@ -619,9 +641,12 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
     try {
       const chunks = [];
       let received = 0;
+      const isOrganizationDocumentUpload =
+        req.method === 'POST' && /^\\/org-requests\\/[^/]+\\/documents$/.test(pathOnly);
+      const requestBodyLimit = isOrganizationDocumentUpload ? documentBodyLimit : bodyLimit;
       for await (const c of req) {
         received += c.length;
-        if (received > bodyLimit) {
+        if (received > requestBodyLimit) {
           res.setHeader('Connection', 'close');
           return send(res, 413, { error: 'request body too large' });
         }
@@ -1042,6 +1067,8 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         if (!d) return send(res, 401, { error: 'unauthorized' });
         const info = await accountLevelInfo(d.userId);
         info.locale = (await storage.profileGet(d.userId))?.locale ?? 'hy';
+        // Platform role is a presentation hint only; every privileged route enforces it server-side.
+        info.platformRole = await storage.platformRoleOf(d.userId);
         // Подсказка (решение владельца): аккаунт связан с Google или Apple, а на этом устройстве биометрия ещё не включена.
         if (info.providers.length > 0 && !(await storage.signingKeyGet(key(d.userId, d.deviceId)))) {
           info.securityHints = [...info.securityHints, 'offer_biometric'];
@@ -1331,12 +1358,28 @@ if (req.method === 'POST' && orgReqDocs) {
   const content = typeof body.contentBase64 === 'string' ? Buffer.from(body.contentBase64, 'base64') : null;
   if (!content || content.length === 0) return send(res, 400, { error: 'contentBase64 is required' });
   if (content.length > 5 * 1024 * 1024) return send(res, 413, { error: 'document is larger than 5 MiB' });
+  const metadata = normalizeDocumentMetadata(body.filename, body.mimeType, content);
+  if (!metadata) return send(res, 400, { error: 'filename or supported document MIME type is invalid' });
   const docId = randomBytes(12).toString('hex');
   if (!docsKey) return send(res, 503, { error: 'document storage is not configured' });
   const objectKey = randomBytes(16).toString('hex');
   await objectStore.put(objectKey, encryptDoc(content));
-  await storage.addOrgRequestDocument({ docId, requestId, kind, size: content.length, sha256: createHash('sha256').update(content).digest('hex'), objectKey, uploadedBy: d.userId, createdAt: now() });
-  return send(res, 200, { docId, kind, size: content.length });
+  let attached;
+  try {
+    attached = await storage.addOrgRequestDocument({
+      docId, requestId, kind, size: content.length,
+      sha256: createHash('sha256').update(content).digest('hex'),
+      ...metadata, objectKey, uploadedBy: d.userId, createdAt: now(),
+    });
+  } catch (error) {
+    await objectStore.remove(objectKey).catch(() => {});
+    throw error;
+  }
+  if (!attached) {
+    await objectStore.remove(objectKey).catch(() => {});
+    return send(res, 409, { error: 'request is already decided' });
+  }
+  return send(res, 200, { docId, kind, size: content.length, ...metadata });
 }
 if (req.method === 'GET' && orgReqDoc) {
   const d = await authed(req);
@@ -1353,7 +1396,7 @@ if (req.method === 'GET' && orgReqDoc) {
   const bytes = blob ? decryptDoc(blob) : null;
   if (!bytes) return send(res, 404, { error: 'not found' });
   if (staff && r.applicantId !== d.userId) await storage.logOrgRequest(requestId, d.userId, 'view', now());
-  res.writeHead(200, { 'content-type': 'application/octet-stream', 'content-length': bytes.length, 'content-disposition': 'attachment', 'x-content-type-options': 'nosniff', 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' });
+  res.writeHead(200, { 'content-type': doc.mimeType ?? 'application/octet-stream', 'content-length': bytes.length, 'content-disposition': contentDispositionAttachment(doc.filename ?? 'document.bin'), 'x-content-type-options': 'nosniff', 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' });
   return res.end(bytes);
 }
 if (req.method === 'POST' && orgReqDecision) {
