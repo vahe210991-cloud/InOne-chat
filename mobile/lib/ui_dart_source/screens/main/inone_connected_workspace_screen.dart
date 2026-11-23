@@ -170,6 +170,35 @@ class _InOneConnectedWorkspaceScreenState
                 right: 0,
                 child: LinearProgressIndicator(minHeight: 2),
               ),
+            if (_controller.error != null)
+              Positioned(
+                top: 2,
+                left: 12,
+                right: 12,
+                child: Material(
+                  color: Theme.of(context).colorScheme.errorContainer,
+                  borderRadius: BorderRadius.circular(12),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Не удалось обновить рабочее пространство',
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.onErrorContainer,
+                            ),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: _load,
+                          child: const Text('Повторить'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
           ],
         );
       },
