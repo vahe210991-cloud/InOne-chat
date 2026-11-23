@@ -69,8 +69,8 @@ class InOneRepositories {
 
   Future<void> updateRoomName(String roomId, String name) async {
     final normalized = name.trim();
-    if (normalized.isEmpty || normalized.length > 80) {
-      throw ArgumentError.value(name, 'name', 'Room name must contain 1 to 80 characters');
+    if (normalized.isEmpty || normalized.length > 100) {
+      throw ArgumentError.value(name, 'name', 'Room name must contain 1 to 100 characters');
     }
     await session.request(
       'POST',
@@ -78,6 +78,31 @@ class InOneRepositories {
       body: {'name': normalized},
     );
   }
+  Future<void> markRoomRead(String roomId, String upToEventId) async {
+    if (!RegExp(r'^\$[0-9]+
+  Future<Map<String, dynamic>> loginApprovals() =>
+      session.request('GET', '/approvals');
+  Future<Map<String, dynamic>> organizationRequests() =>
+      session.request('GET', '/org-requests');
+  Future<Map<String, dynamic>> publicConfig() =>
+      session.request('GET', '/config/public', authenticated: false);
+
+  Future<Map<String, dynamic>> get(
+    String path, {
+    bool authenticated = true,
+  }) =>
+      session.request('GET', path, authenticated: authenticated);
+}
+).hasMatch(upToEventId)) {
+      throw ArgumentError.value(upToEventId, 'upToEventId', 'Expected a server event ID');
+    }
+    await session.request(
+      'POST',
+      '/rooms/${Uri.encodeComponent(roomId)}/read',
+      body: {'upTo': upToEventId},
+    );
+  }
+
   Future<Map<String, dynamic>> loginApprovals() =>
       session.request('GET', '/approvals');
   Future<Map<String, dynamic>> organizationRequests() =>
