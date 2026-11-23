@@ -513,7 +513,7 @@ Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone
 
 ## 2026-11-23 — isolated screen/backend work
 
-- Continue from branch `feature/beta1-screen-backend-wiring-2026-11-23` (current head after the screen-wiring report/session-log commits: `98b2fde128f4a1a84519acc7fde4d552e4b38296`). Base is PR #130 head `dff0786bd8f920b902495e94fec46c297b110899`.
+- Continue from branch `feature/beta1-screen-backend-wiring-2026-11-23` (current head after the latest API-contract update: `494422cdf94c24cbf5d4ac0510ce67ab96b5f31b`). Base is PR #130 head `dff0786bd8f920b902495e94fec46c297b110899`.
 - Owner instruction: do not run tests, analyzers, builds, workflow dispatches or CI reruns until PR #128 and PR #130 are fully green. Do not open a PR before that instruction changes, because pull_request workflows would consume the occupied queue.
 - Implemented in this branch: GET /rooms/mine room list renders with native MLS disabled; room content/send remain MLS-gated; GET /orgs/:id/members supplies validated organization/workspace member count; profile menu updates locale through PATCH /profile/locale.
 - Read `development/reports/2026-11-23-beta1-screen-backend-wiring.md` and `mobile/API-CONTRACTS-BETA-1.md` before further changes.
