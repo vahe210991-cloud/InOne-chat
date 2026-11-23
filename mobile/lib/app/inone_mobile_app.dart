@@ -1476,6 +1476,204 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     }
   }
 
+  Future<void> _showOrganizationSettings() async {
+    final org = _selectedOrganization;
+    if (org == null) return;
+    try {
+      var settings = await _repositories.organizationSettings(org.orgId);
+      if (!mounted) return;
+      final canEdit = org.role == 'owner' || org.role == 'admin';
+      final maxMembersController = TextEditingController(
+        text: settings.maxGroupMembers?.toString() ?? '',
+      );
+      final quotaController = TextEditingController(
+        text: settings.fileQuotaBytes?.toString() ?? '',
+      );
+      var channelsEnabled = settings.channelsEnabled;
+      var saving = false;
+      String? errorMessage;
+      try {
+        await showDialog<void>(
+          context: context,
+          builder: (dialogContext) => StatefulBuilder(
+            builder: (context, setDialogState) {
+              Future<void> save(String field, Object? value) async {
+                setDialogState(() {
+                  saving = true;
+                  errorMessage = null;
+                });
+                try {
+                  final updated = await _repositories.updateOrganizationSetting(
+                    org.orgId,
+                    field: field,
+                    value: value,
+                  );
+                  if (!dialogContext.mounted) return;
+                  setDialogState(() {
+                    settings = updated;
+                    channelsEnabled = updated.channelsEnabled;
+                    maxMembersController.text = updated.maxGroupMembers?.toString() ?? '';
+                    quotaController.text = updated.fileQuotaBytes?.toString() ?? '';
+                  });
+                  if (mounted) _notice('Настройки организации сохранены на сервере.');
+                } catch (error) {
+                  if (dialogContext.mounted) {
+                    setDialogState(() => errorMessage = _toFailure(error).message);
+                  }
+                } finally {
+                  if (dialogContext.mounted) {
+                    setDialogState(() => saving = false);
+                  }
+                }
+              }
+
+              Future<void> showLog() async {
+                try {
+                  final entries = await _repositories.organizationSettingsLog(org.orgId);
+                  if (!dialogContext.mounted) return;
+                  await showDialog<void>(
+                    context: dialogContext,
+                    builder: (logContext) => AlertDialog(
+                      title: const Text('Журнал настроек'),
+                      content: SizedBox(
+                        width: 460,
+                        height: 320,
+                        child: entries.isEmpty
+                            ? const Center(child: Text('Изменений пока нет.'))
+                            : ListView(
+                                children: [
+                                  for (final entry in entries.reversed)
+                                    ListTile(
+                                      contentPadding: EdgeInsets.zero,
+                                      title: Text(entry.field),
+                                      subtitle: Text(
+                                        '${entry.actor} · ${entry.oldValue ?? '—'} → ${entry.newValue ?? '—'}',
+                                      ),
+                                      trailing: Text(
+                                        DateTime.fromMillisecondsSinceEpoch(entry.at)
+                                            .toLocal()
+                                            .toString()
+                                            .split('.')
+                                            .first,
+                                        style: const TextStyle(fontSize: 10),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(logContext).pop(),
+                          child: const Text('Закрыть'),
+                        ),
+                      ],
+                    ),
+                  );
+                } catch (error) {
+                  if (dialogContext.mounted) {
+                    setDialogState(() => errorMessage = _toFailure(error).message);
+                  }
+                }
+              }
+
+              return AlertDialog(
+                title: const Text('Настройки организации'),
+                content: SizedBox(
+                  width: 460,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      TextField(
+                        controller: maxMembersController,
+                        enabled: canEdit && !saving,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Максимум участников в группе',
+                          helperText: 'Пустое значение — лимит платформы',
+                        ),
+                      ),
+                      if (canEdit)
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton(
+                            onPressed: saving ? null : () {
+                              final raw = maxMembersController.text.trim();
+                              final value = raw.isEmpty ? null : int.tryParse(raw);
+                              if (raw.isNotEmpty && (value == null || value < 2)) {
+                                setDialogState(() => errorMessage = 'Введите целое число не меньше 2 или оставьте поле пустым.');
+                                return;
+                              }
+                              unawaited(save('maxGroupMembers', value));
+                            },
+                            child: const Text('Сохранить лимит'),
+                          ),
+                        ),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Каналы организации'),
+                        value: channelsEnabled,
+                        onChanged: !canEdit || saving
+                            ? null
+                            : (value) {
+                                setDialogState(() => channelsEnabled = value);
+                                unawaited(save('channelsEnabled', value));
+                              },
+                      ),
+                      TextField(
+                        controller: quotaController,
+                        enabled: canEdit && !saving,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Квота файлов (байт)',
+                          helperText: 'Пустое значение — значение по умолчанию',
+                        ),
+                      ),
+                      if (canEdit)
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton(
+                            onPressed: saving ? null : () {
+                              final raw = quotaController.text.trim();
+                              final value = raw.isEmpty ? null : int.tryParse(raw);
+                              if (raw.isNotEmpty && (value == null || value < 1)) {
+                                setDialogState(() => errorMessage = 'Введите положительное целое число или оставьте поле пустым.');
+                                return;
+                              }
+                              unawaited(save('fileQuotaBytes', value));
+                            },
+                            child: const Text('Сохранить квоту'),
+                          ),
+                        ),
+                      if (errorMessage != null)
+                        Text(errorMessage!, style: const TextStyle(color: Colors.red)),
+                    ],
+                  ),
+                ),
+                actions: [
+                  if (canEdit)
+                    TextButton(
+                      onPressed: saving ? null : () => unawaited(showLog()),
+                      child: const Text('Журнал изменений'),
+                    ),
+                  TextButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(),
+                    child: const Text('Закрыть'),
+                  ),
+                ],
+              );
+            },
+          ),
+        );
+      } finally {
+        maxMembersController.dispose();
+        quotaController.dispose();
+      }
+    } catch (error) {
+      _notice('Не удалось загрузить настройки организации: ${_toFailure(error).message}');
+    }
+  }
+
   Future<void> _openOrganization() async {
     final org = _selectedOrganization;
     if (org == null) {
@@ -1808,7 +2006,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         return InOneOrgProfileScreen(
           profile: _organizationProfile,
           onBack: () => setState(() => _screen = 'workspace'),
-          onMore: _chooseOrganization,
+          onMore: () => unawaited(_showOrganizationSettings()),
           onEditCover: null,
           onTab: _selectTab,
           onAdd: null,
