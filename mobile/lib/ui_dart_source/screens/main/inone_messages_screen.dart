@@ -71,7 +71,7 @@ class _InOneMessagesScreenState extends State<InOneMessagesScreen> {
                     style: InOneText.style(24, FontWeight.w600, c.text, letterSpacing: -0.48),
                   ),
                 ),
-                InOneIconAction(icon: InOneIcons.filter, semanticLabel: 'Filter', onTap: widget.onFilter),
+                InOneIconAction(icon: InOneIcons.filter, semanticLabel: 'Toggle group filter', onTap: () => setState(() => _filter = _filter == 0 ? 1 : 0)),
                 InOneIconAction(icon: InOneIcons.search, semanticLabel: 'Search', onTap: widget.onSearch),
               ],
             ),
