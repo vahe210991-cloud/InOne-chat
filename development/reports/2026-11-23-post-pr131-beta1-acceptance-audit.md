@@ -13,7 +13,7 @@
 
 **NOT READY** for Beta 1.0 release acceptance.
 
-PR #131 is merged and the source integration is substantial. PR #131 exact-head validation completed **19/19 PASS**. However, post-merge push validation on the actual main SHA is not yet fully complete: seven of nine push workflows completed PASS; OpenMLS Flutter Rust Bridge generation remains in progress on the iOS native-assets build; Native MLS validation had its iOS Keychain target build cancelled in attempt 1 and a targeted rerun is queued in attempt 2.
+PR #131 is merged and the source integration is substantial. PR #131 exact-head validation completed **19/19 PASS**. However, post-merge push validation on the actual main SHA is not yet fully complete: eight of nine push workflows completed PASS; OpenMLS Flutter Rust Bridge generation, including the iOS native-assets build, is now PASS; Native MLS validation had its iOS Keychain target build cancelled in attempt 1 and a targeted rerun is queued in attempt 2.
 
 The audit also found a real P0 Welcome crash-consistency gap. A transaction-aware fix and child-process SQLCipher restart test have been added to draft PR #132, but that branch has not yet completed its exact-SHA validation. Physical Android/iOS two-device acceptance has not been performed. Native MLS remains disabled by default.
 
@@ -48,14 +48,14 @@ Nine push workflows were retrieved:
 | Validate recovered InOne P0 source | **PASS** | Rust format, PostgreSQL integration, OpenMLS tests, P0 room-list regression, Rust bridge tests, backend Node suite |
 | Flutter iOS validation | **PASS** | Flutter validation plus unsigned simulator and iOS device-target builds |
 | Flutter mobile validation | **PASS** | Flutter analyze/tests, Android preview APK and Android emulator Keystore/SQLCipher lifecycle smoke |
-| OpenMLS Flutter Rust Bridge generation | **IN PROGRESS** | Main generate/validate job PASS; Android build and Android Keystore emulator smoke PASS; iOS native-assets compile still running |
+| OpenMLS Flutter Rust Bridge generation | **PASS** | Main generate/validate job, Android build, Android Keystore emulator smoke and iOS native-assets compile all PASS |
 | Native MLS client validation | **RERUN QUEUED** | Exact-source check, canonical Engine B regression tests, persistent bridge host tests and attachment/session integration tests PASS; iOS Keychain native-target job was cancelled on attempt 1. Its cancelled-job log was unavailable. Targeted rerun was accepted and attempt 2 is queued |
 
 The initial Native MLS workflow attempt concluded failure because the iOS Keychain native-target job was cancelled; the other four jobs passed. The targeted job rerun is queued. Do not call this workflow complete until the rerun concludes.
 
 The exact-SHA acceptance gate is configured for pull-request events, not main push; it is therefore N/A for main push. Each applicable main workflow verifies its own source SHA.
 
-**Main SHA verdict:** 7 workflow PASS; 1 workflow IN_PROGRESS; 1 workflow awaiting targeted rerun. Main is not yet fully accepted.
+**Main SHA verdict:** 7 workflow PASS; 1 workflow IN_PROGRESS; 1 workflow awaiting targeted rerun. Main is not yet fully accepted until the targeted Native MLS iOS Keychain job completes.
 
 ### Current audit branch validation
 
