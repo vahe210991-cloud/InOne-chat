@@ -183,6 +183,7 @@ abstract interface class MlsSessionBridge {
   Future<int> outboxLength();
   Future<int?> localEpoch(String roomId);
   Future<List<String>> membersOf(String roomId);
+  Future<void> removeMember(String roomId, String userId);
   Future<void> revokeDevice(String deviceId);
   Future<int> removeRevokedDevices();
 
