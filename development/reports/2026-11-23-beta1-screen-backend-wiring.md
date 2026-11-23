@@ -61,3 +61,26 @@ The work received source-level inspection only. It is not runtime-accepted and i
 ## Next screen work
 
 Continue only against backend routes already present and documented. Prioritize the reachable Beta 1.0 profile, workspace, organization, room-list and chat flows. Keep approval/request/provider flows and future CRM/task/calendar screens blocked until their exact screen contracts and host behavior are confirmed. Do not create new endpoints or expose backend operations through a generic UI probe.
+
+## Expanded five-screen integration pass
+
+The five-screen scope is now explicit:
+
+| Screen | Existing live wiring | Current source gaps to close |
+|---|---|---|
+| Messages / room directory | Authenticated `GET /rooms/mine`; canonical Engine B history/outbox remains gated | Public-room search and join flow; server-backed unread/read state where contract permits; loading/empty/error/retry and role/capability-aware actions |
+| Chat thread | Engine B MLS text send, durable outbox, encrypted attachment send/download | Room metadata/member/settings actions; message read marker; supported moderation actions only where MLS/event contract allows; no plaintext editing/send fallback |
+| Organization profile | `GET /orgs/mine`, `GET /orgs/:id/members` | Member roster now typed and rendered; owner/admin mutations, settings, links and audit views still need explicit permission-aware UI and confirmations |
+| Workspace | Organization switch, member count, room-derived group count, public system config | Notifications, project/task/activity statistics and customization must be mapped to actual Beta 1.0 backend routes; unavailable modules must not show fabricated metrics |
+| User profile | `GET /profile`, persisted `PATCH /profile/locale`, logout | Device inventory/revocation and account security surfaces; profile editing/avatar must remain unavailable until a real backend mutation contract exists |
+
+### Newly implemented in this pass
+
+- Added strict `InOneOrganizationMember` parsing for the existing `GET /orgs/:id/members` response (`userId`, role).
+- Changed `InOneRepositories.organizationMembers` from an untyped response map to a validated immutable member list.
+- Organization profile now renders the member roster and server-provided role for each member, not only a count.
+- Roster state is cleared when the account or selected organization changes. Failed/denied reads remain unknown and are not replaced with guessed members.
+
+### Acceptance boundary
+
+This is source implementation only. No test, analyzer, build, device run, workflow dispatch or Actions rerun was performed. The roster is not runtime-accepted. The five screens are **not yet fully connected**: the remaining gaps above are tracked as implementation work, not marked complete. Backend contracts that do not exist (for example, a general profile/avatar update or workspace project/task feed in the current Beta 1.0 contract) will not be fabricated on the client.
