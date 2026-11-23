@@ -154,45 +154,59 @@ class InOneWorkspaceScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Active projects', style: InOneText.style(11.5, FontWeight.w600, c.heroMuted)),
-          const SizedBox(height: 5),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                summary.activeProjects?.toString() ?? '—',
-                style: InOneText.style(34, FontWeight.w700, c.heroFg, height: 1, letterSpacing: -0.68),
-              ),
-              const SizedBox(width: 9),
-              if (summary.projectsCaption.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: c.heroPillBg,
-                      borderRadius: BorderRadius.circular(InOneRadius.pill),
-                    ),
-                    child: Text(
-                      summary.projectsCaption,
-                      style: InOneText.style(11, FontWeight.w700, c.heroPillFg),
+          Text(
+            summary.activeProjects != null ? 'Active projects' : 'Workspace overview',
+            style: InOneText.style(11.5, FontWeight.w600, c.heroMuted),
+          ),
+          if (summary.activeProjects != null) ...[
+            const SizedBox(height: 5),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  summary.activeProjects.toString(),
+                  style: InOneText.style(34, FontWeight.w700, c.heroFg, height: 1, letterSpacing: -0.68),
+                ),
+                const SizedBox(width: 9),
+                if (summary.projectsCaption.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: c.heroPillBg,
+                        borderRadius: BorderRadius.circular(InOneRadius.pill),
+                      ),
+                      child: Text(
+                        summary.projectsCaption,
+                        style: InOneText.style(11, FontWeight.w700, c.heroPillFg),
+                      ),
                     ),
                   ),
-                ),
-            ],
-          ),
+              ],
+            ),
+          ],
           const SizedBox(height: 16),
           Row(
             children: [
-              stat(summary.tasksDue?.toString() ?? '—', 'Tasks due'),
-              const SizedBox(width: 14),
-              divider(),
-              const SizedBox(width: 14),
-              stat(summary.teamMembers?.toString() ?? '—', 'Team members'),
-              const SizedBox(width: 14),
-              divider(),
-              const SizedBox(width: 14),
-              stat(summary.activeGroups?.toString() ?? '—', 'Active groups'),
+              if (summary.tasksDue != null) ...[
+                stat(summary.tasksDue.toString(), 'Tasks due'),
+                if (summary.teamMembers != null || summary.activeGroups != null) ...[
+                  const SizedBox(width: 14),
+                  divider(),
+                  const SizedBox(width: 14),
+                ],
+              ],
+              if (summary.teamMembers != null) ...[
+                stat(summary.teamMembers.toString(), 'Team members'),
+                if (summary.activeGroups != null) ...[
+                  const SizedBox(width: 14),
+                  divider(),
+                  const SizedBox(width: 14),
+                ],
+              ],
+              if (summary.activeGroups != null)
+                stat(summary.activeGroups.toString(), 'Active groups'),
             ],
           ),
         ],
