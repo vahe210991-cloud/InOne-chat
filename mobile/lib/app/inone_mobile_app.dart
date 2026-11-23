@@ -271,26 +271,43 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       }
 
       await _session.syncMlsMessages();
-      final incoming = await _session.mlsMessagesForRoom(route.roomId);
-      final target = incoming.where((message) => message.eventId == route.eventId).toList(growable: false);
+      // Read the durable SQLCipher history first. This acknowledges only
+      // readable inbox events that are already persisted for this room.
+      final incoming = await _session.loadMlsRoomHistory(route.roomId);
+      final target = incoming
+          .where((message) => message.eventId == route.eventId)
+          .toList(growable: false);
       if (target.isEmpty || target.every((message) => !message.isReadable)) {
         if (mounted) setState(() => _screen = 'messages');
         _notice('Сообщение ещё не расшифровано на этом устройстве или недоступно.');
         return;
       }
 
+      final epoch = await _session.mlsLocalEpoch(route.roomId);
       final items = target
           .where((message) => message.isReadable)
-          .map((message) => InOneThreadItem(
-                kind: InOneThreadItemKind.text,
-                text: message.text,
-              ))
+          .map((message) => message.isAttachment
+              ? InOneThreadItem(
+                  kind: InOneThreadItemKind.file,
+                  fileId: message.fileId,
+                  fileLabel: message.name ?? 'Вложение',
+                  text: '${message.size ?? 0} bytes · ${message.mimeType ?? 'file'}',
+                  mine: message.mine,
+                  meta: 'MLS · epoch ${epoch ?? '—'}',
+                )
+              : InOneThreadItem(
+                  kind: InOneThreadItemKind.text,
+                  text: message.text,
+                  mine: message.mine,
+                  meta: 'MLS · epoch ${epoch ?? '—'}',
+                ))
           .toList(growable: false);
       if (!mounted) return;
       setState(() {
-        _pushRoomId = route.roomId;
-        _pushThreadItems = items;
-        _screen = 'pushChat';
+        _activeMlsRoomId = route.roomId;
+        _activeMlsRoomName = route.roomId;
+        _activeMlsThread = items;
+        _screen = 'chatThread';
       });
     } catch (_) {
       if (mounted) {
