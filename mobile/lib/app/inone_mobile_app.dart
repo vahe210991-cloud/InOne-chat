@@ -6,6 +6,7 @@ import 'package:file_picker/file_picker.dart';
 
 import 'package:flutter/material.dart';
 
+import '../core/data/inone_device.dart';
 import '../core/data/inone_profile.dart';
 import '../core/data/inone_room.dart';
 import '../core/data/inone_push_repository.dart';
@@ -1534,6 +1535,127 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     }
   }
 
+  Future<void> _showDeviceManagement() async {
+    List<InOneDevice> devices;
+    try {
+      devices = await _repositories.myDevices();
+    } catch (error) {
+      _notice('Не удалось загрузить устройства аккаунта: ${_toFailure(error).message}');
+      return;
+    }
+    if (!mounted) return;
+    final currentDeviceId = _session.deviceId;
+    final revoking = <String>{};
+    String? errorMessage;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          Future<void> revoke(InOneDevice device) async {
+            final confirmed = await showDialog<bool>(
+              context: dialogContext,
+              builder: (confirmContext) => AlertDialog(
+                title: const Text('Отозвать устройство?'),
+                content: Text('Устройство «${device.label?.isNotEmpty == true ? device.label : device.deviceId}» потеряет доступ к аккаунту, push и MLS-ключам.'),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(confirmContext).pop(false),
+                    child: const Text('Отмена'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.of(confirmContext).pop(true),
+                    child: const Text('Отозвать'),
+                  ),
+                ],
+              ),
+            );
+            if (confirmed != true || !dialogContext.mounted) return;
+            setDialogState(() {
+              revoking.add(device.deviceId);
+              errorMessage = null;
+            });
+            try {
+              await _repositories.revokeDevice(device.deviceId);
+              final updated = await _repositories.myDevices();
+              if (!dialogContext.mounted) return;
+              setDialogState(() => devices = updated);
+            } catch (error) {
+              if (dialogContext.mounted) {
+                setDialogState(() => errorMessage = _toFailure(error).message);
+              }
+            } finally {
+              if (dialogContext.mounted) {
+                setDialogState(() => revoking.remove(device.deviceId));
+              }
+            }
+          }
+
+          return AlertDialog(
+            title: const Text('Устройства аккаунта'),
+            content: SizedBox(
+              width: 460,
+              height: 340,
+              child: Column(
+                children: [
+                  Expanded(
+                    child: devices.isEmpty
+                        ? const Center(child: Text('Устройства не найдены.'))
+                        : ListView(
+                            children: [
+                              for (final device in devices)
+                                ListTile(
+                                  contentPadding: EdgeInsets.zero,
+                                  title: Text(
+                                    device.label?.isNotEmpty == true ? device.label! : device.deviceId,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  subtitle: Text([
+                                    if (device.deviceId == currentDeviceId) 'Это устройство',
+                                    if (device.revoked) 'Доступ отозван',
+                                    if (!device.revoked && device.pushRegistered) 'Push включён',
+                                    if (!device.revoked && !device.pushRegistered) 'Push не зарегистрирован',
+                                  ].join(' · ')),
+                                  trailing: device.revoked
+                                      ? const Text('Отозвано')
+                                      : device.deviceId == currentDeviceId
+                                          ? const Text('Текущее')
+                                          : TextButton(
+                                              onPressed: revoking.contains(device.deviceId)
+                                                  ? null
+                                                  : () => unawaited(revoke(device)),
+                                              child: revoking.contains(device.deviceId)
+                                                  ? const SizedBox(
+                                                      width: 16,
+                                                      height: 16,
+                                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                                    )
+                                                  : const Text('Отозвать'),
+                                            ),
+                                ),
+                            ],
+                          ),
+                  ),
+                  if (errorMessage != null)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(errorMessage!, style: const TextStyle(color: Colors.red)),
+                    ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('Закрыть'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   Future<void> _chooseLocale() async {
     final selected = await showDialog<String>(
       context: context,
@@ -1777,6 +1899,11 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
               label: 'Язык приложения · ${_session.locale.toUpperCase()}',
               icon: Icons.language,
               onTap: () => unawaited(_chooseLocale()),
+            ),
+            InOneProfileMenuItem(
+              label: 'Устройства и безопасность',
+              icon: Icons.devices_other_outlined,
+              onTap: () => unawaited(_showDeviceManagement()),
             ),
             InOneProfileMenuItem(
               label: 'Состояние системы',
