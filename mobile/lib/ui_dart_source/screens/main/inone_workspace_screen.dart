@@ -17,6 +17,9 @@ class InOneWorkspaceScreen extends StatelessWidget {
     required this.onNotifications,
     required this.onCustomize,
     required this.onSeeAll,
+    this.notificationsAvailable = false,
+    this.moduleCustomizationAvailable = false,
+    this.activityFeedAvailable = false,
     required this.onTab,
     required this.onAdd,
   });
@@ -28,6 +31,10 @@ class InOneWorkspaceScreen extends StatelessWidget {
   final VoidCallback? onNotifications;
   final VoidCallback? onCustomize;
   final VoidCallback? onSeeAll;
+  /// Capability flags default to false; callbacks alone do not imply server support.
+  final bool notificationsAvailable;
+  final bool moduleCustomizationAvailable;
+  final bool activityFeedAvailable;
   final ValueChanged<InOneTab> onTab;
   final VoidCallback onAdd;
 
@@ -44,12 +51,22 @@ class InOneWorkspaceScreen extends StatelessWidget {
             const SizedBox(height: 14),
             _hero(context),
             const SizedBox(height: 18),
-            _sectionHeader(context, 'Modules', 'Customize', onCustomize),
+            _sectionHeader(
+              context,
+              'Modules',
+              'Customize',
+              moduleCustomizationAvailable ? onCustomize : null,
+            ),
             const SizedBox(height: 11),
             _modulesGrid(context),
             if (activity.isNotEmpty) ...[
               const SizedBox(height: 20),
-              _sectionHeader(context, 'Recent activity', 'See all', onSeeAll),
+              _sectionHeader(
+                  context,
+                  'Recent activity',
+                  'See all',
+                  activityFeedAvailable ? onSeeAll : null,
+                ),
               const SizedBox(height: 10),
               for (var i = 0; i < activity.length; i++) ...[
                 if (i > 0) const SizedBox(height: 12),
@@ -96,7 +113,7 @@ class InOneWorkspaceScreen extends StatelessWidget {
             ),
           ),
         ),
-        if (onNotifications != null) ...[
+        if (notificationsAvailable && onNotifications != null) ...[
           const SizedBox(width: 10),
           Semantics(
             button: true,
