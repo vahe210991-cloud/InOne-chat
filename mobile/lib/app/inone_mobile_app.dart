@@ -7,6 +7,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../core/data/inone_profile.dart';
+import '../core/data/inone_room.dart';
 import '../core/data/inone_push_repository.dart';
 import '../core/data/inone_public_config.dart';
 import '../core/data/inone_organization.dart';
@@ -593,38 +594,36 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         // A transient outage must not hide the room list or discard queued text.
         _notice('Исходящие MLS-сообщения останутся в защищённой очереди: $error');
       }
-      late final List<dynamic> rows;
+      late final List<InOneRoom> rows;
       try {
-        final response = await _repositories.myRooms();
-        final remoteRows = response['rooms'];
-        if (remoteRows is! List) {
-          throw const FormatException('Backend room list is not an array');
-        }
-        rows = remoteRows;
+        final remoteRooms = await _repositories.myRooms();
+        rows = remoteRooms.rooms;
       } catch (error) {
+        // Authentication and malformed successful responses must not be hidden
+        // by a local cache fallback. Only transport outages may use SQLCipher.
+        if (error is ApiException &&
+            error.code != 'network_unavailable' &&
+            error.code != 'request_timeout') {
+          rethrow;
+        }
         // Restore room IDs from the persistent SQLCipher-backed Engine B store.
         // This also works after a cold start while the server is unreachable.
         final localRoomIds = await _session.localMlsRoomIds();
         rows = localRoomIds
-            .map((roomId) => <String, dynamic>{
-                  'roomId': roomId,
-                  'name': roomId,
-                  'kind': 'group',
-                })
+            .map((roomId) => InOneRoom(
+                  roomId: roomId,
+                  name: roomId,
+                  kind: 'group',
+                  role: 'member',
+                ))
             .toList(growable: false);
         _notice('Серверный список комнат недоступен; восстановлены локальные комнаты из SQLCipher: $error');
       }
-      final pendingIncoming = await _session.pendingMlsMessages();
       final chats = <InOneChatPreview>[];
       for (final row in rows) {
-        if (row is! Map) continue;
-        final roomId = row['roomId'];
-        if (roomId is! String || roomId.trim().isEmpty) continue;
-        final rawName = row['name'];
-        final name = rawName is String && rawName.trim().isNotEmpty
-            ? rawName.trim()
-            : roomId;
-        final messages = await _session.mlsMessagesForRoom(roomId);
+        final roomId = row.roomId;
+        final name = row.displayName;
+        final messages = await _session.loadMlsRoomHistory(roomId);
         final pendingOutgoing = await _session.pendingMlsOutbox(roomId);
         String? lastMessage;
         for (final message in messages) {
@@ -637,7 +636,8 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         if (pendingOutgoing.isNotEmpty) {
           lastMessage = pendingOutgoing.last.text ?? '📎 Вложение в очереди';
         }
-        final kind = row['kind'] == 'person' || row['kind'] == 'direct'
+        final normalizedKind = row.kind.toLowerCase();
+        final kind = const {'person', 'direct', 'dm'}.contains(normalizedKind)
             ? InOneChatKind.person
             : InOneChatKind.group;
         chats.add(InOneChatPreview(
@@ -654,10 +654,6 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         _messagesLoading = false;
         _messagesError = null;
       });
-      // The Rust inbox is already durable in SQLCipher. Acknowledge only after
-      // the UI has accepted the refreshed room/message snapshot.
-      final accepted = pendingIncoming.map((message) => message.eventId).toSet().toList();
-      if (accepted.isNotEmpty) await _session.acknowledgeMlsMessages(accepted);
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -688,7 +684,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         _notice('Для этой комнаты ещё не получен MLS Welcome. Сообщения не открыты.');
         return;
       }
-      final messages = await _session.mlsMessagesForRoom(chat.id);
+      final messages = await _session.loadMlsRoomHistory(chat.id);
       final pending = await _session.pendingMlsOutbox(chat.id);
       final items = messages.map((message) => message.isAttachment
           ? InOneThreadItem(
@@ -727,12 +723,6 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         _activeMlsThread = items;
         _screen = 'chatThread';
       });
-      final pendingIncoming = await _session.pendingMlsMessages();
-      final accepted = pendingIncoming
-          .where((message) => message.roomId == chat.id)
-          .map((message) => message.eventId)
-          .toList(growable: false);
-      if (accepted.isNotEmpty) await _session.acknowledgeMlsMessages(accepted);
     } catch (error) {
       _notice('Не удалось открыть MLS-комнату: $error');
     }
