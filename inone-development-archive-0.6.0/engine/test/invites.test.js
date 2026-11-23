@@ -108,6 +108,7 @@ test('ссылка с заявкой: вступление создаёт зая
   const { base, stop } = await start();
   try {
     const c = await clubWith(base);
+    await c.dave.publishKeys();
     const invite = await post(c.alice, '/invites', { requiresApproval: true });
     assert.equal((await joinByToken(c.dave, tokenOf(invite))).status, 'requested');
     assert.equal((await joinByToken(c.dave, tokenOf(invite))).status, 'requested');
