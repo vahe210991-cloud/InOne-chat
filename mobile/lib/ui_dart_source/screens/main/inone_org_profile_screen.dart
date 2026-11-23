@@ -79,24 +79,27 @@ class InOneOrgProfileScreen extends StatelessWidget {
               child: Row(
                 children: [
                   _Stat(value: profile.members?.toString() ?? '—', label: 'Members'),
-                  _Stat(value: profile.projects?.toString() ?? '—', label: 'Projects'),
-                  _Stat(value: profile.teams?.toString() ?? '—', label: 'Teams'),
+                  if (profile.projects != null)
+                    _Stat(value: profile.projects.toString(), label: 'Projects'),
+                  if (profile.teams != null)
+                    _Stat(value: profile.teams.toString(), label: 'Teams'),
                 ],
               ),
             ),
-            Container(
-              margin: const EdgeInsets.fromLTRB(20, 14, 20, 20),
-              padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 14),
-              decoration: BoxDecoration(color: c.fill, borderRadius: BorderRadius.circular(14)),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('About organization', style: InOneText.style(13, FontWeight.w700, c.text)),
-                  const SizedBox(height: 6),
-                  Text(profile.about?.isNotEmpty == true ? profile.about! : '—', style: InOneText.style(11.5, FontWeight.w400, c.sub, height: 1.5)),
-                ],
+            if (profile.about?.isNotEmpty == true)
+              Container(
+                margin: const EdgeInsets.fromLTRB(20, 14, 20, 20),
+                padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 14),
+                decoration: BoxDecoration(color: c.fill, borderRadius: BorderRadius.circular(14)),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('About organization', style: InOneText.style(13, FontWeight.w700, c.text)),
+                    const SizedBox(height: 6),
+                    Text(profile.about!, style: InOneText.style(11.5, FontWeight.w400, c.sub, height: 1.5)),
+                  ],
+                ),
               ),
-            ),
           ],
         ),
       ),
