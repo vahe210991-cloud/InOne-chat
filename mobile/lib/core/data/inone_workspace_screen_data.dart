@@ -1,4 +1,5 @@
 import '../../ui_dart_source/models/inone_models.dart';
+import '../network/api_exception.dart';
 import 'inone_organization.dart';
 import 'inone_workspace_repository.dart';
 
@@ -30,6 +31,13 @@ class InOneWorkspaceScreenData {
           selected = organization;
           break;
         }
+      }
+      if (selected == null) {
+        throw const ApiException(
+          code: 'organization_not_found',
+          statusCode: 404,
+          retryable: false,
+        );
       }
     } else if (organizations.isNotEmpty) {
       selected = organizations.first;
