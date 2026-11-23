@@ -64,20 +64,21 @@ class InOneProfileScreen extends StatelessWidget {
                                 : InOneStripeBox(circle: true, borderColor: c.line),
                           ),
                         ),
-                        Positioned(
-                          right: -2,
-                          bottom: -2,
-                          child: Container(
-                            width: 22,
-                            height: 22,
-                            decoration: BoxDecoration(
-                              color: c.accent,
-                              shape: BoxShape.circle,
-                              border: Border.all(color: c.bg, width: 2),
+                        if (onEditAvatar != null)
+                          Positioned(
+                            right: -2,
+                            bottom: -2,
+                            child: Container(
+                              width: 22,
+                              height: 22,
+                              decoration: BoxDecoration(
+                                color: c.accent,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: c.bg, width: 2),
+                              ),
+                              child: Icon(InOneIcons.plus, size: 14, color: c.onAccent),
                             ),
-                            child: Icon(InOneIcons.plus, size: 14, color: c.onAccent),
                           ),
-                        ),
                       ],
                     ),
                   ),
