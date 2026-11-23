@@ -197,3 +197,13 @@ The fixes are independently implemented against the committed repository source.
 - The server validates that the request is still pending and that the target passes the room organization gate. The SQL store locks the pending request row and deletes it in the same transaction that records the MLS commit, advances the epoch, adds the member, stores every device Welcome, commits the KeyPackage claim and writes the idempotency receipt.
 - Exact operation replay returns the stored epoch receipt; reuse of the operation ID with a different request is rejected. The request is not consumed on epoch mismatch, claim mismatch, or transaction rollback.
 - The client must not display approval as complete until the durable membership journal receives the server ACK, the local OpenMLS Commit merges, and post-sync confirms the room state. The current Dart moderation UI remains rejection-only until the native approval operation and its FRB bridge are implemented and validated.
+
+
+## Native MLS approval of a room join request
+
+- The Flutter moderation action calls `approveMlsJoinRequest`; it does not call the legacy HTTP approval endpoint.
+- Rust persists the operation type (`is_join_request`) in SQLCipher before claiming KeyPackages. This flag survives process restart and is replayed when `sync()` resumes a `claim_pending` intent.
+- The native client uses the existing per-device KeyPackage claim and OpenMLS `add_members` path, creates a Welcome for every claimed device, and includes `joinRequestUserId` in the durable membership commit payload.
+- The server checks the pending request and organization gate only after checking the exact-operation receipt. This ordering is required: after a successful commit the request row is consumed, but an exact retry must still return the accepted receipt.
+- PostgreSQL locks and consumes the request atomically with room membership, epoch, Welcome, KeyPackage claim and idempotency receipt. The old direct-approval endpoint remains fail-closed.
+- The UI reports success only after native membership commit ACK, local merge and room sync complete. A missing KeyPackage or network failure leaves the request pending and the durable intent retryable.
