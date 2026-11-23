@@ -4830,6 +4830,166 @@ impl Client {
             .collect())
     }
 
+    /// Removes every MLS leaf belonging to one account through a durable membership Commit.
+    /// The server remains the authority for owner/admin capability checks; this preflight avoids
+    /// staging a Commit for an operation the current actor is already known not to be allowed to do.
+    pub fn remove_member(&mut self, room_id: &str, target_user_id: &str) -> Result<(), String> {
+        self.ensure_writable()?;
+        if target_user_id.trim().is_empty() || target_user_id.len() > 255 {
+            return Err("invalid target user ID".to_string());
+        }
+        if target_user_id == self.user_id {
+            return Err("an account cannot remove itself through this operation".to_string());
+        }
+        if let Some(reason) = self.desync_reason(room_id)? {
+            return Err(format!("RecoveryRequired: room requires recovery: {reason}"));
+        }
+
+        // Resolve any earlier durable operation and reconcile before taking a membership snapshot.
+        self.flush_pending_membership_commits()?;
+        self.sync()?;
+
+        for attempt in 0..3 {
+            let snapshot = self.call(
+                "GET",
+                &format!("/rooms/{}/members", urlencoding::encode(room_id)),
+                None,
+            )?;
+            let server_members: BTreeSet<String> = snapshot["members"]
+                .as_array()
+                .ok_or("room member response has no members array")?
+                .iter()
+                .map(|value| value.as_str().map(str::to_string).ok_or("room member ID is not a string"))
+                .collect::<Result<_, _>>()?;
+            let mls_members = self.mls_users(room_id)?;
+            if server_members != mls_members {
+                self.check_consistency(room_id)?;
+                return Err("RecoveryRequired: server and MLS membership differ before removal".to_string());
+            }
+            if !server_members.contains(target_user_id) {
+                return Ok(());
+            }
+
+            let owner = snapshot["owner"].as_str().ok_or("room member response has no owner")?;
+            if owner == target_user_id {
+                return Err("the room owner cannot be removed".to_string());
+            }
+            let admins: BTreeSet<String> = snapshot["admins"]
+                .as_array()
+                .ok_or("room member response has no admins array")?
+                .iter()
+                .map(|value| value.as_str().map(str::to_string).ok_or("room admin ID is not a string"))
+                .collect::<Result<_, _>>()?;
+            let capabilities = snapshot["capabilities"][self.user_id.as_str()]
+                .as_array()
+                .ok_or("current user capabilities are missing from room snapshot")?;
+            let can_remove = capabilities.iter().any(|value| value.as_str() == Some("remove_members"));
+            if self.user_id != owner && (!can_remove || admins.contains(target_user_id)) {
+                return Err("server policy does not allow this account to remove the selected member".to_string());
+            }
+
+            let server_epoch = self.server_epoch(room_id)?;
+            let local_epoch = self.local_epoch(room_id).ok_or("room is not loaded on this device")?;
+            if local_epoch != server_epoch {
+                self.sync()?;
+                if attempt == 2 {
+                    return Err("epoch_outdated: unable to reconcile room before member removal".to_string());
+                }
+                continue;
+            }
+
+            let target_prefix = format!("{target_user_id}/");
+            let operation_id = hex_encode(&self.provider.rand().random_vec(16).map_err(text)?);
+            let tx = self.meta.unchecked_transaction().map_err(text)?;
+            let staged = (|| -> Result<(), String> {
+                let group = self.groups.get_mut(room_id).ok_or("room is not loaded")?;
+                let leaves: Vec<LeafNodeIndex> = group
+                    .mls
+                    .members()
+                    .filter(|member| {
+                        std::str::from_utf8(member.credential.serialized_content())
+                            .is_ok_and(|identity| identity.starts_with(&target_prefix))
+                    })
+                    .map(|member| member.index)
+                    .collect();
+                if leaves.is_empty() {
+                    return Err(format!("MLS membership has no device leaves for target account {target_user_id}"));
+                }
+
+                let (commit, _, _) = group
+                    .mls
+                    .remove_members(&self.provider, &self.signer, &leaves)
+                    .map_err(text)?;
+                let commit_bytes = commit.tls_serialize_detached().map_err(text)?;
+                let changes = json!({
+                    "adds": [],
+                    "removes": [target_user_id],
+                    "removeDevices": [],
+                });
+                let payload = json!({
+                    "epoch": local_epoch,
+                    "commit": B64.encode(&commit_bytes),
+                    "changes": changes,
+                    "welcomes": [],
+                    "clientOperationId": operation_id,
+                });
+                let metadata = json!({
+                    "changes": changes,
+                    "welcomeRecipients": [],
+                });
+                let pending = group
+                    .mls
+                    .pending_commit()
+                    .ok_or("OpenMLS did not retain staged account-removal commit")?;
+                verify_staged_membership_metadata(&group.mls, pending, &metadata)?;
+                let fingerprint = membership_commit_fingerprint(
+                    &self.provider,
+                    room_id,
+                    &operation_id,
+                    local_epoch,
+                    &payload,
+                    pending,
+                )?;
+                let payload_json = serde_json::to_string(&payload).map_err(text)?;
+                let created_at = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as i64;
+                tx.execute(
+                    "INSERT INTO client_membership_commits
+                     (operation_id, room_id, base_epoch, fingerprint, payload, claim_ids, created_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, '[]', ?6)",
+                    rusqlite::params![operation_id, room_id, local_epoch as i64, fingerprint, payload_json, created_at],
+                ).map_err(text)?;
+                Ok(())
+            })();
+
+            if let Err(error) = staged {
+                let _ = tx.rollback();
+                self.reload_group(room_id)?;
+                return Err(error);
+            }
+            if let Err(error) = tx.commit() {
+                self.reload_group(room_id)?;
+                return Err(format!("failed to persist account-removal journal: {}", text(error)));
+            }
+
+            // A network error leaves the exact staged Commit in SQLCipher for safe retry.
+            let stale_cleared = self.flush_pending_membership_commits()?;
+            self.sync()?;
+            if !self.server_users(room_id)?.contains(target_user_id)
+                && !self.mls_users(room_id)?.contains(target_user_id)
+            {
+                return Ok(());
+            }
+            if stale_cleared > 0 && attempt < 2 {
+                continue;
+            }
+            return Err("membership Commit was not acknowledged as a completed account removal".to_string());
+        }
+        Err("epoch_outdated: account removal exhausted safe rebase attempts".to_string())
+    }
+
     /// Отзывает устройство аккаунта на сервере: его сессии перестают работать.
     pub fn revoke_device(&self, device_id: &str) -> Result<(), String> {
         self.call(
