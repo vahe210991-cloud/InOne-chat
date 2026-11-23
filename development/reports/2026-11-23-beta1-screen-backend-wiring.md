@@ -171,3 +171,16 @@ The backend's public open-join operation adds room membership and emits a room-c
 - Extended the chat thread details panel to expose visibility (`public/private`) and join policy (`open/approval`) only when the server-provided effective capabilities include `edit_group_settings`.
 - Room name remains separately gated by `edit_group_name`; the UI submits only changed fields through existing `POST /rooms/:id/settings`.
 - Server remains authoritative and clears pending join requests when visibility is changed to private.
+
+
+## Next implementation slice — room member capability management
+
+- Verified the canonical Engine B route in `inone-development-archive-0.6.0/engine/src/server.js`: `POST /rooms/:roomId/capabilities`, owner-only, body `{userId, capabilities}`. The server validates target membership and the capability allowlist.
+- Added `InOneRepositories.updateRoomMemberCapabilities` with client-side allowlist validation, stable sorting/deduplication and strict response validation.
+- Added owner-only controls in the room details dialog to edit each non-owner member's 11 supported capabilities. The UI uses server-returned effective capabilities as initial state; the server remains authoritative and rejected changes are shown as errors.
+- The capability editor is not exposed to admins or ordinary members. The owner row is immutable in the UI, matching the server rule.
+- Updated `mobile/API-CONTRACTS-BETA-1.md` to record the route/UI connection.
+
+Not yet implemented: room role promotion/demotion and removal UI, approval queue management, invite-link management, and the public backend room-create workflow. The current MLS room-create button creates a native MLS group and invites but does not safely provision the corresponding backend room; do not expose a backend create action until the full MLS + server provisioning sequence and rollback behavior are established.
+
+No tests, analyzer, build, device run, workflow dispatch or Actions rerun was performed, per the queue restriction. This is source-level implementation only and is not runtime accepted.
