@@ -152,6 +152,7 @@ abstract interface class MlsSessionBridge {
   Future<void> ensureKeyPackages(int target);
   Future<void> createRoom(String roomId);
   Future<void> invite(String roomId, String userId);
+  Future<void> approveJoinRequest(String roomId, String userId);
   Future<void> cancelInvite(String roomId, String userId);
   Future<String?> roomRecoveryStatus(String roomId);
   Future<List<MlsUndecryptableEvent>> undecryptable();
