@@ -4,7 +4,6 @@ import '../../../core/data/inone_workspace_controller.dart';
 import '../../../core/data/inone_workspace_repository.dart';
 import '../../../core/session/inone_session.dart';
 import '../../models/inone_models.dart';
-import '../../theme/inone_theme.dart';
 import 'inone_workspace_screen.dart';
 
 /// A server-connected Workspace route. It owns its controller lifecycle, loads
