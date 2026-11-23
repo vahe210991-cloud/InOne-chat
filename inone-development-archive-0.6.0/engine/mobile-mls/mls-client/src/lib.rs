@@ -3973,48 +3973,53 @@ impl Client {
                 .use_ratchet_tree_extension(true)
                 .max_past_epochs(MAX_PAST_EPOCHS)
                 .build();
-            let staged = match StagedWelcome::new_from_welcome(
-                &self.provider,
-                &join_config,
-                welcome,
-                None,
-            ) {
-                Ok(staged) => staged,
-                Err(WelcomeError::GroupAlreadyExists) => {
-                    self.record_desync(
-                        room_id,
-                        "GroupAlreadyExists while replaying Welcome; retain Welcome without ACK for explicit recovery",
-                    )?;
-                    continue;
-                }
-                Err(WelcomeError::LibraryError(_)) | Err(WelcomeError::StorageError(_)) => {
-                    // Indeterminate: keep the server Welcome pending and do not quarantine.
-                    continue;
-                }
-                Err(error) => {
-                    if self
-                        .persist_welcome_receipt(
-                            welcome_id,
-                            room_id,
-                            &bytes,
-                            "quarantined",
-                            Some(&format!("Permanent Welcome error: {error:?}")),
-                        )
-                        .is_ok()
-                    {
-                        let _ = self.ack_welcome(welcome_id);
-                    }
-                    continue;
-                }
-            };
-            // Welcome group state, the local room index and its durable receipt must
-            // commit together. Otherwise a crash can persist the OpenMLS group while
-            // losing the receipt/room marker, making a replay ambiguous.
+            // Welcome processing consumes a KeyPackage as well as materializing the
+            // group. Both operations must use the same SQL transaction as the room
+            // index and receipt, otherwise a crash can consume the KeyPackage while
+            // rolling back the group and make the server Welcome impossible to replay.
             let transaction = self.meta.unchecked_transaction().map_err(text)?;
             let transactional_provider = DeviceProvider::new(
                 Arc::clone(&self.provider.crypto),
                 TransactionConnection(&transaction),
             );
+            let staged = match StagedWelcome::new_from_welcome(
+                &transactional_provider,
+                &join_config,
+                welcome,
+                None,
+            ) {
+                Ok(staged) => staged,
+                Err(error) => {
+                    drop(transactional_provider);
+                    drop(transaction);
+                    match error {
+                        WelcomeError::GroupAlreadyExists => {
+                            self.record_desync(
+                                room_id,
+                                "GroupAlreadyExists while replaying Welcome; retain Welcome without ACK for explicit recovery",
+                            )?;
+                        }
+                        WelcomeError::LibraryError(_) | WelcomeError::StorageError(_) => {
+                            // Indeterminate: keep the server Welcome pending and do not quarantine.
+                        }
+                        other => {
+                            if self
+                                .persist_welcome_receipt(
+                                    welcome_id,
+                                    room_id,
+                                    &bytes,
+                                    "quarantined",
+                                    Some(&format!("Permanent Welcome error: {other:?}")),
+                                )
+                                .is_ok()
+                            {
+                                let _ = self.ack_welcome(welcome_id);
+                            }
+                        }
+                    }
+                    continue;
+                }
+            };
             let mls = match staged.into_group(&transactional_provider) {
                 Ok(group) => group,
                 Err(error) => {
