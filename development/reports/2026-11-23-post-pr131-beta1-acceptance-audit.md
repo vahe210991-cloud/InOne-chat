@@ -6,7 +6,7 @@
 **Last major merge:** PR #131, merged 2026-11-23T15:33:11Z  
 **PR #131 head SHA:** `984d9e2afa6734ac14269fdee6ad787df84b123b`  
 **Active audit branch:** `work/mls-production-acceptance-2026-11-23`  
-**Active draft PR:** #132, base `2430b0365ab71c60b0926b27854d17a9090e1fba`, head `988d537d7fb3acf812781e67ac598cb5954ed958` at report preparation.  
+**Active draft PR:** #132, base `2430b0365ab71c60b0926b27854d17a9090e1fba`, code-validation head `87930a5997b9ceb7aea44409b1e0d07020d3c82f` at report preparation.  
 **WBS:** v1.1 unchanged. This report does not amend the approved WBS.
 
 ## 1. Executive decision
@@ -59,7 +59,7 @@ The exact-SHA acceptance gate is configured for pull-request events, not main pu
 
 ### Current audit branch validation
 
-PR #132 is a draft PR based directly on main SHA `2430b...`. Its latest reported head at report preparation was `988d537d7fb3acf812781e67ac598cb5954ed958`. Nine PR workflows were queued for this exact head: Flutter iOS, exact-SHA acceptance gate, Email/PostgreSQL, Native MLS, Backend Docker Compose, Flutter mobile, OpenMLS FRB generation, recovered P0 source and Dev Container Compose. No completed result was available at report preparation. All changes in PR #132 remain unvalidated until those workflows finish.
+PR #132 is a draft PR based directly on main SHA `2430b...`. Its latest reported head at report preparation was `988d537d7fb3acf812781e67ac598cb5954ed958`. Nine PR workflows were queued for this exact code head: Flutter iOS, exact-SHA acceptance gate, Email/PostgreSQL, Native MLS, Backend Docker Compose, Flutter mobile, OpenMLS FRB generation, recovered P0 source and Dev Container Compose. No completed result was available at report preparation. The later report/continuity commits do not change Rust or Flutter source; the exact-SHA gate still needs to finish for the code-validation SHA.
 
 ## 3. P0 — MLS crash consistency, Issue #1
 
@@ -104,7 +104,7 @@ On branch `work/mls-production-acceptance-2026-11-23`:
 - Five failpoints were added: after group materialization, after room-index write, after receipt write, before COMMIT and after COMMIT.
 - Child-process SQLCipher restart coverage was added for all five boundaries in `process_crash_at_welcome_transaction_boundaries_preserves_atomic_join`.
 
-The PR #132 Welcome change and test have **not yet been compiled or executed**. Issue #1 remains OPEN. Do not close it until exact-SHA test evidence proves all boundaries, including outbound Commit and Flutter/native ACK lifecycle.
+A same-room invalid UTF-8 → valid-message regression and a real `sync()` HTTP 401/403/404 proxy regression were also added to `tests/outbox.rs` on PR #132. All three new Rust regressions (Welcome crash/restart, invalid UTF-8 follow-up, and access-error classification) have **not yet been compiled or executed**. Issue #1 remains OPEN. Do not close it until exact-SHA test evidence proves all boundaries, including outbound Commit and Flutter/native ACK lifecycle.
 
 ## 4. P1 — MLS issue reconciliation
 
@@ -113,7 +113,7 @@ The PR #132 Welcome change and test have **not yet been compiled or executed**. 
 | #114 — canonical Engine B FFI | `mobile/rust/Cargo.toml` uses canonical Engine B; current Rust FFI and Dart adapter are integrated | Exact-SHA Native MLS/FRB validation and physical Android/iOS runtime, Keychain/Keystore and SQLCipher persistence | OPEN |
 | #6 — durable incoming inbox | SQLCipher inbox, pending replay and explicit ACK exist; child-process and restart tests exist | Exact-SHA validation and physical Flutter/native ACK lifecycle after process kill | OPEN |
 | #5 — invalid UTF-8 | Invalid payload maps to `Incoming::Unreadable` and diagnostic record; existing crash-boundary test covers invalid bytes | A same-room follow-up-valid-message test was added on PR #132, asserting no desync and unchanged epoch; test is not yet run | OPEN |
-| #9 — auth/access error classification | Typed API failure classification separates access failures from MLS state failures | Real `sync()` integration regressions for 401/403/404 must assert no `RecoveryRequired`; genuine MLS errors must remain isolated | OPEN |
+| #9 — auth/access error classification | Typed API failure classification separates access failures from MLS state failures | A real `sync()` TCP-proxy regression for 401/403/404 was added on PR #132; it asserts no `RecoveryRequired` and valid delivery after access restoration. Not yet executed | OPEN |
 
 All four issue descriptions were updated with current main facts and remaining proof gaps. None was closed.
 
@@ -258,7 +258,7 @@ Ahead/behind and changed-file counts below are comparisons of each PR head again
 | P0 | Prove outbound Commit accepted/response-lost recovery under child-process restart | 1–2 days | SQLCipher child-process test and same-SHA logs |
 | P0 | Prove Flutter/native ACK and inbox lifecycle through process kill/restart | 1–2 days | Engine + Flutter bridge integration test, then physical device |
 | P0 | Decide/document journal mode; add WAL tests only if WAL is enabled | 0.5–1 day | Explicit ADR decision and crash tests on configured mode |
-| P1 | Complete #5 and #9 integration regressions | 0.5–1 day | Same-room valid message after invalid UTF-8; 401/403/404 real sync path no desync |
+| P1 | Execute new #5 and #9 integration regressions | 0.5–1 day | Same-room valid message after invalid UTF-8; 401/403/404 real sync path no desync |
 | P1 | Two-device Android/iOS MLS acceptance matrix | 2–4 days | Signed build/device logs, both directions, restart, attachment, revocation |
 | P1 | Live FCM/APNs push acceptance | 0.5–1 day after secrets/project access | Real provider response plus physical Android/iOS receive/tap/terminated launch |
 | P1 | Recovery physical test and production link setup | 1–2 days plus domain owner input | Custom scheme tests; Universal/App Links only with real domain and app IDs |
