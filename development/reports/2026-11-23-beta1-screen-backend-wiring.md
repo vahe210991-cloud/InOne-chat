@@ -212,6 +212,8 @@ No tests, analyzer, build, device run, workflow dispatch or Actions rerun was pe
 - The exact Commit and fingerprint are persisted in the existing SQLCipher `client_membership_commits` journal before the canonical MLS commit request. Network failures therefore retain the staged operation for retry; no raw HTTP member DELETE is used.
 - Added Rust FFI session method, Dart MLS bridge contract, production adapter method, and `InOneSession.removeMlsMember` facade. The generated FRB bindings are intentionally left to the pinned generation workflow.
 - The operation reports success only after commit ACK, local merge, sync, and confirmation that both server and MLS membership exclude the target.
+- Added a narrowly scoped cleanup path for definitive server policy rejections of pure account-removal commits (missing `remove_members`, admin-vs-admin, owner protection, or target no longer a member). It verifies the staged fingerprint before clearing the local pending Commit and journal row, preventing a role/capability race from permanently stranding the room. Other errors remain fail-closed and preserve the durable journal for retry/recovery.
+- Updated the MLS session handoff fake to implement the new bridge method.
 - Source-level review only. Rust/Flutter tests, analyzer, FRB generation, builds and GitHub Actions were not run due to the existing queue restriction. This change is not yet runtime-verified.
 
 
