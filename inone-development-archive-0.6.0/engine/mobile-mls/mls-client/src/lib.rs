@@ -2176,6 +2176,9 @@ impl Client {
                         self.record_desync(&room_id, &reason)?;
                         return Err(format!("RecoveryRequired: {reason}"));
                     }
+                    // Server acceptance is durable before local merge. A crash here must replay
+                    // the exact operation ID/fingerprint and receive the original epoch receipt.
+                    crash_at_test_failpoint("after_outbound_membership_commit_server_acceptance");
                     let tx = self.meta.unchecked_transaction().map_err(text)?;
                     let mut integrity_error: Option<String> = None;
                     let settlement = (|| -> Result<(), String> {
@@ -2684,6 +2687,8 @@ impl Client {
                 text(error)
             ));
         }
+        // The durable StagedCommit and its stable operation receipt now survive restart.
+        crash_at_test_failpoint("after_membership_commit_journal_commit");
         if self.flush_pending_membership_commits()? > 0 {
             let mut incoming = Vec::new();
             self.sync_room(room_id, &mut incoming)?;
