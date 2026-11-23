@@ -188,3 +188,12 @@ The fixes are independently implemented against the committed repository source.
 
 
 - Room member details now expose removal only to the owner or a member with `remove_members` (non-admin targets only); the owner and current account are excluded from the action. The UI delegates to the native MLS operation and does not call the server's direct member DELETE route.
+
+
+## MLS approval of a pending room join request
+
+- `POST /rooms/:roomId/requests/:userId/approve` is intentionally fail-closed and returns `409 mls_approval_required`; it must not mutate room membership directly.
+- The supported approval transport is the canonical `POST /mls/groups/:roomId/commits` request with a verified Add Commit, per-device `welcomes`, `keyPackageClaimId` equal to `clientOperationId`, and `joinRequestUserId` equal to the single user in `changes.adds`.
+- The server validates that the request is still pending and that the target passes the room organization gate. The SQL store locks the pending request row and deletes it in the same transaction that records the MLS commit, advances the epoch, adds the member, stores every device Welcome, commits the KeyPackage claim and writes the idempotency receipt.
+- Exact operation replay returns the stored epoch receipt; reuse of the operation ID with a different request is rejected. The request is not consumed on epoch mismatch, claim mismatch, or transaction rollback.
+- The client must not display approval as complete until the durable membership journal receives the server ACK, the local OpenMLS Commit merges, and post-sync confirms the room state. The current Dart moderation UI remains rejection-only until the native approval operation and its FRB bridge are implemented and validated.
