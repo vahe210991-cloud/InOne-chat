@@ -1476,6 +1476,57 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     }
   }
 
+  Future<void> _showOrganizationAdminLog() async {
+    final org = _selectedOrganization;
+    if (org == null || (org.role != 'owner' && org.role != 'admin')) return;
+    try {
+      final actions = await _repositories.organizationAdminLog(org.orgId);
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Журнал действий организации'),
+          content: SizedBox(
+            width: 460,
+            height: 340,
+            child: actions.isEmpty
+                ? const Center(child: Text('Записей пока нет.'))
+                : ListView(
+                    children: [
+                      for (final entry in actions.reversed)
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(entry.action),
+                          subtitle: Text([
+                            entry.actor,
+                            if (entry.target != null) entry.target!,
+                            if (entry.detail != null) entry.detail!,
+                          ].join(' · ')),
+                          trailing: Text(
+                            DateTime.fromMillisecondsSinceEpoch(entry.at)
+                                .toLocal()
+                                .toString()
+                                .split('.')
+                                .first,
+                            style: const TextStyle(fontSize: 10),
+                          ),
+                        ),
+                    ],
+                  ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Закрыть'),
+            ),
+          ],
+        ),
+      );
+    } catch (error) {
+      _notice('Не удалось загрузить журнал действий: ${_toFailure(error).message}');
+    }
+  }
+
   Future<void> _showOrganizationLinks() async {
     final org = _selectedOrganization;
     if (org == null || (org.role != 'owner' && org.role != 'admin')) return;
@@ -1827,6 +1878,11 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
                     TextButton(
                       onPressed: saving ? null : () => unawaited(_showOrganizationLinks()),
                       child: const Text('Связи организаций'),
+                    ),
+                  if (canEdit)
+                    TextButton(
+                      onPressed: saving ? null : () => unawaited(_showOrganizationAdminLog()),
+                      child: const Text('Журнал действий'),
                     ),
                   TextButton(
                     onPressed: () => Navigator.of(dialogContext).pop(),
