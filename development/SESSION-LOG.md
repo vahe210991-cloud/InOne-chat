@@ -683,3 +683,11 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - UI distinguishes proposer from receiving organization; proposer cannot accept its own proposal. Accept/revoke actions require confirmation and refresh server state.
 - Backend transition/CAS and cross-organization membership cleanup remain authoritative. No route added.
 - No tests/analyzers/builds/Actions run.
+
+
+## 2026-11-23 — Beta 1.0 UI scope cleanup
+
+- Audited workspace route availability: no Beta 1.0 persistent notifications feed, project/task/activity feed or module customization endpoint was found. These controls are hidden rather than wired to notices or fake data.
+- Hid unsupported publication actions, avatar/cover editing and Feed/Calls navigation in the active Beta 1.0 screens. Protected-chat creation is shown as a Messages header action only when native Engine B MLS is active.
+- Workspace continues to show server-derived organization member/group counts; project/task metrics remain unknown.
+- No tests, analyzer, builds, device checks or GitHub Actions were run.
