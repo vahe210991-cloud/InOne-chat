@@ -63,7 +63,7 @@ test('открытая группа: посторонний организаци
   }
 });
 
-test('заявка на вход: одобрить может только участник организации; после добавления в организацию одобрение проходит', async () => {
+test('legacy direct join-request approval fails closed and preserves the pending request', async () => {
   const s = await start();
   try {
     const room = '!join-approval:inone.test';
@@ -72,11 +72,16 @@ test('заявка на вход: одобрить может только уч�
     const request = await post(s.base, s.boris.token, `/rooms/${enc(room)}/join`, {});
     assert.equal(request.json.status, 'requested', 'заявка подана');
     const refused = await post(s.base, s.anna.token, `/rooms/${enc(room)}/requests/${enc(BORIS)}/approve`, {});
-    assert.equal(refused.status, 403, 'одобрить заявку постороннего нельзя');
-    assert.equal(refused.json.code, 'org_not_member');
+    assert.equal(refused.status, 409, 'legacy direct approval is disabled until an MLS Add Commit + Welcome is submitted');
+    assert.equal(refused.json.code, 'mls_approval_required');
+    assert.equal((await s.anna.raw('GET', `/rooms/${enc(room)}/members`)).members.includes(BORIS), false, 'direct route must not mutate membership');
+    const pending = await s.anna.raw('GET', `/rooms/${enc(room)}/requests`);
+    assert.ok(pending.requests.some((item) => item.userId === BORIS), 'request remains pending for native MLS approval');
     await s.store.addOrgMember(ORG, BORIS, 'member', 3);
-    const approved = await post(s.base, s.anna.token, `/rooms/${enc(room)}/requests/${enc(BORIS)}/approve`, {});
-    assert.equal(approved.status, 200, 'заявка участника организации одобряется');
+    const stillDisabled = await post(s.base, s.anna.token, `/rooms/${enc(room)}/requests/${enc(BORIS)}/approve`, {});
+    assert.equal(stillDisabled.status, 409, 'organization eligibility does not re-enable unsafe direct approval');
+    assert.equal(stillDisabled.json.code, 'mls_approval_required');
+    assert.ok((await s.anna.raw('GET', `/rooms/${enc(room)}/requests`)).requests.some((item) => item.userId === BORIS), 'request remains pending until the MLS commit transaction');
   } finally {
     await s.stop();
   }
