@@ -71,12 +71,13 @@ class _InOneMessagesScreenState extends State<InOneMessagesScreen> {
                     style: InOneText.style(24, FontWeight.w600, c.text, letterSpacing: -0.48),
                   ),
                 ),
-                InOneIconAction(icon: InOneIcons.filter, semanticLabel: 'Filter', onTap: widget.onFilter),
-                InOneIconAction(icon: InOneIcons.search, semanticLabel: 'Search', onTap: widget.onSearch),
+                if (widget.onFilter != null)
+                  InOneIconAction(icon: InOneIcons.filter, semanticLabel: 'Filter', onTap: widget.onFilter),
+                InOneIconAction(icon: InOneIcons.search, semanticLabel: 'Find public groups', onTap: widget.onSearch),
               ],
             ),
             const SizedBox(height: 16),
-            InOneSearchBar(hint: 'Search messages', onTap: widget.onSearch),
+            InOneSearchBar(hint: 'Find public groups', onTap: widget.onSearch),
             const SizedBox(height: 14),
             InOneFilterChips(
               labels: widget.unreadCountsAvailable
