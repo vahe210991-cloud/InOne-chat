@@ -1422,7 +1422,23 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     if (confirmed != true) return;
     try {
       await _repositories.updateOrganizationMemberRole(org.orgId, userId, role);
-      await _refreshOrganizationMemberCount(org);
+      if (userId == _session.userId && mounted) {
+        final updated = InOneOrganization(
+          orgId: org.orgId,
+          name: org.name,
+          status: org.status,
+          role: role,
+        );
+        setState(() {
+          _selectedOrganization = updated;
+          _organizations = _organizations
+              .map((item) => item.orgId == updated.orgId ? updated : item)
+              .toList(growable: false);
+        });
+      }
+      await _refreshOrganizationMemberCount(_selectedOrganization?.orgId == org.orgId
+          ? _selectedOrganization!
+          : org);
       if (mounted) _notice('Роль участника обновлена.');
     } catch (error) {
       _notice('Не удалось изменить роль: ${_toFailure(error).message}');
