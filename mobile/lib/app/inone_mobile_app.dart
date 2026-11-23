@@ -1777,7 +1777,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
                   children: [
                     if (canEditSettings) ...[
                       DropdownButtonFormField<String>(
-                        value: visibility,
+                        initialValue: visibility,
                         decoration: const InputDecoration(labelText: 'Видимость'),
                         items: const [
                           DropdownMenuItem(value: 'public', child: Text('Публичная')),
@@ -1788,7 +1788,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
                         },
                       ),
                       DropdownButtonFormField<String>(
-                        value: joinPolicy,
+                        initialValue: joinPolicy,
                         decoration: const InputDecoration(labelText: 'Правило вступления'),
                         items: const [
                           DropdownMenuItem(value: 'open', child: Text('Свободное')),
@@ -2146,7 +2146,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
                 ),
                 if (org.role == 'owner')
                   DropdownButtonFormField<String>(
-                    value: role,
+                    initialValue: role,
                     decoration: const InputDecoration(labelText: 'Роль'),
                     items: const [
                       DropdownMenuItem(value: 'member', child: Text('Участник')),
@@ -2882,17 +2882,24 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            for (final option in const [
-              ('hy', 'Հայերեն'),
-              ('ru', 'Русский'),
-              ('en', 'English'),
-            ])
-              RadioListTile<String>(
-                value: option.$1,
-                groupValue: _session.locale,
-                title: Text(option.$2),
-                onChanged: (value) => Navigator.of(dialogContext).pop(value),
+            RadioGroup<String>(
+              groupValue: _session.locale,
+              onChanged: (value) => Navigator.of(dialogContext).pop(value),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (final option in const [
+                    ('hy', 'Հայերեն'),
+                    ('ru', 'Русский'),
+                    ('en', 'English'),
+                  ])
+                    RadioListTile<String>(
+                      value: option.$1,
+                      title: Text(option.$2),
+                    ),
+                ],
               ),
+            ),
           ],
         ),
       ),
