@@ -15,7 +15,7 @@ class InOneProfileScreen extends StatelessWidget {
     required this.onToggleTheme,
     required this.onEditAvatar,
     required this.onTab,
-    required this.onAdd,
+    this.onAdd,
   });
 
   final InOneUserProfile profile;
@@ -23,7 +23,7 @@ class InOneProfileScreen extends StatelessWidget {
   final VoidCallback onToggleTheme;
   final VoidCallback onEditAvatar;
   final ValueChanged<InOneTab> onTab;
-  final VoidCallback onAdd;
+  final VoidCallback? onAdd;
 
   @override
   Widget build(BuildContext context) {
