@@ -23,11 +23,17 @@ class InOneWorkspaceScreenData {
     String? selectedOrganizationId,
   }) async {
     final organizations = await repository.organizations();
-    final selected = organizations.where(
-      (item) => item.orgId == selectedOrganizationId,
-    ).firstOrNull ?? (selectedOrganizationId == null && organizations.isNotEmpty
-        ? organizations.first
-        : null);
+    InOneOrganization? selected;
+    if (selectedOrganizationId != null) {
+      for (final organization in organizations) {
+        if (organization.orgId == selectedOrganizationId) {
+          selected = organization;
+          break;
+        }
+      }
+    } else if (organizations.isNotEmpty) {
+      selected = organizations.first;
+    }
 
     if (selected == null) {
       return InOneWorkspaceScreenData(
