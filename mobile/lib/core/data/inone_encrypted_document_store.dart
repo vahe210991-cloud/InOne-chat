@@ -19,11 +19,13 @@ class InOneEncryptedDocumentStore {
     Future<String?> Function(String keyName)? readKey,
     Future<void> Function(String keyName, String value)? writeKey,
     Future<void> Function(String keyName)? deleteKey,
+    Future<void> Function()? deleteLegacyKey,
   })  : _secureStorage = secureStorage ?? const FlutterSecureStorage(),
         _rootDirectory = rootDirectory ?? getApplicationSupportDirectory,
         _readKeyOverride = readKey,
         _writeKeyOverride = writeKey,
-        _deleteKeyOverride = deleteKey;
+        _deleteKeyOverride = deleteKey,
+        _deleteLegacyKeyOverride = deleteLegacyKey;
 
   static const _keyNamePrefix = 'inone.organization_document_key.v1.';
   static const _legacyKeyName = 'inone.organization_document_key.v1';
@@ -36,6 +38,7 @@ class InOneEncryptedDocumentStore {
   final Future<String?> Function(String keyName)? _readKeyOverride;
   final Future<void> Function(String keyName, String value)? _writeKeyOverride;
   final Future<void> Function(String keyName)? _deleteKeyOverride;
+  final Future<void> Function()? _deleteLegacyKeyOverride;
   final AesGcm _algorithm = AesGcm.with256bits();
   final Map<String, Future<SecretKey>> _keyInFlight = {};
   final Map<String, Future<void>> _ownerQueues = {};
@@ -68,6 +71,15 @@ class InOneEncryptedDocumentStore {
 
   Future<void> _writeKey(String keyName, String value) =>
       _writeKeyOverride?.call(keyName, value) ?? _secureStorage.write(key: keyName, value: value);
+
+  Future<void> _deleteLegacyKey() async {
+    final override = _deleteLegacyKeyOverride;
+    if (override != null) {
+      await override();
+      return;
+    }
+    await _secureStorage.delete(key: _legacyKeyName);
+  }
 
   Future<void> _deleteKey(String keyName) =>
       _deleteKeyOverride?.call(keyName) ?? _secureStorage.delete(key: keyName);
@@ -314,7 +326,7 @@ class InOneEncryptedDocumentStore {
   Future<void> purgeLegacyUnscopedData() async {
     final failures = <Object>[];
     try {
-      await _secureStorage.delete(key: _legacyKeyName);
+      await _deleteLegacyKey();
     } catch (error) {
       failures.add(error);
     }
