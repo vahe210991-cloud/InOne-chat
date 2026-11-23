@@ -18,7 +18,21 @@ const BOB: &str = "@bob:inone.test";
 struct Engine {
     child: Child,
     stdin: Option<ChildStdin>,
+    stdout: BufReader<std::process::ChildStdout>,
     base: String,
+}
+
+impl Engine {
+    fn command(&mut self, line: &str) -> String {
+        let stdin = self.stdin.as_mut().expect("engine stdin");
+        writeln!(stdin, "{line}").expect("write engine command");
+        stdin.flush().expect("flush engine command");
+        let mut response = String::new();
+        self.stdout
+            .read_line(&mut response)
+            .expect("read engine response");
+        response.trim().to_string()
+    }
 }
 
 fn start_engine() -> Engine {
@@ -31,16 +45,20 @@ fn start_engine() -> Engine {
         .spawn()
         .expect("запуск node");
     let stdin = child.stdin.take();
+    let mut stdout = BufReader::new(child.stdout.take().expect("stdout"));
     let mut line = String::new();
-    BufReader::new(child.stdout.take().expect("stdout"))
-        .read_line(&mut line)
-        .expect("строка адреса");
+    stdout.read_line(&mut line).expect("строка адреса");
     let base = line
         .trim()
         .strip_prefix("URL=")
         .expect("адрес сервера")
         .to_string();
-    Engine { child, stdin, base }
+    Engine {
+        child,
+        stdin,
+        stdout,
+        base,
+    }
 }
 
 impl Drop for Engine {
