@@ -38,7 +38,7 @@
 
 - #114: canonical Engine B production dependency and current FFI/Dart adapter are present. No Engine A migration is required. Keep open for exact-SHA and physical runtime proof.
 - #6: durable SQLCipher inbox, pending replay and explicit ACK are present; child-process and restart tests exist. Keep open for exact-SHA and Flutter/native physical ACK proof.
-- #5: invalid UTF-8 maps to an unreadable inbox record; crash-boundary test includes invalid bytes. Add/execute a same-room follow-up-valid-message regression and prove no desync.
+- #5: invalid UTF-8 maps to an unreadable inbox record; crash-boundary test includes invalid bytes. A same-room follow-up-valid-message regression was added on PR #132 branch; it asserts no desync and unchanged epoch, but has not been compiled/executed.
 - #9: typed API failure classification exists. Add/execute real sync-path 401/403/404 regressions proving no RecoveryRequired.
 - None of these issues is closed.
 
