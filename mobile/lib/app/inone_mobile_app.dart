@@ -1,10 +1,13 @@
 import 'dart:async';
-import 'dart:io' show Platform;
+import 'dart:io' show Directory, File, Platform;
+import 'dart:typed_data';
 import 'dart:math' as math;
 
 import 'package:file_picker/file_picker.dart';
 
 import 'package:flutter/material.dart';
+import 'package:open_filex/open_filex.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../core/data/inone_device.dart';
 import '../core/data/inone_profile.dart';
@@ -12,6 +15,7 @@ import '../core/data/inone_room.dart';
 import '../core/data/inone_push_repository.dart';
 import '../core/data/inone_public_config.dart';
 import '../core/data/inone_organization.dart';
+import '../core/data/inone_encrypted_document_store.dart';
 import '../core/data/inone_repositories.dart';
 import '../core/mls/mls_session_bridge.dart';
 import '../core/mls/rust_mls_session_bridge.dart';
@@ -44,6 +48,11 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   final _messengerKey = GlobalKey<ScaffoldMessengerState>();
   late final InOneSession _session;
   late final InOneRepositories _repositories;
+  late final InOneEncryptedDocumentStore _documentStore;
+  String? _documentOwnerId;
+  bool _wasAuthenticated = false;
+  bool _documentViewerHandOffActive = false;
+  Future<void>? _revocationCleanupInFlight;
   InOnePushLifecycle? _pushLifecycle;
   InOnePushReceiveLifecycle? _pushReceiveLifecycle;
   final InOnePushRouteQueue _pendingPushRoutes = InOnePushRouteQueue();
@@ -64,6 +73,9 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   int? _organizationMemberCount;
   List<InOneOrganizationMember> _organizationMembers = const [];
   InOneSystemStatus? _systemStatus;
+  InOneOrgRequest? _selectedAdminRequest;
+  List<InOneOrgRequest> _adminRequests = const [];
+  List<InOneDocument> _adminDocuments = const [];
   List<InOneChatPreview> _mlsChats = const [];
   String? _activeMlsRoomId;
   String _activeMlsRoomName = '';
@@ -91,6 +103,10 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           : null,
     );
     _repositories = InOneRepositories(_session);
+    _documentStore = InOneEncryptedDocumentStore();
+    _session.addListener(_handleSessionStateChanged);
+    unawaited(_clearDocumentPreviewCache());
+    unawaited(_purgeLegacyDocumentCache());
     if (widget.enablePush) {
       _pushLifecycle = InOnePushLifecycle.firebase(
         session: _session,
@@ -129,6 +145,10 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _documentViewerHandOffActive) {
+      _documentViewerHandOffActive = false;
+      unawaited(_clearDocumentPreviewCache());
+    }
     if (state != AppLifecycleState.resumed) return;
     final pushLifecycle = _pushLifecycle;
     if (pushLifecycle != null) {
@@ -139,10 +159,123 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _session.removeListener(_handleSessionStateChanged);
+    unawaited(_clearDocumentPreviewCache());
     _pushLifecycle?.dispose();
     unawaited(_pushReceiveLifecycle?.dispose() ?? Future<void>.value());
     _session.dispose();
     super.dispose();
+  }
+
+  void _handleSessionStateChanged() {
+    if (_session.isAuthenticated) {
+      _wasAuthenticated = true;
+      _documentOwnerId ??= _profile?.userId ?? _session.userId;
+      return;
+    }
+    if (!_wasAuthenticated) return;
+    _wasAuthenticated = false;
+    final owner = _documentOwnerId ?? _profile?.userId ?? _session.userId;
+    _documentOwnerId = null;
+    if (owner != null) unawaited(_handleUnauthorizedSession(owner));
+  }
+
+  Future<void> _handleUnauthorizedSession([String? requestedOwnerUserId]) {
+    final active = _revocationCleanupInFlight;
+    if (active != null) return active;
+    final operation = _handleUnauthorizedSessionOnce(requestedOwnerUserId);
+    _revocationCleanupInFlight = operation;
+    return operation.whenComplete(() {
+      if (identical(_revocationCleanupInFlight, operation)) {
+        _revocationCleanupInFlight = null;
+      }
+    });
+  }
+
+  Future<void> _handleUnauthorizedSessionOnce(String? requestedOwnerUserId) async {
+    final ownerUserId = requestedOwnerUserId ?? _documentOwnerId ?? _profile?.userId ?? _session.userId;
+    if (ownerUserId != null) {
+      try {
+        await _documentStore.purgeAccount(ownerUserId);
+      } catch (_) {
+        // Continue cleanup; ciphertext deletion is attempted by purgeAccount even if key deletion fails.
+      }
+    }
+    try {
+      await _clearDocumentPreviewCache();
+    } catch (_) {
+      // Startup retries private preview cleanup.
+    }
+    try {
+      await _session.logout();
+    } catch (_) {
+      // A revoked device may no longer be able to complete remote logout.
+    }
+    if (mounted) {
+      setState(() {
+        _documentOwnerId = null;
+        _profile = null;
+        _organizations = const [];
+        _selectedOrganization = null;
+        _organizationMemberCount = null;
+        _organizationMembers = const [];
+        _selectedAdminRequest = null;
+        _adminRequests = const [];
+        _adminDocuments = const [];
+        _screen = 'login';
+      });
+      _notice('Сессия отозвана. Локальные документы и ключи очищены. Войдите снова.');
+    }
+  }
+
+  Future<void> _clearDocumentPreviewCache() async {
+    final temporary = await getTemporaryDirectory();
+    final directory = Directory(
+      '${temporary.path}${Platform.pathSeparator}InOne'
+      '${Platform.pathSeparator}organization-document-preview',
+    );
+    if (await directory.exists()) await directory.delete(recursive: true);
+  }
+
+  Future<void> _purgeLegacyDocumentCache() async {
+    try {
+      await _documentStore.purgeLegacyUnscopedData();
+    } catch (_) {
+      if (mounted) _notice('Не удалось полностью удалить устаревший кеш документов.');
+    }
+  }
+
+  Future<Directory> _documentPreviewDirectory() async {
+    final temporary = await getTemporaryDirectory();
+    final directory = Directory(
+      '${temporary.path}${Platform.pathSeparator}InOne'
+      '${Platform.pathSeparator}organization-document-preview',
+    );
+    await directory.create(recursive: true);
+    return directory;
+  }
+
+  Future<void> _openNativeDocument(String requestId, InOneDocument document, List<int> bytes) async {
+    final directory = await _documentPreviewDirectory();
+    final safeName = document.name.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+    final file = File(
+      '${directory.path}${Platform.pathSeparator}${requestId}_'
+      '${document.id}_$safeName',
+    );
+    await file.writeAsBytes(bytes, flush: true);
+    _documentViewerHandOffActive = true;
+    try {
+      final result = await OpenFilex.open(file.path, type: document.mimeType);
+      if (result.type != ResultType.done) {
+        _documentViewerHandOffActive = false;
+        if (await file.exists()) await file.delete();
+        throw StateError('Native document viewer failed: ${result.message}');
+      }
+    } catch (_) {
+      _documentViewerHandOffActive = false;
+      if (await file.exists()) await file.delete();
+      rethrow;
+    }
   }
 
   InOneFailure _toFailure(Object error) {
@@ -182,10 +315,14 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   }
 
   Future<InOneFailure?> _runApi(Future<Object?> Function() operation) async {
+    final ownerUserId = _documentOwnerId ?? _session.userId ?? _profile?.userId;
     try {
       await operation();
       return null;
     } catch (error) {
+      if (error is ApiException && error.statusCode == 401) {
+        await _handleUnauthorizedSession(ownerUserId);
+      }
       return _toFailure(error);
     }
   }
@@ -397,6 +534,8 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       if (!mounted) return;
       setState(() {
         _profile = profile;
+        _documentOwnerId = profile.userId;
+        _wasAuthenticated = true;
         _organizations = organizations;
         _selectedOrganization = organizations.isEmpty ? null : organizations.first;
         _organizationMemberCount = null;
@@ -414,6 +553,217 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       if (mounted) setState(() => _screen = 'loadError');
     }
   }
+
+  String _formatAdminRequestDate(Object? value) {
+    if (value is! int || value < 0) {
+      throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false);
+    }
+    final date = DateTime.fromMillisecondsSinceEpoch(value).toLocal();
+    return '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year}';
+  }
+
+  InOneOrgRequest _parseAdminRequest(Map<String, dynamic> json) {
+    final id = json['requestId'];
+    final name = json['name'];
+    final status = switch (json['status']) {
+      'pending' => InOneRequestStatus.pending,
+      'approved' => InOneRequestStatus.approved,
+      'rejected' => InOneRequestStatus.rejected,
+      _ => null,
+    };
+    if (id is! String || id.isEmpty || name is! String || name.isEmpty || status == null) {
+      throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false);
+    }
+    return InOneOrgRequest(
+      id: id,
+      name: name,
+      date: _formatAdminRequestDate(json['createdAt']),
+      status: status,
+    );
+  }
+
+  Future<void> _openAdminRequests() async {
+    if (!(_profile?.canViewPlatformRequests ?? false)) {
+      _notice('Недостаточно прав для просмотра заявок платформы.');
+      return;
+    }
+    setState(() => _screen = 'adminRequestsLoading');
+    try {
+      final response = await _repositories.organizationRequests();
+      final raw = response['requests'];
+      if (raw is! List || raw.any((item) => item is! Map<String, dynamic>)) {
+        throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false);
+      }
+      final requests = raw.cast<Map<String, dynamic>>().map(_parseAdminRequest).toList(growable: false);
+      if (!mounted) return;
+      setState(() {
+        _adminRequests = requests;
+        _screen = 'adminRequests';
+      });
+    } catch (error) {
+      if (error is ApiException && error.statusCode == 401) {
+        await _handleUnauthorizedSession(_documentOwnerId ?? _session.userId);
+        return;
+      }
+      if (!mounted) return;
+      final failure = _toFailure(error);
+      setState(() => _screen = 'adminRequestsError');
+      _notice(failure.message ?? 'Не удалось загрузить очередь заявок.');
+    }
+  }
+
+  Future<void> _openAdminRequest(InOneOrgRequest request) async {
+    if (!(_profile?.canViewPlatformRequests ?? false)) return;
+    setState(() {
+      _selectedAdminRequest = request;
+      _screen = 'adminRequestLoading';
+    });
+    try {
+      final response = await _repositories.organizationRequest(request.id);
+      final rawRequest = response['request'];
+      final rawDocuments = response['documents'];
+      if (rawRequest is! Map<String, dynamic> || rawDocuments is! List ||
+          rawDocuments.any((item) => item is! Map<String, dynamic>)) {
+        throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false);
+      }
+      final parsedRequest = _parseAdminRequest(rawRequest);
+      final documents = rawDocuments.cast<Map<String, dynamic>>().map((json) {
+        final id = json['docId'];
+        final kind = json['kind'];
+        final size = json['size'];
+        final filename = json['filename'];
+        final mimeType = json['mimeType'];
+        if (id is! String || id.isEmpty || kind is! String || size is! int || size < 0 ||
+            filename is! String || filename.isEmpty ||
+            mimeType is! String ||
+            !const ['application/pdf', 'image/jpeg', 'image/png', 'application/octet-stream'].contains(mimeType)) {
+          throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false);
+        }
+        final label = switch (kind) {
+          'registration' => 'Регистрационный документ',
+          'authority' => 'Подтверждение полномочий',
+          'other' => 'Другой документ',
+          _ => throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false),
+        };
+        return InOneDocument(
+          id: id,
+          name: filename,
+          typeLabel: '$label · ${(size / 1024).ceil()} КБ',
+          mimeType: mimeType,
+        );
+      }).toList(growable: false);
+      if (!mounted) return;
+      setState(() {
+        _selectedAdminRequest = parsedRequest;
+        _adminDocuments = documents;
+        _screen = 'adminRequestDetails';
+      });
+    } catch (error) {
+      if (!mounted) return;
+      final failure = _toFailure(error);
+      setState(() => _screen = 'adminRequestsError');
+      _notice(failure.message ?? 'Не удалось загрузить заявку.');
+    }
+  }
+
+  Future<InOneFailure?> _decideAdminRequest(InOneDecision decision) async {
+    final request = _selectedAdminRequest;
+    if (request == null || !(_profile?.canDecidePlatformRequests ?? false)) {
+      return const InOneFailure(InOneScreenState.error, message: 'Решение доступно только владельцу платформы.');
+    }
+    try {
+      final response = await _repositories.decideOrganizationRequest(
+        request.id,
+        decision: decision == InOneDecision.approve ? 'approve' : 'reject',
+      );
+      final expected = decision == InOneDecision.approve ? 'approved' : 'rejected';
+      if (response['status'] != expected) {
+        throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false);
+      }
+      return null;
+    } catch (error) {
+      if (error is ApiException && error.statusCode == 401) {
+        await _handleUnauthorizedSession(_documentOwnerId ?? _session.userId);
+      }
+      return _toFailure(error);
+    }
+  }
+
+  Future<InOneFailure?> _openAdminDocument(InOneDocument document) async {
+    final request = _selectedAdminRequest;
+    final ownerUserId = _documentOwnerId ?? _session.userId;
+    if (request == null || ownerUserId == null || !(_profile?.canViewPlatformRequests ?? false)) {
+      return const InOneFailure(
+        InOneScreenState.error,
+        message: 'Документ недоступен для этой учётной записи.',
+      );
+    }
+    try {
+      final response = await _repositories.downloadOrganizationRequestDocument(
+        request.id,
+        document.id,
+      );
+      final responseType = response.headers['content-type']?.split(';').first.trim().toLowerCase();
+      if (document.mimeType != null && responseType != document.mimeType) {
+        throw const ApiException(code: 'invalid_download_response', statusCode: 502, retryable: false);
+      }
+      await _documentStore.save(
+        ownerUserId: ownerUserId,
+        requestId: request.id,
+        documentId: document.id,
+        filename: document.name,
+        bytes: response.bodyBytes,
+      );
+      final plaintext = await _documentStore.read(
+        ownerUserId: ownerUserId,
+        requestId: request.id,
+        documentId: document.id,
+        filename: document.name,
+      );
+      if (document.mimeType == 'image/jpeg' || document.mimeType == 'image/png') {
+        if (!mounted) return null;
+        await showDialog<void>(
+          context: context,
+          builder: (dialogContext) => Dialog(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(document.name, style: Theme.of(dialogContext).textTheme.titleMedium),
+                ),
+                Flexible(
+                  child: InteractiveViewer(
+                    child: Image.memory(
+                      Uint8List.fromList(plaintext),
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => const Center(
+                        child: Text('Не удалось отобразить изображение.'),
+                      ),
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Закрыть'),
+                ),
+              ],
+            ),
+          ),
+        );
+      } else {
+        await _openNativeDocument(request.id, document, plaintext);
+      }
+      if (mounted) _notice('Документ открыт из зашифрованного локального хранилища.');
+      return null;
+    } catch (error) {
+      if (error is ApiException && error.statusCode == 401) {
+        await _handleUnauthorizedSession(ownerUserId);
+      }
+      return _toFailure(error);
+    }
+  }
+
 
   Future<InOneFailure?> _startEmailRegistration(String email) async {
     _registrationEmail = email.trim();
@@ -453,8 +803,8 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   }
 
   Future<InOneFailure?> _logout() async {
-    // Remove this device token while the authenticated bearer session is valid.
-    // The server logout/revocation path independently removes the registration.
+    final ownerUserId = _documentOwnerId ?? _profile?.userId ?? _session.userId;
+    InOneFailure? failure;
     try {
       await _pushLifecycle?.unregisterBeforeLogout();
     } catch (_) {
@@ -462,15 +812,32 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     }
     try {
       await _session.logout();
-      return null;
     } catch (error) {
-      return _toFailure(error);
+      failure = _toFailure(error);
     }
+    try {
+      await _clearDocumentPreviewCache();
+    } catch (error) {
+      failure ??= _toFailure(error);
+    }
+    if (ownerUserId != null) {
+      try {
+        await _documentStore.purgeAccount(ownerUserId);
+      } catch (error) {
+        failure ??= _toFailure(error);
+      }
+    }
+    return failure;
   }
 
   void _finishLogout() {
     setState(() {
       _profile = null;
+      _documentOwnerId = null;
+      _wasAuthenticated = false;
+      _selectedAdminRequest = null;
+      _adminRequests = const [];
+      _adminDocuments = const [];
       _organizations = const [];
       _selectedOrganization = null;
       _organizationMemberCount = null;
@@ -2587,10 +2954,47 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           onCancel: () => setState(() => _screen = 'profile'),
           onDone: _finishLogout,
         );
+      case 'adminRequestsLoading':
+      case 'adminRequestLoading':
       case 'loading':
         return const Scaffold(body: Center(child: CircularProgressIndicator()));
       case 'loadError':
         return InOneLoadingErrorScreen(onRetry: () => unawaited(_loadAuthenticatedData()));
+      case 'adminRequestsError':
+        return InOneLoadingErrorScreen(onRetry: () => unawaited(_openAdminRequests()));
+      case 'adminRequests':
+        return InOneRequestsAdminScreen(
+          requests: _adminRequests,
+          onOpen: (request) => unawaited(_openAdminRequest(request)),
+          onMenu: () => setState(() => _screen = 'profile'),
+        );
+      case 'adminRequestDetails':
+        if (_selectedAdminRequest == null) {
+          return InOneLoadingErrorScreen(onRetry: () => unawaited(_openAdminRequests()));
+        }
+        return InOneRequestAdminDetailsScreen(
+          request: _selectedAdminRequest!,
+          documents: _adminDocuments,
+          isOwner: _profile?.canDecidePlatformRequests ?? false,
+          onOpen: _openAdminDocument,
+          onDecide: () => setState(() => _screen = 'adminRequestDecision'),
+          onBack: () => unawaited(_openAdminRequests()),
+          onMenu: () => setState(() => _screen = 'profile'),
+        );
+      case 'adminRequestDecision':
+        if (_selectedAdminRequest == null || !(_profile?.canDecidePlatformRequests ?? false)) {
+          return InOneLoadingErrorScreen(onRetry: () => unawaited(_openAdminRequests()));
+        }
+        return InOneRequestDecisionScreen(
+          request: _selectedAdminRequest!,
+          onDecision: _decideAdminRequest,
+          onBack: () => setState(() => _screen = 'adminRequestDetails'),
+          onMenu: () => setState(() => _screen = 'profile'),
+          onDone: () {
+            _notice('Решение по заявке сохранено.');
+            unawaited(_openAdminRequests());
+          },
+        );
       case 'workspace':
         return InOneWorkspaceScreen(
           summary: _workspaceSummary,
@@ -2707,6 +3111,12 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
               icon: Icons.business_outlined,
               onTap: _openOrganization,
             ),
+            if (_profile?.canViewPlatformRequests == true)
+              InOneProfileMenuItem(
+                label: 'Заявки платформы',
+                icon: Icons.admin_panel_settings_outlined,
+                onTap: () => unawaited(_openAdminRequests()),
+              ),
             InOneProfileMenuItem(
               label: 'Язык приложения · ${_session.locale.toUpperCase()}',
               icon: Icons.language,
