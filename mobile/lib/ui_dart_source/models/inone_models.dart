@@ -286,6 +286,10 @@ class InOneUserProfile {
     required this.projects,
     this.verified = false,
     this.avatar,
+    this.accountEmail,
+    this.locale = 'hy',
+    this.backupEmail,
+    this.backupEmailVerified = false,
   });
   final String name;
   final String handle;
@@ -294,6 +298,10 @@ class InOneUserProfile {
   final String projects;
   final bool verified;
   final ImageProvider? avatar;
+  final String? accountEmail;
+  final String locale;
+  final String? backupEmail;
+  final bool backupEmailVerified;
 }
 
 @immutable
