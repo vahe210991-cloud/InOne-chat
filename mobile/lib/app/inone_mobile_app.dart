@@ -1862,7 +1862,9 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           onSearch: () => unawaited(_discoverPublicRooms()),
           onFilter: () => _notice('Дополнительные фильтры пока недоступны.'),
           onTab: _selectTab,
-          onAdd: () => unawaited(_createMlsRoomAndInvite()),
+          onAdd: _session.hasNativeMlsSession
+              ? () => unawaited(_createMlsRoomAndInvite())
+              : null,
         );
       case 'chatThread':
         return InOneChatThreadScreen(
