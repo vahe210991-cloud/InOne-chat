@@ -70,7 +70,7 @@ The five-screen scope is now explicit:
 |---|---|---|
 | Messages / room directory | Authenticated `GET /rooms/mine`; `GET /rooms/search`; `POST /rooms/:id/join`; group filter; loading/error/retry | Server-backed unread counts are not included in `/rooms/mine`; public-group discovery is wired. An approval join records a request; an open join still requires a valid native MLS Welcome before history can open |
 | Chat thread | Engine B MLS text send, durable outbox, encrypted attachment send/download; `GET /rooms/:id/members`; `POST /rooms/:id/settings`; `POST /rooms/:id/read`; permission-gated native MLS invite | Metadata/member roster and effective capabilities render; rename and MLS invite are capability-gated; read marker posts only after readable history has been durably loaded. Member removal/role changes and moderation remain pending |
-| Organization profile | `GET /orgs/mine`, `GET /orgs/:id/members`, `POST /orgs/:id/members`, `POST /orgs/:id/members/:userId/role`, `DELETE /orgs/:id/members/:userId` | Typed roster plus owner/admin-aware add/remove and owner-only role changes are connected with confirmations. Organization settings, links and audit views remain pending |
+| Organization profile | `GET /orgs/mine`, `GET /orgs/:id/members`, `POST /orgs/:id/members`, `POST /orgs/:id/members/:userId/role`, `DELETE /orgs/:id/members/:userId` | Typed roster plus owner/admin-aware add/remove and owner-only role changes are connected with confirmations. Organization links and general admin-log views remain pending |
 | Workspace | Organization switch, member count, room-derived group count, public system config | Notifications, project/task/activity statistics and customization must be mapped to actual Beta 1.0 backend routes; unavailable modules must not show fabricated metrics |
 | User profile | `GET /profile`, persisted `PATCH /profile/locale`, `GET /devices/mine`, `DELETE /devices/:deviceId`, logout | Device inventory and remote-device revocation are connected with confirmation; current device is protected from self-revocation. Profile/avatar editing remains unavailable until a real backend mutation contract exists |
 
@@ -130,3 +130,12 @@ The backend's public open-join operation adds room membership and emits a room-c
 - Remote device revocation requires confirmation and refreshes the inventory after success. The current device is not offered as a revocation target, avoiding invalidating the active app session in-place.
 - Server remains authoritative: revocation deletes push registration and records MLS device removals. No key material or push identifiers are displayed.
 - Profile name/avatar update remains blocked because no confirmed Beta 1.0 profile mutation route is available.
+
+
+## 2026-11-23 — organization settings and settings audit log
+
+- Added typed settings DTO and repository methods for `GET /orgs/:id/settings`, field-scoped `POST /orgs/:id/settings`, and `GET /orgs/:id/settings/log`.
+- Organization profile More action now opens the real organization settings panel rather than reusing the workspace switcher.
+- All members can view current settings. Only owners/admins can change max group members, channel availability and file quota; the server validates global limits and writes each change to its audit log.
+- Owners/admins can open the server settings audit log, showing actor, field, old/new values and timestamp.
+- Organization links and general admin-log views remain pending.
