@@ -119,7 +119,7 @@ The backend's public open-join operation adds room membership and emits a room-c
 - Role changes and removals require confirmation. Roster and count refresh from the authenticated server response after each successful mutation.
 - If the owner changes their own role, the active organization role is updated immediately so the UI no longer exposes owner-only controls.
 - Last-owner, owned-room transfer and other business constraints remain enforced by the backend; errors are surfaced rather than bypassed.
-- Organization settings, linked organizations and admin/audit log actions remain unconnected.
+- General organization admin-log views remain unconnected; settings audit history and organization-link management are connected in the later implementation sections below.
 
 
 ## 2026-11-23 — user profile device management
