@@ -733,6 +733,27 @@ class InOneSession extends ChangeNotifier {
     return bridge.messagesForRoom(roomId);
   }
 
+  /// Reads durable SQLCipher history before acknowledging readable inbox items.
+  Future<List<MlsIncomingMessage>> loadMlsRoomHistory(String roomId) async {
+    _validateMlsRoomId(roomId);
+    final bridge = _requireNativeMlsBridge();
+    final messages = await bridge.messagesForRoom(roomId);
+    final persistedEventIds = messages.map((message) => message.eventId).toSet();
+    final pending = await bridge.pendingIncoming();
+    final acceptedEventIds = pending
+        .where((message) =>
+            message.roomId == roomId &&
+            message.isReadable &&
+            persistedEventIds.contains(message.eventId))
+        .map((message) => message.eventId)
+        .toSet()
+        .toList(growable: false);
+    if (acceptedEventIds.isNotEmpty) {
+      await bridge.acknowledgeIncoming(acceptedEventIds);
+    }
+    return messages;
+  }
+
   /// Returns room IDs from the persistent SQLCipher-backed OpenMLS client.
   Future<List<String>> localMlsRoomIds() =>
       _requireNativeMlsBridge().localRoomIds();
