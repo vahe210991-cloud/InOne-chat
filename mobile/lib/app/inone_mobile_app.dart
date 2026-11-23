@@ -1100,6 +1100,84 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     }
   }
 
+  Future<void> _editRoomMemberCapabilities(String roomId, String memberId, List<String> currentCapabilities) async {
+    const labels = <String, String>{
+      'invite_members': 'Приглашать участников',
+      'remove_members': 'Удалять участников',
+      'send_messages': 'Отправлять сообщения',
+      'send_stickers_gifs': 'Стикеры и GIF',
+      'forward_messages': 'Пересылать сообщения',
+      'edit_own_messages': 'Редактировать свои сообщения',
+      'delete_own_messages': 'Удалять свои сообщения',
+      'delete_any_messages': 'Удалять чужие сообщения',
+      'edit_group_name': 'Менять название группы',
+      'edit_group_appearance': 'Менять оформление группы',
+      'edit_group_settings': 'Менять настройки группы',
+    };
+    final selected = currentCapabilities.toSet();
+    var saving = false;
+    String? errorMessage;
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Права участника'),
+          content: SizedBox(
+            width: 420,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (final entry in labels.entries)
+                    CheckboxListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(entry.value),
+                      value: selected.contains(entry.key),
+                      onChanged: saving ? null : (checked) {
+                        setDialogState(() {
+                          if (checked == true) { selected.add(entry.key); }
+                          else { selected.remove(entry.key); }
+                        });
+                      },
+                    ),
+                  if (errorMessage != null)
+                    Text(errorMessage!, style: const TextStyle(color: Colors.red)),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: saving ? null : () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Отмена'),
+            ),
+            FilledButton(
+              onPressed: saving ? null : () async {
+                setDialogState(() { saving = true; errorMessage = null; });
+                try {
+                  await _repositories.updateRoomMemberCapabilities(
+                    roomId, userId: memberId, capabilities: selected.toList(growable: false),
+                  );
+                  if (dialogContext.mounted) Navigator.of(dialogContext).pop(true);
+                } catch (error) {
+                  if (dialogContext.mounted) setDialogState(() => errorMessage = _toFailure(error).message);
+                } finally {
+                  if (dialogContext.mounted) setDialogState(() => saving = false);
+                }
+              },
+              child: const Text('Сохранить права'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (saved == true && mounted) {
+      _notice('Права участника обновлены на сервере.');
+      await _showMlsRoomDetails();
+    }
+  }
+
   Future<void> _showMlsRoomDetails() async {
     final roomId = _activeMlsRoomId;
     if (roomId == null) return;
@@ -1174,6 +1252,18 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
                                         ? 'Администратор'
                                         : 'Участник'} · ${details.readUpTo[memberId] == null ? 'Нет отметки прочтения' : 'Прочитано до ${details.readUpTo[memberId]}'}',
                               ),
+                              trailing: currentUserId == details.owner && memberId != details.owner
+                                  ? IconButton(
+                                      tooltip: 'Изменить права участника',
+                                      icon: const Icon(Icons.tune),
+                                      onPressed: saving ? null : () async {
+                                        Navigator.of(dialogContext).pop();
+                                        await _editRoomMemberCapabilities(
+                                          roomId, memberId, details.capabilities[memberId] ?? const [],
+                                        );
+                                      },
+                                    )
+                                  : null,
                             ),
                         ],
                       ),
