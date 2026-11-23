@@ -29,6 +29,20 @@ class InOneProfileScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.inone;
     final dark = Theme.of(context).brightness == Brightness.dark;
+    final visibleStats = <Widget>[];
+    void addStat(String label, String value) {
+      if (value.isEmpty || value == '—') return;
+      if (visibleStats.isNotEmpty) visibleStats.add(const SizedBox(width: 10));
+      visibleStats.add(
+        Expanded(
+          child: InOneStatTile(label: label, value: value, valueSize: 16, center: true),
+        ),
+      );
+    }
+
+    addStat('My tasks', profile.myTasks);
+    addStat('Activity', profile.activity);
+    addStat('Projects', profile.projects);
     return InOneShell(
       nav: InOneBottomNav(selected: InOneTab.profile, onSelected: onTab, onAdd: onAdd),
       body: SingleChildScrollView(
@@ -103,24 +117,9 @@ class InOneProfileScreen extends StatelessWidget {
                 ),
               ],
             ),
-            if ([profile.myTasks, profile.activity, profile.projects]
-                .any((value) => value.isNotEmpty && value != '—')) ...[
+            if (visibleStats.isNotEmpty) ...[
               const SizedBox(height: 18),
-              Row(
-                children: [
-                  Expanded(
-                    child: InOneStatTile(label: 'My tasks', value: profile.myTasks, valueSize: 16, center: true),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: InOneStatTile(label: 'Activity', value: profile.activity, valueSize: 16, center: true),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: InOneStatTile(label: 'Projects', value: profile.projects, valueSize: 16, center: true),
-                  ),
-                ],
-              ),
+              Row(children: visibleStats),
             ],
             const SizedBox(height: 20),
             for (var i = 0; i < menu.length; i++) _MenuRow(item: menu[i], last: i == menu.length - 1),
