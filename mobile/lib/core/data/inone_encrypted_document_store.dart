@@ -344,6 +344,7 @@ class InOneEncryptedDocumentStore {
           final isOwnerScope = name.length == 64 &&
               name.codeUnits.every((unit) =>
                   (unit >= 48 && unit <= 57) || (unit >= 97 && unit <= 102)) &&
+              children.every((child) => child is Directory);
           if (!isOwnerScope) {
             try {
               await entity.delete(recursive: true);
