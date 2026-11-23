@@ -47,6 +47,7 @@ void main() {
       _pathProviderChannel,
       (call) async {
         if (call.method == 'getTemporaryDirectory') return '/tmp/inone-smoke-test';
+      if (call.method == 'getApplicationSupportDirectory') return '/tmp/inone-smoke-support';
         throw MissingPluginException('Unsupported path-provider method: ${call.method}');
       },
     );
