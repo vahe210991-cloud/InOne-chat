@@ -38,6 +38,29 @@ class InOneRepositories {
   /// Returns the validated room-list DTO for the authenticated account.
   Future<InOneRoomList> myRooms() async =>
       InOneRoomList.fromJson(await session.request('GET', '/rooms/mine'));
+  /// Searches only public rooms; the backend enforces the 2–50 character range.
+  Future<List<InOnePublicRoom>> searchPublicRooms(String query) async {
+    final normalized = query.trim();
+    if (normalized.length < 2 || normalized.length > 50) {
+      throw ArgumentError.value(query, 'query', 'Search must contain 2 to 50 characters');
+    }
+    final response = await session.request(
+      'GET', '/rooms/search?q=${Uri.encodeQueryComponent(normalized)}',
+    );
+    return InOnePublicRoomSearch.fromJson(response).rooms;
+  }
+
+  /// Joins an open public room or creates a join request for approval-only rooms.
+  Future<String> joinPublicRoom(String roomId) async {
+    final response = await session.request(
+      'POST', '/rooms/${Uri.encodeComponent(roomId)}/join',
+    );
+    final status = response['status'];
+    if (status != 'joined' && status != 'requested') {
+      throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false);
+    }
+    return status as String;
+  }
   Future<Map<String, dynamic>> loginApprovals() =>
       session.request('GET', '/approvals');
   Future<Map<String, dynamic>> organizationRequests() =>
