@@ -60,10 +60,8 @@ function grant(owner, userId, capabilities) {
 }
 
 const b64 = (value) => Buffer.from(value, 'utf8').toString('base64');
-const pkg = (name) => Buffer.from(`KEYPACKAGE-${name}-${'x'.repeat(40)}`).toString('base64');
 
 async function approveJoinRequestViaMls(owner, requester, targetUserId, claimId) {
-  await requester.raw('POST', '/mls/key-packages', { packages: [pkg(`${targetUserId}-${claimId}`)] });
   const claim = await owner.raw('POST', `/mls/key-packages/${enc(targetUserId)}/claims`, { claimId, roomId: ROOM });
   assert.ok(claim.packages.length > 0, 'requester has uploaded a KeyPackage');
   const welcomes = claim.packages.map((item) => ({
@@ -115,7 +113,6 @@ test('вступление по умолчанию по заявке: заявк
   const { base, stop } = await start();
   try {
     const c = await clubWith(base);
-    await c.dave.publishKeys();
     await makePublic(c.alice, 'Соседи квартала');
     assert.equal((await post(c.dave, '/join', {})).status, 'requested');
     assert.deepEqual((await requestsOf(c.alice)).requests.map((r) => r.userId), [DAVE]);
@@ -187,7 +184,7 @@ test('участник, вступивший по заявке, получает
     await c.dave.publishKeys();
     await makePublic(c.alice, 'Соседи квартала');
     await post(c.dave, '/join', {});
-    await approveJoinRequestViaMls(c.alice, DAVE, 'join-approval-default-rights-0002');
+    await approveJoinRequestViaMls(c.alice, c.dave, DAVE, 'join-approval-default-rights-0002');
     const caps = (await membersOf(c.alice)).capabilities[DAVE];
     assert.ok(caps.includes('send_messages'));
     assert.ok(!caps.includes('invite_members'));
