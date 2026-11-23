@@ -786,6 +786,9 @@ class _FakeMlsSessionBridge implements MlsSessionBridge {
   Future<List<String>> membersOf(String roomId) async => const [];
 
   @override
+  Future<void> removeMember(String roomId, String userId) async {}
+
+  @override
   Future<void> revokeDevice(String deviceId) async {}
 
   @override
