@@ -34,6 +34,53 @@ class InOneRepositories {
     return List<InOneOrganizationMember>.unmodifiable(raw.map((member) =>
         InOneOrganizationMember.fromJson(Map<String, dynamic>.from(member as Map))));
   }
+  Future<InOneOrganizationSettings> organizationSettings(String orgId) async {
+    final response = await session.request(
+      'GET', '/orgs/${Uri.encodeComponent(orgId)}/settings',
+    );
+    final raw = response['settings'];
+    if (raw is! Map) {
+      throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false);
+    }
+    return InOneOrganizationSettings.fromJson(Map<String, dynamic>.from(raw));
+  }
+
+  Future<InOneOrganizationSettings> updateOrganizationSetting(
+    String orgId, {
+    required String field,
+    required Object? value,
+  }) async {
+    final valid = switch (field) {
+      'maxGroupMembers' => value == null || value is int && value >= 2,
+      'channelsEnabled' => value is bool,
+      'fileQuotaBytes' => value == null || value is int && value >= 1,
+      _ => false,
+    };
+    if (!valid) throw ArgumentError('Invalid organization setting value');
+    final response = await session.request(
+      'POST',
+      '/orgs/${Uri.encodeComponent(orgId)}/settings',
+      body: {'field': field, 'value': value},
+    );
+    final raw = response['settings'];
+    if (raw is! Map) {
+      throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false);
+    }
+    return InOneOrganizationSettings.fromJson(Map<String, dynamic>.from(raw));
+  }
+
+  Future<List<InOneOrganizationSettingLogEntry>> organizationSettingsLog(String orgId) async {
+    final response = await session.request(
+      'GET', '/orgs/${Uri.encodeComponent(orgId)}/settings/log',
+    );
+    final raw = response['log'];
+    if (raw is! List || raw.any((entry) => entry is! Map)) {
+      throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false);
+    }
+    return List<InOneOrganizationSettingLogEntry>.unmodifiable(raw.map((entry) =>
+        InOneOrganizationSettingLogEntry.fromJson(Map<String, dynamic>.from(entry as Map))));
+  }
+
   Future<void> addOrganizationMember(
     String orgId, {
     required String userId,
