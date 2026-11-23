@@ -43,7 +43,7 @@ class InOneConnectedWorkspaceScreen extends StatefulWidget {
 
 class _InOneConnectedWorkspaceScreenState
     extends State<InOneConnectedWorkspaceScreen> {
-  late final InOneWorkspaceController _controller;
+  late InOneWorkspaceController _controller;
 
   @override
   void initState() {
@@ -57,8 +57,13 @@ class _InOneConnectedWorkspaceScreenState
   @override
   void didUpdateWidget(covariant InOneConnectedWorkspaceScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.session != widget.session ||
-        oldWidget.selectedOrganizationId != widget.selectedOrganizationId) {
+    if (oldWidget.session != widget.session) {
+      _controller.dispose();
+      _controller = InOneWorkspaceController(
+        InOneWorkspaceRepository(widget.session),
+      );
+      _load();
+    } else if (oldWidget.selectedOrganizationId != widget.selectedOrganizationId) {
       _load();
     }
   }
