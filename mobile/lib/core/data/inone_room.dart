@@ -203,3 +203,29 @@ class InOneRoomDetails {
     );
   }
 }
+
+
+/// A pending request to join a room, returned by GET /rooms/:id/requests.
+class InOneRoomJoinRequest {
+  const InOneRoomJoinRequest({
+    required this.userId,
+    required this.createdAt,
+  });
+
+  final String userId;
+  final int createdAt;
+
+  factory InOneRoomJoinRequest.fromJson(Map<String, dynamic> json) {
+    final userId = json['userId'];
+    final createdAt = json['created_at'];
+    if (userId is! String || userId.trim().isEmpty ||
+        createdAt is! int || createdAt < 0) {
+      throw const ApiException(
+        code: 'invalid_response',
+        statusCode: 200,
+        retryable: false,
+      );
+    }
+    return InOneRoomJoinRequest(userId: userId, createdAt: createdAt);
+  }
+}
