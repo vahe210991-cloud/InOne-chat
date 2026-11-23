@@ -1231,12 +1231,17 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
                         setDialogState(() => errorMessage = 'Изменений нет.');
                         return;
                       }
-                      if (visibilityChanged && visibility == 'private') {
+                      if (visibilityChanged) {
+                        final makingPrivate = visibility == 'private';
                         final confirmed = await showDialog<bool>(
                           context: dialogContext,
                           builder: (confirmContext) => AlertDialog(
-                            title: const Text('Сделать группу приватной?'),
-                            content: const Text('Сервер удалит ожидающие заявки на вступление. Продолжить?'),
+                            title: Text(makingPrivate
+                                ? 'Сделать группу приватной?'
+                                : 'Сделать группу публичной?'),
+                            content: Text(makingPrivate
+                                ? 'Сервер удалит ожидающие заявки на вступление.'
+                                : 'Группа станет доступна в публичном поиске.'),
                             actions: [
                               TextButton(
                                 onPressed: () => Navigator.of(confirmContext).pop(false),
