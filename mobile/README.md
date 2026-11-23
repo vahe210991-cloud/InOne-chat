@@ -168,3 +168,6 @@ Source changes are not runtime-accepted: the owner has paused all tests, analyze
 
 
 The active Beta 1.0 host hides workspace notification/activity/customization controls, publication actions, profile/avatar editing and Feed/Calls navigation when no corresponding backend operation is available. It does not substitute mock metrics or local-only mutations for missing server contracts.
+
+
+The organization profile also exposes server-backed member administration (owner/admin rules), organization settings, settings/admin audit logs and organization-link proposal/accept/revoke. Chat thread settings include capability-gated name, visibility and join-policy updates; read markers are sent only after readable MLS history has been persisted locally. Remote device revocation is available from the user profile.
