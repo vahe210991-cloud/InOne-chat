@@ -27,7 +27,7 @@
 
 ## Current acceptance boundary
 
-Source integration is not runtime acceptance. PR #131 head checks were reported 19/19 PASS; nine PR-head workflow runs were retrieved as PASS. At the post-merge checkpoint, main had 9 PASS and 4 IN_PROGRESS; the final four on merge SHA `2430b...` remain unconfirmed. No physical two-device acceptance has been recorded.
+Source integration is not runtime acceptance. PR #131 head checks were 19/19 PASS. On merge SHA `2430b0365ab71c60b0926b27854d17a9090e1fba`, nine push workflows are present: seven completed PASS; OpenMLS FRB generation remains IN_PROGRESS on its iOS native-assets compile; Native MLS validation has four passing jobs, while its iOS Keychain target build was cancelled on the first attempt and a targeted rerun is QUEUED. The exact-SHA acceptance gate is PR-only and N/A for main push. No physical two-device acceptance has been recorded.
 
 The backend FCM sender and encrypted PostgreSQL push outbox are implemented and wired; live provider acceptance and physical device display/open remain pending. Beta recovery uses the custom scheme `inone://recovery/confirm`; production Universal/App Links require an owner-supplied production domain and exact app identifiers. Backup/restore implementation exists, but no production restore rehearsal or full operational readiness is accepted.
 
