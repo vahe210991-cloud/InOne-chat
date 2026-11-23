@@ -1486,7 +1486,7 @@ async mlsPendingRemovalsFor(userId) {
     },
 
     /** Применяет коммит и idempotency receipt в одной транзакции. */
-    async mlsApplyCommit(roomId, baseEpoch, { senderId, deviceId, clientOperationId, requestFingerprint, keyPackageClaimId, commit, welcomes, changes = { adds: [], removes: [] } }, nowMs) {
+    async mlsApplyCommit(roomId, baseEpoch, { senderId, deviceId, clientOperationId, requestFingerprint, keyPackageClaimId, joinRequestUserId, commit, welcomes, changes = { adds: [], removes: [] } }, nowMs) {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
@@ -1509,6 +1509,20 @@ async mlsPendingRemovalsFor(userId) {
         if (current !== baseEpoch) {
           await client.query('ROLLBACK');
           return { ok: false, reason: 'epoch_outdated', epoch: current };
+        }
+        if (joinRequestUserId) {
+          if (changes.adds?.length !== 1 || changes.adds[0] !== joinRequestUserId) {
+            await client.query('ROLLBACK');
+            return { ok: false, reason: 'join_request_mismatch', epoch: current };
+          }
+          const { rows: requestRows } = await client.query(
+            'SELECT user_id FROM join_requests WHERE room_id = $1 AND user_id = $2 FOR UPDATE',
+            [roomId, joinRequestUserId],
+          );
+          if (!requestRows[0]) {
+            await client.query('ROLLBACK');
+            return { ok: false, reason: 'join_request_not_pending', epoch: current };
+          }
         }
         if (keyPackageClaimId) {
           const targetUserId = changes.adds?.length === 1 ? changes.adds[0] : null;
@@ -1583,6 +1597,16 @@ async mlsPendingRemovalsFor(userId) {
             'UPDATE mls_key_package_claims SET state = \'committed\', committed_at = $5 WHERE target_user_id = $1 AND requester_user_id = $2 AND requester_device_id = $3 AND claim_id = $4',
             [targetUserId, senderId, deviceId, keyPackageClaimId, nowMs],
           );
+        }
+        if (joinRequestUserId) {
+          const removedRequest = await client.query(
+            'DELETE FROM join_requests WHERE room_id = $1 AND user_id = $2',
+            [roomId, joinRequestUserId],
+          );
+          if (removedRequest.rowCount !== 1) {
+            await client.query('ROLLBACK');
+            return { ok: false, reason: 'join_request_not_pending', epoch: current };
+          }
         }
         await client.query('COMMIT');
         return { ok: true, epoch: next, replayed: false };
