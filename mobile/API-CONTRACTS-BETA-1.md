@@ -185,3 +185,6 @@ The fixes are independently implemented against the committed repository source.
 - The operation is submitted only through the existing `POST /mls/groups/:roomId/commits` path. Success requires server ACK, local Commit merge, and post-sync agreement that the target is absent from both server and MLS membership.
 - Added the Rust session API and Dart bridge contract/adapter entrypoints. Generated Flutter Rust Bridge bindings are produced by the repository's pinned generation workflow and are not hand-edited.
 - No server-only member deletion route, plaintext fallback, or direct local MLS state mutation is used.
+
+
+- Room member details now expose removal only to the owner or a member with `remove_members` (non-admin targets only); the owner and current account are excluded from the action. The UI delegates to the native MLS operation and does not call the server's direct member DELETE route.
