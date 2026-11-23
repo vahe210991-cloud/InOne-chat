@@ -99,36 +99,36 @@ class InOneWorkspaceScreen extends StatelessWidget {
         if (onNotifications != null) ...[
           const SizedBox(width: 10),
           Semantics(
-          button: true,
-          label: 'Notifications',
-          child: GestureDetector(
-            onTap: onNotifications,
-            child: Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: c.line)),
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Icon(InOneIcons.bell, size: 20, color: c.text),
-                  if (summary.hasUnread)
-                    Positioned(
-                      right: 8,
-                      top: 7,
-                      child: Container(
-                        width: 7,
-                        height: 7,
-                        decoration: BoxDecoration(
-                          color: c.danger,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: c.bg, width: 1.5),
+            button: true,
+            label: 'Notifications',
+            child: GestureDetector(
+              onTap: onNotifications,
+              child: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: c.line)),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Icon(InOneIcons.bell, size: 20, color: c.text),
+                    if (summary.hasUnread)
+                      Positioned(
+                        right: 8,
+                        top: 7,
+                        child: Container(
+                          width: 7,
+                          height: 7,
+                          decoration: BoxDecoration(
+                            color: c.danger,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: c.bg, width: 1.5),
+                          ),
                         ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
           ),
         ],
       ],
@@ -187,9 +187,10 @@ class InOneWorkspaceScreen extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 16),
-          Row(
-            children: [
-              if (summary.tasksDue != null) ...[
+          if (summary.tasksDue != null || summary.teamMembers != null || summary.activeGroups != null)
+            Row(
+              children: [
+                if (summary.tasksDue != null) ...[
                 stat(summary.tasksDue.toString(), 'Tasks due'),
                 if (summary.teamMembers != null || summary.activeGroups != null) ...[
                   const SizedBox(width: 14),
@@ -205,10 +206,10 @@ class InOneWorkspaceScreen extends StatelessWidget {
                   const SizedBox(width: 14),
                 ],
               ],
-              if (summary.activeGroups != null)
-                stat(summary.activeGroups.toString(), 'Active groups'),
-            ],
-          ),
+                if (summary.activeGroups != null)
+                  stat(summary.activeGroups.toString(), 'Active groups'),
+              ],
+            ),
         ],
       ),
     );
