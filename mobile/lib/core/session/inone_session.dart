@@ -805,6 +805,15 @@ class InOneSession extends ChangeNotifier {
     return _requireNativeMlsBridge().invite(roomId, userId);
   }
 
+  /// Approves a pending join request only after native MLS Commit/Welcome ACK and sync.
+  Future<void> approveMlsJoinRequest(String roomId, String userId) {
+    _validateMlsRoomId(roomId);
+    if (userId.trim().isEmpty || userId.length > 255) {
+      throw ArgumentError.value(userId, 'userId', 'A valid user ID is required');
+    }
+    return _requireNativeMlsBridge().approveJoinRequest(roomId, userId);
+  }
+
   /// Sends immediately through OpenMLS. For offline-safe UI submission use
   /// enqueueMlsText followed by flushMlsOutbox instead.
   Future<String> sendMlsText(String roomId, String plaintext) {
