@@ -155,16 +155,20 @@ The repository-root Firebase client files are validated and copied by `tool/gene
 - FIDs are not written to Flutter storage, analytics, or logs. Denied permission removes any prior server registration. iOS registration is retried when the app resumes if APNs registration was not ready.
 - InOnePushReceiveLifecycle handles foreground messages, notification taps and terminated launches. It validates the room/event route, waits for an authenticated session, verifies room membership through the server and displays content only after native MLS decryption. If native MLS is not active, it safely returns to Chats without exposing ciphertext or plaintext.
 - Native generation installs the Google Services Gradle plugin, sets Android minSdk to 24 for Firebase Messaging 26.x and adds Android permissions; on iOS it embeds `GoogleService-Info.plist`, adds the APNs entitlement and remote-notification background mode.
-- iOS delivery still requires an Apple Developer App ID with Push Notifications enabled and the APNs authentication key uploaded to Firebase. The repository's push sender is not implemented yet, so this client work registers devices but does not claim end-to-end notification delivery.
+- The backend production FCM sender is implemented in `engine/src/firebase-admin-push.js` and `engine/src/fcm-push-sender.js`, is wired by `engine/src/main.js` when PostgreSQL and the Firebase project are configured, and drains the encrypted PostgreSQL `push_deliveries` outbox. It sends only the allowlisted generic `{type,event_id,path}` payload. Production configuration requires `INONE_FIREBASE_PROJECT_ID` and a separate `INONE_PUSH_ENCRYPTION_KEY`; Firebase Admin uses ADC/workload identity or an injected secret. Provider acceptance and actual device display are not yet accepted: a live FCM smoke and physical Android/iOS FCM→APNs tests are still required. iOS additionally requires an Apple Developer App ID with Push Notifications enabled and the APNs authentication key uploaded to Firebase.
 
 
-## Beta 1.0 screen/backend wiring — current isolated branch
+## Beta 1.0 screen/backend integration — PR #131 merged
 
-The active implementation branch is `feature/beta1-screen-backend-wiring-2026-11-23`. It connects the authenticated room directory, public group discovery/join requests, room metadata, capability-gated room rename, native MLS invitations, and read markers after durable SQLCipher history loading. Organization roster and account locale are also connected.
+**Current source of truth:** `main` at merge commit `2430b0365ab71c60b0926b27854d17a9090e1fba` (2026-11-23). PR #131 is merged; the former isolated screen/backend branch is no longer the integration target.
+
+The merge includes native Flutter screen/backend wiring for Messages, Chat Thread, Organization Profile, Workspace and User Profile; PS-01/PS-02/PS-03 organization-request administration; protected documents and account-scoped encrypted cache; canonical Engine B MLS; durable inbox/outbox; encrypted attachments; session resume/retry; organization member roles/invites; device inventory/revocation; and room metadata, settings, permissions and read markers.
+
+The PR #131 head had 19/19 exact-head checks reported PASS. At the post-merge checkpoint, 9 main-related workflows were PASS and 4 were still IN_PROGRESS; final completion on the merge SHA has not been independently confirmed in the current audit. Do not treat PR-head CI as post-merge exact-SHA or physical-device acceptance.
 
 Public group membership does not imply that the device has an MLS Welcome. A room remains unreadable until the canonical Engine B client has a valid local epoch. Do not add a plaintext or legacy event fallback.
 
-Source changes are not runtime-accepted until exact-head validation completes. PR #131 is the integration target for the selected G2 organization-request work from PR #87/#89 and Engine B application glue selected from PR #90. Backend, Flutter, Rust/FRB and platform workflows must pass on one final SHA; physical-device/two-device acceptance remains separate. See `development/reports/2026-11-23-beta1-screen-backend-wiring.md` for the current validation record.
+Source integration is present, but runtime acceptance remains separate. `INONE_MLS_NATIVE_ENABLED` stays false by default. Android/iOS physical runtime, two-device MLS, SQLCipher/key-storage restart, recovery and revocation acceptance remain pending. See `development/reports/2026-11-23-post-pr131-beta1-acceptance-audit.md` for the current audit record.
 
 
 The active Beta 1.0 host hides workspace notification/activity/customization controls, publication actions, profile/avatar editing and Feed/Calls navigation when no corresponding backend operation is available. It does not substitute mock metrics or local-only mutations for missing server contracts.
