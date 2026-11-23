@@ -1,13 +1,15 @@
 # Beta 1.0 API contract matrix
 
-**Статус:** рабочая каноническая карта Stage 3; не является заявлением о production readiness.  
+> **Post-PR #131 status (2026-11-23):** PR #131 is merged into `main` at `2430b0365ab71c60b0926b27854d17a9090e1fba`. The current product UI is native Flutter/Dart; approved HTML screens remain visual references only. Canonical Engine B Rust FFI, G2 encrypted attachments, durable inbox/outbox and screen/backend integration are present in source. `INONE_MLS_NATIVE_ENABLED` remains false by default. Exact merge-SHA validation and physical Android/iOS two-device acceptance remain pending. This document's Stage 3 matrix below is retained as contract history; use the latest post-PR131 audit for current implementation and acceptance state.
+
+**Статус:** историческая карта Stage 3 контрактов; не является заявлением о production readiness.  
 **Backend source:** `inone-development-archive-0.6.0/engine/src/server.js`  
-**Mobile host:** `mobile/lib/main.dart`, `mobile/lib/claude_ui_bridge.dart`, `mobile/lib/core/network/api_client.dart`  
-**Экранные источники:** `mobile/assets/ui-approval/screen-manifest.json` и `mobile/lib/claude_screen_catalog.dart`.
+**Mobile host:** `mobile/lib/main.dart`, `mobile/lib/app/inone_mobile_app.dart`, `mobile/lib/core/network/api_client.dart`, `mobile/lib/core/mls/`  
+**Production screens:** `mobile/lib/ui_dart_source/`; approved HTML package is a visual reference only.
 
 ## 1. Contract rules
 
-1. Flutter owns HTTP. HTML/WebView sends a typed bridge message; it never receives access/refresh tokens, MLS secrets or arbitrary network access.
+1. Flutter/Dart owns HTTP and production navigation. Approved HTML/WebView screens are references only; no production WebView receives access/refresh tokens, MLS secrets or arbitrary network access.
 2. The backend is authoritative for membership, roles, feature flags, ownership and capabilities. Hiding a button in the UI is not authorization.
 3. Route existence does not mean the operation is connected to Flutter. The bridge allowlist is intentionally narrower than the backend.
 4. Generic screen probes are GET-only. Mutations require dedicated typed operations, payload validation, confirmation where appropriate, and tests.
@@ -134,9 +136,9 @@ A source-contract regression test is added alongside these suites to prevent scr
 The following items are **outside Stage 3 acceptance** and remain assigned to their own stages:
 - Production endpoint, deployment, SMTP/SMS operations, monitoring and backup/restore are not certified by this source contract.
 - No end-to-end Flutter flow is accepted solely because its backend route exists.
-- Native MLS FFI, secure local message database, offline restart recovery and native token ownership are Stage 4.
+- Canonical Engine B FFI, SQLCipher local message database, durable inbox/outbox, offline retry and Rust token ownership are integrated in source after PR #131; they remain opt-in and not physically accepted until exact-SHA and two-device Android/iOS gates pass.
 - Full typed WebView bridge expansion, file picking and screen-level API binding are Stage 2.
-- Physical Android/iOS device visual acceptance is Stage 1.
+- Physical Android/iOS device and two-device acceptance remain separate release gates and are pending.
 - Stage 3 PostgreSQL concurrency acceptance is complete on PR #44 code head `3d288777135d0c12145f18407e8768a02ae80a9f`; the DB-backed workflow result is recorded in the repository Stage 3 acceptance report.
 
 ## 7. Stage 3 acceptance checklist
