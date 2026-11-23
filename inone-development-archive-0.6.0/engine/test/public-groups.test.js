@@ -60,8 +60,10 @@ function grant(owner, userId, capabilities) {
 }
 
 const b64 = (value) => Buffer.from(value, 'utf8').toString('base64');
+const pkg = (name) => Buffer.from(`KEYPACKAGE-${name}-${'x'.repeat(40)}`).toString('base64');
 
 async function approveJoinRequestViaMls(owner, requester, targetUserId, claimId) {
+  await requester.raw('POST', '/mls/key-packages', { packages: [pkg(`${targetUserId}-${claimId}`)] });
   const claim = await owner.raw('POST', `/mls/key-packages/${enc(targetUserId)}/claims`, { claimId, roomId: ROOM });
   assert.ok(claim.packages.some((item) => item.deviceId === requester.deviceId), 'requester device KeyPackage is claimed');
   const welcomes = claim.packages.map((item) => ({
