@@ -1445,11 +1445,12 @@ fn is_account_removal_policy_rejection(payload: &Value, error: &str) -> bool {
     if !(removes_account && no_adds && no_device_removals) {
         return false;
     }
+    let code = response_error_code(error).unwrap_or_default();
     matches!(
-        response_error_code(error).as_deref(),
-        Some("an admin cannot remove another admin" | "owner cannot be removed")
-    ) || response_error_code(error)
-        .is_some_and(|code| code.starts_with("missing capability: remove_members"))
+        code.as_str(),
+        "an admin cannot remove another admin" | "owner cannot be removed"
+    ) || code.starts_with("missing capability: remove_members")
+        || code.starts_with("not a member: ")
 }
 
 impl Client {
