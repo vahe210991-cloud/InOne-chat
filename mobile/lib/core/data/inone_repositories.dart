@@ -1,4 +1,5 @@
 import '../session/inone_session.dart';
+import 'inone_device.dart';
 import 'inone_organization.dart';
 import 'inone_profile.dart';
 import '../network/api_exception.dart';
@@ -79,8 +80,20 @@ class InOneRepositories {
     }
   }
 
-  Future<Map<String, dynamic>> myDevices() =>
-      session.request('GET', '/devices/mine');
+  Future<List<InOneDevice>> myDevices() async =>
+      InOneDeviceList.fromJson(await session.request('GET', '/devices/mine')).devices;
+
+  Future<void> revokeDevice(String deviceId) async {
+    if (deviceId.trim().isEmpty) {
+      throw ArgumentError.value(deviceId, 'deviceId');
+    }
+    final response = await session.request(
+      'DELETE', '/devices/${Uri.encodeComponent(deviceId)}',
+    );
+    if (response['ok'] != true) {
+      throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false);
+    }
+  }
   /// Returns the validated room-list DTO for the authenticated account.
   Future<InOneRoomList> myRooms() async =>
       InOneRoomList.fromJson(await session.request('GET', '/rooms/mine'));
