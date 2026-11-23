@@ -47,9 +47,6 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   InOnePushReceiveLifecycle? _pushReceiveLifecycle;
   final InOnePushRouteQueue _pendingPushRoutes = InOnePushRouteQueue();
   bool _pushRouteInFlight = false;
-  String? _pushRoomId;
-  List<InOneThreadItem> _pushThreadItems = const [];
-
   String _screen = 'login';
   String _registrationEmail = '';
   String _recoveryEmail = '';
@@ -1176,22 +1173,6 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         return InOneSystemStatusScreen(
           status: _systemStatus!,
           onMenu: () => setState(() => _screen = 'workspace'),
-        );
-      case 'pushChat':
-        return InOneChatThreadScreen(
-          header: InOneThreadHeader(
-            name: _pushRoomId ?? 'InOne chat',
-            statusLabel: 'End-to-end encrypted',
-            online: false,
-          ),
-          items: _pushThreadItems,
-          onSend: (_) async => false,
-          onBack: () => setState(() {
-            _screen = 'messages';
-            _pushRoomId = null;
-            _pushThreadItems = const [];
-          }),
-          onAttach: () => _notice('Вложения доступны только после подключения полного MLS encrypted attachment flow.'),
         );
       case 'messages':
         if (_messagesLoading) {
