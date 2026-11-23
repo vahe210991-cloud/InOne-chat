@@ -1104,6 +1104,10 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       final currentUserId = _session.userId;
       final canRename = currentUserId != null &&
           (details.capabilities[currentUserId]?.contains('edit_group_name') ?? false);
+      final canEditSettings = currentUserId != null &&
+          (details.capabilities[currentUserId]?.contains('edit_group_settings') ?? false);
+      var visibility = details.visibility;
+      var joinPolicy = details.joinPolicy;
       final controller = TextEditingController(text: details.name ?? _activeMlsRoomName);
       var saving = false;
       String? errorMessage;
@@ -1119,8 +1123,33 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Видимость: ${details.visibility == 'public' ? 'публичная' : 'приватная'}'),
-                    Text('Вступление: ${details.joinPolicy == 'open' ? 'свободное' : 'по заявке'}'),
+                    if (canEditSettings) ...[
+                      DropdownButtonFormField<String>(
+                        value: visibility,
+                        decoration: const InputDecoration(labelText: 'Видимость'),
+                        items: const [
+                          DropdownMenuItem(value: 'public', child: Text('Публичная')),
+                          DropdownMenuItem(value: 'private', child: Text('Приватная')),
+                        ],
+                        onChanged: saving ? null : (value) {
+                          if (value != null) setDialogState(() => visibility = value);
+                        },
+                      ),
+                      DropdownButtonFormField<String>(
+                        value: joinPolicy,
+                        decoration: const InputDecoration(labelText: 'Правило вступления'),
+                        items: const [
+                          DropdownMenuItem(value: 'open', child: Text('Свободное')),
+                          DropdownMenuItem(value: 'approval', child: Text('По заявке')),
+                        ],
+                        onChanged: saving ? null : (value) {
+                          if (value != null) setDialogState(() => joinPolicy = value);
+                        },
+                      ),
+                    ] else ...[
+                      Text('Видимость: ${details.visibility == 'public' ? 'публичная' : 'приватная'}'),
+                      Text('Вступление: ${details.joinPolicy == 'open' ? 'свободное' : 'по заявке'}'),
+                    ],
                     const SizedBox(height: 12),
                     const Text('Участники', style: TextStyle(fontWeight: FontWeight.w700)),
                     const SizedBox(height: 6),
@@ -1186,12 +1215,20 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
                     },
                     child: const Text('Пригласить участника'),
                   ),
-                if (canRename)
+                if (canRename || canEditSettings)
                   FilledButton(
                     onPressed: saving ? null : () async {
-                      final newName = controller.text.trim();
-                      if (newName.isEmpty || newName.length > 100) {
+                      final newName = canRename ? controller.text.trim() : null;
+                      if (canRename && (newName == null || newName.isEmpty || newName.length > 100)) {
                         setDialogState(() => errorMessage = 'Название должно содержать от 1 до 100 символов.');
+                        return;
+                      }
+                      final nameChanged = canRename &&
+                          newName != (details.name ?? _activeMlsRoomName);
+                      final visibilityChanged = canEditSettings && visibility != details.visibility;
+                      final joinPolicyChanged = canEditSettings && joinPolicy != details.joinPolicy;
+                      if (!nameChanged && !visibilityChanged && !joinPolicyChanged) {
+                        setDialogState(() => errorMessage = 'Изменений нет.');
                         return;
                       }
                       setDialogState(() {
@@ -1199,24 +1236,31 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
                         errorMessage = null;
                       });
                       try {
-                        await _repositories.updateRoomName(roomId, newName);
+                        await _repositories.updateRoomSettings(
+                          roomId,
+                          name: nameChanged ? newName : null,
+                          visibility: visibilityChanged ? visibility : null,
+                          joinPolicy: joinPolicyChanged ? joinPolicy : null,
+                        );
                         if (!mounted || !dialogContext.mounted) return;
-                        setState(() {
-                          _activeMlsRoomName = newName;
-                          _mlsChats = _mlsChats.map((chat) => chat.id == roomId
-                              ? InOneChatPreview(
-                                  id: chat.id,
-                                  name: newName,
-                                  lastMessage: chat.lastMessage,
-                                  time: chat.time,
-                                  kind: chat.kind,
-                                  unread: chat.unread,
-                                  initials: chat.initials,
-                                )
-                              : chat).toList(growable: false);
-                        });
+                        if (nameChanged) {
+                          setState(() {
+                            _activeMlsRoomName = newName!;
+                            _mlsChats = _mlsChats.map((chat) => chat.id == roomId
+                                ? InOneChatPreview(
+                                    id: chat.id,
+                                    name: newName,
+                                    lastMessage: chat.lastMessage,
+                                    time: chat.time,
+                                    kind: chat.kind,
+                                    unread: chat.unread,
+                                    initials: chat.initials,
+                                  )
+                                : chat).toList(growable: false);
+                          });
+                        }
                         Navigator.of(dialogContext).pop();
-                        _notice('Название группы обновлено на сервере.');
+                        _notice('Настройки группы обновлены на сервере.');
                       } catch (error) {
                         if (dialogContext.mounted) {
                           setDialogState(() => errorMessage = _toFailure(error).message);
