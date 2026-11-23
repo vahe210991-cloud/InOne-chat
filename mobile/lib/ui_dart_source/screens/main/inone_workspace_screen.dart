@@ -25,9 +25,9 @@ class InOneWorkspaceScreen extends StatelessWidget {
   final List<InOneModuleTile> modules;
   final List<InOneActivityItem> activity;
   final VoidCallback onSwitchWorkspace;
-  final VoidCallback onNotifications;
-  final VoidCallback onCustomize;
-  final VoidCallback onSeeAll;
+  final VoidCallback? onNotifications;
+  final VoidCallback? onCustomize;
+  final VoidCallback? onSeeAll;
   final ValueChanged<InOneTab> onTab;
   final VoidCallback onAdd;
 
@@ -96,8 +96,9 @@ class InOneWorkspaceScreen extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(width: 10),
-        Semantics(
+        if (onNotifications != null) ...[
+          const SizedBox(width: 10),
+          Semantics(
           button: true,
           label: 'Notifications',
           child: GestureDetector(
@@ -128,7 +129,8 @@ class InOneWorkspaceScreen extends StatelessWidget {
               ),
             ),
           ),
-        ),
+          ),
+        ],
       ],
     );
   }
@@ -206,10 +208,11 @@ class InOneWorkspaceScreen extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(title, style: InOneText.style(15, FontWeight.w700, c.text)),
-        GestureDetector(
-          onTap: onAction,
-          child: Text(action, style: InOneText.style(12, FontWeight.w600, c.link)),
-        ),
+        if (onAction != null)
+          GestureDetector(
+            onTap: onAction,
+            child: Text(action, style: InOneText.style(12, FontWeight.w600, c.link)),
+          ),
       ],
     );
   }
