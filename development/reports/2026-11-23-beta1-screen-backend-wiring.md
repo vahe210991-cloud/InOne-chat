@@ -71,8 +71,8 @@ The five-screen scope is now explicit:
 | Messages / room directory | Authenticated `GET /rooms/mine`; `GET /rooms/search`; `POST /rooms/:id/join`; group filter; loading/error/retry | Server-backed unread counts are not included in `/rooms/mine`; public-group discovery is wired. An approval join records a request; an open join still requires a valid native MLS Welcome before history can open |
 | Chat thread | Engine B MLS text send, durable outbox, encrypted attachment send/download; `GET /rooms/:id/members`; `POST /rooms/:id/settings`; `POST /rooms/:id/read`; permission-gated native MLS invite | Metadata/member roster and effective capabilities render; rename and MLS invite are capability-gated; read marker posts only after readable history has been durably loaded. Member removal/role changes and moderation remain pending |
 | Organization profile | `GET /orgs/mine`, `GET /orgs/:id/members`, `POST /orgs/:id/members`, `POST /orgs/:id/members/:userId/role`, `DELETE /orgs/:id/members/:userId` | Typed roster plus owner/admin-aware add/remove and owner-only role changes are connected with confirmations. General organization admin-log views remain pending |
-| Workspace | Organization switch, member count, room-derived group count, public system config | Notifications, project/task/activity statistics and customization must be mapped to actual Beta 1.0 backend routes; unavailable modules must not show fabricated metrics |
-| User profile | `GET /profile`, persisted `PATCH /profile/locale`, `GET /devices/mine`, `DELETE /devices/:deviceId`, logout | Device inventory and remote-device revocation are connected with confirmation; current device is protected from self-revocation. Profile/avatar editing remains unavailable until a real backend mutation contract exists |
+| Workspace | Organization switch, member count, room-derived group count, public system config | No Beta 1.0 notifications feed, project/task/activity feed or module-customization route was found. Those actions, unread bell and unsupported publication action are hidden; unavailable metrics remain `—` rather than fabricated |
+| User profile | `GET /profile`, persisted `PATCH /profile/locale`, `GET /devices/mine`, `DELETE /devices/:deviceId`, logout | Device inventory and remote-device revocation are connected with confirmation; current device is protected from self-revocation. Unsupported avatar edit and publication actions are hidden; no profile/avatar mutation contract is claimed |
 
 ### Newly implemented in this pass
 
@@ -148,3 +148,12 @@ The backend's public open-join operation adds room membership and emits a room-c
 - A link proposed by the current organization cannot be accepted by that same side; only the other side receives the Accept action. Either authorized side can revoke a non-revoked link, with confirmation.
 - The server's atomic state transition and cross-organization membership cleanup remain authoritative; conflicts are surfaced and the list can be refreshed.
 - General organization admin-log views remain pending.
+
+
+## 2026-11-23 — unavailable workspace actions and navigation
+
+- Audited Engine B routes for workspace notifications, project/task feeds, activity feed and module customization; no corresponding Beta 1.0 route was found.
+- Workspace now hides the notification bell and Customize/See all actions when no backend callback exists. Empty activity stays absent; project/task metrics remain unknown.
+- Unsupported publication plus actions are hidden on workspace, organization and profile. Protected-chat creation is a header action on Messages and appears only when native MLS is active.
+- Bottom navigation in the active Beta 1.0 screens exposes only connected Messages and Profile sections; Feed and Calls are hidden until their server flows are in scope.
+- Avatar/cover edit actions remain hidden without a confirmed upload/update contract.
