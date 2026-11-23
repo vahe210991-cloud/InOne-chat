@@ -705,3 +705,17 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Chat thread settings now include visibility and join-policy controls when effective capabilities include `edit_group_settings`; room name remains separately gated by `edit_group_name`.
 - The client sends only changed fields through existing `POST /rooms/:id/settings`. Backend remains authoritative, including clearing join requests when a room becomes private.
 - No tests/analyzers/builds/Actions run.
+
+
+## 2026-11-23 — post-PR #131 acceptance audit and P0 Welcome transaction
+
+- Verified current `main` remains at `2430b0365ab71c60b0926b27854d17a9090e1fba`; PR #131 is merged. PR #131 head workflows retrieved as PASS are not substituted for merge-SHA post-merge checks. Nine PR-head workflows are PASS; the four post-merge main workflows reported IN_PROGRESS at checkpoint remain unconfirmed.
+- Confirmed production `mobile/rust/Cargo.toml` uses canonical Engine B. Updated Issues #1, #114, #6, #5 and #9 with current source facts and remaining proof gaps; all remain open.
+- Source audit found that Welcome materialization, `client_rooms` and Welcome receipt were not atomic even though application-message and inbound Commit paths use the shared SQLCipher connection/transaction-aware provider.
+- On existing draft PR #132 branch `work/mls-production-acceptance-2026-11-23`, changed Welcome materialization to use a transaction-backed OpenMLS provider and commit group state, room index and receipt together. Added five crash failpoints and a child-process SQLCipher restart regression for rollback/recovery at each boundary. Commits: `e06ffe5` and `3a0bf89`.
+- These Rust changes and tests have NOT been compiled or executed in this audit. Do not mark Issue #1 accepted. Outbound Commit server-acceptance/reconciliation, Flutter/native ACK lifecycle and WAL-specific behaviour remain open proof gaps.
+- Corrected mobile README: production Firebase Admin FCM sender and encrypted PostgreSQL push outbox already exist and are wired by backend `main.js`; physical provider/device delivery remains unaccepted. Beta recovery custom scheme is generated for Android/iOS; production Universal/App Links remain blocked on owner-supplied domain.
+- Updated `mobile/API-INTEGRATION.md`, `mobile/API-CONTRACTS-BETA-1.md`, continuity docs, MLS atomicity ADR, P0 acceptance map and the PR #131 screen/backend report. Historical records remain intact but are explicitly superseded where stale.
+- Audited old PRs #127/#87/#89/#90/#124/#116/#117/#125/#94/#129/#110/#97. No stale PR or branch was merged or closed. Selected changes from #87/#89/#90 are already represented by PR #131; old Engine A is not to be copied.
+- No local test runner or physical devices were available through the current GitHub connector. No Rust/Flutter/Node/PostgreSQL tests, native builds or physical-device tests were run in this audit branch. WBS v1.1 unchanged; current engineering estimates 90% implementation / 73% verification / 58% release readiness; recommendation NOT READY.
+
