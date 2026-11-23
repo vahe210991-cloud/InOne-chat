@@ -496,6 +496,8 @@ CREATE TABLE org_request_documents (
   doc_id TEXT PRIMARY KEY,
   request_id TEXT NOT NULL REFERENCES org_requests (request_id) ON DELETE CASCADE,
   kind TEXT NOT NULL,
+  filename TEXT NOT NULL DEFAULT 'document.bin',
+  mime_type TEXT NOT NULL DEFAULT 'application/octet-stream',
   size BIGINT NOT NULL,
   sha256 TEXT NOT NULL,
   object_key TEXT NOT NULL,
