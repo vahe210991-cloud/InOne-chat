@@ -1115,9 +1115,9 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
                     const SizedBox(height: 12),
                     const Text('Участники', style: TextStyle(fontWeight: FontWeight.w700)),
                     const SizedBox(height: 6),
-                    Flexible(
+                    SizedBox(
+                      height: 240,
                       child: ListView(
-                        shrinkWrap: true,
                         children: [
                           for (final memberId in details.members)
                             ListTile(
@@ -1153,6 +1153,30 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
                   onPressed: () => Navigator.of(dialogContext).pop(),
                   child: const Text('Закрыть'),
                 ),
+                if (currentUserId != null &&
+                    (details.capabilities[currentUserId]?.contains('invite_members') ?? false) &&
+                    _session.hasNativeMlsSession)
+                  TextButton(
+                    onPressed: saving ? null : () async {
+                      final invitee = await _promptMlsInvitee(
+                        title: 'Пригласить в группу',
+                        actionLabel: 'Пригласить',
+                      );
+                      if (invitee == null || invitee.trim().isEmpty || !mounted) return;
+                      try {
+                        await _session.inviteMlsMember(roomId, invitee.trim());
+                        if (!mounted || !dialogContext.mounted) return;
+                        Navigator.of(dialogContext).pop();
+                        await _refreshActiveMlsChat();
+                        _notice('MLS-приглашение отправлено. Новый участник получит доступ после обработки защищённого приглашения.');
+                      } catch (error) {
+                        if (dialogContext.mounted) {
+                          setDialogState(() => errorMessage = _toFailure(error).message);
+                        }
+                      }
+                    },
+                    child: const Text('Пригласить участника'),
+                  ),
                 if (canRename)
                   FilledButton(
                     onPressed: saving ? null : () async {
