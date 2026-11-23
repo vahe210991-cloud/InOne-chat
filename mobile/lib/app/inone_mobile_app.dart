@@ -494,7 +494,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       projects: '—',
       verified: profile.verificationLevel > 0,
       accountEmail: profile.email,
-      locale: profile.locale,
+      locale: _session.locale,
       backupEmail: profile.backupEmail?.email,
       backupEmailVerified: profile.backupEmail?.verified ?? false,
     );
