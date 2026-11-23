@@ -1682,7 +1682,10 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
                   if (mounted) _notice('Настройки организации сохранены на сервере.');
                 } catch (error) {
                   if (dialogContext.mounted) {
-                    setDialogState(() => errorMessage = _toFailure(error).message);
+                    setDialogState(() {
+                      errorMessage = _toFailure(error).message;
+                      channelsEnabled = settings.channelsEnabled;
+                    });
                   }
                 } finally {
                   if (dialogContext.mounted) {
