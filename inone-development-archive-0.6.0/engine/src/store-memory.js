@@ -1243,6 +1243,14 @@ export function createMemoryStore({ pinPepper }) {
       if (current !== baseEpoch) return { ok: false, reason: 'epoch_outdated', epoch: current };
       const room = rooms.get(roomId);
       if (!room) return { ok: false, reason: 'room_not_found', epoch: current };
+      const senderDeviceActive = [...devices.values()].some((entry) =>
+        entry.userId === senderId && entry.deviceId === deviceId && !entry.revoked);
+      if (!senderDeviceActive) return { ok: false, reason: 'sender_device_revoked', epoch: current };
+      for (const welcome of welcomes ?? []) {
+        const welcomeDeviceActive = [...devices.values()].some((entry) =>
+          entry.userId === welcome.userId && entry.deviceId === welcome.deviceId && !entry.revoked);
+        if (!welcomeDeviceActive) return { ok: false, reason: 'welcome_device_revoked', epoch: current };
+      }
       if ((changes.adds ?? []).length > 0) {
         const roomOrg = organizations.get(room.orgId);
         if (!roomOrg || roomOrg.status !== 'approved') return { ok: false, reason: 'org_not_approved', epoch: current };
