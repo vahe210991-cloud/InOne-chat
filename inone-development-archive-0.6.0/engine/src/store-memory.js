@@ -1016,6 +1016,9 @@ export function createMemoryStore({ pinPepper }) {
             link.status === 'active' && ((link.orgA === a && link.orgB === b) || (link.orgB === a && link.orgA === b)))));
         if (!shared) return { ok: false, reason: 'not_authorized' };
       }
+      const activeDeviceIds = new Set([...devices.values()]
+        .filter((device) => device.userId === targetUserId && !device.revoked)
+        .map((device) => device.deviceId));
       const claimKey = JSON.stringify([targetUserId, requesterUserId, requesterDeviceId, claimId]);
       const previous = mlsPackageClaims.get(claimKey);
       if (previous) {
@@ -1023,12 +1026,12 @@ export function createMemoryStore({ pinPepper }) {
         if (previous.state === 'committed') return { ok: false, reason: 'claim_committed' };
         if (roomId && previous.roomId && previous.roomId !== roomId) return { ok: false, reason: 'claim_room_mismatch' };
         if (roomId && !previous.roomId) previous.roomId = roomId;
-        return { ok: true, packages: previous.packages.map((item) => ({
+        return { ok: true, packages: previous.packages.filter((item) => activeDeviceIds.has(item.deviceId)).map((item) => ({
           deviceId: item.deviceId, packageId: item.packageId, package: Buffer.from(item.package),
         })) };
       }
       const out = [];
-      const devices = [...new Set(mlsPackages.filter((p) => p.userId === targetUserId && p.consumedAt === null).map((p) => p.deviceId))].sort();
+      const devices = [...new Set(mlsPackages.filter((p) => p.userId === targetUserId && activeDeviceIds.has(p.deviceId) && p.consumedAt === null).map((p) => p.deviceId))].sort();
       for (const deviceId of devices) {
         const next = mlsPackages.find((p) => p.userId === targetUserId && p.deviceId === deviceId && p.consumedAt === null && !p.lastResort && p.createdAt >= nowMs - MLS_REGULAR_MAX_AGE_MS);
         if (next) { next.consumedAt = nowMs; out.push({ deviceId, packageId: next.id, package: Buffer.from(next.package) }); continue; }
