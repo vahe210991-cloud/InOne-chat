@@ -121,3 +121,30 @@ B-12 is a confirmed database-integrity issue and should be fixed in the database
 - Current `test/mls-keys.test.js` exercises the legacy `/claim` endpoint, including same-claim replay and concurrent replay, but that test file is not listed in `npm run test:db`. Existing coverage therefore does not prove the authorization boundary or PostgreSQL claim races for this route. The MLS contract documents both legacy and reservation routes; preserve compatibility until the native/Flutter call graph is proven, and add PostgreSQL coverage for the legacy/new route authorization policy.
 - Current `test/admin-journal.test.js` verifies role-change audit entries but does not test last-owner concurrency or rollback when the audit insert fails.
 - Current `test/files-disk.test.js` verifies path-safe object keys and a sequential quota threshold; it does not test concurrent quota reservation or memory-bounded upload streaming.
+
+
+## Stage 1 progress — B-01 implementation slice (2026-11-24)
+
+**Implementation status:** B-01 code changes committed on the remediation branch; exact-SHA CI is queued/in progress. Do not mark accepted until all applicable workflows pass.
+
+Changes:
+- Legacy `POST /mls/key-packages/:userId/claim` now applies the shared approved-organization/active-link policy via `sharesOrgOrLink()`. This preserves the legacy route and its claim ID/idempotency behavior for users who are in an allowed relationship.
+- Room-bound `POST /mls/key-packages/:userId/claims` now resolves the room organization from the storage contract and checks target-user eligibility via `orgGate()` before the package reservation. Existing sender room membership and invite capability checks remain.
+- Added a negative test with two unrelated approved organizations: both legacy and room-bound claim attempts are rejected and the target package remains unused.
+- Added `test/mls-keys.test.js` to `npm run test:db` so this authorization suite executes against PostgreSQL in the DB workflow.
+
+Commits on the branch:
+- `81785d1b92b420c5bb4ccf2e862950abee44f205` — negative cross-org KeyPackage test.
+- `39bd07b746d36f8433b324687d9678418e47858e` — include KeyPackage suite in PostgreSQL gate.
+- `aadb3cc366fa2c239b0318bd3cd1ec39b3088e35` — enforce organization authorization on legacy and room-bound claims.
+- `2594bc91982942fcc2726565ee37c25d56f3ce2e` — resolve room organization through `storage.roomOrg()` (the `getRoom()` contract does not expose `orgId`).
+
+Current CI for exact head `2594bc91982942fcc2726565ee37c25d56f3ce2e`:
+- Backend Docker Compose runtime acceptance: QUEUED.
+- Email delivery and PostgreSQL validation: IN PROGRESS.
+- Native MLS client validation: QUEUED.
+- Dev Container Compose runtime validation: QUEUED.
+- Validate recovered InOne P0 source: QUEUED.
+- InOne exact-SHA acceptance gate: IN PROGRESS.
+
+No test result is yet PASS for this code change. B-02/B-03 remain open; Stage 1 is not complete. No main merge, issue closure, SMS scope expansion, secret changes or MLS default changes.
