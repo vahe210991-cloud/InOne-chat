@@ -1866,9 +1866,8 @@ if (req.method === 'POST' && p === '/login') {
         if (users.length > MAX_TO_DEVICE_RECIPIENTS) return send(res, 413, { error: 'too many users in device key query' });
         const out = {};
         for (const user of users) {
-          // Do not reveal whether an unrelated account has registered devices.
-          if (!(await sharesOrgOrLink(d.userId, user))) { out[user] = {}; continue; }
-          out[user] = await storage.queryDeviceKeys(user);
+          // The store rechecks and locks the current organization/link relationship with the key read.
+          out[user] = (await storage.queryDeviceKeysForUser(d.userId, user)) ?? {};
         }
         return send(res, 200, { device_keys: out, failures: {} });
       }
