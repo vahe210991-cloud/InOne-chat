@@ -534,7 +534,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         try {
           await objectStore.putStream(fileId, req, { transform: verifier });
         } catch (error) {
-          await objectStore.remove(fileId).catch(() => {});
+          await discardFileUpload(fileId);
           if (error.code === 'FILE_TOO_LARGE') {
             res.setHeader('Connection', 'close');
             return send(res, 413, { error: 'file is larger than declared' });
@@ -545,22 +545,22 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
           throw error;
         }
         if (received !== file.size) {
-          await objectStore.remove(fileId).catch(() => {});
+          await discardFileUpload(fileId);
           return send(res, 400, { error: 'incomplete body' });
         }
         if (digest.digest('hex') !== file.sha256) {
-          await objectStore.remove(fileId).catch(() => {});
+          await discardFileUpload(fileId);
           return send(res, 422, { error: 'checksum does not match the declaration' });
         }
         const stillActiveOwnerDevice = await storage.deviceRecord(key(file.ownerId, file.ownerDeviceId));
         if (!stillActiveOwnerDevice || stillActiveOwnerDevice.revoked) {
-          await objectStore.remove(fileId).catch(() => {});
+          await discardFileUpload(fileId);
           return send(res, 403, { error: 'uploading device is revoked' });
         }
         if (file.roomId) {
           const room = await storage.getRoom(file.roomId);
           if (!room || !room.members.includes(file.ownerId) || !hasCapability(room, file.ownerId, 'send_messages')) {
-            await objectStore.remove(fileId).catch(() => {});
+            await discardFileUpload(fileId);
             return send(res, 403, { error: 'room upload permission was revoked' });
           }
         }
@@ -640,6 +640,15 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
       if (status !== 'approved') return { status: 403, error: 'organization is not approved', code: 'org_not_approved' };
       if (!(await storage.orgRoleOf(orgId, userId)) && !(await linkedMember(userId, orgId))) return { status: 403, error: 'not an organization member', code: 'org_not_member' };
       return null;
+    };
+    const discardFileUpload = async (fileId) => {
+      await storage.markFileDeleting(fileId);
+      try {
+        await objectStore.remove(fileId);
+        await storage.finalizeFileDeletion(fileId);
+      } catch (error) {
+        logger?.error('failed upload cleanup deferred for retry', { fileId, error: error.message });
+      }
     };
     const cleanupFiles = async () => {
       const pending = await storage.purgeStaleFiles(now() - STALE_UPLOAD_MS);
