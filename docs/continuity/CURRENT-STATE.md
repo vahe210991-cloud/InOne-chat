@@ -668,3 +668,15 @@ Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone
 - No backend source modules, schema/migrations, Rust/FFI source, directory paths or database data were changed. Do not merge to `main` without owner approval.
 
 - PR #120 remains open as Draft against `main`, not merged. Its README received a preservation correction after review; re-read the latest PR head and require fresh exact-head CI before acceptance.
+
+
+## Beta 2.0 CTO planning update — 2026-11-24
+
+- Owner has explicitly started Beta 2.0 with **Identity as Phase 1**. This is a separate program; Beta 1.0 remediation/release scope is unchanged.
+- Current planning branch: `planning/beta-2.0-cto-2026-11-24`, based on main SHA `02880940c1e4d8261405fbeaa01f40879eb44f3a`. Do not use the old `planning/beta-2.0-roadmap` as a base: it is diverged and 1,262 commits behind main; it remains preserved unchanged.
+- Roadmap: [Beta 2.0 CTO roadmap](../../docs/product/BETA-2.0-CTO-ROADMAP.md). Identity plan: [Phase 1 execution plan](../../docs/product/BETA-2.0-IDENTITY-PHASE-1.md). Draft ADR: [B2-ADR-001](../../docs/product/BETA-2.0-IDENTITY-ADR-DRAFT.md). Threat model: [Identity threat model](../../docs/product/BETA-2.0-IDENTITY-THREAT-MODEL.md). Audit: [2026-11-24 CTO audit](../../development/reports/2026-11-24-beta2-cto-audit.md).
+- Workstream tracking: #137 Identity; #138 InOne personal/social; #139 InOne Business; #140 group collaboration; #141 Tasks/Calendar; #142 Cindy; #143 localization/design/themes/icons; #144 platform/Propo integration; #145 security/privacy; #146 QA/SRE/release. Identity first tasks: #147 inventory/threat model and #148 ADR/contracts.
+- Current source review found local InOne identity rules and auth/recovery flows, but no independently deployed cross-platform Identity authority/registry evidenced. Identity is therefore a foundational architecture gap, not a completed feature.
+- Architecture guardrails: separate InOne and InOne Business apps; independent product backends/domain databases; independent Identity database/service; no shadow identity on Identity outage; central atomic identifier reservation; durable outbox/inbox and reconciliation; no automatic account merge based on email/phone alone.
+- Beta 1.0 PR #135 remains separate; its Stage 2 is not accepted until exact-head checks pass. No Beta 1.0 code, PR, release gate or production setting was changed in this Beta 2.0 planning work.
+- WBS v1.1 unchanged. Beta 2.0 baseline remains 2% implementation / 0% verification; roadmap/spec/issue creation does not count as product implementation. No tests/builds or production migrations were run.
