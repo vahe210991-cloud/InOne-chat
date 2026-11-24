@@ -1915,13 +1915,14 @@ if (req.method === 'POST' && p === '/login') {
           return send(res, 413, { error: 'invalid or excessive to-device recipient count' });
         }
         const normalized = [];
+        let messageCount = 0;
         let totalBytes = 0;
         for (const [user, devs] of recipients) {
           if (!user || user.length > 255 || !devs || typeof devs !== 'object' || Array.isArray(devs)) {
             return send(res, 400, { error: 'invalid to-device recipient map' });
           }
           for (const [deviceId, content] of Object.entries(devs)) {
-            if (!deviceId || deviceId.length > 255 || ++normalized.length > MAX_TO_DEVICE_MESSAGES) {
+            if (!deviceId || deviceId.length > 255 || ++messageCount > MAX_TO_DEVICE_MESSAGES) {
               return send(res, 413, { error: 'too many to-device messages' });
             }
             const encoded = JSON.stringify(content);
@@ -1930,7 +1931,7 @@ if (req.method === 'POST' && p === '/login') {
             if (bytes > MAX_TO_DEVICE_ITEM_BYTES) return send(res, 413, { error: 'to-device message is too large' });
             totalBytes += bytes;
             if (totalBytes > MAX_TO_DEVICE_TOTAL_BYTES) return send(res, 413, { error: 'to-device request is too large' });
-            normalized[normalized.length - 1] = { user, deviceId, content };
+            normalized.push({ user, deviceId, content });
           }
         }
 
