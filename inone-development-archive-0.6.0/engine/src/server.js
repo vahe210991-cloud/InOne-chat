@@ -24,6 +24,7 @@ import { createFsObjectStore, createMemoryObjectStore } from './object-store.js'
 import { effectiveFlags, publicFlags, validateFlag } from './flags.js';
 import http from 'node:http';
 import { Transform } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { readFileSync } from 'node:fs';
 import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, randomInt, randomUUID, scryptSync, timingSafeEqual, createPublicKey, createVerify } from 'node:crypto';
 import { createMemoryStore } from './store-memory.js';
@@ -571,16 +572,22 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
           return send(res, 403, { error: 'not the owner' });
         }
         if (file.status !== 'ready') return send(res, 404, { error: 'not ready' });
-        const bytes = await objectStore.get(fileId);
-        if (!bytes) return send(res, 404, { error: 'not found' });
+        const stream = objectStore.getStream(fileId);
+        if (!stream) return send(res, 404, { error: 'not found' });
         res.writeHead(200, {
           'content-type': 'application/octet-stream',
-          'content-length': bytes.length,
+          'content-length': file.size,
           'content-disposition': 'attachment',
           'x-content-type-options': 'nosniff',
           'cache-control': 'no-store',
         });
-        return res.end(bytes);
+        try {
+          await pipeline(stream, res);
+        } catch (error) {
+          if (!res.headersSent) return send(res, 404, { error: 'not found' });
+          res.destroy(error);
+        }
+        return;
       }
       return send(res, 405, { error: 'method not allowed' });
     }
