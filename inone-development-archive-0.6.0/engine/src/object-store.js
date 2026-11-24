@@ -15,7 +15,7 @@ export function createMemoryObjectStore() {
     async put(key, bytes) {
       objects.set(key, Buffer.from(bytes));
     },
-    async putStream(key, source) {
+    async putStream(key, source, { transform = null } = {}) {
       const chunks = [];
       const sink = new Writable({
         write(chunk, _encoding, callback) {
@@ -23,7 +23,7 @@ export function createMemoryObjectStore() {
           callback();
         },
       });
-      await pipeline(source, sink);
+      await pipeline(...(transform ? [source, transform, sink] : [source, sink]));
       const bytes = Buffer.concat(chunks);
       objects.set(key, bytes);
       return { size: bytes.length };
@@ -71,14 +71,14 @@ export function createFsObjectStore(dir) {
       await rename(temp, target);
       await syncDirectory();
     },
-    async putStream(key, source) {
+    async putStream(key, source, { transform = null } = {}) {
       const target = fileOf(key);
       await mkdir(root, { recursive: true, mode: 0o700 });
       const temp = `${target}.${randomBytes(8).toString('hex')}.tmp`;
       const handle = await open(temp, 'wx', 0o600);
       try {
         const sink = createWriteStream(temp, { fd: handle.fd, autoClose: false });
-        await pipeline(source, sink);
+        await pipeline(...(transform ? [source, transform, sink] : [source, sink]));
         await handle.sync();
         await handle.close();
         await rename(temp, target);
