@@ -1584,14 +1584,8 @@ if (req.method === 'POST' && orgLinkActRoute) {
     return send(res, 200, { status: 'active' });
   }
   if (link.status === 'revoked') return send(res, 409, { error: 'link is already revoked' });
-  const other = link.orgA === orgId ? link.orgB : link.orgA;
-  const transitioned = await storage.transitionOrgLinkStatus({
-    linkId, fromStatus: link.status, status: 'revoked', decidedBy: d.userId, decidedAt: now(),
-  });
-  if (!transitioned) return send(res, 409, { error: 'link state changed; reload and retry' });
-  await storage.removeCrossOrgMemberships(orgId, other);
-  await storage.logAdminAction({ orgId, actor: d.userId, action: 'link_revoke', target: other, detail: linkId, at: now() });
-  await storage.logAdminAction({ orgId: other, actor: d.userId, action: 'link_revoke', target: orgId, detail: linkId, at: now() });
+  const revoked = await storage.revokeOrgLink({ linkId, fromStatus: link.status, actor: d.userId, at: now() });
+  if (!revoked) return send(res, 409, { error: 'link state changed; reload and retry' });
   return send(res, 200, { status: 'revoked' });
 }
 // Журнал действий администраторов (шаг 5.7): читают владелец и администратор организации. Содержимое комнат сюда не попадает.
