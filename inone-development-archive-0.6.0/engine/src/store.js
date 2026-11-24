@@ -976,6 +976,49 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
       );
       return Object.fromEntries(rows.map((r) => [r.device_id, r.body]));
     },
+    async queryDeviceKeysForUser(requesterId, targetUserId) {
+      return inTransaction(async (c) => {
+        if (requesterId !== targetUserId) {
+          const { rows: sameOrg } = await c.query(
+            `SELECT 1
+               FROM org_members sender
+               JOIN organizations sender_org ON sender_org.org_id = sender.org_id
+               JOIN org_members recipient ON recipient.org_id = sender.org_id AND recipient.user_id = $2
+               JOIN organizations recipient_org ON recipient_org.org_id = recipient.org_id
+              WHERE sender.user_id = $1
+                AND sender_org.status = 'approved'
+                AND recipient_org.status = 'approved'
+              LIMIT 1 FOR SHARE OF sender, sender_org, recipient, recipient_org`,
+            [requesterId, targetUserId],
+          );
+          if (!sameOrg.length) {
+            const { rows: linked } = await c.query(
+              `SELECT 1
+                 FROM org_members sender
+                 JOIN organizations sender_org ON sender_org.org_id = sender.org_id
+                 JOIN org_members recipient ON recipient.user_id = $2
+                 JOIN organizations recipient_org ON recipient_org.org_id = recipient.org_id
+                 JOIN org_links link
+                   ON link.status = 'active'
+                  AND ((link.org_a = sender.org_id AND link.org_b = recipient.org_id)
+                    OR (link.org_b = sender.org_id AND link.org_a = recipient.org_id))
+                WHERE sender.user_id = $1
+                  AND sender_org.status = 'approved'
+                  AND recipient_org.status = 'approved'
+                LIMIT 1 FOR SHARE OF sender, sender_org, recipient, recipient_org, link`,
+              [requesterId, targetUserId],
+            );
+            if (!linked.length) return null;
+          }
+        }
+        const { rows } = await c.query(
+          `SELECT d.device_id, k.body FROM device_keys k JOIN devices d ON d.device_key = k.device_key
+           WHERE d.user_id = $1 AND NOT d.revoked`,
+          [targetUserId],
+        );
+        return Object.fromEntries(rows.map((r) => [r.device_id, r.body]));
+      });
+    },
 
     async countOneTimeKeys(deviceKey, prefix) {
       const { rows } = await pool.query(
