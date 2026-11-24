@@ -813,7 +813,7 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
         }
         if (orgId && orgQuotaBytes !== null) {
           const { rows } = await c.query(
-            "SELECT COALESCE(SUM(f.size), 0)::bigint AS n FROM files f JOIN rooms r ON r.room_id = f.room_id WHERE r.org_id = $1 AND f.status IN ('pending', 'uploaded', 'ready', 'deleting')",
+            "SELECT COALESCE(SUM(f.size), 0)::bigint AS n FROM files f JOIN rooms r ON r.room_id = f.room_id WHERE r.org_id = $1 AND f.status IN ('pending', 'uploading', 'uploaded', 'ready', 'deleting')",
             [orgId],
           );
           if (Number(rows[0].n) + size > orgQuotaBytes) return { ok: false, reason: 'org_quota' };
@@ -850,11 +850,11 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
       return rowCount === 1;
     },
     async countPendingFiles(ownerId) {
-      const { rows } = await pool.query("SELECT COUNT(*)::int AS n FROM files WHERE owner_id = $1 AND status IN ('pending', 'uploaded')", [ownerId]);
+      const { rows } = await pool.query("SELECT COUNT(*)::int AS n FROM files WHERE owner_id = $1 AND status IN ('pending', 'uploading', 'uploaded')", [ownerId]);
       return rows[0].n;
     },
     async bytesForOwner(ownerId) {
-      const { rows } = await pool.query("SELECT COALESCE(SUM(size), 0)::bigint AS n FROM files WHERE owner_id = $1 AND status IN ('pending', 'uploaded', 'ready', 'deleting')", [ownerId]);
+      const { rows } = await pool.query("SELECT COALESCE(SUM(size), 0)::bigint AS n FROM files WHERE owner_id = $1 AND status IN ('pending', 'uploading', 'uploaded', 'ready', 'deleting')", [ownerId]);
       return Number(rows[0].n);
     },
     async purgeStaleFiles(cutoffMs) {
