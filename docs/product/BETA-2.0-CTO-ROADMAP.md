@@ -190,3 +190,23 @@ These are decision gates, not silently assumed implementation facts:
 - Do not merge this planning branch to `main` without explicit owner approval.
 - Do not modify Beta 1.0 release scope, PR #135, protected settings, production secrets, production services or databases through this plan.
 - Every meaningful stage updates the roadmap, issue status, evidence and session log.
+
+
+## 9. GitHub execution backlog
+
+The following tracking issues were opened from this roadmap. The role names in each issue are accountable functions; individual assignees remain unset until the project staffing roster is confirmed.
+
+| Workstream | Tracking issue |
+|---|---|
+| Identity Service — Phase 1, P0 | [#137](https://github.com/vahe210991-cloud/InOne-chat/issues/137) |
+| InOne personal/social product | [#138](https://github.com/vahe210991-cloud/InOne-chat/issues/138) |
+| InOne Business / CRM | [#139](https://github.com/vahe210991-cloud/InOne-chat/issues/139) |
+| Group collaboration | [#140](https://github.com/vahe210991-cloud/InOne-chat/issues/140) |
+| Tasks and Calendar | [#141](https://github.com/vahe210991-cloud/InOne-chat/issues/141) |
+| Cindy / AI assistant | [#142](https://github.com/vahe210991-cloud/InOne-chat/issues/142) |
+| Localization, themes and app icons | [#143](https://github.com/vahe210991-cloud/InOne-chat/issues/143) |
+| Platform architecture and Propo integration | [#144](https://github.com/vahe210991-cloud/InOne-chat/issues/144) |
+| Security, privacy and abuse prevention | [#145](https://github.com/vahe210991-cloud/InOne-chat/issues/145) |
+| Quality engineering, SRE and release | [#146](https://github.com/vahe210991-cloud/InOne-chat/issues/146) |
+
+Identity is the first active execution item. Other workstreams are backlog tasks and must respect Identity contracts and product-owner release-scope approval.
