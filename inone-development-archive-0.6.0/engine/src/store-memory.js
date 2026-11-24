@@ -1042,8 +1042,8 @@ export function createMemoryStore({ pinPepper }) {
         })) };
       }
       const out = [];
-      const devices = [...new Set(mlsPackages.filter((p) => p.userId === targetUserId && activeDeviceIds.has(p.deviceId) && p.consumedAt === null).map((p) => p.deviceId))].sort();
-      for (const deviceId of devices) {
+      const targetDeviceIds = [...new Set(mlsPackages.filter((p) => p.userId === targetUserId && activeDeviceIds.has(p.deviceId) && p.consumedAt === null).map((p) => p.deviceId))].sort();
+      for (const deviceId of targetDeviceIds) {
         const next = mlsPackages.find((p) => p.userId === targetUserId && p.deviceId === deviceId && p.consumedAt === null && !p.lastResort && p.createdAt >= nowMs - MLS_REGULAR_MAX_AGE_MS);
         if (next) { next.consumedAt = nowMs; out.push({ deviceId, packageId: next.id, package: Buffer.from(next.package) }); continue; }
         const fallback = [...mlsPackages].reverse().find((p) => p.userId === targetUserId && p.deviceId === deviceId && p.lastResort && p.createdAt >= nowMs - MLS_LAST_RESORT_MAX_AGE_MS);
