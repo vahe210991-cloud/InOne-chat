@@ -629,6 +629,29 @@ export function createMemoryStore({ pinPepper }) {
       }
       return out;
     },
+    queryDeviceKeysForUser(requesterId, targetUserId) {
+      if (requesterId !== targetUserId) {
+        const senderOrgs = [...orgMembers.entries()]
+          .filter(([orgId, members]) => members.has(requesterId) && organizations.get(orgId)?.status === 'approved')
+          .map(([orgId]) => orgId);
+        const recipientOrgs = [...orgMembers.entries()]
+          .filter(([orgId, members]) => members.has(targetUserId) && organizations.get(orgId)?.status === 'approved')
+          .map(([orgId]) => orgId);
+        const allowed = senderOrgs.some((senderOrg) => recipientOrgs.some((recipientOrg) =>
+          senderOrg === recipientOrg || [...orgLinks.values()].some((link) =>
+            link.status === 'active' && (
+              (link.orgA === senderOrg && link.orgB === recipientOrg)
+              || (link.orgB === senderOrg && link.orgA === recipientOrg)
+            ))));
+        if (!allowed) return null;
+      }
+      const out = {};
+      for (const [dk, keys] of deviceKeys) {
+        const d = devices.get(dk);
+        if (d && !d.revoked && d.userId === targetUserId) out[d.deviceId] = structuredClone(keys);
+      }
+      return out;
+    },
     addOneTimeKeys(deviceKey, keys) {
       if (!oneTimeKeys.has(deviceKey)) oneTimeKeys.set(deviceKey, new Map());
       const pool = oneTimeKeys.get(deviceKey);
