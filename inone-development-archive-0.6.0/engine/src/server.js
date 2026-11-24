@@ -2617,9 +2617,11 @@ if (req.method === 'POST' && p === '/login') {
         if (checked.error) return send(res, 400, { error: checked.error });
         const unused = await storage.mlsAvailableCount(d.userId, d.deviceId, now());
         if (unused + checked.value.length > MLS_UNUSED_MAX) return send(res, 409, { error: `a device can keep at most ${MLS_UNUSED_MAX} unused key packages` });
-        const stored = await storage.mlsStoreKeyPackages(d.userId, d.deviceId, checked.value, now());
-        if (!stored) return send(res, 401, { error: 'device is no longer active' });
-        return send(res, 200, { stored: checked.value.length, available: unused + checked.value.length });
+        const stored = await storage.mlsStoreKeyPackages(d.userId, d.deviceId, checked.value, now(), MLS_UNUSED_MAX);
+        if (!stored.ok && stored.reason === 'device_revoked') return send(res, 401, { error: 'device is no longer active' });
+        if (!stored.ok && stored.reason === 'package_limit') return send(res, 409, { error: `a device can keep at most ${MLS_UNUSED_MAX} unused key packages` });
+        const available = await storage.mlsAvailableCount(d.userId, d.deviceId, now());
+        return send(res, 200, { stored: checked.value.length, available });
       }
       if (req.method === 'GET' && p === '/mls/key-packages/count') {
         const d = await authed(req);
