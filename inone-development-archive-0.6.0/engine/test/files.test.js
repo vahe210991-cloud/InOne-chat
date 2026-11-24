@@ -378,3 +378,19 @@ test('upload and completion fail closed after room membership is revoked', async
     await s.stop();
   }
 });
+
+
+test('неудачная загрузка освобождает квоту и слот pending reservation', async () => {
+  const s = await start({ quotaBytes: 64 });
+  try {
+    const expected = randomBytes(64);
+    const created = (await announce(s, s.alice.token, expected)).json;
+    assert.equal((await putTo(created.uploadUrl, randomBytes(64))).status, 422,
+      'checksum mismatch fails the upload');
+    const retry = await announce(s, s.alice.token, expected);
+    assert.equal(retry.status, 200,
+      'failed upload tombstone is finalized and its reservation is released');
+  } finally {
+    await s.stop();
+  }
+});
