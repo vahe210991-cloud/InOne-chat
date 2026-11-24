@@ -3,7 +3,10 @@
 **Date:** 2026-11-24  
 **Status:** CTO technical proposal for owner approval before irreversible implementation or migration.  
 **Priority:** P0 — first Beta 2.0 implementation workstream.  
-**Tracking issue:** [#137 — Identity Service](https://github.com/vahe210991-cloud/InOne-chat/issues/137)
+**Tracking issue:** [#137 — Identity Service](https://github.com/vahe210991-cloud/InOne-chat/issues/137)  
+**Discovery task:** [#147 — current-state inventory and threat model](https://github.com/vahe210991-cloud/InOne-chat/issues/147)  
+**ADR/contracts task:** [#148 — architecture ADR and API/event contracts](https://github.com/vahe210991-cloud/InOne-chat/issues/148)  
+**Companion documents:** [Draft ADR](./BETA-2.0-IDENTITY-ADR-DRAFT.md) · [Initial threat model](./BETA-2.0-IDENTITY-THREAT-MODEL.md)
 
 ## 1. Current-state audit
 
