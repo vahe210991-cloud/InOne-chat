@@ -158,6 +158,60 @@ test('F-01: stale accept after a concurrent revoke is rejected without an accept
 
 
 
+
+test('F-04 PostgreSQL: a room invitation racing link revocation cannot leave stale membership', { skip: !process.env.DATABASE_URL }, async () => {
+  const s = await start();
+  let releaseInvite;
+  const originalConnect = s.pool.connect.bind(s.pool);
+  try {
+    assert.equal((await call(s.base, 'POST', '/rooms', s.anna.token, { roomId: ROOM, orgId: ORG_A, members: [BORIS] })).status, 200);
+    const proposed = await call(s.base, 'POST', `/orgs/${ORG_A}/links`, s.boris.token, { targetOrgId: ORG_B });
+    assert.equal(proposed.status, 200);
+    const linkId = proposed.json.linkId;
+    assert.equal((await call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/accept`, s.carol.token, {})).status, 200);
+
+    let signalInviteLock;
+    let signalRevokeAttempt;
+    const inviteLockReady = new Promise((resolve) => { signalInviteLock = resolve; });
+    const revokeAttempted = new Promise((resolve) => { signalRevokeAttempt = resolve; });
+    const inviteGate = new Promise((resolve) => { releaseInvite = resolve; });
+
+    s.pool.connect = async (...args) => {
+      if (args.length > 0) return originalConnect(...args);
+      const client = await originalConnect();
+      const originalQuery = client.query.bind(client);
+      client.query = async (query, ...params) => {
+        const sql = typeof query === 'string' ? query : query?.text ?? '';
+        if (sql.includes('UPDATE org_links SET status')) signalRevokeAttempt();
+        if (sql.includes('FOR SHARE OF member, member_org, link')) {
+          const result = await originalQuery(query, ...params);
+          signalInviteLock();
+          await inviteGate;
+          return result;
+        }
+        return originalQuery(query, ...params);
+      };
+      return client;
+    };
+
+    const inviting = call(s.base, 'POST', `/rooms/${enc(ROOM)}/members`, s.anna.token, { userId: CAROL });
+    await waitForSignal(inviteLockReady, 'room invitation did not acquire active-link share lock');
+    const revoking = call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/revoke`, s.carol.token, {});
+    await waitForSignal(revokeAttempted, 'link revocation did not attempt its conditional update');
+    releaseInvite();
+
+    assert.equal((await inviting).status, 200, 'invitation holding the active-link lock may finish first');
+    assert.equal((await revoking).status, 200, 'revocation follows the in-flight invitation');
+    assert.equal((await s.store.getOrgLink(linkId)).status, 'revoked');
+    assert.equal((await s.store.getRoom(ROOM)).members.includes(CAROL), false,
+      'the atomic revocation removes the membership created by the racing invitation');
+  } finally {
+    releaseInvite?.();
+    s.pool.connect = originalConnect;
+    await s.stop();
+  }
+});
+
 test('F-03 PostgreSQL: injected audit failure rolls back link revocation and cross-room membership deletion', { skip: !process.env.DATABASE_URL }, async () => {
   const s = await start();
   const originalConnect = s.pool.connect.bind(s.pool);
