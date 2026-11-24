@@ -1945,7 +1945,11 @@ if (req.method === 'POST' && p === '/login') {
             now() + TO_DEVICE_TTL_MS,
             now(),
             MAX_TO_DEVICE_QUEUE,
+            d.userId,
+            item.user,
           );
+          if (!queued.ok && queued.reason === 'not_authorized') continue;
+          if (!queued.ok && (queued.reason === 'device_revoked' || queued.reason === 'device_mismatch')) continue;
           if (!queued.ok && queued.reason === 'queue_full') {
             await storage.releaseSend(senderKey, type, txn);
             return send(res, 429, { error: 'recipient to-device queue is full', code: 'to_device_queue_full' });
