@@ -1549,6 +1549,31 @@ async mlsPendingRemovalsFor(userId) {
     /** Durable KeyPackage reservation. Repeated claim IDs return the exact same package set. */
     async mlsClaimKeyPackages(targetUserId, requesterUserId, requesterDeviceId, claimId, roomId, nowMs) {
       return inTransaction(async (c) => {
+        if (roomId) {
+          const { rows: roomRows } = await c.query(
+            'SELECT org_id FROM rooms WHERE room_id = $1 FOR SHARE',
+            [roomId],
+          );
+          if (!roomRows[0]) return { ok: false, reason: 'room_not_found' };
+          const roomOrgId = roomRows[0].org_id;
+          const { rows: orgRows } = await c.query(
+            'SELECT status FROM organizations WHERE org_id = $1 FOR SHARE',
+            [roomOrgId],
+          );
+          if (!orgRows[0] || orgRows[0].status !== 'approved') return { ok: false, reason: 'org_not_approved' };
+          const requesterAllowed = await lockUserOrgAccess(c, requesterUserId, roomOrgId);
+          const targetAllowed = await lockUserOrgAccess(c, targetUserId, roomOrgId);
+          if (!requesterAllowed || !targetAllowed) return { ok: false, reason: 'not_authorized' };
+          const { rows: inviterMembership } = await c.query(
+            'SELECT capabilities FROM room_members WHERE room_id = $1 AND user_id = $2 FOR SHARE',
+            [roomId, requesterUserId],
+          );
+          if (!inviterMembership[0] || !inviterMembership[0].capabilities.includes('invite_members')) {
+            return { ok: false, reason: 'invite_capability_required' };
+          }
+        } else if (!(await lockUsersShareOrgOrLink(c, requesterUserId, targetUserId))) {
+          return { ok: false, reason: 'not_authorized' };
+        }
         await c.query(
           'INSERT INTO mls_key_package_claims (target_user_id, requester_user_id, requester_device_id, claim_id, room_id, state, result, created_at) VALUES ($1, $2, $3, $4, $5, \'reserved\', NULL, $6) ON CONFLICT (target_user_id, requester_user_id, requester_device_id, claim_id) DO NOTHING',
           [targetUserId, requesterUserId, requesterDeviceId, claimId, roomId ?? null, nowMs],
