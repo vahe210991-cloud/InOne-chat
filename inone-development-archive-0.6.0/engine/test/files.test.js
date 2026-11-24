@@ -35,9 +35,9 @@ async function http(base, method, path, { token, body, headers = {} } = {}) {
 const jsonBody = (value) => JSON.stringify(value);
 const JSON_HEADERS = { 'content-type': 'application/json' };
 
-async function start() {
+async function start({ quotaBytes = null, objectStore = null } = {}) {
   const db = await storeForTest(PEPPER);
-  const srv = createServer({ defaultOrgAutoJoin: true, registrationMode: 'open', requirePhone: false, pinPepper: PEPPER, store: db?.store, objectSecret: 'test-object-secret-0123456789abcdef' });
+  const srv = createServer({ defaultOrgAutoJoin: true, registrationMode: 'open', requirePhone: false, pinPepper: PEPPER, store: db?.store, objectSecret: 'test-object-secret-0123456789abcdef', quotaBytes, objectStore });
   await new Promise((resolve) => srv.server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${srv.server.address().port}`;
   const alice = await ChatClient.create(base, ALICE, 'A_PHONE', PW);
@@ -304,6 +304,52 @@ test('подмена Host не влияет на origin подписанной �
     assert.equal(result.status, 200);
     assert.equal(new URL(result.json.uploadUrl).origin, 'https://inone.test',
       'внешний Host не должен попадать в подписанный URL');
+  } finally {
+    await s.stop();
+  }
+});
+
+
+test('параллельные резервации не превышают квоту владельца', async () => {
+  const s = await start({ quotaBytes: 1000 });
+  try {
+    const requests = await Promise.all(Array.from({ length: 20 }, () =>
+      announce(s, s.alice.token, Buffer.alloc(100))));
+    assert.equal(requests.filter((r) => r.status === 200).length, 10,
+      'ровно десять заявок по 100 байт укладываются в квоту 1000');
+    assert.equal(requests.filter((r) => r.status === 413).length, 10,
+      'остальные запросы отклоняются после сериализованной проверки квоты');
+  } finally {
+    await s.stop();
+  }
+});
+
+test('ошибка удаления сохраняет tombstone и повторная очистка завершает удаление', async () => {
+  const { createMemoryObjectStore } = await import('../src/object-store.js');
+  const backing = createMemoryObjectStore();
+  let failRemoval = true;
+  const objectStore = {
+    put: (...args) => backing.put(...args),
+    putStream: (...args) => backing.putStream(...args),
+    get: (...args) => backing.get(...args),
+    getStream: (...args) => backing.getStream(...args),
+    remove: async (key) => {
+      if (failRemoval) {
+        failRemoval = false;
+        throw new Error('simulated object-store outage');
+      }
+      return backing.remove(key);
+    },
+  };
+  const s = await start({ objectStore });
+  try {
+    const abandoned = (await announce(s, s.alice.token, randomBytes(30))).json.fileId;
+    s.srv.advance(DAY + MIN);
+    assert.equal(await s.srv.cleanupFiles(), 0, 'failed object deletion is not finalized');
+    assert.equal((await http(s.base, 'GET', `/files/${enc(abandoned)}/url`, { token: s.alice.token })).status, 409,
+      'deleting metadata remains as a retryable tombstone');
+    assert.equal(await s.srv.cleanupFiles(), 1, 'next sweep retries and finalizes deletion');
+    assert.equal((await http(s.base, 'GET', `/files/${enc(abandoned)}/url`, { token: s.alice.token })).status, 404);
   } finally {
     await s.stop();
   }
