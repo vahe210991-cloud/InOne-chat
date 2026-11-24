@@ -439,6 +439,31 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
           AND rm.user_id IN (SELECT user_id FROM org_members WHERE org_id = $1)
           AND rm.user_id NOT IN (SELECT user_id FROM org_members WHERE org_id = $2)`, [orgX, orgY]);
     },
+    // Revoke the cross-organization link, remove inherited room memberships and write both audit
+    // records atomically. The org_links row lock serializes with join/invite paths that use FOR SHARE.
+    async revokeOrgLink({ linkId, fromStatus, actor, at }) {
+      return inTransaction(async (c) => {
+        const { rows } = await c.query(
+          "UPDATE org_links SET status = 'revoked', decided_by = $3, decided_at = $4 WHERE link_id = $1 AND status = $2 RETURNING org_a, org_b",
+          [linkId, fromStatus, actor, at],
+        );
+        if (!rows[0]) return false;
+        const { org_a: orgA, org_b: orgB } = rows[0];
+        await c.query(`DELETE FROM room_members rm USING rooms r
+          WHERE rm.room_id = r.room_id AND r.org_id = $1
+            AND rm.user_id IN (SELECT user_id FROM org_members WHERE org_id = $2)
+            AND rm.user_id NOT IN (SELECT user_id FROM org_members WHERE org_id = $1)`, [orgA, orgB]);
+        await c.query(`DELETE FROM room_members rm USING rooms r
+          WHERE rm.room_id = r.room_id AND r.org_id = $2
+            AND rm.user_id IN (SELECT user_id FROM org_members WHERE org_id = $1)
+            AND rm.user_id NOT IN (SELECT user_id FROM org_members WHERE org_id = $2)`, [orgA, orgB]);
+        await c.query(
+          'INSERT INTO admin_action_log (org_id, actor, action, target, detail, at) VALUES ($1, $2, $3, $4, $5, $6), ($4, $2, $3, $1, $5, $6)',
+          [orgA, actor, 'link_revoke', orgB, linkId, at],
+        );
+        return true;
+      });
+    },
     async logAdminAction({ orgId, actor, action, target, detail, at }) {
       await pool.query('INSERT INTO admin_action_log (org_id, actor, action, target, detail, at) VALUES ($1, $2, $3, $4, $5, $6)', [orgId ?? null, actor, action, target ?? null, detail ?? null, at]);
     },
