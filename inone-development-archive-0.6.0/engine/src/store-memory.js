@@ -128,11 +128,11 @@ export function createMemoryStore({ pinPepper }) {
     devicesOfUser: (userId) => [...devices.values()].filter((d) => d.userId === userId).map(copy),
     reserveFile({ fileId, ownerId, ownerDeviceId = '', roomId, orgId = null, kind, size, sha256, createdAt, ownerQuotaBytes = null, orgQuotaBytes = null, pendingLimit }) {
       const owned = [...files.values()].filter((f) => f.ownerId === ownerId);
-      if (owned.filter((f) => f.status === 'pending' || f.status === 'uploaded').length >= pendingLimit) {
+      if (owned.filter((f) => f.status === 'pending' || f.status === 'uploading' || f.status === 'uploaded').length >= pendingLimit) {
         return { ok: false, reason: 'pending_limit' };
       }
       if (ownerQuotaBytes !== null && owned
-        .filter((f) => ['pending', 'uploaded', 'ready', 'deleting'].includes(f.status))
+        .filter((f) => ['pending', 'uploading', 'uploaded', 'ready', 'deleting'].includes(f.status))
         .reduce((sum, f) => sum + f.size, 0) + size > ownerQuotaBytes) {
         return { ok: false, reason: 'owner_quota' };
       }
@@ -152,9 +152,17 @@ export function createMemoryStore({ pinPepper }) {
       const f = files.get(fileId);
       return f ? { ...f } : null;
     },
+    claimFileUpload(fileId, ownerId, ownerDeviceId) {
+      const f = files.get(fileId);
+      if (!f || f.ownerId !== ownerId || f.ownerDeviceId !== ownerDeviceId || f.status !== 'pending') return false;
+      f.status = 'uploading';
+      return true;
+    },
     markFileUploaded(fileId) {
       const f = files.get(fileId);
-      if (f && f.status === 'pending') f.status = 'uploaded';
+      if (!f || f.status !== 'uploading') return false;
+      f.status = 'uploaded';
+      return true;
     },
     markFileReady(fileId, nowMs) {
       const f = files.get(fileId);
@@ -179,7 +187,7 @@ export function createMemoryStore({ pinPepper }) {
     },
     markFileDeleting(fileId) {
       const f = files.get(fileId);
-      if (!f || !['pending', 'uploaded'].includes(f.status)) return false;
+      if (!f || !['pending', 'uploading', 'uploaded'].includes(f.status)) return false;
       f.status = 'deleting';
       return true;
     },
