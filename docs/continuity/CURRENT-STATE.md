@@ -680,3 +680,10 @@ Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone
 - Architecture guardrails: separate InOne and InOne Business apps; independent product backends/domain databases; independent Identity database/service; no shadow identity on Identity outage; central atomic identifier reservation; durable outbox/inbox and reconciliation; no automatic account merge based on email/phone alone.
 - Beta 1.0 PR #135 remains separate; its Stage 2 is not accepted until exact-head checks pass. No Beta 1.0 code, PR, release gate or production setting was changed in this Beta 2.0 planning work.
 - WBS v1.1 unchanged. Beta 2.0 baseline remains 2% implementation / 0% verification; roadmap/spec/issue creation does not count as product implementation. No tests/builds or production migrations were run.
+
+
+### Identity source audit refinement — 2026-11-24
+
+The current InOne backend already has a persistent local identity subsystem: production `src/main.js` initializes PostgreSQL, runs migrations and injects `createStore`. The schema includes accounts, profiles, phones, provider links, backup email, email codes, one-time auth tokens, device/session and recovery records. Existing DB constraints cover local verified-email/nickname/phone/provider uniqueness. Current user IDs are `u` + 24 hex; local account rows are referenced by product tables and must not be moved/deleted as the first extraction step.
+
+The cross-platform gap remains the independent canonical Identity authority, shared identifier reservation and durable cross-platform provisioning/reconciliation. `migrate.js` declares schema version 0033 while `schema.sql` header retains an alpha.1 label; reconcile provenance/version and inspect actual migration ledger before migration. Existing `identity-db.test.js` and `providers-db.test.js` are conditional DB tests; their presence is not evidence they ran in this session.
