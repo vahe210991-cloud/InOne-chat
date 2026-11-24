@@ -177,6 +177,12 @@ export function createMemoryStore({ pinPepper }) {
       }
       return pending.slice(0, 100);
     },
+    markFileDeleting(fileId) {
+      const f = files.get(fileId);
+      if (!f || !['pending', 'uploaded'].includes(f.status)) return false;
+      f.status = 'deleting';
+      return true;
+    },
     finalizeFileDeletion(fileId) {
       const f = files.get(fileId);
       if (!f || f.status !== 'deleting') return false;
