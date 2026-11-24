@@ -2558,7 +2558,8 @@ if (req.method === 'POST' && p === '/login') {
         }
         const room = await storage.getRoom(roomId);
         if (!room || !room.members.includes(d.userId)) return send(res, 403, { error: 'not a room member' });
-        const targetAccess = await orgGate(targetUserId, room.orgId);
+        const roomOrgId = await storage.roomOrg(roomId);
+        const targetAccess = roomOrgId ? await orgGate(targetUserId, roomOrgId) : { status: 403 };
         if (targetAccess) {
           return send(res, 403, { error: 'target user is not eligible for this room', code: 'target_not_authorized' });
         }
