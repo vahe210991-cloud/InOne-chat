@@ -577,3 +577,12 @@ Immediate next steps:
 7. Keep Beta 1.0 PR #135 and its security remediation untouched. Do not merge any PR without exact-SHA green checks and explicit owner approval.
 
 Current status: planning artifacts and issue backlog are saved in GitHub. Identity implementation is NOT RUN / NOT ACCEPTED. Beta 2.0 WBS v1.1 remains 2% implementation / 0% verification; no product code or tests were changed/run in this planning session.
+
+
+### Identity inventory refinement — additional immediate checks
+
+- Inspect the complete foreign-key graph referencing `accounts.user_id` (including organizations, rooms, devices, files and MLS tables) before proposing any local-account extraction.
+- Verify actual applied `schema_migrations` ledger and the full ordered migrations through 0033; resolve the `schema.sql` alpha.1 header mismatch.
+- Audit every production bootstrap/call site to ensure the in-memory `createServer` fallback cannot be used in production accidentally.
+- Reuse existing local PostgreSQL identity/provider regression tests where their scope is unchanged; execute them only on an authorized runner with a configured test DB and record exact SHA/results.
+- Do not replace local IDs or password/provider state until canonical mapping, account conflict and rollback strategies are approved.
