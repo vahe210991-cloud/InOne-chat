@@ -115,6 +115,17 @@ test('KeyPackage claim rejects users outside the room organization or an active 
     );
     assert.equal((await bob.raw('GET', '/mls/key-packages/count')).available, 1,
       'denied claims must not consume the target device package');
+
+    const proposed = await alice.raw('POST', '/orgs/org-mls-a/links', { targetOrgId: 'org-mls-b' });
+    assert.equal(proposed.status, 'proposed');
+    await bob.raw('POST', `/orgs/org-mls-b/links/${enc(proposed.linkId)}/accept`, {});
+    const allowed = await alice.raw('POST', `/mls/key-packages/${enc(BOB)}/claims`, {
+      claimId: 'claim-room-linked-0001',
+      roomId,
+    });
+    assert.equal(allowed.packages.length, 1,
+      'an active organization link permits a room-bound claim by an authorized inviter');
+    assert.equal((await bob.raw('GET', '/mls/key-packages/count')).available, 0);
   } finally {
     await stop();
   }
