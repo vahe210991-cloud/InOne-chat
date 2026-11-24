@@ -364,7 +364,7 @@ test('upload and completion fail closed after room membership is revoked', async
     await s.alice.raw('DELETE', `/rooms/${enc(ROOM)}/members/${enc(BOB)}`);
     assert.equal((await putTo(first.uploadUrl, beforePut)).status, 403,
       'membership revoked after announce is revalidated after the stream');
-    assert.equal((await completeFile(s, s.bob.token, first.fileId)).status, 409,
+    assert.equal((await completeFile(s, s.bob.token, first.fileId)).status, 403,
       'a rejected upload cannot be completed');
 
     await s.alice.raw('POST', `/rooms/${enc(ROOM)}/members`, { userId: BOB });
