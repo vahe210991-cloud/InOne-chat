@@ -2039,6 +2039,8 @@ if (req.method === 'POST' && p === '/login') {
           if (e.code === '23505') return send(res, 409, { error: 'channel name is taken' });
           throw e;
         }
+        if (created?.status === 'org_not_approved') return send(res, 403, { error: 'organization is not approved', code: 'org_not_approved' });
+        if (created?.status === 'org_not_member') return send(res, 403, { error: 'initial room member is not eligible for this organization', code: 'org_not_member' });
         if (!created) return send(res, 409, { error: 'room exists' });
         await markRoomChanged(roomId, [...memberSet]);
         return send(res, 200, { roomId });
