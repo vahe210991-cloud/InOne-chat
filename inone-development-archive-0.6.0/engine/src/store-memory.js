@@ -1084,6 +1084,20 @@ export function createMemoryStore({ pinPepper }) {
       const current = mlsGroups.get(roomId) ?? 0;
       if (current !== baseEpoch) return { ok: false, reason: 'epoch_outdated', epoch: current };
       const room = rooms.get(roomId);
+      if (!room) return { ok: false, reason: 'room_not_found', epoch: current };
+      const roomOrg = organizations.get(room.orgId);
+      if (!roomOrg || roomOrg.status !== 'approved') return { ok: false, reason: 'org_not_approved', epoch: current };
+      for (const targetUserId of [...(changes.adds ?? [])].sort()) {
+        const direct = orgMembers.get(room.orgId)?.has(targetUserId) ?? false;
+        const linked = !direct && [...orgLinks.values()].some((link) => {
+          if (link.status !== 'active') return false;
+          const memberOrg = link.orgA === room.orgId ? link.orgB : link.orgB === room.orgId ? link.orgA : null;
+          return memberOrg !== null
+            && organizations.get(memberOrg)?.status === 'approved'
+            && (orgMembers.get(memberOrg)?.has(targetUserId) ?? false);
+        });
+        if (!direct && !linked) return { ok: false, reason: 'org_not_member', epoch: current };
+      }
       if (joinRequestUserId) {
         if (changes.adds?.length !== 1 || changes.adds[0] !== joinRequestUserId) return { ok: false, reason: 'join_request_mismatch', epoch: current };
         if (!room?.joinRequests.has(joinRequestUserId)) return { ok: false, reason: 'join_request_not_pending', epoch: current };
