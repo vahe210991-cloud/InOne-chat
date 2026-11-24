@@ -30,7 +30,7 @@ The work is performed only on the existing remediation branch and tracked in PR 
 
 **Purpose:** establish an accepted security baseline before expanding the change surface.
 
-**Current status:** implementation is present in PR #135; acceptance is still OPEN. At reviewed SHA `4824dfc3b3f4e3aab5d39b16c1adf934a108d660`, Backend Docker Compose, Dev Container Compose, Email/PostgreSQL, recovered P0, Flutter mobile and Native MLS workflows reported success. The exact-SHA acceptance gate reported failure. Flutter iOS workflow #45432827935 was still queued at the latest inspection; its job had not produced a result. A queued/cancelled job is not a pass, and the gate failure must be resolved from its actual job evidence.
+**Current status:** ACCEPTED on exact SHA `0d383e38da7def0aa77531d020c76ba5dbc392fb`. All eight required workflows completed successfully on that same immutable SHA: Backend Docker Compose #45441855408, Dev Container Compose #45441855601, Email/PostgreSQL #45441855554, recovered P0 #45441855372, Flutter mobile #45441855381, Native MLS #45441855364, Flutter iOS #45441855403 and Exact-SHA gate #45441855568. Job-level inspection confirmed iOS and aggregate gate concluded `success`. Stage 1 exit criteria are met.
 
 **Work / acceptance criteria:**
 1. Re-fetch PR head and all workflow runs; identify the exact failed/skipped/cancelled gate dependency from job-level evidence.
@@ -135,18 +135,53 @@ The backend is eligible for a CTO recommendation of READY only when:
 
 ## 5. Current checkpoint and immediate next actions
 
-At reviewed SHA `4824dfc3b3f4e3aab5d39b16c1adf934a108d660`:
-- Stage 1 source changes B-01/B-02/B-03 are present; Stage 1 is NOT ACCEPTED.
-- Backend Docker Compose, Dev Container Compose, Email/PostgreSQL, recovered P0, Flutter mobile and Native MLS workflow runs reported PASS.
-- Exact-SHA acceptance gate run #45432827863 reported FAILURE.
-- Flutter iOS workflow run #45432827935 was QUEUED at the latest poll; job #138610788332 had not started. This is pending evidence, not a pass or a code failure.
-- Stage 2 source review confirmed whole-request buffering, non-atomic owner/org quota checks and a cleanup ordering that can orphan objects after a crash. The completion route does not re-check room authorization before transitioning uploaded metadata to ready.
+### Stage 1 — ACCEPTED
 
-**Immediate sequence:**
-1. Resolve Stage 1 exact-SHA gate with job-level evidence and a completed iOS result.
-2. Once Stage 1 passes, implement Stage 2 in the order: storage contract/design → atomic reservation schema/store API → streaming upload path → authorization revalidation → retryable cleanup/reconciliation → regression suite.
-3. Proceed through Stages 3, 4 and 5 only after the preceding stage gate passes.
-4. Keep PR #135 Draft; no main changes and no merge.
+Accepted source SHA: `0d383e38da7def0aa77531d020c76ba5dbc392fb`.
+
+All eight required workflows completed successfully on this same SHA:
+- Backend Docker Compose runtime acceptance #45441855408.
+- Dev Container Compose runtime validation #45441855601.
+- Email delivery and PostgreSQL validation #45441855554.
+- Validate recovered InOne P0 source #45441855372.
+- Flutter mobile validation #45441855381.
+- Native MLS client validation #45441855364.
+- Flutter iOS validation #45441855403.
+- Exact-SHA acceptance gate #45441855568.
+
+### Stage 2 — IMPLEMENTATION IN PROGRESS, NOT ACCEPTED
+
+Current implementation checkpoint before the latest regression additions: `dafb0b33f618e796d2bedafb0775ab6f29c54359` (the branch head may advance with test/documentation commits).
+
+Implemented:
+- Compatible streaming write/read primitives in filesystem and memory object stores; filesystem streaming writes use unique temporary files, file sync, atomic rename and directory sync where supported.
+- Streaming HTTP uploads with incremental size enforcement and SHA-256 calculation; no full-body Buffer aggregation on the upload route.
+- Streaming HTTP downloads with content length from metadata and direct stream piping.
+- PostgreSQL advisory transaction locks serialize owner quota, organization quota and pending-upload reservations; the in-memory store implements equivalent reservation semantics.
+- Upload authorization revalidation after body transfer and again at completion for active device, room membership and `send_messages` capability.
+- Retryable `deleting` tombstones for stale and failed uploads; metadata is finalized only after object deletion succeeds.
+- Failed size/checksum/device/membership uploads release their reservation after cleanup; failed object deletion remains retryable.
+
+Added regressions for:
+- Atomic filesystem stream publication, stream abort cleanup and missing-object handling.
+- Concurrent owner quota reservations.
+- Concurrent organization quota reservations across different owners.
+- Concurrent pending-upload reservations.
+- Membership revocation during upload and between PUT and complete.
+- Failed upload reservation release.
+- Retryable object deletion when the object store is temporarily unavailable.
+
+**Evidence status:** Stage 2 exact-head CI has been triggered on the remediation branch. At the last check, the applicable Backend Node/PostgreSQL, Compose, iOS, mobile/native and Exact-SHA runs were queued. Queued jobs are not passes. No Stage 2 acceptance claim is made until all required workflows finish successfully on one exact final SHA.
+
+**Next actions:**
+1. Let the current exact-head CI complete; inspect Node, PostgreSQL, Compose, file disk, and fault-injection results at job level.
+2. Fix any implementation/test failures without weakening authorization or acceptance gates.
+3. Add/confirm PostgreSQL fault-injection for object-write/metadata transition and tombstone retry boundaries.
+4. Verify signed URL expiry, wrong-device, revoked-device, encrypted-payload and client API compatibility on the final Stage 2 SHA.
+5. Re-run all applicable workflows and the exact-SHA acceptance gate on that final SHA.
+6. Only after Stage 2 acceptance, proceed to Stage 3.
+
+Do not implement automatic ready-file expiry. Existing pending-upload stale cutoff remains separate from ready-file retention, which still requires an owner decision.
 
 ## 6. Decisions required from product owner
 
