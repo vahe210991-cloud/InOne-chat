@@ -1580,17 +1580,22 @@ async mlsPendingRemovalsFor(userId) {
       });
     },
 
-    async mlsStoreKeyPackages(userId, deviceId, packages, createdAt) {
+    async mlsStoreKeyPackages(userId, deviceId, packages, createdAt, maxUnused) {
       return inTransaction(async (c) => {
         const { rows: devices } = await c.query(
           'SELECT revoked FROM devices WHERE user_id = $1 AND device_id = $2 FOR UPDATE',
           [userId, deviceId],
         );
-        if (!devices[0] || devices[0].revoked) return false;
+        if (!devices[0] || devices[0].revoked) return { ok: false, reason: 'device_revoked' };
+        const { rows: counts } = await c.query(
+          'SELECT COUNT(*)::int AS n FROM mls_key_packages WHERE user_id = $1 AND device_id = $2 AND consumed_at IS NULL AND last_resort = FALSE AND created_at >= $3',
+          [userId, deviceId, createdAt - MLS_REGULAR_MAX_AGE_MS],
+        );
+        if (counts[0].n + packages.length > maxUnused) return { ok: false, reason: 'package_limit' };
         for (const bytes of packages) {
           await c.query('INSERT INTO mls_key_packages (user_id, device_id, package, created_at) VALUES ($1, $2, $3, $4)', [userId, deviceId, bytes, createdAt]);
         }
-        return true;
+        return { ok: true };
       });
     },
 
