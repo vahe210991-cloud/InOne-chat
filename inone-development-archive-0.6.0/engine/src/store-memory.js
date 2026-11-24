@@ -1309,6 +1309,8 @@ export function createMemoryStore({ pinPepper }) {
         .map((c) => ({ epoch: c.epoch, senderId: c.senderId, commit: Buffer.from(c.commit), changes: c.changes ? structuredClone(c.changes) : null, welcomeRecipients: c.welcomeRecipients ? structuredClone(c.welcomeRecipients) : null }));
     },
     mlsPendingWelcomes(userId, deviceId) {
+      const active = [...devices.values()].some((entry) => entry.userId === userId && entry.deviceId === deviceId && !entry.revoked);
+      if (!active) return [];
       return mlsWelcomes.filter((w) => w.userId === userId && w.deviceId === deviceId && w.ackedAt === null)
         .map((w) => ({ id: w.id, roomId: w.roomId, epoch: w.epoch, welcome: Buffer.from(w.welcome) }));
     },
@@ -1368,6 +1370,8 @@ mlsPendingRemovalsFor(userId) {
       return deviceRemovals.filter((r) => r.roomId === roomId && r.doneAt === null).map((r) => r.deviceId);
     },
     mlsAckWelcome(id, userId, deviceId, nowMs) {
+      const active = [...devices.values()].some((entry) => entry.userId === userId && entry.deviceId === deviceId && !entry.revoked);
+      if (!active) return false;
       const w = mlsWelcomes.find((x) => x.id === id && x.userId === userId && x.deviceId === deviceId && x.ackedAt === null);
       if (!w) return false;
       w.ackedAt = nowMs;
