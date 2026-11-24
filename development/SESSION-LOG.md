@@ -1,3 +1,11 @@
+## 2026-11-24 — CTO Beta 1.0 security remediation roadmap recorded
+
+- Added authoritative staged plan: `development/roadmaps/2026-11-24-beta1-cto-security-remediation-roadmap.md`.
+- Sequence: Gate 0 exact-SHA acceptance for Stage 1 B-01/B-02/B-03; Stage 2 file streaming/quotas/lifecycle (B-04/B-13); Stage 3 runtime/security boundaries (B-06/B-08/B-09/B-10/B-11/B-15); Stage 4 DB integrity/cleanup/admin atomicity (B-07/B-12/B-14); Stage 5 supply-chain, CI and production operations; final owner-approved release gate.
+- Recorded current evidence at SHA `4824dfc3b3f4e3aab5d39b16c1adf934a108d660`: exact-SHA gate #45432827863 FAILURE; iOS run #45432827935 QUEUED at last poll; Backend Compose, Dev Container Compose, Email/PostgreSQL, P0, Flutter mobile and Native MLS runs reported SUCCESS. Stage 1 remains NOT ACCEPTED.
+- Updated continuity handoff files. No application source, schema, tests, workflows, secrets, settings or main branch changed. PR #135 remains Draft/open/unmerged.
+- Explicitly left ready-file retention as an owner decision; SMS remains out of scope; native MLS remains disabled by default; WBS v1.1 unchanged.
+
 ## 2026-11-19 — A2 FRB reconciliation audit started
 
 - Verified `main` remains at A1 merge commit `c939634288db1e7105cfe8d6a7182d4469da1dc4`; A1 PR #95 is merged. Post-merge runs #44519837539, #44519837547 and #44519837614 were not all terminal/successful at inspection; see the A2 report for job-level states.
