@@ -2661,7 +2661,13 @@ if (req.method === 'POST' && p === '/login') {
         const rate = await checkRate('mlsClaimPerAccount', d.userId);
         if (!rate.allowed) return send(res, 429, { error: 'too many key requests, try later' });
         const claimed = await storage.mlsClaimKeyPackages(targetUserId, d.userId, d.deviceId, claimId, roomId, now());
-        if (!claimed.ok) return send(res, 409, { error: claimed.reason, code: claimed.reason });
+        if (!claimed.ok) {
+          if (claimed.reason === 'room_not_found') return send(res, 404, { error: 'group not found' });
+          if (['not_authorized', 'invite_capability_required', 'org_not_approved'].includes(claimed.reason)) {
+            return send(res, 403, { error: 'current room organization authorization is required', code: claimed.reason });
+          }
+          return send(res, 409, { error: claimed.reason, code: claimed.reason });
+        }
         return send(res, 200, {
           claimId, roomId,
           packages: claimed.packages.map((item) => ({ deviceId: item.deviceId, package: item.package.toString('base64') })),
@@ -2692,7 +2698,10 @@ if (req.method === 'POST' && p === '/login') {
         const rate = await checkRate('mlsClaimPerAccount', d.userId);
         if (!rate.allowed) return send(res, 429, { error: 'too many key requests, try later' });
         const claimed = await storage.mlsClaimKeyPackages(targetUserId, d.userId, d.deviceId, claimId, null, now());
-        if (!claimed.ok) return send(res, 409, { error: claimed.reason, code: claimed.reason });
+        if (!claimed.ok) {
+          if (claimed.reason === 'not_authorized') return send(res, 403, { error: 'shared organization or active organization link required', code: claimed.reason });
+          return send(res, 409, { error: claimed.reason, code: claimed.reason });
+        }
         return send(res, 200, { claimId, packages: claimed.packages.map((item) => ({ deviceId: item.deviceId, package: item.package.toString('base64') })) });
       }
 
