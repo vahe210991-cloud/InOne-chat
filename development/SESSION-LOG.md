@@ -756,3 +756,16 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Main now has 8/9 push workflows completed PASS. The only remaining workflow is `Native MLS client validation`: its four non-iOS jobs PASS; the iOS Keychain native-target job's first attempt was cancelled, and the targeted rerun remains QUEUED.
 - The cancelled job had no retrievable logs; the rerun is the next evidence point. Do not call main fully validated until it completes.
 
+
+
+## 2026-11-24 — Beta 2.0 CTO roadmap and Identity Phase 1 opened
+
+- Owner instruction in this session explicitly starts Beta 2.0 and makes Identity the first phase; this supersedes the older 2026-11-11 “Beta 1.0 only” execution instruction for this new, isolated planning branch. Beta 1.0 source/release scope and PR #135 remain untouched.
+- Verified current main baseline: `02880940c1e4d8261405fbeaa01f40879eb44f3a`. Created `planning/beta-2.0-cto-2026-11-24` from that exact main SHA; the branch is currently ahead of main and not behind it.
+- Audited approved identity/product decisions, canonical InOne backend identity rules and current source ownership. The reviewed source shows local identity rules/auth flows; no independent cross-platform Identity Service or authoritative shared identity registry is evidenced.
+- Preserved the legacy `planning/beta-2.0-roadmap` branch unchanged because it is diverged and 1,262 commits behind main. No stale branch was merged or force-updated.
+- Added roadmap, Phase 1 Identity execution plan, draft ADR B2-ADR-001, initial Identity threat model and CTO audit report under `docs/product/` and `development/reports/`.
+- Created GitHub workstream issues #137–#146 for Identity, InOne social, InOne Business, group collaboration, Tasks/Calendar, Cindy, localization/design, platform/Propo integration, security/privacy and QA/SRE/release. Created Phase 1 discovery/ADR tasks #147 and #148. Role owners are recorded; no external agent is assigned (ChatGPT remains sole executor under mandate).
+- WBS v1.1 was read and not modified. Beta 2.0 baseline remains 2% implementation / 0% verification; this session created planning artifacts only and did not implement or test product code.
+- Verification: repository-native GitHub writes and subsequent fetch/compare. No test/build/security scan or Propo runtime integration was run. Identity implementation acceptance: NOT RUN / NOT ACCEPTED.
+- Next execution: finish identity schema/route/provider inventory; resolve owner policy decisions; finalize ADR/OpenAPI/AsyncAPI; only then implement isolated Identity service/database and failure-injection tests.
