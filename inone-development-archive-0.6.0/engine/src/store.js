@@ -867,6 +867,13 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
         return rows.map((r) => r.file_id);
       });
     },
+    async markFileDeleting(fileId) {
+      const { rowCount } = await pool.query(
+        "UPDATE files SET status = 'deleting' WHERE file_id = $1 AND status IN ('pending', 'uploaded')",
+        [fileId],
+      );
+      return rowCount === 1;
+    },
     async finalizeFileDeletion(fileId) {
       const { rowCount } = await pool.query("DELETE FROM files WHERE file_id = $1 AND status = 'deleting'", [fileId]);
       return rowCount === 1;
