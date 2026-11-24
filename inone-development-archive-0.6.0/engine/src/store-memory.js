@@ -788,6 +788,17 @@ export function createMemoryStore({ pinPepper }) {
     addRoomMember(roomId, userId) {
       const r = rooms.get(roomId);
       if (!r || r.members.has(userId)) return false;
+      const org = organizations.get(r.orgId);
+      if (!org || org.status !== 'approved') return { status: 'org_not_approved' };
+      const direct = orgMembers.get(r.orgId)?.has(userId) ?? false;
+      const linked = !direct && [...orgLinks.values()].some((link) => {
+        if (link.status !== 'active') return false;
+        const memberOrg = link.orgA === r.orgId ? link.orgB : link.orgB === r.orgId ? link.orgA : null;
+        return memberOrg !== null
+          && organizations.get(memberOrg)?.status === 'approved'
+          && (orgMembers.get(memberOrg)?.has(userId) ?? false);
+      });
+      if (!direct && !linked) return { status: 'org_not_member' };
       r.members.add(userId);
       r.joinedSeq.set(userId, counters.eventSeq);
       r.capabilities.set(userId, [...DEFAULT_MEMBER_CAPABILITIES]);
