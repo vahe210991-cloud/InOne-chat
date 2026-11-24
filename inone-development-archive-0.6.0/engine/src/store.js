@@ -1161,7 +1161,7 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
         }
         const { rows } = await c.query(
           `SELECT d.device_id, k.body FROM device_keys k JOIN devices d ON d.device_key = k.device_key
-           WHERE d.user_id = $1 AND NOT d.revoked`,
+           WHERE d.user_id = $1 AND NOT d.revoked FOR SHARE OF d`,
           [targetUserId],
         );
         return Object.fromEntries(rows.map((r) => [r.device_id, r.body]));
