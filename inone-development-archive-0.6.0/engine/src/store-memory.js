@@ -138,7 +138,7 @@ export function createMemoryStore({ pinPepper }) {
       }
       if (orgId && orgQuotaBytes !== null) {
         const used = [...files.values()]
-          .filter((f) => rooms.get(f.roomId)?.orgId === orgId && ['pending', 'uploaded', 'ready', 'deleting'].includes(f.status))
+          .filter((f) => rooms.get(f.roomId)?.orgId === orgId && ['pending', 'uploading', 'uploaded', 'ready', 'deleting'].includes(f.status))
           .reduce((sum, f) => sum + f.size, 0);
         if (used + size > orgQuotaBytes) return { ok: false, reason: 'org_quota' };
       }
@@ -172,7 +172,7 @@ export function createMemoryStore({ pinPepper }) {
       return true;
     },
     countPendingFiles(ownerId) {
-      return [...files.values()].filter((f) => f.ownerId === ownerId && (f.status === 'pending' || f.status === 'uploaded')).length;
+      return [...files.values()].filter((f) => f.ownerId === ownerId && (f.status === 'pending' || f.status === 'uploading' || f.status === 'uploaded')).length;
     },
     bytesForOwner(ownerId) {
       return [...files.values()].filter((f) => f.ownerId === ownerId && ['pending', 'uploaded', 'ready', 'deleting'].includes(f.status)).reduce((sum, f) => sum + f.size, 0);
