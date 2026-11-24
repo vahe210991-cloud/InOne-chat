@@ -2494,6 +2494,12 @@ if (req.method === 'POST' && p === '/login') {
               if (!result.ok && result.reason === 'org_not_approved') {
                 return send(res, 403, { error: 'organization is not approved', code: 'org_not_approved' });
               }
+              if (!result.ok && result.reason === 'sender_device_revoked') {
+                return send(res, 401, { error: 'sender device is no longer active', code: 'device_revoked' });
+              }
+              if (!result.ok && result.reason === 'welcome_device_revoked') {
+                return send(res, 409, { error: 'a Welcome target device is no longer active', code: 'welcome_device_revoked' });
+              }
               if (result.ok && !result.replayed && (adds.length > 0 || removes.length > 0)) {
                 await markRoomChanged(roomId, [...new Set([...r.members, ...adds])]);
               }
