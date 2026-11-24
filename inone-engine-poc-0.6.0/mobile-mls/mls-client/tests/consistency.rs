@@ -124,7 +124,7 @@ fn испорченный_коммит_одной_комнаты_не_остан
 
     // Сервер принял недопустимый коммит в первую комнату.
     assert!(engine
-        .command(&format!("BADCOMMIT {broken} @alice-p04:inone.test"))
+        .command(&format!("BADCOMMIT {broken} @alice-p04:inone.test A_P04"))
         .starts_with("OK"));
     alice.send_text(fine, "вторая комната работает").unwrap();
 
@@ -141,7 +141,7 @@ fn испорченный_коммит_одной_комнаты_не_остан
         .unwrap()
         .expect("первая комната требует восстановления");
     assert!(
-        reason.contains("Commit encoding is invalid"),
+        reason.contains("восстановление"),
         "причина названа: {reason}"
     );
     let refused = bob.send_text(broken, "нельзя").unwrap_err();
