@@ -97,3 +97,20 @@ This pass did not execute tests, inspect production data, deploy services, acces
 - Branch commit immediately before this report update: `d7f720096f6c0f5417de59f7c8a5d0be6e65864a`
 - Working mode: GitHub repository-native documentation/issue operations.
 - No local-only required changes exist; all listed deliverables are committed to GitHub.
+
+
+## Expanded Identity source audit — 2026-11-24
+
+A deeper read of the canonical InOne backend corrects and sharpens the initial gap assessment:
+
+- The production entry point `inone-development-archive-0.6.0/engine/src/main.js` creates a PostgreSQL pool, runs migrations, builds `createStore` and injects it into `createServer`. The memory-store fallback exists at the server factory boundary for tests/development; the production entry point supplies PostgreSQL.
+- The local database is a persistent InOne identity subsystem, not an empty shell. Relevant tables include `accounts`, `profiles`, `phones`, `provider_links`, `backup_emails`, `email_codes`, `auth_tokens`, `devices`, `tokens`, `refresh_tokens`, `recovery`, `recovery_cancel_codes`, `approvals` and `device_waits`.
+- Existing constraints include lowercased verified-email uniqueness, lowercased nickname uniqueness, phone uniqueness, provider subject primary key `(provider, sub)`, and unique `(user_id, provider)`.
+- `account-rules.js` currently generates `u` + 24 random hex user IDs and uses scrypt password hashing. This is a migration compatibility constraint; it does not determine the future canonical ID or credential policy.
+- `migrate.js` declares schema version `0033-org-request-document-metadata`, while the header of `schema.sql` still labels the file a 0.6.0-alpha.1 PoC schema. Reconcile schema provenance/version and inspect the actual applied migration ledger before any migration.
+- Existing `identity-db.test.js` and `providers-db.test.js` define PostgreSQL integration coverage for local persistence, uniqueness and provider linking. Those tests are conditional on `DATABASE_URL`; their presence is not proof they ran in this session.
+- Bounded current-main code searches for `identity_reservations`, `platform_accounts`, `canonical_user_id`, `identity_service` and `cross_platform_reservation` found no matching implementation. This does not make claims about inaccessible Propo systems.
+
+**Refined conclusion:** InOne already has a persistent, product-local identity subsystem with meaningful uniqueness and provider-auth behavior. The missing architectural capability is an independent cross-platform Identity authority, canonical subject/identifier reservation registry, and durable cross-product provisioning/reconciliation. The migration must preserve local account projections and foreign-key relationships; do not move or delete `accounts` as the first step.
+
+Additional migration/security risks IAM-19–IAM-22 are recorded in the Identity threat model, including product foreign-key breakage, local/canonical ID mapping, schema provenance drift and accidental memory-store startup.
