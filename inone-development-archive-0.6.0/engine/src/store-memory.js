@@ -126,6 +126,25 @@ export function createMemoryStore({ pinPepper }) {
     activeDeviceCount: (userId) => [...devices.values()].filter((d) => d.userId === userId && !d.revoked).length,
     activeDevices: () => [...devices.values()].filter((d) => !d.revoked).map(copy),
     devicesOfUser: (userId) => [...devices.values()].filter((d) => d.userId === userId).map(copy),
+    reserveFile({ fileId, ownerId, ownerDeviceId = '', roomId, orgId = null, kind, size, sha256, createdAt, ownerQuotaBytes = null, orgQuotaBytes = null, pendingLimit }) {
+      const owned = [...files.values()].filter((f) => f.ownerId === ownerId);
+      if (owned.filter((f) => f.status === 'pending' || f.status === 'uploaded').length >= pendingLimit) {
+        return { ok: false, reason: 'pending_limit' };
+      }
+      if (ownerQuotaBytes !== null && owned
+        .filter((f) => ['pending', 'uploaded', 'ready', 'deleting'].includes(f.status))
+        .reduce((sum, f) => sum + f.size, 0) + size > ownerQuotaBytes) {
+        return { ok: false, reason: 'owner_quota' };
+      }
+      if (orgId && orgQuotaBytes !== null) {
+        const used = [...files.values()]
+          .filter((f) => rooms.get(f.roomId)?.orgId === orgId && ['pending', 'uploaded', 'ready', 'deleting'].includes(f.status))
+          .reduce((sum, f) => sum + f.size, 0);
+        if (used + size > orgQuotaBytes) return { ok: false, reason: 'org_quota' };
+      }
+      files.set(fileId, { fileId, ownerId, ownerDeviceId, roomId, kind, size, sha256, status: 'pending', createdAt, completedAt: null });
+      return { ok: true };
+    },
     createFile({ fileId, ownerId, ownerDeviceId = '', roomId, kind, size, sha256, createdAt }) {
       files.set(fileId, { fileId, ownerId, ownerDeviceId, roomId, kind, size, sha256, status: 'pending', createdAt, completedAt: null });
     },
@@ -148,17 +167,21 @@ export function createMemoryStore({ pinPepper }) {
       return [...files.values()].filter((f) => f.ownerId === ownerId && (f.status === 'pending' || f.status === 'uploaded')).length;
     },
     bytesForOwner(ownerId) {
-      return [...files.values()].filter((f) => f.ownerId === ownerId && ['pending', 'uploaded', 'ready'].includes(f.status)).reduce((sum, f) => sum + f.size, 0);
+      return [...files.values()].filter((f) => f.ownerId === ownerId && ['pending', 'uploaded', 'ready', 'deleting'].includes(f.status)).reduce((sum, f) => sum + f.size, 0);
     },
     purgeStaleFiles(cutoffMs) {
-      const removed = [];
+      const pending = [];
       for (const [id, f] of files) {
-        if ((f.status === 'pending' || f.status === 'uploaded') && f.createdAt < cutoffMs) {
-          files.delete(id);
-          removed.push(id);
-        }
+        if ((f.status === 'pending' || f.status === 'uploaded') && f.createdAt < cutoffMs) f.status = 'deleting';
+        if (f.status === 'deleting') pending.push(id);
       }
-      return removed;
+      return pending.slice(0, 100);
+    },
+    finalizeFileDeletion(fileId) {
+      const f = files.get(fileId);
+      if (!f || f.status !== 'deleting') return false;
+      files.delete(fileId);
+      return true;
     },
     setPushToken(deviceKey, provider, token, nowMs) {
       pushTokens.set(deviceKey, { provider, token, updatedAt: nowMs });
