@@ -212,6 +212,61 @@ test('F-04 PostgreSQL: a room invitation racing link revocation cannot leave sta
   }
 });
 
+
+test('F-05 PostgreSQL: a room message write is serialized before link revocation and denied afterward', { skip: !process.env.DATABASE_URL }, async () => {
+  const s = await start();
+  let releaseWrite;
+  const originalConnect = s.pool.connect.bind(s.pool);
+  try {
+    assert.equal((await call(s.base, 'POST', '/rooms', s.anna.token, { roomId: ROOM, orgId: ORG_A, members: [BORIS] })).status, 200);
+    const proposed = await call(s.base, 'POST', `/orgs/${ORG_A}/links`, s.boris.token, { targetOrgId: ORG_B });
+    assert.equal(proposed.status, 200);
+    const linkId = proposed.json.linkId;
+    assert.equal((await call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/accept`, s.carol.token, {})).status, 200);
+    assert.equal((await call(s.base, 'POST', `/rooms/${enc(ROOM)}/members`, s.anna.token, { userId: CAROL })).status, 200);
+
+    let signalWriteLock;
+    let signalRevokeAttempt;
+    const writeLockReady = new Promise((resolve) => { signalWriteLock = resolve; });
+    const revokeAttempted = new Promise((resolve) => { signalRevokeAttempt = resolve; });
+    const writeGate = new Promise((resolve) => { releaseWrite = resolve; });
+    s.pool.connect = async (...args) => {
+      if (args.length > 0) return originalConnect(...args);
+      const client = await originalConnect();
+      const originalQuery = client.query.bind(client);
+      client.query = async (query, ...params) => {
+        const sql = typeof query === 'string' ? query : query?.text ?? '';
+        if (sql.includes('UPDATE org_links SET status')) signalRevokeAttempt();
+        return originalQuery(query, ...params);
+      };
+      return client;
+    };
+
+    const writing = s.store.appendRoomEvent(
+      ROOM, CAROL, 'm.room.encrypted', { ciphertext: 'opaque' }, Date.now(),
+      async () => { signalWriteLock(); await writeGate; },
+    );
+    await waitForSignal(writeLockReady, 'message write did not reach its in-transaction boundary');
+    const revoking = call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/revoke`, s.carol.token, {});
+    await waitForSignal(revokeAttempted, 'link revocation did not attempt its conditional update');
+    releaseWrite();
+
+    const writtenSeq = await writing;
+    assert.equal(typeof writtenSeq, 'number', 'message authorized before revoke commits');
+    assert.equal((await revoking).status, 200);
+    assert.equal((await s.store.getRoom(ROOM)).members.includes(CAROL), false);
+    const rows = await s.store.roomEventRows(ROOM, 0);
+    assert.ok(rows.some((event) => event.sender === CAROL), 'the message committed before the revoke linearization point');
+
+    const denied = await s.store.appendRoomEvent(ROOM, CAROL, 'm.room.encrypted', { ciphertext: 'after-revoke' }, Date.now());
+    assert.equal(denied.state, 'org_not_member', 'writes after revocation are rejected');
+  } finally {
+    releaseWrite?.();
+    s.pool.connect = originalConnect;
+    await s.stop();
+  }
+});
+
 test('F-03 PostgreSQL: injected audit failure rolls back link revocation and cross-room membership deletion', { skip: !process.env.DATABASE_URL }, async () => {
   const s = await start();
   const originalConnect = s.pool.connect.bind(s.pool);
