@@ -954,9 +954,37 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
     // ---- беседы ----
     async createRoom(roomId, owner, memberIds, opts = {}) {
       return inTransaction(async (c) => {
-        const ins = await c.query('INSERT INTO rooms (room_id, owner, kind, name) VALUES ($1, $2, $3, $4) ON CONFLICT (room_id) DO NOTHING', [roomId, owner, opts.kind ?? 'group', opts.name ?? null]);
+        const orgId = opts.orgId ?? 'org-default';
+        const { rows: orgRows } = await c.query(
+          'SELECT status FROM organizations WHERE org_id = $1 FOR SHARE',
+          [orgId],
+        );
+        if (!orgRows[0] || orgRows[0].status !== 'approved') return { status: 'org_not_approved' };
+        for (const userId of [...new Set(memberIds)].sort()) {
+          const { rows: directMembership } = await c.query(
+            'SELECT 1 FROM org_members WHERE org_id = $1 AND user_id = $2 FOR SHARE',
+            [orgId, userId],
+          );
+          if (directMembership.length) continue;
+          const { rows: linkedMembership } = await c.query(
+            `SELECT 1
+               FROM org_members member
+               JOIN organizations member_org ON member_org.org_id = member.org_id
+               JOIN org_links link
+                 ON link.status = 'active'
+                AND ((link.org_a = member.org_id AND link.org_b = $1)
+                  OR (link.org_b = member.org_id AND link.org_a = $1))
+              WHERE member.user_id = $2 AND member_org.status = 'approved'
+              LIMIT 1 FOR SHARE OF member, member_org, link`,
+            [orgId, userId],
+          );
+          if (!linkedMembership.length) return { status: 'org_not_member', userId };
+        }
+        const ins = await c.query(
+          'INSERT INTO rooms (room_id, owner, kind, name, org_id) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (room_id) DO NOTHING',
+          [roomId, owner, opts.kind ?? 'group', opts.name ?? null, orgId],
+        );
         if (ins.rowCount === 0) return false;
-    if (opts.orgId) await c.query('UPDATE rooms SET org_id = $2 WHERE room_id = $1', [roomId, opts.orgId]);
         const { rows } = await c.query("SELECT value FROM counters WHERE name = 'event_seq' FOR UPDATE");
         const seq = Number(rows[0].value);
         for (const m of [...new Set(memberIds)]) {
