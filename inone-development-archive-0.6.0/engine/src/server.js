@@ -2101,7 +2101,9 @@ if (req.method === 'POST' && p === '/login') {
         const memberOrgId = await storage.roomOrg(roomId);
         const memberGate = await orgGate(userId, memberOrgId);
         if (memberGate) return send(res, memberGate.status, { error: memberGate.error, code: memberGate.code });
-        await storage.addRoomMember(roomId, userId);
+        const added = await storage.addRoomMember(roomId, userId);
+        if (added?.status === 'org_not_approved') return send(res, 403, { error: 'organization is not approved', code: 'org_not_approved' });
+        if (added?.status === 'org_not_member') return send(res, 403, { error: 'not an organization member', code: 'org_not_member' });
         await markRoomChanged(roomId, (await storage.getRoom(roomId)).members);
         return send(res, 200, { ok: true });
       }
