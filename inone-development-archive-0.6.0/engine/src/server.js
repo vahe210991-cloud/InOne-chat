@@ -504,8 +504,12 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
       const file = await storage.getFile(fileId);
       if (!file) return send(res, 404, { error: 'not found' });
       if (req.method === 'PUT') {
-        if (!expires || now() > expires || !file.ownerDeviceId || !sameSig(sig, signFor('PUT', fileId, expires, file.size, file.sha256, file.ownerId, file.ownerDeviceId))) {
-          return send(res, 403, { error: 'upload link is invalid or expired' });
+        if (!expires || !file.ownerDeviceId || !sameSig(sig, signFor('PUT', fileId, expires, file.size, file.sha256, file.ownerId, file.ownerDeviceId))) {
+          return send(res, 403, { error: 'upload link is invalid' });
+        }
+        if (now() > expires) {
+          await discardFileUpload(fileId);
+          return send(res, 403, { error: 'upload link is expired' });
         }
         const ownerDevice = await storage.deviceRecord(key(file.ownerId, file.ownerDeviceId));
         if (!ownerDevice || ownerDevice.revoked) {
