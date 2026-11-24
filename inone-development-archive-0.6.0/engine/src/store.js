@@ -790,6 +790,41 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
       return rows.map((r) => ({ userId: r.user_id, deviceId: r.device_id, label: r.label, revoked: r.revoked, createdAt: Number(r.created_at) }));
     },
 
+    async reserveFile({ fileId, ownerId, ownerDeviceId = '', roomId, orgId = null, kind, size, sha256, createdAt, ownerQuotaBytes = null, orgQuotaBytes = null, pendingLimit }) {
+      return inTransaction(async (c) => {
+        // Advisory transaction locks serialize all quota/pending reservations for the same owner
+        // and organization. Acquire in lexical order to avoid cross-scope lock inversion.
+        const lockKeys = [`inone-file-owner:${ownerId}`];
+        if (orgId && orgQuotaBytes !== null) lockKeys.push(`inone-file-org:${orgId}`);
+        for (const lockKey of lockKeys.sort()) {
+          await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [lockKey]);
+        }
+        const { rows: pendingRows } = await c.query(
+          "SELECT COUNT(*)::int AS n FROM files WHERE owner_id = $1 AND status IN ('pending', 'uploaded')",
+          [ownerId],
+        );
+        if (pendingRows[0].n >= pendingLimit) return { ok: false, reason: 'pending_limit' };
+        if (ownerQuotaBytes !== null) {
+          const { rows } = await c.query(
+            "SELECT COALESCE(SUM(size), 0)::bigint AS n FROM files WHERE owner_id = $1 AND status IN ('pending', 'uploaded', 'ready', 'deleting')",
+            [ownerId],
+          );
+          if (Number(rows[0].n) + size > ownerQuotaBytes) return { ok: false, reason: 'owner_quota' };
+        }
+        if (orgId && orgQuotaBytes !== null) {
+          const { rows } = await c.query(
+            "SELECT COALESCE(SUM(f.size), 0)::bigint AS n FROM files f JOIN rooms r ON r.room_id = f.room_id WHERE r.org_id = $1 AND f.status IN ('pending', 'uploaded', 'ready', 'deleting')",
+            [orgId],
+          );
+          if (Number(rows[0].n) + size > orgQuotaBytes) return { ok: false, reason: 'org_quota' };
+        }
+        await c.query(
+          'INSERT INTO files (file_id, owner_id, owner_device_id, room_id, kind, size, sha256, status, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
+          [fileId, ownerId, ownerDeviceId, roomId, kind, size, sha256, 'pending', createdAt],
+        );
+        return { ok: true };
+      });
+    },
     async createFile({ fileId, ownerId, ownerDeviceId = '', roomId, kind, size, sha256, createdAt }) {
       await pool.query('INSERT INTO files (file_id, owner_id, owner_device_id, room_id, kind, size, sha256, status, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)', [fileId, ownerId, ownerDeviceId, roomId, kind, size, sha256, 'pending', createdAt]);
     },
@@ -811,12 +846,30 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
       return rows[0].n;
     },
     async bytesForOwner(ownerId) {
-      const { rows } = await pool.query("SELECT COALESCE(SUM(size), 0)::bigint AS n FROM files WHERE owner_id = $1 AND status IN ('pending', 'uploaded', 'ready')", [ownerId]);
+      const { rows } = await pool.query("SELECT COALESCE(SUM(size), 0)::bigint AS n FROM files WHERE owner_id = $1 AND status IN ('pending', 'uploaded', 'ready', 'deleting')", [ownerId]);
       return Number(rows[0].n);
     },
     async purgeStaleFiles(cutoffMs) {
-      const { rows } = await pool.query("DELETE FROM files WHERE status IN ('pending', 'uploaded') AND created_at < $1 RETURNING file_id", [cutoffMs]);
-      return rows.map((r) => r.file_id);
+      return inTransaction(async (c) => {
+        const { rows } = await c.query(
+          `WITH candidates AS (
+             SELECT file_id FROM files
+              WHERE (status IN ('pending', 'uploaded') AND created_at < $1) OR status = 'deleting'
+              ORDER BY created_at, file_id
+              FOR UPDATE SKIP LOCKED
+              LIMIT 100
+           )
+           UPDATE files f SET status = 'deleting'
+             FROM candidates c WHERE f.file_id = c.file_id
+           RETURNING f.file_id`,
+          [cutoffMs],
+        );
+        return rows.map((r) => r.file_id);
+      });
+    },
+    async finalizeFileDeletion(fileId) {
+      const { rowCount } = await pool.query("DELETE FROM files WHERE file_id = $1 AND status = 'deleting'", [fileId]);
+      return rowCount === 1;
     },
     async setPushToken(deviceKey, provider, registration, nowMs) {
       if (!registration || !Buffer.isBuffer(registration.tokenCiphertext) || !Buffer.isBuffer(registration.tokenIv) || !Buffer.isBuffer(registration.tokenTag)) {
