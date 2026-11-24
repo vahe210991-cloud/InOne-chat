@@ -1607,7 +1607,7 @@ async mlsPendingRemovalsFor(userId) {
       return inTransaction(async (c) => {
         if (roomId) {
           const { rows: roomRows } = await c.query(
-            'SELECT org_id, owner_id FROM rooms WHERE room_id = $1 FOR SHARE',
+            'SELECT org_id, owner FROM rooms WHERE room_id = $1 FOR SHARE',
             [roomId],
           );
           if (!roomRows[0]) return { ok: false, reason: 'room_not_found' };
@@ -1624,7 +1624,7 @@ async mlsPendingRemovalsFor(userId) {
             'SELECT capabilities FROM room_members WHERE room_id = $1 AND user_id = $2 FOR SHARE',
             [roomId, requesterUserId],
           );
-          if (roomRows[0].owner_id !== requesterUserId
+          if (roomRows[0].owner !== requesterUserId
             && (!inviterMembership[0] || !inviterMembership[0].capabilities.includes('invite_members'))) {
             return { ok: false, reason: 'invite_capability_required' };
           }
