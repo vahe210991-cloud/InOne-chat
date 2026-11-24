@@ -700,9 +700,23 @@ export function createMemoryStore({ pinPepper }) {
     // ---- беседы ----
     createRoom(roomId, owner, memberIds, opts = {}) {
       if (rooms.has(roomId)) return false;
+      const orgId = opts.orgId ?? DEFAULT_ORG_ID;
+      const org = organizations.get(orgId);
+      if (!org || org.status !== 'approved') return { status: 'org_not_approved' };
       const members = [...new Set(memberIds)];
+      for (const userId of [...members].sort()) {
+        const direct = orgMembers.get(orgId)?.has(userId) ?? false;
+        const linked = !direct && [...orgLinks.values()].some((link) => {
+          if (link.status !== 'active') return false;
+          const memberOrg = link.orgA === orgId ? link.orgB : link.orgB === orgId ? link.orgA : null;
+          return memberOrg !== null
+            && organizations.get(memberOrg)?.status === 'approved'
+            && (orgMembers.get(memberOrg)?.has(userId) ?? false);
+        });
+        if (!direct && !linked) return { status: 'org_not_member', userId };
+      }
       rooms.set(roomId, {
-        owner, orgId: opts.orgId ?? DEFAULT_ORG_ID, admins: new Set(), members: new Set(members),
+        owner, orgId, admins: new Set(), members: new Set(members),
         joinedSeq: new Map(members.map((m) => [m, counters.eventSeq])), events: [],
         capabilities: new Map(members.map((m) => [m, [...DEFAULT_MEMBER_CAPABILITIES]])),
         name: opts.name ?? null,
