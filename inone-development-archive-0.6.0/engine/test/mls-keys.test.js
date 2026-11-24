@@ -138,6 +138,20 @@ test('KeyPackage claim rejects users outside the room organization or an active 
     assert.equal(allowed.packages.length, 1,
       'an active organization link permits a room-bound claim by an authorized inviter');
     assert.equal((await bob.raw('GET', '/mls/key-packages/count')).available, 0);
+    const committed = await alice.raw('POST', `/mls/groups/${enc(roomId)}/commits`, {
+      epoch: 0,
+      commit: b64('linked-organization-commit'),
+      clientOperationId: 'commit-linked-organization-0001',
+      keyPackageClaimId: 'claim-room-linked-0001',
+      changes: { adds: [BOB], removes: [] },
+      welcomes: allowed.packages.map((item) => ({
+        userId: BOB,
+        deviceId: item.deviceId,
+        welcome: b64(`linked-welcome-${item.deviceId}`),
+      })),
+    });
+    assert.equal(committed.epoch, 1);
+    assert.ok((await alice.raw('GET', `/rooms/${enc(roomId)}/members`)).members.includes(BOB));
   } finally {
     await stop();
   }
