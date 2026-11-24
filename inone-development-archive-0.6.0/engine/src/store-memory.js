@@ -175,12 +175,12 @@ export function createMemoryStore({ pinPepper }) {
       return [...files.values()].filter((f) => f.ownerId === ownerId && (f.status === 'pending' || f.status === 'uploading' || f.status === 'uploaded')).length;
     },
     bytesForOwner(ownerId) {
-      return [...files.values()].filter((f) => f.ownerId === ownerId && ['pending', 'uploaded', 'ready', 'deleting'].includes(f.status)).reduce((sum, f) => sum + f.size, 0);
+      return [...files.values()].filter((f) => f.ownerId === ownerId && ['pending', 'uploading', 'uploaded', 'ready', 'deleting'].includes(f.status)).reduce((sum, f) => sum + f.size, 0);
     },
     purgeStaleFiles(cutoffMs) {
       const pending = [];
       for (const [id, f] of files) {
-        if ((f.status === 'pending' || f.status === 'uploaded') && f.createdAt < cutoffMs) f.status = 'deleting';
+        if ((f.status === 'pending' || f.status === 'uploading' || f.status === 'uploaded') && f.createdAt < cutoffMs) f.status = 'deleting';
         if (f.status === 'deleting') pending.push(id);
       }
       return pending.slice(0, 100);
