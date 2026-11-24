@@ -140,6 +140,31 @@ test('без входа пакеты не загружаются и не отд�
 });
 
 
+
+test('MLS commit rejects a Welcome targeting a revoked device', async () => {
+  const { base, store, stop } = await start();
+  try {
+    const alice = await ChatClient.create(base, ALICE, 'A_PHONE', PW);
+    await ChatClient.create(base, BOB, 'B_PHONE', PW);
+    const roomId = '!revoked-welcome-device:inone.test';
+    assert.equal((await alice.raw('POST', '/rooms', { roomId, members: [] })).ok, true);
+    await store.revokeDevice(`${BOB}|B_PHONE`);
+    await assert.rejects(
+      alice.raw('POST', `/mls/groups/${enc(roomId)}/commits`, {
+        epoch: 0,
+        commit: b64('revoked-welcome-commit'),
+        clientOperationId: 'revoked-welcome-device-0001',
+        changes: { adds: [BOB], removes: [] },
+        welcomes: [{ userId: BOB, deviceId: 'B_PHONE', welcome: b64('revoked-welcome') }],
+      }),
+      (error) => error.status === 409 && error.code === 'welcome_device_revoked',
+    );
+    assert.equal((await alice.raw('GET', `/rooms/${enc(roomId)}/members`)).members.includes(BOB), false);
+  } finally {
+    await stop();
+  }
+});
+
 test('revoking a device purges its MLS KeyPackages and filters stored claim replays', async () => {
   const { base, store, stop } = await start();
   try {
