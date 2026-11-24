@@ -58,6 +58,40 @@ test('повтор стабильного KeyPackage claim ID возвращае
   }
 });
 
+
+test('parallel KeyPackage claims consume each one-time package at most once', async () => {
+  const { base, stop } = await start();
+  try {
+    const alice = await ChatClient.create(base, ALICE, 'A_PHONE', PW);
+    const bob = await ChatClient.create(base, BOB, 'B_PHONE', PW);
+    await alice.raw('POST', '/mls/key-packages', { packages: Array.from({ length: 5 }, (_, i) => pkg(`parallel-${i}`)) });
+    const results = await Promise.all(Array.from({ length: 10 }, (_, i) =>
+      bob.raw('POST', `/mls/key-packages/${enc(ALICE)}/claim`, { claimId: `parallel-claim-${String(i).padStart(8, '0')}` })));
+    const packages = results.flatMap((result) => result.packages.map((item) => item.package));
+    assert.equal(packages.length, 5, 'only the five uploaded packages can be consumed');
+    assert.equal(new Set(packages).size, 5, 'parallel claimants never receive the same one-time package');
+    assert.equal((await alice.raw('GET', '/mls/key-packages/count')).available, 0);
+  } finally {
+    await stop();
+  }
+});
+
+test('parallel retries of one KeyPackage claim ID return the same reservation', async () => {
+  const { base, stop } = await start();
+  try {
+    const alice = await ChatClient.create(base, ALICE, 'A_PHONE', PW);
+    const bob = await ChatClient.create(base, BOB, 'B_PHONE', PW);
+    await alice.raw('POST', '/mls/key-packages', { packages: [pkg('parallel-replay')] });
+    const claim = () => bob.raw('POST', `/mls/key-packages/${enc(ALICE)}/claim`, { claimId: 'parallel-replay-0001' });
+    const results = await Promise.all([claim(), claim(), claim(), claim()]);
+    assert.ok(results.every((result) => result.packages.length === 1));
+    assert.equal(new Set(results.map((result) => result.packages[0].package)).size, 1);
+    assert.equal((await alice.raw('GET', '/mls/key-packages/count')).available, 0);
+  } finally {
+    await stop();
+  }
+});
+
 test('неверные пакеты отклоняются: пустой список, не base64, слишком большой пакет, больше 50 за раз, больше 100 неиспользованных', async () => {
   const { base, stop } = await start();
   try {
