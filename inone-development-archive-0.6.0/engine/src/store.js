@@ -135,8 +135,46 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
      * Выдача одноразового ключа. Строка блокируется в транзакции, занятые строки пропускаются:
      * один ключ выдаётся только одному запросу.
      */
-    async claimOneTimeKey(deviceKey) {
+    async claimOneTimeKey(deviceKey, requesterId, targetUserId) {
       return inTransaction(async (c) => {
+        const { rows: deviceRows } = await c.query(
+          'SELECT user_id, revoked FROM devices WHERE device_key = $1 FOR SHARE',
+          [deviceKey],
+        );
+        if (!deviceRows[0] || deviceRows[0].revoked || deviceRows[0].user_id !== targetUserId) return null;
+        if (requesterId !== targetUserId) {
+          const { rows: sameOrg } = await c.query(
+            `SELECT 1
+               FROM org_members sender
+               JOIN organizations sender_org ON sender_org.org_id = sender.org_id
+               JOIN org_members recipient ON recipient.org_id = sender.org_id AND recipient.user_id = $2
+               JOIN organizations recipient_org ON recipient_org.org_id = recipient.org_id
+              WHERE sender.user_id = $1
+                AND sender_org.status = 'approved'
+                AND recipient_org.status = 'approved'
+              LIMIT 1 FOR SHARE OF sender, sender_org, recipient, recipient_org`,
+            [requesterId, targetUserId],
+          );
+          if (!sameOrg.length) {
+            const { rows: linked } = await c.query(
+              `SELECT 1
+                 FROM org_members sender
+                 JOIN organizations sender_org ON sender_org.org_id = sender.org_id
+                 JOIN org_members recipient ON recipient.user_id = $2
+                 JOIN organizations recipient_org ON recipient_org.org_id = recipient.org_id
+                 JOIN org_links link
+                   ON link.status = 'active'
+                  AND ((link.org_a = sender.org_id AND link.org_b = recipient.org_id)
+                    OR (link.org_b = sender.org_id AND link.org_a = recipient.org_id))
+                WHERE sender.user_id = $1
+                  AND sender_org.status = 'approved'
+                  AND recipient_org.status = 'approved'
+                LIMIT 1 FOR SHARE OF sender, sender_org, recipient, recipient_org, link`,
+              [requesterId, targetUserId],
+            );
+            if (!linked.length) return null;
+          }
+        }
         const { rows } = await c.query(
           `SELECT name, value FROM one_time_keys WHERE device_key = $1
            ORDER BY name LIMIT 1 FOR UPDATE SKIP LOCKED`,
