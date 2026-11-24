@@ -556,6 +556,10 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
           await discardFileUpload(fileId);
           return send(res, 422, { error: 'checksum does not match the declaration' });
         }
+        if (!(await storage.claimFileUpload(fileId, file.ownerId, file.ownerDeviceId))) {
+          res.setHeader('Connection', 'close');
+          return send(res, 409, { error: 'upload is already in progress or no longer pending' });
+        }
         const stillActiveOwnerDevice = await storage.deviceRecord(key(file.ownerId, file.ownerDeviceId));
         if (!stillActiveOwnerDevice || stillActiveOwnerDevice.revoked) {
           await discardFileUpload(fileId);
@@ -568,7 +572,10 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
             return send(res, 403, { error: 'room upload permission was revoked' });
           }
         }
-        await storage.markFileUploaded(fileId);
+        if (!(await storage.markFileUploaded(fileId))) {
+          await discardFileUpload(fileId);
+          return send(res, 409, { error: 'upload reservation is no longer active' });
+        }
         return send(res, 200, { uploaded: true });
       }
       if (req.method === 'GET') {
