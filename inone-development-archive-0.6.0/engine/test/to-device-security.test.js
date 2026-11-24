@@ -54,9 +54,11 @@ const deviceKeys = {
 test('keys/query and to-device delivery do not expose or reach unrelated organizations', async () => {
   const s = await start();
   try {
-    await s.bob.raw('POST', '/keys/upload', { device_keys: deviceKeys });
+    await s.bob.raw('POST', '/keys/upload', { device_keys: deviceKeys, one_time_keys: { 'signed_curve25519:otk-1': { key: 'bob-one-time-key' } } });
     const queried = await s.alice.raw('POST', '/keys/query', { device_keys: { [BOB]: {} } });
     assert.deepEqual(queried.device_keys[BOB], {}, 'unrelated user device keys are not disclosed');
+    const claimed = await s.alice.raw('POST', '/keys/claim', { one_time_keys: { [BOB]: { B_PHONE: 'signed_curve25519' } } });
+    assert.deepEqual(claimed.one_time_keys[BOB], {}, 'unrelated user one-time keys are not disclosed or consumed');
 
     await s.alice.raw('PUT', '/sendToDevice/m.room.encrypted/txn-unrelated-0001', {
       messages: { [BOB]: { B_PHONE: { ciphertext: 'opaque-ciphertext' } } },
@@ -76,6 +78,8 @@ test('active organization link permits device-key query and encrypted to-device 
     await s.linkOrganizations();
     const queried = await s.alice.raw('POST', '/keys/query', { device_keys: { [BOB]: {} } });
     assert.equal(queried.device_keys[BOB].B_PHONE.keys.ed25519, 'bob-ed25519');
+    const claimed = await s.alice.raw('POST', '/keys/claim', { one_time_keys: { [BOB]: { B_PHONE: 'signed_curve25519' } } });
+    assert.equal(claimed.one_time_keys[BOB].B_PHONE['signed_curve25519:otk-1'].key, 'bob-one-time-key');
 
     const message = {
       messages: { [BOB]: { B_PHONE: { ciphertext: 'opaque-ciphertext' } } },
