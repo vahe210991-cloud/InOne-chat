@@ -558,3 +558,12 @@ Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone
 5. Stage 2: fix B-04/B-13 with streaming, quotas, atomic reservations, cleanup and file lifecycle regression tests.
 6. Continue runtime, database and supply-chain stages only after prior stage acceptance.
 7. Keep PR Draft; no merge, no issue closure, no main-protection mutation, no secret changes, no SMS work and no native MLS enablement without owner approval.
+
+
+### Updated next actions after expanded Stage 0 review
+
+- Treat B-12 last-owner protection as a security invariant: serialize owner-count check and mutation under a stable organization-row lock/transaction; audit event must be in the same transaction.
+- For B-13, implement atomic quota reservations for owner and organization (including pending uploads), then stream uploads to temporary object storage with incremental hash and deterministic rollback/cleanup. Preserve existing file API and client upload URL contract.
+- Do not reimplement B-14 FCM invalid-registration cleanup without evidence; add/execute PostgreSQL regression for re-registration racing with old failed delivery.
+- B-15: define exact dependency contract for readiness; keep liveness independent of PostgreSQL and avoid exposing dependency/configuration details.
+- Before deprecating legacy MLS endpoint, finish mobile transport/API call-site audit (Flutter, Rust bridge, generated bindings, integration tests); code-search hits did not show direct Flutter call sites but are not a complete proof.
