@@ -38,3 +38,62 @@ The product is approved as two separate applications: InOne (personal/social) an
 ## Scope limitation
 
 This pass did not execute tests, inspect production data, deploy services, access Propo's private systems, perform a penetration test, or certify the current Beta 1 release. All findings are architectural/source-review findings and require implementation evidence and exact-SHA validation.
+
+
+## 2026-11-24 execution record
+
+### Work completed
+
+- Created fresh branch `planning/beta-2.0-cto-2026-11-24` from current main `02880940c1e4d8261405fbeaa01f40879eb44f3a`.
+- Preserved legacy `planning/beta-2.0-roadmap` unchanged; compare showed 1 commit ahead / 1,262 behind and diverged.
+- Added:
+  - `docs/product/BETA-2.0-CTO-ROADMAP.md`
+  - `docs/product/BETA-2.0-IDENTITY-PHASE-1.md`
+  - `docs/product/BETA-2.0-IDENTITY-ADR-DRAFT.md`
+  - `docs/product/BETA-2.0-IDENTITY-THREAT-MODEL.md`
+  - `development/reports/2026-11-24-beta2-cto-audit.md`
+- Created tracking issues #137–#146 for all ten program directions and #147–#148 for Identity Phase 1 discovery and ADR/contracts.
+- Updated development README, session log and continuity current-state/next-session/source-of-truth indexes.
+- No Beta 1.0 product code, PR #135, production data, secrets, settings or release gates were changed.
+
+### WBS mapping and readiness
+
+- Beta 2.0 work maps to approved WBS v1.1: Backend platforms/API (25%), Frontend/CRM screens (20%), CRM domain (15%), Cindy (15%), Tasks/Calendar (15%), Group collaboration (5%), QA/security/operations (5%).
+- Identity is the first P0 foundation task within the existing Backend platforms/API and QA/security/operations criteria. WBS weights and historical baselines were not changed.
+- Beta 2.0 baseline remains **2% implementation / 0% verification**. This session added planning artifacts and issues only; no product implementation is credited.
+- Beta 1.0 WBS remains 42% implementation / 31% verification; untouched by this work.
+
+### Acceptance status
+
+- GitHub branch and files created/re-fetched: **PASS** (repository-native documentation operations).
+- Main-first branch ancestry verified: **PASS**; branch was ahead of main and not behind at the last compare. Legacy branch untouched.
+- Roadmap and workstream issue creation: **PASS**.
+- Identity source audit: **PASS** for the limited source/document review stated in this report.
+- Identity service implementation: **NOT RUN**.
+- Node/PostgreSQL/Rust/Flutter tests, CI, security scans, Propo sandbox tests, load tests and production migration: **NOT RUN**.
+- Identity Phase 1: **IN PROGRESS / NOT ACCEPTED**. Draft ADR requires owner approval; unresolved policy decisions remain.
+
+### Five previous tasks / evidence preserved
+
+1. Existing owner-approved cross-platform identity and reservation requirements in `docs/PRODUCT-DECISIONS-IDENTITY-LOCALIZATION-DESIGN.md`.
+2. Existing identity/product decisions and InOne vs InOne Business boundary in `docs/continuity/DECISIONS.md`.
+3. Existing canonical InOne backend ownership and local identity rules; preserve ADR-004 and `docs/continuity/BACKEND-SOURCE-OF-TRUTH.md`.
+4. Existing Beta 2 group feature candidates in the legacy roadmap branch; preserved without wholesale branch integration.
+5. Beta 1.0 security remediation PR #135 and its staged acceptance boundary; preserved without scope mixing.
+
+### Five next tasks
+
+1. Complete the source-backed inventory of current InOne identity tables, indexes, migrations, auth routes, providers, devices, recovery and audit state; record exact file/schema references.
+2. Obtain owner decisions for canonical ID format, globally unique identifiers, email/phone policy, credential ownership, account linking/conflicts, Propo Seller mapping and deletion/retention.
+3. Finalize and approve ADR B2-ADR-001, C4 diagrams, OpenAPI and AsyncAPI contracts.
+4. Design Identity schema and concurrency/failure-injection tests; implement the independent service only after architecture decisions are approved.
+5. Build InOne/Propo adapters, transactional outbox/inbox and reconciliation; validate both registration directions, outages and existing-account migration plan.
+
+### Exact repository hand-back
+
+- Repository: `vahe210991-cloud/InOne-chat`
+- Base: `main` at `02880940c1e4d8261405fbeaa01f40879eb44f3a`
+- Branch: `planning/beta-2.0-cto-2026-11-24`
+- Branch commit immediately before this report update: `d7f720096f6c0f5417de59f7c8a5d0be6e65864a`
+- Working mode: GitHub repository-native documentation/issue operations.
+- No local-only required changes exist; all listed deliverables are committed to GitHub.
