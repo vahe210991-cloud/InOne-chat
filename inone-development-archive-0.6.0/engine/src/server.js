@@ -23,6 +23,7 @@ import { MESSAGE_KINDS, effectiveCapabilities, hasCapability, normalizeCapabilit
 import { createFsObjectStore, createMemoryObjectStore } from './object-store.js';
 import { effectiveFlags, publicFlags, validateFlag } from './flags.js';
 import http from 'node:http';
+import { Transform } from 'node:stream';
 import { readFileSync } from 'node:fs';
 import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, randomInt, randomUUID, scryptSync, timingSafeEqual, createPublicKey, createVerify } from 'node:crypto';
 import { createMemoryStore } from './store-memory.js';
@@ -512,22 +513,44 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
           res.setHeader('Connection', 'close');
           return send(res, 413, { error: 'size does not match the declaration' });
         }
-        const chunks = [];
+        const activeOwnerDevice = await storage.deviceRecord(key(file.ownerId, file.ownerDeviceId));
+        if (!activeOwnerDevice || activeOwnerDevice.revoked) return send(res, 403, { error: 'uploading device is revoked' });
         let received = 0;
-        for await (const chunk of req) {
-          received += chunk.length;
-          if (received > file.size) {
+        const digest = createHash('sha256');
+        const verifier = new Transform({
+          transform(chunk, _encoding, callback) {
+            received += chunk.length;
+            if (received > file.size) {
+              const error = new Error('file is larger than declared');
+              error.code = 'FILE_TOO_LARGE';
+              callback(error);
+              return;
+            }
+            digest.update(chunk);
+            callback(null, chunk);
+          },
+        });
+        try {
+          await objectStore.putStream(fileId, req, { transform: verifier });
+        } catch (error) {
+          await objectStore.remove(fileId).catch(() => {});
+          if (error.code === 'FILE_TOO_LARGE') {
             res.setHeader('Connection', 'close');
             return send(res, 413, { error: 'file is larger than declared' });
           }
-          chunks.push(chunk);
+          if (received < file.size || error.code === 'ERR_STREAM_PREMATURE_CLOSE') {
+            return send(res, 400, { error: 'incomplete body' });
+          }
+          throw error;
         }
-        const bytes = Buffer.concat(chunks);
-        if (bytes.length !== file.size) return send(res, 400, { error: 'incomplete body' });
-        if (createHash('sha256').update(bytes).digest('hex') !== file.sha256) return send(res, 422, { error: 'checksum does not match the declaration' });
-        const activeOwnerDevice = await storage.deviceRecord(key(file.ownerId, file.ownerDeviceId));
-        if (!activeOwnerDevice || activeOwnerDevice.revoked) return send(res, 403, { error: 'uploading device is revoked' });
-        await objectStore.put(fileId, bytes);
+        if (received !== file.size) {
+          await objectStore.remove(fileId).catch(() => {});
+          return send(res, 400, { error: 'incomplete body' });
+        }
+        if (digest.digest('hex') !== file.sha256) {
+          await objectStore.remove(fileId).catch(() => {});
+          return send(res, 422, { error: 'checksum does not match the declaration' });
+        }
         const stillActiveOwnerDevice = await storage.deviceRecord(key(file.ownerId, file.ownerDeviceId));
         if (!stillActiveOwnerDevice || stillActiveOwnerDevice.revoked) {
           await objectStore.remove(fileId).catch(() => {});
