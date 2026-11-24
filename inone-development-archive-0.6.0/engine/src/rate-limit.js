@@ -22,6 +22,7 @@ export const DEFAULT_RATE_LIMITS = {
   recoveryCancelPerEmail: [{ windowMs: HOUR_MS, limit: 10 }],
   bioChallengePerAccount: [{ windowMs: HOUR_MS, limit: 30 }],
   mlsClaimPerAccount: [{ windowMs: HOUR_MS, limit: 60 }],
+  toDevicePerAccount: [{ windowMs: 60_000, limit: 120 }, { windowMs: HOUR_MS, limit: 1000 }],
   phoneRegistrationPerPhone: [{ windowMs: DAY_MS, limit: 3 }],
 };
 
