@@ -1622,6 +1622,13 @@ async mlsPendingRemovalsFor(userId) {
         } else if (!(await lockUsersShareOrgOrLink(c, requesterUserId, targetUserId))) {
           return { ok: false, reason: 'not_authorized' };
         }
+        // Lock active target devices before the claim row so device revocation and package
+        // reservation have a consistent lock order and cannot replay a revoked device package.
+        const { rows: activeDeviceRows } = await c.query(
+          'SELECT device_id FROM devices WHERE user_id = $1 AND NOT revoked ORDER BY device_id FOR SHARE',
+          [targetUserId],
+        );
+        const activeDeviceIds = new Set(activeDeviceRows.map((row) => row.device_id));
         await c.query(
           'INSERT INTO mls_key_package_claims (target_user_id, requester_user_id, requester_device_id, claim_id, room_id, state, result, created_at) VALUES ($1, $2, $3, $4, $5, \'reserved\', NULL, $6) ON CONFLICT (target_user_id, requester_user_id, requester_device_id, claim_id) DO NOTHING',
           [targetUserId, requesterUserId, requesterDeviceId, claimId, roomId ?? null, nowMs],
@@ -1644,7 +1651,7 @@ async mlsPendingRemovalsFor(userId) {
         if (claim.result !== null) {
           return {
             ok: true,
-            packages: claim.result.map((item) => ({
+            packages: claim.result.filter((item) => activeDeviceIds.has(item.deviceId)).map((item) => ({
               deviceId: item.deviceId,
               packageId: item.packageId ?? null,
               package: Buffer.from(item.package, 'base64'),
@@ -1653,12 +1660,10 @@ async mlsPendingRemovalsFor(userId) {
         }
 
         const { rows: devices } = await c.query(
-          `SELECT DISTINCT kp.device_id
-             FROM mls_key_packages kp
-             JOIN devices d ON d.user_id = kp.user_id AND d.device_id = kp.device_id
-            WHERE kp.user_id = $1 AND kp.consumed_at IS NULL AND NOT d.revoked
-            ORDER BY kp.device_id`,
-          [targetUserId],
+          `SELECT DISTINCT device_id FROM mls_key_packages
+            WHERE user_id = $1 AND device_id = ANY($2::text[]) AND consumed_at IS NULL
+            ORDER BY device_id`,
+          [targetUserId, [...activeDeviceIds]],
         );
         const out = [];
         for (const { device_id: deviceId } of devices) {
