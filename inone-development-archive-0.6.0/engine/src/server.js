@@ -557,6 +557,13 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
           await objectStore.remove(fileId).catch(() => {});
           return send(res, 403, { error: 'uploading device is revoked' });
         }
+        if (file.roomId) {
+          const room = await storage.getRoom(file.roomId);
+          if (!room || !room.members.includes(file.ownerId) || !hasCapability(room, file.ownerId, 'send_messages')) {
+            await objectStore.remove(fileId).catch(() => {});
+            return send(res, 403, { error: 'room upload permission was revoked' });
+          }
+        }
         await storage.markFileUploaded(fileId);
         return send(res, 200, { uploaded: true });
       }
@@ -635,9 +642,18 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
       return null;
     };
     const cleanupFiles = async () => {
-      const removed = await storage.purgeStaleFiles(now() - STALE_UPLOAD_MS);
-      for (const fileId of removed) await objectStore.remove(fileId);
-      return removed.length;
+      const pending = await storage.purgeStaleFiles(now() - STALE_UPLOAD_MS);
+      let removed = 0;
+      for (const fileId of pending) {
+        try {
+          // Keep the metadata tombstone until object deletion succeeds. A later sweep retries it.
+          await objectStore.remove(fileId);
+          if (await storage.finalizeFileDeletion(fileId)) removed += 1;
+        } catch (error) {
+          logger?.error('file cleanup failed; deletion will be retried', { fileId, error: error.message });
+        }
+      }
+      return removed;
     };
 
 
@@ -1269,16 +1285,32 @@ if (req.method === 'POST' && p === '/files') {
     if (!r.members.includes(d.userId)) return send(res, 403, { error: 'not a member' });
     if (!hasCapability(r, d.userId, 'send_messages')) return send(res, 403, { error: 'missing capability: send_messages' });
   } else if (kind !== 'avatar') return send(res, 400, { error: 'roomId is required for this kind' });
-  if ((await storage.countPendingFiles(d.userId)) >= PENDING_LIMIT) return send(res, 429, { error: 'too many unfinished uploads' });
-  // Квота по объёму: механизм есть; значение задаёт владелец (по умолчанию не задано).
-  if (quotaBytes !== null && (await storage.bytesForOwner(d.userId)) + size > quotaBytes) return send(res, 413, { error: 'storage quota exceeded' });
+  let fileOrg = null;
+  let orgQuota = null;
   if (forRoom !== undefined) {
-    const fileOrg = await storage.roomOrg(forRoom);
-    const orgQuota = (await storage.orgSettings(fileOrg)).fileQuotaBytes;
-    if (orgQuota !== null && (await storage.bytesForOrg(fileOrg)) + size > orgQuota) return send(res, 413, { error: 'organization storage quota exceeded', code: 'org_quota_exceeded' });
+    fileOrg = await storage.roomOrg(forRoom);
+    if (fileOrg) orgQuota = (await storage.orgSettings(fileOrg)).fileQuotaBytes;
   }
   const fileId = randomBytes(16).toString('hex');
-  await storage.createFile({ fileId, ownerId: d.userId, ownerDeviceId: d.deviceId, roomId: forRoom ?? null, kind, size, sha256: digest, createdAt: now() });
+  const reservation = await storage.reserveFile({
+    fileId,
+    ownerId: d.userId,
+    ownerDeviceId: d.deviceId,
+    roomId: forRoom ?? null,
+    orgId: fileOrg,
+    kind,
+    size,
+    sha256: digest,
+    createdAt: now(),
+    ownerQuotaBytes: quotaBytes,
+    orgQuotaBytes: orgQuota,
+    pendingLimit: PENDING_LIMIT,
+  });
+  if (!reservation.ok) {
+    if (reservation.reason === 'pending_limit') return send(res, 429, { error: 'too many unfinished uploads' });
+    if (reservation.reason === 'org_quota') return send(res, 413, { error: 'organization storage quota exceeded', code: 'org_quota_exceeded' });
+    return send(res, 413, { error: 'storage quota exceeded' });
+  }
   const expires = now() + UPLOAD_TTL_MS;
   const path = `/objects/${fileId}?expires=${expires}&sig=${signFor('PUT', fileId, expires, size, digest, d.userId, d.deviceId)}`;
   return send(res, 200, { fileId, uploadUrl: absoluteUrl(req, path), method: 'PUT', headers: { 'content-length': String(size) }, expiresAt: new Date(expires).toISOString() });
@@ -1291,6 +1323,11 @@ if (req.method === 'POST' && fileDone) {
   const f = await storage.getFile(fileId);
   if (!f || f.ownerId !== d.userId) return send(res, 404, { error: 'not found' });
   if (f.ownerDeviceId !== d.deviceId) return send(res, 403, { error: 'file upload belongs to another device' });
+  if (f.roomId) {
+    const room = await storage.getRoom(f.roomId);
+    if (!room || !room.members.includes(d.userId)) return send(res, 403, { error: 'not a member' });
+    if (!hasCapability(room, d.userId, 'send_messages')) return send(res, 403, { error: 'missing capability: send_messages' });
+  }
   if (!(await storage.markFileReady(fileId, now()))) return send(res, 409, { error: 'file is not uploaded yet' });
   return send(res, 200, { fileId, status: 'ready' });
 }
