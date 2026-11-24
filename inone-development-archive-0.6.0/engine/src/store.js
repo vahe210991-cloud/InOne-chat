@@ -161,10 +161,44 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
       );
     },
     // Atomic bounded enqueue for user-to-device traffic. The device row serializes concurrent senders.
-    async enqueueToDevice(deviceKey, body, dedupeKey, expiresAt, nowMs, maxPending) {
+    async enqueueToDevice(deviceKey, body, dedupeKey, expiresAt, nowMs, maxPending, senderUserId, recipientUserId) {
       return inTransaction(async (c) => {
-        const { rows: devices } = await c.query('SELECT revoked FROM devices WHERE device_key = $1 FOR UPDATE', [deviceKey]);
+        if (senderUserId !== recipientUserId) {
+          const { rows: sameOrg } = await c.query(
+            `SELECT 1
+               FROM org_members sender
+               JOIN organizations sender_org ON sender_org.org_id = sender.org_id
+               JOIN org_members recipient ON recipient.org_id = sender.org_id AND recipient.user_id = $2
+               JOIN organizations recipient_org ON recipient_org.org_id = recipient.org_id
+              WHERE sender.user_id = $1
+                AND sender_org.status = 'approved'
+                AND recipient_org.status = 'approved'
+              LIMIT 1 FOR SHARE OF sender, sender_org, recipient, recipient_org`,
+            [senderUserId, recipientUserId],
+          );
+          if (!sameOrg.length) {
+            const { rows: linked } = await c.query(
+              `SELECT 1
+                 FROM org_members sender
+                 JOIN organizations sender_org ON sender_org.org_id = sender.org_id
+                 JOIN org_members recipient ON recipient.user_id = $2
+                 JOIN organizations recipient_org ON recipient_org.org_id = recipient.org_id
+                 JOIN org_links link
+                   ON link.status = 'active'
+                  AND ((link.org_a = sender.org_id AND link.org_b = recipient.org_id)
+                    OR (link.org_b = sender.org_id AND link.org_a = recipient.org_id))
+                WHERE sender.user_id = $1
+                  AND sender_org.status = 'approved'
+                  AND recipient_org.status = 'approved'
+                LIMIT 1 FOR SHARE OF sender, sender_org, recipient, recipient_org, link`,
+              [senderUserId, recipientUserId],
+            );
+            if (!linked.length) return { ok: false, reason: 'not_authorized' };
+          }
+        }
+        const { rows: devices } = await c.query('SELECT user_id, revoked FROM devices WHERE device_key = $1 FOR UPDATE', [deviceKey]);
         if (!devices[0] || devices[0].revoked) return { ok: false, reason: 'device_revoked' };
+        if (devices[0].user_id !== recipientUserId) return { ok: false, reason: 'device_mismatch' };
         await c.query("DELETE FROM inbox WHERE device_key = $1 AND stream = 'to_device' AND expires_at <= $2", [deviceKey, nowMs]);
         const { rows: existing } = await c.query(
           "SELECT 1 FROM inbox WHERE device_key = $1 AND stream = 'to_device' AND dedupe_key = $2",
