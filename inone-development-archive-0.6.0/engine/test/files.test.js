@@ -426,3 +426,21 @@ test('параллельные pending reservations не превышают ли
     await s.stop();
   }
 });
+
+
+test('одна upload reservation допускает только один параллельный PUT', async () => {
+  const s = await start();
+  try {
+    const bytes = randomBytes(4096);
+    const created = (await announce(s, s.alice.token, bytes)).json;
+    const results = await Promise.all([
+      putTo(created.uploadUrl, bytes),
+      putTo(created.uploadUrl, bytes),
+    ]);
+    assert.deepEqual(results.map((r) => r.status).sort((a, b) => a - b), [200, 409]);
+    assert.equal((await completeFile(s, s.alice.token, created.fileId)).status, 200,
+      'the winning stream remains completable');
+  } finally {
+    await s.stop();
+  }
+});
