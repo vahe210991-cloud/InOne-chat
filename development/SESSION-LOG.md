@@ -767,3 +767,12 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Exact-main workflows at inspection: five completed PASS and three IN PROGRESS; these are not a substitute for the requested security test matrix. Main protection API reports `protected=false`.
 - No backend source/migration/test/workflow changes. New tests, exploit reproduction, PostgreSQL concurrency/fault injection and full suite are NOT RUN. No local clone/Codespace runner is available in this session; broad backend edits are blocked by repository policy until a complete working copy/test runner is available.
 - Beta 1.0 verdict remains NOT READY for backend security acceptance. SMS confirmation/recovery/provider work excluded; native MLS remains disabled by default; no merge, issue closure or repository setting mutation performed.
+
+
+## 2026-11-24 — Stage 0 continued: B-12..B-15 and overlap review
+
+- Expanded review of canonical backend on main. Confirmed B-12 last-owner/role/audit operations use check-then-write across independent pool queries; B-13 owner/org quota checks are non-atomic preflight reads, and ready-object retention/deletion lifecycle is incomplete; B-15 readiness only pings the store and liveness is exposed as `/healthz`.
+- Refined B-14: current FCM sender already classifies invalid FIDs as permanent `invalid_target`, deletes the matching registration, cancels queued deliveries and has a push regression test. Marked FIXED at source level; DB test execution still required.
+- Confirmed current `main` already contains device-bound signed file downloads (same class of work as PR #86); do not duplicate. PR #42 is only a PostgreSQL workflow against old `inone-engine-poc-0.6.0` paths, not a current-engine transaction fix. PR #65 only hardens one error catch, not the global request boundary.
+- Reviewed mobile code-search results for legacy KeyPackage/to-device endpoint usage; no direct mobile references surfaced in the searched source paths. This is not yet a complete API compatibility proof; inspect Rust/Flutter transport adapters and runtime traces before retiring legacy API.
+- Expanded the Stage 0 report with the updated matrix and exact PR dispositions. No source changes, test runs, issue closures, merges, secret edits or repo setting changes.
