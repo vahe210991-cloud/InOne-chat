@@ -1348,7 +1348,7 @@ if (req.method === 'POST' && fileDone) {
     if (!room || !room.members.includes(d.userId)) return send(res, 403, { error: 'not a member' });
     if (!hasCapability(room, d.userId, 'send_messages')) return send(res, 403, { error: 'missing capability: send_messages' });
   }
-  if (!(await storage.markFileReady(fileId, now()))) return send(res, 409, { error: 'file is not uploaded yet' });
+  if (!(await storage.markFileReady(fileId, now(), d.userId, d.deviceId))) return send(res, 409, { error: 'file is not uploaded, or current device/room authorization is no longer valid' });
   return send(res, 200, { fileId, status: 'ready' });
 }
 const fileLink = p.match(/^\/files\/([^/]+)\/url$/);
