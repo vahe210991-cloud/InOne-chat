@@ -70,3 +70,16 @@ A rollback test triggered by a SQL INSERT failure is not a process-crash test. A
 This PR does not add, remove, or alter a client-owned SQL table, index, column, constraint, or OpenMLS storage dependency. The build_client SQL DDL block in mls-client/src/lib.rs is byte-for-byte identical to the PR base commit b877d883f8ad8c731c784b82729e18f7d5523fc9 (3,212 bytes); the crate Cargo.toml is also byte-for-byte identical to that base. The change is limited to transaction ownership for inbound Commit processing, debug-only failpoints, and integration tests. Existing database files are opened using the same SQLCipher key path and the same migration-before-shared-connection sequence. No data migration is introduced. This is an explicit unchanged-schema compatibility statement, not a claim that every historical database fixture has been independently replayed.
 
 The database open helper does not enable WAL; these tests therefore claim SQLCipher file crash/reopen coverage in the configured default journal mode only. WAL-specific behavior is intentionally not claimed.
+
+
+## Exact-SHA verification update — 2026-11-24
+
+The following source and test changes are present on PR #132 at code-validation SHA `aabc64cc8bb74981fa0fe20c626f48761b556f7d`:
+
+- Welcome group materialization, `client_rooms` and durable Welcome receipt share one transaction-backed OpenMLS provider. Five child-process SQLCipher crash/restart boundaries cover post-materialization, post-index, post-receipt, pre-COMMIT and post-COMMIT.
+- Outbound membership Commit recovery has six child-process crash/restart boundaries covering journal commit, server acceptance, local OpenMLS merge, journal settlement, pre-COMMIT and post-COMMIT. Recovery asserts exact operation replay and one server-side Commit settlement.
+- Inbox ACK transaction tests cover process termination immediately before and after COMMIT.
+
+The exact-SHA Native MLS client validation passed on `aabc64cc8bb74981fa0fe20c626f48761b556f7d`, including canonical Engine B formatting, target checks, P1 MLS regressions, persistent bridge lifecycle tests and OpenMLS attachment/session integration tests. The recovered P0 source workflow also passed. Flutter mobile, Flutter iOS (including unsigned simulator/device-target build), FRB generation (including Android native assets/Keystore smoke and iOS native-assets compile), backend Compose, Dev Container, Email/PostgreSQL and the exact-SHA acceptance gate all passed on the same SHA. The first gate attempt timed out while FRB remained queued; rerunning the gate after FRB completed passed.
+
+This is CI evidence for the default SQLite journal mode only. WAL remains disabled and is not claimed. Physical two-device Android/iOS acceptance and separate CTO/owner review remain outstanding. Accordingly, this ADR remains **Proposed pending independent review**, and Issue #1 remains open pending owner disposition. Native MLS remains disabled by default.

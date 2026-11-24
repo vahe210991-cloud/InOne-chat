@@ -283,3 +283,28 @@ Ahead/behind and changed-file counts below are comparisons of each PR head again
 - No main merge, no issue closure, no PR closure and no branch deletion performed.
 
 **Final recommendation: NOT READY.** Proceed to Beta 1.0 acceptance only after P0 crash consistency, exact-SHA validation, P1 regressions, physical two-device Android/iOS tests and production operations gates are all evidenced.
+
+
+## Addendum — final PR #132 exact-SHA results (2026-11-24)
+
+This addendum supersedes the draft-branch validation statements above where they say PR #132 tests were not yet executed or workflows were queued. PR #132 code-validation SHA `aabc64cc8bb74981fa0fe20c626f48761b556f7d` completed all nine applicable workflows successfully:
+
+| Workflow | Result |
+|---|---|
+| Validate recovered InOne P0 source | PASS |
+| Native MLS client validation | PASS |
+| Flutter mobile validation | PASS |
+| Flutter iOS validation | PASS — unsigned simulator and device-target build |
+| OpenMLS Flutter Rust Bridge generation | PASS — deterministic generation, Android native build/Keystore smoke, iOS native-assets compile |
+| Email delivery and PostgreSQL validation | PASS |
+| Backend Docker Compose runtime acceptance | PASS |
+| Dev Container Compose runtime validation | PASS |
+| InOne exact-SHA acceptance gate | PASS on attempt 2 |
+
+The first acceptance-gate attempt timed out after 120 minutes because the applicable FRB workflow remained queued. FRB later completed successfully, and rerunning only the failed gate produced PASS. This was a workflow scheduling timeout; no code change was required for the rerun.
+
+The Native MLS run passed canonical Engine B formatting, target checks and regression tests, including the new Welcome transaction crash/restart, six outbound membership Commit crash/restart boundaries and inbox ACK before/after-COMMIT tests. The P0 source run passed the OpenMLS client, Rust bridge, PostgreSQL, Node and room-list suites.
+
+These results establish CI evidence on the exact code-validation SHA only. They do not establish physical-device acceptance, live push delivery, production recovery links or production operations readiness. The documentation-only commit adding this addendum has a new SHA and is subject to its own applicable exact-SHA gate.
+
+Issue #1 is implementation- and CI-verified for the covered default SQLite journal mode and is ready for owner review, but remains open pending owner disposition and separate physical Android/iOS runtime acceptance. WAL remains disabled and no WAL-specific guarantee is claimed. `INONE_MLS_NATIVE_ENABLED=false` remains the default. PR #132 remains Draft and is not merged; main remains unchanged.

@@ -116,3 +116,41 @@ Exact-commit CI for `120f5e47bc2d2e6f1b55ce1d12654529d46c056e` was triggered:
 - Flutter Rust Bridge generation, Flutter mobile/iOS and backend/runtime workflows — queued at last observation.
 
 Do not mark any queued workflow as PASS. Issue #1 remains OPEN. Next required implementation is a dedicated SQLCipher child-process test that stages a membership operation, terminates after server acceptance but before local merge, reopens the inviter session, replays the same operation ID/fingerprint, and proves exactly one server epoch advance plus local journal settlement. Physical-device and WAL-specific acceptance remain separate.
+
+
+## Exact-SHA completion update — 2026-11-24
+
+Final code-validation SHA: `aabc64cc8bb74981fa0fe20c626f48761b556f7d`.
+
+All nine applicable PR workflows completed successfully on this exact SHA:
+- Validate recovered InOne P0 source — PASS
+- Native MLS client validation — PASS
+- Flutter mobile validation — PASS
+- Flutter iOS validation — PASS, including unsigned simulator and device-target build
+- OpenMLS Flutter Rust Bridge generation — PASS, including deterministic generation, Android native build/Keystore smoke and iOS native-assets compile
+- Email delivery and PostgreSQL validation — PASS
+- Backend Docker Compose runtime acceptance — PASS
+- Dev Container Compose runtime validation — PASS
+- InOne exact-SHA acceptance gate — PASS on rerun (attempt 2)
+
+The first exact-SHA gate attempt timed out after 120 minutes because the FRB workflow was still queued. The FRB workflow subsequently completed successfully; rerunning only the failed gate then passed. This was a scheduling timeout, not a code-test failure.
+
+The Native MLS validation run passed canonical Engine B format/check/tests, including the newly added Welcome, outbound membership Commit crash/restart and inbox ACK transaction-boundary tests, plus persistent bridge lifecycle and attachment/session integration tests. The P0 source workflow also passed OpenMLS client, Rust bridge, PostgreSQL, Node and room-list regression suites.
+
+These are CI results for the listed source SHA, not physical-device acceptance. The final documentation-only commit that records this evidence will have a new SHA and will receive its own applicable exact-SHA gate.
+
+## Issue #1 disposition
+
+The previously missing Welcome transaction boundary is now covered by a transaction-backed OpenMLS provider and five child-process SQLCipher crash/restart boundaries. Outbound membership Commit recovery is covered at six crash boundaries, with exact operation replay and single server-side settlement assertions. Inbox ACK transaction commit is covered before and after COMMIT. The applicable canonical MLS CI suite passed on `aabc64cc8bb74981fa0fe20c626f48761b556f7d`.
+
+Issue #1 is therefore **implementation- and CI-verified for the covered default-journal-mode crash boundaries**, and is ready for owner review. It remains OPEN pending owner review/closure and separate physical Android/iOS acceptance of the integrated runtime. SQLite WAL is not enabled and no WAL-specific guarantee is claimed. `INONE_MLS_NATIVE_ENABLED=false` remains the default.
+
+## Remaining release gates
+
+- Physical two-device Android/iOS acceptance (Welcome, bidirectional messaging, attachments, offline retry, process restart, ACK, device revocation).
+- Live FCM/APNs push delivery and token lifecycle.
+- Physical recovery-link confirmation and production Universal/App Links using owner-provided domain/app identifiers.
+- Production backup/restore rehearsal, monitoring/alerting, HTTPS/proxy, SMTP/domain and secret-manager configuration.
+- Separate owner approval before merge or production MLS enablement.
+
+Release recommendation remains **NOT READY** until those independent gates are accepted.
