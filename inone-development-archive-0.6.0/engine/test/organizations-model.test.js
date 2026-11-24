@@ -50,11 +50,16 @@ test('комната принадлежит организации: по умо�
   try {
     await store.addAccount(ANNA, 'hash-anna');
     await store.addAccount(BORIS, 'hash-boris');
-    await store.createRoom('!org-room-1:inone.test', ANNA, [ANNA, BORIS], {});
+    await store.addOrgMember(DEFAULT_ORG, ANNA, 'owner', 1);
+    await store.addOrgMember(DEFAULT_ORG, BORIS, 'member', 2);
+    assert.equal(await store.createRoom('!org-room-1:inone.test', ANNA, [ANNA, BORIS], {}), true);
     assert.equal(await store.roomOrg('!org-room-1:inone.test'), DEFAULT_ORG, 'комната по умолчанию в организации по умолчанию');
-    await store.createOrganization({ orgId: 'org-c', name: 'Третья', status: 'pending', createdBy: BORIS, createdAt: 4 });
-    await store.createRoom('!org-room-2:inone.test', BORIS, [BORIS], { orgId: 'org-c' });
+    await store.createOrganization({ orgId: 'org-c', name: 'Третья', status: 'approved', createdBy: BORIS, createdAt: 4 });
+    await store.addOrgMember('org-c', BORIS, 'owner', 5);
+    assert.equal(await store.createRoom('!org-room-2:inone.test', BORIS, [BORIS], { orgId: 'org-c' }), true);
     assert.equal(await store.roomOrg('!org-room-2:inone.test'), 'org-c', 'комната создана в указанной организации');
+    await store.createOrganization({ orgId: 'org-pending', name: 'Ожидает', status: 'pending', createdBy: BORIS, createdAt: 6 });
+    assert.equal((await store.createRoom('!org-room-pending:inone.test', BORIS, [BORIS], { orgId: 'org-pending' })).status, 'org_not_approved');
   } finally {
     await close();
   }
