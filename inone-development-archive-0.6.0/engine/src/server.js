@@ -45,6 +45,11 @@ export const MAX_APPROVAL_CODE_ATTEMPTS = 3;
 export const MAX_PENDING_APPROVALS = 3;
 export const FREE_PIN_ATTEMPTS = 5;
 export const TO_DEVICE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // недоставленная очередь хранится не дольше 30 дней (спецификация)
+const MAX_TO_DEVICE_RECIPIENTS = 100;
+const MAX_TO_DEVICE_MESSAGES = 200;
+const MAX_TO_DEVICE_ITEM_BYTES = 256 * 1024;
+const MAX_TO_DEVICE_TOTAL_BYTES = 1024 * 1024;
+const MAX_TO_DEVICE_QUEUE = 500;
 const SEND_DEDUP_MS = 7 * 24 * 60 * 60 * 1000;             // повтор отправки с тем же номером считается дублем 7 дней
 const MAX_LOCK_MS = 24 * 60 * 60 * 1000;
 const EMAIL_LOCALES = new Set(['hy', 'ru', 'en']);
@@ -1857,9 +1862,20 @@ if (req.method === 'POST' && p === '/login') {
       }
 
       if (req.method === 'POST' && p === '/keys/query') {
-        if (!(await authed(req))) return send(res, 401, { error: 'unauthorized' });
+        const d = await authed(req);
+        if (!d) return send(res, 401, { error: 'unauthorized' });
+        const requested = body?.device_keys;
+        if (!requested || typeof requested !== 'object' || Array.isArray(requested)) {
+          return send(res, 400, { error: 'device_keys must be an object' });
+        }
+        const users = Object.keys(requested);
+        if (users.length > MAX_TO_DEVICE_RECIPIENTS) return send(res, 413, { error: 'too many users in device key query' });
         const out = {};
-        for (const user of Object.keys(body.device_keys || {})) out[user] = await storage.queryDeviceKeys(user);
+        for (const user of users) {
+          // Do not reveal whether an unrelated account has registered devices.
+          if (!(await sharesOrgOrLink(d.userId, user))) { out[user] = {}; continue; }
+          out[user] = await storage.queryDeviceKeys(user);
+        }
         return send(res, 200, { device_keys: out, failures: {} });
       }
 
@@ -1884,17 +1900,60 @@ if (req.method === 'POST' && p === '/login') {
         const [, , rawType = '', rawTxn = ''] = p.split('/');
         const type = decodeURIComponent(rawType);
         const txn = decodeURIComponent(rawTxn);
-        // Повтор с тем же номером (клиент не получил ответ) не создаёт второй копии (C-05).
-        if (txn && !(await storage.recordSend(key(d.userId, d.deviceId), type, txn, now(), SEND_DEDUP_MS))) {
-          return send(res, 200, {});
+        if (!type || type.length > 128 || !txn || txn.length > 128) {
+          return send(res, 400, { error: 'event type and transaction ID are required and must be at most 128 characters' });
         }
-        for (const [user, devs] of Object.entries(body.messages || {})) {
-          for (const [dev2, content] of Object.entries(devs)) {
-            const k2 = key(user, dev2);
-            const target = await storage.deviceRecord(k2);
-            if (!target || target.revoked) continue; // отключённым устройствам не доставляем
-            // Событие получает номер и срок хранения: без подтверждения оно удаляется через 30 дней (C-05).
-            await storage.enqueue(k2, 'to_device', { type, sender: d.userId, content }, null, now() + TO_DEVICE_TTL_MS);
+        const rate = await checkRate('toDevicePerAccount', d.userId);
+        if (!rate.allowed) return send(res, 429, { error: 'too many to-device messages, try later' });
+
+        const messages = body?.messages;
+        if (!messages || typeof messages !== 'object' || Array.isArray(messages)) {
+          return send(res, 400, { error: 'messages must be an object' });
+        }
+        const recipients = Object.entries(messages);
+        if (recipients.length === 0 || recipients.length > MAX_TO_DEVICE_RECIPIENTS) {
+          return send(res, 413, { error: 'invalid or excessive to-device recipient count' });
+        }
+        const normalized = [];
+        let totalBytes = 0;
+        for (const [user, devs] of recipients) {
+          if (!user || user.length > 255 || !devs || typeof devs !== 'object' || Array.isArray(devs)) {
+            return send(res, 400, { error: 'invalid to-device recipient map' });
+          }
+          for (const [deviceId, content] of Object.entries(devs)) {
+            if (!deviceId || deviceId.length > 255 || ++normalized.length > MAX_TO_DEVICE_MESSAGES) {
+              return send(res, 413, { error: 'too many to-device messages' });
+            }
+            const encoded = JSON.stringify(content);
+            if (encoded === undefined) return send(res, 400, { error: 'to-device content must be JSON serializable' });
+            const bytes = Buffer.byteLength(encoded);
+            if (bytes > MAX_TO_DEVICE_ITEM_BYTES) return send(res, 413, { error: 'to-device message is too large' });
+            totalBytes += bytes;
+            if (totalBytes > MAX_TO_DEVICE_TOTAL_BYTES) return send(res, 413, { error: 'to-device request is too large' });
+            normalized[normalized.length - 1] = { user, deviceId, content };
+          }
+        }
+
+        // Persist the transaction ID before enqueue; if a recipient queue is full, release it so retry is safe.
+        const senderKey = key(d.userId, d.deviceId);
+        if (!(await storage.recordSend(senderKey, type, txn, now(), SEND_DEDUP_MS))) return send(res, 200, {});
+        const dedupeKey = `${d.userId}|${d.deviceId}|${type}|${txn}`;
+        for (const item of normalized) {
+          if (!(await sharesOrgOrLink(d.userId, item.user))) continue;
+          const recipientKey = key(item.user, item.deviceId);
+          const target = await storage.deviceRecord(recipientKey);
+          if (!target || target.revoked) continue;
+          const queued = await storage.enqueueToDevice(
+            recipientKey,
+            { type, sender: d.userId, content: item.content },
+            dedupeKey,
+            now() + TO_DEVICE_TTL_MS,
+            now(),
+            MAX_TO_DEVICE_QUEUE,
+          );
+          if (!queued.ok && queued.reason === 'queue_full') {
+            await storage.releaseSend(senderKey, type, txn);
+            return send(res, 429, { error: 'recipient to-device queue is full', code: 'to_device_queue_full' });
           }
         }
         return send(res, 200, {});
