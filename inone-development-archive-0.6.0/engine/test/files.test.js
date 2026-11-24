@@ -394,3 +394,22 @@ test('неудачная загрузка освобождает квоту и �
     await s.stop();
   }
 });
+
+
+test('параллельные резервации разных владельцев не превышают квоту организации', async () => {
+  const s = await start();
+  try {
+    const { orgs } = await s.alice.raw('GET', '/orgs/mine');
+    const orgId = orgs[0]?.orgId;
+    assert.ok(orgId, 'test users belong to the default organization');
+    const setting = await s.alice.raw('POST', `/orgs/${enc(orgId)}/settings`, { field: 'fileQuotaBytes', value: 1000 });
+    assert.equal(setting.status, undefined); // ChatClient.raw returns the parsed response on success.
+    const requests = await Promise.all(Array.from({ length: 20 }, (_, index) =>
+      announce(s, index % 2 === 0 ? s.alice.token : s.bob.token, Buffer.alloc(100))));
+    assert.equal(requests.filter((r) => r.status === 200).length, 10,
+      'organization advisory lock serializes reservations across owners');
+    assert.equal(requests.filter((r) => r.status === 413 && r.json?.code === 'org_quota_exceeded').length, 10);
+  } finally {
+    await s.stop();
+  }
+});
