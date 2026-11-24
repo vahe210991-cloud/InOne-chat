@@ -74,7 +74,7 @@ test('keys/query and to-device delivery do not expose or reach unrelated organiz
 test('active organization link permits device-key query and encrypted to-device delivery', async () => {
   const s = await start();
   try {
-    await s.bob.raw('POST', '/keys/upload', { device_keys: deviceKeys });
+    await s.bob.raw('POST', '/keys/upload', { device_keys: deviceKeys, one_time_keys: { 'signed_curve25519:otk-1': { key: 'bob-one-time-key' } } });
     await s.linkOrganizations();
     const queried = await s.alice.raw('POST', '/keys/query', { device_keys: { [BOB]: {} } });
     assert.equal(queried.device_keys[BOB].B_PHONE.keys.ed25519, 'bob-ed25519');
