@@ -116,3 +116,21 @@ Do not fill these gaps by assumption. Obtain schema/source evidence and product-
 ## 7. Open risk / owner decisions
 
 The highest residual risk is unresolved policy, not a coding detail: exact global uniqueness rules, existing-account linking, Propo Seller Account relationship, credential ownership, and retention/deletion. These must be resolved before the schema and migration are frozen.
+
+
+## 8. Additional source evidence from current InOne backend
+
+- Production entrypoint `src/main.js` creates PostgreSQL pool, runs migrations, constructs the persistent store and passes it to `createServer`. The in-memory fallback exists at the `createServer` boundary for tests/development; production bootstrap must remain explicit.
+- Current schema includes `accounts`, `profiles`, `phones`, `provider_links`, `backup_emails`, `email_codes`, `auth_tokens`, device/session tables and recovery/approval state. These are InOne-local records.
+- `migrate.js` reports schema version `0033-org-request-document-metadata`; `schema.sql` header still calls itself a 0.6.0-alpha.1 PoC schema. Resolve the version/provenance mismatch as part of the schema inventory.
+- Existing `identity-db.test.js` and `providers-db.test.js` define conditional PostgreSQL integration coverage for local identity persistence and uniqueness. They are skipped when `DATABASE_URL` is absent; no current-session execution is claimed.
+- Current account ID generation is `u` + 24 random hex characters; password hashing uses scrypt. These are migration compatibility facts, not necessarily the final canonical Identity format/hash policy.
+
+### New threat / migration considerations
+
+| ID | Threat / gap | Required action |
+|---|---|---|
+| IAM-19 | Extraction breaks foreign keys from rooms, orgs, devices, files and MLS tables to local `accounts` | Keep product-local subject mapping/projection; do not move/delete `accounts` as a first step. Inventory every FK before migration. |
+| IAM-20 | Local and central user IDs differ or are mapped inconsistently | Maintain immutable mapping table and uniqueness; deterministic backfill with collision report and referential-integrity checks. |
+| IAM-21 | Schema version/header drift leads to wrong migration baseline | Treat migration runner and applied migration ledger as authority; reconcile `schema.sql` header and verify actual production DB migration state separately. |
+| IAM-22 | Production starts with in-memory identity store due missing injection | Audit all startup entry points; add production fail-fast assertion and startup integration test if needed. |
