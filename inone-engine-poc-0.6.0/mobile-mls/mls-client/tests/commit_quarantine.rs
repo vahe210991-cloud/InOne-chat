@@ -43,7 +43,7 @@ fn permanent_commit_failure_is_quarantined_across_restart_without_poisoning_othe
 
     assert!(engine
         .command(&format!(
-            "BADCOMMIT {target_room} @alice-quarantine:inone.test"
+            "BADCOMMIT {target_room} @alice-quarantine:inone.test A_QUARANTINE"
         ))
         .starts_with("OK "));
 
@@ -53,7 +53,7 @@ fn permanent_commit_failure_is_quarantined_across_restart_without_poisoning_othe
         "a permanently invalid Commit in one room must not stop healthy rooms"
     );
     let reason = bob
-        .quarantined_commit_reason(target_room, 3)
+        .quarantined_commit_reason(target_room, 2)
         .unwrap()
         .expect("permanent Commit failure is durably quarantined");
     assert!(reason.contains("Commit encoding is invalid"), "{reason}");
@@ -74,7 +74,7 @@ fn permanent_commit_failure_is_quarantined_across_restart_without_poisoning_othe
     );
     assert!(bob.sync().unwrap().is_empty());
     assert!(bob
-        .quarantined_commit_reason(target_room, 3)
+        .quarantined_commit_reason(target_room, 2)
         .unwrap()
         .is_some());
     assert!(bob.send_text(target_room, "blocked").is_err());
