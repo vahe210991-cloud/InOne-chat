@@ -1875,12 +1875,24 @@ if (req.method === 'POST' && p === '/login') {
       if (req.method === 'POST' && p === '/keys/claim') {
         const claimer = await authed(req);
         if (!claimer) return send(res, 401, { error: 'unauthorized' });
+        const requested = body?.one_time_keys;
+        if (!requested || typeof requested !== 'object' || Array.isArray(requested)) {
+          return send(res, 400, { error: 'one_time_keys must be an object' });
+        }
+        const users = Object.entries(requested);
+        if (users.length > MAX_TO_DEVICE_RECIPIENTS) return send(res, 413, { error: 'too many users in one-time key claim' });
+        let deviceCount = 0;
         const out = {};
-        for (const [user, devs] of Object.entries(body.one_time_keys || {})) {
-          if (!(await sharesOrgOrLink(claimer.userId, user))) { out[user] = {}; continue; }
+        for (const [user, devs] of users) {
+          if (!user || user.length > 255 || !devs || typeof devs !== 'object' || Array.isArray(devs)) {
+            return send(res, 400, { error: 'invalid one-time key recipient map' });
+          }
           out[user] = {};
           for (const dev2 of Object.keys(devs)) {
-            const claimed = await storage.claimOneTimeKey(key(user, dev2)); // одноразовый ключ выдаётся один раз
+            if (!dev2 || dev2.length > 255 || ++deviceCount > MAX_TO_DEVICE_MESSAGES) {
+              return send(res, 413, { error: 'too many devices in one-time key claim' });
+            }
+            const claimed = await storage.claimOneTimeKey(key(user, dev2), claimer.userId, user);
             if (claimed) out[user][dev2] = claimed;
           }
         }
