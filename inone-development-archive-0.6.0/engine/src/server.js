@@ -2558,6 +2558,10 @@ if (req.method === 'POST' && p === '/login') {
         }
         const room = await storage.getRoom(roomId);
         if (!room || !room.members.includes(d.userId)) return send(res, 403, { error: 'not a room member' });
+        const targetAccess = await orgGate(targetUserId, room.orgId);
+        if (targetAccess) {
+          return send(res, 403, { error: 'target user is not eligible for this room', code: 'target_not_authorized' });
+        }
         if (room.members.includes(targetUserId)) return send(res, 409, { error: 'already a member', code: 'already_member' });
         if (d.userId !== room.owner && !hasCapability(room, d.userId, 'invite_members')) {
           return send(res, 403, { error: 'missing capability: invite_members' });
@@ -2590,9 +2594,13 @@ if (req.method === 'POST' && p === '/login') {
         if (typeof claimId !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(claimId)) {
           return send(res, 400, { error: 'claimId must be 16-128 URL-safe characters' });
         }
+        const targetUserId = decodeURIComponent(mlsClaim[1]);
+        if (!(await sharesOrgOrLink(d.userId, targetUserId))) {
+          return send(res, 403, { error: 'not authorized to claim this user KeyPackage', code: 'org_not_member' });
+        }
         const rate = await checkRate('mlsClaimPerAccount', d.userId);
         if (!rate.allowed) return send(res, 429, { error: 'too many key requests, try later' });
-        const claimed = await storage.mlsClaimKeyPackages(decodeURIComponent(mlsClaim[1]), d.userId, d.deviceId, claimId, null, now());
+        const claimed = await storage.mlsClaimKeyPackages(targetUserId, d.userId, d.deviceId, claimId, null, now());
         if (!claimed.ok) return send(res, 409, { error: claimed.reason, code: claimed.reason });
         return send(res, 200, { claimId, packages: claimed.packages.map((item) => ({ deviceId: item.deviceId, package: item.package.toString('base64') })) });
       }
