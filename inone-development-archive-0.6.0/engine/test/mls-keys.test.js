@@ -108,6 +108,23 @@ test('неверные пакеты отклоняются: пустой спи�
   }
 });
 
+
+test('parallel KeyPackage uploads cannot exceed the per-device unused package quota', async () => {
+  const { base, stop } = await start();
+  try {
+    const alice = await ChatClient.create(base, ALICE, 'A_PHONE', PW);
+    const uploads = await Promise.allSettled(Array.from({ length: 3 }, (_, batch) =>
+      alice.raw('POST', '/mls/key-packages', {
+        packages: Array.from({ length: 40 }, (_, i) => pkg(`quota-${batch}-${i}`)),
+      })));
+    assert.equal(uploads.filter((result) => result.status === 'fulfilled').length, 2);
+    assert.equal(uploads.filter((result) => result.status === 'rejected' && result.reason.status === 409).length, 1);
+    assert.equal((await alice.raw('GET', '/mls/key-packages/count')).available, 80);
+  } finally {
+    await stop();
+  }
+});
+
 test('без входа пакеты не загружаются и не отдаются', async () => {
   const { base, stop } = await start();
   try {
