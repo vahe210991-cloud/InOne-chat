@@ -141,7 +141,7 @@ fn испорченный_коммит_одной_комнаты_не_остан
         .unwrap()
         .expect("первая комната требует восстановления");
     assert!(
-        reason.contains("RecoveryRequired"),
+        reason.contains("Commit encoding is invalid"),
         "причина названа: {reason}"
     );
     let refused = bob.send_text(broken, "нельзя").unwrap_err();
