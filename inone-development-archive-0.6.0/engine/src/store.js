@@ -2006,9 +2006,9 @@ async mlsPendingRemovalsFor(userId) {
           }
         }
         const requiredDevices = new Map();
-        requiredDevices.set(`${senderId}| ${deviceId}`.replace('| ', '|'), { userId: senderId, deviceId, sender: true });
+        requiredDevices.set(JSON.stringify([senderId, deviceId]), { userId: senderId, deviceId, sender: true });
         for (const welcome of welcomes) {
-          requiredDevices.set(`${welcome.userId}|${welcome.deviceId}`, { userId: welcome.userId, deviceId: welcome.deviceId, sender: false });
+          requiredDevices.set(JSON.stringify([welcome.userId, welcome.deviceId]), { userId: welcome.userId, deviceId: welcome.deviceId, sender: false });
         }
         for (const entry of [...requiredDevices.values()].sort((a, b) =>
           `${a.userId}|${a.deviceId}`.localeCompare(`${b.userId}|${b.deviceId}`))) {
