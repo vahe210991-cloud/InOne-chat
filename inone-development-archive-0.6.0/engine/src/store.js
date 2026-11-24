@@ -845,9 +845,37 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
       const { rowCount } = await pool.query("UPDATE files SET status = 'uploaded' WHERE file_id = $1 AND status = 'uploading'", [fileId]);
       return rowCount === 1;
     },
-    async markFileReady(fileId, nowMs) {
-      const { rowCount } = await pool.query("UPDATE files SET status = 'ready', completed_at = $2 WHERE file_id = $1 AND status = 'uploaded'", [fileId, nowMs]);
-      return rowCount === 1;
+    async markFileReady(fileId, nowMs, ownerId, ownerDeviceId) {
+      return inTransaction(async (c) => {
+        const { rows: files } = await c.query(
+          "SELECT owner_id, owner_device_id, room_id FROM files WHERE file_id = $1 AND status = 'uploaded' FOR UPDATE",
+          [fileId],
+        );
+        const file = files[0];
+        if (!file || file.owner_id !== ownerId || file.owner_device_id !== ownerDeviceId) return false;
+        const { rows: devices } = await c.query(
+          'SELECT revoked FROM devices WHERE user_id = $1 AND device_id = $2 FOR SHARE',
+          [ownerId, ownerDeviceId],
+        );
+        if (!devices[0] || devices[0].revoked) return false;
+        if (file.room_id) {
+          const access = await lockRoomWriteAccess(c, file.room_id, ownerId);
+          if (access) return false;
+          const { rows: permissions } = await c.query(
+            `SELECT r.owner, rm.capabilities
+               FROM rooms r JOIN room_members rm ON rm.room_id = r.room_id
+              WHERE r.room_id = $1 AND rm.user_id = $2
+              FOR SHARE OF r, rm`,
+            [file.room_id, ownerId],
+          );
+          if (!permissions[0] || (permissions[0].owner !== ownerId && !permissions[0].capabilities.includes('send_messages'))) return false;
+        }
+        const { rowCount } = await c.query(
+          "UPDATE files SET status = 'ready', completed_at = $2 WHERE file_id = $1 AND status = 'uploaded'",
+          [fileId, nowMs],
+        );
+        return rowCount === 1;
+      });
     },
     async countPendingFiles(ownerId) {
       const { rows } = await pool.query("SELECT COUNT(*)::int AS n FROM files WHERE owner_id = $1 AND status IN ('pending', 'uploading', 'uploaded')", [ownerId]);
