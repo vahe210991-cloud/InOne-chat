@@ -5,6 +5,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { Readable } from 'node:stream';
 import { createServer } from '../src/server.js';
 import { ChatClient, DEFAULT_PASSWORD as PW } from '../src/client.js';
 import { createFsObjectStore } from '../src/object-store.js';
@@ -90,5 +91,31 @@ test('квота по объёму: сверх лимита загрузка н�
     assert.equal((await announce(1)).status, 413, 'и даже один байт сверх');
   } finally {
     await s.stop();
+  }
+});
+
+
+test('streaming object writes publish atomically and remove temporary files after abort', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'inone-stream-'));
+  try {
+    const store = createFsObjectStore(dir);
+    const id = randomBytes(16).toString('hex');
+    const chunks = [Buffer.from('opaque-'), Buffer.from('ciphertext')];
+    const written = await store.putStream(id, Readable.from(chunks));
+    assert.equal(written.size, 17);
+    assert.deepEqual(readdirSync(dir), [id], 'only the finalized object is visible');
+    const read = [];
+    for await (const chunk of store.getStream(id)) read.push(Buffer.from(chunk));
+    assert.deepEqual(Buffer.concat(read), Buffer.concat(chunks));
+
+    const failedId = randomBytes(16).toString('hex');
+    const broken = Readable.from((async function* () {
+      yield Buffer.from('partial');
+      throw new Error('client disconnected');
+    })());
+    await assert.rejects(store.putStream(failedId, broken), /client disconnected/);
+    assert.deepEqual(readdirSync(dir), [id], 'failed stream leaves no temp or published object');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });
