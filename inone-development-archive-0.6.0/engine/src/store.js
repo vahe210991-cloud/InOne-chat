@@ -800,13 +800,13 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
           await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [lockKey]);
         }
         const { rows: pendingRows } = await c.query(
-          "SELECT COUNT(*)::int AS n FROM files WHERE owner_id = $1 AND status IN ('pending', 'uploaded')",
+          "SELECT COUNT(*)::int AS n FROM files WHERE owner_id = $1 AND status IN ('pending', 'uploading', 'uploaded')",
           [ownerId],
         );
         if (pendingRows[0].n >= pendingLimit) return { ok: false, reason: 'pending_limit' };
         if (ownerQuotaBytes !== null) {
           const { rows } = await c.query(
-            "SELECT COALESCE(SUM(size), 0)::bigint AS n FROM files WHERE owner_id = $1 AND status IN ('pending', 'uploaded', 'ready', 'deleting')",
+            "SELECT COALESCE(SUM(size), 0)::bigint AS n FROM files WHERE owner_id = $1 AND status IN ('pending', 'uploading', 'uploaded', 'ready', 'deleting')",
             [ownerId],
           );
           if (Number(rows[0].n) + size > ownerQuotaBytes) return { ok: false, reason: 'owner_quota' };
@@ -834,8 +834,16 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
       if (!r) return null;
       return { fileId: r.file_id, ownerId: r.owner_id, ownerDeviceId: r.owner_device_id, roomId: r.room_id, kind: r.kind, size: Number(r.size), sha256: r.sha256, status: r.status, createdAt: Number(r.created_at), completedAt: r.completed_at === null ? null : Number(r.completed_at) };
     },
+    async claimFileUpload(fileId, ownerId, ownerDeviceId) {
+      const { rowCount } = await pool.query(
+        "UPDATE files SET status = 'uploading' WHERE file_id = $1 AND owner_id = $2 AND owner_device_id = $3 AND status = 'pending'",
+        [fileId, ownerId, ownerDeviceId],
+      );
+      return rowCount === 1;
+    },
     async markFileUploaded(fileId) {
-      await pool.query("UPDATE files SET status = 'uploaded' WHERE file_id = $1 AND status = 'pending'", [fileId]);
+      const { rowCount } = await pool.query("UPDATE files SET status = 'uploaded' WHERE file_id = $1 AND status = 'uploading'", [fileId]);
+      return rowCount === 1;
     },
     async markFileReady(fileId, nowMs) {
       const { rowCount } = await pool.query("UPDATE files SET status = 'ready', completed_at = $2 WHERE file_id = $1 AND status = 'uploaded'", [fileId, nowMs]);
@@ -854,7 +862,7 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
         const { rows } = await c.query(
           `WITH candidates AS (
              SELECT file_id FROM files
-              WHERE (status IN ('pending', 'uploaded') AND created_at < $1) OR status = 'deleting'
+              WHERE (status IN ('pending', 'uploading', 'uploaded') AND created_at < $1) OR status = 'deleting'
               ORDER BY created_at, file_id
               FOR UPDATE SKIP LOCKED
               LIMIT 100
@@ -869,7 +877,7 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
     },
     async markFileDeleting(fileId) {
       const { rowCount } = await pool.query(
-        "UPDATE files SET status = 'deleting' WHERE file_id = $1 AND status IN ('pending', 'uploaded')",
+        "UPDATE files SET status = 'deleting' WHERE file_id = $1 AND status IN ('pending', 'uploading', 'uploaded')",
         [fileId],
       );
       return rowCount === 1;
