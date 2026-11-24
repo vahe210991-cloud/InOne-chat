@@ -33,7 +33,7 @@ async function start({ rateLimits } = {}) {
   await store.addOrgMember(ORG_A, ALICE, 'owner', 3);
   await store.addOrgMember(ORG_B, BOB, 'owner', 4);
   return {
-    base, store, alice, bob,
+    base, store, pool: db?.pool, alice, bob,
     async linkOrganizations() {
       const proposed = await alice.raw('POST', `/orgs/${ORG_A}/links`, { targetOrgId: ORG_B });
       await bob.raw('POST', `/orgs/${ORG_B}/links/${enc(proposed.linkId)}/accept`, {});
@@ -126,6 +126,60 @@ test('oversized to-device payload is rejected before enqueue', async () => {
     const queue = await s.store.drainQueue(`${BOB}|B_PHONE`, 0, 0, Date.now());
     assert.equal(queue.filter((event) => event.stream === 'to_device').length, 0);
   } finally {
+    await s.stop();
+  }
+});
+
+
+test('PostgreSQL: to-device authorization rechecks an organization link after concurrent revocation', { skip: !process.env.DATABASE_URL }, async () => {
+  const s = await start();
+  const originalConnect = s.pool.connect.bind(s.pool);
+  let releaseRevoke;
+  try {
+    await s.linkOrganizations();
+    let signalRevokeLock;
+    let signalSendAuthorization;
+    const revokeLockReady = new Promise((resolve) => { signalRevokeLock = resolve; });
+    const sendAuthorizationStarted = new Promise((resolve) => { signalSendAuthorization = resolve; });
+    const revokeGate = new Promise((resolve) => { releaseRevoke = resolve; });
+    let sendSignalled = false;
+
+    s.pool.connect = async (...args) => {
+      if (args.length > 0) return originalConnect(...args);
+      const client = await originalConnect();
+      const originalQuery = client.query.bind(client);
+      client.query = async (query, ...params) => {
+        const sql = typeof query === 'string' ? query : query?.text ?? '';
+        if (sql.includes('UPDATE org_links SET status')) {
+          const result = await originalQuery(query, ...params);
+          signalRevokeLock();
+          await revokeGate;
+          return result;
+        }
+        if (!sendSignalled && sql.includes('JOIN org_links link')) {
+          sendSignalled = true;
+          signalSendAuthorization();
+        }
+        return originalQuery(query, ...params);
+      };
+      return client;
+    };
+
+    const revoking = s.bob.raw('POST', `/orgs/${ORG_B}/links/${enc((await s.store.orgLinksFor(ORG_B))[0].linkId)}/revoke`, {});
+    await revokeLockReady;
+    const sending = s.alice.raw('PUT', '/sendToDevice/m.room.encrypted/txn-race-revoke-0001', {
+      messages: { [BOB]: { B_PHONE: { ciphertext: 'opaque-ciphertext' } } },
+    });
+    await sendAuthorizationStarted;
+    releaseRevoke();
+    await revoking;
+    await sending;
+    const queue = await s.store.drainQueue(`${BOB}|B_PHONE`, 0, 0, Date.now());
+    assert.equal(queue.filter((event) => event.stream === 'to_device').length, 0,
+      'a send waiting behind revocation must not enqueue to a newly unrelated recipient');
+  } finally {
+    releaseRevoke?.();
+    s.pool.connect = originalConnect;
     await s.stop();
   }
 });
