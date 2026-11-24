@@ -957,6 +957,38 @@ export function createMemoryStore({ pinPepper }) {
       }
     },
     mlsClaimKeyPackages(targetUserId, requesterUserId, requesterDeviceId, claimId, roomId, nowMs) {
+      const hasOrgAccess = (userId, orgId) => {
+        if (orgMembers.get(orgId)?.has(userId)) return true;
+        return [...orgLinks.values()].some((link) => {
+          if (link.status !== 'active') return false;
+          const memberOrg = link.orgA === orgId ? link.orgB : link.orgB === orgId ? link.orgA : null;
+          return memberOrg !== null
+            && organizations.get(memberOrg)?.status === 'approved'
+            && (orgMembers.get(memberOrg)?.has(userId) ?? false);
+        });
+      };
+      if (roomId) {
+        const room = rooms.get(roomId);
+        if (!room) return { ok: false, reason: 'room_not_found' };
+        if (organizations.get(room.orgId)?.status !== 'approved') return { ok: false, reason: 'org_not_approved' };
+        if (!hasOrgAccess(requesterUserId, room.orgId) || !hasOrgAccess(targetUserId, room.orgId)) {
+          return { ok: false, reason: 'not_authorized' };
+        }
+        if (!room.members.has(requesterUserId) || !room.capabilities.get(requesterUserId)?.includes('invite_members')) {
+          return { ok: false, reason: 'invite_capability_required' };
+        }
+      } else if (requesterUserId !== targetUserId) {
+        const requesterOrgs = [...orgMembers.entries()]
+          .filter(([orgId, members]) => members.has(requesterUserId) && organizations.get(orgId)?.status === 'approved')
+          .map(([orgId]) => orgId);
+        const targetOrgs = [...orgMembers.entries()]
+          .filter(([orgId, members]) => members.has(targetUserId) && organizations.get(orgId)?.status === 'approved')
+          .map(([orgId]) => orgId);
+        const shared = requesterOrgs.some((a) => targetOrgs.some((b) =>
+          a === b || [...orgLinks.values()].some((link) =>
+            link.status === 'active' && ((link.orgA === a && link.orgB === b) || (link.orgB === a && link.orgA === b)))));
+        if (!shared) return { ok: false, reason: 'not_authorized' };
+      }
       const claimKey = JSON.stringify([targetUserId, requesterUserId, requesterDeviceId, claimId]);
       const previous = mlsPackageClaims.get(claimKey);
       if (previous) {
