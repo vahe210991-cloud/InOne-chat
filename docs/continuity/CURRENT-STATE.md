@@ -670,6 +670,14 @@ Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone
 - PR #120 remains open as Draft against `main`, not merged. Its README received a preservation correction after review; re-read the latest PR head and require fresh exact-head CI before acceptance.
 
 
+## CTO remediation roadmap — 2026-11-24
+
+- Added the staged Beta 1.0 security remediation and release plan: [CTO roadmap](../../development/roadmaps/2026-11-24-beta1-cto-security-remediation-roadmap.md).
+- The plan defines Gate 0 (close exact-SHA Stage 1 B-01/B-02/B-03), Stage 2 (B-04/B-13 file streaming, atomic quotas and lifecycle), Stage 3 (B-06/B-08/B-09/B-10/B-11/B-15 runtime boundary), Stage 4 (B-07/B-12/B-14 database integrity), Stage 5 (supply-chain/CI/operations), and final release acceptance.
+- Reviewed PR #135 head: `4824dfc3b3f4e3aab5d39b16c1adf934a108d660`. Stage 1 remains NOT ACCEPTED: exact-SHA gate #45432827863 failed; iOS run #45432827935 was queued at last poll. Other listed exact-head workflow runs reported success; see roadmap for precise status.
+- Work remains on `security/beta1-backend-remediation-2026-11-24`; PR #135 remains Draft/open/unmerged. `main` unchanged. SMS excluded; native MLS default-off; WBS v1.1 unchanged.
+- Ready-file retention is an explicit owner decision; no duration or automatic ready-file expiry is authorized by this plan.
+
 ## CTO backend security remediation — 2026-11-24
 
 - Live main advanced to `02880940c1e4d8261405fbeaa01f40879eb44f3a` (PR #132 included).
