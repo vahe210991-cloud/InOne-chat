@@ -548,3 +548,13 @@ Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone
 - Implemented in this branch: GET /rooms/mine; public group search/join; room metadata/member/capability reads; capability-gated name/visibility/join-policy settings; native MLS invite when Engine B is active; read markers after durable SQLCipher history; organization roster and owner/admin member add/remove/role changes; organization settings, settings audit log, admin-action log and organization links; profile locale and remote device inventory/revocation. Workspace actions without backend routes, unsupported avatar/publication actions and Feed/Calls navigation are hidden; see the latest sections in development/reports/2026-11-23-beta1-screen-backend-wiring.md.
 - Read `development/reports/2026-11-23-beta1-screen-backend-wiring.md` and `mobile/API-CONTRACTS-BETA-1.md` before further changes.
 - Keep PR #128 and #130 untouched, preserve Engine B, Firebase Push, existing session/navigation, stable IDs, SQLCipher and native MLS default-off. Continue only against verified existing Beta 1.0 backend routes; do not invent endpoints or wire Beta 2.0 placeholder screens.
+
+## Next session — CTO backend security remediation (2026-11-24)
+
+1. Start from `main` SHA `02880940c1e4d8261405fbeaa01f40879eb44f3a` and task branch `security/beta1-backend-remediation-2026-11-24`; first verify both refs have not moved.
+2. Read `development/reports/2026-11-24-cto-backend-security-remediation-stage0.md` and inspect the complete patches/ancestry for open PRs #42, #63, #65, #66, #86 and #89 before porting any overlapping work.
+3. Obtain an authorized complete clone/Codespace and runner. Do not use piecemeal repository API edits for broad backend changes.
+4. Stage 1: fix B-01..B-03 with legacy endpoint/client compatibility, negative tests, PostgreSQL concurrency and fault-injection tests.
+5. Stage 2: fix B-04/B-13 with streaming, quotas, atomic reservations, cleanup and file lifecycle regression tests.
+6. Continue runtime, database and supply-chain stages only after prior stage acceptance.
+7. Keep PR Draft; no merge, no issue closure, no main-protection mutation, no secret changes, no SMS work and no native MLS enablement without owner approval.
