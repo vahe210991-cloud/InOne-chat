@@ -84,6 +84,57 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
     return roomMembership.length ? null : 'not_member';
   }
 
+  async function lockUserOrgAccess(client, userId, orgId) {
+    const { rows: direct } = await client.query(
+      'SELECT 1 FROM org_members WHERE org_id = $1 AND user_id = $2 FOR SHARE',
+      [orgId, userId],
+    );
+    if (direct.length) return true;
+    const { rows: linked } = await client.query(
+      `SELECT 1
+         FROM org_members member
+         JOIN organizations member_org ON member_org.org_id = member.org_id
+         JOIN org_links link
+           ON link.status = 'active'
+          AND ((link.org_a = member.org_id AND link.org_b = $1)
+            OR (link.org_b = member.org_id AND link.org_a = $1))
+        WHERE member.user_id = $2 AND member_org.status = 'approved'
+        LIMIT 1 FOR SHARE OF member, member_org, link`,
+      [orgId, userId],
+    );
+    return linked.length > 0;
+  }
+
+  async function lockUsersShareOrgOrLink(client, userA, userB) {
+    if (userA === userB) return true;
+    const { rows: sameOrg } = await client.query(
+      `SELECT 1
+         FROM org_members a
+         JOIN organizations org_a ON org_a.org_id = a.org_id
+         JOIN org_members b ON b.org_id = a.org_id AND b.user_id = $2
+         JOIN organizations org_b ON org_b.org_id = b.org_id
+        WHERE a.user_id = $1 AND org_a.status = 'approved' AND org_b.status = 'approved'
+        LIMIT 1 FOR SHARE OF a, org_a, b, org_b`,
+      [userA, userB],
+    );
+    if (sameOrg.length) return true;
+    const { rows: linked } = await client.query(
+      `SELECT 1
+         FROM org_members a
+         JOIN organizations org_a ON org_a.org_id = a.org_id
+         JOIN org_members b ON b.user_id = $2
+         JOIN organizations org_b ON org_b.org_id = b.org_id
+         JOIN org_links link
+           ON link.status = 'active'
+          AND ((link.org_a = a.org_id AND link.org_b = b.org_id)
+            OR (link.org_b = a.org_id AND link.org_a = b.org_id))
+        WHERE a.user_id = $1 AND org_a.status = 'approved' AND org_b.status = 'approved'
+        LIMIT 1 FOR SHARE OF a, org_a, b, org_b, link`,
+      [userA, userB],
+    );
+    return linked.length > 0;
+  }
+
   return {
     /** Регистрация: false, если логин уже занят. Гонка двух регистраций решается уникальным ключом. */
     async addAccount(userId, passwordHash, opts = {}) {
