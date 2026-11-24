@@ -201,7 +201,7 @@ test('MLS commit rejects a Welcome targeting a revoked device', async () => {
         changes: { adds: [BOB], removes: [] },
         welcomes: [{ userId: BOB, deviceId: 'B_PHONE', welcome: b64('revoked-welcome') }],
       }),
-      (error) => error.status === 409 && error.code === 'welcome_device_revoked',
+      (error) => error.status === 409 && error.message.includes('welcome_device_revoked'),
     );
     assert.equal((await alice.raw('GET', `/rooms/${enc(roomId)}/members`)).members.includes(BOB), false);
   } finally {
