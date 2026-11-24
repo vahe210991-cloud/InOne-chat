@@ -141,8 +141,8 @@ fn испорченный_коммит_одной_комнаты_не_остан
         .unwrap()
         .expect("первая комната требует восстановления");
     assert!(
-        reason.contains("восстановление"),
-        "причина названа: {reason}"
+        reason.contains("RecoveryRequired"),
+        "malformed Commit is classified as a room-scoped RecoveryRequired condition: {reason}"
     );
     let refused = bob.send_text(broken, "нельзя").unwrap_err();
     assert!(
