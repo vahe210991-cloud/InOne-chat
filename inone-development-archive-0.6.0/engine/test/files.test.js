@@ -354,3 +354,27 @@ test('ошибка удаления сохраняет tombstone и повтор
     await s.stop();
   }
 });
+
+
+test('upload and completion fail closed after room membership is revoked', async () => {
+  const s = await start();
+  try {
+    const beforePut = randomBytes(64);
+    const first = (await announce(s, s.bob.token, beforePut)).json;
+    await s.alice.raw('DELETE', `/rooms/${enc(ROOM)}/members/${enc(BOB)}`);
+    assert.equal((await putTo(first.uploadUrl, beforePut)).status, 403,
+      'membership revoked after announce is revalidated after the stream');
+    assert.equal((await completeFile(s, s.bob.token, first.fileId)).status, 409,
+      'a rejected upload cannot be completed');
+
+    await s.alice.raw('POST', `/rooms/${enc(ROOM)}/members`, { userId: BOB });
+    const secondBytes = randomBytes(72);
+    const second = (await announce(s, s.bob.token, secondBytes)).json;
+    assert.equal((await putTo(second.uploadUrl, secondBytes)).status, 200);
+    await s.alice.raw('DELETE', `/rooms/${enc(ROOM)}/members/${enc(BOB)}`);
+    assert.equal((await completeFile(s, s.bob.token, second.fileId)).status, 403,
+      'membership revoked between PUT and complete blocks ready transition');
+  } finally {
+    await s.stop();
+  }
+});
