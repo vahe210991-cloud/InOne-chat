@@ -107,6 +107,7 @@ test('streaming object writes publish atomically and remove temporary files afte
     const read = [];
     for await (const chunk of await store.getStream(id)) read.push(Buffer.from(chunk));
     assert.deepEqual(Buffer.concat(read), Buffer.concat(chunks));
+    assert.equal(await store.getStream(randomBytes(16).toString('hex')), null, 'missing object is detected before HTTP headers are sent');
 
     const failedId = randomBytes(16).toString('hex');
     const broken = Readable.from((async function* () {
