@@ -1557,20 +1557,41 @@ async mlsPendingRemovalsFor(userId) {
     },
 
     async mlsAvailableCount(userId, deviceId, nowMs) {
-      const { rows } = await pool.query('SELECT COUNT(*)::int AS n FROM mls_key_packages WHERE user_id = $1 AND device_id = $2 AND consumed_at IS NULL AND last_resort = FALSE AND created_at >= $3', [userId, deviceId, nowMs - MLS_REGULAR_MAX_AGE_MS]);
+      const { rows } = await pool.query(
+        `SELECT COUNT(*)::int AS n
+           FROM mls_key_packages kp
+           JOIN devices d ON d.user_id = kp.user_id AND d.device_id = kp.device_id
+          WHERE kp.user_id = $1 AND kp.device_id = $2 AND NOT d.revoked
+            AND kp.consumed_at IS NULL AND kp.last_resort = FALSE AND kp.created_at >= $3`,
+        [userId, deviceId, nowMs - MLS_REGULAR_MAX_AGE_MS],
+      );
       return rows[0].n;
     },
     async mlsStoreLastResort(userId, deviceId, bytes, createdAt) {
-      await inTransaction(async (c) => {
+      return inTransaction(async (c) => {
+        const { rows: devices } = await c.query(
+          'SELECT revoked FROM devices WHERE user_id = $1 AND device_id = $2 FOR UPDATE',
+          [userId, deviceId],
+        );
+        if (!devices[0] || devices[0].revoked) return false;
         await c.query('DELETE FROM mls_key_packages WHERE user_id = $1 AND device_id = $2 AND last_resort = TRUE', [userId, deviceId]);
         await c.query('INSERT INTO mls_key_packages (user_id, device_id, package, created_at, last_resort) VALUES ($1, $2, $3, $4, TRUE)', [userId, deviceId, bytes, createdAt]);
+        return true;
       });
     },
 
     async mlsStoreKeyPackages(userId, deviceId, packages, createdAt) {
-      for (const bytes of packages) {
-        await pool.query('INSERT INTO mls_key_packages (user_id, device_id, package, created_at) VALUES ($1, $2, $3, $4)', [userId, deviceId, bytes, createdAt]);
-      }
+      return inTransaction(async (c) => {
+        const { rows: devices } = await c.query(
+          'SELECT revoked FROM devices WHERE user_id = $1 AND device_id = $2 FOR UPDATE',
+          [userId, deviceId],
+        );
+        if (!devices[0] || devices[0].revoked) return false;
+        for (const bytes of packages) {
+          await c.query('INSERT INTO mls_key_packages (user_id, device_id, package, created_at) VALUES ($1, $2, $3, $4)', [userId, deviceId, bytes, createdAt]);
+        }
+        return true;
+      });
     },
 
     /** Durable KeyPackage reservation. Repeated claim IDs return the exact same package set. */
