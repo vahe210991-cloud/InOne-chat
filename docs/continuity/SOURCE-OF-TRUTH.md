@@ -209,3 +209,17 @@ The owner has approved a two-application product structure:
 This is an authoritative product-boundary decision. Requirements, screen inventories, navigation, UX, and release scopes must identify which application owns each capability. Do not design the two products as one combined app/navigation.
 
 The product split does not automatically imply separate or shared identity services, databases, backends, repositories, infrastructure, or UI foundations. Those remain governed by existing approved decisions or require separate ADRs. Existing InOne Beta 1.0 screens and implementation must be audited and classified before any migration or code change. See [owner decisions](DECISIONS.md#7-product-split-inone-and-inone-business--2026-11-13).
+
+
+# Beta 2.0 planning source — 2026-11-24
+
+The owner explicitly started Beta 2.0 with Identity as Phase 1. The active planning source is branch `planning/beta-2.0-cto-2026-11-24`, created from main `02880940c1e4d8261405fbeaa01f40879eb44f3a`.
+
+- CTO roadmap: `docs/product/BETA-2.0-CTO-ROADMAP.md`.
+- Identity Phase 1 execution plan: `docs/product/BETA-2.0-IDENTITY-PHASE-1.md`.
+- Draft architecture decision: `docs/product/BETA-2.0-IDENTITY-ADR-DRAFT.md` (not accepted until owner approval).
+- Initial threat model: `docs/product/BETA-2.0-IDENTITY-THREAT-MODEL.md`.
+- Audit report: `development/reports/2026-11-24-beta2-cto-audit.md`.
+- Workstream issues: #137–#146; Identity discovery/ADR tasks #147–#148.
+
+This new owner instruction supersedes the older statement above that Beta 1.0 must be the only active stage. It does not alter Beta 1.0 source, PR #135, its security gates, or the rule against merging without explicit owner approval. Beta 2.0 WBS v1.1 remains unchanged at 2% implementation / 0% verification; planning documents/issues are not product implementation.
