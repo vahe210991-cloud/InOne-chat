@@ -2,7 +2,8 @@
 
 **Date:** 2026-11-24  
 **Status:** CTO technical proposal for owner approval before irreversible implementation or migration.  
-**Priority:** P0 — first Beta 2.0 implementation workstream.
+**Priority:** P0 — first Beta 2.0 implementation workstream.  
+**Tracking issue:** [#137 — Identity Service](https://github.com/vahe210991-cloud/InOne-chat/issues/137)
 
 ## 1. Current-state audit
 
