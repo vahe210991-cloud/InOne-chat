@@ -43,6 +43,47 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
     }
   }
 
+  // Lock organization membership/link before the room_members row. Revocation uses the
+  // same order (link -> room_members), so an in-flight write either commits before revoke
+  // or observes the revoked relationship and is rejected.
+  async function lockRoomWriteAccess(client, roomId, userId) {
+    const { rows: roomRows } = await client.query(
+      'SELECT org_id FROM rooms WHERE room_id = $1 FOR SHARE',
+      [roomId],
+    );
+    if (!roomRows[0]) return 'room_not_found';
+    const orgId = roomRows[0].org_id;
+    const { rows: orgRows } = await client.query(
+      'SELECT status FROM organizations WHERE org_id = $1 FOR SHARE',
+      [orgId],
+    );
+    if (!orgRows[0] || orgRows[0].status !== 'approved') return 'org_not_approved';
+    const { rows: directMembership } = await client.query(
+      'SELECT 1 FROM org_members WHERE org_id = $1 AND user_id = $2 FOR SHARE',
+      [orgId, userId],
+    );
+    if (!directMembership.length) {
+      const { rows: linkedMembership } = await client.query(
+        `SELECT 1
+           FROM org_members member
+           JOIN organizations member_org ON member_org.org_id = member.org_id
+           JOIN org_links link
+             ON link.status = 'active'
+            AND ((link.org_a = member.org_id AND link.org_b = $1)
+              OR (link.org_b = member.org_id AND link.org_a = $1))
+          WHERE member.user_id = $2 AND member_org.status = 'approved'
+          LIMIT 1 FOR SHARE OF member, member_org, link`,
+        [orgId, userId],
+      );
+      if (!linkedMembership.length) return 'org_not_member';
+    }
+    const { rows: roomMembership } = await client.query(
+      'SELECT 1 FROM room_members WHERE room_id = $1 AND user_id = $2 FOR SHARE',
+      [roomId, userId],
+    );
+    return roomMembership.length ? null : 'not_member';
+  }
+
   return {
     /** Регистрация: false, если логин уже занят. Гонка двух регистраций решается уникальным ключом. */
     async addAccount(userId, passwordHash, opts = {}) {
