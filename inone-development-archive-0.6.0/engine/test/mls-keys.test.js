@@ -36,6 +36,25 @@ test('устройство загружает ключевые пакеты, с�
   }
 });
 
+test('room-bound KeyPackage reservation succeeds in the PostgreSQL transaction', async () => {
+  const { base, store, stop } = await start();
+  try {
+    const alice = await ChatClient.create(base, ALICE, 'A_PHONE', PW);
+    const bob = await ChatClient.create(base, BOB, 'B_PHONE', PW);
+    await bob.raw('POST', '/mls/key-packages', { packages: [pkg('claim-db-regression')] });
+    const roomId = '!claim-db-regression:inone.test';
+    await alice.raw('POST', '/rooms', { roomId, members: [ALICE] });
+    const claim = await store.mlsClaimKeyPackages(
+      BOB, ALICE, 'A_PHONE', 'claim-db-regression-0001', roomId, Date.now(),
+    );
+    assert.equal(claim.ok, true);
+    assert.equal(claim.packages.length, 1);
+    assert.equal(claim.packages[0].deviceId, 'B_PHONE');
+  } finally {
+    await stop();
+  }
+});
+
 test('повтор стабильного KeyPackage claim ID возвращает тот же пакет, новый claim расходует следующий', async () => {
   const { base, stop } = await start();
   try {
@@ -264,7 +283,7 @@ test('KeyPackage claim rejects users outside the room organization or an active 
     const committed = await alice.raw('POST', `/mls/groups/${enc(roomId)}/commits`, {
       epoch: 0,
       commit: b64('linked-organization-commit'),
-      clientOperationId: 'commit-linked-organization-0001',
+      clientOperationId: 'claim-room-linked-0001',
       keyPackageClaimId: 'claim-room-linked-0001',
       changes: { adds: [BOB], removes: [] },
       welcomes: allowed.packages.map((item) => ({
