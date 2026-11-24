@@ -198,7 +198,7 @@ The following tracking issues were opened from this roadmap. The role names in e
 
 | Workstream | Tracking issue |
 |---|---|
-| Identity Service — Phase 1, P0 | [#137](https://github.com/vahe210991-cloud/InOne-chat/issues/137) |
+| Identity Service — Phase 1, P0 | [#137](https://github.com/vahe210991-cloud/InOne-chat/issues/137); discovery [#147](https://github.com/vahe210991-cloud/InOne-chat/issues/147); ADR/contracts [#148](https://github.com/vahe210991-cloud/InOne-chat/issues/148) |
 | InOne personal/social product | [#138](https://github.com/vahe210991-cloud/InOne-chat/issues/138) |
 | InOne Business / CRM | [#139](https://github.com/vahe210991-cloud/InOne-chat/issues/139) |
 | Group collaboration | [#140](https://github.com/vahe210991-cloud/InOne-chat/issues/140) |
