@@ -2617,7 +2617,8 @@ if (req.method === 'POST' && p === '/login') {
         if (checked.error) return send(res, 400, { error: checked.error });
         const unused = await storage.mlsAvailableCount(d.userId, d.deviceId, now());
         if (unused + checked.value.length > MLS_UNUSED_MAX) return send(res, 409, { error: `a device can keep at most ${MLS_UNUSED_MAX} unused key packages` });
-        await storage.mlsStoreKeyPackages(d.userId, d.deviceId, checked.value, now());
+        const stored = await storage.mlsStoreKeyPackages(d.userId, d.deviceId, checked.value, now());
+        if (!stored) return send(res, 401, { error: 'device is no longer active' });
         return send(res, 200, { stored: checked.value.length, available: unused + checked.value.length });
       }
       if (req.method === 'GET' && p === '/mls/key-packages/count') {
@@ -2631,7 +2632,8 @@ if (req.method === 'POST' && p === '/login') {
         if (!d) return send(res, 401, { error: 'unauthorized' });
         const checked = parseKeyPackages([body?.package]);
         if (checked.error) return send(res, 400, { error: checked.error });
-        await storage.mlsStoreLastResort(d.userId, d.deviceId, checked.value[0], now());
+        const stored = await storage.mlsStoreLastResort(d.userId, d.deviceId, checked.value[0], now());
+        if (!stored) return send(res, 401, { error: 'device is no longer active' });
         return send(res, 200, { stored: true });
       }
       const mlsClaims = p.match(/^\/mls\/key-packages\/([^/]+)\/claims$/);
