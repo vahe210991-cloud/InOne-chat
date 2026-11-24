@@ -427,6 +427,9 @@ export function createMemoryStore({ pinPepper }) {
             room.admins.delete(userId);
           }
         }
+        for (const userId of [...room.joinRequests.keys()]) {
+          if (inOrg(other, userId) && !inOrg(room.orgId, userId)) room.joinRequests.delete(userId);
+        }
       }
       adminActions.push(
         { orgId: orgA, actor, action: 'link_revoke', target: orgB, detail: linkId, at },
