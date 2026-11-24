@@ -961,19 +961,27 @@ export function createMemoryStore({ pinPepper }) {
       return true;
     },
     mlsAvailableCount(userId, deviceId, nowMs) {
+      const active = [...devices.values()].some((device) => device.userId === userId && device.deviceId === deviceId && !device.revoked);
+      if (!active) return 0;
       return mlsPackages.filter((p) => p.userId === userId && p.deviceId === deviceId && p.consumedAt === null && !p.lastResort && p.createdAt >= nowMs - MLS_REGULAR_MAX_AGE_MS).length;
     },
     mlsStoreLastResort(userId, deviceId, bytes, createdAt) {
+      const active = [...devices.values()].some((device) => device.userId === userId && device.deviceId === deviceId && !device.revoked);
+      if (!active) return false;
       for (let i = mlsPackages.length - 1; i >= 0; i--) {
         const p = mlsPackages[i];
         if (p.userId === userId && p.deviceId === deviceId && p.lastResort) mlsPackages.splice(i, 1);
       }
       mlsPackages.push({ id: mlsPackages.length + 1, userId, deviceId, package: Buffer.from(bytes), createdAt, consumedAt: null, lastResort: true });
+      return true;
     },
     mlsStoreKeyPackages(userId, deviceId, packages, createdAt) {
+      const active = [...devices.values()].some((device) => device.userId === userId && device.deviceId === deviceId && !device.revoked);
+      if (!active) return false;
       for (const bytes of packages) {
         mlsPackages.push({ id: mlsPackages.length + 1, userId, deviceId, package: Buffer.from(bytes), createdAt, consumedAt: null });
       }
+      return true;
     },
     mlsClaimKeyPackages(targetUserId, requesterUserId, requesterDeviceId, claimId, roomId, nowMs) {
       const hasOrgAccess = (userId, orgId) => {
