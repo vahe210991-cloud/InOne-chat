@@ -1607,6 +1607,49 @@ async mlsPendingRemovalsFor(userId) {
           await client.query('ROLLBACK');
           return { ok: false, reason: 'epoch_outdated', epoch: current };
         }
+        const { rows: roomRows } = await client.query(
+          'SELECT org_id FROM rooms WHERE room_id = $1 FOR SHARE',
+          [roomId],
+        );
+        if (!roomRows[0]) {
+          await client.query('ROLLBACK');
+          return { ok: false, reason: 'room_not_found', epoch: current };
+        }
+        const roomOrgId = roomRows[0].org_id;
+        const { rows: roomOrgRows } = await client.query(
+          'SELECT status FROM organizations WHERE org_id = $1 FOR SHARE',
+          [roomOrgId],
+        );
+        if (!roomOrgRows[0] || roomOrgRows[0].status !== 'approved') {
+          await client.query('ROLLBACK');
+          return { ok: false, reason: 'org_not_approved', epoch: current };
+        }
+        // Recheck every new member's organization eligibility under locks in the same
+        // transaction as the MLS commit. This closes the gap between HTTP authorization
+        // and membership mutation when an organization link is revoked concurrently.
+        for (const targetUserId of [...(changes.adds ?? [])].sort()) {
+          const { rows: directMembership } = await client.query(
+            'SELECT 1 FROM org_members WHERE org_id = $1 AND user_id = $2 FOR SHARE',
+            [roomOrgId, targetUserId],
+          );
+          if (directMembership.length) continue;
+          const { rows: linkedMembership } = await client.query(
+            `SELECT 1
+               FROM org_members member
+               JOIN organizations member_org ON member_org.org_id = member.org_id
+               JOIN org_links link
+                 ON link.status = 'active'
+                AND ((link.org_a = member.org_id AND link.org_b = $1)
+                  OR (link.org_b = member.org_id AND link.org_a = $1))
+              WHERE member.user_id = $2 AND member_org.status = 'approved'
+              LIMIT 1 FOR SHARE OF member, member_org, link`,
+            [roomOrgId, targetUserId],
+          );
+          if (!linkedMembership.length) {
+            await client.query('ROLLBACK');
+            return { ok: false, reason: 'org_not_member', epoch: current };
+          }
+        }
         if (joinRequestUserId) {
           if (changes.adds?.length !== 1 || changes.adds[0] !== joinRequestUserId) {
             await client.query('ROLLBACK');
