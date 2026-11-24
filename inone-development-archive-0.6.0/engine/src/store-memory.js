@@ -696,6 +696,7 @@ export function createMemoryStore({ pinPepper }) {
       inbox.set(deviceKey, kept);
     },
     enqueueToDevice(deviceKey, body, dedupeKey, expiresAt, nowMs, maxPending, senderUserId, recipientUserId) {
+      if (!accounts.has(recipientUserId)) return { ok: false, reason: 'recipient_not_found' };
       const device = devices.get(deviceKey);
       if (!device || device.revoked) return { ok: false, reason: 'device_revoked' };
       if (device.userId !== recipientUserId) return { ok: false, reason: 'device_mismatch' };
@@ -714,9 +715,18 @@ export function createMemoryStore({ pinPepper }) {
             ))));
         if (!allowed) return { ok: false, reason: 'not_authorized' };
       }
-      const kept = (inbox.get(deviceKey) ?? []).filter((e) => e.expiresAt > nowMs);
+      const userDeviceKeys = [...devices.entries()]
+        .filter(([, entry]) => entry.userId === recipientUserId && !entry.revoked)
+        .map(([key]) => key);
+      let userQueueCount = 0;
+      for (const key of userDeviceKeys) {
+        const alive = (inbox.get(key) ?? []).filter((entry) => entry.expiresAt > nowMs);
+        inbox.set(key, alive);
+        userQueueCount += alive.filter((entry) => entry.stream === 'to_device').length;
+      }
+      const kept = inbox.get(deviceKey) ?? [];
       const existing = kept.find((e) => e.stream === 'to_device' && e.dedupeKey === dedupeKey);
-      if (!existing && kept.filter((e) => e.stream === 'to_device').length >= maxPending) {
+      if (!existing && userQueueCount >= maxPending) {
         inbox.set(deviceKey, kept);
         return { ok: false, reason: 'queue_full' };
       }
