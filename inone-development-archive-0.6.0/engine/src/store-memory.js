@@ -652,9 +652,25 @@ export function createMemoryStore({ pinPepper }) {
       kept.push({ id: ++counters.inboxSeq, expiresAt, stream, dedupeKey: dedupeKey ?? null, body: structuredClone(body) });
       inbox.set(deviceKey, kept);
     },
-    enqueueToDevice(deviceKey, body, dedupeKey, expiresAt, nowMs, maxPending) {
+    enqueueToDevice(deviceKey, body, dedupeKey, expiresAt, nowMs, maxPending, senderUserId, recipientUserId) {
       const device = devices.get(deviceKey);
       if (!device || device.revoked) return { ok: false, reason: 'device_revoked' };
+      if (device.userId !== recipientUserId) return { ok: false, reason: 'device_mismatch' };
+      if (senderUserId !== recipientUserId) {
+        const senderOrgs = [...orgMembers.entries()]
+          .filter(([orgId, members]) => members.has(senderUserId) && organizations.get(orgId)?.status === 'approved')
+          .map(([orgId]) => orgId);
+        const recipientOrgs = [...orgMembers.entries()]
+          .filter(([orgId, members]) => members.has(recipientUserId) && organizations.get(orgId)?.status === 'approved')
+          .map(([orgId]) => orgId);
+        const allowed = senderOrgs.some((senderOrg) => recipientOrgs.some((recipientOrg) =>
+          senderOrg === recipientOrg || [...orgLinks.values()].some((link) =>
+            link.status === 'active' && (
+              (link.orgA === senderOrg && link.orgB === recipientOrg)
+              || (link.orgB === senderOrg && link.orgA === recipientOrg)
+            ))));
+        if (!allowed) return { ok: false, reason: 'not_authorized' };
+      }
       const kept = (inbox.get(deviceKey) ?? []).filter((e) => e.expiresAt > nowMs);
       const existing = kept.find((e) => e.stream === 'to_device' && e.dedupeKey === dedupeKey);
       if (!existing && kept.filter((e) => e.stream === 'to_device').length >= maxPending) {
