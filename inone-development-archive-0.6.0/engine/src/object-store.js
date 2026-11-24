@@ -1,6 +1,6 @@
 // Object storage for opaque, client-encrypted file payloads.
 // Buffer helpers remain for compatibility; streaming is the production transfer path.
-import { createReadStream, createWriteStream } from 'node:fs';
+import { createWriteStream } from 'node:fs';
 import { mkdir, open, rename, rm, writeFile, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
@@ -103,8 +103,16 @@ export function createFsObjectStore(dir) {
         throw error;
       }
     },
-    getStream(key) {
-      return createReadStream(fileOf(key));
+    async getStream(key) {
+      let handle;
+      try {
+        handle = await open(fileOf(key), 'r');
+        return handle.createReadStream();
+      } catch (error) {
+        await handle?.close().catch(() => {});
+        if (error.code === 'ENOENT') return null;
+        throw error;
+      }
     },
     async remove(key) {
       await rm(fileOf(key), { force: true });
