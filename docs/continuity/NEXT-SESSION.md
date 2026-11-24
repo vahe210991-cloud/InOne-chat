@@ -549,6 +549,20 @@ Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone
 - Read `development/reports/2026-11-23-beta1-screen-backend-wiring.md` and `mobile/API-CONTRACTS-BETA-1.md` before further changes.
 - Keep PR #128 and #130 untouched, preserve Engine B, Firebase Push, existing session/navigation, stable IDs, SQLCipher and native MLS default-off. Continue only against verified existing Beta 1.0 backend routes; do not invent endpoints or wire Beta 2.0 placeholder screens.
 
+## Current CTO execution plan — 2026-11-24
+
+Follow [the CTO Beta 1.0 security remediation roadmap](../../development/roadmaps/2026-11-24-beta1-cto-security-remediation-roadmap.md) as the authoritative sequence. Do not restart Stage 0 or duplicate accepted source changes.
+
+1. Re-fetch PR #135 and its current head on `security/beta1-backend-remediation-2026-11-24`.
+2. Close Gate 0 first. Inspect the exact job-level cause for gate run #45432827863 and complete iOS run #45432827935; re-run the aggregate exact-SHA gate after required jobs are terminal. No Stage 1 acceptance based on queued/cancelled or prior-SHA jobs.
+3. After Gate 0 passes, execute Stage 2 B-04/B-13: streaming object writes with incremental SHA-256/backpressure; atomic owner/org/pending reservations; current authorization revalidation; retryable object deletion/reconciliation; tests for concurrency, aborts, checksum and crash boundaries.
+4. Do not set a ready-file retention period. Keep pending-upload expiry separate; ask owner only when a retention decision is required.
+5. Then Stage 3 B-06/B-08/B-09/B-10/B-11/B-15; Stage 4 B-07/B-12/B-14; Stage 5 supply-chain, CI and operations. Each stage has its own exit gate in the roadmap.
+6. Before each implementation slice, inspect current source, migration order, existing tests and overlapping PRs. Preserve existing API/client contracts and add negative + PostgreSQL concurrency/fault-injection tests.
+7. Keep PR #135 Draft. No main change, merge, issue closure, secrets/settings mutation, SMS scope, or native MLS enablement. WBS v1.1 unchanged.
+
+Latest documented checkpoint: code SHA `4824dfc3b3f4e3aab5d39b16c1adf934a108d660`; exact-SHA gate failure; iOS queued at last poll. Re-fetch before acting because the branch/Actions state may have advanced.
+
 ## Next session — CTO backend security remediation (2026-11-24)
 
 1. Start from `main` SHA `02880940c1e4d8261405fbeaa01f40879eb44f3a` and task branch `security/beta1-backend-remediation-2026-11-24`; first verify both refs have not moved.
