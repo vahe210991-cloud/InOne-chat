@@ -12,6 +12,7 @@ const ALICE = '@alice:inone.test';
 const BOB = '@bob:inone.test';
 const enc = encodeURIComponent;
 const pkg = (name) => Buffer.from(`KEYPACKAGE-${name}-${'x'.repeat(40)}`).toString('base64');
+const b64 = (value) => Buffer.from(value, 'utf8').toString('base64');
 
 async function start({ defaultOrgAutoJoin = true } = {}) {
   const db = await storeForTest(PEPPER);
@@ -112,6 +113,17 @@ test('KeyPackage claim rejects users outside the room organization or an active 
       }),
       (error) => error.status === 403,
       'room-bound claim must reject a target who is not eligible for the room organization',
+    );
+    await assert.rejects(
+      alice.raw('POST', `/mls/groups/${enc(roomId)}/commits`, {
+        epoch: 0,
+        commit: b64('outsider-commit'),
+        clientOperationId: 'commit-outsider-0001',
+        changes: { adds: [BOB], removes: [] },
+        welcomes: [{ userId: BOB, deviceId: 'B_PHONE', welcome: b64('outsider-welcome') }],
+      }),
+      (error) => error.status === 403,
+      'the MLS commit endpoint must not bypass KeyPackage authorization and add an unrelated user',
     );
     assert.equal((await bob.raw('GET', '/mls/key-packages/count')).available, 1,
       'denied claims must not consume the target device package');
