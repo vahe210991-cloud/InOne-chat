@@ -627,6 +627,27 @@ export function createMemoryStore({ pinPepper }) {
       kept.push({ id: ++counters.inboxSeq, expiresAt, stream, dedupeKey: dedupeKey ?? null, body: structuredClone(body) });
       inbox.set(deviceKey, kept);
     },
+    enqueueToDevice(deviceKey, body, dedupeKey, expiresAt, nowMs, maxPending) {
+      const device = devices.get(deviceKey);
+      if (!device || device.revoked) return { ok: false, reason: 'device_revoked' };
+      const kept = (inbox.get(deviceKey) ?? []).filter((e) => e.expiresAt > nowMs);
+      const existing = kept.find((e) => e.stream === 'to_device' && e.dedupeKey === dedupeKey);
+      if (!existing && kept.filter((e) => e.stream === 'to_device').length >= maxPending) {
+        inbox.set(deviceKey, kept);
+        return { ok: false, reason: 'queue_full' };
+      }
+      const entry = {
+        id: ++counters.inboxSeq,
+        expiresAt,
+        stream: 'to_device',
+        dedupeKey,
+        body: structuredClone(body),
+      };
+      if (existing) Object.assign(existing, entry);
+      else kept.push(entry);
+      inbox.set(deviceKey, kept);
+      return { ok: true };
+    },
     deliveredMax(deviceKey, stream) {
       return delivered.get(`${deviceKey}|${stream}`) ?? 0;
     },
@@ -646,6 +667,9 @@ export function createMemoryStore({ pinPepper }) {
       if (prev !== undefined && nowMs - prev < windowMs) return false;
       sends.set(k, nowMs);
       return true;
+    },
+    releaseSend(senderKey, type, txn) {
+      sends.delete(`${senderKey}|${type}|${txn}`);
     },
 
     // ---- беседы ----
