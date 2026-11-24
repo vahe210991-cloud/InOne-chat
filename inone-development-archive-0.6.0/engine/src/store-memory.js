@@ -1011,7 +1011,8 @@ export function createMemoryStore({ pinPepper }) {
         if (!hasOrgAccess(requesterUserId, room.orgId) || !hasOrgAccess(targetUserId, room.orgId)) {
           return { ok: false, reason: 'not_authorized' };
         }
-        if (!room.members.has(requesterUserId) || !room.capabilities.get(requesterUserId)?.includes('invite_members')) {
+        if (!room.members.has(requesterUserId)
+          || (requesterUserId !== room.owner && !room.capabilities.get(requesterUserId)?.includes('invite_members'))) {
           return { ok: false, reason: 'invite_capability_required' };
         }
       } else if (requesterUserId !== targetUserId) {
