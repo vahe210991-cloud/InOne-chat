@@ -105,7 +105,7 @@ test('streaming object writes publish atomically and remove temporary files afte
     assert.equal(written.size, 17);
     assert.deepEqual(readdirSync(dir), [id], 'only the finalized object is visible');
     const read = [];
-    for await (const chunk of store.getStream(id)) read.push(Buffer.from(chunk));
+    for await (const chunk of await store.getStream(id)) read.push(Buffer.from(chunk));
     assert.deepEqual(Buffer.concat(read), Buffer.concat(chunks));
 
     const failedId = randomBytes(16).toString('hex');
