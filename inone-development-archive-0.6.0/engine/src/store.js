@@ -1653,18 +1653,34 @@ async mlsPendingRemovalsFor(userId) {
         }
 
         const { rows: devices } = await c.query(
-          'SELECT DISTINCT device_id FROM mls_key_packages WHERE user_id = $1 AND consumed_at IS NULL ORDER BY device_id',
+          `SELECT DISTINCT kp.device_id
+             FROM mls_key_packages kp
+             JOIN devices d ON d.user_id = kp.user_id AND d.device_id = kp.device_id
+            WHERE kp.user_id = $1 AND kp.consumed_at IS NULL AND NOT d.revoked
+            ORDER BY kp.device_id`,
           [targetUserId],
         );
         const out = [];
         for (const { device_id: deviceId } of devices) {
           const { rows } = await c.query(
-            'UPDATE mls_key_packages SET consumed_at = $3 WHERE id = (SELECT id FROM mls_key_packages WHERE user_id = $1 AND device_id = $2 AND consumed_at IS NULL AND last_resort = FALSE AND created_at >= $4 ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED) RETURNING id, package',
+            `UPDATE mls_key_packages SET consumed_at = $3
+              WHERE id = (
+                SELECT kp.id FROM mls_key_packages kp
+                JOIN devices d ON d.user_id = kp.user_id AND d.device_id = kp.device_id
+                WHERE kp.user_id = $1 AND kp.device_id = $2 AND NOT d.revoked
+                  AND kp.consumed_at IS NULL AND kp.last_resort = FALSE AND kp.created_at >= $4
+                ORDER BY kp.id LIMIT 1 FOR UPDATE OF kp SKIP LOCKED
+              ) RETURNING id, package`,
             [targetUserId, deviceId, nowMs, nowMs - MLS_REGULAR_MAX_AGE_MS],
           );
           if (rows[0]) { out.push({ deviceId, packageId: Number(rows[0].id), package: rows[0].package }); continue; }
           const { rows: fallback } = await c.query(
-            'SELECT id, package FROM mls_key_packages WHERE user_id = $1 AND device_id = $2 AND last_resort = TRUE AND created_at >= $3 ORDER BY id DESC LIMIT 1',
+            `SELECT kp.id, kp.package
+               FROM mls_key_packages kp
+               JOIN devices d ON d.user_id = kp.user_id AND d.device_id = kp.device_id
+              WHERE kp.user_id = $1 AND kp.device_id = $2 AND NOT d.revoked
+                AND kp.last_resort = TRUE AND kp.created_at >= $3
+              ORDER BY kp.id DESC LIMIT 1`,
             [targetUserId, deviceId, nowMs - MLS_LAST_RESORT_MAX_AGE_MS],
           );
           if (fallback[0]) out.push({ deviceId, packageId: Number(fallback[0].id), package: fallback[0].package });
