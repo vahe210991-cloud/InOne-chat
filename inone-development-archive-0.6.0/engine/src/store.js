@@ -570,6 +570,14 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
           WHERE rm.room_id = r.room_id AND r.org_id = $2
             AND rm.user_id IN (SELECT user_id FROM org_members WHERE org_id = $1)
             AND rm.user_id NOT IN (SELECT user_id FROM org_members WHERE org_id = $2)`, [orgA, orgB]);
+        await c.query(`DELETE FROM join_requests jr USING rooms r
+          WHERE jr.room_id = r.room_id AND r.org_id = $1
+            AND jr.user_id IN (SELECT user_id FROM org_members WHERE org_id = $2)
+            AND jr.user_id NOT IN (SELECT user_id FROM org_members WHERE org_id = $1)`, [orgA, orgB]);
+        await c.query(`DELETE FROM join_requests jr USING rooms r
+          WHERE jr.room_id = r.room_id AND r.org_id = $2
+            AND jr.user_id IN (SELECT user_id FROM org_members WHERE org_id = $1)
+            AND jr.user_id NOT IN (SELECT user_id FROM org_members WHERE org_id = $2)`, [orgA, orgB]);
         await c.query(
           'INSERT INTO admin_action_log (org_id, actor, action, target, detail, at) VALUES ($1, $2, $3, $4, $5, $6), ($4, $2, $3, $1, $5, $6)',
           [orgA, actor, 'link_revoke', orgB, linkId, at],
