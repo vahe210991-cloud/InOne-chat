@@ -413,3 +413,16 @@ test('параллельные резервации разных владель�
     await s.stop();
   }
 });
+
+
+test('параллельные pending reservations не превышают лимит владельца', async () => {
+  const s = await start();
+  try {
+    const requests = await Promise.all(Array.from({ length: 25 }, () =>
+      announce(s, s.alice.token, Buffer.alloc(10))));
+    assert.equal(requests.filter((r) => r.status === 200).length, 20);
+    assert.equal(requests.filter((r) => r.status === 429).length, 5);
+  } finally {
+    await s.stop();
+  }
+});
