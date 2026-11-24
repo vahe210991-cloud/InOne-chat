@@ -158,7 +158,8 @@ Implemented:
 - Streaming HTTP uploads with incremental size enforcement and SHA-256 calculation; no full-body Buffer aggregation on the upload route.
 - Streaming HTTP downloads with content length from metadata and direct stream piping.
 - PostgreSQL advisory transaction locks serialize owner quota, organization quota and pending-upload reservations; the in-memory store implements equivalent reservation semantics.
-- Upload authorization revalidation after body transfer and again at completion for active device, room membership and `send_messages` capability.
+- A pending upload is atomically claimed into an `uploading` state before the request body is consumed, so only one concurrent PUT can own a reservation; active uploads remain included in quota, pending-count and stale-cleanup accounting.
+- Upload authorization is revalidated after body transfer; the transition to `ready` is a database transaction that locks and rechecks the active owner device, approved organization/link membership, room membership and `send_messages` capability.
 - Retryable `deleting` tombstones for stale and failed uploads; metadata is finalized only after object deletion succeeds.
 - Failed size/checksum/device/membership uploads release their reservation after cleanup; failed object deletion remains retryable.
 
@@ -166,7 +167,7 @@ Added regressions for:
 - Atomic filesystem stream publication, stream abort cleanup and missing-object handling.
 - Concurrent owner quota reservations.
 - Concurrent organization quota reservations across different owners.
-- Concurrent pending-upload reservations.
+- Concurrent pending-upload reservations and duplicate concurrent PUT attempts against one upload URL.
 - Membership revocation during upload and between PUT and complete.
 - Failed upload reservation release.
 - Retryable object deletion when the object store is temporarily unavailable.
