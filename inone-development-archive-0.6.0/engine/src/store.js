@@ -1224,13 +1224,20 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
      */
     async appendClientMessageEvent(roomId, userId, clientId, sender, type, content, nowMs, afterAppend = null) {
       return inTransaction(async (c) => {
+        const previous = await c.query(
+          'SELECT seq FROM mls_client_messages WHERE room_id = $1 AND user_id = $2 AND client_message_id = $3 FOR UPDATE',
+          [roomId, userId, clientId],
+        );
+        if (previous.rows[0]) {
+          if (previous.rows[0].seq === null) return { state: 'pending' };
+          return { state: 'done', seq: Number(previous.rows[0].seq) };
+        }
         const access = await lockRoomWriteAccess(c, roomId, sender);
         if (access) return { state: access };
         const inserted = await c.query(
           'INSERT INTO mls_client_messages (room_id, user_id, client_message_id, seq) VALUES ($1, $2, $3, NULL) ON CONFLICT DO NOTHING RETURNING client_message_id',
           [roomId, userId, clientId],
         );
-
         if (inserted.rowCount !== 1) {
           const existing = await c.query(
             'SELECT seq FROM mls_client_messages WHERE room_id = $1 AND user_id = $2 AND client_message_id = $3 FOR UPDATE',
