@@ -548,3 +548,32 @@ Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone
 - Implemented in this branch: GET /rooms/mine; public group search/join; room metadata/member/capability reads; capability-gated name/visibility/join-policy settings; native MLS invite when Engine B is active; read markers after durable SQLCipher history; organization roster and owner/admin member add/remove/role changes; organization settings, settings audit log, admin-action log and organization links; profile locale and remote device inventory/revocation. Workspace actions without backend routes, unsupported avatar/publication actions and Feed/Calls navigation are hidden; see the latest sections in development/reports/2026-11-23-beta1-screen-backend-wiring.md.
 - Read `development/reports/2026-11-23-beta1-screen-backend-wiring.md` and `mobile/API-CONTRACTS-BETA-1.md` before further changes.
 - Keep PR #128 and #130 untouched, preserve Engine B, Firebase Push, existing session/navigation, stable IDs, SQLCipher and native MLS default-off. Continue only against verified existing Beta 1.0 backend routes; do not invent endpoints or wire Beta 2.0 placeholder screens.
+
+# Next execution — Beta 2.0 Identity Phase 1 (2026-11-24)
+
+Start from branch `planning/beta-2.0-cto-2026-11-24`; do not start from or force-update legacy `planning/beta-2.0-roadmap`. The new branch was created from main `02880940c1e4d8261405fbeaa01f40879eb44f3a`.
+
+Read first:
+1. `docs/product/BETA-2.0-CTO-ROADMAP.md`
+2. `docs/product/BETA-2.0-IDENTITY-PHASE-1.md`
+3. `docs/product/BETA-2.0-IDENTITY-ADR-DRAFT.md`
+4. `docs/product/BETA-2.0-IDENTITY-THREAT-MODEL.md`
+5. `development/reports/2026-11-24-beta2-cto-audit.md`
+6. `development/PROGRESS-BASELINE.md` and historical test evidence report.
+
+Tracking:
+- Identity epic #137.
+- ID-01 current-state inventory/threat model #147.
+- ID-02 architecture ADR and API/event contracts #148.
+- All other Beta 2.0 workstream epics #138–#146 are backlog; do not implement ahead of Identity contract dependencies without explicit prioritization.
+
+Immediate next steps:
+1. Complete a source-backed inventory of current identity DB tables, migrations, routes, providers, sessions, device records, recovery state and audit events. Use the canonical backend path; do not inspect the old POC tree as production source.
+2. Fetch and review all relevant migrations/store modules and identify exact uniqueness constraints/collation. Mark any unavailable schema evidence BLOCKED.
+3. Obtain owner decisions on canonical ID format, globally unique identifiers, email/phone verification, credential ownership, account linking/conflicts, Propo Seller Account mapping, deletion/retention and SLO/RPO/RTO.
+4. Finalize ADR B2-ADR-001 and C4/OpenAPI/AsyncAPI contracts only after those decisions.
+5. Design the Identity database schema and transactional identifier-claim concurrency tests; do not migrate or alter Beta 1 production tables.
+6. Prepare isolated service implementation branch from the then-current main after ADR approval; add failure-injection tests for Identity outage, Propo outage, timeout/idempotency, duplicate/out-of-order events and reconciliation.
+7. Keep Beta 1.0 PR #135 and its security remediation untouched. Do not merge any PR without exact-SHA green checks and explicit owner approval.
+
+Current status: planning artifacts and issue backlog are saved in GitHub. Identity implementation is NOT RUN / NOT ACCEPTED. Beta 2.0 WBS v1.1 remains 2% implementation / 0% verification; no product code or tests were changed/run in this planning session.
