@@ -463,6 +463,13 @@ export function createMemoryStore({ pinPepper }) {
           if (targetUserId === d.userId) claim.packages = claim.packages.filter((item) => item.deviceId !== d.deviceId);
         }
       }
+      if (d) {
+        for (let i = mlsWelcomes.length - 1; i >= 0; i--) {
+          if (mlsWelcomes[i].userId === d.userId && mlsWelcomes[i].deviceId === d.deviceId && mlsWelcomes[i].ackedAt === null) {
+            mlsWelcomes.splice(i, 1);
+          }
+        }
+      }
       deviceKeys.delete(dk);
       oneTimeKeys.delete(dk);
       inbox.delete(dk);
