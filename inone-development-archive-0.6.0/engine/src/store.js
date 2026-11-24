@@ -2005,6 +2005,22 @@ async mlsPendingRemovalsFor(userId) {
             }
           }
         }
+        const requiredDevices = new Map();
+        requiredDevices.set(`${senderId}| ${deviceId}`.replace('| ', '|'), { userId: senderId, deviceId, sender: true });
+        for (const welcome of welcomes) {
+          requiredDevices.set(`${welcome.userId}|${welcome.deviceId}`, { userId: welcome.userId, deviceId: welcome.deviceId, sender: false });
+        }
+        for (const entry of [...requiredDevices.values()].sort((a, b) =>
+          `${a.userId}|${a.deviceId}`.localeCompare(`${b.userId}|${b.deviceId}`))) {
+          const { rows: activeDevice } = await client.query(
+            'SELECT revoked FROM devices WHERE user_id = $1 AND device_id = $2 FOR SHARE',
+            [entry.userId, entry.deviceId],
+          );
+          if (!activeDevice[0] || activeDevice[0].revoked) {
+            await client.query('ROLLBACK');
+            return { ok: false, reason: entry.sender ? 'sender_device_revoked' : 'welcome_device_revoked', epoch: current };
+          }
+        }
         if (joinRequestUserId) {
           if (changes.adds?.length !== 1 || changes.adds[0] !== joinRequestUserId) {
             await client.query('ROLLBACK');
