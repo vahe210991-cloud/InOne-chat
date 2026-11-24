@@ -124,7 +124,7 @@ fn испорченный_коммит_одной_комнаты_не_остан
 
     // Сервер принял недопустимый коммит в первую комнату.
     assert!(engine
-        .command(&format!("BADCOMMIT {broken} @alice-p04:inone.test"))
+        .command(&format!("BADCOMMIT {broken} @alice-p04:inone.test A_P04"))
         .starts_with("OK"));
     alice.send_text(fine, "вторая комната работает").unwrap();
 
