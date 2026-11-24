@@ -2176,6 +2176,9 @@ impl Client {
                         self.record_desync(&room_id, &reason)?;
                         return Err(format!("RecoveryRequired: {reason}"));
                     }
+                    // Server acceptance is durable before local merge. A crash here must replay
+                    // the exact operation ID/fingerprint and receive the original epoch receipt.
+                    crash_at_test_failpoint("after_outbound_membership_commit_server_acceptance");
                     let tx = self.meta.unchecked_transaction().map_err(text)?;
                     let mut integrity_error: Option<String> = None;
                     let settlement = (|| -> Result<(), String> {
@@ -2204,6 +2207,7 @@ impl Client {
                             .mls
                             .merge_pending_commit(&self.provider)
                             .map_err(text)?;
+                        crash_at_test_failpoint("after_outbound_membership_commit_local_merge");
                         if group.mls.epoch().as_u64() != accepted_epoch {
                             let reason = format!("merged local epoch {} differs from accepted server epoch {accepted_epoch}", group.mls.epoch().as_u64());
                             integrity_error = Some(reason.clone());
@@ -2225,6 +2229,9 @@ impl Client {
                                 rusqlite::params![room_id, claim_id],
                             ).map_err(text)?;
                         }
+                        crash_at_test_failpoint(
+                            "after_outbound_membership_commit_journal_settlement",
+                        );
                         Ok(())
                     })();
                     if let Err(error) = settlement {
@@ -2236,10 +2243,12 @@ impl Client {
                         }
                         return Err(format!("временная ошибка локального хранилища при завершении membership commit: {error}"));
                     }
+                    crash_at_test_failpoint("before_outbound_membership_commit_transaction_commit");
                     if let Err(error) = tx.commit() {
                         self.reload_group(&room_id)?;
                         return Err(format!("временная ошибка локального хранилища при фиксации membership commit: {}", text(error)));
                     }
+                    crash_at_test_failpoint("after_outbound_membership_commit_transaction_commit");
                 }
                 Err(error) if response_error_code(&error).as_deref() == Some("epoch_outdated") => {
                     let tx = self.meta.unchecked_transaction().map_err(text)?;
@@ -2684,6 +2693,8 @@ impl Client {
                 text(error)
             ));
         }
+        // The durable StagedCommit and its stable operation receipt now survive restart.
+        crash_at_test_failpoint("after_membership_commit_journal_commit");
         if self.flush_pending_membership_commits()? > 0 {
             let mut incoming = Vec::new();
             self.sync_room(room_id, &mut incoming)?;
@@ -3743,16 +3754,15 @@ impl Client {
         Ok(event_id)
     }
 
-    fn persist_welcome_receipt(
-        &mut self,
+    fn insert_welcome_receipt(
+        db: &Connection,
         welcome_id: i64,
         room_id: &str,
         bytes: &[u8],
         outcome: &str,
         reason: Option<&str>,
     ) -> Result<(), String> {
-        let tx = self.meta.unchecked_transaction().map_err(text)?;
-        tx.execute(
+        db.execute(
             "INSERT OR IGNORE INTO client_welcome_receipts (welcome_id, room_id, welcome, outcome, reason, created_at, acked_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL)",
             rusqlite::params![
@@ -3767,7 +3777,7 @@ impl Client {
                     .as_millis() as i64
             ],
         ).map_err(text)?;
-        let existing: (String, Vec<u8>, String) = tx.query_row(
+        let existing: (String, Vec<u8>, String) = db.query_row(
             "SELECT room_id, welcome, outcome FROM client_welcome_receipts WHERE welcome_id = ?1",
             [welcome_id],
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
@@ -3777,6 +3787,19 @@ impl Client {
                 "Welcome receipt identity collision for id {welcome_id}"
             ));
         }
+        Ok(())
+    }
+
+    fn persist_welcome_receipt(
+        &mut self,
+        welcome_id: i64,
+        room_id: &str,
+        bytes: &[u8],
+        outcome: &str,
+        reason: Option<&str>,
+    ) -> Result<(), String> {
+        let tx = self.meta.unchecked_transaction().map_err(text)?;
+        Self::insert_welcome_receipt(&tx, welcome_id, room_id, bytes, outcome, reason)?;
         tx.commit().map_err(text)?;
         Ok(())
     }
@@ -3956,72 +3979,94 @@ impl Client {
                 .use_ratchet_tree_extension(true)
                 .max_past_epochs(MAX_PAST_EPOCHS)
                 .build();
+            // Welcome processing consumes a KeyPackage as well as materializing the
+            // group. Both operations must use the same SQL transaction as the room
+            // index and receipt, otherwise a crash can consume the KeyPackage while
+            // rolling back the group and make the server Welcome impossible to replay.
+            let transaction = self.meta.unchecked_transaction().map_err(text)?;
+            let transactional_provider = DeviceProvider::new(
+                Arc::clone(&self.provider.crypto),
+                TransactionConnection(&transaction),
+            );
             let staged = match StagedWelcome::new_from_welcome(
-                &self.provider,
+                &transactional_provider,
                 &join_config,
                 welcome,
                 None,
             ) {
                 Ok(staged) => staged,
-                Err(WelcomeError::GroupAlreadyExists) => {
-                    self.record_desync(
-                        room_id,
-                        "GroupAlreadyExists while replaying Welcome; retain Welcome without ACK for explicit recovery",
-                    )?;
-                    continue;
-                }
-                Err(WelcomeError::LibraryError(_)) | Err(WelcomeError::StorageError(_)) => {
-                    // Indeterminate: keep the server Welcome pending and do not quarantine.
-                    continue;
-                }
                 Err(error) => {
-                    if self
-                        .persist_welcome_receipt(
-                            welcome_id,
-                            room_id,
-                            &bytes,
-                            "quarantined",
-                            Some(&format!("Permanent Welcome error: {error:?}")),
-                        )
-                        .is_ok()
-                    {
-                        let _ = self.ack_welcome(welcome_id);
+                    drop(transactional_provider);
+                    drop(transaction);
+                    match error {
+                        WelcomeError::GroupAlreadyExists => {
+                            self.record_desync(
+                                room_id,
+                                "GroupAlreadyExists while replaying Welcome; retain Welcome without ACK for explicit recovery",
+                            )?;
+                        }
+                        WelcomeError::LibraryError(_) | WelcomeError::StorageError(_) => {
+                            // Indeterminate: keep the server Welcome pending and do not quarantine.
+                        }
+                        other => {
+                            if self
+                                .persist_welcome_receipt(
+                                    welcome_id,
+                                    room_id,
+                                    &bytes,
+                                    "quarantined",
+                                    Some(&format!("Permanent Welcome error: {other:?}")),
+                                )
+                                .is_ok()
+                            {
+                                let _ = self.ack_welcome(welcome_id);
+                            }
+                        }
                     }
                     continue;
                 }
             };
-            let mls = match staged.into_group(&self.provider) {
+            let mls = match staged.into_group(&transactional_provider) {
                 Ok(group) => group,
-                Err(WelcomeError::GroupAlreadyExists) => {
-                    self.record_desync(
-                        room_id,
-                        "GroupAlreadyExists while materializing Welcome; retain Welcome without ACK for explicit recovery",
-                    )?;
-                    continue;
-                }
-                Err(WelcomeError::LibraryError(_)) | Err(WelcomeError::StorageError(_)) => {
-                    continue;
-                }
                 Err(error) => {
-                    if self
-                        .persist_welcome_receipt(
-                            welcome_id,
-                            room_id,
-                            &bytes,
-                            "quarantined",
-                            Some(&format!(
-                                "Permanent Welcome materialization error: {error:?}"
-                            )),
-                        )
-                        .is_ok()
-                    {
-                        let _ = self.ack_welcome(welcome_id);
+                    drop(transactional_provider);
+                    drop(transaction);
+                    match error {
+                        WelcomeError::GroupAlreadyExists => {
+                            self.record_desync(
+                                room_id,
+                                "GroupAlreadyExists while materializing Welcome; retain Welcome without ACK for explicit recovery",
+                            )?;
+                        }
+                        WelcomeError::LibraryError(_) | WelcomeError::StorageError(_) => {
+                            // Indeterminate storage errors leave the server Welcome pending.
+                        }
+                        other => {
+                            if self
+                                .persist_welcome_receipt(
+                                    welcome_id,
+                                    room_id,
+                                    &bytes,
+                                    "quarantined",
+                                    Some(&format!(
+                                        "Permanent Welcome materialization error: {other:?}"
+                                    )),
+                                )
+                                .is_ok()
+                            {
+                                let _ = self.ack_welcome(welcome_id);
+                            }
+                        }
                     }
                     continue;
                 }
             };
+            drop(transactional_provider);
+
             let actual_room = String::from_utf8_lossy(mls.group_id().as_slice()).to_string();
             if actual_room != room_id {
+                drop(mls);
+                drop(transaction);
                 self.record_desync(
                     room_id,
                     &format!("Welcome group ID mismatch: server={room_id}, MLS={actual_room}"),
@@ -4040,27 +4085,48 @@ impl Client {
                 }
                 continue;
             }
+
             let join_epoch = mls.epoch().as_u64();
-            // If this write fails, the Welcome remains unacknowledged. The next run will
-            // observe GroupAlreadyExists and require explicit room recovery rather than lose it.
-            if self
-                .meta
+            crash_at_test_failpoint("after_welcome_group_materialization");
+            if transaction
                 .execute(
                     "INSERT OR REPLACE INTO client_rooms (room_id, join_epoch) VALUES (?1, ?2)",
                     (&room_id, join_epoch as i64),
                 )
                 .is_err()
             {
+                drop(mls);
+                drop(transaction);
                 continue;
             }
+            crash_at_test_failpoint("after_welcome_room_index_write");
+            if Self::insert_welcome_receipt(
+                &transaction,
+                welcome_id,
+                room_id,
+                &bytes,
+                "joined",
+                None,
+            )
+            .is_err()
+            {
+                drop(mls);
+                drop(transaction);
+                continue;
+            }
+            crash_at_test_failpoint("after_welcome_receipt_write");
+            crash_at_test_failpoint("before_welcome_transaction_commit");
+            if transaction.commit().is_err() {
+                drop(mls);
+                continue;
+            }
+            crash_at_test_failpoint("after_welcome_transaction_commit");
+
             self.groups
                 .insert(room_id.to_string(), Group { mls, join_epoch });
-            if self
-                .persist_welcome_receipt(welcome_id, room_id, &bytes, "joined", None)
-                .is_ok()
-            {
-                let _ = self.ack_welcome(welcome_id);
-            }
+            // The durable receipt is committed before the network ACK. A lost ACK is
+            // replayed from retry_pending_welcome_acks() after process restart.
+            let _ = self.ack_welcome(welcome_id);
         }
         Ok(())
     }
@@ -5028,7 +5094,9 @@ impl Client {
                 )
                 .map_err(text)?;
         }
+        crash_at_test_failpoint("before_inbox_ack_transaction_commit");
         transaction.commit().map_err(text)?;
+        crash_at_test_failpoint("after_inbox_ack_transaction_commit");
         Ok(())
     }
 

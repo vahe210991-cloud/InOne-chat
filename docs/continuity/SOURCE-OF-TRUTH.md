@@ -1,3 +1,44 @@
+# InOne — current source of truth (2026-11-23)
+
+**Current `main` SHA:** `2430b0365ab71c60b0926b27854d17a9090e1fba`  
+**Last major merge:** PR #131 — G2 organization requests, canonical Engine B MLS and Beta 1.0 screen/backend integration.  
+**Current audit branch:** `work/mls-production-acceptance-2026-11-23` (draft PR #132), based directly on the current main SHA.
+
+## Authority order
+
+1. Current `main` source at the exact SHA above is the product implementation baseline.
+2. Current contracts under `mobile/API-CONTRACTS-BETA-1.md` and backend route source define existing API contracts.
+3. `mobile/README.md` and `docs/continuity/CURRENT-STATE.md` contain the latest implementation/acceptance distinction.
+4. The latest post-PR131 audit report records exact-SHA evidence, blockers, physical-device status and estimates.
+5. Older PR descriptions, branches and continuity sections below are historical records; do not treat their old Engine A, WebView, G1/G2 branch or push-sender claims as current without rechecking the source.
+
+## Non-negotiable current decisions
+
+- Beta 1.0 InOne remains the first product milestone. InOne Identity is a separate later phase.
+- Beta 1.0 registration remains local as previously approved.
+- Production mobile MLS uses canonical Engine B at `inone-development-archive-0.6.0/engine/mobile-mls/mls-client`; Engine A is not the production runtime.
+- `INONE_MLS_NATIVE_ENABLED` remains false by default until exact-SHA validation, physical Android/iOS runtime, two-device MLS and separate owner permission.
+- No plaintext fallback for MLS messages or attachments.
+- Do not weaken SQLCipher, Android Keystore, iOS protected Keychain or device-revocation controls.
+- Production UI is Flutter/Dart. Approved HTML screens are visual references only.
+- Do not invent backend routes or connect UI actions without an existing approved contract.
+- PR #131 is merged; do not repeat or re-port it.
+- No direct main edits, force pushes, stale branch merges, issue closures or PR closures without owner authorization.
+
+## Current acceptance boundary
+
+Source integration is not runtime acceptance. PR #131 head checks were 19/19 PASS. On merge SHA `2430b0365ab71c60b0926b27854d17a9090e1fba`, nine push workflows are present: eight completed PASS, including OpenMLS FRB generation and its iOS native-assets compile; Native MLS validation has four passing jobs, while its iOS Keychain target build was cancelled on the first attempt and a targeted rerun is QUEUED. The exact-SHA acceptance gate is PR-only and N/A for main push. PR #132 code-validation head `87930a5997b9ceb7aea44409b1e0d07020d3c82f` has nine PR workflows queued, including its exact-SHA gate; subsequent report/continuity commits are documentation-only. No completed result for the new Welcome, invalid-UTF-8 or 401/403/404 Rust tests is available yet. No physical two-device acceptance has been recorded.
+
+The backend FCM sender and encrypted PostgreSQL push outbox are implemented and wired; live provider acceptance and physical device display/open remain pending. Beta recovery uses the custom scheme `inone://recovery/confirm`; production Universal/App Links require an owner-supplied production domain and exact app identifiers. Backup/restore implementation exists, but no production restore rehearsal or full operational readiness is accepted.
+
+P0 Issue #1 remains open. The audit found a Welcome transaction gap; a transaction-aware fix and child-process SQLCipher restart tests are on draft PR #132 but have not yet run. Outbound Commit and Flutter/native ACK proof, WAL-specific coverage, P1 integration regressions, physical tests and production operations remain blockers.
+
+**Current estimate (not WBS v1.1):** implementation 90%, verification 73%, release readiness 58%. **Release decision: NOT READY.**
+
+---
+
+# Historical source archive
+
 > **OWNER UI SOURCE ARCHIVE — verified 2026-11-09:** Original `Ui.zip` is stored on `main` (owner upload commit `2050aa7c9fa6ba418bb06fa81964274b6f854a3a`), SHA-256 `cdff61b36673d45332f4809c5a42f1978e715adb3e4dcf280c96d92f3aa758bb`. PR #36 imports its nested `ui-approval.zip` into `mobile/assets/ui-approval/`; package manifest v0.8-approval-batch-2, 24 manifest screen IDs, 31 approved HTML screens, 5 WOFF2 fonts. CI run [#42586579987](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/42586579987) passed Flutter analyze/tests and Android preview build after import. Post-import task branch head: `cb09a4058719576df6d589f1f8b59be517b592b5`. This source archive is distinct from the Android APK artifact. Native WebView rendering and live API/bridge acceptance remain pending. Keep PR #36 draft/open pending exact-head CI and owner authorization.
 
 # InOne — источники истины и карта артефактов

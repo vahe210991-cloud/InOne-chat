@@ -1,4 +1,6 @@
-# Beta 1.0 — screen/backend wiring (isolated work branch)
+# Beta 1.0 — screen/backend wiring (PR #131 merged)
+
+> **Post-merge correction — 2026-11-23:** This report records the implementation work that became PR #131. PR #131 is now merged into `main` at `2430b0365ab71c60b0926b27854d17a9090e1fba`. The former isolated branch is no longer the integration target. PR #131 exact-head checks were reported 19/19 PASS; at the merge checkpoint main had 9 PASS / 4 IN_PROGRESS, with final merge-SHA completion still unconfirmed. Physical Android/iOS and two-device acceptance remain pending. The historical statements below saying PR #131 was unmerged are superseded by this note.
 
 **Date:** 2026-11-23
 **Repository:** vahe210991-cloud/InOne-chat
@@ -249,7 +251,7 @@ No tests, analyzer, build, device run, workflow dispatch or Actions rerun was pe
 
 ## PR #131 integration update — 2026-11-23
 
-**Integration target:** PR #131, branch feature/beta1-screen-backend-wiring-2026-11-23. Main was synchronized into the branch through a two-parent merge commit; the PR is now based on the current main head and reports mergeable. This is a branch sync only; PR #131 has not been merged into main.
+**Merged result:** PR #131, branch `feature/beta1-screen-backend-wiring-2026-11-23`, merged into `main` at `2430b0365ab71c60b0926b27854d17a9090e1fba`. This section records the final merged scope; do not re-run the integration or copy its code.
 
 ### Changes now present in PR #131
 
@@ -262,7 +264,8 @@ No tests, analyzer, build, device run, workflow dispatch or Actions rerun was pe
 
 ### Validation state at this checkpoint
 
-- The PR was changed from Draft to Ready solely to enable repository workflows; this does not authorize merging.
-- Exact-head CI runs are being requested by the next branch update. No workflow result is considered green until it is returned for the final SHA.
+- PR #131 exact-head checks were reported 19/19 PASS; nine workflow runs retrieved in the post-merge audit are PASS on the PR head SHA, not on the merge SHA.
+- At the post-merge checkpoint, main had 9 PASS / 4 IN_PROGRESS. Final conclusions for the four on merge SHA remain unconfirmed.
+- Source merge is complete; exact merge-SHA CI and physical device/two-device acceptance remain separate.
 - The live staging authorization script is not run without the four distinct staging credentials. Physical Android/iOS and two-device MLS acceptance remain separate manual gates.
-- PR #87 and #90 remain open and unmerged. They are to be closed without merging only after all required exact-SHA checks pass. PR #89 remains untouched/open. PR #131 remains unmerged into main.
+- PR #87/#89/#90 remain open for separate supersession review. Do not merge or close them without owner authorization. PR #131 is merged into main.

@@ -705,3 +705,54 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Chat thread settings now include visibility and join-policy controls when effective capabilities include `edit_group_settings`; room name remains separately gated by `edit_group_name`.
 - The client sends only changed fields through existing `POST /rooms/:id/settings`. Backend remains authoritative, including clearing join requests when a room becomes private.
 - No tests/analyzers/builds/Actions run.
+
+
+## 2026-11-23 — post-PR #131 acceptance audit and P0 Welcome transaction
+
+- Verified current `main` remains at `2430b0365ab71c60b0926b27854d17a9090e1fba`; PR #131 is merged. PR #131 head workflows retrieved as PASS are not substituted for merge-SHA post-merge checks. Nine PR-head workflows are PASS; the four post-merge main workflows reported IN_PROGRESS at checkpoint remain unconfirmed.
+- Confirmed production `mobile/rust/Cargo.toml` uses canonical Engine B. Updated Issues #1, #114, #6, #5 and #9 with current source facts and remaining proof gaps; all remain open.
+- Source audit found that Welcome materialization, `client_rooms` and Welcome receipt were not atomic even though application-message and inbound Commit paths use the shared SQLCipher connection/transaction-aware provider.
+- On existing draft PR #132 branch `work/mls-production-acceptance-2026-11-23`, changed Welcome materialization to use a transaction-backed OpenMLS provider and commit group state, room index and receipt together. Added five crash failpoints and a child-process SQLCipher restart regression for rollback/recovery at each boundary. Commits: `e06ffe5` and `3a0bf89`.
+- These Rust changes and tests have NOT been compiled or executed in this audit. Do not mark Issue #1 accepted. Outbound Commit server-acceptance/reconciliation, Flutter/native ACK lifecycle and WAL-specific behaviour remain open proof gaps.
+- Corrected mobile README: production Firebase Admin FCM sender and encrypted PostgreSQL push outbox already exist and are wired by backend `main.js`; physical provider/device delivery remains unaccepted. Beta recovery custom scheme is generated for Android/iOS; production Universal/App Links remain blocked on owner-supplied domain.
+- Updated `mobile/API-INTEGRATION.md`, `mobile/API-CONTRACTS-BETA-1.md`, continuity docs, MLS atomicity ADR, P0 acceptance map and the PR #131 screen/backend report. Historical records remain intact but are explicitly superseded where stale.
+- Audited old PRs #127/#87/#89/#90/#124/#116/#117/#125/#94/#129/#110/#97. No stale PR or branch was merged or closed. Selected changes from #87/#89/#90 are already represented by PR #131; old Engine A is not to be copied.
+- No local test runner or physical devices were available through the current GitHub connector. No Rust/Flutter/Node/PostgreSQL tests, native builds or physical-device tests were run in this audit branch. WBS v1.1 unchanged; current engineering estimates 90% implementation / 73% verification / 58% release readiness; recommendation NOT READY.
+
+
+
+## 2026-11-23 — exact merge-SHA Actions recheck and P1 UTF-8 regression
+
+- Queried GitHub Actions REST runs for exact main SHA `2430b0365ab71c60b0926b27854d17a9090e1fba` (push event): nine workflows exist. Seven completed PASS: Backend Docker Compose, OpenMLS client, Dev Container Compose, Email/PostgreSQL, recovered P0 source, Flutter iOS and Flutter mobile.
+- OpenMLS Flutter Rust Bridge generation: main validation and Android build/Keystore emulator smoke passed; iOS native-assets compile remains IN_PROGRESS.
+- Native MLS client validation: exact source verification, canonical Engine B regression tests, persistent bridge host tests and OpenMLS attachment/session integration tests passed. The iOS Keychain target build was cancelled on attempt 1; logs for the cancelled job are unavailable. A targeted rerun was accepted and attempt 2 is QUEUED. Do not call this workflow complete yet.
+- The exact-SHA acceptance gate is configured for PR events, not main push; it is N/A for main. Individual main workflows verify their exact source SHA.
+- Added an additional P1 regression on draft PR #132 branch: malformed UTF-8 followed by a valid message in the same room must produce an Unreadable record, preserve room epoch, deliver the later valid message and leave no RecoveryRequired marker. Test not yet compiled/executed.
+- Current audit branch has no workflow runs returned for its latest commit; all new Rust changes remain unvalidated. No changes to main.
+
+
+
+## 2026-11-23 — PR #132 exact-SHA workflow queue
+
+- PR #132 code-validation head `988d537d7fb3acf812781e67ac598cb5954ed958` triggered nine PR workflows, including the exact-SHA acceptance gate; all nine were queued at 16:19Z.
+- The audit report was added as a documentation-only commit `2d7754e29d31aa0cedf004ae9fee988d45e2dbb0`; no new workflow runs were returned for that report-only head.
+- Continuity docs now distinguish the code-validation SHA from the later report-only head. No test result for the new Welcome or invalid-UTF-8 regressions is yet available. Do not mark the branch accepted until the exact-SHA gate completes on the final PR head.
+
+
+
+## 2026-11-23 — P1 #9 real sync-path regression
+
+- Added `room_sync_access_and_not_found_errors_never_mark_recovery_required` to canonical Engine B `tests/outbox.rs` on PR #132 branch.
+- The test uses a local TCP proxy to inject HTTP 401, 403 and 404 responses specifically for `GET /rooms/:id/events`, asserts `sync()` returns the access/not-found error without a durable `RecoveryRequired` marker, then restores access and asserts the same room delivers the pending valid message with unchanged epoch.
+- Updated Issue #9 description. Issue remains OPEN until the regression passes on an exact SHA and physical revocation/re-auth is accepted.
+- New code-validation SHA: `87930a5997b9ceb7aea44409b1e0d07020d3c82f`; nine PR workflows (including exact-SHA gate) were queued at 16:23Z. No completed result yet.
+
+
+
+## 2026-11-23 — main merge-SHA FRB completion
+
+- Rechecked Actions REST runs for main SHA `2430b0365ab71c60b0926b27854d17a9090e1fba`.
+- `OpenMLS Flutter Rust Bridge generation` completed PASS, including both `generate-and-validate` and `iOS native assets compile (unsigned, no secrets)`.
+- Main now has 8/9 push workflows completed PASS. The only remaining workflow is `Native MLS client validation`: its four non-iOS jobs PASS; the iOS Keychain native-target job's first attempt was cancelled, and the targeted rerun remains QUEUED.
+- The cancelled job had no retrievable logs; the rerun is the next evidence point. Do not call main fully validated until it completes.
+

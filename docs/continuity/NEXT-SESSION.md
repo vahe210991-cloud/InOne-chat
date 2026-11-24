@@ -1,4 +1,34 @@
-# Next execution — P2 Push and Profile (2026-11-20)
+# Next execution — post-PR #131 Beta 1.0 acceptance (2026-11-23)
+
+Start from repository `vahe210991-cloud/InOne-chat`, `main` SHA `2430b0365ab71c60b0926b27854d17a9090e1fba`. PR #131 is already merged. Do not repeat it, do not restart the project, and do not copy Engine A code.
+
+Current work branch: `work/mls-production-acceptance-2026-11-23` (draft PR #132), created from the exact main SHA. Continue on this branch unless it is merged by owner approval. No main merge is authorized.
+
+## Immediate execution order
+
+1. **Finish exact-SHA CI verification.** The GitHub REST run list now exposes all nine push workflows for main SHA `2430b...`: eight completed PASS, including OpenMLS FRB generation and its iOS native-assets compile. Native MLS validation has four passing jobs plus an iOS Keychain target job whose first attempt was cancelled. A targeted rerun is queued. Recheck these two jobs, inspect logs if the rerun fails, and do not substitute PR #131 head results for merge-SHA results. The exact-SHA acceptance gate is PR-only and N/A for main push.
+2. **Validate the current PR #132 code.** Run Rust formatting/checks and the canonical MLS client suite, especially `process_crash_at_welcome_transaction_boundaries_preserves_atomic_join`. Then run Native MLS, OpenMLS client, FRB generation, Flutter mobile/iOS and exact-SHA acceptance. Current audit branch commits have no confirmed test results yet.
+3. **Complete P0 Issue #1.** Review Welcome transaction implementation and its child-process SQLCipher tests. Add remaining tests for outbound Commit server-accepted/response-lost reconciliation and Flutter/native ACK lifecycle. Document the default SQLite journal mode; do not claim WAL coverage unless WAL is explicitly enabled and tested. Keep issue open until every write boundary is proven.
+4. **Complete P1 regressions.** For #5, run the new malformed-UTF-8 → valid-message same-room regression added on PR #132; confirm it passes and yields no desync. For #9, run the new real `sync()` TCP-proxy 401/403/404 regression added on PR #132 and assert no RecoveryRequired. For #6, verify Flutter/native ACK lifecycle on restart. For #114, prove current production FFI stays on canonical Engine B. Do not close any issue on source inspection alone.
+5. **Prepare two-device physical acceptance.** Use a real Android device and a real iPhone, with distinct identities and fresh installs. Execute the full matrix in the post-PR131 audit report. Record OS/build/device identifiers, timestamps, exact SHA and PASS/FAIL. CI emulator/simulator runs are not physical acceptance.
+6. **Push live smoke.** The production Firebase Admin sender and encrypted PostgreSQL outbox already exist. Provision project identity and independent push encryption key through the secret manager; run `npm run test:push:live`, then verify real FCM delivery and iOS FCM→APNs display on devices. Never commit provider secrets or log FIDs.
+7. **Recovery links.** Keep `inone://recovery/confirm` as the Beta custom scheme. Test Android/iOS intent registration, explicit confirmation, expired/reused tokens and device recovery. Do not create Universal/App Links until the owner provides the production domain and signing identifiers.
+8. **Infrastructure.** Execute backup/restore on a production-like PostgreSQL + object store environment; record that DB and files are separate snapshots. Validate migrations, HTTPS/proxy, SMTP/domain/SPF/DKIM/DMARC, monitoring, secrets and operational runbook. Docker Compose acceptance is not production readiness.
+9. **Reconcile old PRs without merging or closing them.** Compare current main with #127/#87/#89/#90/#124/#116/#117/#125/#94/#129/#110/#97. Port only a demonstrably unique required change after reviewing its diff; never merge stale branches wholesale.
+10. **Refresh docs and percentages** after tests finish. Keep WBS v1.1 unchanged and `INONE_MLS_NATIVE_ENABLED=false` by default until separate owner permission.
+
+## Known verified facts at handoff
+
+- PR #131 merged at main SHA `2430b0365ab71c60b0926b27854d17a9090e1fba`.
+- PR #131 head `984d9e2afa6734ac14269fdee6ad787df84b123b`: 19/19 individual check jobs PASS. On main merge SHA `2430b...`, eight of nine push workflows are complete PASS, including OpenMLS FRB generation and iOS native-assets compile; the Native MLS iOS Keychain target rerun is QUEUED after a cancelled first attempt.
+- Production mobile Rust dependency is canonical Engine B at `inone-development-archive-0.6.0/engine/mobile-mls/mls-client`.
+- FCM sender and server push worker are implemented; live provider/device delivery is not accepted.
+- Recovery custom scheme is configured in generated Android/iOS projects; production association links are not configured.
+- Physical two-device acceptance has not been performed.
+- Issues #1, #114, #6, #5 and #9 remain open.
+- Current engineering estimates: implementation 90%, verification 73%, release readiness 58%. Recommendation: NOT READY.
+
+# Historical handoff — P2 Push and Profile (2026-11-20)
 
 Continue on `audit/p2-push-profile-2026-11-20`. Read [the P2 audit report](../../development/reports/2026-11-20-P2-push-profile-audit.md) first. A2 is already merged; do not repeat it.
 

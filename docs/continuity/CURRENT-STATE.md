@@ -1,4 +1,68 @@
-# Current state — P2 Push and Profile audit (2026-11-20)
+# Current state — post-PR #131 Beta 1.0 acceptance (2026-11-23)
+
+## Source of truth
+
+- Repository: `vahe210991-cloud/InOne-chat`.
+- Current `main`: `2430b0365ab71c60b0926b27854d17a9090e1fba`.
+- PR #131 is merged. Do not repeat its implementation or copy it from older branches.
+- Current audit/remediation branch: `work/mls-production-acceptance-2026-11-23`, based directly on the above main SHA; work is tracked by draft PR #132. No changes have been merged to main.
+- WBS v1.1 is unchanged. Percentages in the audit are engineering estimates, not WBS changes.
+
+## Post-merge CI state
+
+- PR #131 exact-head checks were reported as 19/19 PASS.
+- PR #131 head `984d9e2afa6734ac14269fdee6ad787df84b123b`: 19/19 individual check jobs PASS across the retrieved PR-head workflow runs.
+- On merge SHA `2430b0365ab71c60b0926b27854d17a9090e1fba`, the Actions REST run list returns 9 push workflows: 8 completed PASS (Backend Docker Compose, OpenMLS client, Dev Container Compose, Email/PostgreSQL, recovered P0 source, Flutter iOS, Flutter mobile, OpenMLS Flutter Rust Bridge including iOS native assets).
+- `OpenMLS Flutter Rust Bridge generation`: main job PASS, including iOS native-assets compile. Android build and Android Keystore emulator smoke passed.
+- `Native MLS client validation`: exact-source check, canonical Engine B regression tests, persistent bridge host tests and attachment/session integration tests passed. The iOS Keychain native-target build was cancelled in attempt 1; its job log was unavailable. A targeted job rerun was accepted and is QUEUED in attempt 2.
+- The exact-SHA acceptance gate is configured for pull_request events only, so it is N/A for a main push; each applicable main workflow verifies its own exact source SHA. Do not claim main exact-SHA validation complete while the two iOS-related jobs remain pending.
+- PR #132 code-validation head `87930a5997b9ceb7aea44409b1e0d07020d3c82f` triggered nine PR workflows (including the exact-SHA acceptance gate); all nine were QUEUED at 16:23Z. The latest follow-up commits only update reports/continuity docs; they do not change Rust/Flutter source. No completed test result is available yet for the Welcome, invalid-UTF-8 or 401/403/404 regressions.
+
+## Architecture and implementation facts
+
+- Production `mobile/rust/Cargo.toml` points to canonical Engine B at `inone-development-archive-0.6.0/engine/mobile-mls/mls-client`. Engine A is not the production runtime.
+- PR #131 integrates native Flutter screens/backend, G2 organization requests, canonical Engine B FFI, durable inbox/outbox, encrypted attachments, session resume/retry, organization roles/invites, device inventory/revocation and room metadata/settings/permissions/read markers.
+- `INONE_MLS_NATIVE_ENABLED` remains false by default. Source presence and PR-head CI do not authorize enabling it.
+- Approved HTML screens remain visual references. Production UI is Flutter/Dart.
+- Beta 1.0 registration remains local as previously approved. InOne Identity remains a separate next phase.
+
+## P0 — MLS crash consistency, Issue #1
+
+- OpenMLS provider and client journal share one SQLCipher connection. A transaction-aware provider is used for inbound application messages and inbound Commit processing.
+- `tests/outbox.rs` contains child-process restart tests using actual SQLCipher files for application ratchet writes, inbound Commit merge/commit, and inbox journal boundaries. The ADR states SQLite default journal mode is used; WAL is not enabled and WAL-specific recovery is not proven.
+- Audit found a remaining Welcome gap: group materialization, `client_rooms` and Welcome receipt were not atomic.
+- Draft PR #132 adds a transaction-aware Welcome materialization/receipt change and five crash failpoints; child-process SQLCipher restart coverage was added for five boundaries. These changes are not yet compiled or executed.
+- Outbound Commit server-acceptance/reconciliation and full Flutter/native ACK lifecycle remain separate proof gaps. Keep Issue #1 open.
+
+## P1 — MLS issues
+
+- #114: canonical Engine B production dependency and current FFI/Dart adapter are present. No Engine A migration is required. Keep open for exact-SHA and physical runtime proof.
+- #6: durable SQLCipher inbox, pending replay and explicit ACK are present; child-process and restart tests exist. Keep open for exact-SHA and Flutter/native physical ACK proof.
+- #5: invalid UTF-8 maps to an unreadable inbox record; crash-boundary test includes invalid bytes. A same-room follow-up-valid-message regression was added on PR #132 branch; it asserts no desync and unchanged epoch, but has not been compiled/executed.
+- #9: typed API failure classification exists. A real sync-path 401/403/404 TCP-proxy regression was added on PR #132; it must still execute and pass to prove no RecoveryRequired.
+- None of these issues is closed.
+
+## Push, recovery and operations
+
+- Backend FCM sender and encrypted PostgreSQL push outbox are implemented and wired through `engine/src/main.js`; the worker starts/stops with the server when configured. Payload is restricted to generic `type/event_id/path`.
+- Flutter Firebase initialization, FID registration/refresh, APNs readiness check, foreground/open/terminated receive handling and MLS-gated navigation exist. Live provider acceptance and physical Android/iOS display/open tests have not been run.
+- Beta recovery custom scheme `inone://recovery/confirm` is registered by generated Android/iOS build scripts. Production Android App Links/iOS Universal Links are not configured; no production domain or association files are supplied.
+- Backup/restore scripts and PostgreSQL/object-file tests exist. Database and object-file backups are separate operations, not one atomic cross-store snapshot. No production restore rehearsal, alerting/monitoring acceptance, live HTTPS/proxy deployment, SMTP sender-domain/SPF/DKIM/DMARC acceptance or production secrets provisioning is evidenced.
+
+## Physical acceptance
+
+No physical two-device Android/iOS acceptance is recorded. Emulator/CI builds are not device acceptance. Pending scenarios include Welcome, bidirectional text, outbox/retry/dedup, encrypted attachments, process kills, ACK, device revocation/removal, recovery, logout/key purge, and 401/403/404 handling.
+
+## Current estimates (not WBS v1.1)
+
+- Engineering implementation: **90%**.
+- Verification: **73%**.
+- Release readiness: **58%**.
+- Recommendation: **NOT READY** for Beta 1.0 acceptance until P0/P1 proof and physical-device gates pass.
+
+---
+
+# Historical continuity log — P2 Push and Profile audit (2026-11-20)
 
 - A2 PR #102 is already merged to `main`: `df20bef8df05b3ab2e11b20cb91e8f2bca60eec0`. Do not repeat A2.
 - P2 audit branch: `audit/p2-push-profile-2026-11-20`, created from `main` SHA `974f944d251870ca57fad5124f058b9d65d12a26`.

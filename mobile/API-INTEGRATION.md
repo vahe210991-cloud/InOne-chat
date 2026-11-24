@@ -1,5 +1,7 @@
 # InOne mobile API integration
 
+> **Post-PR #131 status (2026-11-23):** PR #131 is merged into `main` at `2430b0365ab71c60b0926b27854d17a9090e1fba`. Native Flutter/backend wiring and canonical Engine B FFI are present in source. `INONE_MLS_NATIVE_ENABLED` remains false by default; physical Android/iOS, two-device MLS, and release acceptance are not implied by source integration or PR-head CI. See [post-PR131 acceptance audit](../development/reports/2026-11-23-post-pr131-beta1-acceptance-audit.md).
+
 ## Configuration
 
 The mobile test host reads the backend origin from the compile-time environment variable `INONE_API_BASE_URL`.
@@ -12,7 +14,7 @@ The origin must be supplied by the project owner/operator. No production host is
 
 ## Current server contract
 
-Existing Beta 1.0 routes are maintained in the canonical engine. The account-locale routes and registration locale payload are introduced in Email Delivery PR #61 and are not available on `main` until that PR is merged.
+Existing Beta 1.0 routes are maintained in the canonical engine. Account locale is connected in the current main through the existing profile/registration contracts; do not rely on the older PR #61 pre-merge note below.
 
 ### Health and readiness
 
@@ -81,27 +83,26 @@ Existing Beta 1.0 routes are maintained in the canonical engine. The account-loc
 
 The generic screen runner executes GET requests only. Mutating operations (POST/PUT/DELETE), including registration, recovery, group membership, file upload, admin decisions and MLS operations, require dedicated forms with explicit payload validation and confirmation. They are not fired from a generic screen click.
 
-The current Flutter session temporarily rotates refresh tokens. After Android/iOS MLS FFI is integrated, the native MLS session must become the sole refresh-token owner.
+The current Rust MLS session owns refresh-token rotation after explicit native-session adoption; Dart retains only a short-lived access-token snapshot. Native MLS remains opt-in and disabled by default.
 
 ## Not yet connected
 
 - Screen-specific write forms for all 51 core test screens.
-- Native Android/iOS MLS FFI and protected local message storage.
-- MLS message send/receive and ACK lifecycle from Flutter.
-- File upload progress/completion UI.
-- Offline queue, reconnect and restart recovery.
-- Full two-device end-to-end acceptance.
+- Physical Android/iOS runtime acceptance of the integrated Engine B FFI, protected Keychain/Keystore and SQLCipher key persistence.
+- Full two-device MLS acceptance, including Welcome, text/attachment exchange, crash/restart, ACK and revocation.
+- Runtime proof of Flutter/native ACK lifecycle on real devices.
+- File upload progress/completion UI and production-provider callback gaps that remain explicitly blocked in the current host.
 
 The original 73-card full-screen gallery is packaged and loaded by Flutter; an asset test verifies every card ID. Visual inclusion does not imply that all future modules have backend implementations or live API contracts.
 
 
 ## Deployment readiness boundary
 
-The repository's current engine deployment guide identifies this server build as a development/test build, not a production release. Before live company use, the backend owner must complete and verify a real SMTP transport and sender domain, phone/SMS flows where required, a tested deployment/proxy configuration, database backup/restore, monitoring and operational recovery. The checked-in compose file is explicitly marked untested. Until these are closed, connect the Flutter client only to a controlled development or staging environment.
+The repository has Docker Compose acceptance and PostgreSQL-backed backup/restore implementation/tests, but these do not constitute production deployment acceptance. Before live use, the backend owner must complete a real SMTP transport and sender domain, phone/SMS flows where required, HTTPS/proxy validation, a restore rehearsal on a production-like environment, monitoring/alerts and operational recovery. Database and object-file backups are separate operations, not one atomic cross-store snapshot. Until these are closed, connect the Flutter client only to a controlled development or staging environment.
 
 
 ## Stage 3 contract source of truth
 
 The complete screen-to-route matrix, authentication boundaries, request-flow notes and current CH-02 MLS sequence are maintained in [API-CONTRACTS-BETA-1.md](API-CONTRACTS-BETA-1.md). That contract matrix supersedes older screen-level route notes in this file when they differ.
 
-Important: `GET /rooms/:id/events` is implemented for reading ciphertext history. It is not a message-send endpoint. All new group messages must use `POST /mls/groups/:id/messages`; the legacy `POST /rooms/:id/events` returns 409. Native MLS ownership and secure local persistence remain Stage 4 work. The WebView bridge must not receive MLS secrets or call arbitrary routes.
+Important: `GET /rooms/:id/events` is implemented for reading ciphertext history. It is not a message-send endpoint. All new group messages must use `POST /mls/groups/:id/messages`; the legacy `POST /rooms/:id/events` returns 409. Native MLS ownership and secure local persistence are now integrated through canonical Engine B, but remain opt-in and not physically accepted. The Flutter/Dart production UI must not expose MLS secrets or arbitrary routes.
