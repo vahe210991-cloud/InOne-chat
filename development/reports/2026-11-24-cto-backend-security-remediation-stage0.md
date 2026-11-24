@@ -113,3 +113,11 @@ The following details refine the initial matrix; they are still source-level fin
 ### Stage sequencing correction
 
 B-12 is a confirmed database-integrity issue and should be fixed in the database stage, but its last-owner invariant is security-critical. Add a Stage 1 guard test and include the actual transactional fix in the database-integrity package. Do not consider Stage 1 accepted until that concurrency scenario is covered.
+
+
+### Test-coverage refinement
+
+- Current `test/org-links.test.js` already includes F-01 stale-accept-vs-revoke coverage and F-02 PostgreSQL open-join-vs-revoke concurrency coverage. The file is included in `npm run test:db`. Reuse these tests; do not duplicate them. The missing B-03 proof is atomic rollback/fault injection across status transition + both membership deletions + both audit inserts, and repeatable idempotent revoke behavior after a mid-transaction failure.
+- Current `test/mls-keys.test.js` exercises the legacy `/claim` endpoint, including same-claim replay and concurrent replay, but that test file is not listed in `npm run test:db`. Existing coverage therefore does not prove the authorization boundary or PostgreSQL claim races for this route. The MLS contract documents both legacy and reservation routes; preserve compatibility until the native/Flutter call graph is proven, and add PostgreSQL coverage for the legacy/new route authorization policy.
+- Current `test/admin-journal.test.js` verifies role-change audit entries but does not test last-owner concurrency or rollback when the audit insert fails.
+- Current `test/files-disk.test.js` verifies path-safe object keys and a sequential quota threshold; it does not test concurrent quota reservation or memory-bounded upload streaming.
