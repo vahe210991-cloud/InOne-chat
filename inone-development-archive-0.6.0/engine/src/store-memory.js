@@ -409,6 +409,31 @@ export function createMemoryStore({ pinPepper }) {
         for (const u of [...r.members]) if (inOrg(other, u) && !inOrg(r.orgId, u)) { r.members.delete(u); r.admins.delete(u); }
       }
     },
+    revokeOrgLink({ linkId, fromStatus, actor, at }) {
+      const link = orgLinks.get(linkId);
+      if (!link || link.status !== fromStatus) return false;
+      link.status = 'revoked';
+      link.decidedBy = actor;
+      link.decidedAt = at;
+      const orgA = link.orgA;
+      const orgB = link.orgB;
+      const inOrg = (org, userId) => orgMembers.get(org)?.has(userId) ?? false;
+      for (const room of rooms.values()) {
+        if (room.orgId !== orgA && room.orgId !== orgB) continue;
+        const other = room.orgId === orgA ? orgB : orgA;
+        for (const userId of [...room.members]) {
+          if (inOrg(other, userId) && !inOrg(room.orgId, userId)) {
+            room.members.delete(userId);
+            room.admins.delete(userId);
+          }
+        }
+      }
+      adminActions.push(
+        { orgId: orgA, actor, action: 'link_revoke', target: orgB, detail: linkId, at },
+        { orgId: orgB, actor, action: 'link_revoke', target: orgA, detail: linkId, at },
+      );
+      return true;
+    },
     logAdminAction({ orgId, actor, action, target, detail, at }) {
       adminActions.push({ orgId: orgId ?? null, actor, action, target: target ?? null, detail: detail ?? null, at });
     },
