@@ -877,9 +877,26 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
       return rows; // имена столбцов как в таблице: так читает журнал команда scripts/set-flag.mjs
     },
     async revokeDevice(deviceKey) {
-      // Отключённое устройство теряет ключи, одноразовые ключи и очередь доставки.
+      // Отключённое устройство теряет все ключи, незавершённые MLS packages и очередь доставки.
       await inTransaction(async (c) => {
+        const { rows: deviceRows } = await c.query(
+          'SELECT user_id, device_id FROM devices WHERE device_key = $1 FOR UPDATE',
+          [deviceKey],
+        );
         await c.query('UPDATE devices SET revoked = TRUE WHERE device_key = $1', [deviceKey]);
+        if (deviceRows[0]) {
+          await c.query('DELETE FROM mls_key_packages WHERE user_id = $1 AND device_id = $2', [deviceRows[0].user_id, deviceRows[0].device_id]);
+          await c.query(
+            `UPDATE mls_key_package_claims c
+                SET result = COALESCE((
+                  SELECT jsonb_agg(items.item)
+                    FROM jsonb_array_elements(c.result) AS items(item)
+                   WHERE items.item->>'deviceId' <> $2
+                ), '[]'::jsonb)
+              WHERE c.target_user_id = $1 AND c.result IS NOT NULL`,
+            [deviceRows[0].user_id, deviceRows[0].device_id],
+          );
+        }
         await c.query('DELETE FROM device_keys WHERE device_key = $1', [deviceKey]);
         await c.query('DELETE FROM one_time_keys WHERE device_key = $1', [deviceKey]);
         await c.query('DELETE FROM inbox WHERE device_key = $1', [deviceKey]);
