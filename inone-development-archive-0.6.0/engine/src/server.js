@@ -1347,12 +1347,22 @@ if (req.method === 'POST' && fileDone) {
   const f = await storage.getFile(fileId);
   if (!f || f.ownerId !== d.userId) return send(res, 404, { error: 'not found' });
   if (f.ownerDeviceId !== d.deviceId) return send(res, 403, { error: 'file upload belongs to another device' });
+  if (f.status !== 'uploaded') return send(res, 409, { error: 'file is not uploaded yet' });
   if (f.roomId) {
     const room = await storage.getRoom(f.roomId);
-    if (!room || !room.members.includes(d.userId)) return send(res, 403, { error: 'not a member' });
-    if (!hasCapability(room, d.userId, 'send_messages')) return send(res, 403, { error: 'missing capability: send_messages' });
+    if (!room || !room.members.includes(d.userId)) {
+      await discardFileUpload(fileId);
+      return send(res, 403, { error: 'not a member' });
+    }
+    if (!hasCapability(room, d.userId, 'send_messages')) {
+      await discardFileUpload(fileId);
+      return send(res, 403, { error: 'missing capability: send_messages' });
+    }
   }
-  if (!(await storage.markFileReady(fileId, now(), d.userId, d.deviceId))) return send(res, 409, { error: 'file is not uploaded, or current device/room authorization is no longer valid' });
+  if (!(await storage.markFileReady(fileId, now(), d.userId, d.deviceId))) {
+    await discardFileUpload(fileId);
+    return send(res, 403, { error: 'current device/room authorization is no longer valid' });
+  }
   return send(res, 200, { fileId, status: 'ready' });
 }
 const fileLink = p.match(/^\/files\/([^/]+)\/url$/);
