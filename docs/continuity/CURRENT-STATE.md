@@ -679,3 +679,10 @@ Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone
 - No product source changed and no security tests were executed in this session. Backend remediation is NOT ACCEPTED pending complete clone/Codespace and PostgreSQL-capable runner.
 - GitHub main protection remains disabled (`protected=false`); no settings changed. Five exact-main workflow jobs were PASS and three IN PROGRESS at inspection; not backend security acceptance.
 - SMS is out of scope; native MLS remains disabled by default. Beta 1.0 backend security verdict: NOT READY.
+
+
+### Stage 0 continuation — 2026-11-24
+
+- Expanded source review confirms B-12 and B-13 defects; B-14 is already implemented at source level (invalid FID cleanup, non-retryable classification, queue cancellation, plaintext-free allowlisted push payload), pending DB-backed test execution; B-15 readiness is partial.
+- Current `main` already has device-bound signed downloads; avoid duplicating PR #86. PR #42 workflow targets old engine paths and does not implement atomic revocation. PR #65 is narrow and does not fix the global request boundary.
+- Updated Stage 0 report addendum in `development/reports/2026-11-24-cto-backend-security-remediation-stage0.md`.
