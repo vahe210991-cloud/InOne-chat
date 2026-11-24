@@ -975,13 +975,16 @@ export function createMemoryStore({ pinPepper }) {
       mlsPackages.push({ id: mlsPackages.length + 1, userId, deviceId, package: Buffer.from(bytes), createdAt, consumedAt: null, lastResort: true });
       return true;
     },
-    mlsStoreKeyPackages(userId, deviceId, packages, createdAt) {
+    mlsStoreKeyPackages(userId, deviceId, packages, createdAt, maxUnused) {
       const active = [...devices.values()].some((device) => device.userId === userId && device.deviceId === deviceId && !device.revoked);
-      if (!active) return false;
+      if (!active) return { ok: false, reason: 'device_revoked' };
+      const current = mlsPackages.filter((item) => item.userId === userId && item.deviceId === deviceId
+        && item.consumedAt === null && !item.lastResort && item.createdAt >= createdAt - MLS_REGULAR_MAX_AGE_MS).length;
+      if (current + packages.length > maxUnused) return { ok: false, reason: 'package_limit' };
       for (const bytes of packages) {
         mlsPackages.push({ id: mlsPackages.length + 1, userId, deviceId, package: Buffer.from(bytes), createdAt, consumedAt: null });
       }
-      return true;
+      return { ok: true };
     },
     mlsClaimKeyPackages(targetUserId, requesterUserId, requesterDeviceId, claimId, roomId, nowMs) {
       const hasOrgAccess = (userId, orgId) => {
