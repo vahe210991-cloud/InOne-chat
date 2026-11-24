@@ -100,12 +100,23 @@ test('to-device messages enforce per-sender rate and payload limits', async () =
     await send('txn-rate-0002');
     await assert.rejects(send('txn-rate-0003'), (error) => error.status === 429);
 
+  } finally {
+    await s.stop();
+  }
+});
+
+test('oversized to-device payload is rejected before enqueue', async () => {
+  const s = await start();
+  try {
+    await s.linkOrganizations();
     await assert.rejects(
       s.alice.raw('PUT', '/sendToDevice/m.room.encrypted/txn-large-0001', {
         messages: { [BOB]: { B_PHONE: { ciphertext: 'x'.repeat(300 * 1024) } } },
       }),
-      (error) => error.status === 429 || error.status === 413,
+      (error) => error.status === 413,
     );
+    const queue = await s.store.drainQueue(`${BOB}|B_PHONE`, 0, 0, Date.now());
+    assert.equal(queue.filter((event) => event.stream === 'to_device').length, 0);
   } finally {
     await s.stop();
   }
