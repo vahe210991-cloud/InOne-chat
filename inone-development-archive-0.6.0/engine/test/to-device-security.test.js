@@ -138,6 +138,8 @@ test('recipient to-device queue cap is atomic under concurrent PostgreSQL or mem
         now + 60_000,
         now,
         10,
+        BOB,
+        BOB,
       )));
     assert.equal(results.filter((result) => result.ok).length, 10);
     assert.equal(results.filter((result) => result.reason === 'queue_full').length, 30);
