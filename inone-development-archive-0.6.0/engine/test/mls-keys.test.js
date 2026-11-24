@@ -122,6 +122,28 @@ test('без входа пакеты не загружаются и не отд�
   }
 });
 
+
+test('revoking a device purges its MLS KeyPackages and filters stored claim replays', async () => {
+  const { base, store, stop } = await start();
+  try {
+    const alice = await ChatClient.create(base, ALICE, 'A_PHONE', PW);
+    const bob = await ChatClient.create(base, BOB, 'B_PHONE', PW);
+    await alice.raw('POST', '/mls/key-packages', { packages: [pkg('revoke-1'), pkg('revoke-2')] });
+    const path = `/mls/key-packages/${enc(ALICE)}/claim`;
+    const first = await bob.raw('POST', path, { claimId: 'claim-before-revoke-0001' });
+    assert.equal(first.packages.length, 1);
+
+    await store.revokeDevice(`${ALICE}|A_PHONE`);
+    const replay = await bob.raw('POST', path, { claimId: 'claim-before-revoke-0001' });
+    assert.deepEqual(replay.packages, [], 'a replay cannot disclose a package for a revoked device');
+    const fresh = await bob.raw('POST', path, { claimId: 'claim-after-revoke-0001' });
+    assert.deepEqual(fresh.packages, [], 'new claims cannot reserve packages for a revoked device');
+    assert.equal(await store.mlsAvailableCount(ALICE, 'A_PHONE', Date.now()), 0);
+  } finally {
+    await stop();
+  }
+});
+
 test('KeyPackage claim rejects users outside the room organization or an active organization link', async () => {
   const { base, store, stop } = await start({ defaultOrgAutoJoin: false });
   try {
