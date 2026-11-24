@@ -172,6 +172,23 @@ export function createMemoryStore({ pinPepper }) {
       if (f.roomId) {
         const room = rooms.get(f.roomId);
         if (!room || !room.members.has(ownerId)) return false;
+        const org = organizations.get(room.orgId);
+        if (!org || org.status !== 'approved') return false;
+        let eligible = orgMembers.get(room.orgId)?.has(ownerId) ?? false;
+        if (!eligible) {
+          for (const [memberOrgId, members] of orgMembers) {
+            if (!members.has(ownerId)) continue;
+            const memberOrg = organizations.get(memberOrgId);
+            if (!memberOrg || memberOrg.status !== 'approved') continue;
+            if ([...orgLinks.values()].some((link) => link.status === 'active'
+              && ((link.orgA === memberOrgId && link.orgB === room.orgId)
+                || (link.orgB === memberOrgId && link.orgA === room.orgId)))) {
+              eligible = true;
+              break;
+            }
+          }
+        }
+        if (!eligible) return false;
         if (room.owner !== ownerId && !(room.capabilities.get(ownerId) ?? []).includes('send_messages')) return false;
       }
       f.status = 'ready';
