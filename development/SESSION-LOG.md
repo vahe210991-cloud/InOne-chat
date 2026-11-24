@@ -769,3 +769,14 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - WBS v1.1 was read and not modified. Beta 2.0 baseline remains 2% implementation / 0% verification; this session created planning artifacts only and did not implement or test product code.
 - Verification: repository-native GitHub writes and subsequent fetch/compare. No test/build/security scan or Propo runtime integration was run. Identity implementation acceptance: NOT RUN / NOT ACCEPTED.
 - Next execution: finish identity schema/route/provider inventory; resolve owner policy decisions; finalize ADR/OpenAPI/AsyncAPI; only then implement isolated Identity service/database and failure-injection tests.
+
+
+### 2026-11-24 — Identity source inventory deepened
+
+- Expanded source review of canonical InOne backend: production `src/main.js` initializes PostgreSQL, runs migrations and injects the persistent store; local identity data remains product-local.
+- Read `schema.sql`, `migrate.js`, `store.js`, `account-rules.js`, `identity-db.test.js` and `providers-db.test.js`. Current migration runner schema version is `0033-org-request-document-metadata`; schema header still says 0.6.0-alpha.1, requiring provenance/version reconciliation.
+- Confirmed local records/constraints for accounts, profiles, phones, provider links, backup email, email verification, auth tokens, device/session and recovery. Existing IDs are `u` + 24 hex; scrypt password hash and existing foreign keys must be preserved during migration.
+- Existing DB tests cover local email/nickname uniqueness and provider-link persistence; tests are conditional on DATABASE_URL and were NOT RUN in this session.
+- Bounded current-main code search found no matching canonical cross-platform reservation/platform-account registry implementation.
+- Added this evidence and IAM-19–IAM-22 risks to Identity Phase 1, ADR and threat model; expanded audit report. Updated issue #147/#148 evidence links. PR #149 remains Draft/open, no merge.
+- Product code/tests/DB were not changed or executed; Identity remains NOT ACCEPTED. Next: inventory all foreign keys and migration ledger, close owner policy decisions, approve ADR/contracts, then implement isolated service.
