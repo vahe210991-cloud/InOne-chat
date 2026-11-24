@@ -191,7 +191,7 @@ test('MLS commit rejects a Welcome targeting a revoked device', async () => {
     const alice = await ChatClient.create(base, ALICE, 'A_PHONE', PW);
     await ChatClient.create(base, BOB, 'B_PHONE', PW);
     const roomId = '!revoked-welcome-device:inone.test';
-    assert.equal((await alice.raw('POST', '/rooms', { roomId, members: [] })).ok, true);
+    assert.equal((await alice.raw('POST', '/rooms', { roomId, members: [] })).roomId, roomId);
     await store.revokeDevice(`${BOB}|B_PHONE`);
     await assert.rejects(
       alice.raw('POST', `/mls/groups/${enc(roomId)}/commits`, {
