@@ -897,6 +897,9 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
             [deviceRows[0].user_id, deviceRows[0].device_id],
           );
         }
+        if (deviceRows[0]) {
+          await c.query('DELETE FROM mls_welcomes WHERE user_id = $1 AND device_id = $2 AND acked_at IS NULL', [deviceRows[0].user_id, deviceRows[0].device_id]);
+        }
         await c.query('DELETE FROM device_keys WHERE device_key = $1', [deviceKey]);
         await c.query('DELETE FROM one_time_keys WHERE device_key = $1', [deviceKey]);
         await c.query('DELETE FROM inbox WHERE device_key = $1', [deviceKey]);
