@@ -326,18 +326,28 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
             if (!linked.length) return { ok: false, reason: 'not_authorized' };
           }
         }
+        const { rows: accounts } = await c.query('SELECT user_id FROM accounts WHERE user_id = $1 FOR UPDATE', [recipientUserId]);
+        if (!accounts[0]) return { ok: false, reason: 'recipient_not_found' };
         const { rows: devices } = await c.query('SELECT user_id, revoked FROM devices WHERE device_key = $1 FOR UPDATE', [deviceKey]);
         if (!devices[0] || devices[0].revoked) return { ok: false, reason: 'device_revoked' };
         if (devices[0].user_id !== recipientUserId) return { ok: false, reason: 'device_mismatch' };
-        await c.query("DELETE FROM inbox WHERE device_key = $1 AND stream = 'to_device' AND expires_at <= $2", [deviceKey, nowMs]);
+        await c.query(
+          `DELETE FROM inbox i USING devices d
+            WHERE i.device_key = d.device_key AND d.user_id = $1
+              AND i.stream = 'to_device' AND i.expires_at <= $2`,
+          [recipientUserId, nowMs],
+        );
         const { rows: existing } = await c.query(
           "SELECT 1 FROM inbox WHERE device_key = $1 AND stream = 'to_device' AND dedupe_key = $2",
           [deviceKey, dedupeKey],
         );
         if (!existing[0]) {
           const { rows: counts } = await c.query(
-            "SELECT COUNT(*)::int AS n FROM inbox WHERE device_key = $1 AND stream = 'to_device' AND expires_at > $2",
-            [deviceKey, nowMs],
+            `SELECT COUNT(*)::int AS n
+               FROM inbox i JOIN devices d ON d.device_key = i.device_key
+              WHERE d.user_id = $1 AND NOT d.revoked
+                AND i.stream = 'to_device' AND i.expires_at > $2`,
+            [recipientUserId, nowMs],
           );
           if (counts[0].n >= maxPending) return { ok: false, reason: 'queue_full' };
         }
