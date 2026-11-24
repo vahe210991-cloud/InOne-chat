@@ -141,6 +141,31 @@ test('без входа пакеты не загружаются и не отд�
 
 
 
+
+test('device revocation removes pending MLS Welcomes and blocks acknowledgement', async () => {
+  const { base, store, stop } = await start();
+  try {
+    const alice = await ChatClient.create(base, ALICE, 'A_PHONE', PW);
+    await ChatClient.create(base, BOB, 'B_PHONE', PW);
+    const roomId = '!welcome-revoke-cleanup:inone.test';
+    await alice.raw('POST', '/rooms', { roomId, members: [] });
+    await alice.raw('POST', `/mls/groups/${enc(roomId)}/commits`, {
+      epoch: 0,
+      commit: b64('welcome-before-device-revoke'),
+      clientOperationId: 'welcome-revoke-cleanup-0001',
+      changes: { adds: [BOB], removes: [] },
+      welcomes: [{ userId: BOB, deviceId: 'B_PHONE', welcome: b64('welcome-material') }],
+    });
+    const pending = await store.mlsPendingWelcomes(BOB, 'B_PHONE');
+    assert.equal(pending.length, 1);
+    await store.revokeDevice(`${BOB}|B_PHONE`);
+    assert.deepEqual(await store.mlsPendingWelcomes(BOB, 'B_PHONE'), []);
+    assert.equal(await store.mlsAckWelcome(pending[0].id, BOB, 'B_PHONE', Date.now()), false);
+  } finally {
+    await stop();
+  }
+});
+
 test('MLS commit rejects a Welcome targeting a revoked device', async () => {
   const { base, store, stop } = await start();
   try {
