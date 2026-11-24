@@ -1190,8 +1190,8 @@ export function createMemoryStore({ pinPepper }) {
       if (!direct && !linked) return { state: 'org_not_member' };
       if (!r.members.has(sender)) return { state: 'not_member' };
       const seq = ++counters.eventSeq;
-      r.events.push({ event_id: `${seq}`, seq, room_id: roomId, sender, origin_server_ts: nowMs, type, content: structuredClone(content ?? null) });
-      if (afterAppend) return Promise.resolve(afterAppend(null, { seq, roomId, eventId: `${seq}` })).then(() => seq);
+      r.events.push({ event_id: `$${seq}`, seq, room_id: roomId, sender, origin_server_ts: nowMs, type, content: structuredClone(content ?? null) });
+      if (afterAppend) return Promise.resolve(afterAppend(null, { seq, roomId, eventId: `$${seq}` })).then(() => seq);
       return seq;
     },
     roomEventRows(roomId, sinceSeq) {
@@ -1343,7 +1343,7 @@ export function createMemoryStore({ pinPepper }) {
       if (hit) return { state: 'pending' };
       const seq = this.appendRoomEvent(roomId, sender, type, content, nowMs);
       if (seq && typeof seq === 'object') return seq;
-      if (afterAppend) return Promise.resolve(seq).then((value) => afterAppend(null, { seq: value, roomId, eventId: `${value}` })).then(() => { clientMessages.push({ roomId, userId, clientId, seq: value }); return { state: 'created', seq: value }; });
+      if (afterAppend) return Promise.resolve(seq).then((value) => afterAppend(null, { seq: value, roomId, eventId: `$${value}` })).then(() => { clientMessages.push({ roomId, userId, clientId, seq: value }); return { state: 'created', seq: value }; });
       clientMessages.push({ roomId, userId, clientId, seq });
       return { state: 'created', seq };
     },
