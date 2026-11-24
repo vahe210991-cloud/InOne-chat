@@ -366,7 +366,7 @@ test('upload and completion fail closed after room membership is revoked', async
     await s.alice.raw('DELETE', `/rooms/${enc(ROOM)}/members/${enc(BOB)}`);
     assert.equal((await putTo(first.uploadUrl, beforePut)).status, 403,
       'membership revoked after announce is revalidated after the stream');
-    assert.equal((await completeFile(s, s.bob.token, first.fileId)).status, 403,
+    assert.equal((await completeFile(s, s.bob.token, first.fileId)).status, 404,
       'a rejected upload cannot be completed');
 
     await s.alice.raw('POST', `/rooms/${enc(ROOM)}/members`, { userId: BOB });
@@ -442,6 +442,22 @@ test('одна upload reservation допускает только один па�
     assert.deepEqual(results.map((r) => r.status).sort((a, b) => a - b), [200, 409]);
     assert.equal((await completeFile(s, s.alice.token, created.fileId)).status, 200,
       'the winning stream remains completable');
+  } finally {
+    await s.stop();
+  }
+});
+
+
+test('upload completion discards ciphertext after send capability is revoked', async () => {
+  const s = await start();
+  try {
+    const bytes = randomBytes(96);
+    const created = (await announce(s, s.bob.token, bytes)).json;
+    assert.equal((await putTo(created.uploadUrl, bytes)).status, 200);
+    await s.alice.raw('POST', `/rooms/${enc(ROOM)}/capabilities`, { userId: BOB, capabilities: [] });
+    assert.equal((await completeFile(s, s.bob.token, created.fileId)).status, 403);
+    assert.equal((await http(s.base, 'GET', `/files/${enc(created.fileId)}/url`, { token: s.bob.token })).status, 404,
+      'unauthorized uploaded ciphertext is tombstoned and removed');
   } finally {
     await s.stop();
   }
