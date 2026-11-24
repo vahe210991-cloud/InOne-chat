@@ -1224,6 +1224,8 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
      */
     async appendClientMessageEvent(roomId, userId, clientId, sender, type, content, nowMs, afterAppend = null) {
       return inTransaction(async (c) => {
+        const access = await lockRoomWriteAccess(c, roomId, sender);
+        if (access) return { state: access };
         const inserted = await c.query(
           'INSERT INTO mls_client_messages (room_id, user_id, client_message_id, seq) VALUES ($1, $2, $3, NULL) ON CONFLICT DO NOTHING RETURNING client_message_id',
           [roomId, userId, clientId],
@@ -1685,6 +1687,8 @@ async mlsPendingRemovalsFor(userId) {
 
     async appendRoomEvent(roomId, sender, type, content, nowMs, afterAppend = null) {
       return inTransaction(async (c) => {
+        const access = await lockRoomWriteAccess(c, roomId, sender);
+        if (access) return { state: access };
         const { rows } = await c.query("UPDATE counters SET value = value + 1 WHERE name = 'event_seq' RETURNING value");
         const seq = Number(rows[0].value);
         await c.query(
