@@ -403,7 +403,7 @@ test('параллельные резервации разных владель�
     const orgId = orgs[0]?.orgId;
     assert.ok(orgId, 'test users belong to the default organization');
     const setting = await s.alice.raw('POST', `/orgs/${enc(orgId)}/settings`, { field: 'fileQuotaBytes', value: 1000 });
-    assert.equal(setting.status, undefined); // ChatClient.raw returns the parsed response on success.
+    assert.equal(setting.settings.fileQuotaBytes, 1000);
     const requests = await Promise.all(Array.from({ length: 20 }, (_, index) =>
       announce(s, index % 2 === 0 ? s.alice.token : s.bob.token, Buffer.alloc(100))));
     assert.equal(requests.filter((r) => r.status === 200).length, 10,
