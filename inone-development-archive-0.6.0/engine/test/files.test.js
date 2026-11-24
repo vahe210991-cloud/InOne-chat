@@ -148,6 +148,8 @@ test('ссылка загрузки истекает через 15 минут', 
     const created = (await announce(s, s.alice.token, bytes)).json;
     s.srv.advance(16 * MIN);
     assert.equal((await putTo(created.uploadUrl, bytes)).status, 403);
+    assert.equal((await http(s.base, 'GET', `/files/${enc(created.fileId)}/url`, { token: s.alice.token })).status, 404,
+      'expired signed upload reservation is released immediately');
   } finally {
     await s.stop();
   }
@@ -204,7 +206,7 @@ test('неверная контрольная сумма: файл не прин
     const other = randomBytes(300);
     const created = (await announce(s, s.alice.token, promised)).json;
     assert.equal((await putTo(created.uploadUrl, other)).status, 422, 'сумма не совпала');
-    assert.equal((await completeFile(s, s.alice.token, created.fileId)).status, 409, 'подтвердить нечего');
+    assert.equal((await completeFile(s, s.alice.token, created.fileId)).status, 404, 'failed upload reservation was released');
   } finally {
     await s.stop();
   }
