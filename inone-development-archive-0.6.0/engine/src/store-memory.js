@@ -453,7 +453,16 @@ export function createMemoryStore({ pinPepper }) {
     },
     revokeDevice(dk) {
       const d = devices.get(dk);
-      if (d) d.revoked = true;
+      if (d) {
+        d.revoked = true;
+        for (let i = mlsPackages.length - 1; i >= 0; i--) {
+          if (mlsPackages[i].userId === d.userId && mlsPackages[i].deviceId === d.deviceId) mlsPackages.splice(i, 1);
+        }
+        for (const [claimKey, claim] of mlsPackageClaims) {
+          const [targetUserId] = JSON.parse(claimKey);
+          if (targetUserId === d.userId) claim.packages = claim.packages.filter((item) => item.deviceId !== d.deviceId);
+        }
+      }
       deviceKeys.delete(dk);
       oneTimeKeys.delete(dk);
       inbox.delete(dk);
