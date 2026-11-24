@@ -77,13 +77,17 @@ test('active organization link permits device-key query and encrypted to-device 
     const queried = await s.alice.raw('POST', '/keys/query', { device_keys: { [BOB]: {} } });
     assert.equal(queried.device_keys[BOB].B_PHONE.keys.ed25519, 'bob-ed25519');
 
-    await s.alice.raw('PUT', '/sendToDevice/m.room.encrypted/txn-linked-0001', {
+    const message = {
       messages: { [BOB]: { B_PHONE: { ciphertext: 'opaque-ciphertext' } } },
-    });
+    };
+    await s.alice.raw('PUT', '/sendToDevice/m.room.encrypted/txn-linked-0001', message);
+    await s.alice.raw('PUT', '/sendToDevice/m.room.encrypted/txn-linked-0001', message);
     const queue = await s.store.drainQueue(`${BOB}|B_PHONE`, 0, 0, Date.now());
-    const delivered = queue.find((event) => event.stream === 'to_device');
-    assert.equal(delivered.body.type, 'm.room.encrypted');
-    assert.equal(delivered.body.content.ciphertext, 'opaque-ciphertext');
+    const deliveries = queue.filter((event) => event.stream === 'to_device');
+    assert.equal(deliveries.length, 1, 'replayed transaction does not duplicate queued messages');
+    assert.ok(deliveries[0].dedupeKey, 'to-device queue entries always have a non-null dedupe key');
+    assert.equal(deliveries[0].body.type, 'm.room.encrypted');
+    assert.equal(deliveries[0].body.content.ciphertext, 'opaque-ciphertext');
   } finally {
     await s.stop();
   }
