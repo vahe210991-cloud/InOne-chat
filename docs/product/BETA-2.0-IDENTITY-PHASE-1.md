@@ -230,3 +230,42 @@ Identity Phase 1 is NOT complete until all conditions hold:
 - No automatic merging of existing accounts.
 - No change to Beta 1.0 registration/recovery policy or PR #135.
 - No production deployment, secrets mutation or branch-protection change.
+
+
+## 11. Source-backed current identity inventory — expanded 2026-11-24
+
+Reviewed against current `main` SHA `02880940c1e4d8261405fbeaa01f40879eb44f3a` (not the stale POC sibling tree).
+
+### Runtime and persistence
+
+- `inone-development-archive-0.6.0/engine/src/main.js` is the server entry point. It creates a PostgreSQL pool from `config.databaseUrl`, calls `migrate(pool)`, constructs `createStore({ pool, pinPepper })`, and passes that store into `createServer`.
+- `createServer` can default to an in-memory store when no store is supplied; production entrypoint supplies PostgreSQL. Audit all production/bootstrap call sites before extraction so an accidental memory-mode boot cannot occur.
+- `inone-development-archive-0.6.0/engine/src/migrate.js` declares `SCHEMA_VERSION = 0033-org-request-document-metadata`, uses `schema.sql` for fresh databases and ordered SQL migrations for upgrades.
+- `inone-development-archive-0.6.0/engine/src/schema.sql` contains the local account, profile, provider, phone, verification, token, recovery and device records. Its header still describes a 0.6.0-alpha.1 PoC schema while the migration runner is at 0033; reconcile this provenance/version comment before relying on it as a standalone schema artifact.
+- `inone-development-archive-0.6.0/engine/src/store.js` implements persistence for these records. It is a product-local PostgreSQL store, not a cross-platform Identity store.
+
+### Existing identity-bearing records and constraints
+
+| Record | Existing behavior / constraints | Identity extraction implication |
+|---|---|---|
+| `accounts` | `user_id` primary key; `password_hash` | Existing user IDs are not proposed UUIDs: `account-rules.js` creates `u` + 24 random hex characters. Migration must preserve/map these IDs. |
+| `profiles` | `email`, `email_verified`, `nickname`, locale; unique lower(email) for verified rows and unique lower(nickname) | Existing local email/nickname uniqueness; define whether global across products and aliases before centralizing. |
+| `phones` | Per-user phone and verification fields; schema has phone uniqueness indexes | Phone uniqueness currently exists within this product DB; central scope and verification/reassignment semantics remain undecided. |
+| `provider_links` | PK `(provider, sub)`; unique `(user_id, provider)` | One external subject maps to one InOne account and one provider per InOne account; this is not a cross-platform provider registry. |
+| `backup_emails` | One per user and unique lower(email) | Must distinguish primary verified email from recovery/contact alias. |
+| `email_codes` | Email-keyed registration code and one-time registration token hashes/expiry | Verification state is currently local to InOne. |
+| `auth_tokens` | One-time token hash keyed by kind, optional user and payload, expiry | Must not be confused with future Identity access/refresh tokens. |
+| `devices`, `tokens`, `refresh_tokens` | Device-bound access/refresh token hashes and expiry/used state | Device/session lifecycle currently product-local; decide central authentication vs product-specific sessions. |
+| `recovery`, `recovery_cancel_codes`, `approvals`, `device_waits` | Recovery windows, cancellation, new-device approvals and delayed activation | Recovery/device trust is coupled to local product data and requires an explicit split/adapter strategy. |
+
+### Existing behavior and test evidence (definitions only)
+
+- `account-rules.js`: `newUserId()` returns `u` + 24 hex chars; password hash uses Node `scrypt` with random salt and 32-byte output; minimum password length is 8.
+- `identity-db.test.js`: PostgreSQL-backed test covers email/nickname persistence across server restart and DB-enforced uniqueness. It is conditionally skipped when `DATABASE_URL` is absent.
+- `providers-db.test.js`: PostgreSQL-backed tests cover Google provider link persistence, uniqueness of provider subject, one provider per user, password-login disablement after provider linking, and backup email behavior. Also conditionally skipped without `DATABASE_URL`.
+- These test definitions are evidence of existing local behavior, **not** evidence that tests were executed in this session or that cross-product identity is implemented.
+- Code search for `identity_reservations`, `platform_accounts`, `canonical_user_id`, `identity_service` and `cross_platform_reservation` returned no matching current-main implementation. This is a bounded search result, not a proof that no hidden/private Propo implementation exists.
+
+### Updated CTO gap statement
+
+InOne already has a persistent, product-local identity subsystem with database constraints, password/provider authentication, phone/email verification and device/recovery state. The missing capability is the **independent canonical cross-platform authority and atomic reservation/provisioning layer**. The extraction plan must preserve existing local account behavior and migrate/link local records deliberately; do not rebuild or discard these working mechanisms.
