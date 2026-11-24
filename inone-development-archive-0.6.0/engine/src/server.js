@@ -508,10 +508,14 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
           return send(res, 403, { error: 'upload link is invalid or expired' });
         }
         const ownerDevice = await storage.deviceRecord(key(file.ownerId, file.ownerDeviceId));
-        if (!ownerDevice || ownerDevice.revoked) return send(res, 403, { error: 'uploading device is revoked' });
+        if (!ownerDevice || ownerDevice.revoked) {
+          await discardFileUpload(fileId);
+          return send(res, 403, { error: 'uploading device is revoked' });
+        }
         if (file.status !== 'pending') return send(res, 409, { error: 'file is not waiting for upload' });
         if (Number(req.headers['content-length']) !== file.size) {
           res.setHeader('Connection', 'close');
+          await discardFileUpload(fileId);
           return send(res, 413, { error: 'size does not match the declaration' });
         }
         const activeOwnerDevice = await storage.deviceRecord(key(file.ownerId, file.ownerDeviceId));
