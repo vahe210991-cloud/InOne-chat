@@ -2422,6 +2422,7 @@ if (req.method === 'POST' && p === '/login') {
               // Do not reject here: a concurrent exact retry may have been accepted while this request waited.
 
               const { adds, removes } = checked.value.changes;
+              const commitOrgId = await storage.roomOrg(roomId);
               const isOwner = d.userId === r.owner;
               for (const t of removes) {
                 if (!r.members.includes(t)) return send(res, 400, { error: `not a member: ${t}` });
@@ -2435,6 +2436,8 @@ if (req.method === 'POST' && p === '/login') {
                 if (r.members.includes(u)) return send(res, 409, { error: `already a member: ${u}` });
                 if (!isOwner && !hasCapability(r, d.userId, 'invite_members')) return send(res, 403, { error: 'missing capability: invite_members' });
                 if (!(await storage.hasAccount(u))) return send(res, 400, { error: `unknown account: ${u}` });
+                const addGate = await orgGate(u, commitOrgId);
+                if (addGate) return send(res, 403, { error: 'target user is not eligible for this room', code: 'target_not_authorized' });
                 if (!checked.value.welcomes.some((w) => w.userId === u)) return send(res, 400, { error: `added member needs a welcome: ${u}` });
               }
               const pendingDevices = await storage.mlsPendingRemovalDevices(roomId);
@@ -2467,6 +2470,12 @@ if (req.method === 'POST' && p === '/login') {
               }
               if (!result.ok && result.reason === 'join_request_mismatch') {
                 return send(res, 400, { error: 'join request approval does not match the added member', code: 'join_request_mismatch' });
+              }
+              if (!result.ok && result.reason === 'org_not_member') {
+                return send(res, 403, { error: 'target user is not eligible for this room', code: 'target_not_authorized' });
+              }
+              if (!result.ok && result.reason === 'org_not_approved') {
+                return send(res, 403, { error: 'organization is not approved', code: 'org_not_approved' });
               }
               if (result.ok && !result.replayed && (adds.length > 0 || removes.length > 0)) {
                 await markRoomChanged(roomId, [...new Set([...r.members, ...adds])]);
