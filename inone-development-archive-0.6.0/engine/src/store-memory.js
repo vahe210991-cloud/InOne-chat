@@ -660,11 +660,28 @@ export function createMemoryStore({ pinPepper }) {
     countOneTimeKeys(deviceKey, prefix) {
       return [...(oneTimeKeys.get(deviceKey)?.keys() ?? [])].filter((n) => n.startsWith(prefix)).length;
     },
-    claimOneTimeKey(deviceKey) {
+    claimOneTimeKey(deviceKey, requesterId, targetUserId) {
+      const device = devices.get(deviceKey);
+      if (!device || device.revoked || device.userId !== targetUserId) return null;
+      if (requesterId !== targetUserId) {
+        const senderOrgs = [...orgMembers.entries()]
+          .filter(([orgId, members]) => members.has(requesterId) && organizations.get(orgId)?.status === 'approved')
+          .map(([orgId]) => orgId);
+        const recipientOrgs = [...orgMembers.entries()]
+          .filter(([orgId, members]) => members.has(targetUserId) && organizations.get(orgId)?.status === 'approved')
+          .map(([orgId]) => orgId);
+        const allowed = senderOrgs.some((senderOrg) => recipientOrgs.some((recipientOrg) =>
+          senderOrg === recipientOrg || [...orgLinks.values()].some((link) =>
+            link.status === 'active' && (
+              (link.orgA === senderOrg && link.orgB === recipientOrg)
+              || (link.orgB === senderOrg && link.orgA === recipientOrg)
+            ))));
+        if (!allowed) return null;
+      }
       const pool = oneTimeKeys.get(deviceKey);
       if (!pool || pool.size === 0) return null;
       const [name, value] = pool.entries().next().value;
-      pool.delete(name); // одноразовый ключ выдаётся один раз
+      pool.delete(name);
       return { [name]: value };
     },
 
