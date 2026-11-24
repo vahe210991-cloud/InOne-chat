@@ -117,6 +117,9 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
       );
       return rowCount === 1;
     },
+    async releaseSend(senderKey, type, txn) {
+      await pool.query('DELETE FROM sends WHERE sender_key = $1 AND type = $2 AND txn = $3', [senderKey, type, txn]);
+    },
 
     async addOneTimeKeys(deviceKey, keys) {
       for (const [name, value] of Object.entries(keys)) {
@@ -156,6 +159,33 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
          DO UPDATE SET id = nextval('inbox_seq'), body = EXCLUDED.body, expires_at = EXCLUDED.expires_at`,
         [deviceKey, stream, dedupeKey ?? null, JSON.stringify(body), expiresAt],
       );
+    },
+    // Atomic bounded enqueue for user-to-device traffic. The device row serializes concurrent senders.
+    async enqueueToDevice(deviceKey, body, dedupeKey, expiresAt, nowMs, maxPending) {
+      return inTransaction(async (c) => {
+        const { rows: devices } = await c.query('SELECT revoked FROM devices WHERE device_key = $1 FOR UPDATE', [deviceKey]);
+        if (!devices[0] || devices[0].revoked) return { ok: false, reason: 'device_revoked' };
+        await c.query("DELETE FROM inbox WHERE device_key = $1 AND stream = 'to_device' AND expires_at <= $2", [deviceKey, nowMs]);
+        const { rows: existing } = await c.query(
+          "SELECT 1 FROM inbox WHERE device_key = $1 AND stream = 'to_device' AND dedupe_key = $2",
+          [deviceKey, dedupeKey],
+        );
+        if (!existing[0]) {
+          const { rows: counts } = await c.query(
+            "SELECT COUNT(*)::int AS n FROM inbox WHERE device_key = $1 AND stream = 'to_device' AND expires_at > $2",
+            [deviceKey, nowMs],
+          );
+          if (counts[0].n >= maxPending) return { ok: false, reason: 'queue_full' };
+        }
+        await c.query(
+          `INSERT INTO inbox (device_key, stream, dedupe_key, body, expires_at)
+           VALUES ($1, 'to_device', $2, $3::jsonb, $4)
+           ON CONFLICT (device_key, stream, dedupe_key)
+           DO UPDATE SET id = nextval('inbox_seq'), body = EXCLUDED.body, expires_at = EXCLUDED.expires_at`,
+          [deviceKey, dedupeKey, JSON.stringify(body), expiresAt],
+        );
+        return { ok: true };
+      });
     },
 
     /**
