@@ -2140,8 +2140,18 @@ async mlsPendingRemovalsFor(userId) {
     },
 
     async mlsPendingWelcomes(userId, deviceId) {
-      const { rows } = await pool.query('SELECT id, room_id, epoch, welcome FROM mls_welcomes WHERE user_id = $1 AND device_id = $2 AND acked_at IS NULL ORDER BY id', [userId, deviceId]);
-      return rows.map((r) => ({ id: Number(r.id), roomId: r.room_id, epoch: Number(r.epoch), welcome: r.welcome }));
+      return inTransaction(async (c) => {
+        const { rows: devices } = await c.query(
+          'SELECT revoked FROM devices WHERE user_id = $1 AND device_id = $2 FOR SHARE',
+          [userId, deviceId],
+        );
+        if (!devices[0] || devices[0].revoked) return [];
+        const { rows } = await c.query(
+          'SELECT id, room_id, epoch, welcome FROM mls_welcomes WHERE user_id = $1 AND device_id = $2 AND acked_at IS NULL ORDER BY id',
+          [userId, deviceId],
+        );
+        return rows.map((r) => ({ id: Number(r.id), roomId: r.room_id, epoch: Number(r.epoch), welcome: r.welcome }));
+      });
     },
 
     async mlsDropDevicePackages(userId, deviceId) {
@@ -2150,8 +2160,18 @@ async mlsPendingRemovalsFor(userId) {
     },
 
     async mlsAckWelcome(id, userId, deviceId, nowMs) {
-      const { rowCount } = await pool.query('UPDATE mls_welcomes SET acked_at = $4 WHERE id = $1 AND user_id = $2 AND device_id = $3 AND acked_at IS NULL', [id, userId, deviceId, nowMs]);
-      return rowCount === 1;
+      return inTransaction(async (c) => {
+        const { rows: devices } = await c.query(
+          'SELECT revoked FROM devices WHERE user_id = $1 AND device_id = $2 FOR SHARE',
+          [userId, deviceId],
+        );
+        if (!devices[0] || devices[0].revoked) return false;
+        const { rowCount } = await c.query(
+          'UPDATE mls_welcomes SET acked_at = $4 WHERE id = $1 AND user_id = $2 AND device_id = $3 AND acked_at IS NULL',
+          [id, userId, deviceId, nowMs],
+        );
+        return rowCount === 1;
+      });
     },
 
     async phoneOwner(phone) {
