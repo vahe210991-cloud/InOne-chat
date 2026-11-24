@@ -164,9 +164,16 @@ export function createMemoryStore({ pinPepper }) {
       f.status = 'uploaded';
       return true;
     },
-    markFileReady(fileId, nowMs) {
+    markFileReady(fileId, nowMs, ownerId, ownerDeviceId) {
       const f = files.get(fileId);
-      if (!f || f.status !== 'uploaded') return false;
+      if (!f || f.status !== 'uploaded' || f.ownerId !== ownerId || f.ownerDeviceId !== ownerDeviceId) return false;
+      const device = devices.get(`${ownerId}|${ownerDeviceId}`);
+      if (!device || device.revoked) return false;
+      if (f.roomId) {
+        const room = rooms.get(f.roomId);
+        if (!room || !room.members.has(ownerId)) return false;
+        if (room.owner !== ownerId && !(room.capabilities.get(ownerId) ?? []).includes('send_messages')) return false;
+      }
       f.status = 'ready';
       f.completedAt = nowMs;
       return true;
