@@ -88,3 +88,12 @@ This is a proposed standards baseline, not an approved final token policy. The e
 - Database schema enforces uniqueness and state invariants.
 - Failure semantics are demonstrated by integration/fault-injection tests.
 - No implementation path creates shadow identities or direct cross-product DB access.
+
+
+## Current InOne identity implementation baseline (source review)
+
+The existing InOne backend is not identity-empty. Its production entrypoint `src/main.js` initializes PostgreSQL, runs migrations and injects a persistent `createStore` into `createServer`. Local identity records include `accounts`, `profiles`, `phones`, `provider_links`, `backup_emails`, `email_codes`, `auth_tokens`, device/session records and recovery/approval state. Current schema version in `migrate.js` is `0033-org-request-document-metadata`; `schema.sql` has a stale alpha.1 header that must be reconciled.
+
+The target Identity Service must therefore be introduced as an authority alongside the existing product-local identity projection, then integrated through an adapter and carefully migrated. It must not simply relocate `accounts` or change local user IDs: many existing product tables reference local `accounts.user_id` via foreign keys, including rooms/organizations/device/MLS state. The product-local account row and subject mapping should remain until a separately approved migration plan proves safe.
+
+Existing PostgreSQL tests cover local email/nickname uniqueness and provider-link persistence across restart. They do not prove cross-product reservation or central Identity availability.
