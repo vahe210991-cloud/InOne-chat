@@ -83,7 +83,12 @@ export function createFsObjectStore(dir) {
         await handle.close();
         await rename(temp, target);
         await syncDirectory();
-        return { size: (await (await open(target, 'r')).stat()).size };
+        const published = await open(target, 'r');
+        try {
+          return { size: (await published.stat()).size };
+        } finally {
+          await published.close();
+        }
       } catch (error) {
         await handle.close().catch(() => {});
         await rm(temp, { force: true }).catch(() => {});
