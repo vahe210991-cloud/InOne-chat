@@ -668,3 +668,14 @@ Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone
 - No backend source modules, schema/migrations, Rust/FFI source, directory paths or database data were changed. Do not merge to `main` without owner approval.
 
 - PR #120 remains open as Draft against `main`, not merged. Its README received a preservation correction after review; re-read the latest PR head and require fresh exact-head CI before acceptance.
+
+
+## CTO backend security remediation — 2026-11-24
+
+- Live main advanced to `02880940c1e4d8261405fbeaa01f40879eb44f3a` (PR #132 included).
+- Stage 0 branch: `security/beta1-backend-remediation-2026-11-24`, created from exact main SHA.
+- Stage 0 report: `development/reports/2026-11-24-cto-backend-security-remediation-stage0.md`.
+- Source-level findings confirmed: B-01, B-02, B-03, B-04, B-06, B-07, B-08, B-09, B-10, B-11. B-12/B-13/B-14 require additional research; B-15 partial.
+- No product source changed and no security tests were executed in this session. Backend remediation is NOT ACCEPTED pending complete clone/Codespace and PostgreSQL-capable runner.
+- GitHub main protection remains disabled (`protected=false`); no settings changed. Five exact-main workflow jobs were PASS and three IN PROGRESS at inspection; not backend security acceptance.
+- SMS is out of scope; native MLS remains disabled by default. Beta 1.0 backend security verdict: NOT READY.
