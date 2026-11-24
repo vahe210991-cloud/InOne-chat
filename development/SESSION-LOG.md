@@ -756,3 +756,14 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Main now has 8/9 push workflows completed PASS. The only remaining workflow is `Native MLS client validation`: its four non-iOS jobs PASS; the iOS Keychain native-target job's first attempt was cancelled, and the targeted rerun remains QUEUED.
 - The cancelled job had no retrievable logs; the rerun is the next evidence point. Do not call main fully validated until it completes.
 
+
+
+## 2026-11-24 — CTO backend security remediation Stage 0
+
+- Re-fetched live main at `02880940c1e4d8261405fbeaa01f40879eb44f3a`; created isolated branch `security/beta1-backend-remediation-2026-11-24` directly from that exact SHA.
+- Read repository agent mandate, WBS v1.1, Git integration policy, working rules, historical test evidence and current continuity documents. Canonical backend source is `inone-development-archive-0.6.0/engine`.
+- Revalidated source and recorded confirmed source-level findings B-01, B-02, B-03, B-04, B-06, B-07, B-08, B-09, B-10 and B-11; B-12/B-13/B-14 need additional investigation; B-15 is partial. Detailed evidence: `development/reports/2026-11-24-cto-backend-security-remediation-stage0.md`.
+- Main already contains PR #132 MLS Welcome atomicity work; did not repeat it. Reviewed open-PR inventory and identified overlap requiring patch/ancestry review (#42, #63, #65, #66, #86, #89 and G2/MLS PRs).
+- Exact-main workflows at inspection: five completed PASS and three IN PROGRESS; these are not a substitute for the requested security test matrix. Main protection API reports `protected=false`.
+- No backend source/migration/test/workflow changes. New tests, exploit reproduction, PostgreSQL concurrency/fault injection and full suite are NOT RUN. No local clone/Codespace runner is available in this session; broad backend edits are blocked by repository policy until a complete working copy/test runner is available.
+- Beta 1.0 verdict remains NOT READY for backend security acceptance. SMS confirmation/recovery/provider work excluded; native MLS remains disabled by default; no merge, issue closure or repository setting mutation performed.
