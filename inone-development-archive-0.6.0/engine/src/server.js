@@ -579,7 +579,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
           return send(res, 403, { error: 'not the owner' });
         }
         if (file.status !== 'ready') return send(res, 404, { error: 'not ready' });
-        const stream = objectStore.getStream(fileId);
+        const stream = await objectStore.getStream(fileId);
         if (!stream) return send(res, 404, { error: 'not found' });
         res.writeHead(200, {
           'content-type': 'application/octet-stream',
