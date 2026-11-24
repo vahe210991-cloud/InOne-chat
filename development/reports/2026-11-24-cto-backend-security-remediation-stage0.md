@@ -71,3 +71,45 @@ This is a broad multi-file backend change requiring complete repository clone/Co
 6. Keep PR Draft, no main merge, no issue closure, no secret mutation, no native MLS enablement.
 
 **Beta 1.0 verdict:** NOT READY for backend security acceptance. Findings are source-level confirmations, not a penetration-test result or production-readiness claim.
+
+
+## Stage 0 addendum — expanded review of B-12..B-15 and open-PR overlap (2026-11-24)
+
+The following details refine the initial matrix; they are still source-level findings, not executed exploit/test results.
+
+### Updated status matrix
+
+| ID | Updated status | Evidence / refinement |
+|---|---|---|
+| B-12 admin transactionality | **CONFIRMED** | Organization role route checks `countOrgOwners()`, then independently calls `setOrgMemberRole()` and `logAdminAction()`. PostgreSQL methods are separate pool queries; no shared transaction or org-row lock. Member removal similarly checks last-owner count before the transactional `removeOrgMember()`, so concurrent removals can pass the count check. Org settings update and settings-log INSERT are also separate queries. |
+| B-13 file retention/quotas | **CONFIRMED (partial implementation)** | Owner byte count and organization byte count exist, as does a pending-upload count. However quota enforcement is a read-then-create sequence: `bytesForOwner()+size` and `bytesForOrg()+size` are checked before a separate `createFile()`; no atomic reservation/locking is present. No quota is applied to org-less avatar uploads through an org quota. Cleanup deletes pending/uploaded rows older than cutoff, while ready files remain indefinitely unless a separate retention/deletion lifecycle exists. Object deletion occurs after DB deletion in a separate step; crash consistency needs review. |
+| B-14 FCM registration lifecycle | **FIXED (source-level; tests not executed)** | `fcm-push-sender.js` classifies invalid FID/registration as non-retryable `invalid_target`; `push-delivery.js` deletes the matching encrypted push registration, cancels queued/failed deliveries for the device and marks current delivery cancelled. Current-registration lookup joins active devices, and provider payload is allowlisted to `type,event_id,path` with no plaintext body. Existing `push.test.js` includes an invalid-FID deletion/no-retry regression. Run DB-backed delivery tests before acceptance. |
+| B-15 readiness/health | **PARTIAL** | `/healthz` is a liveness response and `/readyz` checks `storage.ping()`. No separate `/livez` route was found. The readiness contract currently verifies PostgreSQL/store ping only; required external/runtime dependencies and orchestrator semantics still need explicit definition and integration verification. |
+
+### Additional concrete evidence
+
+- B-01: legacy `POST /mls/key-packages/:userId/claim` remains active and calls `mlsClaimKeyPackages(..., roomId=null,...)` after only authentication, claim ID validation and sender rate check. It has no room membership, invite capability, shared-org/link, or target-user authorization gate. The newer `/claims` route requires room membership and invite capability but does not explicitly assert the target's shared-org/active-link eligibility.
+- B-02: `POST /keys/query` still authenticates but does not call `sharesOrgOrLink()`; `POST /keys/claim` does call it. `PUT /sendToDevice/:type/:txn` accepts arbitrary target user/device maps, skips only missing/revoked devices, and enqueues each payload with `dedupeKey=null`. Existing body-size cap is global, not a per-message/per-recipient queue cap. No per-sender rate check appears in this route.
+- B-04: upload still buffers chunks and `Buffer.concat()` before hashing and object-store write. Declared size is checked, including exact Content-Length and actual byte count, but this does not prevent many concurrent valid large uploads from exhausting memory.
+- B-06: `main.js` calls `createServer()` without `objectSecret`; the factory default is fresh random bytes. No persistent secret configuration or production fail-fast guard was found in `config.js`.
+- B-07: PostgreSQL `purgeExpired()` omits `rate_limits` and `login_throttle`; periodic cleanup calls that method. HMAC/minimization of identifiers remains to be reviewed.
+- B-08: wire log continues to include raw `req.url` and blacklist-based body masking. Recovery/download signed query parameters are therefore logged verbatim unless the route is specially excluded; use path-only allowlisted metadata instead.
+- B-09: the request callback performs maintenance flag lookup and object handler before the route/body inner try/catch. A single outer error boundary is still absent.
+- B-10: trust remains a boolean. When enabled, the first X-Forwarded-For entry is accepted without validating the immediate peer against an explicit proxy allowlist.
+- B-11: provider JWKS fetch has no AbortSignal timeout or response-size limit; unknown kid causes another fetch even when the cache is fresh; no negative cache or in-flight coalescing; `nbf` is not checked. Algorithm is explicitly restricted to RS256; signature, issuer, audience and expiry checks are present.
+- B-12: role demotion and owner removal both use a check-then-write sequence. `setOrgMemberRole`, `countOrgOwners` and audit logging are independent operations. The existing transaction in `removeOrgMember` protects membership cleanup/join races, but it does not serialize the earlier last-owner count with role/owner mutations.
+- B-13: `bytesForOrg()` sums file sizes by room organization, and route checks it, but the check and file insert are not atomic. `bytesForOwner()` likewise is a preflight read. There is no quota reservation row/counter with concurrency protection.
+- B-14: current FCM path already has explicit permanent/retryable error classification and removal of invalid FIDs. Do not reimplement this work; add/execute PostgreSQL tests for races where a token is re-registered while an old send fails.
+- B-15: health and readiness endpoints are outside the inner request body parse try and are handled before regular API routing; verify safe behavior under DB outage and orchestrator expectations.
+
+### Open PR overlap — disposition
+
+- **#42:** adds a PostgreSQL workflow against the older `inone-engine-poc-0.6.0` path; its diff is a workflow, not an atomic revocation implementation for the current canonical engine. Do not port as a fix. Its test idea may be adapted to current engine after auditing repository CI conventions.
+- **#86:** includes useful device-bound signed download logic and regression tests. Current `main` already contains device-bound download signatures and active-session/device checks, so do not copy it again. It does not solve upload streaming or quota reservation.
+- **#89:** adds G2 document lifecycle/UI behavior and a staging smoke script. Its client/document lifecycle work must remain separate from backend B-03/B-12 transactions; review individual files before any reuse.
+- **#65:** changes one login error catch to avoid returning `e.message`. It does not supply the missing outer request boundary or guarantee all routes avoid error leakage.
+- **#63/#66:** contain useful least-privilege CI changes, but remain open; inspect exact workflow versions/ancestry before applying to current workflows.
+
+### Stage sequencing correction
+
+B-12 is a confirmed database-integrity issue and should be fixed in the database stage, but its last-owner invariant is security-critical. Add a Stage 1 guard test and include the actual transactional fix in the database-integrity package. Do not consider Stage 1 accepted until that concurrency scenario is covered.
