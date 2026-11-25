@@ -2280,7 +2280,8 @@ if (req.method === 'POST' && p === '/login') {
         const target = typeof body?.userId === 'string' ? body.userId : '';
         if (!target || target === r.owner) return send(res, 400, { error: 'userId of another member is required' });
         if (!r.members.includes(target)) return send(res, 400, { error: 'new owner must be a member of the group' });
-        await storage.transferRoomOwner(roomId, target);
+        const transferred = await storage.transferRoomOwner(roomId, target);
+        if (!transferred) return send(res, 409, { error: 'new owner is no longer a room member', code: 'owner_transfer_conflict' });
         await markRoomChanged(roomId, r.members);
         return send(res, 200, { owner: target });
       }
