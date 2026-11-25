@@ -26,25 +26,25 @@ const fromB64 = (s) => Buffer.from(s, 'base64url');
 const parseJsonPart = (s) => JSON.parse(fromB64(s).toString('utf8'));
 
 /** Ключи провайдера по стандартному адресу. Ответ ограничен по времени и размеру. */
-export async function fetchProviderKeys(provider) {
+export async function fetchProviderKeys(provider, { fetchImpl = fetch, timeoutMs = JWKS_TIMEOUT_MS, maxBytes = JWKS_MAX_BYTES } = {}) {
   const url = PROVIDER_JWKS_URLS[provider];
   if (!url) throw new Error('jwks provider is not supported');
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(new Error('jwks request timeout')), JWKS_TIMEOUT_MS);
   timer.unref?.();
   try {
-    const res = await fetch(url, { signal: controller.signal, headers: { accept: 'application/json, application/jwk-set+json' } });
+    const res = await fetchImpl(url, { signal: controller.signal, headers: { accept: 'application/json, application/jwk-set+json' } });
     if (!res.ok) throw new Error(`jwks ${provider}: HTTP ${res.status}`);
     const contentType = String(res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
     if (!['application/json', 'application/jwk-set+json'].includes(contentType)) throw new Error('jwks response content type is invalid');
     const declaredLength = Number(res.headers.get('content-length') || 0);
-    if (declaredLength > JWKS_MAX_BYTES) throw new Error('jwks response is too large');
+    if (declaredLength > maxBytes) throw new Error('jwks response is too large');
     if (!res.body) throw new Error('jwks response body is missing');
     const chunks = [];
     let size = 0;
     for await (const chunk of res.body) {
       size += chunk.length;
-      if (size > JWKS_MAX_BYTES) {
+      if (size > maxBytes) {
         controller.abort();
         throw new Error('jwks response is too large');
       }
