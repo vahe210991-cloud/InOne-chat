@@ -26,7 +26,7 @@ The active workflow set references actions through major tags such as `@v4`, `@v
 
 The engine CI runs `npm audit --audit-level=high` and the exact-SHA gate also runs dependency audit checks. Five Cargo.lock files are committed. Three are the current/canonical mobile Rust bridge, Engine B MLS client and Engine B MLS bridge; two are legacy Engine A POC lockfiles under `inone-engine-poc-0.6.0`. The legacy client is still exercised by an existing CI workflow, so the advisory gate now scans all five committed lockfiles.
 
-**Evidence:** lockfiles contain approximately 325, 252 and 153 package records respectively; no Git-sourced Cargo dependencies were found in these lockfiles.
+**Evidence:** lockfiles contain approximately 325, 252, 153, 252 and 153 package records respectively; no Git-sourced Cargo dependencies were found in these lockfiles.
 
 **Required remediation:** add a reproducible Rust advisory scan for all five committed Cargo.lock files, pin the scanner/tool version, retain machine-readable output, and define a documented exception process. Do not auto-upgrade cryptographic dependencies without compatibility and MLS regression review.
 
@@ -77,8 +77,6 @@ The engine image sets `NODE_ENV=production`, installs production dependencies on
 | Rust Engine B MLS bridge | `inone-development-archive-0.6.0/engine/mobile-mls/mls-bridge/Cargo.lock` | 153 | None observed |
 | Rust legacy Engine A MLS client | `inone-engine-poc-0.6.0/mobile-mls/mls-client/Cargo.lock` | 252 | None observed |
 | Rust legacy Engine A MLS bridge | `inone-engine-poc-0.6.0/mobile-mls/mls-bridge/Cargo.lock` | 153 | None observed |
-| Rust MLS client | Cargo.lock | 252 | None observed |
-| Rust MLS bridge | Cargo.lock | 153 | None observed |
 
 The Node lockfile contains a `firebase-admin` package entry without an `integrity` field. This requires investigation against the npm registry and lockfile semantics before treating it as tampering or a defect; no conclusion is drawn from that observation alone.
 
