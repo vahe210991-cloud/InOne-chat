@@ -161,3 +161,29 @@ Added a source SBOM job using the Anchore SBOM action pinned to verified commit 
 ### Branch hygiene correction
 
 The initial Stage 5 draft was created as a stacked branch from Stage 4. Repository policy requires task branches to be based directly on the current `main` SHA. To comply, all 19 Stage 5-specific files were selectively ported to `security/beta1-stage5-supply-chain-main-2026-11-25`, created from `main` at `74169a449de182ea734049e21d8424dfc4091c88`. No Stage 4 database-integrity changes were carried into this branch. The original stacked PR remains a historical Draft and is not the active Stage 5 candidate.
+
+
+## WBS mapping and progress accounting
+
+This work maps to the owner-approved Beta 1.0 WBS v1.1:
+- **QA, CI and E2E (10%)**: supply-chain scanning, exact-SHA workflows, artifact evidence and CI hardening.
+- **DevOps and release readiness (5%)**: immutable base-image references, dependency update cadence and operator procedures.
+
+No WBS weight or cumulative percentage is changed by this Draft PR. The approved baseline remains **42% implementation / 31% verification** for Beta 1.0. Stage 5 work is not counted as accepted until all applicable criteria and exact-head checks pass. Current Stage 5 status: **NOT ACCEPTED**.
+
+## Previous checkpoints
+
+1. **Stage 1 B-01/B-02/B-03:** previously reported accepted on its exact-SHA gate; retained as prior baseline, not revalidated by this PR.
+2. **Stage 2 B-04/B-13:** previously reported accepted; this PR does not modify that implementation.
+3. **Stage 3:** PR #152 remains Draft; prior 15/15 CI result is tied to its recorded SHA and is not a merge or release approval.
+4. **Stage 4 database integrity:** PR #154 remains separate Draft; 15/15 checks passed on SHA ee787deacb051cee981ef5c76038fd71e65cd305, but it is not merged and is not included in this Stage 5 branch.
+5. **Stage 5 source audit:** findings S5-01 through S5-07 documented; the initial implementation now has its own main-based candidate PR #159.
+
+## Next five tasks
+
+1. Complete all applicable GitHub Actions on one final PR #159 head SHA; inspect every job and retain exact run links.
+2. Review the three RustSec JSON reports; triage every advisory by severity, dependency path, reachability and platform applicability. Do not auto-upgrade MLS/crypto.
+3. Inspect the SPDX SBOM for package coverage and validate its source-SHA and checksum sidecar; keep PR artifacts separate from release attestations.
+4. Obtain the actual production deployment target/configuration and verify read-only filesystem compatibility, dropped capabilities, resource limits, secret isolation and image digest use. No production manifest is currently present in this repository.
+5. Complete owner/operator evidence for production backup/restore, cloud IAM, monitoring, secret manager, HTTPS/proxy, SMTP/domain and rollback before any production-readiness claim.
+
