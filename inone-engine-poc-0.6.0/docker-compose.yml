@@ -1,7 +1,7 @@
 # Сервер и база для проверки. Пароли — в файле .env, не в этом файле. Не проверено в этой среде.
 services:
   db:
-    image: postgres:16
+    image: postgres:16@sha256:07abc3f43c9395b0bdbbab36bc25ddb0e8d83cd4fcafb5fb7d6abe14ff156dd8
     environment:
       POSTGRES_DB: change-me-set-in-your-environment
       POSTGRES_USER: change-me-set-in-your-environment
