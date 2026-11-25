@@ -581,3 +581,17 @@ Latest documented checkpoint: code SHA `4824dfc3b3f4e3aab5d39b16c1adf934a108d660
 - Do not reimplement B-14 FCM invalid-registration cleanup without evidence; add/execute PostgreSQL regression for re-registration racing with old failed delivery.
 - B-15: define exact dependency contract for readiness; keep liveness independent of PostgreSQL and avoid exposing dependency/configuration details.
 - Before deprecating legacy MLS endpoint, finish mobile transport/API call-site audit (Flutter, Rust bridge, generated bindings, integration tests); code-search hits did not show direct Flutter call sites but are not a complete proof.
+
+
+## 2026-11-25 — UI and Beta 2.0 handoff
+
+Continue from PR #158, branch `feature/ui-dart-archive-stage1-2026-11-25`, currently Draft/open/unmerged. Read:
+- `development/reports/2026-11-25-ui-dart-archive-stage1-integration-audit.md`
+- `development/reports/2026-11-25-beta2-screen-gap-audit.md`
+- `development/PROGRESS-BASELINE.md` v1.1
+
+Owner-approved UI process: connect supplied Dart screens to the technical specification and current app/backend; do not restore temporary HTML or require pixel-perfect comparison. After integration, the owner supplies screenshots and correction requests. Reuse current live screens/repositories; do not replace them blindly or invent backend routes.
+
+Beta 2.0 audit: current Leads/Deals Board/Deal Detail widgets are demo-gallery-only. Candidate Dart source includes CRM add-lead/lead-card/move-stage/add-note and tasks list/details/create/Kanban, projects list/card and other-user profile. Calendar screens 60–65, Cindy/AI and group collaboration extras remain missing from the supplied archives/current native tree. CRM/Kanban/Leads/Deals belong to InOne Business per the approved product split. Wallet/Flags/Stories/Geolocation/Propo map require scope clarification, not automatic Beta 2.0 inclusion. See the audit report for the full gap register.
+
+Next: continue Beta 1.0 Dart integration by small feature slice, map callbacks to verified existing APIs, and run exact-SHA Flutter analysis/tests when the authorized runner is available. Keep Beta 2.0 flows out of Beta 1.0 navigation. No test/build/device acceptance was performed by the screen-gap inventory; do not raise WBS percentages.
