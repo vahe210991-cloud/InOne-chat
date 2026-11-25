@@ -393,7 +393,7 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
       const rateLimits = await batchDelete('rate_limits', 'window_start <= $1::bigint - $2::bigint', [nowMs, 24 * 60 * 60_000]);
       const loginThrottle = await batchDelete(
         'login_throttle',
-        'window_start <= $1 - $2 AND blocked_until <= $1',
+        'window_start <= $1::bigint - $2::bigint AND blocked_until <= $1::bigint',
         [nowMs, 15 * 60_000],
       );
       return {
