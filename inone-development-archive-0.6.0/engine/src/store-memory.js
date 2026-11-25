@@ -271,7 +271,25 @@ export function createMemoryStore({ pinPepper }) {
       for (const [k, t] of authTokens) if (t.expiresAt < nowMs) { authTokens.delete(k); authRemoved += 1; }
       let cancelRemoved = 0;
       for (const [u, c] of recoveryCancels) if (c.expiresAt <= nowMs) { recoveryCancels.delete(u); cancelRemoved += 1; }
-      return { inbox: inboxRemoved, tokens: tokensRemoved, refreshTokens: refreshRemoved, authTokens: authRemoved, recoveryCancelCodes: cancelRemoved };
+      let rateLimitsRemoved = 0;
+      for (const [key, value] of rates) {
+        if (value.windowStart <= nowMs - 24 * 60 * 60_000) {
+          rates.delete(key);
+          rateLimitsRemoved += 1;
+        }
+      }
+      let loginThrottleRemoved = 0;
+      for (const [key, value] of throttle) {
+        if (value.windowStart <= nowMs - 15 * 60_000 && value.blockedUntil <= nowMs) {
+          throttle.delete(key);
+          loginThrottleRemoved += 1;
+        }
+      }
+      return {
+        inbox: inboxRemoved, tokens: tokensRemoved, refreshTokens: refreshRemoved,
+        authTokens: authRemoved, recoveryCancelCodes: cancelRemoved,
+        rateLimits: rateLimitsRemoved, loginThrottle: loginThrottleRemoved,
+      };
     },
     clearExpiredCodes(nowMs) {
       let phoneCodes = 0;
