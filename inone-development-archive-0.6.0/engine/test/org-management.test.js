@@ -84,7 +84,7 @@ test('менять роли может только владелец; после
 test('параллельное самопонижение двух владельцев не оставляет организацию без владельца', async () => {
   const s = await start();
   try {
-    await s.store.addOrgMember(ORG, BORIS, 'owner', 5);
+    await s.store.setOrgMemberRole(ORG, BORIS, 'owner');
     const results = await Promise.all([
       call(s.base, 'POST', `/orgs/${ORG}/members/${enc(ANNA)}/role`, s.anna.token, { role: 'member' }),
       call(s.base, 'POST', `/orgs/${ORG}/members/${enc(BORIS)}/role`, s.boris.token, { role: 'member' }),
