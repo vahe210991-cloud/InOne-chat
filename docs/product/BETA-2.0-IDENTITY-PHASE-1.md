@@ -479,3 +479,26 @@ Proposed semantics:
 Open: backup-email uniqueness/role; normalization and Unicode policy; pending-claim TTL/release; phone number reassignment; handle rename/cooldown; whether InOne Business is a first-class platform projection or a separate relying-party client of the human subject. The owner source decision explicitly names InOne and Propo; extending global handle reservations to InOne Business needs confirmation.
 
 Do not freeze physical schema until these semantics are approved. Full matrix and lifecycle proposal are in ADR B2-ADR-001.
+
+
+## 17. Owner-approved Identity architecture and implementation plan — 2026-11-25
+
+The owner approved UUIDv4 for the immutable canonical human subject and the privacy-preserving three-namespace architecture. The canonical subject is internal to Identity; InOne and Propo receive independently generated pairwise product subject IDs. Existing InOne local IDs and Propo CUID primary keys/FKs remain unchanged. Pairwise identifiers are not authorization controls; every product must enforce object-, tenant-, membership- and action-level authorization.
+
+The detailed execution sequence, work packages, gates, test matrix and non-goals are now maintained in [BETA-2.0-IDENTITY-IMPLEMENTATION-ROADMAP.md](./BETA-2.0-IDENTITY-IMPLEMENTATION-ROADMAP.md).
+
+### Immediate execution order
+1. Prove the exact Propo CUID version/generator, Prisma schema and migration/consumer graph; establish the authoritative mobile source tree from build and CI evidence.
+2. Inventory InOne and Propo ID exposure across REST, WebSocket, push, deep links, webhooks, logs, analytics and mobile cache/outbox.
+3. Finalize pairwise subject client/sector boundaries and OIDC token claims; canonical subject must not leak into ordinary client tokens.
+4. Complete remaining owner decisions (credential ownership, account linking, normalization and claim lifecycle, business principal delegation, retention, SLO/data residency).
+5. Draft Identity schema and versioned contracts only after policy decisions; retain local primary keys and no cross-database FKs.
+6. Implement only in a dedicated, approved Beta 2.0 branch after contract/security review; test enumeration, BOLA/IDOR, cross-tenant/product isolation, token confusion, event replay and migration integrity.
+7. Perform legacy account onboarding only after sanitized production-like dry run, mapping/FK/object-owner reconciliation, backup/restore rehearsal and explicit cutover approval.
+
+### Updated decision status
+- Canonical UUIDv4: OWNER-APPROVED on 2026-11-25.
+- Pairwise product subject IDs and preservation of existing local IDs/CUIDs: OWNER-APPROVED architectural direction on 2026-11-25.
+- Phone optional for all Beta 2.0 registration methods: OWNER-APPROVED; Beta 1.0 unchanged.
+- Remaining identifier normalization/TTL/release, credentials, linking, Propo Seller Account delegation, InOne Business boundary, retention, operational SLO/RPO/RTO and Propo contracts: OPEN.
+- Production DDL/data migration and Beta 1.0 changes: NOT AUTHORIZED.
