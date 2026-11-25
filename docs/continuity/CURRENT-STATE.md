@@ -687,3 +687,13 @@ Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone
 The current InOne backend already has a persistent local identity subsystem: production `src/main.js` initializes PostgreSQL, runs migrations and injects `createStore`. The schema includes accounts, profiles, phones, provider links, backup email, email codes, one-time auth tokens, device/session and recovery records. Existing DB constraints cover local verified-email/nickname/phone/provider uniqueness. Current user IDs are `u` + 24 hex; local account rows are referenced by product tables and must not be moved/deleted as the first extraction step.
 
 The cross-platform gap remains the independent canonical Identity authority, shared identifier reservation and durable cross-platform provisioning/reconciliation. `migrate.js` declares schema version 0033 while `schema.sql` header retains an alpha.1 label; reconcile provenance/version and inspect actual migration ledger before migration. Existing `identity-db.test.js` and `providers-db.test.js` are conditional DB tests; their presence is not evidence they ran in this session.
+
+
+### 2026-11-25 — Identity dependency graph audit
+
+- Current schema source: 55 tables; 26 tables contain 29 direct FKs to accounts(user_id). Preserve all local IDs and local account rows during first Identity rollout.
+- Ten additional identity/actor-like fields have no direct FK; semantics (live ref vs event/protocol snapshot vs tombstone) must be decided individually.
+- Migration source: SCHEMA_VERSION 0033; 32 migration markers from 0002 through 0033. Static tests cover parity/continuity and DB upgrade paths, but no tests were run in this session.
+- Actual DB migration ledger and live FK graph remain blocked until authorized read-only DB access.
+- Production CLI passes PostgreSQL pool, but exported startServer can be called with null pool and server then uses memory store. P0 hardening tracked in #150; no Beta 1 code changed.
+- Identity schema/API freeze is not ready pending owner decisions, Propo contract and actual DB evidence.
