@@ -142,7 +142,7 @@ Digest pinning intentionally freezes image content. Refreshes must be proposed a
 
 ### RustSec advisory scan added
 
-A dedicated `rust-advisory-audit` job now installs `cargo-audit` at exact version `0.23.0` using `cargo install --locked`, then scans each maintained Cargo.lock independently:
+A dedicated `rust-advisory-audit` job now installs `cargo-audit` at exact version `0.23.0` using `cargo install --locked`, then scans all five committed Cargo.lock files independently:
 - `mobile/rust/Cargo.lock`
 - `inone-development-archive-0.6.0/engine/mobile-mls/mls-client/Cargo.lock`
 - `inone-development-archive-0.6.0/engine/mobile-mls/mls-bridge/Cargo.lock`
@@ -157,7 +157,7 @@ These implementation changes trigger new exact-head CI runs. The earlier success
 
 ### Controlled update cadence
 
-Added `.github/dependabot.yml` with weekly Monday proposals for GitHub Actions, the three Docker/Compose locations, the backend npm project and all three maintained Cargo projects. Dependabot only opens update PRs; no auto-merge or automatic dependency mutation is configured. The operations runbook now requires manual upstream provenance review, exact-SHA CI, relevant runtime tests and explicit triage of Rust advisories before accepting updates.
+Added `.github/dependabot.yml` with weekly Monday proposals for GitHub Actions, the three Docker/Compose locations, the backend npm project and all five Cargo.lock directories, including legacy Engine A POC projects. Dependabot only opens update PRs; no auto-merge or automatic dependency mutation is configured. The operations runbook now requires manual upstream provenance review, exact-SHA CI, relevant runtime tests and explicit triage of Rust advisories before accepting updates.
 
 ### Source SBOM and provenance evidence
 
