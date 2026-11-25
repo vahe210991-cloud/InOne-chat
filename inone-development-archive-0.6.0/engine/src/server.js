@@ -110,9 +110,17 @@ const SAFE_REQUEST_LOG_ROOTS = new Set([
   'orgs', 'phone', 'profile', 'push', 'readyz', 'recovery', 'register',
   'rooms', 'search', 'sendToDevice', 'stickers', 'sync', 'token', 'users',
 ]);
+const SAFE_LOG_SECOND_SEGMENTS = new Set([
+  'login', 'nonce', 'provider', 'verify', 'refresh', 'logout', 'email',
+  'phone', 'confirm', 'start', 'cancel', 'complete', 'remove', 'providers',
+  'search', 'mine', 'members', 'events', 'assets', 'keys', 'query',
+]);
 function safeRequestLogPath(pathname) {
-  const first = String(pathname || '').split('/').filter(Boolean)[0] || '';
-  return SAFE_REQUEST_LOG_ROOTS.has(first) ? `/${first}` : '/__other__';
+  const parts = String(pathname || '').split('/').filter(Boolean);
+  const first = parts[0] || '';
+  if (!SAFE_REQUEST_LOG_ROOTS.has(first)) return '/__other__';
+  if (parts.length > 1 && SAFE_LOG_SECOND_SEGMENTS.has(parts[1])) return `/${first}/${parts[1]}`;
+  return `/${first}`;
 }
 
 function contentDispositionAttachment(filename) {
