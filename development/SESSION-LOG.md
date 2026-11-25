@@ -790,3 +790,12 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Actual DB schema_migrations ledger and live FK graph remain blocked pending authorized read-only DB access.
 - Found exported startServer accepts null pool and createServer falls back to memory store; normal CLI production path passes PostgreSQL, but the exported production boundary lacks a fail-fast guard. Created P0 issue #150; no Beta 1 source code changed.
 - Updated Identity Phase 1 plan, threat model, CTO audit report and roadmap. No source code, SQL, database, secrets, Beta 1 PR #135 or production settings changed.
+
+
+### 2026-11-25 — Identity route and verification-policy inventory
+
+- Enumerated current canonical InOne auth routes: email/provider registration, login, refresh/logout, phone, provider linking, backup email, step-up, devices, PIN, recovery, profile and nickname search.
+- Reviewed route handlers and local identity/provider/phone/recovery rule modules and test definitions.
+- Flagged phone-policy inconsistency for owner decision: INONE_REQUIRE_PHONE defaults true for email/password registration, while /register/provider accepts no phone; no Beta 1 change made.
+- Confirmed migration 0008 intentionally reserves pending/unverified phone claims. Need TTL/release policy before central reservation.
+- Created P0 issue #151 and documented IAM-27–IAM-29. Test definitions reviewed only; no tests run.
