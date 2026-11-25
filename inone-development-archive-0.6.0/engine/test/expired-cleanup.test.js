@@ -45,6 +45,47 @@ test('истёкшие токены и очередь удаляются; дей
 });
 
 
+
+test('PostgreSQL cleanup prunes only stale rate-limit and login-throttle rows in bounded batches', async (t) => {
+  const db = await storeForTest(PEPPER);
+  if (!db?.pool || !db?.store) {
+    t.skip('PostgreSQL test database is not configured');
+    return;
+  }
+  const suffix = randomBytes(8).toString('hex');
+  const now = Date.now();
+  const staleRate = `stage4-rate-stale-${suffix}`;
+  const activeRate = `stage4-rate-active-${suffix}`;
+  const staleLogin = `stage4-login-stale-${suffix}`;
+  const activeLogin = `stage4-login-active-${suffix}`;
+  try {
+    await db.pool.query('INSERT INTO rate_limits (key, window_start, hits) VALUES ($1, $2, 1), ($3, $4, 1)',
+      [staleRate, now - 25 * HOUR, activeRate, now - HOUR]);
+    await db.pool.query('INSERT INTO login_throttle (key, failed, window_start, blocked_until) VALUES ($1, 3, $2, $3), ($4, 3, $5, $6)',
+      [staleLogin, now - 20 * MIN, now - 1, activeLogin, now - MIN, now + 10 * MIN]);
+
+    const result = await db.store.purgeExpired(now);
+    assert.equal(result.rateLimits, 1);
+    assert.equal(result.loginThrottle, 1);
+    const remaining = await db.pool.query(
+      'SELECT key FROM rate_limits WHERE key = ANY($1::text[]) UNION ALL SELECT key FROM login_throttle WHERE key = ANY($1::text[])',
+      [[staleRate, activeRate, staleLogin, activeLogin]],
+    );
+    const keys = new Set(remaining.rows.map((row) => row.key));
+    assert.equal(keys.has(staleRate), false);
+    assert.equal(keys.has(staleLogin), false);
+    assert.equal(keys.has(activeRate), true);
+    assert.equal(keys.has(activeLogin), true);
+    const repeated = await db.store.purgeExpired(now);
+    assert.equal(repeated.rateLimits, 0);
+    assert.equal(repeated.loginThrottle, 0);
+  } finally {
+    await db.pool.query('DELETE FROM rate_limits WHERE key = ANY($1::text[])', [[staleRate, activeRate]]);
+    await db.pool.query('DELETE FROM login_throttle WHERE key = ANY($1::text[])', [[staleLogin, activeLogin]]);
+    await db.close();
+  }
+});
+
 test('устаревшие rate-limit и login-throttle счётчики очищаются, активные окна и блокировки сохраняются', () => {
   const store = createMemoryStore({ pinPepper: PEPPER });
   const DAY = 24 * 60 * 60_000;
