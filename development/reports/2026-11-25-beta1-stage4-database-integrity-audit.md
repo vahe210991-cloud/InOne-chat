@@ -30,7 +30,13 @@ In `engine/src/store.js`, `removeOrgMember` already uses a transaction to lock t
 
 **Risk:** concurrent owner demotions/removals/leaves can violate the last-owner invariant; a failed audit insert can leave a committed admin mutation without its corresponding audit record.
 
-**Remediation direction:** introduce storage-level atomic commands that lock a stable organization row first, re-read actor/target roles and owner count under that lock, enforce room ownership constraints, perform mutation and insert the audit event in one transaction. Apply the same invariant to role demotion, member removal and self-leave. Make settings changes and their audit entries atomic. Preserve existing authorization policy and HTTP response semantics. Memory store should expose deterministic equivalent behavior for unit tests.
+**Implemented remediation:**
+- Added PostgreSQL atomic storage commands for member addition, role changes, member removal, self-leave and organization settings.
+- Every command locks the organization row first, then re-reads actor/target roles inside the transaction. The owner count and room ownership checks run under the same organization lock.
+- Membership/role/settings changes and their `admin_action_log` entries commit or roll back together. Settings also write `org_settings_log` in that same transaction.
+- Member removal cleans room memberships in the transaction. Room creation already takes a share lock on the organization row; room-owner transfer now takes the same lock and revalidates target room membership, serializing both paths with owner removal/leave.
+- HTTP routes now use the atomic commands and preserve the existing 403/404/409 response policy. The memory store implements equivalent atomic operations.
+- Added concurrent two-owner self-demotion regression and PostgreSQL fault-injection tests proving role changes, member removal and settings changes roll back when admin-audit insertion fails.
 
 ### B-14 — FCM stale-registration cleanup can cancel newer deliveries
 
@@ -40,7 +46,13 @@ However, the following update cancels every `queued` or `failed` delivery for th
 
 **Risk:** valid notifications may be silently discarded after a device re-registers while an older send is failing.
 
-**Remediation direction:** make invalid-registration handling a transaction. Lock/read the current registration and perform compare-and-delete. Only cancel deliveries if the stale registration was actually removed, and scope cancellation to the affected generation/registration snapshot. Ensure a newly registered token and deliveries created for it remain intact. Avoid storing raw FIDs; use existing encrypted token material and conditional predicates. Add a deterministic PostgreSQL race test with barriers: worker reads old registration, device re-registers and enqueues, old send fails, then cleanup runs. Assert new registration and new delivery remain.
+**Implemented remediation:**
+- Added nullable `push_deliveries.registration_generation` and an index in migration `0035-push-registration-generations.sql`.
+- The generation is an HMAC-SHA256 fingerprint of the encrypted registration ciphertext using the existing push encryption key and a domain separator. No raw FID or registration ciphertext is copied into delivery rows.
+- Outbox enqueue records the registration generation; workers reject a delivery whose generation no longer matches the current registration.
+- Invalid-target cleanup now uses one transaction: compare-and-delete the exact ciphertext snapshot, and only if that delete succeeds cancel queued/failed deliveries for that exact generation. A late error after token rotation leaves the replacement registration and its deliveries untouched.
+- Older deliveries with a null generation remain backward compatible; the worker binds them to the current registration on processing, then normal generation checks apply to newly created deliveries.
+- Added deterministic PostgreSQL race regression with a blocked sender: re-register and enqueue while the old send is in flight, then release the old `invalid_target` response. The new registration and new delivery must survive and the new delivery must be accepted.
 
 ## Existing protections to preserve
 
@@ -76,3 +88,14 @@ B-07 implementation has begun on this branch:
 - Added memory-store regression for stale versus active windows/blocks and a PostgreSQL regression that verifies stale rows are removed while active rows survive.
 
 **Validation caveat:** no CI checks have been run for this Stage 4 branch yet. B-07 is not accepted until the branch is complete and the full exact-SHA gate passes. B-12 and B-14 remain to be implemented.
+
+
+## Implementation checkpoint
+
+B-07, B-12 and B-14 implementation is now present on the Stage 4 branch. The exact current branch SHA must be obtained from GitHub before recording CI evidence. No Stage 4 CI acceptance claim is made until all applicable workflows are terminal and successful on one immutable SHA.
+
+### B-12 transactional surface
+The atomic storage APIs now cover member addition, role change, member removal, self-leave and settings changes. Audit insertion is part of each transaction. The organization row is the serialization point for owner invariant changes. Room create/transfer paths share-lock the same organization row to avoid owner-room phantoms during leave/removal.
+
+### B-14 registration generation
+Migration 0035 introduces a keyed, non-reversible registration generation on each new outbox row. Existing rows remain nullable for compatibility. The worker compares the generation before send and invalidates only the exact registration snapshot and its queued/failed deliveries.
