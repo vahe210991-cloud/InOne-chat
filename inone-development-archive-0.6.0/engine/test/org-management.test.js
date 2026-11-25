@@ -108,6 +108,8 @@ test('ошибка записи admin audit откатывает изменен�
   const owner = `@owner-${randomBytes(5).toString('hex')}:inone.test`;
   const member = `@member-${randomBytes(5).toString('hex')}:inone.test`;
   try {
+    await db.store.addAccount(owner, 'test-password-hash');
+    await db.store.addAccount(member, 'test-password-hash');
     await db.store.createOrganization({ orgId, name: 'Audit rollback', status: 'approved', createdBy: owner, createdAt: 1 });
     await db.store.addOrgMember(orgId, owner, 'owner', 2);
     await db.store.addOrgMember(orgId, member, 'member', 3);
@@ -131,6 +133,7 @@ test('ошибка записи admin audit откатывает изменен�
     await db.pool.query('DELETE FROM rooms WHERE org_id = $1', [orgId]);
     await db.pool.query('DELETE FROM org_members WHERE org_id = $1', [orgId]);
     await db.pool.query('DELETE FROM organizations WHERE org_id = $1', [orgId]);
+    await db.pool.query('DELETE FROM accounts WHERE user_id = ANY($1::text[])', [[owner, member]]);
     await db.close();
   }
 });
