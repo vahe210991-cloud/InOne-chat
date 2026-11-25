@@ -37,5 +37,9 @@ done
 node "$app_root/tool/prepare_firebase_platforms.mjs" "$platforms" "$repo_root" "$app_root"
 node "$app_root/tool/configure_firebase_native.mjs" "$platforms" "$app_root"
 
+# Derive all native launcher assets from the single editable SVG brand master.
+python3 -m pip install --disable-pip-version-check --no-input -r "$app_root/tool/requirements-app-icons.txt"
+python3 "$app_root/tool/generate_app_icons.py" "$repo_root" "$app_root" "$platforms"
+
 # Scaffold generation must never modify dependency manifests or lockfiles.
 git -C "$repo_root" diff --exit-code -- mobile/pubspec.yaml mobile/pubspec.lock
