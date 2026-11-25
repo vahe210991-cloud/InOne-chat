@@ -472,7 +472,11 @@ export function createMemoryStore({ pinPepper }) {
       orgSettingsLog.push({ orgId, actor, field, old, new: value, at });
     },
     setOrgSettingAtomic({ orgId, field, value, actor, at }) {
-      if (!organizations.has(orgId)) return { ok: false, reason: 'not_found' };
+      const org = organizations.get(orgId);
+      if (!org) return { ok: false, reason: 'not_found' };
+      if (org.status !== 'approved') return { ok: false, reason: 'org_not_approved' };
+      const role = orgMembers.get(orgId)?.get(actor)?.role;
+      if (role !== 'owner' && role !== 'admin') return { ok: false, reason: 'forbidden' };
       const cur = { maxGroupMembers: null, channelsEnabled: true, fileQuotaBytes: null, ...(orgSettingsMap.get(orgId) ?? {}) };
       const old = cur[field];
       cur[field] = value;
