@@ -151,3 +151,43 @@ The remaining open decisions are: canonical subject ID format; identifier unique
 7. Account closure retains a tombstone/minimal mapping according to the separately approved retention policy.
 
 **Decision status:** proposal only. No owner approval of UUIDv4/UUIDv7 or the final canonical ID format has been recorded. Do not freeze DDL or OpenAPI `sub` format until approval.
+ 
+
+## Global identifier registry — technical proposal pending owner approval (2026-11-25)
+
+The product-owner source decision `docs/PRODUCT-DECISIONS-IDENTITY-LOCALIZATION-DESIGN.md`, section 1, explicitly requires central atomic reservation of normalized username/handle, email and phone as applicable, in both InOne→Propo and Propo→InOne registration directions. This is stronger than merely sharing a login: identifier claims must belong to one canonical subject and survive the other platform's outage.
+
+### Proposed scope and semantics
+
+| Identifier | Proposed uniqueness scope | Claim/verification semantics | Important caveats |
+|---|---|---|---|
+| Username / handle | Global across InOne and Propo, as required by the owner decision | Reserve atomically for the canonical subject; normalized form drives uniqueness; product projections may show the same handle | Preserve Beta 1 ASCII validation until a separate Unicode/rename policy is approved. InOne Business participation in the global namespace still needs owner confirmation. |
+| Primary email | Global across the shared Identity namespace | Pending reservation during registration proof; only verified claim is a trusted contact/recovery identifier | Current InOne uses trim+lowercase and a unique index on lower(email) for verified profiles. Target email normalization and internationalized-address policy need an explicit standard. |
+| Phone | Global across the shared Identity namespace only when claimed; optional for registration | Pending claim is short-lived and not verified; verified claim is an optional contact/recovery channel | Owner approved phone optional for every Beta 2.0 registration method. Pending TTL/release and phone-reassignment policy remain open. |
+| Federated provider subject | Global by exact OIDC `(issuer, sub)` pair | Proof comes from validated provider ID token; unique binding to one canonical subject | Do not key only by provider display name. Issuer scoping matters; client/team-specific provider subject behavior must be checked. Provider email equality must not auto-merge an existing account. |
+| Backup / secondary email | Global only if product owner wants it to block primary email claims; otherwise a separate verified contact claim with the same canonical ownership model | Verified independently; not automatically primary login identifier | Existing Beta 1 backup_emails has its own global unique lower(email) index but separate semantics. Confirm target policy. |
+| Product-local account ID | Product-local only | Mapping to canonical subject; never reused as canonical identity | Keep Beta 1 local IDs and all existing FK relationships stable during migration. |
+| Propo Seller Account / organization ID | Business-principal namespace, not a person's username/email/phone | Explicit relationship between a person subject and a business principal, with roles/delegation | Do not collapse a seller/business account into a human canonical subject. Cardinality and authority need Propo contract evidence. |
+
+### Required registry behavior
+
+- Use one atomic claim transaction and database uniqueness constraints for all globally unique active claims. A platform outage must not release or bypass the central reservation.
+- Make normalization deterministic and versioned. Store original/display value separately from normalized lookup value; never silently change normalization algorithm in-place.
+- Model claim state explicitly (at minimum pending, verified, released/quarantined) with source, verification method, timestamps, expiry and audit correlation.
+- Pending claims must have bounded expiry and safe release. Verified claims persist until a proof-backed change/removal flow succeeds.
+- Identifier change should claim and verify the replacement before releasing the old claim, to avoid account lockout and takeover races.
+- Phone number reassignment is expected in the global telecom ecosystem; do not tombstone every phone forever. Define risk-based cooling-off and re-verification before reclaim.
+- Username/handle rename/release needs a separate anti-squatting and impersonation policy; preserve reserved-name controls and historical redirect/tombstone rules.
+- Duplicate claim responses must not disclose the other subject's account details.
+- Never merge accounts automatically because email or phone strings match. Existing-account linking requires authentication/step-up proof of both sides or a recovery process.
+- Provider binding key should be exact `(iss, sub)`; unlink requires step-up and must not strand a federated-only account without another approved credential/recovery path.
+
+### Open product boundary
+
+The source decision explicitly names InOne and Propo. The current ADR also includes InOne Business as a participating product. Confirm whether InOne Business is:
+1. a first-class platform-account projection in the same canonical registry; or
+2. a separate client relying on the person's canonical Identity, while Propo Seller Account remains a linked business principal.
+
+Recommendation: use the same human authentication subject for InOne and InOne Business, but keep their product-account state, roles and domain permissions separate; model Propo Seller Account as a business principal linked to one or more human subjects. This is a recommendation pending the Propo contract and owner approval.
+
+**Decision status:** technical proposal. The InOne↔Propo global username/email/phone reservation requirement is source-backed; the detailed claim lifecycle, backup-email policy and InOne Business participation remain to be approved. Do not freeze DDL/OpenAPI until the open points are resolved.
