@@ -183,6 +183,50 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+
+  rust-advisory-audit:
+    name: RustSec advisory audit (all maintained lockfiles)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master snapshot verified 2026-11-25
+        with:
+          toolchain: "1.91"
+      - name: Install pinned RustSec cargo-audit
+        run: cargo install --locked --version 0.23.0 cargo-audit
+      - name: Audit all committed Rust lockfiles without changing dependencies
+        shell: bash
+        run: |
+          set -u
+          mkdir -p "$RUNNER_TEMP/rustsec"
+          status=0
+          audit_lockfile() {
+            local name="$1"
+            local lockfile="$2"
+            local output="$RUNNER_TEMP/rustsec/$name.json"
+            test -f "$lockfile" || { echo "::error::Missing maintained lockfile: $lockfile"; status=1; return; }
+            echo "Auditing $lockfile"
+            cargo audit --file "$lockfile" --json > "$output"
+            local result=$?
+            echo "$name cargo-audit exit: $result"
+            if [ "$result" -ne 0 ]; then status=1; fi
+          }
+          audit_lockfile mobile-rust-bridge mobile/rust/Cargo.lock
+          audit_lockfile canonical-mls-client inone-development-archive-0.6.0/engine/mobile-mls/mls-client/Cargo.lock
+          audit_lockfile canonical-mls-bridge inone-development-archive-0.6.0/engine/mobile-mls/mls-bridge/Cargo.lock
+          exit "$status"
+      - name: Upload RustSec machine-readable reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: rustsec-cargo-audit-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/rustsec/*.json
+          if-no-files-found: warn
+          retention-days: 14
+
   openmls-client:
     name: OpenMLS client check and tests
     runs-on: ubuntu-24.04
