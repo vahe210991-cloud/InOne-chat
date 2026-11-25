@@ -799,3 +799,14 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Flagged phone-policy inconsistency for owner decision: INONE_REQUIRE_PHONE defaults true for email/password registration, while /register/provider accepts no phone; no Beta 1 change made.
 - Confirmed migration 0008 intentionally reserves pending/unverified phone claims. Need TTL/release policy before central reservation.
 - Created P0 issue #151 and documented IAM-27–IAM-29. Test definitions reviewed only; no tests run.
+
+
+### 2026-11-25 — Identity non-FK reference classification and canonical-ID proposal
+
+- Completed source-level semantic classification of all ten non-FK actor/identity fields using canonical Beta 1 `schema.sql` and `store.js`; details and migration rules are in Phase 1 plan section 14 and issue #150.
+- Key distinctions: `auth_tokens.user_id` is ephemeral and should be invalidated/reissued at cutover; `mls_client_messages.user_id` is part of the durable idempotency keyspace and must not be rewritten; `mls_device_removals.user_id` identifies the member being removed; event/MLS sender and administrative actor fields require durable historical attribution; `files.owner_id` is a live ownership/security reference.
+- Recommended stable local-to-canonical mapping projection. No direct replacement of local IDs, no cross-database foreign keys, no cascading deletion of historical actors.
+- Added a technical recommendation to use Identity-generated opaque UUIDv4 canonical subjects, with UUIDv7 as an alternative if index locality is prioritized over timestamp opacity. This remains UNAPPROVED; no DDL or contract freeze.
+- Updated #150 with completed source classification. Live DB ledger/FK evidence, exact-SHA PostgreSQL tests, production no-pool fail-fast hardening and file lifecycle audit remain open.
+- No product source code, SQL, database, secrets, Beta 1.0 PR #135 or production settings changed. No tests were run.
+- Next: inspect file ownership/object lifecycle and system actor formats; prepare canonical identifier/claim uniqueness decision matrix; obtain Propo contract evidence; then ask owner to approve canonical subject format and global identifier scope before freezing OpenAPI/AsyncAPI.
