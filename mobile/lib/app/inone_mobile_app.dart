@@ -2717,40 +2717,18 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   }
 
   Future<void> _chooseOrganization() async {
-    if (_organizations.isEmpty) {
-      _notice('Нет доступных организаций для переключения.');
-      return;
-    }
-    if (_organizations.length == 1) {
-      _notice('Доступна одна организация. Переключение не требуется.');
-      return;
-    }
-    final selected = await showDialog<InOneOrganization>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Выберите организацию'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final org in _organizations)
-              ListTile(
-                title: Text(org.name),
-                subtitle: Text('${org.role} · ${org.status}'),
-                onTap: () => Navigator.of(dialogContext).pop(org),
-              ),
-          ],
-        ),
-      ),
-    );
-    if (selected != null && mounted) {
-      setState(() {
-        _selectedOrganization = selected;
-        _organizationMemberCount = null;
-        _organizationMembers = const [];
-        _screen = 'workspace';
-      });
-      unawaited(_refreshOrganizationMemberCount(selected));
-    }
+    if (!mounted) return;
+    setState(() => _screen = 'organizations');
+  }
+
+  void _selectOrganizationFromPicker(InOneOrganization organization) {
+    setState(() {
+      _selectedOrganization = organization;
+      _organizationMemberCount = null;
+      _organizationMembers = const [];
+      _screen = 'workspace';
+    });
+    unawaited(_refreshOrganizationMemberCount(organization));
   }
 
   Future<void> _showDeviceManagement() async {
@@ -3041,6 +3019,15 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
             _notice('Решение по заявке сохранено.');
             unawaited(_openAdminRequests());
           },
+        );
+      case 'organizations':
+        return InOneMyOrganizationsScreen(
+          organizations: _organizations,
+          selectedOrganizationId: _selectedOrganization?.orgId,
+          locale: _session.locale,
+          onSelect: _selectOrganizationFromPicker,
+          onBack: () => setState(() => _screen = 'workspace'),
+          onTab: _selectTab,
         );
       case 'workspace':
         return InOneWorkspaceScreen(
