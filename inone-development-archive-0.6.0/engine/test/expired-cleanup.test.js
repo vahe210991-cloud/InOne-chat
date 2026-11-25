@@ -44,6 +44,45 @@ test('истёкшие токены и очередь удаляются; дей
   }
 });
 
+
+test('устаревшие rate-limit и login-throttle счётчики очищаются, активные окна и блокировки сохраняются', () => {
+  const store = createMemoryStore({ pinPepper: PEPPER });
+  const DAY = 24 * 60 * 60_000;
+  const start = 1;
+  const now = DAY + 1;
+
+  store.rateHit('rate:stale', start, DAY, 10);
+  store.rateHit('rate:active', now - 60 * 60_000, DAY, 10);
+
+  const policy = {
+    freeFailures: 0, baseDelayMs: 60_000, maxDelayMs: 15 * 60_000,
+    sourceLimit: 30, sourceWindowMs: 10 * 60_000, sourceBlockMs: 10 * 60_000,
+    notifyAfter: 5, notifyWindowMs: 15 * 60_000,
+  };
+  store.throttledLogin({
+    pairKey: 'pair:stale', sourceKey: 'source:stale', loginKey: 'login:stale',
+    now: start, verify: () => false, policy, notify: false,
+  });
+  store.throttledLogin({
+    pairKey: 'pair:active', sourceKey: 'source:active', loginKey: 'login:active',
+    now: now - 60_000, verify: () => false, policy, notify: false,
+  });
+
+  const removed = store.purgeExpired(now);
+  assert.equal(removed.rateLimits, 1, 'устаревшее rate-limit окно удалено');
+  assert.equal(removed.loginThrottle, 3, 'устаревшие pair/source/login записи удалены');
+  assert.deepEqual(store.rateHit('rate:active', now, DAY, 10), {
+    allowed: true, retryAt: now - 60 * 60_000 + DAY,
+  }, 'активное rate-limit окно продолжает действовать');
+  assert.equal(store.throttledLogin({
+    pairKey: 'pair:active', sourceKey: 'source:active', loginKey: 'login:active',
+    now, verify: () => false, policy, notify: false,
+  }).status, 'throttled', 'активная login-блокировка сохранена');
+  const repeated = store.purgeExpired(now);
+  assert.equal(repeated.rateLimits, 0);
+  assert.equal(repeated.loginThrottle, 0);
+});
+
 test('коды телефона, почты и восстановления очищаются по сроку; привязка телефона и состояние восстановления сохраняются', async () => {
   const store = createMemoryStore({ pinPepper: PEPPER });
   const srv = createServer({ defaultOrgAutoJoin: true, registrationMode: 'open', requirePhone: false, pinPepper: PEPPER, store });
