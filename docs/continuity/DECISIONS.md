@@ -101,3 +101,90 @@
 - This decision establishes the product split. It does **not**, by itself, decide whether the applications share identity, backend services, databases, repositories, infrastructure, or common UI components. Preserve existing approved identity/database/security decisions until a separate technical decision is recorded.
 - Existing InOne Beta 1.0 work and approved UI must not be silently rebranded or moved between products. Audit current screens and APIs against this split and propose a migration/classification plan before changing implementation.
 - Do not expand InOne Business scope by assuming that every Propo Seller Account capability is already specified; define and version the integration contract separately.
+
+
+## 8. Free-first growth, monetization and Creator Economy — 2026-11-25
+
+**Owner decision (approved 2026-11-25):** InOne's commercial strategy is based on acquiring and retaining a large active Free audience first, then monetizing optional expansion, creator/business growth tools and commercial transactions. Free is the primary growth tier, not a crippled trial.
+
+### Strategic principles
+
+- Adopt **Free-first + Creator Economy + Business Growth**.
+- Keep baseline personal communications, private chats, encryption and core security free.
+- Do not use private-message, call or encrypted content for advertising, targeting or commercial profiling.
+- Free users must be able to publish, build communities and qualify for creator earning opportunities without first buying a subscription.
+- Paid tiers and one-time purchases sell additional capacity, productivity, analytics, promotion and business expansion, not access to baseline privacy or communication.
+- Organic distribution must remain meaningful; paid promotion must be disclosed and must not guarantee outcomes.
+- Commercial analytics should rely on minimized product events and aggregate usage signals, never private communication content.
+
+### Free personal entitlement hypothesis
+
+- Personal chats free.
+- Up to 10 created groups.
+- Up to 5 pinned chats.
+- Up to 5 stories per day.
+- 1 owned channel.
+- Publications/posts available.
+- Free reading, discovery, channel subscriptions and participation in public communities.
+
+### Free Business starter entitlement hypothesis
+
+- Personal chats free.
+- 1 organization.
+- Up to 5 internal company chats.
+- Up to 2 business stories per day.
+- 1 company channel.
+- Up to 5 workers with role-based access.
+- Up to 10 active Kanban tasks.
+- Up to 10 active CRM cards/records.
+- Basic contacts and analytics; optional separately paid promotion.
+
+Business capabilities remain within the previously approved **InOne Business** product boundary. This decision does not merge InOne and InOne Business applications.
+
+### Tariffs and price anchors
+
+| Tier | Indicative price | Role |
+|---|---:|---|
+| Free | $0 | Largest audience and starter usage |
+| Plus | $9.99/month | Main mass paid tier |
+| Smart | $14.99/month | Advanced creator/professional tier |
+| Enterprise | From $60/month per organization | Organization-level tier |
+
+The owner's initial anchors were $10 / $15 / $60. Prices shown above are provisional test anchors, not globally fixed or commercially validated. Initial Enterprise hypothesis: up to 5 included seats, then approximately $6 per additional seat/month, subject to pilot validation. Plus and Smart are personal/creator tiers; Enterprise is organization-level. Free Business is the organization starter tier.
+
+### Optional purchases
+
+Explore one-time or time-limited add-ons for extra stories, channels, pinned chats, group capacity, publication/channel promotion and additional business capacity. Initial hypotheses include +5 stories/day for $0.49, +20 for $1.49, +50 for $2.99, extra channel/30 days for $1.49, +10 pinned chats/30 days for $0.99, publication promotion from $1 and channel promotion from $2. All require demand, unit-economics and user-experience validation.
+
+### Creator Economy
+
+- Paid channel subscriptions and premium content.
+- Voluntary creator support/tips.
+- Qualified referral rewards based on sustained genuine activity, not raw registrations.
+- Clearly labelled sponsored creator placements.
+- Professional services marketplace in a later stage.
+- Initial commission hypotheses: 10–15% for creator subscriptions/tips; illustrative sponsored placement split 80% creator / 20% platform. Not final promises or contracts.
+- Keep non-cash **InOne Points** separate from real-money creator earnings. Real-money payouts require payment, fraud, tax and jurisdictional compliance review.
+
+### Analytics and monetization governance
+
+- Create a future **InOne Growth Intelligence** capability to recommend purchases when measured product usage demonstrates need.
+- Compare subscription value with one-time purchase value; frequency-cap offers and measure retention/complaints as well as conversion.
+- Measure acquisition, activation, D1/D7/D30 retention, DAU/MAU, content supply, channel growth, Free-to-Plus/Smart conversion, add-on purchases, creator earnings, organizations/seats, CAC, LTV, margins and cost per MAU.
+- Any user-mix, conversion, price, commission or revenue-share figure is a scenario assumption until validated by cohorts and pilots.
+
+### Staged rollout
+
+1. Audience foundation: useful Free experience, organic content/community, referrals and retention/cost analytics.
+2. First monetization: Plus, Smart, optional add-ons and controlled promotion tests.
+3. Creator Economy: paid channels, tips, creator analytics and qualified referrals.
+4. Business monetization: Enterprise, seats, CRM/Kanban capacity, integrations and support.
+5. Commercial ecosystem: Marketplace, creator sponsorships, APIs and additional services.
+
+### Scope guardrails
+
+This decision is strategic and does not authorize changes to Beta 1.0 code, APIs, database, migrations, approved UI, WBS or release scope. Billing, advertising, promotion, points, wallets, payouts and Marketplace require separate product/technical/legal specifications and explicit implementation approval. Existing identity, MLS, encryption, security and privacy decisions remain unchanged.
+
+Canonical details:
+- [ADR-005 — Free-first growth, monetization and Creator Economy](../../development/architecture/ADR-005-FREE-FIRST-MONETIZATION-AND-CREATOR-ECONOMY.md)
+- [InOne Monetization & Growth Strategy v2.0](../../development/roadmaps/2026-11-25-inone-monetization-growth-strategy-v2.md)
