@@ -294,7 +294,6 @@ mod tests {
     }
 }
 
-
 #[cfg(test)]
 mod security_policy_tests {
     use super::*;

@@ -235,7 +235,7 @@ Two additional informational maintenance warnings are present: `libcrux-aesgcm 0
 
 A blanket OpenMLS 0.8.3 to 0.9.0 bump is **not** approved as a mechanical dependency update. The upstream 0.9 migration guide specifically documents migration from the 0.8.1 storage format; the compatibility of the currently resolved 0.8.3 format with that helper path must be established before any change. OpenMLS 0.9 provides `migration-export` / `migration-import` helpers. Its migration guidance recommends quiescing all MLS access, exporting each group, bridging through a zeroizing self-describing representation, importing into a fresh store, verifying group epochs/membership and application-managed keys, then atomically switching stores. The existing InOne client already uses a JSON storage codec, which is favorable, but compatibility still needs an explicit test and schema-version strategy.
 
-The current lockfiles do not contain a separate `sqlcipher-src` package. Any move to a newer rusqlite/libsqlite3-sys must verify the actual bundled SQLCipher source version, not infer safety from the `libsqlite3-sys` version alone. Rusqlite 0.42.0 release notes report a SQLCipher 4.20.0 bump and bundled SQLite 3.54.1. However, upstream `openmls_sqlite_storage 0.3.0` still declares `rusqlite = "0.37"`, which remains below the RustSec patch floor for `libsqlite3-sys`. Therefore OpenMLS 0.9 plus the unmodified storage crate does **not** resolve RUSTSEC-2026-0459. A reviewed fork/patch of `openmls_sqlite_storage 0.3.0` to use the same rusqlite 0.42 dependency and SQLCipher feature set, or a newer upstream storage release with that dependency, is required. The fork must pass storage migrations, SQLCipher key handling, and MLS persistence compatibility tests before use.
+The current lockfiles do not contain a separate `sqlcipher-src` package. Any move to a newer rusqlite/libsqlite3-sys must verify the actual bundled SQLCipher source version, not infer safety from the `libsqlite3-sys` version alone. Rusqlite 0.42.0 release notes report a SQLCipher 4.20.0 bump and bundled SQLite 3.54.1. However, upstream `openmls_sqlite_storage 0.3.0` still declares `rusqlite = "0.37"`, which remains below the RustSec patch floor for `libsqlite3-sys`. Therefore OpenMLS 0.9 plus the unmodified storage crate does **not** resolve RUSTSEC-2026-0459. A reviewed fork/patch of `openmls_sqlite_storage 0.3.0` to use the same rusqlite 0.42 dependency and SQLCipher feature set, or a newer upstream storage release with that dependency, is required. The type unification is essential: the storage provider accepts a `rusqlite::Connection` from its own rusqlite version, so upstream 0.3.0's 0.37 connection cannot share the application's 0.42 connection or its SQLCipher feature unification. Using the unmodified 0.3.0 crate would either retain the vulnerable SQLite source or introduce a separate non-SQLCipher database path, which conflicts with the existing atomicity ADR. The fork must pass storage migrations, SQLCipher key handling, and MLS persistence compatibility tests before use.
 
 **No Cargo manifests or lockfiles were changed in this checkpoint.** The dependency upgrades are deferred until the MLS storage compatibility/migration plan and ciphersuite reachability tests are ready. No advisories are suppressed or accepted by this report.
 
@@ -324,3 +324,23 @@ The URL lockfile update removed RUSTSEC-2026-0592 from the full audit JSON. The 
 Upstream `openmls_sqlite_storage 0.3.0` is confirmed to depend on `rusqlite 0.37` (not 0.42). The RustSec advisory's fixed range begins at `libsqlite3-sys 0.39.0`; therefore upgrading only from OpenMLS 0.8.3 to 0.9.0 and adopting the unmodified 0.3.0 storage crate would leave the vulnerable SQLite source in the active graph. A candidate remediation requires a reviewed storage-crate fork/patch that moves the provider to rusqlite 0.42.0 and unifies its SQLCipher features with the application's direct database connection. The fork must be tested against the upstream 0.3.0 migration set and the existing InOne JSON codec.
 
 The existing `ADR-MLS-SQLCIPHER-ATOMICITY.md` explicitly keeps the exact dependency pins until a separate compatibility review. No such migration is started in this PR without owner approval.
+
+
+### Exact-head validation results — SHA `8f369e5fd2dd44e7218d35dd5d9383caff0a3ae5`
+
+The Native MLS workflow completed successfully with all five jobs green:
+- exact-head source immutability check;
+- canonical Engine B MLS regression tests;
+- iOS Keychain native target build;
+- OpenMLS attachment/session integration tests;
+- persistent Flutter Rust bridge host tests.
+
+The canonical client regression suite passed 29 unit tests, including the nested-`blob:` signed-URL regression and the X25519/P-256 Welcome policy tests. The attachment/session integration suite passed its unit and integration groups, and the persistent bridge host suite passed 14 tests. The iOS Keychain target compiled successfully.
+
+The P0 workflow also passed the canonical client check/tests and Rust bridge check/tests, and produced the five feature-resolved dependency graphs. It remains failed for two independent gates:
+1. the strict lockfile RustSec audit reports 10 unique advisory IDs after the URL fix (five active in the default dependency graphs, five from inactive optional Libcrux provider packages);
+2. the general Rust-format job found one extra blank line before the new bridge security-policy test module. This formatting-only correction is included in this follow-up commit.
+
+The Flutter mobile workflow has passed the committed-lockfile native bridge check, Flutter analysis, and the corrected Gradle plugin marker preflight. Its Flutter test step was still running at report time; the Android APK build had not yet started. The OpenMLS Flutter Rust Bridge workflow passed deterministic generation, Rust bridge Linux validation, and the Flutter code/session contract check; its Android build with native OpenMLS assets was running. Flutter iOS analysis passed and the unsigned simulator build was running.
+
+The exact-SHA acceptance gate failed because the P0 workflow had not passed. No Stage 5 acceptance is claimed at this SHA.
