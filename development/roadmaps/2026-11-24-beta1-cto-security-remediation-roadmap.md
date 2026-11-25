@@ -2,8 +2,8 @@
 
 **Owner:** Product owner / CTO  
 **Stage 1 + 2 base branch:** `security/beta1-backend-remediation-2026-11-24`  
-**Stage 1 + 2 tracking PR:** [#135](https://github.com/vahe210991-cloud/InOne-chat/pull/135) — Draft, open, not merged  
-**Stage 3 branch:** `security/beta1-stage3-runtime-hardening-2026-11-25` (stacked on the accepted Stage 1 + 2 candidate)
+**Stage 1 + 2 tracking PR:** [#135](https://github.com/vahe210991-cloud/InOne-chat/pull/135) — merged  
+**Stage 3 PR:** [#152](https://github.com/vahe210991-cloud/InOne-chat/pull/152) — Draft, open, unmerged; based on `main`
 **Baseline:** `main` at `02880940c1e4d8261405fbeaa01f40879eb44f3a` when the remediation branch was created  
 **Plan date:** 2026-11-24  
 **Stage 1 + 2 accepted candidate:** `7b8af4f00c15db759253dd9ce7b7666dda9eab3b`  
@@ -32,7 +32,7 @@ Stage 1 + Stage 2 remain on the existing remediation branch and PR #135. Later s
 
 **Purpose:** establish an accepted security baseline before expanding the change surface.
 
-**Current status:** Stage 1 and Stage 2 were accepted together on exact SHA `7b8af4f00c15db759253dd9ce7b7666dda9eab3b`. All 17/17 check runs, including Flutter, Flutter iOS and the Exact-SHA required workflow gate, completed successfully on that immutable SHA. The earlier `0d383e38...` commit was documentation-only and is not used as proof of Stage 1 code acceptance. PR #135 records the joint acceptance and remains Draft/unmerged pending owner decision.
+**Current status:** Stage 1 and Stage 2 were accepted together on exact SHA `7b8af4f00c15db759253dd9ce7b7666dda9eab3b`. All 17/17 check runs, including Flutter, Flutter iOS and the Exact-SHA required workflow gate, completed successfully on that immutable SHA. The earlier `0d383e38...` commit was documentation-only and is not used as proof of Stage 1 code acceptance. PR #135 was merged; `main` now contains merge commit `74169a449de182ea734049e21d8424dfc4091c88`.
 
 **Work / acceptance criteria:**
 1. Re-fetch PR head and all workflow runs; identify the exact failed/skipped/cancelled gate dependency from job-level evidence.
@@ -48,7 +48,7 @@ Stage 1 + Stage 2 remain on the existing remediation branch and PR #135. Later s
 
 **Purpose:** bound memory and storage consumption, eliminate quota races and make file lifecycle crash-safe.
 
-**Current status:** ACCEPTED jointly with Stage 1 on exact SHA `7b8af4f00c15db759253dd9ce7b7666dda9eab3b`; all 17/17 check runs passed on this same SHA.
+**Current status:** ACCEPTED and merged jointly with Stage 1 through PR #135; exact candidate SHA `7b8af4f00c15db759253dd9ce7b7666dda9eab3b`, 17/17 checks passed.
 
 **Implementation packages:**
 1. **Streaming upload:** replace whole-body buffering with bounded streaming and backpressure; incrementally count bytes and calculate SHA-256; reject short/long bodies and checksum mismatch; enforce declared size and existing per-kind limits.
@@ -75,7 +75,7 @@ Stage 1 + Stage 2 remain on the existing remediation branch and PR #135. Later s
 
 **Purpose:** make runtime failure modes deterministic and prevent configuration, request or provider boundaries from becoming security gaps.
 
-**Current status:** IMPLEMENTATION IN PROGRESS on stacked branch `security/beta1-stage3-runtime-hardening-2026-11-25`; exact-SHA validation pending.
+**Current status:** ACCEPTED on exact SHA `bd7d8d5e5cdee594f77e399ac3d37252e463263b`; all 15/15 check runs passed. PR #152 remains Draft and unmerged pending owner authorization.
 
 **Implementation packages:**
 1. **Persistent object-signing secret (B-06):** load a stable secret from the supported production configuration; fail startup in production if missing/invalid; no random-per-process production fallback. Keep test-only generation explicit.
@@ -147,11 +147,11 @@ Accepted exact source SHA: `7b8af4f00c15db759253dd9ce7b7666dda9eab3b`.
 
 All 17/17 check runs passed on that same SHA, including Backend Node, PostgreSQL integration, P0 room-list, Rust bridge, OpenMLS, iOS Keychain, Flutter host/mobile/iOS, Email/PostgreSQL, Compose runtime, Dev Container, Native MLS exact-head verification and Exact-SHA required workflow acceptance.
 
-PR #135 is updated with the exact SHA and evidence. It remains Draft, open and unmerged. No merge is authorized by this plan.
+PR #135 was merged into `main` as merge commit `74169a449de182ea734049e21d8424dfc4091c88`.
 
-### Stage 3 — IMPLEMENTATION IN PROGRESS
+### Stage 3 — ACCEPTED (CI)
 
-Stage 3 branch: `security/beta1-stage3-runtime-hardening-2026-11-25`, based on the accepted Stage 1 + Stage 2 candidate. The implementation report is `development/reports/2026-11-25-beta1-stage3-runtime-hardening.md`.
+Stage 3 branch: `security/beta1-stage3-runtime-hardening-2026-11-25`, based on `main` after PR #135. PR #152 is Draft and unmerged. Accepted exact SHA: `bd7d8d5e5cdee594f77e399ac3d37252e463263b`. The implementation report is `development/reports/2026-11-25-beta1-stage3-runtime-hardening.md`.
 
 Implemented in the Stage 3 branch:
 - Production persistent object URL signing secret `INONE_OBJECT_SIGNING_SECRET`, passed from configuration to the signer; production fails closed if missing/invalid.
@@ -162,15 +162,13 @@ Implemented in the Stage 3 branch:
 - Provider fetch failures return a stable 503.
 - Liveness/readiness contract is documented and regression tests added.
 
-**Evidence status:** Stage 3 has not yet passed CI. No Stage 3 acceptance claim is made until all applicable jobs are terminal and successful on one exact final SHA.
+**Evidence status:** 15/15 check runs are terminal and successful on exact SHA `bd7d8d5e5cdee594f77e399ac3d37252e463263b`. The set includes backend Node, PostgreSQL integration, P0 room-list, Rust format/check/tests, canonical MLS, Flutter-Rust bridge, OpenMLS attachment/session integration, iOS Keychain, Compose PostgreSQL/migrations/API smoke, Compose build/migrations/HTTP smoke, engine, exact-head MLS source verification and Exact-SHA workflow acceptance.
 
 **Next actions:**
-1. Open a Draft stacked PR targeting the Stage 1 + Stage 2 branch, not `main`.
-2. Run the complete backend Node suite, PostgreSQL integration suite, Compose runtime acceptance and exact-SHA workflow gate.
-3. Fix any test or implementation failures without weakening authorization, logging, proxy or provider validation.
-4. Review production config examples, health probes, and object signing behavior across restarts/replicas.
-5. Re-run the full applicable gate on the final Stage 3 SHA and record job-level evidence.
-6. Keep Stage 3 Draft and unmerged until Stage 1 + Stage 2 base is merged and the owner authorizes the final merge sequence.
+1. Stage 3 implementation and exact-SHA CI acceptance are complete.
+2. Conduct owner/reviewer source review of PR #152 and confirm production rollout prerequisites (persistent signing secret and trusted proxy allowlist) are provisioned outside source control.
+3. Keep PR #152 Draft and unmerged until explicit owner authorization to merge.
+4. Begin Stage 4 work on a separate branch based on current `main`, without changing `main` or merging PR #152 absent authorization.
 
 Do not implement automatic ready-file expiry. Existing pending-upload stale cutoff remains separate from ready-file retention, which still requires an owner decision.
 
