@@ -432,3 +432,10 @@ Follow-up: [ID-10 #151](https://github.com/vahe210991-cloud/InOne-chat/issues/15
 - `flag_changes.actor` and `admin_action_log.actor` accepted value formats need inspection of CLI/admin callers to enumerate service/system identities.
 - MLS historical retention and room-event deletion/redaction semantics need product/privacy policy approval.
 - This classification does not close #150; its DB ledger, exact-SHA migration tests and production fail-fast regression remain outstanding.
+
+
+## 15. Canonical subject identifier — recommendation for owner decision
+
+The architecture proposal recommends an opaque UUIDv4 generated only by the Identity Service as the immutable canonical subject ID. UUIDv4 avoids embedding a creation timestamp in a subject identifier; UUIDv7 and ULID offer chronological/index locality but expose approximate creation time. Sequential IDs are enumerable; IDs derived from email/phone are linkable and unsafe; reusing Beta 1 local IDs would make legacy InOne the identity authority.
+
+If approved, canonical IDs must never be recycled or reassigned, must not be treated as credentials, and must remain separate from each product's local account ID via an explicit mapping. The full alternatives and invariants are recorded in the ADR draft. **This is a technical recommendation, not an owner decision.** DDL/OpenAPI subject fields remain provisional until the owner approves the format.
