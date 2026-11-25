@@ -223,7 +223,7 @@ jobs:
           retention-days: 14
 
   rust-advisory-audit:
-    name: RustSec advisory audit (all maintained lockfiles)
+    name: RustSec advisory audit (all committed Cargo lockfiles)
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -259,6 +259,8 @@ jobs:
           audit_lockfile mobile-rust-bridge mobile/rust/Cargo.lock
           audit_lockfile canonical-mls-client inone-development-archive-0.6.0/engine/mobile-mls/mls-client/Cargo.lock
           audit_lockfile canonical-mls-bridge inone-development-archive-0.6.0/engine/mobile-mls/mls-bridge/Cargo.lock
+          audit_lockfile legacy-engine-a-client inone-engine-poc-0.6.0/mobile-mls/mls-client/Cargo.lock
+          audit_lockfile legacy-engine-a-bridge inone-engine-poc-0.6.0/mobile-mls/mls-bridge/Cargo.lock
           exit "$status"
       - name: Upload RustSec machine-readable reports
         if: always()
