@@ -235,6 +235,24 @@ jobs:
           toolchain: "1.91"
       - name: Install pinned RustSec cargo-audit
         run: cargo install --locked --version 0.23.0 cargo-audit
+      - name: Record default-feature dependency graphs for all MLS targets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/rustsec"
+          record_graph() {
+            local name="$1"
+            local manifest="$2"
+            local output="$RUNNER_TEMP/rustsec/${name}-default-feature-tree.txt"
+            cargo tree --locked --manifest-path "$manifest" --all-targets --edges all --prefix none > "$output"
+            echo "Resolved default-feature graph: $name"
+            grep -E '(^|[[:space:]])(libcrux-[^ ]+|openmls_libcrux_crypto|crypto-bigint|libsqlite3-sys|url) v' "$output" || true
+          }
+          record_graph mobile-rust-bridge mobile/rust/Cargo.toml
+          record_graph canonical-mls-client inone-development-archive-0.6.0/engine/mobile-mls/mls-client/Cargo.toml
+          record_graph canonical-mls-bridge inone-development-archive-0.6.0/engine/mobile-mls/mls-bridge/Cargo.toml
+          record_graph legacy-engine-a-client inone-engine-poc-0.6.0/mobile-mls/mls-client/Cargo.toml
+          record_graph legacy-engine-a-bridge inone-engine-poc-0.6.0/mobile-mls/mls-bridge/Cargo.toml
       - name: Audit all committed Rust lockfiles without changing dependencies
         shell: bash
         run: |
@@ -267,7 +285,9 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: rustsec-cargo-audit-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/rustsec/*.json
+          path: |
+            ${{ runner.temp }}/rustsec/*.json
+            ${{ runner.temp }}/rustsec/*-default-feature-tree.txt
           if-no-files-found: warn
           retention-days: 14
 

@@ -255,3 +255,40 @@ Do not change Flutter, AGP, Kotlin DSL or Gradle versions until this evidence id
 At SHA `7d958a4553e4e352f3208eadb8cb6ffc8e9d4c3d`, all nine applicable workflows are terminal: six succeeded and three failed. Native MLS client validation and OpenMLS Flutter Rust Bridge generation succeeded. The primary failures are the RustSec audit and Android APK build. The exact-SHA gate failed after observing the Flutter mobile workflow failure; it is a consequential gate failure, not a third independent product defect. The P0 run's other jobs (SBOM, Backend Node, OpenMLS client, Rust bridge, Rust format, room-list regression and PostgreSQL integration) succeeded.
 
 Stage 5 remains **NOT ACCEPTED**. No merge, deployment, production release, or changes to `main` are authorized by this checkpoint.
+
+
+## Targeted remediation checkpoint — URL and MLS suite policy
+
+### RUSTSEC-2026-0592 is directly reachable in the canonical client
+
+Source tracing confirmed that Engine B's `Client::same_origin_url` calls `target.origin()` before checking the URL scheme. This validator is applied to server-returned `uploadUrl` and `downloadUrl` values from file reservation and file-link responses. A malicious or compromised API response can therefore supply a deeply nested `blob:` URL and reach the recursive `Url::origin()` path described by RustSec, potentially aborting the client process through stack overflow. This is not merely a lockfile-only finding.
+
+The targeted fix in this checkpoint:
+- raises the direct `url` minimum to 2.5.9 in the canonical and legacy MLS client manifests;
+- updates `url` to 2.5.9 and `form_urlencoded` to 1.2.3 in the three affected lockfiles (`mobile/rust`, canonical Engine B client, legacy Engine A client);
+- rejects non-HTTP(S) schemes before calling `origin()`, preserving the existing same-origin and `/objects/` constraints;
+- adds a regression test with 10,000 nested `blob:` prefixes, plus a valid same-origin HTTPS case.
+
+RustSec documents that `Url::origin()` through 2.5.8 recursively evaluated nested `blob:` prefixes and that 2.5.9 removes this recursion. The dependency bump and the scheme guard are both retained; neither is treated as a substitute for the other.
+
+### Explicit MLS Welcome ciphersuite policy
+
+The canonical Engine B client and bridge now reject a Welcome unless its ciphersuite is exactly `MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519`, before passing it to `StagedWelcome::new_from_welcome`. This makes the existing X25519/Ed25519 policy explicit on inbound Welcome paths and prevents an unexpected P-256 group from being accepted through the general-purpose RustCrypto provider. Regression tests accept the configured suite and reject `MLS_128_DHKEMP256_AES128GCM_SHA256_P256`.
+
+This does **not** remove `crypto-bigint` from the lockfiles: it remains transitively present through `p256`/OpenMLS. No RustSec advisory is suppressed. The remaining advisory requires a separately reviewed dependency/provider strategy; this checkpoint only closes the inbound Welcome policy gap.
+
+### Feature-resolved dependency graph evidence
+
+The P0 workflow now records `cargo tree --all-targets --edges all` for each of the five audited manifests and uploads the resulting graphs beside the RustSec JSON. This is needed because the lockfile-level audit includes optional dependencies, including OpenMLS's optional Libcrux provider. The new graph evidence will distinguish packages present in Cargo.lock from packages activated by the default feature set. No optional-provider advisory is classified as inactive until that exact-head evidence is reviewed.
+
+### Android Gradle diagnostic correction
+
+The first diagnostic run on `c0a22d46e54de3fd83fba4226e94928c163304b1` stopped before the APK build because the diagnostic URL itself omitted the `kotlin-dsl` segment in the Maven group path and returned HTTP 404. That was an error in the newly added probe, not a Gradle build result. The corrected probe now uses the exact marker coordinate:
+`org.gradle.kotlin.kotlin-dsl:org.gradle.kotlin.kotlin-dsl.gradle.plugin:6.4.2`
+and the corresponding Gradle Plugin Portal path. The upload-artifact paths are also rooted at the repository workspace so generated Android settings/wrapper files can be retained.
+
+### Exact-head status at the time of this checkpoint
+
+On `c0a22d46e54de3fd83fba4226e94928c163304b1`, three workflows succeeded (Backend Compose, Email/PostgreSQL, Dev Container); RustSec/P0 failed on the same five lockfile findings; Flutter mobile stopped at the incorrectly formed diagnostic URL; the exact-SHA gate failed after P0 reported failure. OpenMLS FRB generation was still running and Native MLS/iOS validation were queued. This checkpoint does not claim those pending jobs passed.
+
+The next exact head must verify the URL regression tests, MLS Welcome policy tests, lockfile consistency, active dependency graphs, corrected Gradle marker probe, and the full CI set. Stage 5 remains **NOT ACCEPTED** until active RustSec findings and production-operator evidence are resolved.

@@ -105,7 +105,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          marker_url="https://plugins.gradle.org/m2/org/gradle/kotlin/org.gradle.kotlin.kotlin-dsl.gradle.plugin/6.4.2/org.gradle.kotlin.kotlin-dsl.gradle.plugin-6.4.2.pom"
+          marker_url="https://plugins.gradle.org/m2/org/gradle/kotlin/kotlin-dsl/org.gradle.kotlin.kotlin-dsl.gradle.plugin/6.4.2/org.gradle.kotlin.kotlin-dsl.gradle.plugin-6.4.2.pom"
           marker="$RUNNER_TEMP/gradle-kotlin-dsl-plugin-marker-6.4.2.pom"
           curl --fail --location --silent --show-error --retry 3 --retry-delay 2 --retry-all-errors "$marker_url" --output "$marker"
           test -s "$marker"
@@ -213,9 +213,9 @@ jobs:
             ${{ runner.temp }}/flutter-android-build.log
             ${{ runner.temp }}/android-gradle-wrapper.properties
             ${{ runner.temp }}/gradle-kotlin-dsl-plugin-marker-6.4.2.pom
-            android/gradle/wrapper/gradle-wrapper.properties
-            android/settings.gradle
-            android/build.gradle
+            mobile/android/gradle/wrapper/gradle-wrapper.properties
+            mobile/android/settings.gradle
+            mobile/android/build.gradle
           if-no-files-found: ignore
           retention-days: 7
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
