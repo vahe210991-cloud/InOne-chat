@@ -697,3 +697,8 @@ The cross-platform gap remains the independent canonical Identity authority, sha
 - Actual DB migration ledger and live FK graph remain blocked until authorized read-only DB access.
 - Production CLI passes PostgreSQL pool, but exported startServer can be called with null pool and server then uses memory store. P0 hardening tracked in #150; no Beta 1 code changed.
 - Identity schema/API freeze is not ready pending owner decisions, Propo contract and actual DB evidence.
+
+
+### 2026-11-25 — Identity registration path audit
+
+Canonical InOne identity route inventory is recorded in Phase 1. Email/password registration checks requirePhone (default true in runtime config); provider registration creates an account without a phone. This may be an intentional exception, but must be confirmed before global policy freeze. Migration 0008 explicitly reserves pending/unverified phone numbers, so reservation TTL/release semantics must be defined. Follow-up #151; no Beta 1 behavior changed.
