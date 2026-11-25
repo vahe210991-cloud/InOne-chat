@@ -1,17 +1,16 @@
 # InOne Beta 1.0 — CTO Security Remediation & Release Plan
 
 **Owner:** Product owner / CTO  
-**Execution branch:** `security/beta1-backend-remediation-2026-11-24`  
-**Tracking PR:** [#135](https://github.com/vahe210991-cloud/InOne-chat/pull/135) — Draft, open, not merged  
-**Baseline:** `main` at `02880940c1e4d8261405fbeaa01f40879eb44f3a` when the remediation branch was created  
-**Plan date:** 2026-11-24  
-**Current reviewed head:** `4824dfc3b3f4e3aab5d39b16c1adf934a108d660`
+**Stage 1 + 2 PR:** [#135](https://github.com/vahe210991-cloud/InOne-chat/pull/135) — merged  
+**Stage 3 PR:** [#152](https://github.com/vahe210991-cloud/InOne-chat/pull/152) — Draft, open, unmerged  
+**Stage 4 branch:** `security/beta1-stage4-db-integrity-2026-11-25`  
+**Plan date:** 2026-11-24, checkpoint updated 2026-11-25
 
 ## 1. CTO directive
 
 Deliver a secure, testable Beta 1.0 backend through a sequence of independently reviewable remediation stages. Preserve the existing client/API contracts unless a compatibility review proves a change is necessary. Fix root causes; do not weaken authorization, MLS invariants, tests, or acceptance gates to obtain green CI.
 
-The work is performed only on the existing remediation branch and tracked in PR #135. Do not modify `main`, merge the PR, close related issues, change repository protection/settings, or mutate secrets without explicit owner approval.
+Stage work is performed on isolated feature branches and reviewed through Draft PRs. Stage 1 + Stage 2 PR #135 has been merged. Stage 3 PR #152 and Stage 4 remain unmerged. Do not merge later stages, deploy, close related issues, change repository protection/settings, or mutate secrets without explicit owner approval.
 
 ## 2. Non-negotiable product and engineering boundaries
 
@@ -30,7 +29,7 @@ The work is performed only on the existing remediation branch and tracked in PR 
 
 **Purpose:** establish an accepted security baseline before expanding the change surface.
 
-**Current status:** ACCEPTED on exact SHA `0d383e38da7def0aa77531d020c76ba5dbc392fb`. All eight required workflows completed successfully on that same immutable SHA: Backend Docker Compose #45441855408, Dev Container Compose #45441855601, Email/PostgreSQL #45441855554, recovered P0 #45441855372, Flutter mobile #45441855381, Native MLS #45441855364, Flutter iOS #45441855403 and Exact-SHA gate #45441855568. Job-level inspection confirmed iOS and aggregate gate concluded `success`. Stage 1 exit criteria are met.
+**Current status:** ACCEPTED jointly with Stage 2 on exact candidate SHA `7b8af4f00c15db759253dd9ce7b7666dda9eab3`. All 17/17 check runs passed on that same immutable SHA. PR #135 was merged into `main` as merge commit `74169a449de182ea734049e21d8424dfc4091c88`. The earlier `0d383e38...` docs-only SHA is not the accepted implementation SHA.
 
 **Work / acceptance criteria:**
 1. Re-fetch PR head and all workflow runs; identify the exact failed/skipped/cancelled gate dependency from job-level evidence.
@@ -71,6 +70,8 @@ The work is performed only on the existing remediation branch and tracked in PR 
 
 **Purpose:** make runtime failure modes deterministic and prevent configuration, request or provider boundaries from becoming security gaps.
 
+**Current status:** ACCEPTED by exact-SHA CI on `bd7d8d5e5cdee594f77e399ac3d37252e463263b`; all 15/15 check runs passed. PR #152 remains Draft and unmerged pending explicit owner authorization.
+
 **Implementation packages:**
 1. **Persistent object-signing secret (B-06):** load a stable secret from the supported production configuration; fail startup in production if missing/invalid; no random-per-process production fallback. Keep test-only generation explicit.
 2. **Safe request logging (B-08):** log normalized route/path and allowlisted metadata; never log signed query strings, authorization/session tokens, recovery codes, message bodies or arbitrary sensitive payload fields. Add regression tests with sentinel secrets.
@@ -86,6 +87,8 @@ The work is performed only on the existing remediation branch and tracked in PR 
 ### Stage 4 — Database integrity, cleanup and administrative atomicity (B-07/B-12/B-14)
 
 **Purpose:** ensure security-sensitive multi-row state transitions are atomic and cleanup is complete.
+
+**Current status:** ACTIVE on `security/beta1-stage4-db-integrity-2026-11-25`. Initial audit is recorded in `development/reports/2026-11-25-beta1-stage4-database-integrity-audit.md`. B-07 cleanup implementation and initial regressions are committed; B-12 and B-14 remediation remain outstanding. No Stage 4 CI acceptance claim.
 
 **Implementation packages:**
 1. **Retention of ephemeral security state (B-07):** review all expiring tables and their retention semantics; include missing rate-limit/login-throttle records in scheduled cleanup where appropriate. Use bounded batches/index-supported predicates and avoid deleting active state. Minimize or HMAC identifiers where required by the approved data model.
@@ -172,7 +175,7 @@ Added regressions for:
 - Failed upload reservation release.
 - Retryable object deletion when the object store is temporarily unavailable.
 
-**Evidence status:** Stage 2 exact-head CI has been triggered on the remediation branch. At the last check, the applicable Backend Node/PostgreSQL, Compose, iOS, mobile/native and Exact-SHA runs were queued. Queued jobs are not passes. No Stage 2 acceptance claim is made until all required workflows finish successfully on one exact final SHA.
+**Evidence status:** Stage 2 was accepted jointly with Stage 1 on exact candidate SHA `7b8af4f00c15db759253dd9ce7b7666dda9eab3`; all 17/17 checks passed on that SHA. PR #135 is merged into `main` at `74169a449de182ea734049e21d8424dfc4091c88`.
 
 **Next actions:**
 1. Let the current exact-head CI complete; inspect Node, PostgreSQL, Compose, file disk, and fault-injection results at job level.
@@ -180,7 +183,7 @@ Added regressions for:
 3. Add/confirm PostgreSQL fault-injection for object-write/metadata transition and tombstone retry boundaries.
 4. Verify signed URL expiry, wrong-device, revoked-device, encrypted-payload and client API compatibility on the final Stage 2 SHA.
 5. Re-run all applicable workflows and the exact-SHA acceptance gate on that final SHA.
-6. Only after Stage 2 acceptance, proceed to Stage 3.
+6. Stage 2 is accepted and merged. Stage 3 is accepted by exact-SHA CI; proceed to Stage 4 while retaining the Stage 3 merge gate.
 
 Do not implement automatic ready-file expiry. Existing pending-upload stale cutoff remains separate from ready-file retention, which still requires an owner decision.
 
