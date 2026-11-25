@@ -1479,6 +1479,9 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
 
     async transferRoomOwner(roomId, newOwner) {
       await inTransaction(async (c) => {
+        const { rows: roomOrg } = await c.query('SELECT org_id FROM rooms WHERE room_id = $1', [roomId]);
+        if (!roomOrg[0]) return;
+        await c.query('SELECT org_id FROM organizations WHERE org_id = $1 FOR SHARE', [roomOrg[0].org_id]);
         const { rows } = await c.query('SELECT owner FROM rooms WHERE room_id = $1 FOR UPDATE', [roomId]);
         if (rows.length === 0) return;
         const previous = rows[0].owner;
