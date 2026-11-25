@@ -70,7 +70,7 @@ CI workflow `.github/workflows/backend-compose-acceptance.yml` выполняе�
 ## Проверки
 
 - `GET /healthz` — liveness процесса: 200, пока HTTP runtime отвечает; не зависит от PostgreSQL и не раскрывает детали конфигурации.
-- `GET /readyz` — readiness обязательной зависимости PostgreSQL: 200, если `storage.ping()` успешен; 503 иначе. Внешние SMTP/FCM провайдеры обслуживаются durable workers и не включаются в синхронный readiness probe.
+- `GET /readyz` — readiness обязательной зависимости PostgreSQL: 200, если `storage.ping()` успешен; 503 иначе. Внешние SMTP/FCM провайдеры обслуживаются durable workers и не включаются в синхронный readiness probe. Docker image `HEALTHCHECK` использует `/readyz`; production orchestrators должны настроить отдельные liveness `/healthz` и readiness `/readyz` probes.
 
 ## Обновление
 
