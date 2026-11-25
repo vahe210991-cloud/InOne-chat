@@ -150,3 +150,18 @@ New threats:
 | IAM-24 | Unlinked actor fields drift or become dangling after identity cutover | Explicit per-column semantics and mapping/tombstone policy; audit history remains attributable |
 | IAM-25 | Exported production start path can omit PostgreSQL pool and start memory store | Production-only fail-fast guard and test; keep test/dev fallback |
 | IAM-26 | Source migration ledger differs from actual deployed DB state | Read-only ledger/FK inspection and exact DB baseline before any migration |
+
+## 10. Registration-path and phone-policy findings — 2026-11-25
+
+- InOne exposes separate email/password and provider registration paths.
+- Runtime config defaults requirePhone=true and email/password registration enforces it; provider registration does not require or create a phone claim.
+- Provider verification accepts Google/Apple verified email after RS256, issuer, audience, expiry, subject and nonce validation. Provider subjects are unique under (provider, sub).
+- Phone uniqueness intentionally reserves any non-null number, including pending/unverified claims (migration 0008). This prevents races but creates a policy need for expiry/release of abandoned claims.
+- These are not automatically vulnerabilities: provider exception and pending reservation policy may be intentional. Product-owner decision is required before central Identity schema/API freeze. Tracked in #151.
+
+Additional threats:
+| ID | Risk | Mitigation |
+|---|---|---|
+| IAM-27 | Phone verification requirement differs between email/password and provider registration | Owner-approved policy matrix and route conformance tests; no unapproved Beta 1 behavior changes |
+| IAM-28 | Pending/unverified phone reservation may remain occupied without an explicit expiry/release policy | Central claim lifecycle with verified/unverified state, reservation TTL, audited release and race-safe reassignment |
+| IAM-29 | Local email/nickname/provider verification semantics are copied into global Identity without normalization/scope review | Versioned normalization policy, issuer-scoped provider subject, privacy-safe conflicts and migration collision report |
