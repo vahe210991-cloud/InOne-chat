@@ -655,8 +655,14 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
       const column = { maxGroupMembers: 'max_group_members', channelsEnabled: 'channels_enabled', fileQuotaBytes: 'file_quota_bytes' }[field];
       if (!column) throw new Error('invalid organization setting field');
       return inTransaction(async (client) => {
-        const { rows: orgRows } = await client.query('SELECT org_id FROM organizations WHERE org_id = $1 FOR UPDATE', [orgId]);
+        const { rows: orgRows } = await client.query('SELECT status FROM organizations WHERE org_id = $1 FOR UPDATE', [orgId]);
         if (!orgRows[0]) return { ok: false, reason: 'not_found' };
+        if (orgRows[0].status !== 'approved') return { ok: false, reason: 'org_not_approved' };
+        const { rows: actorRows } = await client.query(
+          'SELECT role FROM org_members WHERE org_id = $1 AND user_id = $2 FOR UPDATE',
+          [orgId, actor],
+        );
+        if (!['owner', 'admin'].includes(actorRows[0]?.role)) return { ok: false, reason: 'forbidden' };
         const { rows } = await client.query('SELECT max_group_members, channels_enabled, file_quota_bytes FROM org_settings WHERE org_id = $1 FOR UPDATE', [orgId]);
         const row = rows[0];
         const old = !row
