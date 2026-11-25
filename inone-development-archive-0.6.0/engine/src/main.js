@@ -64,6 +64,8 @@ export async function startServer({ config, logger = createLogger({ level: confi
     testUi: config.testUi,
     store,
     trustProxy: config.trustProxy,
+    trustedProxyIps: config.trustedProxyIps,
+    objectSecret: config.objectSigningSecret || undefined,
     filesDir: config.filesDir || null,
     quotaBytes: config.fileQuotaBytes ?? null,
     registrationMode: config.registrationMode,
