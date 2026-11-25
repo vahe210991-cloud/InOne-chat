@@ -78,12 +78,12 @@
 
 ## 9. Supply-chain maintenance
 
-- Dependabot is configured to propose weekly updates for GitHub Actions, Docker images, the backend npm lockfile and each maintained Cargo lockfile.
+- Dependabot is configured to propose weekly updates for GitHub Actions, Docker images, the backend npm lockfile and all five committed Cargo lockfile directories, including legacy Engine A POC crates.
 - Review every update as a pull request. Do not enable automatic merge for action, base-image, Rust, MLS, cryptography or backend dependency updates.
 - For GitHub Actions, verify the upstream repository, release/tag and full commit SHA; retain the version comment and inspect meaningful upstream changes before accepting a new pin.
 - For container images, verify the official publisher, architecture/index digest, release notes and vulnerability status. Update the digest and human-readable version together.
 - Run the exact-SHA CI and relevant runtime/platform acceptance after every action or image pin refresh.
-- For Rust advisories, record the advisory ID, affected crate/version, dependency path, reachability/platform applicability, remediation and owner decision. Do not use `cargo audit fix` on MLS or cryptographic dependencies without a separate compatibility review.
+- Run the RustSec scan across all five committed Cargo.lock files, including the legacy Engine A POC client and bridge lockfiles. For Rust advisories, record the advisory ID, affected crate/version, dependency path, reachability/platform applicability, remediation and owner decision. Do not use `cargo audit fix` on MLS or cryptographic dependencies without a separate compatibility review.
 - Keep scanner JSON reports and CI evidence under the configured retention policy; do not treat PR artifacts as release provenance.
 - If an advisory cannot be fixed safely, document the risk, mitigation, owner and expiry/review date before release approval.
 
