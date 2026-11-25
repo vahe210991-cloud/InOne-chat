@@ -104,3 +104,7 @@ The Node lockfile contains a `firebase-admin` package entry without an `integrit
 - Preserve Beta 1.0 API/client compatibility and MLS cryptographic invariants.
 - No secret values are to be committed or written into reports.
 - This is a source-level audit; cloud IAM, registry policy, production host settings, actual backup integrity and live provider credentials require owner/operator evidence.
+
+## Implementation checkpoint
+
+Added focused negative configuration regressions in `engine/test/config.test.js` for production rejection of the fixed development email code, test UI enablement and an invalid push-encryption key. These tests exercise existing fail-closed guards; no production behavior was weakened or broadened. The full exact-SHA Node/PostgreSQL and acceptance checks must complete on the final Stage 5 head.
