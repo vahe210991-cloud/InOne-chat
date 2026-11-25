@@ -623,3 +623,15 @@ Next:
 7. International phone channel audit is tracked in #153; do not implement phone verification before its results and owner approval.
 
 Do not change Beta 1.0, PR #135, production databases, secrets or runtime settings.
+
+
+## Next execution — Identity privacy architecture (2026-11-25)
+
+1. Read [Identity implementation roadmap](../../docs/product/BETA-2.0-IDENTITY-IMPLEMENTATION-ROADMAP.md), ADR B2-ADR-001 and threat model before further work.
+2. Treat UUIDv4 canonical human subject and pairwise product subject architecture as OWNER-APPROVED. Do not ask the owner to approve UUIDv4 again.
+3. Verify Propo's exact CUID package/version, Prisma models/relations/migrations, ID exposure paths and external consumers from repository evidence.
+4. Establish the authoritative mobile tree (lib/ vs apps/mobile/app/lib/) from workspace config, package scripts, app entry points and CI; do not guess.
+5. Inventory InOne/Propo identifier flows through APIs, WebSockets, push, deep links, webhooks, cache/outbox, logs and analytics.
+6. Close remaining owner decisions: pairwise client/sector boundaries, credentials/password/passkeys, linking/conflict resolution, normalization/claim TTL/release, Propo Seller Account delegation, InOne Business boundary, retention/deletion, SLO/RPO/RTO and data residency.
+7. Only then finalize C4, OpenAPI/AsyncAPI and draft DDL. Preserve local PKs/CUIDs and avoid cross-database FKs.
+8. No product implementation until contract/security review and explicit implementation authorization. No Beta 1.0, production DDL/data, secrets or runtime settings changes.
