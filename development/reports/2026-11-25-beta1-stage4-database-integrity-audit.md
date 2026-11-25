@@ -64,3 +64,17 @@ However, the following update cancels every `queued` or `failed` delivery for th
 - Stage 3 PR #152 remains Draft/unmerged pending owner authorization.
 - Do not weaken existing security assertions to make tests pass.
 - Do not implement ready-file automatic expiry without a separate owner-approved retention policy.
+
+
+## Work started after initial audit
+
+B-07 implementation has begun on this branch:
+- PostgreSQL cleanup now prunes stale `rate_limits` rows after the longest configured rate window (24 hours), and `login_throttle` rows only after both the 15-minute maximum throttle window and any active block have expired.
+- Each table cleanup is bounded to 500 rows per sweep.
+- Added migration `0034-expired-security-state-indexes.sql` with indexes for the cleanup predicates/order.
+- Memory-store cleanup mirrors the same cutoffs.
+- Added memory-store regression for stale versus active windows/blocks and a PostgreSQL regression that verifies stale rows are removed while active rows survive.
+
+Relevant current Stage 4 branch head: `820572acf77fa8353f1aabf36e56df4d34c114bb`.
+
+**Validation caveat:** no CI checks have been run for this Stage 4 branch yet. B-07 is not accepted until the branch is complete and the full exact-SHA gate passes. B-12 and B-14 remain to be implemented.
