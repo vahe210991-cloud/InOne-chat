@@ -155,13 +155,13 @@ pub fn join_group(identity: String, welcome: Vec<u8>) -> Result<String, String> 
         MlsMessageBodyIn::Welcome(w) => w,
         _ => return Err("not a welcome message".to_string()),
     };
-    ensure_supported_welcome_ciphersuite(welcome.ciphersuite())?;
     let join_config = MlsGroupJoinConfig::builder()
         .use_ratchet_tree_extension(true)
         .max_past_epochs(MAX_PAST_EPOCHS)
         .build();
     let staged =
         StagedWelcome::new_from_welcome(&me.provider, &join_config, welcome, None).map_err(text)?;
+    ensure_supported_welcome_ciphersuite(staged.group_context().ciphersuite())?;
     let group = staged.into_group(&me.provider).map_err(text)?;
     let group_id = String::from_utf8_lossy(group.group_id().as_slice()).to_string();
     groups.insert((identity, group_id.clone()), group);

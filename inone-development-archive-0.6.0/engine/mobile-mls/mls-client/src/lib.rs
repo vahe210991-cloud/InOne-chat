@@ -40,9 +40,7 @@ fn parse_signed_object_url(base_raw: &str, raw_url: &str) -> Result<Url, String>
     let target = Url::parse(raw_url).map_err(text)?;
 
     // Check schemes before origin(): url <= 2.5.8 recursively evaluated nested blob: URLs.
-    if !matches!(base.scheme(), "http" | "https")
-        || !matches!(target.scheme(), "http" | "https")
-    {
+    if !matches!(base.scheme(), "http" | "https") || !matches!(target.scheme(), "http" | "https") {
         return Err("signed object URL must use HTTP or HTTPS".to_string());
     }
 
@@ -3995,21 +3993,6 @@ impl Client {
                     continue;
                 }
             };
-            if ensure_supported_welcome_ciphersuite(welcome.ciphersuite()).is_err() {
-                if self
-                    .persist_welcome_receipt(
-                        welcome_id,
-                        room_id,
-                        &bytes,
-                        "quarantined",
-                        Some("Unsupported MLS ciphersuite; only X25519/Ed25519 is enabled"),
-                    )
-                    .is_ok()
-                {
-                    let _ = self.ack_welcome(welcome_id);
-                }
-                continue;
-            }
             let join_config = MlsGroupJoinConfig::builder()
                 .use_ratchet_tree_extension(true)
                 .max_past_epochs(MAX_PAST_EPOCHS)
@@ -4061,6 +4044,24 @@ impl Client {
                     continue;
                 }
             };
+            if ensure_supported_welcome_ciphersuite(staged.group_context().ciphersuite()).is_err() {
+                drop(staged);
+                drop(transactional_provider);
+                drop(transaction);
+                if self
+                    .persist_welcome_receipt(
+                        welcome_id,
+                        room_id,
+                        &bytes,
+                        "quarantined",
+                        Some("Unsupported MLS ciphersuite; only X25519/Ed25519 is enabled"),
+                    )
+                    .is_ok()
+                {
+                    let _ = self.ack_welcome(welcome_id);
+                }
+                continue;
+            }
             let mls = match staged.into_group(&transactional_provider) {
                 Ok(group) => group,
                 Err(error) => {
@@ -5844,7 +5845,6 @@ mod session_persistence_tests {
         remove_db(&database);
     }
 }
-
 
 #[cfg(test)]
 mod security_policy_tests {

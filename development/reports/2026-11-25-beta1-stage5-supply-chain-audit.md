@@ -226,16 +226,16 @@ Two additional informational maintenance warnings are present: `libcrux-aesgcm 0
 
 ### Dependency reachability and safe remediation boundaries
 
-- The Libcrux packages are present in the lockfiles through OpenMLS 0.8.1's optional `openmls_libcrux_crypto` provider. The application source currently constructs `openmls_rust_crypto::RustCrypto` and does not explicitly enable the Libcrux provider. A feature-resolved dependency-tree artifact is still required before classifying those findings as inactive; the lockfile scan alone cannot establish runtime reachability.
+- The committed manifests specify OpenMLS `0.8` and RustCrypto provider `0.5`; the five lockfiles resolve OpenMLS `0.8.3` and `openmls_rust_crypto 0.5.1`. Feature-resolved dependency graphs from run [45692885295](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/45692885295), artifact [15058534729](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/45692885295/artifacts/15058534729), now establish reachability. `libcrux-sha3 0.0.8` and `libcrux-secrets 0.0.5` are active in all five default-feature graphs (through the HPKE stack); their advisories RUSTSEC-2026-0207, RUSTSEC-2026-0208 and RUSTSEC-2026-0212 are active findings. By contrast, `libcrux-aesgcm`, `libcrux-chacha20poly1305` and `libcrux-kem` do not appear in any of the five graphs; their five advisory IDs are present in Cargo.lock through the optional Libcrux provider but are not activated by the current default feature graph. The full lockfile scan still records them, and no advisories are suppressed.
 - `crypto-bigint 0.5.5` is reached through `mls-client -> openmls_basic_credential -> p256 -> elliptic-curve`. The current configured suite is X25519/Ed25519, but the incoming Welcome path calls `StagedWelcome::new_from_welcome` without an explicit application-level suite allowlist. Do not treat the P-256 path as excluded until all inbound join paths enforce and test the allowlist.
 - `rusqlite 0.32.1 -> libsqlite3-sys 0.30.1` is in the active client database path. The application enables bundled SQLCipher. The SQLite advisory requires a local crafted database/WAL pair written by a less-trusted party; actual exploitability depends on whether such a pair can reach the app's private database-open path. It remains a dependency blocker until the SQLCipher/SQLite source version is verified and updated.
 - `url 2.5.8` is a direct MLS-client dependency. Update to 2.5.9 and retain the lockfile diff and test evidence.
 
 ### OpenMLS / SQLCipher upgrade must preserve persisted state
 
-A blanket OpenMLS 0.8.1 to 0.9.0 bump is **not** approved as a mechanical dependency update. Upstream OpenMLS 0.9 documents a storage-format transition and provides `migration-export` / `migration-import` helpers. Its migration guidance recommends quiescing all MLS access, exporting each group, bridging through a zeroizing self-describing representation, importing into a fresh store, verifying group epochs/membership and application-managed keys, then atomically switching stores. The existing InOne client already uses a JSON storage codec, which is favorable, but compatibility still needs an explicit test and schema-version strategy.
+A blanket OpenMLS 0.8.3 to 0.9.0 bump is **not** approved as a mechanical dependency update. The upstream 0.9 migration guide specifically documents migration from the 0.8.1 storage format; the compatibility of the currently resolved 0.8.3 format with that helper path must be established before any change. OpenMLS 0.9 provides `migration-export` / `migration-import` helpers. Its migration guidance recommends quiescing all MLS access, exporting each group, bridging through a zeroizing self-describing representation, importing into a fresh store, verifying group epochs/membership and application-managed keys, then atomically switching stores. The existing InOne client already uses a JSON storage codec, which is favorable, but compatibility still needs an explicit test and schema-version strategy.
 
-The current lockfiles do not contain a separate `sqlcipher-src` package. Any move to a newer rusqlite/libsqlite3-sys must verify the actual bundled SQLCipher source version, not infer safety from the `libsqlite3-sys` version alone. Rusqlite 0.42.0 release notes report a SQLCipher 4.20.0 bump; validate that the resolved lockfile uses the patched source and that OpenMLS storage uses the same compatible rusqlite version.
+The current lockfiles do not contain a separate `sqlcipher-src` package. Any move to a newer rusqlite/libsqlite3-sys must verify the actual bundled SQLCipher source version, not infer safety from the `libsqlite3-sys` version alone. Rusqlite 0.42.0 release notes report a SQLCipher 4.20.0 bump and bundled SQLite 3.54.1. However, upstream `openmls_sqlite_storage 0.3.0` still declares `rusqlite = "0.37"`, which remains below the RustSec patch floor for `libsqlite3-sys`. Therefore OpenMLS 0.9 plus the unmodified storage crate does **not** resolve RUSTSEC-2026-0459. A reviewed fork/patch of `openmls_sqlite_storage 0.3.0` to use the same rusqlite 0.42 dependency and SQLCipher feature set, or a newer upstream storage release with that dependency, is required. The fork must pass storage migrations, SQLCipher key handling, and MLS persistence compatibility tests before use.
 
 **No Cargo manifests or lockfiles were changed in this checkpoint.** The dependency upgrades are deferred until the MLS storage compatibility/migration plan and ciphersuite reachability tests are ready. No advisories are suppressed or accepted by this report.
 
@@ -273,7 +273,7 @@ RustSec documents that `Url::origin()` through 2.5.8 recursively evaluated neste
 
 ### Explicit MLS Welcome ciphersuite policy
 
-The canonical Engine B client and bridge now reject a Welcome unless its ciphersuite is exactly `MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519`, before passing it to `StagedWelcome::new_from_welcome`. This makes the existing X25519/Ed25519 policy explicit on inbound Welcome paths and prevents an unexpected P-256 group from being accepted through the general-purpose RustCrypto provider. Regression tests accept the configured suite and reject `MLS_128_DHKEMP256_AES128GCM_SHA256_P256`.
+The canonical Engine B client and bridge now inspect the verified `StagedWelcome.group_context().ciphersuite()` and reject any suite other than `MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519` before `into_group` consumes the key package or stores the group. OpenMLS 0.8.3 itself checks that the Welcome ciphersuite matches the locally stored KeyPackage ciphersuite before decrypting GroupSecrets; InOne creates only X25519/Ed25519 KeyPackages. The application-level check adds an explicit policy boundary before committing group state. Regression tests accept the configured suite and reject `MLS_128_DHKEMP256_AES128GCM_SHA256_P256`.
 
 This does **not** remove `crypto-bigint` from the lockfiles: it remains transitively present through `p256`/OpenMLS. No RustSec advisory is suppressed. The remaining advisory requires a separately reviewed dependency/provider strategy; this checkpoint only closes the inbound Welcome policy gap.
 
@@ -292,3 +292,35 @@ and the corresponding Gradle Plugin Portal path. The upload-artifact paths are a
 On `c0a22d46e54de3fd83fba4226e94928c163304b1`, three workflows succeeded (Backend Compose, Email/PostgreSQL, Dev Container); RustSec/P0 failed on the same five lockfile findings; Flutter mobile stopped at the incorrectly formed diagnostic URL; the exact-SHA gate failed after P0 reported failure. OpenMLS FRB generation was still running and Native MLS/iOS validation were queued. This checkpoint does not claim those pending jobs passed.
 
 The next exact head must verify the URL regression tests, MLS Welcome policy tests, lockfile consistency, active dependency graphs, corrected Gradle marker probe, and the full CI set. Stage 5 remains **NOT ACCEPTED** until active RustSec findings and production-operator evidence are resolved.
+
+
+### Feature-resolved RustSec classification and URL remediation result — SHA `7c6545bd82e1c7d1e408448c4d86b05b7198a653`
+
+The exact-head RustSec JSON after the URL update contains **10 unique advisory IDs** (not 11): RUSTSEC-2026-0592 is absent because all three affected lockfiles now resolve `url 2.5.9`. Per lockfile, the result is 10 findings for each client lockfile and 9 for each bridge lockfile.
+
+The new `cargo tree --all-targets --edges all` artifacts show the following packages in the active default-feature graph:
+
+| Package | Active graph evidence | Finding |
+|---|---|---|
+| `crypto-bigint 0.5.5` | Present in all five graphs | RUSTSEC-2026-0387 remains active at the package level |
+| `libcrux-sha3 0.0.8` | Present in all five graphs | RUSTSEC-2026-0207 and RUSTSEC-2026-0208 are active |
+| `libcrux-secrets 0.0.5` | Present in all five graphs | RUSTSEC-2026-0212 is active |
+| `libsqlite3-sys 0.30.1` | Present in the three client graphs; absent from bridge-only graphs | RUSTSEC-2026-0459 is active in the client database path |
+| `url 2.5.9` | Present in all three client graphs | The prior RUSTSEC-2026-0592 finding is patched |
+
+The five Libcrux advisories for `libcrux-aesgcm`, `libcrux-chacha20poly1305` and `libcrux-kem` are lockfile-only optional-provider findings: those packages do not appear in any of the five feature-resolved graphs. They remain visible in the full RustSec inventory; this report does not suppress them.
+
+The active Libcrux SHA3/secrets findings are not fixed by simply disabling the optional Libcrux provider: they are pulled by the current HPKE dependency path (`hpke-rs 0.6.1`). The published `openmls_rust_crypto 0.6.0` lockfile resolves `libcrux-sha3 0.0.10` and `libcrux-secrets 0.0.6`, both patched versions, but also still resolves `p256 0.13.2` / `crypto-bigint 0.5.5`. Moving to that provider requires the matching OpenMLS traits generation and the reviewed 0.8.3-to-0.9 storage transition; it is not a lockfile-only update. The OpenMLS 0.9 storage crate also pins rusqlite 0.37, so a SQLCipher-compatible fork/patch is a separate required part of the same migration.
+
+OpenMLS 0.8.3's Welcome processing checks the Welcome ciphersuite against the local KeyPackage ciphersuite before HPKE GroupSecrets decryption. The application-level staged-group allowlist is defense in depth; it does not remove `crypto-bigint` from the build graph, so RUSTSEC-2026-0387 remains visible and requires explicit risk disposition or an upstream cryptographic dependency fix.
+
+### Validation notes for SHA `7c6545bd82e1c7d1e408448c4d86b05b7198a653`
+
+The URL lockfile update removed RUSTSEC-2026-0592 from the full audit JSON. The new Rust source changes did not yet pass validation: Native MLS and Rust format jobs detected the direct private `Welcome::ciphersuite()` call and formatting differences; Flutter Rust Bridge generation failed at `cargo expand` for the same compile error. The code has been corrected in the next prepared checkpoint to inspect `StagedWelcome.group_context()` instead. The Gradle preflight was not reached on this SHA because Flutter Rust Bridge code generation failed first.
+
+
+### SQLCipher migration compatibility finding
+
+Upstream `openmls_sqlite_storage 0.3.0` is confirmed to depend on `rusqlite 0.37` (not 0.42). The RustSec advisory's fixed range begins at `libsqlite3-sys 0.39.0`; therefore upgrading only from OpenMLS 0.8.3 to 0.9.0 and adopting the unmodified 0.3.0 storage crate would leave the vulnerable SQLite source in the active graph. A candidate remediation requires a reviewed storage-crate fork/patch that moves the provider to rusqlite 0.42.0 and unifies its SQLCipher features with the application's direct database connection. The fork must be tested against the upstream 0.3.0 migration set and the existing InOne JSON codec.
+
+The existing `ADR-MLS-SQLCIPHER-ATOMICITY.md` explicitly keeps the exact dependency pins until a separate compatibility review. No such migration is started in this PR without owner approval.
