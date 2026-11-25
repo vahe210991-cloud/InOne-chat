@@ -40,7 +40,7 @@ export function createPushDelivery({
 
   function registrationGeneration(tokenCiphertext) {
     return createHmac('sha256', masterKey)
-      .update('inone-push-registration-generation\\0')
+      .update('inone-push-registration-generation|')
       .update(tokenCiphertext)
       .digest('hex');
   }
