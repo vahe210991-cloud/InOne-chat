@@ -818,3 +818,13 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Confirmed stale cleanup only proves cleanup of abandoned pending/uploaded uploads; it does not define lifecycle for ready files after account closure.
 - Confirmed authenticated organization admin log calls use the session user ID. The set-flag CLI accepts a free-form --actor label, so flag_changes.actor cannot safely be assumed to be a canonical human subject.
 - Added call-path evidence and migration constraints to Phase 1 plan section 14.1. No code/schema/data changes; no tests run.
+
+
+### 2026-11-25 — Global identifier registry policy analysis
+
+- Re-read the authoritative owner product decision for InOne↔Propo Identity. It explicitly requires atomic cross-platform reservation of normalized username/handle, email and phone as applicable in both registration directions.
+- Added a source-backed identifier matrix and claim lifecycle proposal to ADR B2-ADR-001 and Phase 1 plan section 16.
+- Proposed global handle and primary-email namespace across InOne/Propo; optional independently verified phone claim; federated key by exact (iss, sub); product-local IDs remain local; Propo Seller Account is a separate business principal.
+- Flagged unresolved boundary: source decision names InOne+Propo, while current ADR also names InOne Business. Do not extend global handle reservation to InOne Business until owner confirms its role in Identity.
+- Open policy details: backup-email role, email/handle normalization, pending reservation TTL/release, recycled phone handling, handle rename/cooldown, and provider unlink/recovery.
+- No implementation/schema changes or tests. ADR remains DRAFT.
