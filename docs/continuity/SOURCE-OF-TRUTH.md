@@ -217,7 +217,7 @@ The product split does not automatically imply separate or shared identity servi
 - Audit: [2026-11-25 Stage 5 supply-chain audit](../../development/reports/2026-11-25-beta1-stage5-supply-chain-audit.md).
 - Operations: [Beta 1.0 production operations runbook](../../development/runbooks/beta1-production-operations-runbook.md).
 - Dependabot: `.github/dependabot.yml`; weekly reviewed update PRs only.
-- RustSec: `.github/workflows/validate-published-p0.yml`, job `rust-advisory-audit`; three maintained lockfiles and JSON artifacts.
+- RustSec: `.github/workflows/validate-published-p0.yml`, job `rust-advisory-audit`; all five committed Cargo.lock files and JSON artifacts.
 - SBOM: same workflow, job `source-sbom`; SPDX JSON plus source SHA/checksum sidecar. CI evidence only, not release attestation.
 - Action pins: all external `uses:` references in the 10 inspected workflows are immutable 40-character SHAs; inventory and provenance notes are in the audit report.
 - Image pins: canonical/archived engine Dockerfiles, Compose and CI service image digests are recorded in the audit report. Production deployment manifest is not present.
