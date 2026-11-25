@@ -23,6 +23,7 @@ import { MESSAGE_KINDS, effectiveCapabilities, hasCapability, normalizeCapabilit
 import { createFsObjectStore, createMemoryObjectStore } from './object-store.js';
 import { effectiveFlags, publicFlags, validateFlag } from './flags.js';
 import http from 'node:http';
+import { isIP } from 'node:net';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { readFileSync } from 'node:fs';
@@ -101,6 +102,19 @@ function normalizeDocumentMetadata(filename, mimeType, bytes) {
   return { filename: safeName, mimeType: type };
 }
 
+const normalizeProxyIp = (value) => String(value).trim().toLowerCase().replace(/^::ffff:/, '');
+const SAFE_REQUEST_LOG_ROOTS = new Set([
+  'account', 'admin', 'appearance', 'assets', 'auth', 'backup', 'biometric',
+  'config', 'devices', 'email', 'flags', 'groups', 'healthz', 'invites',
+  'keys', 'login', 'logout', 'mls', 'objects', 'operator', 'org-requests',
+  'orgs', 'phone', 'profile', 'push', 'readyz', 'recovery', 'register',
+  'rooms', 'search', 'sendToDevice', 'stickers', 'sync', 'token', 'users',
+]);
+function safeRequestLogPath(pathname) {
+  const first = String(pathname || '').split('/').filter(Boolean)[0] || '';
+  return SAFE_REQUEST_LOG_ROOTS.has(first) ? `/${first}` : '/__other__';
+}
+
 function contentDispositionAttachment(filename) {
   const fallback = filename.replace(/[^\x20-\x7e]/g, '_').replace(/[\\\";]/g, '_');
   const encoded = encodeURIComponent(filename).replace(/[!'()*]/g, (char) => '%' + char.charCodeAt(0).toString(16).toUpperCase());
@@ -168,7 +182,7 @@ const TEST_UI_FILES = {
   'common/state.mjs': { dir: 'client-screens', name: 'common/state.mjs', type: 'text/javascript; charset=utf-8' },
   'common/device.mjs': { dir: 'client-screens', name: 'common/device.mjs', type: 'text/javascript; charset=utf-8' },
 };
-export function createServer({ pinPepper, mailer: externalMailer, store, trustProxy = false, sms, requirePhone = false, registrationMode = 'verified', sessionTtl = {}, objectStore, objectSecret = randomBytes(32).toString('hex'), filesDir = null, quotaBytes = null, pushDelivery = null, docsSecret = null, defaultOrgAutoJoin = false, testUi = false, providers = {}, providerKeysSource = null, publicUrl = 'https://inone.test', rateLimits = {}, bodyLimit = 4 * 1024 * 1024, documentBodyLimit = 7 * 1024 * 1024, logger = null, wireLogLimit = 2000, smsEnabled = true, phoneBlockedCountries = [], phoneAllowedCountries = [], devEmailCode = '' } = {}) {
+export function createServer({ pinPepper, mailer: externalMailer, store, trustProxy = false, trustedProxyIps = [], sms, requirePhone = false, registrationMode = 'verified', sessionTtl = {}, objectStore, objectSecret = randomBytes(32).toString('hex'), filesDir = null, quotaBytes = null, pushDelivery = null, docsSecret = null, defaultOrgAutoJoin = false, testUi = false, providers = {}, providerKeysSource = null, publicUrl = 'https://inone.test', rateLimits = {}, bodyLimit = 4 * 1024 * 1024, documentBodyLimit = 7 * 1024 * 1024, logger = null, wireLogLimit = 2000, smsEnabled = true, phoneBlockedCountries = [], phoneAllowedCountries = [], devEmailCode = '' } = {}) {
   // Аккаунты и PIN: в базе (store.js) или в памяти по умолчанию (store-memory.js).
   const storage = store ?? createMemoryStore({ pinPepper });
   // SMS-поставщик подключается снаружи; по умолчанию сообщения складываются в список (для тестов).
@@ -187,10 +201,19 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
     }
     return { allowed, retryAt };
   };
-  // Адрес источника. За обратным прокси берём адрес из X-Forwarded-For, только если сервер за прокси (D7).
+  // X-Forwarded-For доверяется только от непосредственного peer из явного allowlist.
+  // Цепочка обходится справа налево: первый недоверенный адрес считается клиентом.
+  const trustedProxySet = new Set(trustedProxyIps.map(normalizeProxyIp).filter((ip) => isIP(ip) !== 0));
   const clientIp = (req) => {
-    const forwarded = trustProxy ? String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() : '';
-    return forwarded || req.socket.remoteAddress || 'unknown';
+    const remote = normalizeProxyIp(req.socket.remoteAddress || 'unknown');
+    if (!trustProxy || !trustedProxySet.has(remote)) return remote;
+    const raw = req.headers['x-forwarded-for'];
+    if (typeof raw !== 'string' || raw.length > 2048) return remote;
+    const chain = raw.split(',').map(normalizeProxyIp);
+    if (!chain.length || chain.some((ip) => isIP(ip) === 0)) return remote;
+    let candidate = remote;
+    for (let i = chain.length - 1; i >= 0 && trustedProxySet.has(candidate); i -= 1) candidate = chain[i];
+    return candidate;
   };
   if (!pinPepper || pinPepper.length < 32) {
     // Без перца сервер не запускается: иначе PIN легко перебрать после утечки базы.
@@ -700,20 +723,24 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
     
   const server = http.createServer(async (req, res) => {
     const startedAt = Date.now();
-    const pathOnly = req.url.split('?')[0];
-    if (logger) res.on('finish', () => logger.info('request', { method: req.method, path: pathOnly, status: res.statusCode, ms: Date.now() - startedAt }));
-    if (req.method === 'GET' && pathOnly === '/healthz') return send(res, 200, { status: 'ok' });
-    if (req.method !== 'GET' && !['/logout', '/token/refresh'].includes(pathOnly) && (await currentFlags())['maintenance.enabled']) return send(res, 503, { error: 'maintenance', code: 'maintenance' });
-    if (pathOnly.startsWith('/objects/')) return handleObjectRequest(req, res);
-    if (req.method === 'GET' && pathOnly === '/readyz') {
-      try {
-        await storage.ping();
-        return send(res, 200, { status: 'ready' });
-      } catch {
-        return send(res, 503, { status: 'not ready' });
-      }
-    }
+    const pathOnly = String(req.url || '/').split('?')[0];
+    const logPath = safeRequestLogPath(pathOnly);
+    if (logger) res.on('finish', () => logger.info('request', {
+      method: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'].includes(req.method) ? req.method : 'OTHER',
+      path: logPath, status: res.statusCode, ms: Date.now() - startedAt,
+    }));
     try {
+      if (req.method === 'GET' && pathOnly === '/healthz') return send(res, 200, { status: 'ok' });
+      if (req.method !== 'GET' && !['/logout', '/token/refresh'].includes(pathOnly) && (await currentFlags())['maintenance.enabled']) return send(res, 503, { error: 'maintenance', code: 'maintenance' });
+      if (pathOnly.startsWith('/objects/')) return handleObjectRequest(req, res);
+      if (req.method === 'GET' && pathOnly === '/readyz') {
+        try {
+          await storage.ping();
+          return send(res, 200, { status: 'ready' });
+        } catch {
+          return send(res, 503, { status: 'not ready' });
+        }
+      }
       const chunks = [];
       let received = 0;
       const isOrganizationDocumentUpload =
@@ -729,11 +756,11 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
       }
       const raw = Buffer.concat(chunks).toString('utf8');
       // Тела сообщений (комнаты и личные) в журнал не пишутся: иначе удалённое осталось бы на сервере.
-      const carriesMessage = /^\/(sendToDevice\/|rooms\/[^/]+\/(events|assets)|mls\/)/.test(req.url);
+      const carriesMessage = /^\/(sendToDevice\/|rooms\/[^/]+\/(events|assets)|mls\/)/.test(pathOnly);
       // Журнал в памяти ограничен: без этого он рос бы с каждым запросом.
       if (wireLog.length >= wireLogLimit) wireLog.splice(0, wireLog.length - wireLogLimit + 1);
-      const carriesDocument = /^\/org-requests\/[^/]+\/documents/.test(req.url);
-      wireLog.push(`${req.method} ${req.url} ${carriesMessage ? '[тело сообщения не записывается]' : carriesDocument ? '[тело документа не записывается]' : raw.replace(/"(password|newPassword|code|pin|currentPin|newPin|pollSecret|token|refreshToken|codeword|recoveryCode|email|phone)":"[^"]*"/g, '"$1":"***"')}`);
+      const carriesDocument = /^\/org-requests\/[^/]+\/documents/.test(pathOnly);
+      wireLog.push(`${req.method} ${logPath} ${carriesMessage ? '[тело сообщения не записывается]' : carriesDocument ? '[тело документа не записывается]' : '[тело запроса не записывается]'}`);
 
       let body = {};
       const isForm = String(req.headers['content-type'] || '').includes('application/x-www-form-urlencoded');
@@ -3203,8 +3230,13 @@ if (req.method === 'POST' && p === '/login') {
 
       return send(res, 404, { error: 'not found' });
     } catch (e) {
-      if (e.code === 'MAIL_UNAVAILABLE' || e.code === 'EMAIL_QUEUE_UNAVAILABLE') return send(res, 503, { error: 'email delivery is temporarily unavailable, try later' });
       const errorCode = typeof e?.code === 'string' && /^[A-Z0-9_]{1,64}$/.test(e.code) ? e.code : 'INTERNAL';
+      if (res.headersSent || res.destroyed) {
+        logger?.error('request failed after response started', { errorCode });
+        if (!res.destroyed) res.destroy();
+        return;
+      }
+      if (e.code === 'MAIL_UNAVAILABLE' || e.code === 'EMAIL_QUEUE_UNAVAILABLE') return send(res, 503, { error: 'email delivery is temporarily unavailable, try later' });
       logger?.error('request failed', { errorCode });
       return send(res, 500, { error: 'internal server error' });
     }
