@@ -6,7 +6,7 @@
 
 - Node.js 22 или новее, PostgreSQL 16.
 - HTTPS-прокси перед сервером (nginx, Caddy или облачный балансировщик).
-- Секреты: пароль базы и перец PIN (`INONE_PIN_PEPPER`, 32 символа и больше, случайный).
+- Секреты: пароль базы, перец PIN (`INONE_PIN_PEPPER`) и отдельный постоянный ключ подписи URL объектов (`INONE_OBJECT_SIGNING_SECRET`), каждый случайный и не короче 32 символов.
 
 ## Настройки
 
@@ -15,10 +15,10 @@
 | Переменная | Что делает | По умолчанию |
 |---|---|---|
 | `DATABASE_URL` | адрес базы PostgreSQL | обязательна |
-| `INONE_PIN_PEPPER` | перец для хэшей PIN и кодов | обязательна в продакшене |
+| `INONE_PIN_PEPPER` | перец для хэшей PIN и кодов | обязательна в продакшене |\n| `INONE_OBJECT_SIGNING_SECRET` | постоянный HMAC-ключ для подписанных URL объектов; одинаковый на всех репликах и сохраняется при рестартах | обязателен в продакшене; `openssl rand -hex 32` |
 | `INONE_PUBLIC_URL` | публичный адрес за прокси, https в продакшене | — |
 | `INONE_REGISTRATION_MODE` | `verified` (с проверкой почты) или `open` | `verified` |
-| `INONE_TRUST_PROXY` | доверять заголовкам прокси про адрес клиента | `false` |
+| `INONE_TRUST_PROXY` | включить обработку forwarded headers только от allowlisted immediate peer | `false` |\n| `INONE_TRUSTED_PROXY_IPS` | comma-separated exact IP allowlist для прокси; цепочка проверяется справа налево | обязателен при `INONE_TRUST_PROXY=true` |
 | `INONE_BODY_LIMIT_BYTES` | максимальный размер тела запроса | 4 МБ |
 | `INONE_REQUEST_TIMEOUT_MS` | время на запрос | 30 с |
 | `LOG_LEVEL` | уровень журнала | `info` |
@@ -34,7 +34,7 @@
 | `INONE_EMAIL_WORKER_POLL_MS` | интервал опроса durable queue, 250–60000 мс | 1000 |
 | `INONE_EMAIL_MAX_ATTEMPTS` | максимальное число попыток доставки, 1–20 | 8 |
 
-Неверная настройка останавливает запуск до открытия порта и называет причину.
+Неверная настройка останавливает запуск до открытия порта и называет причину. `INONE_OBJECT_SIGNING_SECRET` нельзя генерировать заново на каждом старте: иначе ранее выданные signed object URLs перестанут проверяться; при нескольких backend replicas используйте одно и то же значение из secret manager. При смене ключа требуется отдельная ротация с периодом совместной проверки старого и нового ключа. Для proxy trust задавайте только точные адреса непосредственных доверенных узлов; без allowlist `X-Forwarded-For` игнорируется.
 
 ## Локальный запуск через Docker Compose
 
