@@ -1483,10 +1483,16 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
         if (!roomOrg[0]) return;
         await c.query('SELECT org_id FROM organizations WHERE org_id = $1 FOR SHARE', [roomOrg[0].org_id]);
         const { rows } = await c.query('SELECT owner FROM rooms WHERE room_id = $1 FOR UPDATE', [roomId]);
-        if (rows.length === 0) return;
+        if (rows.length === 0) return false;
+        const { rows: membership } = await c.query(
+          'SELECT 1 FROM room_members WHERE room_id = $1 AND user_id = $2 FOR SHARE',
+          [roomId, newOwner],
+        );
+        if (!membership.length) return false;
         const previous = rows[0].owner;
         await c.query('UPDATE rooms SET owner = $2 WHERE room_id = $1', [roomId, newOwner]);
         await c.query('UPDATE room_members SET is_admin = FALSE WHERE room_id = $1 AND user_id IN ($2, $3)', [roomId, newOwner, previous]);
+        return true;
       });
     },
     async channelNameTaken(name, exceptRoomId) {
