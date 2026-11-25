@@ -702,3 +702,12 @@ The cross-platform gap remains the independent canonical Identity authority, sha
 ### 2026-11-25 — Identity registration path audit
 
 Canonical InOne identity route inventory is recorded in Phase 1. Email/password registration checks requirePhone (default true in runtime config); provider registration creates an account without a phone. This may be an intentional exception, but must be confirmed before global policy freeze. Migration 0008 explicitly reserves pending/unverified phone numbers, so reservation TTL/release semantics must be defined. Follow-up #151; no Beta 1 behavior changed.
+
+
+### 2026-11-25 — Owner-approved Identity identifier architecture
+
+- Owner approved UUIDv4 as immutable canonical human subject ID, generated only by Identity.
+- Owner approved privacy-preserving separation: canonical subject stays internal; InOne and Propo receive independently generated pairwise product subject IDs; existing InOne local IDs and Propo CUID keys/FKs remain unchanged.
+- IDs are non-secret references, never authorization. BOLA/IDOR, tenant isolation, account enumeration, cross-product token/subject correlation and telemetry leakage are mandatory security work.
+- Detailed phases, work packages, gates and test matrix: [Identity implementation roadmap](../../docs/product/BETA-2.0-IDENTITY-IMPLEMENTATION-ROADMAP.md).
+- Remaining policy and Propo contract decisions still block schema/API freeze. No Beta 1.0 or production data/schema changes authorized.
