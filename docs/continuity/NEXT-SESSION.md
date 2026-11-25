@@ -600,3 +600,26 @@ Current status: planning artifacts and issue backlog are saved in GitHub. Identi
 
 
 8. Resolve ID-10 #151: owner-approved phone requirement across password/provider registrations, provider email trust vs phone verification, verification levels, pending phone claim expiry/release, and global phone uniqueness.
+
+
+## 2026-11-25 — Latest Beta 2.0 Identity continuation
+
+Current branch: `planning/beta-2.0-cto-2026-11-24`. Continue planning and source audit only; no product implementation until owner approves the remaining ADR decisions.
+
+Completed in this session:
+- Owner-approved optional-phone policy recorded in ADR and issue #151. This applies only to Beta 2.0; do not change Beta 1.0 or PR #135.
+- Created international phone verification research brief and issue #153. ChatGPT remains sole executor; the brief is a task artifact, not a handoff to an external agent.
+- Classified all ten non-FK actor/identity fields and audited file ownership/admin actor provenance. See Phase 1 plan sections 14 and 14.1; issue #150.
+- Added canonical subject ID recommendation UUIDv4 (not approved) and global identifier registry matrix (source-backed InOne↔Propo reservation requirement) to ADR and Phase 1 plan sections 15–16.
+- Latest verified compare after these documentation commits: branch ahead 43 / behind 0 before the final identifier-matrix commits; re-fetch compare before future writes.
+
+Next:
+1. Inspect full file/object ownership and deletion/retention call paths; keep local owner IDs stable.
+2. Enumerate all values/callers for free-form flag/admin actors; separate human subjects from service principals.
+3. Resolve whether InOne Business is a first-class platform account in the same Identity registry or a relying-party client of the same human subject. Do not assume it is covered by the InOne↔Propo product decision.
+4. Ask owner to approve canonical subject ID format (recommend UUIDv4) and remaining identifier normalization/uniqueness rules before DDL/OpenAPI freeze.
+5. Obtain Propo integration contract/sandbox evidence; no Propo endpoint assumptions.
+6. Actual DB ledger/FK graph, configured PostgreSQL migration tests and production no-pool fail-fast hardening remain tracked in #150. No live DB evidence is available from GitHub source alone.
+7. International phone channel audit is tracked in #153; do not implement phone verification before its results and owner approval.
+
+Do not change Beta 1.0, PR #135, production databases, secrets or runtime settings.
