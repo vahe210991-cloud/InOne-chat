@@ -55,7 +55,7 @@ test('устаревшие rate-limit и login-throttle счётчики очи�
   store.rateHit('rate:active', now - 60 * 60_000, DAY, 10);
 
   const policy = {
-    freeFailures: 0, baseDelayMs: 60_000, maxDelayMs: 15 * 60_000,
+    freeFailures: 0, baseDelayMs: 15 * 60_000, maxDelayMs: 15 * 60_000,
     sourceLimit: 30, sourceWindowMs: 10 * 60_000, sourceBlockMs: 10 * 60_000,
     notifyAfter: 5, notifyWindowMs: 15 * 60_000,
   };
