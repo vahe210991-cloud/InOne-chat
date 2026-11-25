@@ -75,6 +75,4 @@ B-07 implementation has begun on this branch:
 - Memory-store cleanup mirrors the same cutoffs.
 - Added memory-store regression for stale versus active windows/blocks and a PostgreSQL regression that verifies stale rows are removed while active rows survive.
 
-Relevant current Stage 4 branch head: `820572acf77fa8353f1aabf36e56df4d34c114bb`.
-
 **Validation caveat:** no CI checks have been run for this Stage 4 branch yet. B-07 is not accepted until the branch is complete and the full exact-SHA gate passes. B-12 and B-14 remain to be implemented.
