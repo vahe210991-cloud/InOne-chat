@@ -112,21 +112,21 @@ test('ошибка записи admin audit откатывает изменен�
     await db.store.addAccount(member, 'test-password-hash');
     await db.store.createOrganization({ orgId, name: 'Audit rollback', status: 'approved', createdBy: owner, createdAt: 1 });
     await db.store.addOrgMember(orgId, owner, 'owner', 2);
-    await db.store.addOrgMember(orgId, member, 'member', 3);
+    await db.store.addOrgMember(orgId, member, 'owner', 3);
     const failingStore = createStore({
       pool: db.pool, pinPepper: PEPPER,
       testHooks: { beforeAdminActionInsert() { throw new Error('injected admin audit failure'); } },
     });
     await assert.rejects(
-      failingStore.changeOrgMemberRoleAtomic({ orgId, actor: owner, target: owner, role: 'member', at: 4 }),
+      failingStore.changeOrgMemberRoleAtomic({ orgId, actor: owner, target: member, role: 'member', at: 4 }),
       /injected admin audit failure/,
     );
-    assert.equal(await db.store.orgRoleOf(orgId, owner), 'owner', 'понижение откатилось');
+    assert.equal(await db.store.orgRoleOf(orgId, member), 'owner', 'понижение откатилось');
     await assert.rejects(
       failingStore.removeOrgMemberAtomic({ orgId, actor: owner, target: member, action: 'member_remove', at: 5 }),
       /injected admin audit failure/,
     );
-    assert.equal(await db.store.orgRoleOf(orgId, member), 'member', 'удаление участника откатилось');
+    assert.equal(await db.store.orgRoleOf(orgId, member), 'owner', 'удаление участника откатилось');
   } finally {
     await db.pool.query('DELETE FROM admin_action_log WHERE org_id = $1', [orgId]);
     await db.pool.query('DELETE FROM room_members WHERE room_id IN (SELECT room_id FROM rooms WHERE org_id = $1)', [orgId]);
