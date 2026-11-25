@@ -439,3 +439,26 @@ Follow-up: [ID-10 #151](https://github.com/vahe210991-cloud/InOne-chat/issues/15
 The architecture proposal recommends an opaque UUIDv4 generated only by the Identity Service as the immutable canonical subject ID. UUIDv4 avoids embedding a creation timestamp in a subject identifier; UUIDv7 and ULID offer chronological/index locality but expose approximate creation time. Sequential IDs are enumerable; IDs derived from email/phone are linkable and unsafe; reusing Beta 1 local IDs would make legacy InOne the identity authority.
 
 If approved, canonical IDs must never be recycled or reassigned, must not be treated as credentials, and must remain separate from each product's local account ID via an explicit mapping. The full alternatives and invariants are recorded in the ADR draft. **This is a technical recommendation, not an owner decision.** DDL/OpenAPI subject fields remain provisional until the owner approves the format.
+
+
+### 14.1 Follow-up call-path audit: file ownership and actor provenance
+
+Reviewed canonical `server.js`, `store.js` and `scripts/set-flag.mjs` at main baseline `02880940c1e4d8261405fbeaa01f40879eb44f3a`.
+
+**File ownership is a live security boundary, not merely metadata:**
+- Upload creation stores the authenticated session's `d.userId` as `files.owner_id` and binds upload signatures to owner ID + device ID.
+- Upload completion requires both `f.ownerId === d.userId` and the same device ID.
+- Private-file download authorization requires owner ID match; room files instead require current room membership.
+- File attachment to an MLS message checks the file is ready, belongs to the sender, and is scoped to the same room.
+- Per-user pending upload and storage quota queries filter on `owner_id`.
+- Stale cleanup removes abandoned pending/uploaded files older than 24 hours; the reviewed cleanup path does not establish general deletion/transfer semantics for ready files.
+
+**Migration consequence:** do not replace `owner_id` with canonical subject in place. Keep local owner ID and device binding stable through the compatibility phase. If canonical ownership is added, make it an additive, backfilled projection and ensure every upload/download/attachment/quota path uses one consistent identity resolver. Account closure must explicitly decide whether ready private files are retained, transferred, deleted or made inaccessible; never silently orphan or reassign them.
+
+**Actor provenance refinement:**
+- `admin_action_log.actor` writes observed in authenticated organization routes use `d.userId`, so these entries are user-attributed local account IDs.
+- `org_request_log.actor` is populated from the applicant, uploader or authenticated decision/view actor in the reviewed store/server call paths; retain historical attribution.
+- `flag_changes.actor` is materially different: `scripts/set-flag.mjs` accepts arbitrary operator-supplied `--actor` text (minimum length only). It is not proven to be an authenticated account ID. Treat legacy values as operator labels, not resolvable canonical subjects. Future admin operations should use authenticated admin/service principal identity and store a separate human-readable label/reason.
+- The server test helper also supplies a default test actor string. Do not force these free-form values into the canonical subject namespace.
+
+No source code or schema changed. This closes only the static call-path classification gap; it does not establish live DB row distributions, object-store retention policy or actual production configuration.
