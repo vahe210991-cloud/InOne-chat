@@ -2,13 +2,13 @@
 
 **Date:** 2026-11-25  
 **Branch:** `security/beta1-stage5-supply-chain-2026-11-25`  
-**Base:** Stage 4 candidate `ee787deacb051cee981ef5c76038fd71e65cd305`  
-**Stage 4 evidence:** 15/15 checks completed successfully on the exact candidate SHA  
+**Base:** `main` at `74169a449de182ea734049e21d8424dfc4091c88`  
+**Separate Stage 4 evidence:** Stage 4 PR #154 was independently validated 15/15 on `ee787deacb051cee981ef5c76038fd71e65cd305`; this Stage 5 branch is based directly on `main` and does not depend on Stage 4  
 **Status:** Initial audit complete; Stage 5 remediation and acceptance are in progress
 
 ## Scope
 
-Stage 5 covers dependency provenance and vulnerability visibility, GitHub Actions trust boundaries and permissions, container/build reproducibility, and operator readiness. This audit is based on repository source at the Stage 4 candidate and does not claim live registry, runtime-host, or cloud-account inspection.
+Stage 5 covers dependency provenance and vulnerability visibility, GitHub Actions trust boundaries and permissions, container/build reproducibility, and operator readiness. This audit is based on repository source at the recorded `main` SHA and does not claim live registry policy, runtime-host, or cloud-account inspection.
 
 ## Findings
 
@@ -132,7 +132,7 @@ Pinning prevents a tag move from silently changing the action code, but does not
 
 ### OCI image digests pinned
 
-The Node base image is pinned to the multi-platform index digest `sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534549940b8d73bde88481a` (Node 22.23.5 Alpine 3.24). PostgreSQL 16 is pinned to index digest `sha256:07abc3f43c9395b0bdbbab36bc25ddb0e8d83cd4fcafb5fb7d6abe14ff156dd8`. The pins are applied to the canonical engine Dockerfile, the archived engine Dockerfile, the associated Compose files, Dev Container Compose and PostgreSQL CI service definitions. Digests were checked against Docker Hub official-image metadata on 2026-11-25.
+The production-capable Node base image is pinned to the multi-platform index digest `sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534549940b8d73bde88481a` (Node 22.23.5 Alpine 3.24). The PostgreSQL 16 image used by development Compose and CI services (not a production deployment manifest) is pinned to index digest `sha256:07abc3f43c9395b0bdbbab36bc25ddb0e8d83cd4fcafb5fb7d6abe14ff156dd8`. The pins are applied to the canonical engine Dockerfile, the archived engine Dockerfile, development Compose files, Dev Container Compose and PostgreSQL CI service definitions. No production deployment Compose/manifest is present in this repository; the existing Compose configuration is explicitly development-only. Digests were checked against Docker Hub official-image metadata on 2026-11-25.
 
 Digest pinning intentionally freezes image content. Refreshes must be proposed as reviewed changes, with vulnerability review and the relevant Compose/runtime acceptance checks.
 
@@ -156,3 +156,8 @@ Added `.github/dependabot.yml` with weekly Monday proposals for GitHub Actions, 
 ### Source SBOM and provenance evidence
 
 Added a source SBOM job using the Anchore SBOM action pinned to verified commit `e22c389904149dbc22b58101806040fa8d37a610` and Syft `v1.42.3`. It emits SPDX JSON for the repository source and a sidecar recording the exact checked-out source SHA and SBOM SHA-256. The artifact is retained for 14 days as CI evidence only; automatic release-asset upload and dependency-snapshot publishing are explicitly disabled. A PR-generated SBOM is not a release attestation and must not be promoted as one.
+
+
+### Branch hygiene correction
+
+The initial Stage 5 draft was created as a stacked branch from Stage 4. Repository policy requires task branches to be based directly on the current `main` SHA. To comply, all 19 Stage 5-specific files were selectively ported to `security/beta1-stage5-supply-chain-main-2026-11-25`, created from `main` at `74169a449de182ea734049e21d8424dfc4091c88`. No Stage 4 database-integrity changes were carried into this branch. The original stacked PR remains a historical Draft and is not the active Stage 5 candidate.
