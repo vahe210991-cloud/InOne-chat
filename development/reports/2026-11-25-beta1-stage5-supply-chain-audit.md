@@ -35,7 +35,7 @@ The engine CI runs `npm audit --audit-level=high` and the exact-SHA gate also ru
 
 The canonical engine Dockerfile uses `node:22-alpine`; Compose uses `postgres:16`. The tags do not identify immutable image content, so a rebuild can resolve to different layers over time. The Dev Container Flutter archive is stronger: it verifies a committed SHA-256 before extraction.
 
-**Required remediation:** record and pin approved image digests for production-capable Node and PostgreSQL images; define a controlled digest refresh cadence; rebuild and run the full Compose acceptance suite on digest changes. Confirm architecture/platform compatibility before pinning.
+**Required remediation:** pin the production-capable Node base image and the PostgreSQL images used by development/test Compose and CI to verified OCI index digests; define a controlled digest refresh cadence; rebuild and run the full Compose acceptance suite on digest changes. No production PostgreSQL deployment manifest is present, so its actual production image remains an owner/operator configuration item.
 
 ### S5-04 — Existing CI permissions are generally least-privilege
 **Severity: Positive control.**
@@ -58,7 +58,7 @@ The Dev Container Compose file contains fixed local database credentials and a f
 
 **Existing production guard:** `src/config.js` rejects the development email code in production, rejects a missing/short/test-marked PIN pepper, rejects open registration, requires HTTPS public URL, SMTP with TLS, persistent file storage, Firebase project ID, a valid 32-byte push key, and a strong docs secret; it also rejects test UI. The development PIN-pepper fallback is only applied outside production.
 
-**Remaining remediation:** add explicit regression coverage for each production rejection and verify that deployment configuration never imports Dev Container Compose defaults. Keep fixed local database credentials and the development email code confined to development tooling. Do not duplicate existing guards without a demonstrated gap.
+**Remaining remediation:** the existing config suite already covers the principal fail-closed production requirements; this stage adds explicit negative regressions for fixed email code, test UI and invalid push key. Review any remaining uncovered guard individually and verify the eventual deployment configuration does not import Dev Container defaults. No production deployment manifest is currently present to validate that boundary. Keep fixed local database credentials and the development email code confined to development tooling. Do not duplicate existing guards without a demonstrated gap.
 
 ### S5-07 — Production Docker runtime has useful baseline hardening
 **Severity: Positive control with remaining verification.**
@@ -83,8 +83,8 @@ The Node lockfile contains a `firebase-admin` package entry without an `integrit
 ## Stage 5 remediation sequence
 
 1. Pin all external GitHub Actions to verified full commit SHAs and document the release tags.
-2. Add version-pinned Cargo advisory scanning for all maintained Rust lockfiles; retain results and define triage.
-3. Pin canonical production Node and PostgreSQL images by verified digest, with an update procedure.
+2. Add version-pinned Cargo advisory scanning for all five committed Cargo.lock files; retain results and define triage.
+3. Pin the production-capable Node base image and development/test PostgreSQL images by verified digest, with an update procedure; verify the real production database image when the deployment platform is supplied.
 4. Add a production configuration guard/runbook that explicitly rejects development-only credentials, fixed verification codes and fallback secrets.
 5. Define artifact retention/provenance and build an SBOM for release candidates.
 6. Write and review operator procedures for secret rotation, backup/restore, migration/rollback, object-store reconciliation, incident response and safe deploy/rollback.
@@ -93,7 +93,7 @@ The Node lockfile contains a `firebase-admin` package entry without an `integrit
 
 - All third-party actions are SHA-pinned and the pin inventory is reviewed.
 - npm and Rust advisory scans complete on the exact candidate; all critical/high findings are fixed or explicitly owner-accepted with mitigation.
-- Production image digests are immutable and Compose/runtime tests pass.
+- The Node base image and development/test PostgreSQL images are immutable by digest and Compose/runtime tests pass; the production platform's image and deployment settings are separately verified.
 - Production configuration cannot silently fall back to development secrets or fixed verification codes.
 - Artifact provenance/retention policy is documented and tested.
 - Operator runbook covers the listed recovery and deployment procedures.
