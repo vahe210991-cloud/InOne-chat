@@ -1548,10 +1548,14 @@ if (req.method === 'POST' && orgMembersRoute) {
   const role = typeof body.role === 'string' ? body.role : 'member';
   if (!['owner', 'admin', 'member'].includes(role)) return send(res, 400, { error: 'role must be owner, admin or member' });
   if (myRole === 'admin' && role !== 'member') return send(res, 403, { error: 'admins add only members', code: 'org_role_required' });
-  if (!(await storage.hasAccount(userId))) return send(res, 404, { error: 'unknown user' });
-  if (await storage.orgRoleOf(orgId, userId)) return send(res, 409, { error: 'already a member' });
-  await storage.addOrgMember(orgId, userId, role, now());
-  await storage.logAdminAction({ orgId, actor: d.userId, action: 'member_add', target: userId, detail: role, at: now() });
+  const added = await storage.addOrgMemberAtomic({ orgId, actor: d.userId, target: userId, role, at: now() });
+  if (!added.ok) {
+    if (added.reason === 'not_found' || added.reason === 'unknown_user') return send(res, 404, { error: 'unknown user or organization' });
+    if (added.reason === 'org_not_approved') return send(res, 403, { error: 'organization is not approved', code: 'org_not_approved' });
+    if (added.reason === 'already_member') return send(res, 409, { error: 'already a member' });
+    if (added.reason === 'forbidden') return send(res, 403, { error: 'org role required to add this member', code: 'org_role_required' });
+    throw new Error('organization member addition failed');
+  }
   return send(res, 200, { userId, role });
 }
 if (req.method === 'POST' && orgRoleRoute) {
