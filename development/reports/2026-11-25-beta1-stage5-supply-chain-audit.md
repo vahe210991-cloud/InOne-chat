@@ -191,3 +191,67 @@ No WBS weight or cumulative percentage is changed by this Draft PR. The approved
 4. Obtain the actual production deployment target/configuration and verify read-only filesystem compatibility, dropped capabilities, resource limits, secret isolation and image digest use. No production manifest is currently present in this repository.
 5. Complete owner/operator evidence for production backup/restore, cloud IAM, monitoring, secret manager, HTTPS/proxy, SMTP/domain and rollback before any production-readiness claim.
 
+
+
+## Exact-head CI results and RustSec triage — 2026-11-25
+
+**Candidate SHA:** `7d958a4553e4e352f3208eadb8cb6ffc8e9d4c3d`  
+**P0 validation run:** [45581786151](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/45581786151)  
+**RustSec evidence artifact:** [rustsec-cargo-audit-45581786151-1](https://github.com/vahe210991-cloud/InOne-chat/actions/runs/45581786151/artifacts/15030589926)
+
+The RustSec job completed its scan and uploaded all five JSON reports, but the audit step returned non-zero for every lockfile. This is a dependency-security finding, not a Rust compilation or test failure.
+
+| Lockfile | Vulnerability records |
+|---|---:|
+| `mobile/rust/Cargo.lock` | 11 |
+| Engine B `mls-client/Cargo.lock` | 11 |
+| Engine B `mls-bridge/Cargo.lock` | 9 |
+| Legacy Engine A `mls-client/Cargo.lock` | 11 |
+| Legacy Engine A `mls-bridge/Cargo.lock` | 9 |
+
+The reports contain **11 unique vulnerability advisory IDs**, repeated across the five lockfiles:
+
+| Package and locked version | Advisory IDs | Upstream remediation information |
+|---|---|---|
+| `crypto-bigint 0.5.5` | RUSTSEC-2026-0387 | RustSec lists `>=0.7.6`; this is a major-version dependency transition |
+| `libcrux-aesgcm 0.0.7` | RUSTSEC-2026-0209, RUSTSEC-2026-0211 | The crate was renamed; AES implementation continues as `libcrux-aes` from 0.0.9 |
+| `libcrux-chacha20poly1305 0.0.7` | RUSTSEC-2026-0124 | Patched from 0.0.8 |
+| `libcrux-kem 0.0.7` | RUSTSEC-2026-0330, RUSTSEC-2026-0331 | Patched from 0.0.10 |
+| `libcrux-secrets 0.0.5` | RUSTSEC-2026-0212 | Patched from 0.0.6 |
+| `libcrux-sha3 0.0.8` | RUSTSEC-2026-0207, RUSTSEC-2026-0208 | Patched from 0.0.10 |
+| `libsqlite3-sys 0.30.1` | RUSTSEC-2026-0459 | RustSec lists `>=0.39.0`; current client pins rusqlite 0.32.1 and SQLCipher bundled-source support |
+| `url 2.5.8` | RUSTSEC-2026-0592 | Patched in `url 2.5.9` |
+
+Two additional informational maintenance warnings are present: `libcrux-aesgcm 0.0.7` (RUSTSEC-2026-0210, renamed) and `proc-macro-error2 2.0.1` (RUSTSEC-2026-0173, unmaintained). These are not counted among the 11 vulnerability IDs.
+
+### Dependency reachability and safe remediation boundaries
+
+- The Libcrux packages are present in the lockfiles through OpenMLS 0.8.1's optional `openmls_libcrux_crypto` provider. The application source currently constructs `openmls_rust_crypto::RustCrypto` and does not explicitly enable the Libcrux provider. A feature-resolved dependency-tree artifact is still required before classifying those findings as inactive; the lockfile scan alone cannot establish runtime reachability.
+- `crypto-bigint 0.5.5` is reached through `mls-client -> openmls_basic_credential -> p256 -> elliptic-curve`. The current configured suite is X25519/Ed25519, but the incoming Welcome path calls `StagedWelcome::new_from_welcome` without an explicit application-level suite allowlist. Do not treat the P-256 path as excluded until all inbound join paths enforce and test the allowlist.
+- `rusqlite 0.32.1 -> libsqlite3-sys 0.30.1` is in the active client database path. The application enables bundled SQLCipher. The SQLite advisory requires a local crafted database/WAL pair written by a less-trusted party; actual exploitability depends on whether such a pair can reach the app's private database-open path. It remains a dependency blocker until the SQLCipher/SQLite source version is verified and updated.
+- `url 2.5.8` is a direct MLS-client dependency. Update to 2.5.9 and retain the lockfile diff and test evidence.
+
+### OpenMLS / SQLCipher upgrade must preserve persisted state
+
+A blanket OpenMLS 0.8.1 to 0.9.0 bump is **not** approved as a mechanical dependency update. Upstream OpenMLS 0.9 documents a storage-format transition and provides `migration-export` / `migration-import` helpers. Its migration guidance recommends quiescing all MLS access, exporting each group, bridging through a zeroizing self-describing representation, importing into a fresh store, verifying group epochs/membership and application-managed keys, then atomically switching stores. The existing InOne client already uses a JSON storage codec, which is favorable, but compatibility still needs an explicit test and schema-version strategy.
+
+The current lockfiles do not contain a separate `sqlcipher-src` package. Any move to a newer rusqlite/libsqlite3-sys must verify the actual bundled SQLCipher source version, not infer safety from the `libsqlite3-sys` version alone. Rusqlite 0.42.0 release notes report a SQLCipher 4.20.0 bump; validate that the resolved lockfile uses the patched source and that OpenMLS storage uses the same compatible rusqlite version.
+
+**No Cargo manifests or lockfiles were changed in this checkpoint.** The dependency upgrades are deferred until the MLS storage compatibility/migration plan and ciphersuite reachability tests are ready. No advisories are suppressed or accepted by this report.
+
+### Android Gradle failure
+
+Flutter analysis and all 112 Flutter tests passed. The Android APK build then failed while resolving `org.gradle.kotlin.kotlin-dsl:6.4.2` from the Flutter SDK's included Gradle build. The plugin portal lists version 6.4.2, so absence of the release is not the explanation established by current evidence. The runner log does not expose the underlying HTTP/repository resolution cause.
+
+The workflow is being instrumented to:
+1. record the generated Gradle wrapper distribution;
+2. fetch the exact plugin marker POM directly from Gradle Plugin Portal;
+3. retain verbose Flutter/Gradle build output and generated wrapper/settings files as a short-lived diagnostic artifact.
+
+Do not change Flutter, AGP, Kotlin DSL or Gradle versions until this evidence identifies a compatibility or repository-resolution cause.
+
+### Exact-head workflow outcomes
+
+At SHA `7d958a4553e4e352f3208eadb8cb6ffc8e9d4c3d`, all nine applicable workflows are terminal: six succeeded and three failed. Native MLS client validation and OpenMLS Flutter Rust Bridge generation succeeded. The primary failures are the RustSec audit and Android APK build. The exact-SHA gate failed after observing the Flutter mobile workflow failure; it is a consequential gate failure, not a third independent product defect. The P0 run's other jobs (SBOM, Backend Node, OpenMLS client, Rust bridge, Rust format, room-list regression and PostgreSQL integration) succeeded.
+
+Stage 5 remains **NOT ACCEPTED**. No merge, deployment, production release, or changes to `main` are authorized by this checkpoint.
