@@ -184,6 +184,44 @@ jobs:
           retention-days: 14
 
 
+
+  source-sbom:
+    name: Source SBOM (SPDX JSON)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Generate source SBOM with pinned Syft
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0, Syft v1.42.3
+        with:
+          path: .
+          format: spdx-json
+          syft-version: v1.42.3
+          output-file: ${{ runner.temp }}/inone-source.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      - name: Record SBOM provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "source_sha=$(git rev-parse HEAD)"
+            echo "sbom_sha256=$(sha256sum "$RUNNER_TEMP/inone-source.spdx.json" | cut -d' ' -f1)"
+            echo "format=SPDX-JSON"
+            echo "generator=Syft v1.42.3 via anchored action commit e22c389904149dbc22b58101806040fa8d37a610"
+          } > "$RUNNER_TEMP/inone-source-sbom.provenance.txt"
+      - name: Upload SBOM and provenance as non-release CI evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: inone-source-sbom-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/inone-source.spdx.json
+            ${{ runner.temp }}/inone-source-sbom.provenance.txt
+          if-no-files-found: error
+          retention-days: 14
+
   rust-advisory-audit:
     name: RustSec advisory audit (all maintained lockfiles)
     runs-on: ubuntu-24.04
