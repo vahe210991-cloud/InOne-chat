@@ -7,6 +7,7 @@ import { request as nodeRequest } from 'node:http';
 import { createServer } from '../src/server.js';
 import { ChatClient, DEFAULT_PASSWORD as PW } from '../src/client.js';
 import { storeForTest } from './helpers.js';
+import { createMemoryStore } from '../src/store-memory.js';
 import { mlsMessageAt } from './group-message-helper.mjs';
 
 const PEPPER = randomBytes(24).toString('hex');
@@ -37,7 +38,8 @@ const JSON_HEADERS = { 'content-type': 'application/json' };
 
 async function start({ quotaBytes = null, objectStore = null } = {}) {
   const db = await storeForTest(PEPPER);
-  const srv = createServer({ defaultOrgAutoJoin: true, registrationMode: 'open', requirePhone: false, pinPepper: PEPPER, store: db?.store, objectSecret: 'test-object-secret-0123456789abcdef', quotaBytes, objectStore });
+  const store = db?.store ?? createMemoryStore({ pinPepper: PEPPER });
+  const srv = createServer({ defaultOrgAutoJoin: true, registrationMode: 'open', requirePhone: false, pinPepper: PEPPER, store, objectSecret: 'test-object-secret-0123456789abcdef', quotaBytes, objectStore });
   await new Promise((resolve) => srv.server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${srv.server.address().port}`;
   const alice = await ChatClient.create(base, ALICE, 'A_PHONE', PW);
@@ -45,7 +47,7 @@ async function start({ quotaBytes = null, objectStore = null } = {}) {
   const carol = await ChatClient.create(base, CAROL, 'C_PHONE', PW);
   await alice.createRoom(ROOM, [ALICE, BOB]);
   await alice.raw('POST', `/mls/groups/${enc(ROOM)}/commits`, { epoch: 0, commit: b64('FIRST'), changes: { adds: [], removes: [] } });
-  return { srv, base, alice, bob, carol, stop: async () => { await new Promise((r) => srv.server.close(r)); await db?.close(); } };
+  return { srv, store, base, alice, bob, carol, stop: async () => { await new Promise((r) => srv.server.close(r)); await db?.close(); } };
 }
 
 async function announce(s, token, bytes, { roomId = ROOM, kind = 'file', declaredSize = bytes.length, declaredSha = sha(bytes) } = {}) {
@@ -148,6 +150,7 @@ test('ссылка загрузки истекает через 15 минут', 
     const created = (await announce(s, s.alice.token, bytes)).json;
     s.srv.advance(16 * MIN);
     assert.equal((await putTo(created.uploadUrl, bytes)).status, 403);
+    await s.alice.renewSession(); // истёк access token, проверяем уже состояние резервации
     assert.equal((await http(s.base, 'GET', `/files/${enc(created.fileId)}/url`, { token: s.alice.token })).status, 404,
       'expired signed upload reservation is released immediately');
   } finally {
@@ -348,6 +351,7 @@ test('ошибка удаления сохраняет tombstone и повтор
     const abandoned = (await announce(s, s.alice.token, randomBytes(30))).json.fileId;
     s.srv.advance(DAY + MIN);
     assert.equal(await s.srv.cleanupFiles(), 0, 'failed object deletion is not finalized');
+    await s.alice.renewSession(); // истёк access token, проверяем tombstone под новой сессией
     assert.equal((await http(s.base, 'GET', `/files/${enc(abandoned)}/url`, { token: s.alice.token })).status, 409,
       'deleting metadata remains as a retryable tombstone');
     assert.equal(await s.srv.cleanupFiles(), 1, 'next sweep retries and finalizes deletion');
@@ -404,6 +408,8 @@ test('параллельные резервации разных владель�
     const { orgs } = await s.alice.raw('GET', '/orgs/mine');
     const orgId = orgs[0]?.orgId;
     assert.ok(orgId, 'test users belong to the default organization');
+    // Test fixture: give Alice the owner role so the quota setting is changed through the real authorized route.
+    await s.store.setOrgMemberRole(orgId, ALICE, 'owner');
     const setting = await s.alice.raw('POST', `/orgs/${enc(orgId)}/settings`, { field: 'fileQuotaBytes', value: 1000 });
     assert.equal(setting.settings.fileQuotaBytes, 1000);
     const requests = await Promise.all(Array.from({ length: 20 }, (_, index) =>
