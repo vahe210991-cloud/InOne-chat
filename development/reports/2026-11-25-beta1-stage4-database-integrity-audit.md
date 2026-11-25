@@ -99,3 +99,13 @@ The atomic storage APIs now cover member addition, role change, member removal, 
 
 ### B-14 registration generation
 Migration 0035 introduces a keyed, non-reversible registration generation on each new outbox row. Existing rows remain nullable for compatibility. The worker compares the generation before send and invalidates only the exact registration snapshot and its queued/failed deliveries.
+
+## Exact-SHA validation finding and correction
+
+The first Stage 4 exact-SHA run on `8f0be31df9371906ed93339ac8d4cc23e4878698` exposed a PostgreSQL type-inference error in the bounded `login_throttle` cleanup query. Its positional parameters were used in subtraction without explicit types, producing `operator is not unique: unknown - unknown` on PostgreSQL 16. The predicate now explicitly casts both parameters to `BIGINT`:
+
+```sql
+window_start <= $1::bigint - $2::bigint AND blocked_until <= $1::bigint
+```
+
+Correction commit: `ae8c88c5cafd6e78debb0907c896eb321367a845`. The exact-SHA acceptance gate must be rerun in full on this new SHA. No Stage 4 acceptance is claimed until every applicable workflow is terminal and successful on that exact SHA.
