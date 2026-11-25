@@ -210,3 +210,11 @@ The following tracking issues were opened from this roadmap. The role names in e
 | Quality engineering, SRE and release | [#146](https://github.com/vahe210991-cloud/InOne-chat/issues/146) |
 
 Identity is the first active execution item. Other workstreams are backlog tasks and must respect Identity contracts and product-owner release-scope approval.
+
+
+## Identity Phase 1 execution update — 2026-11-25
+
+- Discovery issue #147 has source-backed inventory of 55 schema tables, 26 tables / 29 direct account FKs, ten identity/actor-like non-FK fields, migration source status and production startup fallback finding.
+- ADR/contracts task #148 remains open pending owner policy decisions and Propo contract.
+- Follow-up P0 issue #150 tracks the remaining identity dependency graph classifications, actual DB-ledger verification, exact-SHA PostgreSQL migration tests, and production-only fail-closed startup guard/test.
+- No product code or database migration has been performed. Identity remains NOT ACCEPTED; schema/API freeze is blocked on unresolved owner decisions and DB evidence.
