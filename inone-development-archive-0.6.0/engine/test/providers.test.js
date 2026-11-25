@@ -317,3 +317,18 @@ test('P11: поиск показывает уровень 2 у аккаунта 
     await stop();
   }
 });
+
+test('P12: недоступность JWKS не раскрывает ошибку провайдера и возвращает временный 503', async () => {
+  const { base, stop } = await start({ providerKeysSource: async () => { throw new Error('private jwks endpoint sentinel'); } });
+  try {
+    const nonce = await nonceOf(base);
+    const response = await call(base, 'POST', '/auth/provider/verify', {
+      body: { provider: 'google', idToken: signToken(googleClaims(nonce)), nonce },
+    });
+    assert.equal(response.status, 503);
+    assert.deepEqual(response.body, { error: 'identity provider verification is temporarily unavailable' });
+    assert.ok(!JSON.stringify(response.body).includes('private jwks endpoint sentinel'));
+  } finally {
+    await stop();
+  }
+});
