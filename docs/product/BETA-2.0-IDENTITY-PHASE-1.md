@@ -462,3 +462,20 @@ Reviewed canonical `server.js`, `store.js` and `scripts/set-flag.mjs` at main ba
 - The server test helper also supplies a default test actor string. Do not force these free-form values into the canonical subject namespace.
 
 No source code or schema changed. This closes only the static call-path classification gap; it does not establish live DB row distributions, object-store retention policy or actual production configuration.
+
+
+## 16. Global identifier registry — source-backed requirement and proposal
+
+The owner decision in `docs/PRODUCT-DECISIONS-IDENTITY-LOCALIZATION-DESIGN.md` section 1 requires central, atomic reservation of normalized username/handle, email and phone as applicable for registration in either direction between InOne and Propo. This is not just shared authentication; identifier ownership is canonical and must survive a platform backend outage.
+
+Proposed semantics:
+- Username/handle: globally unique across InOne and Propo; preserve current Beta 1 ASCII validation until new rules are explicitly approved.
+- Primary email: globally unique in the shared namespace; pending registration claim expires; only verified claim is trusted for contact/recovery.
+- Phone: globally unique when claimed, but optional for registration; only verified claim is a trusted phone contact/recovery factor; pending claim is temporary and never verified.
+- Federated identity: unique by exact OIDC `(iss, sub)`, not provider label alone. Never auto-merge an existing account solely because provider email matches.
+- Product-local IDs remain local and map to the canonical subject.
+- Propo Seller Account is a business principal, not a human identifier; link it to human subjects through explicit delegated relationships.
+
+Open: backup-email uniqueness/role; normalization and Unicode policy; pending-claim TTL/release; phone number reassignment; handle rename/cooldown; whether InOne Business is a first-class platform projection or a separate relying-party client of the human subject. The owner source decision explicitly names InOne and Propo; extending global handle reservations to InOne Business needs confirmation.
+
+Do not freeze physical schema until these semantics are approved. Full matrix and lifecycle proposal are in ADR B2-ADR-001.
