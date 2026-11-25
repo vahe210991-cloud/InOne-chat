@@ -46,7 +46,9 @@ The work is performed only on the existing remediation branch and tracked in PR 
 
 ### Stage 2 — File transfer, quota and object lifecycle (B-04/B-13)
 
-**Purpose:** bound memory and storage consumption, eliminate quota races and make file lifecycle crash-safe.\n\n**Current status:** ACCEPTED jointly with Stage 1 on exact SHA `7b8af4f00c15db759253dd9ce7b7666dda9eab3b`; all 17/17 check runs passed on this same SHA.
+**Purpose:** bound memory and storage consumption, eliminate quota races and make file lifecycle crash-safe.
+
+**Current status:** ACCEPTED jointly with Stage 1 on exact SHA `7b8af4f00c15db759253dd9ce7b7666dda9eab3b`; all 17/17 check runs passed on this same SHA.
 
 **Implementation packages:**
 1. **Streaming upload:** replace whole-body buffering with bounded streaming and backpressure; incrementally count bytes and calculate SHA-256; reject short/long bodies and checksum mismatch; enforce declared size and existing per-kind limits.
@@ -71,7 +73,9 @@ The work is performed only on the existing remediation branch and tracked in PR 
 
 ### Stage 3 — Runtime boundary, secrets, logging and identity-provider resilience (B-06/B-08/B-09/B-10/B-11/B-15)
 
-**Purpose:** make runtime failure modes deterministic and prevent configuration, request or provider boundaries from becoming security gaps.\n\n**Current status:** IMPLEMENTATION IN PROGRESS on stacked branch `security/beta1-stage3-runtime-hardening-2026-11-25`; exact-SHA validation pending.
+**Purpose:** make runtime failure modes deterministic and prevent configuration, request or provider boundaries from becoming security gaps.
+
+**Current status:** IMPLEMENTATION IN PROGRESS on stacked branch `security/beta1-stage3-runtime-hardening-2026-11-25`; exact-SHA validation pending.
 
 **Implementation packages:**
 1. **Persistent object-signing secret (B-06):** load a stable secret from the supported production configuration; fail startup in production if missing/invalid; no random-per-process production fallback. Keep test-only generation explicit.
