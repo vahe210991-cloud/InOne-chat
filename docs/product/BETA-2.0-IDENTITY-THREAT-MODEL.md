@@ -134,3 +134,19 @@ The highest residual risk is unresolved policy, not a coding detail: exact globa
 | IAM-20 | Local and central user IDs differ or are mapped inconsistently | Maintain immutable mapping table and uniqueness; deterministic backfill with collision report and referential-integrity checks. |
 | IAM-21 | Schema version/header drift leads to wrong migration baseline | Treat migration runner and applied migration ledger as authority; reconcile `schema.sql` header and verify actual production DB migration state separately. |
 | IAM-22 | Production starts with in-memory identity store due missing injection | Audit all startup entry points; add production fail-fast assertion and startup integration test if needed. |
+
+## 9. Dependency and runtime findings — 2026-11-25
+
+- 26 schema tables have 29 direct FK columns to accounts(user_id); canonical mapping must preserve local IDs during the first Identity rollout.
+- Ten identity/actor-like fields have no direct account FK: room_events.sender, auth_tokens.user_id, mls_commits.sender_id, mls_device_removals.user_id, mls_client_messages.user_id, files.owner_id, flag_changes.actor, org_request_log.actor, org_settings_log.actor, admin_action_log.actor. Classify as live references, protocol IDs, historical snapshots or tombstones before migration.
+- startServer has an optional null pool; createServer then falls back to an in-memory store. The normal CLI production entrypoint passes PostgreSQL, but exported startServer lacks a production-only guard. Add fail-fast guard and regression test; retain test/dev memory mode.
+- Migration source declares 0033 and 32 ordered migration markers. Actual applied ledger and live FK graph are unavailable without authorized DB inspection.
+
+New threats:
+
+| ID | Risk | Mitigation |
+|---|---|---|
+| IAM-23 | Canonical ID migration breaks 26 direct FK tables | Preserve local account IDs; introduce immutable mapping/projection; migrate only after full FK/consumer inventory and rollback rehearsal |
+| IAM-24 | Unlinked actor fields drift or become dangling after identity cutover | Explicit per-column semantics and mapping/tombstone policy; audit history remains attributable |
+| IAM-25 | Exported production start path can omit PostgreSQL pool and start memory store | Production-only fail-fast guard and test; keep test/dev fallback |
+| IAM-26 | Source migration ledger differs from actual deployed DB state | Read-only ledger/FK inspection and exact DB baseline before any migration |
