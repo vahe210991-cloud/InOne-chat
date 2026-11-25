@@ -114,3 +114,13 @@ A deeper read of the canonical InOne backend corrects and sharpens the initial g
 **Refined conclusion:** InOne already has a persistent, product-local identity subsystem with meaningful uniqueness and provider-auth behavior. The missing architectural capability is an independent cross-platform Identity authority, canonical subject/identifier reservation registry, and durable cross-product provisioning/reconciliation. The migration must preserve local account projections and foreign-key relationships; do not move or delete `accounts` as the first step.
 
 Additional migration/security risks IAM-19–IAM-22 are recorded in the Identity threat model, including product foreign-key breakage, local/canonical ID mapping, schema provenance drift and accidental memory-store startup.
+
+## 2026-11-25 — Identity dependency graph and runtime audit
+
+- Parsed the canonical InOne schema.sql: 55 tables; 26 tables contain 29 FK columns referencing accounts(user_id). The full mapping is in the Identity Phase 1 plan.
+- Identified 10 additional identity/actor-like columns without a direct FK. They require explicit live-reference vs historical-snapshot vs tombstone policy; no automatic FK additions.
+- Reviewed migration runner and integrity tests: SCHEMA_VERSION 0033; 32 markers/migrations from 0002 through 0033; test definitions assert marker/file parity, contiguous numbering and fresh/legacy upgrade behavior. No tests were executed.
+- The actual schema_migrations ledger and live DB FK graph are not accessible from repository files and remain blocked pending authorized read-only database inspection.
+- Reviewed production bootstrap: normal CLI path always creates/passes PostgreSQL pool. However exported startServer accepts null pool and server falls back to memory store; production config does not currently force pool presence at that exported boundary. This is a hardening issue, not proof the CLI production path uses memory. Created ID-09 #150 for fail-closed guard/test, FK policy, DB verification and schema provenance comment.
+- No Beta 1 source, SQL schema, PR #135, database, secrets or production settings were changed. No test/build/DB execution performed.
+- Identity schema/API freeze remains NOT READY: owner decisions in B2-ADR-001 and Propo contract are still open.
