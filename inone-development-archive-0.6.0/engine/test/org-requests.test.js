@@ -399,7 +399,7 @@ test('содержимое документа не попадает в журн�
     const b64 = Buffer.from(secret, 'utf8').toString('base64');
     await call(s.base, 'POST', `/org-requests/${created.json.requestId}/documents`, s.dir.token, { kind: 'other', contentBase64: b64 });
     const dump = await s.srv.dump();
-    assert.ok(dump.includes('/org-requests/'), 'контроль: запрос загрузки попал в журнал');
+    assert.ok(dump.includes('POST /org-requests '), 'контроль: запрос загрузки записан под статическим route label');
     assert.ok(!dump.includes(b64), 'содержимое документа (base64) не попало в журнал');
     assert.ok(!dump.includes(secret), 'содержимое документа не попало в журнал открытым текстом');
   } finally {
