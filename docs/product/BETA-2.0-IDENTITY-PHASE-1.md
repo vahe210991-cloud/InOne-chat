@@ -352,3 +352,46 @@ Do not add FKs mechanically. Decide per field whether it is a live account relat
 - Production startup fail-closed remediation: **OPEN** — tracked in [ID-09 #150](https://github.com/vahe210991-cloud/InOne-chat/issues/150).
 - Identity schema/API freeze: **NOT READY** until ID policy, orphan-field semantics, Propo contract and owner ADR decisions are resolved.
 - No code, SQL schema, production data, secrets or Beta 1 PR #135 changed.
+
+## 13. Authentication routes and verification-policy audit — 2026-11-25
+
+### Existing InOne route inventory
+
+Reviewed the canonical server.js route blocks and the supporting identity rule modules.
+
+| Capability | Current routes |
+|---|---|
+| Provider challenge / verification | POST /auth/nonce; POST /auth/provider/verify |
+| Provider registration | POST /register/provider |
+| Email registration | POST /register/email; POST /register/email/confirm; POST /register |
+| Password / provider login | POST /login |
+| Session lifecycle | POST /token/refresh; POST /logout |
+| Phone management | POST /account/phone; POST /account/phone/confirm |
+| Provider linking | POST /account/providers; POST /account/providers/remove |
+| Backup email | POST /account/backup-email/start; POST /account/backup-email/confirm; POST /account/backup-email/remove |
+| Step-up verification | POST /stepup/email/start; POST /stepup/email/confirm |
+| Devices / keys | GET /devices; GET /devices/mine; POST /devices/signing-key; POST /devices/signing-key/remove |
+| PIN | POST /pin/set; POST /pin/remove |
+| Recovery | POST /recovery/start; GET /recovery/confirm; POST /recovery/confirm; POST /recovery/cancel-by-code; POST /recovery/cancel; POST /recovery/complete |
+| Profile projection | GET /profile; PATCH /profile/locale; GET /users/search |
+
+### Existing local policy facts
+
+- Email normalization is trim + lowercase. Email syntax validation is basic and bounded to 254 chars.
+- Nickname is ASCII-only, 3–20 chars, starts with a letter, allows letters/digits/dot/underscore, rejects repeated dots/trailing punctuation and reserved names. Treat as Beta 1 compatibility behavior, not the final global identifier policy.
+- Email registration code is 6 digits, TTL 10 minutes, max 5 attempts; registration token TTL 30 minutes and one-time.
+- Phone code is 6 digits, TTL 10 minutes, max 5 attempts; max 3 sends/hour per account.
+- Phone format is normalized to E.164 with country allow/block policy.
+- Migration 0008 intentionally creates a unique index over every non-null phone, including pending/unverified claims, to reserve the number before SMS verification. Pending reservation expiry/release semantics require explicit review.
+- Google and Apple provider verifier validates RS256 signature, configured issuer, client audience, expiry, subject, one-time nonce and verified email. Provider link key is (provider, sub), with one provider per local user.
+- Recovery uses distinct local rules for email-only and phone-verified accounts; Google/Apple-linked accounts use provider authentication rather than password recovery.
+
+### Policy inconsistency requiring owner decision
+
+- Runtime config defaults INONE_REQUIRE_PHONE to true; main.js passes this to createServer. The email/password registration route checks requirePhone.
+- Provider registration route /register/provider creates an account from verified provider email and nickname but does not check requirePhone or create a phone claim.
+- Existing provider tests assert this no-phone provider registration behavior. Existing direct createServer email tests use the test default requirePhone=false.
+- Therefore the code does not demonstrate one consistent mandatory-phone rule across registration methods. This may be an intentional provider exception or a policy gap; do not silently change Beta 1 behavior.
+- Phone uniqueness currently reserves pending/unverified numbers as well as verified numbers. A pending claim may occupy a number until explicit change/cleanup; define expiry and release before centralizing phone claims.
+
+Follow-up: [ID-10 #151](https://github.com/vahe210991-cloud/InOne-chat/issues/151). Resolve whether phone is mandatory for all signups, only password signups, or a risk/region policy; define verification levels, recovery implications and pending reservation expiry. Only then freeze global identifier policy and API contract.
