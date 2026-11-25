@@ -71,9 +71,7 @@ This is a proposed standards baseline, not an approved final token policy. The e
 
 ## Decisions required before ADR acceptance
 
-1. Canonical subject ID format and immutability guarantees.
 2. Identifier types, global/platform-specific uniqueness, aliases, rename/release/tombstone rules.
-3. Email/phone verification requirements and whether phone is mandatory.
 4. Credential ownership: central password credential versus federated-only identity; treatment of existing password hashes.
 5. Account linking, duplicate-account resolution and step-up policy.
 6. Propo Seller Account relationship cardinality and delegated authority.
@@ -117,7 +115,7 @@ This reduces exclusion for users in countries where phone delivery is unavailabl
 The remaining open decisions are: canonical subject ID format; identifier uniqueness/rename/release/tombstone rules; central credential ownership; account linking and duplicate resolution; Propo Seller Account relationship; suspension/deletion/retention/recovery policy; availability and data residency; profile ownership; and phone verification channel, country coverage, cost ceiling and fraud controls.
 
 
-## Canonical subject ID — technical recommendation pending owner approval (2026-11-25)
+## Canonical subject ID — owner-approved decision (2026-11-25)
 
 **Recommendation:** use a cryptographically random UUIDv4 as the immutable canonical subject identifier (`sub`) generated only by the Identity Service. Do not derive it from email, phone, nickname, provider subject, local Beta 1 user ID, timestamps or other user attributes.
 
@@ -150,10 +148,10 @@ The remaining open decisions are: canonical subject ID format; identifier unique
 6. Subject ID is not reassigned on email/phone change, provider unlink, account rename, suspension or recovery.
 7. Account closure retains a tombstone/minimal mapping according to the separately approved retention policy.
 
-**Decision status:** proposal only. No owner approval of UUIDv4/UUIDv7 or the final canonical ID format has been recorded. Do not freeze DDL or OpenAPI `sub` format until approval.
+**Decision status:** OWNER-APPROVED on 2026-11-25. UUIDv4 is the canonical human subject ID. UUIDv7 is not selected. The remaining ADR decisions listed above still block final DDL/OpenAPI/AsyncAPI freeze.
  
 
-## Global identifier registry — technical proposal pending owner approval (2026-11-25)
+## Global identifier registry — technical proposal pending remaining policy approval (2026-11-25)
 
 The product-owner source decision `docs/PRODUCT-DECISIONS-IDENTITY-LOCALIZATION-DESIGN.md`, section 1, explicitly requires central atomic reservation of normalized username/handle, email and phone as applicable, in both InOne→Propo and Propo→InOne registration directions. This is stronger than merely sharing a login: identifier claims must belong to one canonical subject and survive the other platform's outage.
 
@@ -191,3 +189,18 @@ The source decision explicitly names InOne and Propo. The current ADR also inclu
 Recommendation: use the same human authentication subject for InOne and InOne Business, but keep their product-account state, roles and domain permissions separate; model Propo Seller Account as a business principal linked to one or more human subjects. This is a recommendation pending the Propo contract and owner approval.
 
 **Decision status:** technical proposal. The InOne↔Propo global username/email/phone reservation requirement is source-backed; the detailed claim lifecycle, backup-email policy and InOne Business participation remain to be approved. Do not freeze DDL/OpenAPI until the open points are resolved.
+
+
+## Owner-approved privacy-preserving identifier architecture — 2026-11-25
+
+The product owner approved the architecture recorded in [BETA-2.0-IDENTITY-IMPLEMENTATION-ROADMAP.md](./BETA-2.0-IDENTITY-IMPLEMENTATION-ROADMAP.md):
+
+- UUIDv4 is the immutable Identity-generated canonical human subject ID.
+- The canonical ID is internal and is not exposed indiscriminately to products, clients, APIs, analytics, logs or integrations.
+- InOne and Propo receive distinct, independently generated pairwise product subject IDs within their registered relying-party boundaries. A pairwise ID is stable only within its approved boundary and is never derived from the canonical ID or personal attributes.
+- Existing InOne local IDs, Propo CUID primary keys, product FKs, historical actor values and protocol/idempotency namespaces remain unchanged in the initial rollout.
+- Public resource IDs are a separate decision; do not add a public UUID column to every model by default.
+- IDs are references, not credentials. Every operation requires server-side object-, tenant-, membership- and action-level authorization. BOLA/IDOR prevention, enumeration resistance, token audience isolation and telemetry minimization are mandatory controls.
+- Propo Seller Account remains a separate business principal connected through explicit delegation, not a human Identity subject.
+
+This owner approval closes the canonical subject format decision. It does not approve production schema changes, data migration, Beta 1.0 changes, or the still-open policy items in the implementation roadmap. ADR B2-ADR-001 remains DRAFT until those items and the integration/operational contracts are reviewed.
