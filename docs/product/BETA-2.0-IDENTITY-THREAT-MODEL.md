@@ -165,3 +165,29 @@ Additional threats:
 | IAM-27 | Phone verification requirement differs between email/password and provider registration | Owner-approved policy matrix and route conformance tests; no unapproved Beta 1 behavior changes |
 | IAM-28 | Pending/unverified phone reservation may remain occupied without an explicit expiry/release policy | Central claim lifecycle with verified/unverified state, reservation TTL, audited release and race-safe reassignment |
 | IAM-29 | Local email/nickname/provider verification semantics are copied into global Identity without normalization/scope review | Versioned normalization policy, issuer-scoped provider subject, privacy-safe conflicts and migration collision report |
+
+
+## 11. Identifier privacy, pairwise identity and authorization threats — 2026-11-25
+
+The owner approved an internal UUIDv4 canonical subject plus independent pairwise product subject identifiers. This reduces metadata leakage and cross-product correlation but does not replace authorization.
+
+| ID | Threat | Required controls |
+|---|---|---|
+| IAM-30 | Canonical subject leaks through tokens, API responses, logs, analytics or support tools | Keep canonical subject internal; explicit allowlist for service claims; pairwise product subjects; telemetry redaction/minimization; access audit |
+| IAM-31 | InOne and Propo correlate the same person through a shared stable public subject | Independently generated pairwise subject per registered relying-party boundary; no canonical-to-product lookup for ordinary clients; distinct audiences and client registrations |
+| IAM-32 | BOLA/IDOR: attacker substitutes a victim's valid opaque ID | Server-side object-, tenant-, membership-, ownership- and action-level checks on every operation; negative cross-user/cross-tenant tests; IDs never treated as capabilities |
+| IAM-33 | Account/identifier enumeration through registration, login, recovery, linking or search | Generic conflict/recovery responses, bounded timing differences, multi-dimensional rate limits, abuse monitoring and privacy-reviewed search fields |
+| IAM-34 | Token accepted by the wrong product or client | Strict issuer/audience/authorized-party/scope/token-type/signature/expiry validation; separate product audiences; controlled token exchange only |
+| IAM-35 | Pairwise subject mapping endpoint becomes a cross-product correlation oracle | Identity-only service authorization, registered client boundary, least privilege, purpose binding, audit and no user-facing bulk lookup |
+| IAM-36 | IDs treated as secrets and used as sole access control | Explicit threat-model rule: all IDs are non-secret references; authorization derives from validated principal and server policy |
+| IAM-37 | Pseudonymous IDs treated as anonymous and over-shared | Classify linkable IDs as pseudonymous personal data; retention, purpose limitation, access controls and deletion/export policy |
+| IAM-38 | Push/deep-link/analytics leakage exposes identity or enables replay | No sensitive claims in push/deep links; short-lived one-time audience-bound references; no canonical IDs in third-party analytics; redact telemetry |
+
+### Required verification
+- Confirm the same canonical subject maps to different InOne and Propo pairwise subjects, while remaining stable within the approved client boundary.
+- Confirm no canonical subject appears in ordinary user-facing token claims, API payloads, push payloads, analytics or logs.
+- Run a route-by-route BOLA/IDOR matrix covering files, rooms, organizations, search, exports, background jobs and admin operations.
+- Verify account existence is not disclosed by unauthenticated registration/login/recovery/provider-link flows.
+- Verify cross-product tokens and pairwise subjects are rejected outside their audience/client boundary.
+
+These controls are mandatory architecture requirements, not evidence that the current product code has already been tested or remediated.
