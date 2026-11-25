@@ -434,11 +434,11 @@ Follow-up: [ID-10 #151](https://github.com/vahe210991-cloud/InOne-chat/issues/15
 - This classification does not close #150; its DB ledger, exact-SHA migration tests and production fail-fast regression remain outstanding.
 
 
-## 15. Canonical subject identifier — recommendation for owner decision
+## 15. Canonical subject identifier — owner-approved decision (2026-11-25)
 
-The architecture proposal recommends an opaque UUIDv4 generated only by the Identity Service as the immutable canonical subject ID. UUIDv4 avoids embedding a creation timestamp in a subject identifier; UUIDv7 and ULID offer chronological/index locality but expose approximate creation time. Sequential IDs are enumerable; IDs derived from email/phone are linkable and unsafe; reusing Beta 1 local IDs would make legacy InOne the identity authority.
+The owner approved an opaque UUIDv4 generated only by the Identity Service as the immutable canonical subject ID. UUIDv4 avoids embedding a creation timestamp in a subject identifier; UUIDv7 and ULID offer chronological/index locality but expose approximate creation time. Sequential IDs are enumerable; IDs derived from email/phone are linkable and unsafe; reusing Beta 1 local IDs would make legacy InOne the identity authority.
 
-If approved, canonical IDs must never be recycled or reassigned, must not be treated as credentials, and must remain separate from each product's local account ID via an explicit mapping. The full alternatives and invariants are recorded in the ADR draft. **This is a technical recommendation, not an owner decision.** DDL/OpenAPI subject fields remain provisional until the owner approves the format.
+Canonical IDs must never be recycled or reassigned, must not be treated as credentials, and must remain separate from each product's local account ID via an explicit mapping. The owner-approved privacy-preserving pairwise model is specified in the Identity implementation roadmap. DDL/OpenAPI details remain provisional until the remaining client/sector, token and identifier policy decisions are closed.
 
 
 ### 14.1 Follow-up call-path audit: file ownership and actor provenance
