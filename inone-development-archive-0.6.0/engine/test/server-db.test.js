@@ -19,7 +19,7 @@ const BOB = '@bob:inone.test';
 const PIN = '246810';
 
 async function start(store) {
-  const srv = createServer({ defaultOrgAutoJoin: true, registrationMode: 'open', requirePhone: false, pinPepper: PEPPER, store, trustProxy: true, rateLimits: { registrationsPerAddress: [{ windowMs: 3600000, limit: 1000 }] } });
+  const srv = createServer({ defaultOrgAutoJoin: true, registrationMode: 'open', requirePhone: false, pinPepper: PEPPER, store, trustProxy: true, trustedProxyIps: ['127.0.0.1'], rateLimits: { registrationsPerAddress: [{ windowMs: 3600000, limit: 1000 }] } });
   await new Promise((resolve) => srv.server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${srv.server.address().port}`;
   return { srv, base, stop: () => new Promise((r) => srv.server.close(r)) };
