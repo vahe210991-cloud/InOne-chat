@@ -184,6 +184,17 @@ Added regressions for:
 
 Do not implement automatic ready-file expiry. Existing pending-upload stale cutoff remains separate from ready-file retention, which still requires an owner decision.
 
+### Stage 4 — AUDIT COMPLETE, REMEDIATION NEXT
+
+Stage 4 branch: `security/beta1-stage4-db-integrity-2026-11-25`, based on current `main`. Initial source audit: `development/reports/2026-11-25-beta1-stage4-database-integrity-audit.md`.
+
+Confirmed findings:
+- **B-07:** stale `rate_limits` and `login_throttle` rows are not included in the inspected cleanup routines; define safe stale cutoffs and bounded indexed cleanup.
+- **B-12:** last-owner validation, membership/role mutation and admin audit insertion are split across calls; move invariant enforcement and audit write into storage-level transactions with a stable organization-row lock.
+- **B-14:** invalid FCM target handling compare-deletes the old ciphertext, but then cancels all queued/failed deliveries for the device without confirming the stale registration was actually removed or scoping to the stale generation. Make this transactional and add a deterministic re-registration race regression.
+
+Next actions: implement B-07/B-12/B-14 with PostgreSQL and memory-store parity, add concurrency/fault-injection tests, then run the complete applicable exact-SHA gate. Stage 4 PR must remain Draft/unmerged pending owner authorization. Do not change ready-file retention policy.
+
 ## 6. Decisions required from product owner
 
 Only these decisions are intentionally not invented by engineering:
