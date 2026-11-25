@@ -97,3 +97,21 @@ The existing InOne backend is not identity-empty. Its production entrypoint `src
 The target Identity Service must therefore be introduced as an authority alongside the existing product-local identity projection, then integrated through an adapter and carefully migrated. It must not simply relocate `accounts` or change local user IDs: many existing product tables reference local `accounts.user_id` via foreign keys, including rooms/organizations/device/MLS state. The product-local account row and subject mapping should remain until a separately approved migration plan proves safe.
 
 Existing PostgreSQL tests cover local email/nickname uniqueness and provider-link persistence across restart. They do not prove cross-product reservation or central Identity availability.
+
+
+## Approved product decision: phone is optional (2026-11-25)
+
+The product owner approved this policy for the Beta 2.0 global Identity design:
+
+1. A phone number is **not mandatory** to create a canonical Identity, whether registration starts with email/password or a verified Google/Apple identity.
+2. A verified email or provider-verified email may establish the initial account identity under the relevant proof flow. This does **not** mean the phone number is verified.
+3. Phone is an independent optional identifier and optional additional contact/recovery channel. It may be used for phone-based recovery only after separate successful phone verification and subject to the approved recovery policy.
+4. An unverified/pending phone claim must never be represented as verified, used as a recovery factor, or treated as proof of account ownership.
+5. Global uniqueness, cross-product reservation, pending-claim expiry/release, and phone-based recovery assurance remain technical/policy details to be specified and threat-modelled before implementation.
+6. This decision applies to the new Beta 2.0 Identity design. It does **not** authorize changing Beta 1.0 registration behavior or its INONE_REQUIRE_PHONE setting. Any Beta 1 change requires separate explicit approval.
+
+This reduces exclusion for users in countries where phone delivery is unavailable or unreliable. Optional phone verification still requires an international delivery strategy, abuse controls, cost controls and country-specific compliance.
+
+## Remaining decisions required before ADR acceptance
+
+The remaining open decisions are: canonical subject ID format; identifier uniqueness/rename/release/tombstone rules; central credential ownership; account linking and duplicate resolution; Propo Seller Account relationship; suspension/deletion/retention/recovery policy; availability and data residency; profile ownership; and phone verification channel, country coverage, cost ceiling and fraud controls.
