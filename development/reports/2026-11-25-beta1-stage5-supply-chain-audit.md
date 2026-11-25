@@ -108,3 +108,43 @@ The Node lockfile contains a `firebase-admin` package entry without an `integrit
 ## Implementation checkpoint
 
 Added focused negative configuration regressions in `engine/test/config.test.js` for production rejection of the fixed development email code, test UI enablement and an invalid push-encryption key. These tests exercise existing fail-closed guards; no production behavior was weakened or broadened. The full exact-SHA Node/PostgreSQL and acceptance checks must complete on the final Stage 5 head.
+
+
+## Implementation checkpoint — supply-chain controls
+
+### External GitHub Actions pinned
+
+All external actions found across the 10 inspected workflow files are now pinned to immutable 40-character commit SHAs. Human-readable release comments are retained. The resolved refs were queried from the upstream GitHub repositories on 2026-11-25; the Rust toolchain action is pinned to the exact upstream `master` snapshot observed during this audit rather than following the moving branch.
+
+| Action | Pinned commit |
+|---|---|
+| `actions/checkout@v4` | `11d5960a326750d5838078e36cf38b85af677262` |
+| `actions/upload-artifact@v4` | `ea165f8d65b6e75b540449e92b4886f43607fa02` |
+| `actions/setup-node@v4` | `49933ea5288caeca8642d1e84afbd3f7d6820020` |
+| `subosito/flutter-action@v2` | `1a449444c387b1966244ae4d4f8c696479add0b2` |
+| `dtolnay/rust-toolchain` | `df2a88e9fe4098bad09cb42c3dec7187f15861fc` |
+| `reactivecircus/android-emulator-runner@v2` | `a421e43855164a8197daf9d8d40fe71c6996bb0d` |
+| `actions/github-script@v7` | `f28e40c7f34bde8b3046d885e986cb6290c5673b` |
+| `Swatinem/rust-cache@v2` | `d1527c8f67ef9af357290475d4af4b0fab8f12e0` |
+| `actions/download-artifact@v4` | `d3f86a106a0bac45b974a628896c90dbdf5c8093` |
+
+Pinning prevents a tag move from silently changing the action code, but does not eliminate the need to review upstream releases and update pins deliberately. The Android emulator action's resolved commit was not GitHub-signature verified by the API response; its SHA is immutable, but the upstream signature status is explicitly not represented as verified.
+
+### OCI image digests pinned
+
+The Node base image is pinned to the multi-platform index digest `sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534549940b8d73bde88481a` (Node 22.23.5 Alpine 3.24). PostgreSQL 16 is pinned to index digest `sha256:07abc3f43c9395b0bdbbab36bc25ddb0e8d83cd4fcafb5fb7d6abe14ff156dd8`. The pins are applied to the canonical engine Dockerfile, the archived engine Dockerfile, the associated Compose files, Dev Container Compose and PostgreSQL CI service definitions. Digests were checked against Docker Hub official-image metadata on 2026-11-25.
+
+Digest pinning intentionally freezes image content. Refreshes must be proposed as reviewed changes, with vulnerability review and the relevant Compose/runtime acceptance checks.
+
+### RustSec advisory scan added
+
+A dedicated `rust-advisory-audit` job now installs `cargo-audit` at exact version `0.23.0` using `cargo install --locked`, then scans each maintained Cargo.lock independently:
+- `mobile/rust/Cargo.lock`
+- `inone-development-archive-0.6.0/engine/mobile-mls/mls-client/Cargo.lock`
+- `inone-development-archive-0.6.0/engine/mobile-mls/mls-bridge/Cargo.lock`
+
+The job writes JSON reports and uploads them with 14-day retention. It does not run `cargo audit fix`, update dependencies, or modify lockfiles. Advisory findings must be triaged before acceptance; cryptographic/MLS dependency upgrades remain subject to compatibility review.
+
+### Validation status
+
+These implementation changes trigger new exact-head CI runs. The earlier successful runs on `7636766d3789e9026ce5d8013282fecaceb03e67` do not count as validation for the updated head. Stage 5 remains in progress until all applicable workflows finish successfully on one final SHA and findings are triaged.
