@@ -597,3 +597,6 @@ Current status: planning artifacts and issue backlog are saved in GitHub. Identi
 5. Close owner decisions in ADR B2-ADR-001 (canonical subject format, global identifier scope/normalization/aliases, phone policy, credential ownership, account linking, Propo Seller Account relationship, retention/deletion, SLO/RPO/RTO).
 6. Obtain Propo integration contract/sandbox evidence before finalizing adapter schemas.
 7. Only then freeze Identity schema/OpenAPI/AsyncAPI and open implementation PR. No production migration or Beta 1 account cutover without explicit approval.
+
+
+8. Resolve ID-10 #151: owner-approved phone requirement across password/provider registrations, provider email trust vs phone verification, verification levels, pending phone claim expiry/release, and global phone uniqueness.
