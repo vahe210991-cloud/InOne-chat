@@ -115,3 +115,39 @@ This reduces exclusion for users in countries where phone delivery is unavailabl
 ## Remaining decisions required before ADR acceptance
 
 The remaining open decisions are: canonical subject ID format; identifier uniqueness/rename/release/tombstone rules; central credential ownership; account linking and duplicate resolution; Propo Seller Account relationship; suspension/deletion/retention/recovery policy; availability and data residency; profile ownership; and phone verification channel, country coverage, cost ceiling and fraud controls.
+
+
+## Canonical subject ID — technical recommendation pending owner approval (2026-11-25)
+
+**Recommendation:** use a cryptographically random UUIDv4 as the immutable canonical subject identifier (`sub`) generated only by the Identity Service. Do not derive it from email, phone, nickname, provider subject, local Beta 1 user ID, timestamps or other user attributes.
+
+### Rationale
+
+- UUIDv4 is opaque and does not encode account creation time, region, phone, email or another personal attribute.
+- UUIDv4 is globally unique enough for the expected product scale and supported by PostgreSQL, common application runtimes and OIDC subject claims.
+- It allows Identity to remain the single ID authority while product-local IDs remain stable behind explicit mapping rows.
+- It avoids exposing the creation timestamp embedded in UUIDv7/ULID-like identifiers. Creation and ordering timestamps belong in separate audited columns.
+- It is not a credential: possession of a subject ID grants no authority. Authorization must always rely on validated tokens and product policy.
+
+### Alternatives
+
+| Option | Benefits | Costs / risks | Recommendation |
+|---|---|---|---|
+| UUIDv4 | Opaque, random, no embedded timestamp, broad support | Random-index write locality may be weaker than time-ordered IDs | **Preferred** for privacy/opacity |
+| UUIDv7 | Time-ordered, better index locality and operational sorting | Exposes approximate creation time; needs clock/monotonicity discipline | Acceptable only if owner prioritizes index locality over timestamp opacity |
+| ULID | Sortable and compact text representation | Timestamp disclosure; encoding/case rules need standardization | Not preferred |
+| Sequential integer / BIGSERIAL | Compact and index-friendly | Enumerable, leaks population/order, central allocation pressure | Reject for public canonical subject |
+| Derived hash of email/phone | Deterministic | Linkability, dictionary attacks, identifier changes and privacy leakage | Reject |
+| Reuse local Beta 1 ID | Avoids immediate mapping for InOne | Not globally authoritative; ties cross-product identity to legacy implementation | Reject |
+
+### Invariants if approved
+
+1. Canonical subject ID is immutable and never recycled, including after account closure.
+2. Identity Service is the only issuer; clients cannot choose or override it.
+3. IDs are opaque references, not authentication secrets.
+4. Each platform keeps its existing local account ID and stores an explicit mapping to canonical subject.
+5. Mapping uniqueness is enforced in the Identity-owned registry; no cross-database FK is attempted.
+6. Subject ID is not reassigned on email/phone change, provider unlink, account rename, suspension or recovery.
+7. Account closure retains a tombstone/minimal mapping according to the separately approved retention policy.
+
+**Decision status:** proposal only. No owner approval of UUIDv4/UUIDv7 or the final canonical ID format has been recorded. Do not freeze DDL or OpenAPI `sub` format until approval.
