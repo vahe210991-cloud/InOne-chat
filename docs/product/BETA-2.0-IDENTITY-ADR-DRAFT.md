@@ -112,12 +112,12 @@ This reduces exclusion for users in countries where phone delivery is unavailabl
 
 ## Remaining decisions required before ADR acceptance
 
-The remaining open decisions are: canonical subject ID format; identifier uniqueness/rename/release/tombstone rules; central credential ownership; account linking and duplicate resolution; Propo Seller Account relationship; suspension/deletion/retention/recovery policy; availability and data residency; profile ownership; and phone verification channel, country coverage, cost ceiling and fraud controls.
+The remaining open decisions are: identifier uniqueness/rename/release/tombstone rules; central credential ownership; account linking and duplicate resolution; Propo Seller Account relationship; suspension/deletion/retention/recovery policy; availability and data residency; profile ownership; and phone verification channel, country coverage, cost ceiling and fraud controls.
 
 
 ## Canonical subject ID — owner-approved decision (2026-11-25)
 
-**Recommendation:** use a cryptographically random UUIDv4 as the immutable canonical subject identifier (`sub`) generated only by the Identity Service. Do not derive it from email, phone, nickname, provider subject, local Beta 1 user ID, timestamps or other user attributes.
+**Owner-approved decision:** use a cryptographically random UUIDv4 as the immutable canonical subject identifier (`sub`) generated only by the Identity Service. Do not derive it from email, phone, nickname, provider subject, local Beta 1 user ID, timestamps or other user attributes.
 
 ### Rationale
 
