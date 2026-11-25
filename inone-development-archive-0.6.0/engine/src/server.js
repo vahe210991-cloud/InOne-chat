@@ -110,16 +110,17 @@ const SAFE_REQUEST_LOG_ROOTS = new Set([
   'orgs', 'phone', 'profile', 'push', 'readyz', 'recovery', 'register',
   'rooms', 'search', 'sendToDevice', 'stickers', 'sync', 'token', 'users',
 ]);
-const SAFE_LOG_SECOND_SEGMENTS = new Set([
-  'login', 'nonce', 'provider', 'verify', 'refresh', 'logout', 'email',
-  'phone', 'confirm', 'start', 'cancel', 'complete', 'remove', 'providers',
-  'search', 'mine', 'members', 'events', 'assets', 'keys', 'query',
-]);
+const SAFE_LOG_SECOND_SEGMENTS = {
+  account: new Set(['email', 'phone', 'providers', 'biometric']),
+  auth: new Set(['login', 'nonce', 'provider']),
+  token: new Set(['refresh']),
+  users: new Set(['search']),
+};
 function safeRequestLogPath(pathname) {
   const parts = String(pathname || '').split('/').filter(Boolean);
   const first = parts[0] || '';
   if (!SAFE_REQUEST_LOG_ROOTS.has(first)) return '/__other__';
-  if (parts.length > 1 && SAFE_LOG_SECOND_SEGMENTS.has(parts[1])) return `/${first}/${parts[1]}`;
+  if (parts.length > 1 && SAFE_LOG_SECOND_SEGMENTS[first]?.has(parts[1])) return `/${first}/${parts[1]}`;
   return `/${first}`;
 }
 
