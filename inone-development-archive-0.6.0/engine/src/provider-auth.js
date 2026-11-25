@@ -16,16 +16,54 @@ export const PROVIDER_ISSUERS = {
 };
 export const APPLE_RELAY_SUFFIX = '@privaterelay.appleid.com';
 const KEY_CACHE_MS = 60 * 60_000;
+const JWKS_TIMEOUT_MS = 5000;
+const JWKS_MAX_BYTES = 256 * 1024;
+const JWKS_MAX_KEYS = 100;
+const UNKNOWN_KID_REFRESH_COOLDOWN_MS = 30_000;
 
 export const sha256Hex = (value) => createHash('sha256').update(value).digest('hex');
 const fromB64 = (s) => Buffer.from(s, 'base64url');
 const parseJsonPart = (s) => JSON.parse(fromB64(s).toString('utf8'));
 
-/** Ключи провайдера по стандартному адресу. В тестах и при настройке подменяются. */
+/** Ключи провайдера по стандартному адресу. Ответ ограничен по времени и размеру. */
 export async function fetchProviderKeys(provider) {
-  const res = await fetch(PROVIDER_JWKS_URLS[provider]);
-  if (!res.ok) throw new Error(`jwks ${provider}: HTTP ${res.status}`);
-  return res.json();
+  const url = PROVIDER_JWKS_URLS[provider];
+  if (!url) throw new Error('jwks provider is not supported');
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(new Error('jwks request timeout')), JWKS_TIMEOUT_MS);
+  timer.unref?.();
+  try {
+    const res = await fetch(url, { signal: controller.signal, headers: { accept: 'application/json, application/jwk-set+json' } });
+    if (!res.ok) throw new Error(`jwks ${provider}: HTTP ${res.status}`);
+    const contentType = String(res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+    if (!['application/json', 'application/jwk-set+json'].includes(contentType)) throw new Error('jwks response content type is invalid');
+    const declaredLength = Number(res.headers.get('content-length') || 0);
+    if (declaredLength > JWKS_MAX_BYTES) throw new Error('jwks response is too large');
+    if (!res.body) throw new Error('jwks response body is missing');
+    const chunks = [];
+    let size = 0;
+    for await (const chunk of res.body) {
+      size += chunk.length;
+      if (size > JWKS_MAX_BYTES) {
+        controller.abort();
+        throw new Error('jwks response is too large');
+      }
+      chunks.push(Buffer.from(chunk));
+    }
+    const payload = JSON.parse(Buffer.concat(chunks, size).toString('utf8'));
+    if (!payload || !Array.isArray(payload.keys) || payload.keys.length === 0 || payload.keys.length > JWKS_MAX_KEYS) {
+      throw new Error('jwks response shape is invalid');
+    }
+    if (payload.keys.some((key) => !key || typeof key !== 'object' || typeof key.kid !== 'string' || key.kid.length > 256 || key.kty !== 'RSA' || typeof key.n !== 'string' || typeof key.e !== 'string')) {
+      throw new Error('jwks key entry is invalid');
+    }
+    return payload;
+  } catch (error) {
+    if (controller.signal.aborted && error?.name === 'AbortError') throw new Error('jwks request timed out');
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**
@@ -36,13 +74,36 @@ export async function fetchProviderKeys(provider) {
  */
 export function createProviderVerifier({ providers, keysSource, nowMs }) {
   const cache = new Map();
+  const inFlight = new Map();
+  const lastUnknownKidRefresh = new Map();
+  const refreshKeys = (provider) => {
+    const active = inFlight.get(provider);
+    if (active) return active;
+    const pending = Promise.resolve()
+      .then(() => keysSource(provider))
+      .then((fetched) => {
+        if (!Array.isArray(fetched?.keys) || fetched.keys.length === 0 || fetched.keys.length > JWKS_MAX_KEYS) {
+          throw new Error('jwks key set is invalid');
+        }
+        const entry = { at: nowMs(), keys: fetched.keys };
+        cache.set(provider, entry);
+        return entry;
+      })
+      .finally(() => inFlight.delete(provider));
+    inFlight.set(provider, pending);
+    return pending;
+  };
   const keysFor = async (provider, kid) => {
     const at = nowMs();
     let entry = cache.get(provider);
-    if (!entry || at - entry.at > KEY_CACHE_MS || !entry.keys.some((k) => k.kid === kid)) {
-      const fetched = await keysSource(provider);
-      entry = { at, keys: Array.isArray(fetched?.keys) ? fetched.keys : [] };
-      cache.set(provider, entry);
+    if (!entry || at - entry.at > KEY_CACHE_MS) {
+      entry = await refreshKeys(provider);
+    } else if (!entry.keys.some((key) => key.kid === kid)) {
+      const last = lastUnknownKidRefresh.get(provider) ?? 0;
+      if (at - last >= UNKNOWN_KID_REFRESH_COOLDOWN_MS) {
+        lastUnknownKidRefresh.set(provider, at);
+        entry = await refreshKeys(provider);
+      }
     }
     return entry.keys;
   };
@@ -62,7 +123,8 @@ export function createProviderVerifier({ providers, keysSource, nowMs }) {
       return { ok: false, reason: 'malformed' };
     }
     if (header.alg !== 'RS256') return { ok: false, reason: 'alg' };
-    const jwk = (await keysFor(provider, header.kid)).find((k) => k.kid === header.kid && k.kty === 'RSA');
+    if (typeof header.kid !== 'string' || header.kid === '' || header.kid.length > 256) return { ok: false, reason: 'kid' };
+    const jwk = (await keysFor(provider, header.kid)).find((k) => k.kid === header.kid && k.kty === 'RSA' && (!k.alg || k.alg === 'RS256') && (!k.use || k.use === 'sig'));
     if (!jwk) return { ok: false, reason: 'kid' };
     let signed = false;
     try {
@@ -77,6 +139,7 @@ export function createProviderVerifier({ providers, keysSource, nowMs }) {
     const audiences = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
     if (!audiences.some((a) => cfg.clientIds.includes(a))) return { ok: false, reason: 'audience' };
     if (typeof claims.exp !== 'number' || claims.exp * 1000 <= nowMs()) return { ok: false, reason: 'expired' };
+    if (claims.nbf !== undefined && (typeof claims.nbf !== 'number' || claims.nbf * 1000 > nowMs())) return { ok: false, reason: 'not-yet-valid' };
     if (typeof claims.sub !== 'string' || claims.sub === '' || claims.sub.length > 255) return { ok: false, reason: 'subject' };
     // Nonce: наш одноразовый либо его SHA-256 (так передают nonce Apple и Google SDK).
     if (!(claims.nonce === nonce || claims.nonce === sha256Hex(nonce))) return { ok: false, reason: 'nonce' };
