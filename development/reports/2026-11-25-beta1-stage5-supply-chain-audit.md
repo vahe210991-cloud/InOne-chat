@@ -152,3 +152,7 @@ These implementation changes trigger new exact-head CI runs. The earlier success
 ### Controlled update cadence
 
 Added `.github/dependabot.yml` with weekly Monday proposals for GitHub Actions, the three Docker/Compose locations, the backend npm project and all three maintained Cargo projects. Dependabot only opens update PRs; no auto-merge or automatic dependency mutation is configured. The operations runbook now requires manual upstream provenance review, exact-SHA CI, relevant runtime tests and explicit triage of Rust advisories before accepting updates.
+
+### Source SBOM and provenance evidence
+
+Added a source SBOM job using the Anchore SBOM action pinned to verified commit `e22c389904149dbc22b58101806040fa8d37a610` and Syft `v1.42.3`. It emits SPDX JSON for the repository source and a sidecar recording the exact checked-out source SHA and SBOM SHA-256. The artifact is retained for 14 days as CI evidence only; automatic release-asset upload and dependency-snapshot publishing are explicitly disabled. A PR-generated SBOM is not a release attestation and must not be promoted as one.
