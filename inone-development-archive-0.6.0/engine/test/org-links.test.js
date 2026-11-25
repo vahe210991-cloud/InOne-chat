@@ -157,6 +157,166 @@ test('F-01: stale accept after a concurrent revoke is rejected without an accept
 });
 
 
+
+
+test('F-04 PostgreSQL: a room invitation racing link revocation cannot leave stale membership', { skip: !process.env.DATABASE_URL }, async () => {
+  const s = await start();
+  let releaseInvite;
+  const originalConnect = s.pool.connect.bind(s.pool);
+  try {
+    assert.equal((await call(s.base, 'POST', '/rooms', s.anna.token, { roomId: ROOM, orgId: ORG_A, members: [BORIS] })).status, 200);
+    const proposed = await call(s.base, 'POST', `/orgs/${ORG_A}/links`, s.boris.token, { targetOrgId: ORG_B });
+    assert.equal(proposed.status, 200);
+    const linkId = proposed.json.linkId;
+    assert.equal((await call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/accept`, s.carol.token, {})).status, 200);
+
+    let signalInviteLock;
+    let signalRevokeAttempt;
+    const inviteLockReady = new Promise((resolve) => { signalInviteLock = resolve; });
+    const revokeAttempted = new Promise((resolve) => { signalRevokeAttempt = resolve; });
+    const inviteGate = new Promise((resolve) => { releaseInvite = resolve; });
+
+    s.pool.connect = async (...args) => {
+      if (args.length > 0) return originalConnect(...args);
+      const client = await originalConnect();
+      const originalQuery = client.query.bind(client);
+      client.query = async (query, ...params) => {
+        const sql = typeof query === 'string' ? query : query?.text ?? '';
+        if (sql.includes('UPDATE org_links SET status')) signalRevokeAttempt();
+        if (sql.includes('FOR SHARE OF member, member_org, link')) {
+          const result = await originalQuery(query, ...params);
+          signalInviteLock();
+          await inviteGate;
+          return result;
+        }
+        return originalQuery(query, ...params);
+      };
+      return client;
+    };
+
+    const inviting = call(s.base, 'POST', `/rooms/${enc(ROOM)}/members`, s.anna.token, { userId: CAROL });
+    await waitForSignal(inviteLockReady, 'room invitation did not acquire active-link share lock');
+    const revoking = call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/revoke`, s.carol.token, {});
+    await waitForSignal(revokeAttempted, 'link revocation did not attempt its conditional update');
+    releaseInvite();
+
+    assert.equal((await inviting).status, 200, 'invitation holding the active-link lock may finish first');
+    assert.equal((await revoking).status, 200, 'revocation follows the in-flight invitation');
+    assert.equal((await s.store.getOrgLink(linkId)).status, 'revoked');
+    assert.equal((await s.store.getRoom(ROOM)).members.includes(CAROL), false,
+      'the atomic revocation removes the membership created by the racing invitation');
+  } finally {
+    releaseInvite?.();
+    s.pool.connect = originalConnect;
+    await s.stop();
+  }
+});
+
+
+test('F-05 PostgreSQL: a room message write is serialized before link revocation and denied afterward', { skip: !process.env.DATABASE_URL }, async () => {
+  const s = await start();
+  let releaseWrite;
+  const originalConnect = s.pool.connect.bind(s.pool);
+  try {
+    assert.equal((await call(s.base, 'POST', '/rooms', s.anna.token, { roomId: ROOM, orgId: ORG_A, members: [BORIS] })).status, 200);
+    const proposed = await call(s.base, 'POST', `/orgs/${ORG_A}/links`, s.boris.token, { targetOrgId: ORG_B });
+    assert.equal(proposed.status, 200);
+    const linkId = proposed.json.linkId;
+    assert.equal((await call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/accept`, s.carol.token, {})).status, 200);
+    assert.equal((await call(s.base, 'POST', `/rooms/${enc(ROOM)}/members`, s.anna.token, { userId: CAROL })).status, 200);
+
+    let signalWriteLock;
+    let signalRevokeAttempt;
+    const writeLockReady = new Promise((resolve) => { signalWriteLock = resolve; });
+    const revokeAttempted = new Promise((resolve) => { signalRevokeAttempt = resolve; });
+    const writeGate = new Promise((resolve) => { releaseWrite = resolve; });
+    s.pool.connect = async (...args) => {
+      if (args.length > 0) return originalConnect(...args);
+      const client = await originalConnect();
+      const originalQuery = client.query.bind(client);
+      client.query = async (query, ...params) => {
+        const sql = typeof query === 'string' ? query : query?.text ?? '';
+        if (sql.includes('UPDATE org_links SET status')) signalRevokeAttempt();
+        return originalQuery(query, ...params);
+      };
+      return client;
+    };
+
+    const writing = s.store.appendRoomEvent(
+      ROOM, CAROL, 'm.room.encrypted', { ciphertext: 'opaque' }, Date.now(),
+      async () => { signalWriteLock(); await writeGate; },
+    );
+    await waitForSignal(writeLockReady, 'message write did not reach its in-transaction boundary');
+    const revoking = call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/revoke`, s.carol.token, {});
+    await waitForSignal(revokeAttempted, 'link revocation did not attempt its conditional update');
+    releaseWrite();
+
+    const writtenSeq = await writing;
+    assert.equal(typeof writtenSeq, 'number', 'message authorized before revoke commits');
+    assert.equal((await revoking).status, 200);
+    assert.equal((await s.store.getRoom(ROOM)).members.includes(CAROL), false);
+    const rows = await s.store.roomEventRows(ROOM, 0);
+    assert.ok(rows.some((event) => event.sender === CAROL), 'the message committed before the revoke linearization point');
+
+    const denied = await s.store.appendRoomEvent(ROOM, CAROL, 'm.room.encrypted', { ciphertext: 'after-revoke' }, Date.now());
+    assert.equal(denied.state, 'org_not_member', 'writes after revocation are rejected');
+  } finally {
+    releaseWrite?.();
+    s.pool.connect = originalConnect;
+    await s.stop();
+  }
+});
+
+test('F-03 PostgreSQL: injected audit failure rolls back link revocation and cross-room membership deletion', { skip: !process.env.DATABASE_URL }, async () => {
+  const s = await start();
+  const originalConnect = s.pool.connect.bind(s.pool);
+  try {
+    assert.equal((await call(s.base, 'POST', '/rooms', s.anna.token, { roomId: ROOM, orgId: ORG_A, members: [BORIS] })).status, 200);
+    const proposed = await call(s.base, 'POST', `/orgs/${ORG_A}/links`, s.boris.token, { targetOrgId: ORG_B });
+    assert.equal(proposed.status, 200);
+    const linkId = proposed.json.linkId;
+    assert.equal((await call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/accept`, s.carol.token, {})).status, 200);
+    assert.equal((await call(s.base, 'POST', `/rooms/${enc(ROOM)}/members`, s.anna.token, { userId: CAROL })).status, 200);
+
+    let injected = false;
+    s.pool.connect = async (...args) => {
+      if (args.length > 0) return originalConnect(...args);
+      const client = await originalConnect();
+      const originalQuery = client.query.bind(client);
+      client.query = async (query, ...params) => {
+        const sql = typeof query === 'string' ? query : query?.text ?? '';
+        if (!injected && sql.includes('INSERT INTO admin_action_log')) {
+          injected = true;
+          throw new Error('fault injection: audit insert failed');
+        }
+        return originalQuery(query, ...params);
+      };
+      return client;
+    };
+
+    const failed = await call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/revoke`, s.carol.token, {});
+    assert.equal(injected, true, 'fault injection reached the audit insert inside the revoke transaction');
+    assert.equal(failed.status, 500, 'failed transaction returns a safe server error');
+
+    s.pool.connect = originalConnect;
+    assert.equal((await s.store.getOrgLink(linkId)).status, 'active', 'link state rolls back');
+    assert.ok((await s.store.getRoom(ROOM)).members.includes(CAROL), 'cross-room membership deletion rolls back');
+    const revokeA = (await s.store.listAdminActions(ORG_A)).filter((event) => event.action === 'link_revoke' && event.detail === linkId);
+    const revokeB = (await s.store.listAdminActions(ORG_B)).filter((event) => event.action === 'link_revoke' && event.detail === linkId);
+    assert.equal(revokeA.length + revokeB.length, 0, 'no partial audit event survives');
+
+    const retried = await call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/revoke`, s.carol.token, {});
+    assert.equal(retried.status, 200, 'the same revoke can be retried after rollback');
+    assert.equal((await s.store.getOrgLink(linkId)).status, 'revoked');
+    assert.equal((await s.store.getRoom(ROOM)).members.includes(CAROL), false);
+    assert.equal((await s.store.listAdminActions(ORG_A)).filter((event) => event.action === 'link_revoke' && event.detail === linkId).length, 1);
+    assert.equal((await s.store.listAdminActions(ORG_B)).filter((event) => event.action === 'link_revoke' && event.detail === linkId).length, 1);
+  } finally {
+    s.pool.connect = originalConnect;
+    await s.stop();
+  }
+});
+
 test('F-02 PostgreSQL: cross-organization link revocation waits for an in-flight open join', { skip: !process.env.DATABASE_URL }, async () => {
   const s = await start();
   let releaseJoin;
@@ -171,8 +331,7 @@ test('F-02 PostgreSQL: cross-organization link revocation waits for an in-flight
     assert.equal((await call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/accept`, s.carol.token, {})).status, 200);
 
     const originalConnect = s.pool.connect.bind(s.pool);
-    const originalPoolQuery = s.pool.query.bind(s.pool);
-    restorePoolHooks = () => { s.pool.connect = originalConnect; s.pool.query = originalPoolQuery; };
+    restorePoolHooks = () => { s.pool.connect = originalConnect; };
     let signalShareLock;
     let signalRevokeAttempt;
     const shareLockReady = new Promise((resolve) => { signalShareLock = resolve; });
@@ -186,6 +345,7 @@ test('F-02 PostgreSQL: cross-organization link revocation waits for an in-flight
       const originalQuery = client.query.bind(client);
       client.query = async (query, ...params) => {
         const sql = typeof query === 'string' ? query : query?.text ?? '';
+        if (sql.includes('UPDATE org_links SET status')) signalRevokeAttempt();
         if (sql.includes('FOR SHARE OF member, member_org, link')) {
           const result = await originalQuery(query, ...params);
           signalShareLock();
@@ -195,11 +355,6 @@ test('F-02 PostgreSQL: cross-organization link revocation waits for an in-flight
         return originalQuery(query, ...params);
       };
       return client;
-    };
-    s.pool.query = async (query, ...params) => {
-      const sql = typeof query === 'string' ? query : query?.text ?? '';
-      if (sql.includes('UPDATE org_links SET status')) signalRevokeAttempt();
-      return originalPoolQuery(query, ...params);
     };
 
     const joining = call(s.base, 'POST', `/rooms/${enc(ROOM)}/join`, s.carol.token, {});

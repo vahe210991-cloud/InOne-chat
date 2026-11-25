@@ -7,6 +7,7 @@ import { request as nodeRequest } from 'node:http';
 import { createServer } from '../src/server.js';
 import { ChatClient, DEFAULT_PASSWORD as PW } from '../src/client.js';
 import { storeForTest } from './helpers.js';
+import { createMemoryStore } from '../src/store-memory.js';
 import { mlsMessageAt } from './group-message-helper.mjs';
 
 const PEPPER = randomBytes(24).toString('hex');
@@ -35,9 +36,10 @@ async function http(base, method, path, { token, body, headers = {} } = {}) {
 const jsonBody = (value) => JSON.stringify(value);
 const JSON_HEADERS = { 'content-type': 'application/json' };
 
-async function start() {
+async function start({ quotaBytes = null, objectStore = null } = {}) {
   const db = await storeForTest(PEPPER);
-  const srv = createServer({ defaultOrgAutoJoin: true, registrationMode: 'open', requirePhone: false, pinPepper: PEPPER, store: db?.store, objectSecret: 'test-object-secret-0123456789abcdef' });
+  const store = db?.store ?? createMemoryStore({ pinPepper: PEPPER });
+  const srv = createServer({ defaultOrgAutoJoin: true, registrationMode: 'open', requirePhone: false, pinPepper: PEPPER, store, objectSecret: 'test-object-secret-0123456789abcdef', quotaBytes, objectStore });
   await new Promise((resolve) => srv.server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${srv.server.address().port}`;
   const alice = await ChatClient.create(base, ALICE, 'A_PHONE', PW);
@@ -45,7 +47,7 @@ async function start() {
   const carol = await ChatClient.create(base, CAROL, 'C_PHONE', PW);
   await alice.createRoom(ROOM, [ALICE, BOB]);
   await alice.raw('POST', `/mls/groups/${enc(ROOM)}/commits`, { epoch: 0, commit: b64('FIRST'), changes: { adds: [], removes: [] } });
-  return { srv, base, alice, bob, carol, stop: async () => { await new Promise((r) => srv.server.close(r)); await db?.close(); } };
+  return { srv, store, base, alice, bob, carol, stop: async () => { await new Promise((r) => srv.server.close(r)); await db?.close(); } };
 }
 
 async function announce(s, token, bytes, { roomId = ROOM, kind = 'file', declaredSize = bytes.length, declaredSha = sha(bytes) } = {}) {
@@ -148,6 +150,9 @@ test('ссылка загрузки истекает через 15 минут', 
     const created = (await announce(s, s.alice.token, bytes)).json;
     s.srv.advance(16 * MIN);
     assert.equal((await putTo(created.uploadUrl, bytes)).status, 403);
+    await s.alice.renewSession(); // истёк access token, проверяем уже состояние резервации
+    assert.equal((await http(s.base, 'GET', `/files/${enc(created.fileId)}/url`, { token: s.alice.token })).status, 404,
+      'expired signed upload reservation is released immediately');
   } finally {
     await s.stop();
   }
@@ -204,7 +209,7 @@ test('неверная контрольная сумма: файл не прин
     const other = randomBytes(300);
     const created = (await announce(s, s.alice.token, promised)).json;
     assert.equal((await putTo(created.uploadUrl, other)).status, 422, 'сумма не совпала');
-    assert.equal((await completeFile(s, s.alice.token, created.fileId)).status, 409, 'подтвердить нечего');
+    assert.equal((await completeFile(s, s.alice.token, created.fileId)).status, 404, 'failed upload reservation was released');
   } finally {
     await s.stop();
   }
@@ -304,6 +309,161 @@ test('подмена Host не влияет на origin подписанной �
     assert.equal(result.status, 200);
     assert.equal(new URL(result.json.uploadUrl).origin, 'https://inone.test',
       'внешний Host не должен попадать в подписанный URL');
+  } finally {
+    await s.stop();
+  }
+});
+
+
+test('параллельные резервации не превышают квоту владельца', async () => {
+  const s = await start({ quotaBytes: 1000 });
+  try {
+    const requests = await Promise.all(Array.from({ length: 20 }, () =>
+      announce(s, s.alice.token, Buffer.alloc(100))));
+    assert.equal(requests.filter((r) => r.status === 200).length, 10,
+      'ровно десять заявок по 100 байт укладываются в квоту 1000');
+    assert.equal(requests.filter((r) => r.status === 413).length, 10,
+      'остальные запросы отклоняются после сериализованной проверки квоты');
+  } finally {
+    await s.stop();
+  }
+});
+
+test('ошибка удаления сохраняет tombstone и повторная очистка завершает удаление', async () => {
+  const { createMemoryObjectStore } = await import('../src/object-store.js');
+  const backing = createMemoryObjectStore();
+  let failRemoval = true;
+  const objectStore = {
+    put: (...args) => backing.put(...args),
+    putStream: (...args) => backing.putStream(...args),
+    get: (...args) => backing.get(...args),
+    getStream: (...args) => backing.getStream(...args),
+    remove: async (key) => {
+      if (failRemoval) {
+        failRemoval = false;
+        throw new Error('simulated object-store outage');
+      }
+      return backing.remove(key);
+    },
+  };
+  const s = await start({ objectStore });
+  try {
+    const abandoned = (await announce(s, s.alice.token, randomBytes(30))).json.fileId;
+    s.srv.advance(DAY + MIN);
+    assert.equal(await s.srv.cleanupFiles(), 0, 'failed object deletion is not finalized');
+    await s.alice.renewSession(); // истёк access token, проверяем tombstone под новой сессией
+    assert.equal((await http(s.base, 'GET', `/files/${enc(abandoned)}/url`, { token: s.alice.token })).status, 409,
+      'deleting metadata remains as a retryable tombstone');
+    assert.equal(await s.srv.cleanupFiles(), 1, 'next sweep retries and finalizes deletion');
+    assert.equal((await http(s.base, 'GET', `/files/${enc(abandoned)}/url`, { token: s.alice.token })).status, 404);
+  } finally {
+    await s.stop();
+  }
+});
+
+
+test('upload and completion fail closed after room membership is revoked', async () => {
+  const s = await start();
+  try {
+    const beforePut = randomBytes(64);
+    const first = (await announce(s, s.bob.token, beforePut)).json;
+    await s.alice.raw('DELETE', `/rooms/${enc(ROOM)}/members/${enc(BOB)}`);
+    assert.equal((await putTo(first.uploadUrl, beforePut)).status, 403,
+      'membership revoked after announce is revalidated after the stream');
+    assert.equal((await completeFile(s, s.bob.token, first.fileId)).status, 404,
+      'a rejected upload cannot be completed');
+
+    await s.alice.raw('POST', `/rooms/${enc(ROOM)}/members`, { userId: BOB });
+    const secondBytes = randomBytes(72);
+    const second = (await announce(s, s.bob.token, secondBytes)).json;
+    assert.equal((await putTo(second.uploadUrl, secondBytes)).status, 200);
+    await s.alice.raw('DELETE', `/rooms/${enc(ROOM)}/members/${enc(BOB)}`);
+    assert.equal((await completeFile(s, s.bob.token, second.fileId)).status, 403,
+      'membership revoked between PUT and complete blocks ready transition');
+  } finally {
+    await s.stop();
+  }
+});
+
+
+test('неудачная загрузка освобождает квоту и слот pending reservation', async () => {
+  const s = await start({ quotaBytes: 64 });
+  try {
+    const expected = randomBytes(64);
+    const created = (await announce(s, s.alice.token, expected)).json;
+    assert.equal((await putTo(created.uploadUrl, randomBytes(64))).status, 422,
+      'checksum mismatch fails the upload');
+    const retry = await announce(s, s.alice.token, expected);
+    assert.equal(retry.status, 200,
+      'failed upload tombstone is finalized and its reservation is released');
+  } finally {
+    await s.stop();
+  }
+});
+
+
+test('параллельные резервации разных владельцев не превышают квоту организации', async () => {
+  const s = await start();
+  try {
+    const { orgs } = await s.alice.raw('GET', '/orgs/mine');
+    const orgId = orgs[0]?.orgId;
+    assert.ok(orgId, 'test users belong to the default organization');
+    // Test fixture: give Alice the owner role so the quota setting is changed through the real authorized route.
+    await s.store.setOrgMemberRole(orgId, ALICE, 'owner');
+    const setting = await s.alice.raw('POST', `/orgs/${enc(orgId)}/settings`, { field: 'fileQuotaBytes', value: 1000 });
+    assert.equal(setting.settings.fileQuotaBytes, 1000);
+    const requests = await Promise.all(Array.from({ length: 20 }, (_, index) =>
+      announce(s, index % 2 === 0 ? s.alice.token : s.bob.token, Buffer.alloc(100))));
+    assert.equal(requests.filter((r) => r.status === 200).length, 10,
+      'organization advisory lock serializes reservations across owners');
+    assert.equal(requests.filter((r) => r.status === 413 && r.json?.code === 'org_quota_exceeded').length, 10);
+  } finally {
+    await s.stop();
+  }
+});
+
+
+test('параллельные pending reservations не превышают лимит владельца', async () => {
+  const s = await start();
+  try {
+    const requests = await Promise.all(Array.from({ length: 25 }, () =>
+      announce(s, s.alice.token, Buffer.alloc(10))));
+    assert.equal(requests.filter((r) => r.status === 200).length, 20);
+    assert.equal(requests.filter((r) => r.status === 429).length, 5);
+  } finally {
+    await s.stop();
+  }
+});
+
+
+test('одна upload reservation допускает только один параллельный PUT', async () => {
+  const s = await start();
+  try {
+    const bytes = randomBytes(4096);
+    const created = (await announce(s, s.alice.token, bytes)).json;
+    const results = await Promise.all([
+      putTo(created.uploadUrl, bytes),
+      putTo(created.uploadUrl, bytes),
+    ]);
+    assert.deepEqual(results.map((r) => r.status).sort((a, b) => a - b), [200, 409]);
+    assert.equal((await completeFile(s, s.alice.token, created.fileId)).status, 200,
+      'the winning stream remains completable');
+  } finally {
+    await s.stop();
+  }
+});
+
+
+test('upload completion discards ciphertext after send capability is revoked', async () => {
+  const s = await start();
+  try {
+    const bytes = randomBytes(96);
+    const created = (await announce(s, s.bob.token, bytes)).json;
+    assert.equal((await putTo(created.uploadUrl, bytes)).status, 200);
+    await s.alice.raw('POST', `/rooms/${enc(ROOM)}/capabilities`, { userId: BOB, capabilities: [] });
+    assert.equal((await completeFile(s, s.bob.token, created.fileId)).status, 403);
+    assert.equal((await http(s.base, 'GET', `/files/${enc(created.fileId)}/url`, { token: s.bob.token })).status, 404,
+      'unauthorized uploaded ciphertext is tombstoned and removed');
   } finally {
     await s.stop();
   }

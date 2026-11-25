@@ -1,3 +1,11 @@
+## 2026-11-24 — CTO Beta 1.0 security remediation roadmap recorded
+
+- Added authoritative staged plan: `development/roadmaps/2026-11-24-beta1-cto-security-remediation-roadmap.md`.
+- Sequence: Gate 0 exact-SHA acceptance for Stage 1 B-01/B-02/B-03; Stage 2 file streaming/quotas/lifecycle (B-04/B-13); Stage 3 runtime/security boundaries (B-06/B-08/B-09/B-10/B-11/B-15); Stage 4 DB integrity/cleanup/admin atomicity (B-07/B-12/B-14); Stage 5 supply-chain, CI and production operations; final owner-approved release gate.
+- Recorded current evidence at SHA `4824dfc3b3f4e3aab5d39b16c1adf934a108d660`: exact-SHA gate #45432827863 FAILURE; iOS run #45432827935 QUEUED at last poll; Backend Compose, Dev Container Compose, Email/PostgreSQL, P0, Flutter mobile and Native MLS runs reported SUCCESS. Stage 1 remains NOT ACCEPTED.
+- Updated continuity handoff files. No application source, schema, tests, workflows, secrets, settings or main branch changed. PR #135 remains Draft/open/unmerged.
+- Explicitly left ready-file retention as an owner decision; SMS remains out of scope; native MLS remains disabled by default; WBS v1.1 unchanged.
+
 ## 2026-11-19 — A2 FRB reconciliation audit started
 
 - Verified `main` remains at A1 merge commit `c939634288db1e7105cfe8d6a7182d4469da1dc4`; A1 PR #95 is merged. Post-merge runs #44519837539, #44519837547 and #44519837614 were not all terminal/successful at inspection; see the A2 report for job-level states.
@@ -756,3 +764,23 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Main now has 8/9 push workflows completed PASS. The only remaining workflow is `Native MLS client validation`: its four non-iOS jobs PASS; the iOS Keychain native-target job's first attempt was cancelled, and the targeted rerun remains QUEUED.
 - The cancelled job had no retrievable logs; the rerun is the next evidence point. Do not call main fully validated until it completes.
 
+
+
+## 2026-11-24 — CTO backend security remediation Stage 0
+
+- Re-fetched live main at `02880940c1e4d8261405fbeaa01f40879eb44f3a`; created isolated branch `security/beta1-backend-remediation-2026-11-24` directly from that exact SHA.
+- Read repository agent mandate, WBS v1.1, Git integration policy, working rules, historical test evidence and current continuity documents. Canonical backend source is `inone-development-archive-0.6.0/engine`.
+- Revalidated source and recorded confirmed source-level findings B-01, B-02, B-03, B-04, B-06, B-07, B-08, B-09, B-10 and B-11; B-12/B-13/B-14 need additional investigation; B-15 is partial. Detailed evidence: `development/reports/2026-11-24-cto-backend-security-remediation-stage0.md`.
+- Main already contains PR #132 MLS Welcome atomicity work; did not repeat it. Reviewed open-PR inventory and identified overlap requiring patch/ancestry review (#42, #63, #65, #66, #86, #89 and G2/MLS PRs).
+- Exact-main workflows at inspection: five completed PASS and three IN PROGRESS; these are not a substitute for the requested security test matrix. Main protection API reports `protected=false`.
+- No backend source/migration/test/workflow changes. New tests, exploit reproduction, PostgreSQL concurrency/fault injection and full suite are NOT RUN. No local clone/Codespace runner is available in this session; broad backend edits are blocked by repository policy until a complete working copy/test runner is available.
+- Beta 1.0 verdict remains NOT READY for backend security acceptance. SMS confirmation/recovery/provider work excluded; native MLS remains disabled by default; no merge, issue closure or repository setting mutation performed.
+
+
+## 2026-11-24 — Stage 0 continued: B-12..B-15 and overlap review
+
+- Expanded review of canonical backend on main. Confirmed B-12 last-owner/role/audit operations use check-then-write across independent pool queries; B-13 owner/org quota checks are non-atomic preflight reads, and ready-object retention/deletion lifecycle is incomplete; B-15 readiness only pings the store and liveness is exposed as `/healthz`.
+- Refined B-14: current FCM sender already classifies invalid FIDs as permanent `invalid_target`, deletes the matching registration, cancels queued deliveries and has a push regression test. Marked FIXED at source level; DB test execution still required.
+- Confirmed current `main` already contains device-bound signed file downloads (same class of work as PR #86); do not duplicate. PR #42 is only a PostgreSQL workflow against old `inone-engine-poc-0.6.0` paths, not a current-engine transaction fix. PR #65 only hardens one error catch, not the global request boundary.
+- Reviewed mobile code-search results for legacy KeyPackage/to-device endpoint usage; no direct mobile references surfaced in the searched source paths. This is not yet a complete API compatibility proof; inspect Rust/Flutter transport adapters and runtime traces before retiring legacy API.
+- Expanded the Stage 0 report with the updated matrix and exact PR dispositions. No source changes, test runs, issue closures, merges, secret edits or repo setting changes.

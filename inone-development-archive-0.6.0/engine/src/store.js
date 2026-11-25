@@ -43,6 +43,98 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
     }
   }
 
+  // Lock organization membership/link before the room_members row. Revocation uses the
+  // same order (link -> room_members), so an in-flight write either commits before revoke
+  // or observes the revoked relationship and is rejected.
+  async function lockRoomWriteAccess(client, roomId, userId) {
+    const { rows: roomRows } = await client.query(
+      'SELECT org_id FROM rooms WHERE room_id = $1 FOR SHARE',
+      [roomId],
+    );
+    if (!roomRows[0]) return 'room_not_found';
+    const orgId = roomRows[0].org_id;
+    const { rows: orgRows } = await client.query(
+      'SELECT status FROM organizations WHERE org_id = $1 FOR SHARE',
+      [orgId],
+    );
+    if (!orgRows[0] || orgRows[0].status !== 'approved') return 'org_not_approved';
+    const { rows: directMembership } = await client.query(
+      'SELECT 1 FROM org_members WHERE org_id = $1 AND user_id = $2 FOR SHARE',
+      [orgId, userId],
+    );
+    if (!directMembership.length) {
+      const { rows: linkedMembership } = await client.query(
+        `SELECT 1
+           FROM org_members member
+           JOIN organizations member_org ON member_org.org_id = member.org_id
+           JOIN org_links link
+             ON link.status = 'active'
+            AND ((link.org_a = member.org_id AND link.org_b = $1)
+              OR (link.org_b = member.org_id AND link.org_a = $1))
+          WHERE member.user_id = $2 AND member_org.status = 'approved'
+          LIMIT 1 FOR SHARE OF member, member_org, link`,
+        [orgId, userId],
+      );
+      if (!linkedMembership.length) return 'org_not_member';
+    }
+    const { rows: roomMembership } = await client.query(
+      'SELECT 1 FROM room_members WHERE room_id = $1 AND user_id = $2 FOR SHARE',
+      [roomId, userId],
+    );
+    return roomMembership.length ? null : 'not_member';
+  }
+
+  async function lockUserOrgAccess(client, userId, orgId) {
+    const { rows: direct } = await client.query(
+      'SELECT 1 FROM org_members WHERE org_id = $1 AND user_id = $2 FOR SHARE',
+      [orgId, userId],
+    );
+    if (direct.length) return true;
+    const { rows: linked } = await client.query(
+      `SELECT 1
+         FROM org_members member
+         JOIN organizations member_org ON member_org.org_id = member.org_id
+         JOIN org_links link
+           ON link.status = 'active'
+          AND ((link.org_a = member.org_id AND link.org_b = $1)
+            OR (link.org_b = member.org_id AND link.org_a = $1))
+        WHERE member.user_id = $2 AND member_org.status = 'approved'
+        LIMIT 1 FOR SHARE OF member, member_org, link`,
+      [orgId, userId],
+    );
+    return linked.length > 0;
+  }
+
+  async function lockUsersShareOrgOrLink(client, userA, userB) {
+    if (userA === userB) return true;
+    const { rows: sameOrg } = await client.query(
+      `SELECT 1
+         FROM org_members a
+         JOIN organizations org_a ON org_a.org_id = a.org_id
+         JOIN org_members b ON b.org_id = a.org_id AND b.user_id = $2
+         JOIN organizations org_b ON org_b.org_id = b.org_id
+        WHERE a.user_id = $1 AND org_a.status = 'approved' AND org_b.status = 'approved'
+        LIMIT 1 FOR SHARE OF a, org_a, b, org_b`,
+      [userA, userB],
+    );
+    if (sameOrg.length) return true;
+    const { rows: linked } = await client.query(
+      `SELECT 1
+         FROM org_members a
+         JOIN organizations org_a ON org_a.org_id = a.org_id
+         JOIN org_members b ON b.user_id = $2
+         JOIN organizations org_b ON org_b.org_id = b.org_id
+         JOIN org_links link
+           ON link.status = 'active'
+          AND ((link.org_a = a.org_id AND link.org_b = b.org_id)
+            OR (link.org_b = a.org_id AND link.org_a = b.org_id))
+        WHERE a.user_id = $1 AND org_a.status = 'approved' AND org_b.status = 'approved'
+        LIMIT 1 FOR SHARE OF a, org_a, b, org_b, link`,
+      [userA, userB],
+    );
+    return linked.length > 0;
+  }
+
   return {
     /** Регистрация: false, если логин уже занят. Гонка двух регистраций решается уникальным ключом. */
     async addAccount(userId, passwordHash, opts = {}) {
@@ -117,6 +209,9 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
       );
       return rowCount === 1;
     },
+    async releaseSend(senderKey, type, txn) {
+      await pool.query('DELETE FROM sends WHERE sender_key = $1 AND type = $2 AND txn = $3', [senderKey, type, txn]);
+    },
 
     async addOneTimeKeys(deviceKey, keys) {
       for (const [name, value] of Object.entries(keys)) {
@@ -132,8 +227,46 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
      * Выдача одноразового ключа. Строка блокируется в транзакции, занятые строки пропускаются:
      * один ключ выдаётся только одному запросу.
      */
-    async claimOneTimeKey(deviceKey) {
+    async claimOneTimeKey(deviceKey, requesterId, targetUserId) {
       return inTransaction(async (c) => {
+        const { rows: deviceRows } = await c.query(
+          'SELECT user_id, revoked FROM devices WHERE device_key = $1 FOR SHARE',
+          [deviceKey],
+        );
+        if (!deviceRows[0] || deviceRows[0].revoked || deviceRows[0].user_id !== targetUserId) return null;
+        if (requesterId !== targetUserId) {
+          const { rows: sameOrg } = await c.query(
+            `SELECT 1
+               FROM org_members sender
+               JOIN organizations sender_org ON sender_org.org_id = sender.org_id
+               JOIN org_members recipient ON recipient.org_id = sender.org_id AND recipient.user_id = $2
+               JOIN organizations recipient_org ON recipient_org.org_id = recipient.org_id
+              WHERE sender.user_id = $1
+                AND sender_org.status = 'approved'
+                AND recipient_org.status = 'approved'
+              LIMIT 1 FOR SHARE OF sender, sender_org, recipient, recipient_org`,
+            [requesterId, targetUserId],
+          );
+          if (!sameOrg.length) {
+            const { rows: linked } = await c.query(
+              `SELECT 1
+                 FROM org_members sender
+                 JOIN organizations sender_org ON sender_org.org_id = sender.org_id
+                 JOIN org_members recipient ON recipient.user_id = $2
+                 JOIN organizations recipient_org ON recipient_org.org_id = recipient.org_id
+                 JOIN org_links link
+                   ON link.status = 'active'
+                  AND ((link.org_a = sender.org_id AND link.org_b = recipient.org_id)
+                    OR (link.org_b = sender.org_id AND link.org_a = recipient.org_id))
+                WHERE sender.user_id = $1
+                  AND sender_org.status = 'approved'
+                  AND recipient_org.status = 'approved'
+                LIMIT 1 FOR SHARE OF sender, sender_org, recipient, recipient_org, link`,
+              [requesterId, targetUserId],
+            );
+            if (!linked.length) return null;
+          }
+        }
         const { rows } = await c.query(
           `SELECT name, value FROM one_time_keys WHERE device_key = $1
            ORDER BY name LIMIT 1 FOR UPDATE SKIP LOCKED`,
@@ -156,6 +289,77 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
          DO UPDATE SET id = nextval('inbox_seq'), body = EXCLUDED.body, expires_at = EXCLUDED.expires_at`,
         [deviceKey, stream, dedupeKey ?? null, JSON.stringify(body), expiresAt],
       );
+    },
+    // Atomic bounded enqueue for user-to-device traffic. The device row serializes concurrent senders.
+    async enqueueToDevice(deviceKey, body, dedupeKey, expiresAt, nowMs, maxPending, senderUserId, recipientUserId) {
+      return inTransaction(async (c) => {
+        if (senderUserId !== recipientUserId) {
+          const { rows: sameOrg } = await c.query(
+            `SELECT 1
+               FROM org_members sender
+               JOIN organizations sender_org ON sender_org.org_id = sender.org_id
+               JOIN org_members recipient ON recipient.org_id = sender.org_id AND recipient.user_id = $2
+               JOIN organizations recipient_org ON recipient_org.org_id = recipient.org_id
+              WHERE sender.user_id = $1
+                AND sender_org.status = 'approved'
+                AND recipient_org.status = 'approved'
+              LIMIT 1 FOR SHARE OF sender, sender_org, recipient, recipient_org`,
+            [senderUserId, recipientUserId],
+          );
+          if (!sameOrg.length) {
+            const { rows: linked } = await c.query(
+              `SELECT 1
+                 FROM org_members sender
+                 JOIN organizations sender_org ON sender_org.org_id = sender.org_id
+                 JOIN org_members recipient ON recipient.user_id = $2
+                 JOIN organizations recipient_org ON recipient_org.org_id = recipient.org_id
+                 JOIN org_links link
+                   ON link.status = 'active'
+                  AND ((link.org_a = sender.org_id AND link.org_b = recipient.org_id)
+                    OR (link.org_b = sender.org_id AND link.org_a = recipient.org_id))
+                WHERE sender.user_id = $1
+                  AND sender_org.status = 'approved'
+                  AND recipient_org.status = 'approved'
+                LIMIT 1 FOR SHARE OF sender, sender_org, recipient, recipient_org, link`,
+              [senderUserId, recipientUserId],
+            );
+            if (!linked.length) return { ok: false, reason: 'not_authorized' };
+          }
+        }
+        const { rows: accounts } = await c.query('SELECT user_id FROM accounts WHERE user_id = $1 FOR UPDATE', [recipientUserId]);
+        if (!accounts[0]) return { ok: false, reason: 'recipient_not_found' };
+        const { rows: devices } = await c.query('SELECT user_id, revoked FROM devices WHERE device_key = $1 FOR UPDATE', [deviceKey]);
+        if (!devices[0] || devices[0].revoked) return { ok: false, reason: 'device_revoked' };
+        if (devices[0].user_id !== recipientUserId) return { ok: false, reason: 'device_mismatch' };
+        await c.query(
+          `DELETE FROM inbox i USING devices d
+            WHERE i.device_key = d.device_key AND d.user_id = $1
+              AND i.stream = 'to_device' AND i.expires_at <= $2`,
+          [recipientUserId, nowMs],
+        );
+        const { rows: existing } = await c.query(
+          "SELECT 1 FROM inbox WHERE device_key = $1 AND stream = 'to_device' AND dedupe_key = $2",
+          [deviceKey, dedupeKey],
+        );
+        if (!existing[0]) {
+          const { rows: counts } = await c.query(
+            `SELECT COUNT(*)::int AS n
+               FROM inbox i JOIN devices d ON d.device_key = i.device_key
+              WHERE d.user_id = $1 AND NOT d.revoked
+                AND i.stream = 'to_device' AND i.expires_at > $2`,
+            [recipientUserId, nowMs],
+          );
+          if (counts[0].n >= maxPending) return { ok: false, reason: 'queue_full' };
+        }
+        await c.query(
+          `INSERT INTO inbox (device_key, stream, dedupe_key, body, expires_at)
+           VALUES ($1, 'to_device', $2, $3::jsonb, $4)
+           ON CONFLICT (device_key, stream, dedupe_key)
+           DO UPDATE SET id = nextval('inbox_seq'), body = EXCLUDED.body, expires_at = EXCLUDED.expires_at`,
+          [deviceKey, dedupeKey, JSON.stringify(body), expiresAt],
+        );
+        return { ok: true };
+      });
     },
 
     /**
@@ -409,6 +613,39 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
           AND rm.user_id IN (SELECT user_id FROM org_members WHERE org_id = $1)
           AND rm.user_id NOT IN (SELECT user_id FROM org_members WHERE org_id = $2)`, [orgX, orgY]);
     },
+    // Revoke the cross-organization link, remove inherited room memberships and write both audit
+    // records atomically. The org_links row lock serializes with join/invite paths that use FOR SHARE.
+    async revokeOrgLink({ linkId, fromStatus, actor, at }) {
+      return inTransaction(async (c) => {
+        const { rows } = await c.query(
+          "UPDATE org_links SET status = 'revoked', decided_by = $3, decided_at = $4 WHERE link_id = $1 AND status = $2 RETURNING org_a, org_b",
+          [linkId, fromStatus, actor, at],
+        );
+        if (!rows[0]) return false;
+        const { org_a: orgA, org_b: orgB } = rows[0];
+        await c.query(`DELETE FROM room_members rm USING rooms r
+          WHERE rm.room_id = r.room_id AND r.org_id = $1
+            AND rm.user_id IN (SELECT user_id FROM org_members WHERE org_id = $2)
+            AND rm.user_id NOT IN (SELECT user_id FROM org_members WHERE org_id = $1)`, [orgA, orgB]);
+        await c.query(`DELETE FROM room_members rm USING rooms r
+          WHERE rm.room_id = r.room_id AND r.org_id = $2
+            AND rm.user_id IN (SELECT user_id FROM org_members WHERE org_id = $1)
+            AND rm.user_id NOT IN (SELECT user_id FROM org_members WHERE org_id = $2)`, [orgA, orgB]);
+        await c.query(`DELETE FROM join_requests jr USING rooms r
+          WHERE jr.room_id = r.room_id AND r.org_id = $1
+            AND jr.user_id IN (SELECT user_id FROM org_members WHERE org_id = $2)
+            AND jr.user_id NOT IN (SELECT user_id FROM org_members WHERE org_id = $1)`, [orgA, orgB]);
+        await c.query(`DELETE FROM join_requests jr USING rooms r
+          WHERE jr.room_id = r.room_id AND r.org_id = $2
+            AND jr.user_id IN (SELECT user_id FROM org_members WHERE org_id = $1)
+            AND jr.user_id NOT IN (SELECT user_id FROM org_members WHERE org_id = $2)`, [orgA, orgB]);
+        await c.query(
+          'INSERT INTO admin_action_log (org_id, actor, action, target, detail, at) VALUES ($1, $2, $3, $4, $5, $6), ($4, $2, $3, $1, $5, $6)',
+          [orgA, actor, 'link_revoke', orgB, linkId, at],
+        );
+        return true;
+      });
+    },
     async logAdminAction({ orgId, actor, action, target, detail, at }) {
       await pool.query('INSERT INTO admin_action_log (org_id, actor, action, target, detail, at) VALUES ($1, $2, $3, $4, $5, $6)', [orgId ?? null, actor, action, target ?? null, detail ?? null, at]);
     },
@@ -553,6 +790,41 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
       return rows.map((r) => ({ userId: r.user_id, deviceId: r.device_id, label: r.label, revoked: r.revoked, createdAt: Number(r.created_at) }));
     },
 
+    async reserveFile({ fileId, ownerId, ownerDeviceId = '', roomId, orgId = null, kind, size, sha256, createdAt, ownerQuotaBytes = null, orgQuotaBytes = null, pendingLimit }) {
+      return inTransaction(async (c) => {
+        // Advisory transaction locks serialize all quota/pending reservations for the same owner
+        // and organization. Acquire in lexical order to avoid cross-scope lock inversion.
+        const lockKeys = [`inone-file-owner:${ownerId}`];
+        if (orgId && orgQuotaBytes !== null) lockKeys.push(`inone-file-org:${orgId}`);
+        for (const lockKey of lockKeys.sort()) {
+          await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [lockKey]);
+        }
+        const { rows: pendingRows } = await c.query(
+          "SELECT COUNT(*)::int AS n FROM files WHERE owner_id = $1 AND status IN ('pending', 'uploading', 'uploaded')",
+          [ownerId],
+        );
+        if (pendingRows[0].n >= pendingLimit) return { ok: false, reason: 'pending_limit' };
+        if (ownerQuotaBytes !== null) {
+          const { rows } = await c.query(
+            "SELECT COALESCE(SUM(size), 0)::bigint AS n FROM files WHERE owner_id = $1 AND status IN ('pending', 'uploading', 'uploaded', 'ready', 'deleting')",
+            [ownerId],
+          );
+          if (Number(rows[0].n) + size > ownerQuotaBytes) return { ok: false, reason: 'owner_quota' };
+        }
+        if (orgId && orgQuotaBytes !== null) {
+          const { rows } = await c.query(
+            "SELECT COALESCE(SUM(f.size), 0)::bigint AS n FROM files f JOIN rooms r ON r.room_id = f.room_id WHERE r.org_id = $1 AND f.status IN ('pending', 'uploading', 'uploaded', 'ready', 'deleting')",
+            [orgId],
+          );
+          if (Number(rows[0].n) + size > orgQuotaBytes) return { ok: false, reason: 'org_quota' };
+        }
+        await c.query(
+          'INSERT INTO files (file_id, owner_id, owner_device_id, room_id, kind, size, sha256, status, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
+          [fileId, ownerId, ownerDeviceId, roomId, kind, size, sha256, 'pending', createdAt],
+        );
+        return { ok: true };
+      });
+    },
     async createFile({ fileId, ownerId, ownerDeviceId = '', roomId, kind, size, sha256, createdAt }) {
       await pool.query('INSERT INTO files (file_id, owner_id, owner_device_id, room_id, kind, size, sha256, status, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)', [fileId, ownerId, ownerDeviceId, roomId, kind, size, sha256, 'pending', createdAt]);
     },
@@ -562,24 +834,85 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
       if (!r) return null;
       return { fileId: r.file_id, ownerId: r.owner_id, ownerDeviceId: r.owner_device_id, roomId: r.room_id, kind: r.kind, size: Number(r.size), sha256: r.sha256, status: r.status, createdAt: Number(r.created_at), completedAt: r.completed_at === null ? null : Number(r.completed_at) };
     },
-    async markFileUploaded(fileId) {
-      await pool.query("UPDATE files SET status = 'uploaded' WHERE file_id = $1 AND status = 'pending'", [fileId]);
-    },
-    async markFileReady(fileId, nowMs) {
-      const { rowCount } = await pool.query("UPDATE files SET status = 'ready', completed_at = $2 WHERE file_id = $1 AND status = 'uploaded'", [fileId, nowMs]);
+    async claimFileUpload(fileId, ownerId, ownerDeviceId) {
+      const { rowCount } = await pool.query(
+        "UPDATE files SET status = 'uploading' WHERE file_id = $1 AND owner_id = $2 AND owner_device_id = $3 AND status = 'pending'",
+        [fileId, ownerId, ownerDeviceId],
+      );
       return rowCount === 1;
     },
+    async markFileUploaded(fileId) {
+      const { rowCount } = await pool.query("UPDATE files SET status = 'uploaded' WHERE file_id = $1 AND status = 'uploading'", [fileId]);
+      return rowCount === 1;
+    },
+    async markFileReady(fileId, nowMs, ownerId, ownerDeviceId) {
+      return inTransaction(async (c) => {
+        const { rows: files } = await c.query(
+          "SELECT owner_id, owner_device_id, room_id FROM files WHERE file_id = $1 AND status = 'uploaded' FOR UPDATE",
+          [fileId],
+        );
+        const file = files[0];
+        if (!file || file.owner_id !== ownerId || file.owner_device_id !== ownerDeviceId) return false;
+        const { rows: devices } = await c.query(
+          'SELECT revoked FROM devices WHERE user_id = $1 AND device_id = $2 FOR SHARE',
+          [ownerId, ownerDeviceId],
+        );
+        if (!devices[0] || devices[0].revoked) return false;
+        if (file.room_id) {
+          const access = await lockRoomWriteAccess(c, file.room_id, ownerId);
+          if (access) return false;
+          const { rows: permissions } = await c.query(
+            `SELECT r.owner, rm.capabilities
+               FROM rooms r JOIN room_members rm ON rm.room_id = r.room_id
+              WHERE r.room_id = $1 AND rm.user_id = $2
+              FOR SHARE OF r, rm`,
+            [file.room_id, ownerId],
+          );
+          if (!permissions[0] || (permissions[0].owner !== ownerId && !permissions[0].capabilities.includes('send_messages'))) return false;
+        }
+        const { rowCount } = await c.query(
+          "UPDATE files SET status = 'ready', completed_at = $2 WHERE file_id = $1 AND status = 'uploaded'",
+          [fileId, nowMs],
+        );
+        return rowCount === 1;
+      });
+    },
     async countPendingFiles(ownerId) {
-      const { rows } = await pool.query("SELECT COUNT(*)::int AS n FROM files WHERE owner_id = $1 AND status IN ('pending', 'uploaded')", [ownerId]);
+      const { rows } = await pool.query("SELECT COUNT(*)::int AS n FROM files WHERE owner_id = $1 AND status IN ('pending', 'uploading', 'uploaded')", [ownerId]);
       return rows[0].n;
     },
     async bytesForOwner(ownerId) {
-      const { rows } = await pool.query("SELECT COALESCE(SUM(size), 0)::bigint AS n FROM files WHERE owner_id = $1 AND status IN ('pending', 'uploaded', 'ready')", [ownerId]);
+      const { rows } = await pool.query("SELECT COALESCE(SUM(size), 0)::bigint AS n FROM files WHERE owner_id = $1 AND status IN ('pending', 'uploading', 'uploaded', 'ready', 'deleting')", [ownerId]);
       return Number(rows[0].n);
     },
     async purgeStaleFiles(cutoffMs) {
-      const { rows } = await pool.query("DELETE FROM files WHERE status IN ('pending', 'uploaded') AND created_at < $1 RETURNING file_id", [cutoffMs]);
-      return rows.map((r) => r.file_id);
+      return inTransaction(async (c) => {
+        const { rows } = await c.query(
+          `WITH candidates AS (
+             SELECT file_id FROM files
+              WHERE (status IN ('pending', 'uploading', 'uploaded') AND created_at < $1) OR status = 'deleting'
+              ORDER BY created_at, file_id
+              FOR UPDATE SKIP LOCKED
+              LIMIT 100
+           )
+           UPDATE files f SET status = 'deleting'
+             FROM candidates c WHERE f.file_id = c.file_id
+           RETURNING f.file_id`,
+          [cutoffMs],
+        );
+        return rows.map((r) => r.file_id);
+      });
+    },
+    async markFileDeleting(fileId) {
+      const { rowCount } = await pool.query(
+        "UPDATE files SET status = 'deleting' WHERE file_id = $1 AND status IN ('pending', 'uploading', 'uploaded')",
+        [fileId],
+      );
+      return rowCount === 1;
+    },
+    async finalizeFileDeletion(fileId) {
+      const { rowCount } = await pool.query("DELETE FROM files WHERE file_id = $1 AND status = 'deleting'", [fileId]);
+      return rowCount === 1;
     },
     async setPushToken(deviceKey, provider, registration, nowMs) {
       if (!registration || !Buffer.isBuffer(registration.tokenCiphertext) || !Buffer.isBuffer(registration.tokenIv) || !Buffer.isBuffer(registration.tokenTag)) {
@@ -640,9 +973,29 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
       return rows; // имена столбцов как в таблице: так читает журнал команда scripts/set-flag.mjs
     },
     async revokeDevice(deviceKey) {
-      // Отключённое устройство теряет ключи, одноразовые ключи и очередь доставки.
+      // Отключённое устройство теряет все ключи, незавершённые MLS packages и очередь доставки.
       await inTransaction(async (c) => {
+        const { rows: deviceRows } = await c.query(
+          'SELECT user_id, device_id FROM devices WHERE device_key = $1 FOR UPDATE',
+          [deviceKey],
+        );
         await c.query('UPDATE devices SET revoked = TRUE WHERE device_key = $1', [deviceKey]);
+        if (deviceRows[0]) {
+          await c.query('DELETE FROM mls_key_packages WHERE user_id = $1 AND device_id = $2', [deviceRows[0].user_id, deviceRows[0].device_id]);
+          await c.query(
+            `UPDATE mls_key_package_claims c
+                SET result = COALESCE((
+                  SELECT jsonb_agg(items.item)
+                    FROM jsonb_array_elements(c.result) AS items(item)
+                   WHERE items.item->>'deviceId' <> $2
+                ), '[]'::jsonb)
+              WHERE c.target_user_id = $1 AND c.result IS NOT NULL`,
+            [deviceRows[0].user_id, deviceRows[0].device_id],
+          );
+        }
+        if (deviceRows[0]) {
+          await c.query('DELETE FROM mls_welcomes WHERE user_id = $1 AND device_id = $2 AND acked_at IS NULL', [deviceRows[0].user_id, deviceRows[0].device_id]);
+        }
         await c.query('DELETE FROM device_keys WHERE device_key = $1', [deviceKey]);
         await c.query('DELETE FROM one_time_keys WHERE device_key = $1', [deviceKey]);
         await c.query('DELETE FROM inbox WHERE device_key = $1', [deviceKey]);
@@ -887,6 +1240,49 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
       );
       return Object.fromEntries(rows.map((r) => [r.device_id, r.body]));
     },
+    async queryDeviceKeysForUser(requesterId, targetUserId) {
+      return inTransaction(async (c) => {
+        if (requesterId !== targetUserId) {
+          const { rows: sameOrg } = await c.query(
+            `SELECT 1
+               FROM org_members sender
+               JOIN organizations sender_org ON sender_org.org_id = sender.org_id
+               JOIN org_members recipient ON recipient.org_id = sender.org_id AND recipient.user_id = $2
+               JOIN organizations recipient_org ON recipient_org.org_id = recipient.org_id
+              WHERE sender.user_id = $1
+                AND sender_org.status = 'approved'
+                AND recipient_org.status = 'approved'
+              LIMIT 1 FOR SHARE OF sender, sender_org, recipient, recipient_org`,
+            [requesterId, targetUserId],
+          );
+          if (!sameOrg.length) {
+            const { rows: linked } = await c.query(
+              `SELECT 1
+                 FROM org_members sender
+                 JOIN organizations sender_org ON sender_org.org_id = sender.org_id
+                 JOIN org_members recipient ON recipient.user_id = $2
+                 JOIN organizations recipient_org ON recipient_org.org_id = recipient.org_id
+                 JOIN org_links link
+                   ON link.status = 'active'
+                  AND ((link.org_a = sender.org_id AND link.org_b = recipient.org_id)
+                    OR (link.org_b = sender.org_id AND link.org_a = recipient.org_id))
+                WHERE sender.user_id = $1
+                  AND sender_org.status = 'approved'
+                  AND recipient_org.status = 'approved'
+                LIMIT 1 FOR SHARE OF sender, sender_org, recipient, recipient_org, link`,
+              [requesterId, targetUserId],
+            );
+            if (!linked.length) return null;
+          }
+        }
+        const { rows } = await c.query(
+          `SELECT d.device_id, k.body FROM device_keys k JOIN devices d ON d.device_key = k.device_key
+           WHERE d.user_id = $1 AND NOT d.revoked FOR SHARE OF d`,
+          [targetUserId],
+        );
+        return Object.fromEntries(rows.map((r) => [r.device_id, r.body]));
+      });
+    },
 
     async countOneTimeKeys(deviceKey, prefix) {
       const { rows } = await pool.query(
@@ -899,9 +1295,37 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
     // ---- беседы ----
     async createRoom(roomId, owner, memberIds, opts = {}) {
       return inTransaction(async (c) => {
-        const ins = await c.query('INSERT INTO rooms (room_id, owner, kind, name) VALUES ($1, $2, $3, $4) ON CONFLICT (room_id) DO NOTHING', [roomId, owner, opts.kind ?? 'group', opts.name ?? null]);
+        const orgId = opts.orgId ?? 'org-default';
+        const { rows: orgRows } = await c.query(
+          'SELECT status FROM organizations WHERE org_id = $1 FOR SHARE',
+          [orgId],
+        );
+        if (!orgRows[0] || orgRows[0].status !== 'approved') return { status: 'org_not_approved' };
+        for (const userId of [...new Set(memberIds)].sort()) {
+          const { rows: directMembership } = await c.query(
+            'SELECT 1 FROM org_members WHERE org_id = $1 AND user_id = $2 FOR SHARE',
+            [orgId, userId],
+          );
+          if (directMembership.length) continue;
+          const { rows: linkedMembership } = await c.query(
+            `SELECT 1
+               FROM org_members member
+               JOIN organizations member_org ON member_org.org_id = member.org_id
+               JOIN org_links link
+                 ON link.status = 'active'
+                AND ((link.org_a = member.org_id AND link.org_b = $1)
+                  OR (link.org_b = member.org_id AND link.org_a = $1))
+              WHERE member.user_id = $2 AND member_org.status = 'approved'
+              LIMIT 1 FOR SHARE OF member, member_org, link`,
+            [orgId, userId],
+          );
+          if (!linkedMembership.length) return { status: 'org_not_member', userId };
+        }
+        const ins = await c.query(
+          'INSERT INTO rooms (room_id, owner, kind, name, org_id) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (room_id) DO NOTHING',
+          [roomId, owner, opts.kind ?? 'group', opts.name ?? null, orgId],
+        );
         if (ins.rowCount === 0) return false;
-    if (opts.orgId) await c.query('UPDATE rooms SET org_id = $2 WHERE room_id = $1', [roomId, opts.orgId]);
         const { rows } = await c.query("SELECT value FROM counters WHERE name = 'event_seq' FOR UPDATE");
         const seq = Number(rows[0].value);
         for (const m of [...new Set(memberIds)]) {
@@ -985,11 +1409,20 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
      */
     async appendClientMessageEvent(roomId, userId, clientId, sender, type, content, nowMs, afterAppend = null) {
       return inTransaction(async (c) => {
+        const previous = await c.query(
+          'SELECT seq FROM mls_client_messages WHERE room_id = $1 AND user_id = $2 AND client_message_id = $3 FOR UPDATE',
+          [roomId, userId, clientId],
+        );
+        if (previous.rows[0]) {
+          if (previous.rows[0].seq === null) return { state: 'pending' };
+          return { state: 'done', seq: Number(previous.rows[0].seq) };
+        }
+        const access = await lockRoomWriteAccess(c, roomId, sender);
+        if (access) return { state: access };
         const inserted = await c.query(
           'INSERT INTO mls_client_messages (room_id, user_id, client_message_id, seq) VALUES ($1, $2, $3, NULL) ON CONFLICT DO NOTHING RETURNING client_message_id',
           [roomId, userId, clientId],
         );
-
         if (inserted.rowCount !== 1) {
           const existing = await c.query(
             'SELECT seq FROM mls_client_messages WHERE room_id = $1 AND user_id = $2 AND client_message_id = $3 FOR UPDATE',
@@ -1111,6 +1544,34 @@ async mlsPendingRemovalsFor(userId) {
 
     async addRoomMember(roomId, userId) {
       return inTransaction(async (c) => {
+        const { rows: roomRows } = await c.query(
+          'SELECT r.org_id, o.status AS org_status FROM rooms r JOIN organizations o ON o.org_id = r.org_id WHERE r.room_id = $1 FOR SHARE OF r, o',
+          [roomId],
+        );
+        if (!roomRows[0]) return false;
+        const orgId = roomRows[0].org_id;
+        if (roomRows[0].org_status !== 'approved') return { status: 'org_not_approved' };
+
+        const { rows: directMembership } = await c.query(
+          'SELECT 1 FROM org_members WHERE org_id = $1 AND user_id = $2 FOR SHARE',
+          [orgId, userId],
+        );
+        if (!directMembership.length) {
+          const { rows: linkedMembership } = await c.query(
+            `SELECT 1
+               FROM org_members member
+               JOIN organizations member_org ON member_org.org_id = member.org_id
+               JOIN org_links link
+                 ON link.status = 'active'
+                AND ((link.org_a = member.org_id AND link.org_b = $1)
+                  OR (link.org_b = member.org_id AND link.org_a = $1))
+              WHERE member.user_id = $2 AND member_org.status = 'approved'
+              LIMIT 1 FOR SHARE OF member, member_org, link`,
+            [orgId, userId],
+          );
+          if (!linkedMembership.length) return { status: 'org_not_member' };
+        }
+
         const { rows } = await c.query("SELECT value FROM counters WHERE name = 'event_seq' FOR UPDATE");
         const ins = await c.query(
           'INSERT INTO room_members (room_id, user_id, is_admin, joined_seq, capabilities) VALUES ($1, $2, FALSE, $3, $4::text[]) ON CONFLICT (room_id, user_id) DO NOTHING',
@@ -1195,25 +1656,84 @@ async mlsPendingRemovalsFor(userId) {
     },
 
     async mlsAvailableCount(userId, deviceId, nowMs) {
-      const { rows } = await pool.query('SELECT COUNT(*)::int AS n FROM mls_key_packages WHERE user_id = $1 AND device_id = $2 AND consumed_at IS NULL AND last_resort = FALSE AND created_at >= $3', [userId, deviceId, nowMs - MLS_REGULAR_MAX_AGE_MS]);
+      const { rows } = await pool.query(
+        `SELECT COUNT(*)::int AS n
+           FROM mls_key_packages kp
+           JOIN devices d ON d.user_id = kp.user_id AND d.device_id = kp.device_id
+          WHERE kp.user_id = $1 AND kp.device_id = $2 AND NOT d.revoked
+            AND kp.consumed_at IS NULL AND kp.last_resort = FALSE AND kp.created_at >= $3`,
+        [userId, deviceId, nowMs - MLS_REGULAR_MAX_AGE_MS],
+      );
       return rows[0].n;
     },
     async mlsStoreLastResort(userId, deviceId, bytes, createdAt) {
-      await inTransaction(async (c) => {
+      return inTransaction(async (c) => {
+        const { rows: devices } = await c.query(
+          'SELECT revoked FROM devices WHERE user_id = $1 AND device_id = $2 FOR UPDATE',
+          [userId, deviceId],
+        );
+        if (!devices[0] || devices[0].revoked) return false;
         await c.query('DELETE FROM mls_key_packages WHERE user_id = $1 AND device_id = $2 AND last_resort = TRUE', [userId, deviceId]);
         await c.query('INSERT INTO mls_key_packages (user_id, device_id, package, created_at, last_resort) VALUES ($1, $2, $3, $4, TRUE)', [userId, deviceId, bytes, createdAt]);
+        return true;
       });
     },
 
-    async mlsStoreKeyPackages(userId, deviceId, packages, createdAt) {
-      for (const bytes of packages) {
-        await pool.query('INSERT INTO mls_key_packages (user_id, device_id, package, created_at) VALUES ($1, $2, $3, $4)', [userId, deviceId, bytes, createdAt]);
-      }
+    async mlsStoreKeyPackages(userId, deviceId, packages, createdAt, maxUnused) {
+      return inTransaction(async (c) => {
+        const { rows: devices } = await c.query(
+          'SELECT revoked FROM devices WHERE user_id = $1 AND device_id = $2 FOR UPDATE',
+          [userId, deviceId],
+        );
+        if (!devices[0] || devices[0].revoked) return { ok: false, reason: 'device_revoked' };
+        const { rows: counts } = await c.query(
+          'SELECT COUNT(*)::int AS n FROM mls_key_packages WHERE user_id = $1 AND device_id = $2 AND consumed_at IS NULL AND last_resort = FALSE AND created_at >= $3',
+          [userId, deviceId, createdAt - MLS_REGULAR_MAX_AGE_MS],
+        );
+        if (counts[0].n + packages.length > maxUnused) return { ok: false, reason: 'package_limit' };
+        for (const bytes of packages) {
+          await c.query('INSERT INTO mls_key_packages (user_id, device_id, package, created_at) VALUES ($1, $2, $3, $4)', [userId, deviceId, bytes, createdAt]);
+        }
+        return { ok: true };
+      });
     },
 
     /** Durable KeyPackage reservation. Repeated claim IDs return the exact same package set. */
     async mlsClaimKeyPackages(targetUserId, requesterUserId, requesterDeviceId, claimId, roomId, nowMs) {
       return inTransaction(async (c) => {
+        if (roomId) {
+          const { rows: roomRows } = await c.query(
+            'SELECT org_id, owner FROM rooms WHERE room_id = $1 FOR SHARE',
+            [roomId],
+          );
+          if (!roomRows[0]) return { ok: false, reason: 'room_not_found' };
+          const roomOrgId = roomRows[0].org_id;
+          const { rows: orgRows } = await c.query(
+            'SELECT status FROM organizations WHERE org_id = $1 FOR SHARE',
+            [roomOrgId],
+          );
+          if (!orgRows[0] || orgRows[0].status !== 'approved') return { ok: false, reason: 'org_not_approved' };
+          const requesterAllowed = await lockUserOrgAccess(c, requesterUserId, roomOrgId);
+          const targetAllowed = await lockUserOrgAccess(c, targetUserId, roomOrgId);
+          if (!requesterAllowed || !targetAllowed) return { ok: false, reason: 'not_authorized' };
+          const { rows: inviterMembership } = await c.query(
+            'SELECT capabilities FROM room_members WHERE room_id = $1 AND user_id = $2 FOR SHARE',
+            [roomId, requesterUserId],
+          );
+          if (roomRows[0].owner !== requesterUserId
+            && (!inviterMembership[0] || !inviterMembership[0].capabilities.includes('invite_members'))) {
+            return { ok: false, reason: 'invite_capability_required' };
+          }
+        } else if (!(await lockUsersShareOrgOrLink(c, requesterUserId, targetUserId))) {
+          return { ok: false, reason: 'not_authorized' };
+        }
+        // Lock active target devices before the claim row so device revocation and package
+        // reservation have a consistent lock order and cannot replay a revoked device package.
+        const { rows: activeDeviceRows } = await c.query(
+          'SELECT device_id FROM devices WHERE user_id = $1 AND NOT revoked ORDER BY device_id FOR SHARE',
+          [targetUserId],
+        );
+        const activeDeviceIds = new Set(activeDeviceRows.map((row) => row.device_id));
         await c.query(
           'INSERT INTO mls_key_package_claims (target_user_id, requester_user_id, requester_device_id, claim_id, room_id, state, result, created_at) VALUES ($1, $2, $3, $4, $5, \'reserved\', NULL, $6) ON CONFLICT (target_user_id, requester_user_id, requester_device_id, claim_id) DO NOTHING',
           [targetUserId, requesterUserId, requesterDeviceId, claimId, roomId ?? null, nowMs],
@@ -1236,7 +1756,7 @@ async mlsPendingRemovalsFor(userId) {
         if (claim.result !== null) {
           return {
             ok: true,
-            packages: claim.result.map((item) => ({
+            packages: claim.result.filter((item) => activeDeviceIds.has(item.deviceId)).map((item) => ({
               deviceId: item.deviceId,
               packageId: item.packageId ?? null,
               package: Buffer.from(item.package, 'base64'),
@@ -1245,18 +1765,32 @@ async mlsPendingRemovalsFor(userId) {
         }
 
         const { rows: devices } = await c.query(
-          'SELECT DISTINCT device_id FROM mls_key_packages WHERE user_id = $1 AND consumed_at IS NULL ORDER BY device_id',
-          [targetUserId],
+          `SELECT DISTINCT device_id FROM mls_key_packages
+            WHERE user_id = $1 AND device_id = ANY($2::text[]) AND consumed_at IS NULL
+            ORDER BY device_id`,
+          [targetUserId, [...activeDeviceIds]],
         );
         const out = [];
         for (const { device_id: deviceId } of devices) {
           const { rows } = await c.query(
-            'UPDATE mls_key_packages SET consumed_at = $3 WHERE id = (SELECT id FROM mls_key_packages WHERE user_id = $1 AND device_id = $2 AND consumed_at IS NULL AND last_resort = FALSE AND created_at >= $4 ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED) RETURNING id, package',
+            `UPDATE mls_key_packages SET consumed_at = $3
+              WHERE id = (
+                SELECT kp.id FROM mls_key_packages kp
+                JOIN devices d ON d.user_id = kp.user_id AND d.device_id = kp.device_id
+                WHERE kp.user_id = $1 AND kp.device_id = $2 AND NOT d.revoked
+                  AND kp.consumed_at IS NULL AND kp.last_resort = FALSE AND kp.created_at >= $4
+                ORDER BY kp.id LIMIT 1 FOR UPDATE OF kp SKIP LOCKED
+              ) RETURNING id, package`,
             [targetUserId, deviceId, nowMs, nowMs - MLS_REGULAR_MAX_AGE_MS],
           );
           if (rows[0]) { out.push({ deviceId, packageId: Number(rows[0].id), package: rows[0].package }); continue; }
           const { rows: fallback } = await c.query(
-            'SELECT id, package FROM mls_key_packages WHERE user_id = $1 AND device_id = $2 AND last_resort = TRUE AND created_at >= $3 ORDER BY id DESC LIMIT 1',
+            `SELECT kp.id, kp.package
+               FROM mls_key_packages kp
+               JOIN devices d ON d.user_id = kp.user_id AND d.device_id = kp.device_id
+              WHERE kp.user_id = $1 AND kp.device_id = $2 AND NOT d.revoked
+                AND kp.last_resort = TRUE AND kp.created_at >= $3
+              ORDER BY kp.id DESC LIMIT 1`,
             [targetUserId, deviceId, nowMs - MLS_LAST_RESORT_MAX_AGE_MS],
           );
           if (fallback[0]) out.push({ deviceId, packageId: Number(fallback[0].id), package: fallback[0].package });
@@ -1418,6 +1952,8 @@ async mlsPendingRemovalsFor(userId) {
 
     async appendRoomEvent(roomId, sender, type, content, nowMs, afterAppend = null) {
       return inTransaction(async (c) => {
+        const access = await lockRoomWriteAccess(c, roomId, sender);
+        if (access) return { state: access };
         const { rows } = await c.query("UPDATE counters SET value = value + 1 WHERE name = 'event_seq' RETURNING value");
         const seq = Number(rows[0].value);
         await c.query(
@@ -1523,6 +2059,67 @@ async mlsPendingRemovalsFor(userId) {
         if (current !== baseEpoch) {
           await client.query('ROLLBACK');
           return { ok: false, reason: 'epoch_outdated', epoch: current };
+        }
+        if ((changes.adds ?? []).length > 0) {
+          const { rows: roomRows } = await client.query(
+            'SELECT org_id FROM rooms WHERE room_id = $1 FOR SHARE',
+            [roomId],
+          );
+          if (!roomRows[0]) {
+            await client.query('ROLLBACK');
+            return { ok: false, reason: 'room_not_found', epoch: current };
+          }
+          const roomOrgId = roomRows[0].org_id;
+          const { rows: roomOrgRows } = await client.query(
+            'SELECT status FROM organizations WHERE org_id = $1 FOR SHARE',
+            [roomOrgId],
+          );
+          if (!roomOrgRows[0] || roomOrgRows[0].status !== 'approved') {
+            await client.query('ROLLBACK');
+            return { ok: false, reason: 'org_not_approved', epoch: current };
+          }
+          // Recheck every new member's organization eligibility under locks in the same
+          // transaction as the MLS commit. This closes the gap between HTTP authorization
+          // and membership mutation when an organization link is revoked concurrently.
+          for (const targetUserId of [...changes.adds].sort()) {
+            const { rows: directMembership } = await client.query(
+              'SELECT 1 FROM org_members WHERE org_id = $1 AND user_id = $2 FOR SHARE',
+              [roomOrgId, targetUserId],
+            );
+            if (directMembership.length) continue;
+            const { rows: linkedMembership } = await client.query(
+              `SELECT 1
+                 FROM org_members member
+                 JOIN organizations member_org ON member_org.org_id = member.org_id
+                 JOIN org_links link
+                   ON link.status = 'active'
+                  AND ((link.org_a = member.org_id AND link.org_b = $1)
+                    OR (link.org_b = member.org_id AND link.org_a = $1))
+                WHERE member.user_id = $2 AND member_org.status = 'approved'
+                LIMIT 1 FOR SHARE OF member, member_org, link`,
+              [roomOrgId, targetUserId],
+            );
+            if (!linkedMembership.length) {
+              await client.query('ROLLBACK');
+              return { ok: false, reason: 'org_not_member', epoch: current };
+            }
+          }
+        }
+        const requiredDevices = new Map();
+        requiredDevices.set(JSON.stringify([senderId, deviceId]), { userId: senderId, deviceId, sender: true });
+        for (const welcome of welcomes) {
+          requiredDevices.set(JSON.stringify([welcome.userId, welcome.deviceId]), { userId: welcome.userId, deviceId: welcome.deviceId, sender: false });
+        }
+        for (const entry of [...requiredDevices.values()].sort((a, b) =>
+          `${a.userId}|${a.deviceId}`.localeCompare(`${b.userId}|${b.deviceId}`))) {
+          const { rows: activeDevice } = await client.query(
+            'SELECT revoked FROM devices WHERE user_id = $1 AND device_id = $2 FOR SHARE',
+            [entry.userId, entry.deviceId],
+          );
+          if (!activeDevice[0] || activeDevice[0].revoked) {
+            await client.query('ROLLBACK');
+            return { ok: false, reason: entry.sender ? 'sender_device_revoked' : 'welcome_device_revoked', epoch: current };
+          }
         }
         if (joinRequestUserId) {
           if (changes.adds?.length !== 1 || changes.adds[0] !== joinRequestUserId) {
@@ -1640,8 +2237,18 @@ async mlsPendingRemovalsFor(userId) {
     },
 
     async mlsPendingWelcomes(userId, deviceId) {
-      const { rows } = await pool.query('SELECT id, room_id, epoch, welcome FROM mls_welcomes WHERE user_id = $1 AND device_id = $2 AND acked_at IS NULL ORDER BY id', [userId, deviceId]);
-      return rows.map((r) => ({ id: Number(r.id), roomId: r.room_id, epoch: Number(r.epoch), welcome: r.welcome }));
+      return inTransaction(async (c) => {
+        const { rows: devices } = await c.query(
+          'SELECT revoked FROM devices WHERE user_id = $1 AND device_id = $2 FOR SHARE',
+          [userId, deviceId],
+        );
+        if (!devices[0] || devices[0].revoked) return [];
+        const { rows } = await c.query(
+          'SELECT id, room_id, epoch, welcome FROM mls_welcomes WHERE user_id = $1 AND device_id = $2 AND acked_at IS NULL ORDER BY id',
+          [userId, deviceId],
+        );
+        return rows.map((r) => ({ id: Number(r.id), roomId: r.room_id, epoch: Number(r.epoch), welcome: r.welcome }));
+      });
     },
 
     async mlsDropDevicePackages(userId, deviceId) {
@@ -1650,8 +2257,18 @@ async mlsPendingRemovalsFor(userId) {
     },
 
     async mlsAckWelcome(id, userId, deviceId, nowMs) {
-      const { rowCount } = await pool.query('UPDATE mls_welcomes SET acked_at = $4 WHERE id = $1 AND user_id = $2 AND device_id = $3 AND acked_at IS NULL', [id, userId, deviceId, nowMs]);
-      return rowCount === 1;
+      return inTransaction(async (c) => {
+        const { rows: devices } = await c.query(
+          'SELECT revoked FROM devices WHERE user_id = $1 AND device_id = $2 FOR SHARE',
+          [userId, deviceId],
+        );
+        if (!devices[0] || devices[0].revoked) return false;
+        const { rowCount } = await c.query(
+          'UPDATE mls_welcomes SET acked_at = $4 WHERE id = $1 AND user_id = $2 AND device_id = $3 AND acked_at IS NULL',
+          [id, userId, deviceId, nowMs],
+        );
+        return rowCount === 1;
+      });
     },
 
     async phoneOwner(phone) {

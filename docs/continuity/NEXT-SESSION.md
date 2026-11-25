@@ -548,3 +548,36 @@ Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone
 - Implemented in this branch: GET /rooms/mine; public group search/join; room metadata/member/capability reads; capability-gated name/visibility/join-policy settings; native MLS invite when Engine B is active; read markers after durable SQLCipher history; organization roster and owner/admin member add/remove/role changes; organization settings, settings audit log, admin-action log and organization links; profile locale and remote device inventory/revocation. Workspace actions without backend routes, unsupported avatar/publication actions and Feed/Calls navigation are hidden; see the latest sections in development/reports/2026-11-23-beta1-screen-backend-wiring.md.
 - Read `development/reports/2026-11-23-beta1-screen-backend-wiring.md` and `mobile/API-CONTRACTS-BETA-1.md` before further changes.
 - Keep PR #128 and #130 untouched, preserve Engine B, Firebase Push, existing session/navigation, stable IDs, SQLCipher and native MLS default-off. Continue only against verified existing Beta 1.0 backend routes; do not invent endpoints or wire Beta 2.0 placeholder screens.
+
+## Current CTO execution plan — 2026-11-24
+
+Follow [the CTO Beta 1.0 security remediation roadmap](../../development/roadmaps/2026-11-24-beta1-cto-security-remediation-roadmap.md) as the authoritative sequence. Do not restart Stage 0 or duplicate accepted source changes.
+
+1. Re-fetch PR #135 and its current head on `security/beta1-backend-remediation-2026-11-24`.
+2. Close Gate 0 first. Inspect the exact job-level cause for gate run #45432827863 and complete iOS run #45432827935; re-run the aggregate exact-SHA gate after required jobs are terminal. No Stage 1 acceptance based on queued/cancelled or prior-SHA jobs.
+3. After Gate 0 passes, execute Stage 2 B-04/B-13: streaming object writes with incremental SHA-256/backpressure; atomic owner/org/pending reservations; current authorization revalidation; retryable object deletion/reconciliation; tests for concurrency, aborts, checksum and crash boundaries.
+4. Do not set a ready-file retention period. Keep pending-upload expiry separate; ask owner only when a retention decision is required.
+5. Then Stage 3 B-06/B-08/B-09/B-10/B-11/B-15; Stage 4 B-07/B-12/B-14; Stage 5 supply-chain, CI and operations. Each stage has its own exit gate in the roadmap.
+6. Before each implementation slice, inspect current source, migration order, existing tests and overlapping PRs. Preserve existing API/client contracts and add negative + PostgreSQL concurrency/fault-injection tests.
+7. Keep PR #135 Draft. No main change, merge, issue closure, secrets/settings mutation, SMS scope, or native MLS enablement. WBS v1.1 unchanged.
+
+Latest documented checkpoint: code SHA `4824dfc3b3f4e3aab5d39b16c1adf934a108d660`; exact-SHA gate failure; iOS queued at last poll. Re-fetch before acting because the branch/Actions state may have advanced.
+
+## Next session — CTO backend security remediation (2026-11-24)
+
+1. Start from `main` SHA `02880940c1e4d8261405fbeaa01f40879eb44f3a` and task branch `security/beta1-backend-remediation-2026-11-24`; first verify both refs have not moved.
+2. Read `development/reports/2026-11-24-cto-backend-security-remediation-stage0.md` and inspect the complete patches/ancestry for open PRs #42, #63, #65, #66, #86 and #89 before porting any overlapping work.
+3. Obtain an authorized complete clone/Codespace and runner. Do not use piecemeal repository API edits for broad backend changes.
+4. Stage 1: fix B-01..B-03 with legacy endpoint/client compatibility, negative tests, PostgreSQL concurrency and fault-injection tests.
+5. Stage 2: fix B-04/B-13 with streaming, quotas, atomic reservations, cleanup and file lifecycle regression tests.
+6. Continue runtime, database and supply-chain stages only after prior stage acceptance.
+7. Keep PR Draft; no merge, no issue closure, no main-protection mutation, no secret changes, no SMS work and no native MLS enablement without owner approval.
+
+
+### Updated next actions after expanded Stage 0 review
+
+- Treat B-12 last-owner protection as a security invariant: serialize owner-count check and mutation under a stable organization-row lock/transaction; audit event must be in the same transaction.
+- For B-13, implement atomic quota reservations for owner and organization (including pending uploads), then stream uploads to temporary object storage with incremental hash and deterministic rollback/cleanup. Preserve existing file API and client upload URL contract.
+- Do not reimplement B-14 FCM invalid-registration cleanup without evidence; add/execute PostgreSQL regression for re-registration racing with old failed delivery.
+- B-15: define exact dependency contract for readiness; keep liveness independent of PostgreSQL and avoid exposing dependency/configuration details.
+- Before deprecating legacy MLS endpoint, finish mobile transport/API call-site audit (Flutter, Rust bridge, generated bindings, integration tests); code-search hits did not show direct Flutter call sites but are not a complete proof.

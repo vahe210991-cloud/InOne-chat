@@ -69,7 +69,7 @@ dbTest('DB3: параллельные запросы получают кажды
     const dk = await store.addDevice(ALICE, 'A_PHONE');
     const keys = Object.fromEntries(Array.from({ length: 5 }, (_, i) => [`signed_curve25519:k${i}`, { key: `v${i}` }]));
     await store.addOneTimeKeys(dk, keys);
-    const settled = await Promise.allSettled(Array.from({ length: 20 }, () => store.claimOneTimeKey(dk)));
+    const settled = await Promise.allSettled(Array.from({ length: 20 }, () => store.claimOneTimeKey(dk, ALICE, ALICE)));
     assert.equal(settled.filter((s) => s.status === 'rejected').length, 0, 'ошибок быть не должно');
     const given = settled.filter((s) => s.status === 'fulfilled' && s.value).map((s) => Object.keys(s.value)[0]);
     assert.equal(given.length, 5, 'выданы все пять ключей и только они');

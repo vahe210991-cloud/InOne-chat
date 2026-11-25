@@ -23,6 +23,8 @@ import { MESSAGE_KINDS, effectiveCapabilities, hasCapability, normalizeCapabilit
 import { createFsObjectStore, createMemoryObjectStore } from './object-store.js';
 import { effectiveFlags, publicFlags, validateFlag } from './flags.js';
 import http from 'node:http';
+import { Transform } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { readFileSync } from 'node:fs';
 import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, randomInt, randomUUID, scryptSync, timingSafeEqual, createPublicKey, createVerify } from 'node:crypto';
 import { createMemoryStore } from './store-memory.js';
@@ -45,6 +47,11 @@ export const MAX_APPROVAL_CODE_ATTEMPTS = 3;
 export const MAX_PENDING_APPROVALS = 3;
 export const FREE_PIN_ATTEMPTS = 5;
 export const TO_DEVICE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // недоставленная очередь хранится не дольше 30 дней (спецификация)
+const MAX_TO_DEVICE_RECIPIENTS = 100;
+const MAX_TO_DEVICE_MESSAGES = 200;
+const MAX_TO_DEVICE_ITEM_BYTES = 256 * 1024;
+const MAX_TO_DEVICE_TOTAL_BYTES = 1024 * 1024;
+const MAX_TO_DEVICE_QUEUE = 500;
 const SEND_DEDUP_MS = 7 * 24 * 60 * 60 * 1000;             // повтор отправки с тем же номером считается дублем 7 дней
 const MAX_LOCK_MS = 24 * 60 * 60 * 1000;
 const EMAIL_LOCALES = new Set(['hy', 'ru', 'en']);
@@ -497,38 +504,82 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
       const file = await storage.getFile(fileId);
       if (!file) return send(res, 404, { error: 'not found' });
       if (req.method === 'PUT') {
-        if (!expires || now() > expires || !file.ownerDeviceId || !sameSig(sig, signFor('PUT', fileId, expires, file.size, file.sha256, file.ownerId, file.ownerDeviceId))) {
-          return send(res, 403, { error: 'upload link is invalid or expired' });
+        if (!expires || !file.ownerDeviceId || !sameSig(sig, signFor('PUT', fileId, expires, file.size, file.sha256, file.ownerId, file.ownerDeviceId))) {
+          return send(res, 403, { error: 'upload link is invalid' });
+        }
+        if (now() > expires) {
+          await discardFileUpload(fileId);
+          return send(res, 403, { error: 'upload link is expired' });
         }
         const ownerDevice = await storage.deviceRecord(key(file.ownerId, file.ownerDeviceId));
-        if (!ownerDevice || ownerDevice.revoked) return send(res, 403, { error: 'uploading device is revoked' });
+        if (!ownerDevice || ownerDevice.revoked) {
+          await discardFileUpload(fileId);
+          return send(res, 403, { error: 'uploading device is revoked' });
+        }
         if (file.status !== 'pending') return send(res, 409, { error: 'file is not waiting for upload' });
         if (Number(req.headers['content-length']) !== file.size) {
           res.setHeader('Connection', 'close');
+          await discardFileUpload(fileId);
           return send(res, 413, { error: 'size does not match the declaration' });
         }
-        const chunks = [];
+        const activeOwnerDevice = await storage.deviceRecord(key(file.ownerId, file.ownerDeviceId));
+        if (!activeOwnerDevice || activeOwnerDevice.revoked) return send(res, 403, { error: 'uploading device is revoked' });
         let received = 0;
-        for await (const chunk of req) {
-          received += chunk.length;
-          if (received > file.size) {
+        const digest = createHash('sha256');
+        const verifier = new Transform({
+          transform(chunk, _encoding, callback) {
+            received += chunk.length;
+            if (received > file.size) {
+              const error = new Error('file is larger than declared');
+              error.code = 'FILE_TOO_LARGE';
+              callback(error);
+              return;
+            }
+            digest.update(chunk);
+            callback(null, chunk);
+          },
+        });
+        try {
+          await objectStore.putStream(fileId, req, { transform: verifier });
+        } catch (error) {
+          await discardFileUpload(fileId);
+          if (error.code === 'FILE_TOO_LARGE') {
             res.setHeader('Connection', 'close');
             return send(res, 413, { error: 'file is larger than declared' });
           }
-          chunks.push(chunk);
+          if (received < file.size || error.code === 'ERR_STREAM_PREMATURE_CLOSE') {
+            return send(res, 400, { error: 'incomplete body' });
+          }
+          throw error;
         }
-        const bytes = Buffer.concat(chunks);
-        if (bytes.length !== file.size) return send(res, 400, { error: 'incomplete body' });
-        if (createHash('sha256').update(bytes).digest('hex') !== file.sha256) return send(res, 422, { error: 'checksum does not match the declaration' });
-        const activeOwnerDevice = await storage.deviceRecord(key(file.ownerId, file.ownerDeviceId));
-        if (!activeOwnerDevice || activeOwnerDevice.revoked) return send(res, 403, { error: 'uploading device is revoked' });
-        await objectStore.put(fileId, bytes);
+        if (received !== file.size) {
+          await discardFileUpload(fileId);
+          return send(res, 400, { error: 'incomplete body' });
+        }
+        if (digest.digest('hex') !== file.sha256) {
+          await discardFileUpload(fileId);
+          return send(res, 422, { error: 'checksum does not match the declaration' });
+        }
+        if (!(await storage.claimFileUpload(fileId, file.ownerId, file.ownerDeviceId))) {
+          res.setHeader('Connection', 'close');
+          return send(res, 409, { error: 'upload is already in progress or no longer pending' });
+        }
         const stillActiveOwnerDevice = await storage.deviceRecord(key(file.ownerId, file.ownerDeviceId));
         if (!stillActiveOwnerDevice || stillActiveOwnerDevice.revoked) {
-          await objectStore.remove(fileId).catch(() => {});
+          await discardFileUpload(fileId);
           return send(res, 403, { error: 'uploading device is revoked' });
         }
-        await storage.markFileUploaded(fileId);
+        if (file.roomId) {
+          const room = await storage.getRoom(file.roomId);
+          if (!room || !room.members.includes(file.ownerId) || !hasCapability(room, file.ownerId, 'send_messages')) {
+            await discardFileUpload(fileId);
+            return send(res, 403, { error: 'room upload permission was revoked' });
+          }
+        }
+        if (!(await storage.markFileUploaded(fileId))) {
+          await discardFileUpload(fileId);
+          return send(res, 409, { error: 'upload reservation is no longer active' });
+        }
         return send(res, 200, { uploaded: true });
       }
       if (req.method === 'GET') {
@@ -543,16 +594,22 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
           return send(res, 403, { error: 'not the owner' });
         }
         if (file.status !== 'ready') return send(res, 404, { error: 'not ready' });
-        const bytes = await objectStore.get(fileId);
-        if (!bytes) return send(res, 404, { error: 'not found' });
+        const stream = await objectStore.getStream(fileId);
+        if (!stream) return send(res, 404, { error: 'not found' });
         res.writeHead(200, {
           'content-type': 'application/octet-stream',
-          'content-length': bytes.length,
+          'content-length': file.size,
           'content-disposition': 'attachment',
           'x-content-type-options': 'nosniff',
           'cache-control': 'no-store',
         });
-        return res.end(bytes);
+        try {
+          await pipeline(stream, res);
+        } catch (error) {
+          if (!res.headersSent) return send(res, 404, { error: 'not found' });
+          res.destroy(error);
+        }
+        return;
       }
       return send(res, 405, { error: 'method not allowed' });
     }
@@ -599,10 +656,28 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
       if (!(await storage.orgRoleOf(orgId, userId)) && !(await linkedMember(userId, orgId))) return { status: 403, error: 'not an organization member', code: 'org_not_member' };
       return null;
     };
+    const discardFileUpload = async (fileId) => {
+      await storage.markFileDeleting(fileId);
+      try {
+        await objectStore.remove(fileId);
+        await storage.finalizeFileDeletion(fileId);
+      } catch (error) {
+        logger?.error('failed upload cleanup deferred for retry', { fileId, error: error.message });
+      }
+    };
     const cleanupFiles = async () => {
-      const removed = await storage.purgeStaleFiles(now() - STALE_UPLOAD_MS);
-      for (const fileId of removed) await objectStore.remove(fileId);
-      return removed.length;
+      const pending = await storage.purgeStaleFiles(now() - STALE_UPLOAD_MS);
+      let removed = 0;
+      for (const fileId of pending) {
+        try {
+          // Keep the metadata tombstone until object deletion succeeds. A later sweep retries it.
+          await objectStore.remove(fileId);
+          if (await storage.finalizeFileDeletion(fileId)) removed += 1;
+        } catch (error) {
+          logger?.error('file cleanup failed; deletion will be retried', { fileId, error: error.message });
+        }
+      }
+      return removed;
     };
 
 
@@ -1234,16 +1309,32 @@ if (req.method === 'POST' && p === '/files') {
     if (!r.members.includes(d.userId)) return send(res, 403, { error: 'not a member' });
     if (!hasCapability(r, d.userId, 'send_messages')) return send(res, 403, { error: 'missing capability: send_messages' });
   } else if (kind !== 'avatar') return send(res, 400, { error: 'roomId is required for this kind' });
-  if ((await storage.countPendingFiles(d.userId)) >= PENDING_LIMIT) return send(res, 429, { error: 'too many unfinished uploads' });
-  // Квота по объёму: механизм есть; значение задаёт владелец (по умолчанию не задано).
-  if (quotaBytes !== null && (await storage.bytesForOwner(d.userId)) + size > quotaBytes) return send(res, 413, { error: 'storage quota exceeded' });
+  let fileOrg = null;
+  let orgQuota = null;
   if (forRoom !== undefined) {
-    const fileOrg = await storage.roomOrg(forRoom);
-    const orgQuota = (await storage.orgSettings(fileOrg)).fileQuotaBytes;
-    if (orgQuota !== null && (await storage.bytesForOrg(fileOrg)) + size > orgQuota) return send(res, 413, { error: 'organization storage quota exceeded', code: 'org_quota_exceeded' });
+    fileOrg = await storage.roomOrg(forRoom);
+    if (fileOrg) orgQuota = (await storage.orgSettings(fileOrg)).fileQuotaBytes;
   }
   const fileId = randomBytes(16).toString('hex');
-  await storage.createFile({ fileId, ownerId: d.userId, ownerDeviceId: d.deviceId, roomId: forRoom ?? null, kind, size, sha256: digest, createdAt: now() });
+  const reservation = await storage.reserveFile({
+    fileId,
+    ownerId: d.userId,
+    ownerDeviceId: d.deviceId,
+    roomId: forRoom ?? null,
+    orgId: fileOrg,
+    kind,
+    size,
+    sha256: digest,
+    createdAt: now(),
+    ownerQuotaBytes: quotaBytes,
+    orgQuotaBytes: orgQuota,
+    pendingLimit: PENDING_LIMIT,
+  });
+  if (!reservation.ok) {
+    if (reservation.reason === 'pending_limit') return send(res, 429, { error: 'too many unfinished uploads' });
+    if (reservation.reason === 'org_quota') return send(res, 413, { error: 'organization storage quota exceeded', code: 'org_quota_exceeded' });
+    return send(res, 413, { error: 'storage quota exceeded' });
+  }
   const expires = now() + UPLOAD_TTL_MS;
   const path = `/objects/${fileId}?expires=${expires}&sig=${signFor('PUT', fileId, expires, size, digest, d.userId, d.deviceId)}`;
   return send(res, 200, { fileId, uploadUrl: absoluteUrl(req, path), method: 'PUT', headers: { 'content-length': String(size) }, expiresAt: new Date(expires).toISOString() });
@@ -1256,7 +1347,22 @@ if (req.method === 'POST' && fileDone) {
   const f = await storage.getFile(fileId);
   if (!f || f.ownerId !== d.userId) return send(res, 404, { error: 'not found' });
   if (f.ownerDeviceId !== d.deviceId) return send(res, 403, { error: 'file upload belongs to another device' });
-  if (!(await storage.markFileReady(fileId, now()))) return send(res, 409, { error: 'file is not uploaded yet' });
+  if (f.status !== 'uploaded') return send(res, 409, { error: 'file is not uploaded yet' });
+  if (f.roomId) {
+    const room = await storage.getRoom(f.roomId);
+    if (!room || !room.members.includes(d.userId)) {
+      await discardFileUpload(fileId);
+      return send(res, 403, { error: 'not a member' });
+    }
+    if (!hasCapability(room, d.userId, 'send_messages')) {
+      await discardFileUpload(fileId);
+      return send(res, 403, { error: 'missing capability: send_messages' });
+    }
+  }
+  if (!(await storage.markFileReady(fileId, now(), d.userId, d.deviceId))) {
+    await discardFileUpload(fileId);
+    return send(res, 403, { error: 'current device/room authorization is no longer valid' });
+  }
   return send(res, 200, { fileId, status: 'ready' });
 }
 const fileLink = p.match(/^\/files\/([^/]+)\/url$/);
@@ -1579,14 +1685,8 @@ if (req.method === 'POST' && orgLinkActRoute) {
     return send(res, 200, { status: 'active' });
   }
   if (link.status === 'revoked') return send(res, 409, { error: 'link is already revoked' });
-  const other = link.orgA === orgId ? link.orgB : link.orgA;
-  const transitioned = await storage.transitionOrgLinkStatus({
-    linkId, fromStatus: link.status, status: 'revoked', decidedBy: d.userId, decidedAt: now(),
-  });
-  if (!transitioned) return send(res, 409, { error: 'link state changed; reload and retry' });
-  await storage.removeCrossOrgMemberships(orgId, other);
-  await storage.logAdminAction({ orgId, actor: d.userId, action: 'link_revoke', target: other, detail: linkId, at: now() });
-  await storage.logAdminAction({ orgId: other, actor: d.userId, action: 'link_revoke', target: orgId, detail: linkId, at: now() });
+  const revoked = await storage.revokeOrgLink({ linkId, fromStatus: link.status, actor: d.userId, at: now() });
+  if (!revoked) return send(res, 409, { error: 'link state changed; reload and retry' });
   return send(res, 200, { status: 'revoked' });
 }
 // Журнал действий администраторов (шаг 5.7): читают владелец и администратор организации. Содержимое комнат сюда не попадает.
@@ -1857,21 +1957,43 @@ if (req.method === 'POST' && p === '/login') {
       }
 
       if (req.method === 'POST' && p === '/keys/query') {
-        if (!(await authed(req))) return send(res, 401, { error: 'unauthorized' });
+        const d = await authed(req);
+        if (!d) return send(res, 401, { error: 'unauthorized' });
+        const requested = body?.device_keys;
+        if (!requested || typeof requested !== 'object' || Array.isArray(requested)) {
+          return send(res, 400, { error: 'device_keys must be an object' });
+        }
+        const users = Object.keys(requested);
+        if (users.length > MAX_TO_DEVICE_RECIPIENTS) return send(res, 413, { error: 'too many users in device key query' });
         const out = {};
-        for (const user of Object.keys(body.device_keys || {})) out[user] = await storage.queryDeviceKeys(user);
+        for (const user of users) {
+          // The store rechecks and locks the current organization/link relationship with the key read.
+          out[user] = (await storage.queryDeviceKeysForUser(d.userId, user)) ?? {};
+        }
         return send(res, 200, { device_keys: out, failures: {} });
       }
 
       if (req.method === 'POST' && p === '/keys/claim') {
         const claimer = await authed(req);
         if (!claimer) return send(res, 401, { error: 'unauthorized' });
+        const requested = body?.one_time_keys;
+        if (!requested || typeof requested !== 'object' || Array.isArray(requested)) {
+          return send(res, 400, { error: 'one_time_keys must be an object' });
+        }
+        const users = Object.entries(requested);
+        if (users.length > MAX_TO_DEVICE_RECIPIENTS) return send(res, 413, { error: 'too many users in one-time key claim' });
+        let deviceCount = 0;
         const out = {};
-        for (const [user, devs] of Object.entries(body.one_time_keys || {})) {
-          if (!(await sharesOrgOrLink(claimer.userId, user))) { out[user] = {}; continue; }
+        for (const [user, devs] of users) {
+          if (!user || user.length > 255 || !devs || typeof devs !== 'object' || Array.isArray(devs)) {
+            return send(res, 400, { error: 'invalid one-time key recipient map' });
+          }
           out[user] = {};
           for (const dev2 of Object.keys(devs)) {
-            const claimed = await storage.claimOneTimeKey(key(user, dev2)); // одноразовый ключ выдаётся один раз
+            if (!dev2 || dev2.length > 255 || ++deviceCount > MAX_TO_DEVICE_MESSAGES) {
+              return send(res, 413, { error: 'too many devices in one-time key claim' });
+            }
+            const claimed = await storage.claimOneTimeKey(key(user, dev2), claimer.userId, user);
             if (claimed) out[user][dev2] = claimed;
           }
         }
@@ -1884,17 +2006,65 @@ if (req.method === 'POST' && p === '/login') {
         const [, , rawType = '', rawTxn = ''] = p.split('/');
         const type = decodeURIComponent(rawType);
         const txn = decodeURIComponent(rawTxn);
-        // Повтор с тем же номером (клиент не получил ответ) не создаёт второй копии (C-05).
-        if (txn && !(await storage.recordSend(key(d.userId, d.deviceId), type, txn, now(), SEND_DEDUP_MS))) {
-          return send(res, 200, {});
+        if (!type || type.length > 128 || !txn || txn.length > 128) {
+          return send(res, 400, { error: 'event type and transaction ID are required and must be at most 128 characters' });
         }
-        for (const [user, devs] of Object.entries(body.messages || {})) {
-          for (const [dev2, content] of Object.entries(devs)) {
-            const k2 = key(user, dev2);
-            const target = await storage.deviceRecord(k2);
-            if (!target || target.revoked) continue; // отключённым устройствам не доставляем
-            // Событие получает номер и срок хранения: без подтверждения оно удаляется через 30 дней (C-05).
-            await storage.enqueue(k2, 'to_device', { type, sender: d.userId, content }, null, now() + TO_DEVICE_TTL_MS);
+        const rate = await checkRate('toDevicePerAccount', d.userId);
+        if (!rate.allowed) return send(res, 429, { error: 'too many to-device messages, try later' });
+
+        const messages = body?.messages;
+        if (!messages || typeof messages !== 'object' || Array.isArray(messages)) {
+          return send(res, 400, { error: 'messages must be an object' });
+        }
+        const recipients = Object.entries(messages);
+        if (recipients.length === 0 || recipients.length > MAX_TO_DEVICE_RECIPIENTS) {
+          return send(res, 413, { error: 'invalid or excessive to-device recipient count' });
+        }
+        const normalized = [];
+        let messageCount = 0;
+        let totalBytes = 0;
+        for (const [user, devs] of recipients) {
+          if (!user || user.length > 255 || !devs || typeof devs !== 'object' || Array.isArray(devs)) {
+            return send(res, 400, { error: 'invalid to-device recipient map' });
+          }
+          for (const [deviceId, content] of Object.entries(devs)) {
+            if (!deviceId || deviceId.length > 255 || ++messageCount > MAX_TO_DEVICE_MESSAGES) {
+              return send(res, 413, { error: 'too many to-device messages' });
+            }
+            const encoded = JSON.stringify(content);
+            if (encoded === undefined) return send(res, 400, { error: 'to-device content must be JSON serializable' });
+            const bytes = Buffer.byteLength(encoded);
+            if (bytes > MAX_TO_DEVICE_ITEM_BYTES) return send(res, 413, { error: 'to-device message is too large' });
+            totalBytes += bytes;
+            if (totalBytes > MAX_TO_DEVICE_TOTAL_BYTES) return send(res, 413, { error: 'to-device request is too large' });
+            normalized.push({ user, deviceId, content });
+          }
+        }
+
+        // Persist the transaction ID before enqueue; if a recipient queue is full, release it so retry is safe.
+        const senderKey = key(d.userId, d.deviceId);
+        if (!(await storage.recordSend(senderKey, type, txn, now(), SEND_DEDUP_MS))) return send(res, 200, {});
+        const dedupeKey = `${d.userId}|${d.deviceId}|${type}|${txn}`;
+        for (const item of normalized) {
+          if (!(await sharesOrgOrLink(d.userId, item.user))) continue;
+          const recipientKey = key(item.user, item.deviceId);
+          const target = await storage.deviceRecord(recipientKey);
+          if (!target || target.revoked) continue;
+          const queued = await storage.enqueueToDevice(
+            recipientKey,
+            { type, sender: d.userId, content: item.content },
+            dedupeKey,
+            now() + TO_DEVICE_TTL_MS,
+            now(),
+            MAX_TO_DEVICE_QUEUE,
+            d.userId,
+            item.user,
+          );
+          if (!queued.ok && queued.reason === 'not_authorized') continue;
+          if (!queued.ok && ['device_revoked', 'device_mismatch', 'recipient_not_found'].includes(queued.reason)) continue;
+          if (!queued.ok && queued.reason === 'queue_full') {
+            await storage.releaseSend(senderKey, type, txn);
+            return send(res, 429, { error: 'recipient to-device queue is full', code: 'to_device_queue_full' });
           }
         }
         return send(res, 200, {});
@@ -1985,6 +2155,8 @@ if (req.method === 'POST' && p === '/login') {
           if (e.code === '23505') return send(res, 409, { error: 'channel name is taken' });
           throw e;
         }
+        if (created?.status === 'org_not_approved') return send(res, 403, { error: 'organization is not approved', code: 'org_not_approved' });
+        if (created?.status === 'org_not_member') return send(res, 403, { error: 'initial room member is not eligible for this organization', code: 'org_not_member' });
         if (!created) return send(res, 409, { error: 'room exists' });
         await markRoomChanged(roomId, [...memberSet]);
         return send(res, 200, { roomId });
@@ -2047,7 +2219,9 @@ if (req.method === 'POST' && p === '/login') {
         const memberOrgId = await storage.roomOrg(roomId);
         const memberGate = await orgGate(userId, memberOrgId);
         if (memberGate) return send(res, memberGate.status, { error: memberGate.error, code: memberGate.code });
-        await storage.addRoomMember(roomId, userId);
+        const added = await storage.addRoomMember(roomId, userId);
+        if (added?.status === 'org_not_approved') return send(res, 403, { error: 'organization is not approved', code: 'org_not_approved' });
+        if (added?.status === 'org_not_member') return send(res, 403, { error: 'not an organization member', code: 'org_not_member' });
         await markRoomChanged(roomId, (await storage.getRoom(roomId)).members);
         return send(res, 200, { ok: true });
       }
@@ -2366,6 +2540,7 @@ if (req.method === 'POST' && p === '/login') {
               // Do not reject here: a concurrent exact retry may have been accepted while this request waited.
 
               const { adds, removes } = checked.value.changes;
+              const commitOrgId = await storage.roomOrg(roomId);
               const isOwner = d.userId === r.owner;
               for (const t of removes) {
                 if (!r.members.includes(t)) return send(res, 400, { error: `not a member: ${t}` });
@@ -2379,6 +2554,8 @@ if (req.method === 'POST' && p === '/login') {
                 if (r.members.includes(u)) return send(res, 409, { error: `already a member: ${u}` });
                 if (!isOwner && !hasCapability(r, d.userId, 'invite_members')) return send(res, 403, { error: 'missing capability: invite_members' });
                 if (!(await storage.hasAccount(u))) return send(res, 400, { error: `unknown account: ${u}` });
+                const addGate = await orgGate(u, commitOrgId);
+                if (addGate) return send(res, 403, { error: 'target user is not eligible for this room', code: 'target_not_authorized' });
                 if (!checked.value.welcomes.some((w) => w.userId === u)) return send(res, 400, { error: `added member needs a welcome: ${u}` });
               }
               const pendingDevices = await storage.mlsPendingRemovalDevices(roomId);
@@ -2411,6 +2588,18 @@ if (req.method === 'POST' && p === '/login') {
               }
               if (!result.ok && result.reason === 'join_request_mismatch') {
                 return send(res, 400, { error: 'join request approval does not match the added member', code: 'join_request_mismatch' });
+              }
+              if (!result.ok && result.reason === 'org_not_member') {
+                return send(res, 403, { error: 'target user is not eligible for this room', code: 'target_not_authorized' });
+              }
+              if (!result.ok && result.reason === 'org_not_approved') {
+                return send(res, 403, { error: 'organization is not approved', code: 'org_not_approved' });
+              }
+              if (!result.ok && result.reason === 'sender_device_revoked') {
+                return send(res, 401, { error: 'sender device is no longer active', code: 'device_revoked' });
+              }
+              if (!result.ok && result.reason === 'welcome_device_revoked') {
+                return send(res, 409, { error: 'a Welcome target device is no longer active', code: 'welcome_device_revoked' });
               }
               if (result.ok && !result.replayed && (adds.length > 0 || removes.length > 0)) {
                 await markRoomChanged(roomId, [...new Set([...r.members, ...adds])]);
@@ -2472,9 +2661,17 @@ if (req.method === 'POST' && p === '/login') {
                 );
                 if (result.state === 'done') return send(res, 200, { event_id: `$${result.seq}` });
                 if (result.state === 'pending') return send(res, 409, { error: 'a legacy pending message requires reconciliation' });
+                if (result.state === 'room_not_found') return send(res, 404, { error: 'group not found' });
+                if (['not_member', 'org_not_member', 'org_not_approved'].includes(result.state)) {
+                  return send(res, 403, { error: 'current room organization access is required', code: result.state });
+                }
                 seq = result.seq;
               } else {
                 seq = await storage.appendRoomEvent(roomId, d.userId, 'm.room.encrypted', eventContent, now(), enqueuePush);
+                if (seq && typeof seq === 'object' && seq.state === 'room_not_found') return send(res, 404, { error: 'group not found' });
+                if (seq && typeof seq === 'object' && ['not_member', 'org_not_member', 'org_not_approved'].includes(seq.state)) {
+                  return send(res, 403, { error: 'current room organization access is required', code: seq.state });
+                }
               }
               return send(res, 200, { event_id: `$${seq}` });
             }
@@ -2527,8 +2724,11 @@ if (req.method === 'POST' && p === '/login') {
         if (checked.error) return send(res, 400, { error: checked.error });
         const unused = await storage.mlsAvailableCount(d.userId, d.deviceId, now());
         if (unused + checked.value.length > MLS_UNUSED_MAX) return send(res, 409, { error: `a device can keep at most ${MLS_UNUSED_MAX} unused key packages` });
-        await storage.mlsStoreKeyPackages(d.userId, d.deviceId, checked.value, now());
-        return send(res, 200, { stored: checked.value.length, available: unused + checked.value.length });
+        const stored = await storage.mlsStoreKeyPackages(d.userId, d.deviceId, checked.value, now(), MLS_UNUSED_MAX);
+        if (!stored.ok && stored.reason === 'device_revoked') return send(res, 401, { error: 'device is no longer active' });
+        if (!stored.ok && stored.reason === 'package_limit') return send(res, 409, { error: `a device can keep at most ${MLS_UNUSED_MAX} unused key packages` });
+        const available = await storage.mlsAvailableCount(d.userId, d.deviceId, now());
+        return send(res, 200, { stored: checked.value.length, available });
       }
       if (req.method === 'GET' && p === '/mls/key-packages/count') {
         const d = await authed(req);
@@ -2541,7 +2741,8 @@ if (req.method === 'POST' && p === '/login') {
         if (!d) return send(res, 401, { error: 'unauthorized' });
         const checked = parseKeyPackages([body?.package]);
         if (checked.error) return send(res, 400, { error: checked.error });
-        await storage.mlsStoreLastResort(d.userId, d.deviceId, checked.value[0], now());
+        const stored = await storage.mlsStoreLastResort(d.userId, d.deviceId, checked.value[0], now());
+        if (!stored) return send(res, 401, { error: 'device is no longer active' });
         return send(res, 200, { stored: true });
       }
       const mlsClaims = p.match(/^\/mls\/key-packages\/([^/]+)\/claims$/);
@@ -2558,6 +2759,11 @@ if (req.method === 'POST' && p === '/login') {
         }
         const room = await storage.getRoom(roomId);
         if (!room || !room.members.includes(d.userId)) return send(res, 403, { error: 'not a room member' });
+        const roomOrgId = await storage.roomOrg(roomId);
+        const targetAccess = roomOrgId ? await orgGate(targetUserId, roomOrgId) : { status: 403 };
+        if (targetAccess) {
+          return send(res, 403, { error: 'target user is not eligible for this room', code: 'target_not_authorized' });
+        }
         if (room.members.includes(targetUserId)) return send(res, 409, { error: 'already a member', code: 'already_member' });
         if (d.userId !== room.owner && !hasCapability(room, d.userId, 'invite_members')) {
           return send(res, 403, { error: 'missing capability: invite_members' });
@@ -2566,7 +2772,13 @@ if (req.method === 'POST' && p === '/login') {
         const rate = await checkRate('mlsClaimPerAccount', d.userId);
         if (!rate.allowed) return send(res, 429, { error: 'too many key requests, try later' });
         const claimed = await storage.mlsClaimKeyPackages(targetUserId, d.userId, d.deviceId, claimId, roomId, now());
-        if (!claimed.ok) return send(res, 409, { error: claimed.reason, code: claimed.reason });
+        if (!claimed.ok) {
+          if (claimed.reason === 'room_not_found') return send(res, 404, { error: 'group not found' });
+          if (['not_authorized', 'invite_capability_required', 'org_not_approved'].includes(claimed.reason)) {
+            return send(res, 403, { error: 'current room organization authorization is required', code: claimed.reason });
+          }
+          return send(res, 409, { error: claimed.reason, code: claimed.reason });
+        }
         return send(res, 200, {
           claimId, roomId,
           packages: claimed.packages.map((item) => ({ deviceId: item.deviceId, package: item.package.toString('base64') })),
@@ -2590,10 +2802,17 @@ if (req.method === 'POST' && p === '/login') {
         if (typeof claimId !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(claimId)) {
           return send(res, 400, { error: 'claimId must be 16-128 URL-safe characters' });
         }
+        const targetUserId = decodeURIComponent(mlsClaim[1]);
+        if (!(await sharesOrgOrLink(d.userId, targetUserId))) {
+          return send(res, 403, { error: 'not authorized to claim this user KeyPackage', code: 'org_not_member' });
+        }
         const rate = await checkRate('mlsClaimPerAccount', d.userId);
         if (!rate.allowed) return send(res, 429, { error: 'too many key requests, try later' });
-        const claimed = await storage.mlsClaimKeyPackages(decodeURIComponent(mlsClaim[1]), d.userId, d.deviceId, claimId, null, now());
-        if (!claimed.ok) return send(res, 409, { error: claimed.reason, code: claimed.reason });
+        const claimed = await storage.mlsClaimKeyPackages(targetUserId, d.userId, d.deviceId, claimId, null, now());
+        if (!claimed.ok) {
+          if (claimed.reason === 'not_authorized') return send(res, 403, { error: 'shared organization or active organization link required', code: claimed.reason });
+          return send(res, 409, { error: claimed.reason, code: claimed.reason });
+        }
         return send(res, 200, { claimId, packages: claimed.packages.map((item) => ({ deviceId: item.deviceId, package: item.package.toString('base64') })) });
       }
 

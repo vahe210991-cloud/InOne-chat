@@ -21,6 +21,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  NODE_ENV: test
   ENGINE_DIR: inone-development-archive-0.6.0/engine
   INONE_PIN_PEPPER: ci-only-pepper-not-used-outside-tests-2026
 

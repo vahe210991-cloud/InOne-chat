@@ -43,7 +43,7 @@ fn permanent_commit_failure_is_quarantined_across_restart_without_poisoning_othe
 
     assert!(engine
         .command(&format!(
-            "BADCOMMIT {target_room} @alice-quarantine:inone.test"
+            "BADCOMMIT {target_room} @alice-quarantine:inone.test A_QUARANTINE"
         ))
         .starts_with("OK "));
 

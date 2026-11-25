@@ -668,3 +668,29 @@ Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone
 - No backend source modules, schema/migrations, Rust/FFI source, directory paths or database data were changed. Do not merge to `main` without owner approval.
 
 - PR #120 remains open as Draft against `main`, not merged. Its README received a preservation correction after review; re-read the latest PR head and require fresh exact-head CI before acceptance.
+
+
+## CTO remediation roadmap — 2026-11-24
+
+- Added the staged Beta 1.0 security remediation and release plan: [CTO roadmap](../../development/roadmaps/2026-11-24-beta1-cto-security-remediation-roadmap.md).
+- The plan defines Gate 0 (close exact-SHA Stage 1 B-01/B-02/B-03), Stage 2 (B-04/B-13 file streaming, atomic quotas and lifecycle), Stage 3 (B-06/B-08/B-09/B-10/B-11/B-15 runtime boundary), Stage 4 (B-07/B-12/B-14 database integrity), Stage 5 (supply-chain/CI/operations), and final release acceptance.
+- Reviewed PR #135 head: `4824dfc3b3f4e3aab5d39b16c1adf934a108d660`. Stage 1 remains NOT ACCEPTED: exact-SHA gate #45432827863 failed; iOS run #45432827935 was queued at last poll. Other listed exact-head workflow runs reported success; see roadmap for precise status.
+- Work remains on `security/beta1-backend-remediation-2026-11-24`; PR #135 remains Draft/open/unmerged. `main` unchanged. SMS excluded; native MLS default-off; WBS v1.1 unchanged.
+- Ready-file retention is an explicit owner decision; no duration or automatic ready-file expiry is authorized by this plan.
+
+## CTO backend security remediation — 2026-11-24
+
+- Live main advanced to `02880940c1e4d8261405fbeaa01f40879eb44f3a` (PR #132 included).
+- Stage 0 branch: `security/beta1-backend-remediation-2026-11-24`, created from exact main SHA.
+- Stage 0 report: `development/reports/2026-11-24-cto-backend-security-remediation-stage0.md`.
+- Source-level findings confirmed: B-01, B-02, B-03, B-04, B-06, B-07, B-08, B-09, B-10, B-11. B-12/B-13/B-14 require additional research; B-15 partial.
+- No product source changed and no security tests were executed in this session. Backend remediation is NOT ACCEPTED pending complete clone/Codespace and PostgreSQL-capable runner.
+- GitHub main protection remains disabled (`protected=false`); no settings changed. Five exact-main workflow jobs were PASS and three IN PROGRESS at inspection; not backend security acceptance.
+- SMS is out of scope; native MLS remains disabled by default. Beta 1.0 backend security verdict: NOT READY.
+
+
+### Stage 0 continuation — 2026-11-24
+
+- Expanded source review confirms B-12 and B-13 defects; B-14 is already implemented at source level (invalid FID cleanup, non-retryable classification, queue cancellation, plaintext-free allowlisted push payload), pending DB-backed test execution; B-15 readiness is partial.
+- Current `main` already has device-bound signed downloads; avoid duplicating PR #86. PR #42 workflow targets old engine paths and does not implement atomic revocation. PR #65 is narrow and does not fix the global request boundary.
+- Updated Stage 0 report addendum in `development/reports/2026-11-24-cto-backend-security-remediation-stage0.md`.

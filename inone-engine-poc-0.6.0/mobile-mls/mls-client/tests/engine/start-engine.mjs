@@ -206,8 +206,20 @@ rl.on('line', async (line) => {
       const commits = await store.mlsCommitsSince(parts[1], 0, 1000);
       const base = commits.length ? commits[commits.length - 1].epoch : 0;
       const bad = Buffer.from('это не коммит MLS').toString('base64');
-      await store.mlsApplyCommit(parts[1], base, { senderId: parts[2], commit: bad, welcomes: [], changes: { adds: [], removes: [] } });
-      console.log(`OK ${base + 1}`);
+      const result = await store.mlsApplyCommit(parts[1], base, {
+        senderId: parts[2],
+        deviceId: parts[3],
+        clientOperationId: `badcommit-${base + 1}`,
+        requestFingerprint: `badcommit:${base + 1}`,
+        commit: bad,
+        welcomes: [],
+        changes: { adds: [], removes: [] },
+      }, Date.now());
+      if (!result?.ok) {
+        console.log(`ERR ${result?.reason ?? 'commit rejected'}`);
+        return;
+      }
+      console.log(`OK ${result.epoch}`);
     } catch (error) {
       console.log(`ERR ${error.message}`);
     }

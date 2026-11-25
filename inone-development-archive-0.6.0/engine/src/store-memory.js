@@ -126,6 +126,25 @@ export function createMemoryStore({ pinPepper }) {
     activeDeviceCount: (userId) => [...devices.values()].filter((d) => d.userId === userId && !d.revoked).length,
     activeDevices: () => [...devices.values()].filter((d) => !d.revoked).map(copy),
     devicesOfUser: (userId) => [...devices.values()].filter((d) => d.userId === userId).map(copy),
+    reserveFile({ fileId, ownerId, ownerDeviceId = '', roomId, orgId = null, kind, size, sha256, createdAt, ownerQuotaBytes = null, orgQuotaBytes = null, pendingLimit }) {
+      const owned = [...files.values()].filter((f) => f.ownerId === ownerId);
+      if (owned.filter((f) => f.status === 'pending' || f.status === 'uploading' || f.status === 'uploaded').length >= pendingLimit) {
+        return { ok: false, reason: 'pending_limit' };
+      }
+      if (ownerQuotaBytes !== null && owned
+        .filter((f) => ['pending', 'uploading', 'uploaded', 'ready', 'deleting'].includes(f.status))
+        .reduce((sum, f) => sum + f.size, 0) + size > ownerQuotaBytes) {
+        return { ok: false, reason: 'owner_quota' };
+      }
+      if (orgId && orgQuotaBytes !== null) {
+        const used = [...files.values()]
+          .filter((f) => rooms.get(f.roomId)?.orgId === orgId && ['pending', 'uploading', 'uploaded', 'ready', 'deleting'].includes(f.status))
+          .reduce((sum, f) => sum + f.size, 0);
+        if (used + size > orgQuotaBytes) return { ok: false, reason: 'org_quota' };
+      }
+      files.set(fileId, { fileId, ownerId, ownerDeviceId, roomId, kind, size, sha256, status: 'pending', createdAt, completedAt: null });
+      return { ok: true };
+    },
     createFile({ fileId, ownerId, ownerDeviceId = '', roomId, kind, size, sha256, createdAt }) {
       files.set(fileId, { fileId, ownerId, ownerDeviceId, roomId, kind, size, sha256, status: 'pending', createdAt, completedAt: null });
     },
@@ -133,32 +152,74 @@ export function createMemoryStore({ pinPepper }) {
       const f = files.get(fileId);
       return f ? { ...f } : null;
     },
+    claimFileUpload(fileId, ownerId, ownerDeviceId) {
+      const f = files.get(fileId);
+      if (!f || f.ownerId !== ownerId || f.ownerDeviceId !== ownerDeviceId || f.status !== 'pending') return false;
+      f.status = 'uploading';
+      return true;
+    },
     markFileUploaded(fileId) {
       const f = files.get(fileId);
-      if (f && f.status === 'pending') f.status = 'uploaded';
+      if (!f || f.status !== 'uploading') return false;
+      f.status = 'uploaded';
+      return true;
     },
-    markFileReady(fileId, nowMs) {
+    markFileReady(fileId, nowMs, ownerId, ownerDeviceId) {
       const f = files.get(fileId);
-      if (!f || f.status !== 'uploaded') return false;
+      if (!f || f.status !== 'uploaded' || f.ownerId !== ownerId || f.ownerDeviceId !== ownerDeviceId) return false;
+      const device = devices.get(`${ownerId}|${ownerDeviceId}`);
+      if (!device || device.revoked) return false;
+      if (f.roomId) {
+        const room = rooms.get(f.roomId);
+        if (!room || !room.members.has(ownerId)) return false;
+        const org = organizations.get(room.orgId);
+        if (!org || org.status !== 'approved') return false;
+        let eligible = orgMembers.get(room.orgId)?.has(ownerId) ?? false;
+        if (!eligible) {
+          for (const [memberOrgId, members] of orgMembers) {
+            if (!members.has(ownerId)) continue;
+            const memberOrg = organizations.get(memberOrgId);
+            if (!memberOrg || memberOrg.status !== 'approved') continue;
+            if ([...orgLinks.values()].some((link) => link.status === 'active'
+              && ((link.orgA === memberOrgId && link.orgB === room.orgId)
+                || (link.orgB === memberOrgId && link.orgA === room.orgId)))) {
+              eligible = true;
+              break;
+            }
+          }
+        }
+        if (!eligible) return false;
+        if (room.owner !== ownerId && !(room.capabilities.get(ownerId) ?? []).includes('send_messages')) return false;
+      }
       f.status = 'ready';
       f.completedAt = nowMs;
       return true;
     },
     countPendingFiles(ownerId) {
-      return [...files.values()].filter((f) => f.ownerId === ownerId && (f.status === 'pending' || f.status === 'uploaded')).length;
+      return [...files.values()].filter((f) => f.ownerId === ownerId && (f.status === 'pending' || f.status === 'uploading' || f.status === 'uploaded')).length;
     },
     bytesForOwner(ownerId) {
-      return [...files.values()].filter((f) => f.ownerId === ownerId && ['pending', 'uploaded', 'ready'].includes(f.status)).reduce((sum, f) => sum + f.size, 0);
+      return [...files.values()].filter((f) => f.ownerId === ownerId && ['pending', 'uploading', 'uploaded', 'ready', 'deleting'].includes(f.status)).reduce((sum, f) => sum + f.size, 0);
     },
     purgeStaleFiles(cutoffMs) {
-      const removed = [];
+      const pending = [];
       for (const [id, f] of files) {
-        if ((f.status === 'pending' || f.status === 'uploaded') && f.createdAt < cutoffMs) {
-          files.delete(id);
-          removed.push(id);
-        }
+        if ((f.status === 'pending' || f.status === 'uploading' || f.status === 'uploaded') && f.createdAt < cutoffMs) f.status = 'deleting';
+        if (f.status === 'deleting') pending.push(id);
       }
-      return removed;
+      return pending.slice(0, 100);
+    },
+    markFileDeleting(fileId) {
+      const f = files.get(fileId);
+      if (!f || !['pending', 'uploading', 'uploaded'].includes(f.status)) return false;
+      f.status = 'deleting';
+      return true;
+    },
+    finalizeFileDeletion(fileId) {
+      const f = files.get(fileId);
+      if (!f || f.status !== 'deleting') return false;
+      files.delete(fileId);
+      return true;
     },
     setPushToken(deviceKey, provider, token, nowMs) {
       pushTokens.set(deviceKey, { provider, token, updatedAt: nowMs });
@@ -409,6 +470,34 @@ export function createMemoryStore({ pinPepper }) {
         for (const u of [...r.members]) if (inOrg(other, u) && !inOrg(r.orgId, u)) { r.members.delete(u); r.admins.delete(u); }
       }
     },
+    revokeOrgLink({ linkId, fromStatus, actor, at }) {
+      const link = orgLinks.get(linkId);
+      if (!link || link.status !== fromStatus) return false;
+      link.status = 'revoked';
+      link.decidedBy = actor;
+      link.decidedAt = at;
+      const orgA = link.orgA;
+      const orgB = link.orgB;
+      const inOrg = (org, userId) => orgMembers.get(org)?.has(userId) ?? false;
+      for (const room of rooms.values()) {
+        if (room.orgId !== orgA && room.orgId !== orgB) continue;
+        const other = room.orgId === orgA ? orgB : orgA;
+        for (const userId of [...room.members]) {
+          if (inOrg(other, userId) && !inOrg(room.orgId, userId)) {
+            room.members.delete(userId);
+            room.admins.delete(userId);
+          }
+        }
+        for (const userId of [...room.joinRequests.keys()]) {
+          if (inOrg(other, userId) && !inOrg(room.orgId, userId)) room.joinRequests.delete(userId);
+        }
+      }
+      adminActions.push(
+        { orgId: orgA, actor, action: 'link_revoke', target: orgB, detail: linkId, at },
+        { orgId: orgB, actor, action: 'link_revoke', target: orgA, detail: linkId, at },
+      );
+      return true;
+    },
     logAdminAction({ orgId, actor, action, target, detail, at }) {
       adminActions.push({ orgId: orgId ?? null, actor, action, target: target ?? null, detail: detail ?? null, at });
     },
@@ -425,7 +514,23 @@ export function createMemoryStore({ pinPepper }) {
     },
     revokeDevice(dk) {
       const d = devices.get(dk);
-      if (d) d.revoked = true;
+      if (d) {
+        d.revoked = true;
+        for (let i = mlsPackages.length - 1; i >= 0; i--) {
+          if (mlsPackages[i].userId === d.userId && mlsPackages[i].deviceId === d.deviceId) mlsPackages.splice(i, 1);
+        }
+        for (const [claimKey, claim] of mlsPackageClaims) {
+          const [targetUserId] = JSON.parse(claimKey);
+          if (targetUserId === d.userId) claim.packages = claim.packages.filter((item) => item.deviceId !== d.deviceId);
+        }
+      }
+      if (d) {
+        for (let i = mlsWelcomes.length - 1; i >= 0; i--) {
+          if (mlsWelcomes[i].userId === d.userId && mlsWelcomes[i].deviceId === d.deviceId && mlsWelcomes[i].ackedAt === null) {
+            mlsWelcomes.splice(i, 1);
+          }
+        }
+      }
       deviceKeys.delete(dk);
       oneTimeKeys.delete(dk);
       inbox.delete(dk);
@@ -604,6 +709,29 @@ export function createMemoryStore({ pinPepper }) {
       }
       return out;
     },
+    queryDeviceKeysForUser(requesterId, targetUserId) {
+      if (requesterId !== targetUserId) {
+        const senderOrgs = [...orgMembers.entries()]
+          .filter(([orgId, members]) => members.has(requesterId) && organizations.get(orgId)?.status === 'approved')
+          .map(([orgId]) => orgId);
+        const recipientOrgs = [...orgMembers.entries()]
+          .filter(([orgId, members]) => members.has(targetUserId) && organizations.get(orgId)?.status === 'approved')
+          .map(([orgId]) => orgId);
+        const allowed = senderOrgs.some((senderOrg) => recipientOrgs.some((recipientOrg) =>
+          senderOrg === recipientOrg || [...orgLinks.values()].some((link) =>
+            link.status === 'active' && (
+              (link.orgA === senderOrg && link.orgB === recipientOrg)
+              || (link.orgB === senderOrg && link.orgA === recipientOrg)
+            ))));
+        if (!allowed) return null;
+      }
+      const out = {};
+      for (const [dk, keys] of deviceKeys) {
+        const d = devices.get(dk);
+        if (d && !d.revoked && d.userId === targetUserId) out[d.deviceId] = structuredClone(keys);
+      }
+      return out;
+    },
     addOneTimeKeys(deviceKey, keys) {
       if (!oneTimeKeys.has(deviceKey)) oneTimeKeys.set(deviceKey, new Map());
       const pool = oneTimeKeys.get(deviceKey);
@@ -612,11 +740,28 @@ export function createMemoryStore({ pinPepper }) {
     countOneTimeKeys(deviceKey, prefix) {
       return [...(oneTimeKeys.get(deviceKey)?.keys() ?? [])].filter((n) => n.startsWith(prefix)).length;
     },
-    claimOneTimeKey(deviceKey) {
+    claimOneTimeKey(deviceKey, requesterId, targetUserId) {
+      const device = devices.get(deviceKey);
+      if (!device || device.revoked || device.userId !== targetUserId) return null;
+      if (requesterId !== targetUserId) {
+        const senderOrgs = [...orgMembers.entries()]
+          .filter(([orgId, members]) => members.has(requesterId) && organizations.get(orgId)?.status === 'approved')
+          .map(([orgId]) => orgId);
+        const recipientOrgs = [...orgMembers.entries()]
+          .filter(([orgId, members]) => members.has(targetUserId) && organizations.get(orgId)?.status === 'approved')
+          .map(([orgId]) => orgId);
+        const allowed = senderOrgs.some((senderOrg) => recipientOrgs.some((recipientOrg) =>
+          senderOrg === recipientOrg || [...orgLinks.values()].some((link) =>
+            link.status === 'active' && (
+              (link.orgA === senderOrg && link.orgB === recipientOrg)
+              || (link.orgB === senderOrg && link.orgA === recipientOrg)
+            ))));
+        if (!allowed) return null;
+      }
       const pool = oneTimeKeys.get(deviceKey);
       if (!pool || pool.size === 0) return null;
       const [name, value] = pool.entries().next().value;
-      pool.delete(name); // одноразовый ключ выдаётся один раз
+      pool.delete(name);
       return { [name]: value };
     },
 
@@ -626,6 +771,53 @@ export function createMemoryStore({ pinPepper }) {
       const kept = dedupeKey == null ? q : q.filter((e) => !(e.stream === stream && e.dedupeKey === dedupeKey));
       kept.push({ id: ++counters.inboxSeq, expiresAt, stream, dedupeKey: dedupeKey ?? null, body: structuredClone(body) });
       inbox.set(deviceKey, kept);
+    },
+    enqueueToDevice(deviceKey, body, dedupeKey, expiresAt, nowMs, maxPending, senderUserId, recipientUserId) {
+      if (!accounts.has(recipientUserId)) return { ok: false, reason: 'recipient_not_found' };
+      const device = devices.get(deviceKey);
+      if (!device || device.revoked) return { ok: false, reason: 'device_revoked' };
+      if (device.userId !== recipientUserId) return { ok: false, reason: 'device_mismatch' };
+      if (senderUserId !== recipientUserId) {
+        const senderOrgs = [...orgMembers.entries()]
+          .filter(([orgId, members]) => members.has(senderUserId) && organizations.get(orgId)?.status === 'approved')
+          .map(([orgId]) => orgId);
+        const recipientOrgs = [...orgMembers.entries()]
+          .filter(([orgId, members]) => members.has(recipientUserId) && organizations.get(orgId)?.status === 'approved')
+          .map(([orgId]) => orgId);
+        const allowed = senderOrgs.some((senderOrg) => recipientOrgs.some((recipientOrg) =>
+          senderOrg === recipientOrg || [...orgLinks.values()].some((link) =>
+            link.status === 'active' && (
+              (link.orgA === senderOrg && link.orgB === recipientOrg)
+              || (link.orgB === senderOrg && link.orgA === recipientOrg)
+            ))));
+        if (!allowed) return { ok: false, reason: 'not_authorized' };
+      }
+      const userDeviceKeys = [...devices.entries()]
+        .filter(([, entry]) => entry.userId === recipientUserId && !entry.revoked)
+        .map(([key]) => key);
+      let userQueueCount = 0;
+      for (const key of userDeviceKeys) {
+        const alive = (inbox.get(key) ?? []).filter((entry) => entry.expiresAt > nowMs);
+        inbox.set(key, alive);
+        userQueueCount += alive.filter((entry) => entry.stream === 'to_device').length;
+      }
+      const kept = inbox.get(deviceKey) ?? [];
+      const existing = kept.find((e) => e.stream === 'to_device' && e.dedupeKey === dedupeKey);
+      if (!existing && userQueueCount >= maxPending) {
+        inbox.set(deviceKey, kept);
+        return { ok: false, reason: 'queue_full' };
+      }
+      const entry = {
+        id: ++counters.inboxSeq,
+        expiresAt,
+        stream: 'to_device',
+        dedupeKey,
+        body: structuredClone(body),
+      };
+      if (existing) Object.assign(existing, entry);
+      else kept.push(entry);
+      inbox.set(deviceKey, kept);
+      return { ok: true };
     },
     deliveredMax(deviceKey, stream) {
       return delivered.get(`${deviceKey}|${stream}`) ?? 0;
@@ -647,13 +839,30 @@ export function createMemoryStore({ pinPepper }) {
       sends.set(k, nowMs);
       return true;
     },
+    releaseSend(senderKey, type, txn) {
+      sends.delete(`${senderKey}|${type}|${txn}`);
+    },
 
     // ---- беседы ----
     createRoom(roomId, owner, memberIds, opts = {}) {
       if (rooms.has(roomId)) return false;
+      const orgId = opts.orgId ?? DEFAULT_ORG_ID;
+      const org = organizations.get(orgId);
+      if (!org || org.status !== 'approved') return { status: 'org_not_approved' };
       const members = [...new Set(memberIds)];
+      for (const userId of [...members].sort()) {
+        const direct = orgMembers.get(orgId)?.has(userId) ?? false;
+        const linked = !direct && [...orgLinks.values()].some((link) => {
+          if (link.status !== 'active') return false;
+          const memberOrg = link.orgA === orgId ? link.orgB : link.orgB === orgId ? link.orgA : null;
+          return memberOrg !== null
+            && organizations.get(memberOrg)?.status === 'approved'
+            && (orgMembers.get(memberOrg)?.has(userId) ?? false);
+        });
+        if (!direct && !linked) return { status: 'org_not_member', userId };
+      }
       rooms.set(roomId, {
-        owner, orgId: opts.orgId ?? DEFAULT_ORG_ID, admins: new Set(), members: new Set(members),
+        owner, orgId, admins: new Set(), members: new Set(members),
         joinedSeq: new Map(members.map((m) => [m, counters.eventSeq])), events: [],
         capabilities: new Map(members.map((m) => [m, [...DEFAULT_MEMBER_CAPABILITIES]])),
         name: opts.name ?? null,
@@ -739,6 +948,17 @@ export function createMemoryStore({ pinPepper }) {
     addRoomMember(roomId, userId) {
       const r = rooms.get(roomId);
       if (!r || r.members.has(userId)) return false;
+      const org = organizations.get(r.orgId);
+      if (!org || org.status !== 'approved') return { status: 'org_not_approved' };
+      const direct = orgMembers.get(r.orgId)?.has(userId) ?? false;
+      const linked = !direct && [...orgLinks.values()].some((link) => {
+        if (link.status !== 'active') return false;
+        const memberOrg = link.orgA === r.orgId ? link.orgB : link.orgB === r.orgId ? link.orgA : null;
+        return memberOrg !== null
+          && organizations.get(memberOrg)?.status === 'approved'
+          && (orgMembers.get(memberOrg)?.has(userId) ?? false);
+      });
+      if (!direct && !linked) return { status: 'org_not_member' };
       r.members.add(userId);
       r.joinedSeq.set(userId, counters.eventSeq);
       r.capabilities.set(userId, [...DEFAULT_MEMBER_CAPABILITIES]);
@@ -809,21 +1029,68 @@ export function createMemoryStore({ pinPepper }) {
       return true;
     },
     mlsAvailableCount(userId, deviceId, nowMs) {
+      const active = [...devices.values()].some((device) => device.userId === userId && device.deviceId === deviceId && !device.revoked);
+      if (!active) return 0;
       return mlsPackages.filter((p) => p.userId === userId && p.deviceId === deviceId && p.consumedAt === null && !p.lastResort && p.createdAt >= nowMs - MLS_REGULAR_MAX_AGE_MS).length;
     },
     mlsStoreLastResort(userId, deviceId, bytes, createdAt) {
+      const active = [...devices.values()].some((device) => device.userId === userId && device.deviceId === deviceId && !device.revoked);
+      if (!active) return false;
       for (let i = mlsPackages.length - 1; i >= 0; i--) {
         const p = mlsPackages[i];
         if (p.userId === userId && p.deviceId === deviceId && p.lastResort) mlsPackages.splice(i, 1);
       }
       mlsPackages.push({ id: mlsPackages.length + 1, userId, deviceId, package: Buffer.from(bytes), createdAt, consumedAt: null, lastResort: true });
+      return true;
     },
-    mlsStoreKeyPackages(userId, deviceId, packages, createdAt) {
+    mlsStoreKeyPackages(userId, deviceId, packages, createdAt, maxUnused) {
+      const active = [...devices.values()].some((device) => device.userId === userId && device.deviceId === deviceId && !device.revoked);
+      if (!active) return { ok: false, reason: 'device_revoked' };
+      const current = mlsPackages.filter((item) => item.userId === userId && item.deviceId === deviceId
+        && item.consumedAt === null && !item.lastResort && item.createdAt >= createdAt - MLS_REGULAR_MAX_AGE_MS).length;
+      if (current + packages.length > maxUnused) return { ok: false, reason: 'package_limit' };
       for (const bytes of packages) {
         mlsPackages.push({ id: mlsPackages.length + 1, userId, deviceId, package: Buffer.from(bytes), createdAt, consumedAt: null });
       }
+      return { ok: true };
     },
     mlsClaimKeyPackages(targetUserId, requesterUserId, requesterDeviceId, claimId, roomId, nowMs) {
+      const hasOrgAccess = (userId, orgId) => {
+        if (orgMembers.get(orgId)?.has(userId)) return true;
+        return [...orgLinks.values()].some((link) => {
+          if (link.status !== 'active') return false;
+          const memberOrg = link.orgA === orgId ? link.orgB : link.orgB === orgId ? link.orgA : null;
+          return memberOrg !== null
+            && organizations.get(memberOrg)?.status === 'approved'
+            && (orgMembers.get(memberOrg)?.has(userId) ?? false);
+        });
+      };
+      if (roomId) {
+        const room = rooms.get(roomId);
+        if (!room) return { ok: false, reason: 'room_not_found' };
+        if (organizations.get(room.orgId)?.status !== 'approved') return { ok: false, reason: 'org_not_approved' };
+        if (!hasOrgAccess(requesterUserId, room.orgId) || !hasOrgAccess(targetUserId, room.orgId)) {
+          return { ok: false, reason: 'not_authorized' };
+        }
+        if (!room.members.has(requesterUserId)
+          || (requesterUserId !== room.owner && !room.capabilities.get(requesterUserId)?.includes('invite_members'))) {
+          return { ok: false, reason: 'invite_capability_required' };
+        }
+      } else if (requesterUserId !== targetUserId) {
+        const requesterOrgs = [...orgMembers.entries()]
+          .filter(([orgId, members]) => members.has(requesterUserId) && organizations.get(orgId)?.status === 'approved')
+          .map(([orgId]) => orgId);
+        const targetOrgs = [...orgMembers.entries()]
+          .filter(([orgId, members]) => members.has(targetUserId) && organizations.get(orgId)?.status === 'approved')
+          .map(([orgId]) => orgId);
+        const shared = requesterOrgs.some((a) => targetOrgs.some((b) =>
+          a === b || [...orgLinks.values()].some((link) =>
+            link.status === 'active' && ((link.orgA === a && link.orgB === b) || (link.orgB === a && link.orgA === b)))));
+        if (!shared) return { ok: false, reason: 'not_authorized' };
+      }
+      const activeDeviceIds = new Set([...devices.values()]
+        .filter((device) => device.userId === targetUserId && !device.revoked)
+        .map((device) => device.deviceId));
       const claimKey = JSON.stringify([targetUserId, requesterUserId, requesterDeviceId, claimId]);
       const previous = mlsPackageClaims.get(claimKey);
       if (previous) {
@@ -831,13 +1098,13 @@ export function createMemoryStore({ pinPepper }) {
         if (previous.state === 'committed') return { ok: false, reason: 'claim_committed' };
         if (roomId && previous.roomId && previous.roomId !== roomId) return { ok: false, reason: 'claim_room_mismatch' };
         if (roomId && !previous.roomId) previous.roomId = roomId;
-        return { ok: true, packages: previous.packages.map((item) => ({
+        return { ok: true, packages: previous.packages.filter((item) => activeDeviceIds.has(item.deviceId)).map((item) => ({
           deviceId: item.deviceId, packageId: item.packageId, package: Buffer.from(item.package),
         })) };
       }
       const out = [];
-      const devices = [...new Set(mlsPackages.filter((p) => p.userId === targetUserId && p.consumedAt === null).map((p) => p.deviceId))].sort();
-      for (const deviceId of devices) {
+      const targetDeviceIds = [...new Set(mlsPackages.filter((p) => p.userId === targetUserId && activeDeviceIds.has(p.deviceId) && p.consumedAt === null).map((p) => p.deviceId))].sort();
+      for (const deviceId of targetDeviceIds) {
         const next = mlsPackages.find((p) => p.userId === targetUserId && p.deviceId === deviceId && p.consumedAt === null && !p.lastResort && p.createdAt >= nowMs - MLS_REGULAR_MAX_AGE_MS);
         if (next) { next.consumedAt = nowMs; out.push({ deviceId, packageId: next.id, package: Buffer.from(next.package) }); continue; }
         const fallback = [...mlsPackages].reverse().find((p) => p.userId === targetUserId && p.deviceId === deviceId && p.lastResort && p.createdAt >= nowMs - MLS_LAST_RESORT_MAX_AGE_MS);
@@ -970,6 +1237,19 @@ export function createMemoryStore({ pinPepper }) {
     },
     appendRoomEvent(roomId, sender, type, content, nowMs, afterAppend = null) {
       const r = rooms.get(roomId);
+      if (!r) return { state: 'room_not_found' };
+      const roomOrg = organizations.get(r.orgId);
+      if (!roomOrg || roomOrg.status !== 'approved') return { state: 'org_not_approved' };
+      const direct = orgMembers.get(r.orgId)?.has(sender) ?? false;
+      const linked = !direct && [...orgLinks.values()].some((link) => {
+        if (link.status !== 'active') return false;
+        const memberOrg = link.orgA === r.orgId ? link.orgB : link.orgB === r.orgId ? link.orgA : null;
+        return memberOrg !== null
+          && organizations.get(memberOrg)?.status === 'approved'
+          && (orgMembers.get(memberOrg)?.has(sender) ?? false);
+      });
+      if (!direct && !linked) return { state: 'org_not_member' };
+      if (!r.members.has(sender)) return { state: 'not_member' };
       const seq = ++counters.eventSeq;
       r.events.push({ event_id: `$${seq}`, seq, room_id: roomId, sender, origin_server_ts: nowMs, type, content: structuredClone(content ?? null) });
       if (afterAppend) return Promise.resolve(afterAppend(null, { seq, roomId, eventId: `$${seq}` })).then(() => seq);
@@ -1024,6 +1304,30 @@ export function createMemoryStore({ pinPepper }) {
       const current = mlsGroups.get(roomId) ?? 0;
       if (current !== baseEpoch) return { ok: false, reason: 'epoch_outdated', epoch: current };
       const room = rooms.get(roomId);
+      if (!room) return { ok: false, reason: 'room_not_found', epoch: current };
+      const senderDeviceActive = [...devices.values()].some((entry) =>
+        entry.userId === senderId && entry.deviceId === deviceId && !entry.revoked);
+      if (!senderDeviceActive) return { ok: false, reason: 'sender_device_revoked', epoch: current };
+      for (const welcome of welcomes ?? []) {
+        const welcomeDeviceActive = [...devices.values()].some((entry) =>
+          entry.userId === welcome.userId && entry.deviceId === welcome.deviceId && !entry.revoked);
+        if (!welcomeDeviceActive) return { ok: false, reason: 'welcome_device_revoked', epoch: current };
+      }
+      if ((changes.adds ?? []).length > 0) {
+        const roomOrg = organizations.get(room.orgId);
+        if (!roomOrg || roomOrg.status !== 'approved') return { ok: false, reason: 'org_not_approved', epoch: current };
+        for (const targetUserId of [...changes.adds].sort()) {
+          const direct = orgMembers.get(room.orgId)?.has(targetUserId) ?? false;
+          const linked = !direct && [...orgLinks.values()].some((link) => {
+            if (link.status !== 'active') return false;
+            const memberOrg = link.orgA === room.orgId ? link.orgB : link.orgB === room.orgId ? link.orgA : null;
+            return memberOrg !== null
+              && organizations.get(memberOrg)?.status === 'approved'
+              && (orgMembers.get(memberOrg)?.has(targetUserId) ?? false);
+          });
+          if (!direct && !linked) return { ok: false, reason: 'org_not_member', epoch: current };
+        }
+      }
       if (joinRequestUserId) {
         if (changes.adds?.length !== 1 || changes.adds[0] !== joinRequestUserId) return { ok: false, reason: 'join_request_mismatch', epoch: current };
         if (!room?.joinRequests.has(joinRequestUserId)) return { ok: false, reason: 'join_request_not_pending', epoch: current };
@@ -1067,6 +1371,8 @@ export function createMemoryStore({ pinPepper }) {
         .map((c) => ({ epoch: c.epoch, senderId: c.senderId, commit: Buffer.from(c.commit), changes: c.changes ? structuredClone(c.changes) : null, welcomeRecipients: c.welcomeRecipients ? structuredClone(c.welcomeRecipients) : null }));
     },
     mlsPendingWelcomes(userId, deviceId) {
+      const active = [...devices.values()].some((entry) => entry.userId === userId && entry.deviceId === deviceId && !entry.revoked);
+      if (!active) return [];
       return mlsWelcomes.filter((w) => w.userId === userId && w.deviceId === deviceId && w.ackedAt === null)
         .map((w) => ({ id: w.id, roomId: w.roomId, epoch: w.epoch, welcome: Buffer.from(w.welcome) }));
     },
@@ -1097,7 +1403,8 @@ export function createMemoryStore({ pinPepper }) {
       if (hit?.seq !== null && hit) return { state: 'done', seq: hit.seq };
       if (hit) return { state: 'pending' };
       const seq = this.appendRoomEvent(roomId, sender, type, content, nowMs);
-      if (afterAppend) return Promise.resolve(seq).then((value) => afterAppend(null, { seq: value, roomId, eventId: `$${value}` })).then(() => { clientMessages.push({ roomId, userId, clientId, seq }); return { state: 'created', seq }; });
+      if (seq && typeof seq === 'object') return seq;
+      if (afterAppend) return Promise.resolve(seq).then((value) => afterAppend(null, { seq: value, roomId, eventId: `$${value}` })).then(() => { clientMessages.push({ roomId, userId, clientId, seq: value }); return { state: 'created', seq: value }; });
       clientMessages.push({ roomId, userId, clientId, seq });
       return { state: 'created', seq };
     },
@@ -1125,6 +1432,8 @@ mlsPendingRemovalsFor(userId) {
       return deviceRemovals.filter((r) => r.roomId === roomId && r.doneAt === null).map((r) => r.deviceId);
     },
     mlsAckWelcome(id, userId, deviceId, nowMs) {
+      const active = [...devices.values()].some((entry) => entry.userId === userId && entry.deviceId === deviceId && !entry.revoked);
+      if (!active) return false;
       const w = mlsWelcomes.find((x) => x.id === id && x.userId === userId && x.deviceId === deviceId && x.ackedAt === null);
       if (!w) return false;
       w.ackedAt = nowMs;
