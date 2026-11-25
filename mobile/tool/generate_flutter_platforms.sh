@@ -38,10 +38,14 @@ node "$app_root/tool/prepare_firebase_platforms.mjs" "$platforms" "$repo_root" "
 node "$app_root/tool/configure_firebase_native.mjs" "$platforms" "$app_root"
 
 # Derive all native launcher assets from the single editable SVG brand master.
+icon_python="python3"
 if ! python3 -c "import cairosvg; from PIL import Image" >/dev/null 2>&1; then
-  python3 -m pip install --disable-pip-version-check --no-input -r "$app_root/tool/requirements-app-icons.txt"
+  icon_venv="$scaffold_root/icon-venv"
+  python3 -m venv "$icon_venv"
+  "$icon_venv/bin/python" -m pip install --disable-pip-version-check --no-input -r "$app_root/tool/requirements-app-icons.txt"
+  icon_python="$icon_venv/bin/python"
 fi
-python3 "$app_root/tool/generate_app_icons.py" "$repo_root" "$app_root" "$platforms"
+"$icon_python" "$app_root/tool/generate_app_icons.py" "$repo_root" "$app_root" "$platforms"
 
 # Scaffold generation must never modify dependency manifests or lockfiles.
 git -C "$repo_root" diff --exit-code -- mobile/pubspec.yaml mobile/pubspec.lock
