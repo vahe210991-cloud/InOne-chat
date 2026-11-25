@@ -56,7 +56,9 @@ Some build/test artifacts have explicit 7- or 14-day retention. Generated Flutte
 
 The Dev Container Compose file contains fixed local database credentials and a fixed development email code. The engine Compose file labels itself development-only and has a development pepper fallback. These are not production secrets, but must remain isolated from production deployment paths.
 
-**Required remediation:** document the dev-only boundary prominently; make production deployment reject development mode, known development credentials, fixed verification codes and fallback peppers; provide a production configuration template with required secrets represented only as placeholders.
+**Existing production guard:** `src/config.js` rejects the development email code in production, rejects a missing/short/test-marked PIN pepper, rejects open registration, requires HTTPS public URL, SMTP with TLS, persistent file storage, Firebase project ID, a valid 32-byte push key, and a strong docs secret; it also rejects test UI. The development PIN-pepper fallback is only applied outside production.
+
+**Remaining remediation:** add explicit regression coverage for each production rejection and verify that deployment configuration never imports Dev Container Compose defaults. Keep fixed local database credentials and the development email code confined to development tooling. Do not duplicate existing guards without a demonstrated gap.
 
 ### S5-07 — Production Docker runtime has useful baseline hardening
 **Severity: Positive control with remaining verification.**
