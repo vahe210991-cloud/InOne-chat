@@ -6,78 +6,86 @@
 **Working branch:** `feature/ui-dart-archive-stage1-2026-11-25`  
 **Inputs:** `Ui dart.zip` and `Ui dart part 2.zip`
 
-## Decision
+## Owner-approved workflow and implementation decision
 
-The two archives are a candidate native Flutter UI source set, not a self-contained drop-in module. Do not place their Dart files under `mobile/lib` or export them from `mobile/lib/ui_dart_source/inone.dart` until the missing dependencies and API contracts are resolved.
+The owner clarified the workflow:
 
-The existing app imports `mobile/lib/ui_dart_source/inone.dart`. That module and the current `main` screens are the live baseline. The approved HTML screens remain the visual/interaction reference; the Dart implementation must be reconciled against them, not used to redefine the approved design.
+1. Screens are authored against the technical specification.
+2. The owner reviews and approves the HTML presentation as a temporary visual acceptance artifact.
+3. Dart screens are then produced from the approved screens, structurally and functionally, not by mandatory pixel-perfect conversion.
+4. The Dart implementation is connected to the existing Flutter app and backend according to the technical specification.
+5. Only after connection do we inspect actual behavior and appearance. If a discrepancy is found, the owner supplies a screenshot and a specific correction request.
+6. The affected area is corrected in place.
+
+**HTML files are not required, will not be restored, and are not a dependency or merge gate.** They are not part of the runtime implementation. Owner screenshots are the authoritative input for any later visual corrections. No preliminary HTML-to-Dart pixel comparison is required.
 
 ## Archive inventory
 
-- Archive 1 contains task list/details/create/Kanban screens, project list/card screens, another-user profile, task models/widgets/demo data, a task gallery, translations and README.
-- Archive 2 contains CRM lead/card/stage/note screens, organization list/member-role/settings/journal/links/leave screens, CRM/organization models/demo data, a CRM/organization gallery, translations, navigation notes, localization runtime and text wrapper.
+- Archive 1: task list/details/create/Kanban screens, project list/card screens, another-user profile, task models/widgets/demo data, task gallery, translations and README.
+- Archive 2: CRM lead/card/stage/note screens, organization list/member-role/settings/journal/links/leave screens, CRM/organization models/demo data, CRM/organization gallery, translations, navigation notes, localization runtime and text wrapper.
 - Both archives contain `inone_translations.dart`. Their key/value entries were merged in the prepared staging bundle; no differing duplicate values were found.
-- Archive README says the screens are callback-driven and do not own HTTP/navigation. It also states Flutter analyze and tests were not run.
+- The README describes a callback-driven screen contract: screens do not own HTTP or navigation; actions are host callbacks, with `null` indicating success and `InOneFailure.message` supplying errors. This is the contract to validate during integration.
+- Archive docs describe intended screen groups, navigation, font assets, and known limitations. These are implementation inputs, not proof that all dependencies already exist in the current app.
 
-## Confirmed integration blockers
+## Integration findings
 
-The candidate files import shared modules that are not present at the expected paths on `main`:
+The supplied archives contain the feature screens and domain/presentation files, but several imports point to shared modules not included in either archive:
 
 - `widgets/inone_screen_kit.dart`
-- `models/inone_social_models.dart`
 - `widgets/inone_calendar_widgets.dart`
+- `widgets/inone_ds_widgets.dart`
+- `widgets/inone_icons.dart`
+- `widgets/inone_widgets.dart`
+- `widgets/inone_bottom_nav.dart`
 - `widgets/inone_post_card.dart`
-- `demo/inone_social_demo_data.dart`
-- `models/inone_settings_models.dart`
-- `demo/inone_gallery_extra.dart`
 - `widgets/inone_text.dart`
+- `models/inone_social_models.dart`
+- `models/inone_settings_models.dart`
+- `theme/inone_theme.dart`
+- `state/inone_state.dart`
+- `demo/inone_social_demo_data.dart`
+- `demo/inone_gallery_extra.dart`
 
-The missing imports were checked against both `main` and `feat/flutter-ui-dart-migration-2026-11-14`; the checked paths returned 404 on both refs. This is not a full repository-wide symbol search, but it is enough to block a safe direct copy into `mobile/lib`.
+These are dependency-resolution tasks, not reasons to stop the entire integration. For each import, check the current `main` tree and existing mobile UI implementation first. Reuse compatible current modules; adapt only the candidate screen imports/types where practical; create a missing shared component only when its required contract can be established from the archive source and current design system. Do not pull a wholesale divergent branch into main just to obtain a helper.
 
-Further observations:
-- `inone_gallery_tasks.dart` and `inone_gallery_crm_org.dart` import `inone_gallery_extra.dart`, absent from both archives and the checked repository paths.
-- `inone_l10n.dart` imports `models/inone_settings_models.dart`, absent from both archives and the checked repository paths.
-- Task and CRM models import `widgets/inone_screen_kit.dart`, so even non-gallery screens are not self-contained.
-- The archive README calls for Noto Sans and Noto Sans Armenian font assets; the current `mobile/pubspec.yaml` does not declare these font assets. Asset availability was not established.
-- The current app's existing `inone.dart` export list does not expose the candidate screens. No export or navigation changes were made.
-- No backend route contracts were supplied with these archives. No new backend operations are assumed.
+Other checks:
+- The old Flutter migration branch is heavily diverged from current `main` (GitHub compare: 646 commits ahead and 1,168 behind; merge base `1df19a001acb5f8c4892471ca4eaa0696e02c54d`). Do not merge or cherry-pick it wholesale.
+- Archive README requests Noto Sans and Noto Sans Armenian font assets. Verify available fonts and pubspec configuration; add only if required by the actual implementation and license/source are established.
+- The current app's existing exports/navigation must be inspected before adding routes. Do not overwrite existing screens or route definitions.
+- No new backend routes are assumed. Map callbacks to existing API/repository contracts; where a required backend capability is absent, report that specific gap and do not fake a successful operation.
 
-## Safe integration plan
+## Execution plan
 
-1. Keep the existing production UI module and app navigation unchanged.
-2. Recover the missing shared UI support files from the exact source revision that produced these archives, or replace them only after checking the approved HTML reference and current design-system contracts.
-3. Compare each candidate screen with its approved HTML counterpart: layout, text, states, empty/loading/error behavior, accessibility and interaction.
-4. Map every screen callback to an existing mobile repository/API contract. Keep unsupported operations disabled or explicitly deferred; do not create fake success behavior.
-5. Resolve model overlap with existing `inone_models.dart` and domain models before adding duplicate presentation/domain types.
-6. Merge localization deliberately. Preserve the current app's language source and verify Armenian/Russian/English placeholders and plural rules.
-7. Add only the required fonts/assets and verify licensing and asset paths.
-8. Integrate one vertical slice at a time, then update exports and navigation.
-9. Run `dart format`, `flutter analyze`, unit/widget tests and device-level visual regression on the exact commit before promotion.
+1. Inspect current `main` app entrypoint, screen exports, navigation, domain models, design-system widgets and API repositories.
+2. Build an import/dependency matrix for all 17 screens and shared modules. Reuse current code where contracts match.
+3. Integrate screens by technical-specification feature groups, preserving current app architecture.
+4. Connect callbacks to existing backend/mobile repository contracts. Clearly isolate any unsupported action.
+5. Resolve model overlap with existing domain models; avoid duplicate competing representations.
+6. Merge localization deliberately and verify hy/ru/en keys, placeholders and formatting.
+7. Add required assets only after verifying paths and licenses.
+8. Add exports/routes for completed feature slices without exposing unfinished flows.
+9. Run formatting, static analysis, unit/widget tests and available device tests on the exact PR commit.
+10. After the owner reviews the connected implementation, apply screenshot-led visual corrections where requested.
 
 ## Current execution status
 
 | Work item | Status |
 |---|---|
 | Inspect both archives and classify files | COMPLETE |
+| Read archive README and navigation instructions | COMPLETE |
 | Merge duplicate translation maps | COMPLETE in prepared staging bundle; no conflicting duplicate values |
-| Inspect current app entrypoint and UI exports on main | COMPLETE |
-| Check key missing imports on main and Flutter migration branch | BLOCKED: dependencies absent at checked paths |
-| Compare all screens to approved HTML | NOT RUN |
-| Map callbacks to backend/mobile contracts | NOT RUN |
-| Integrate source into `mobile/lib` | BLOCKED pending dependency recovery and design/API review |
+| Establish owner-approved HTML/Dart workflow | COMPLETE |
+| Confirm HTML restoration/comparison is not required | COMPLETE |
+| Inspect current app and resolve candidate imports | IN PROGRESS |
+| Map all screen callbacks to existing backend contracts | NOT RUN |
+| Integrate screens into active Flutter source | NOT RUN |
 | Flutter analyze / tests | NOT RUN |
-| Change app navigation or backend | NOT CHANGED |
 
-## Safety constraints
+## Safety and scope constraints
 
-- Do not replace, delete, or downgrade the approved HTML reference screens.
-- Do not change backend or MLS code as part of this UI import.
-- Do not add candidate Dart files to the active `mobile/lib` tree while imports are unresolved.
-- Do not merge this work to `main` until exact-SHA analysis, tests and HTML-to-Dart visual acceptance pass.
-
-
-## Additional source-branch and visual-reference checks
-
-- The branch `feat/flutter-ui-dart-migration-2026-11-14` is heavily diverged from current `main`: GitHub compare reports 646 commits ahead and 1,168 behind, with merge base `1df19a001acb5f8c4892471ca4eaa0696e02c54d`. It is not a safe wholesale source for copying into current main.
-- The approved-reference path `mobile/assets/approved-ui/InOne-approved-cross-platform.html` is absent on current `main`. It exists on the old Flutter migration branch, but the repository fetch returned an empty content body for that file. Therefore no screen-by-screen visual comparison was possible in this pass.
-- Keep the HTML baseline preservation requirement active. Before visual acceptance, locate a readable authoritative copy of the approved HTML screens (including the relevant per-screen files if the single-file reference is no longer maintained). Do not infer approval from the Dart archive README.
+- Do not restore, recreate, or require the temporary HTML approval files.
+- Do not demand pixel-perfect HTML-to-Dart comparison.
+- Technical specification and owner-approved Dart deliverables define the integration target; owner screenshots drive subsequent visual corrections.
+- Do not change backend or MLS code as part of UI integration unless a concrete required contract gap is identified and separately approved.
+- Do not expose unfinished actions as successful or connect routes before their dependencies are ready.
+- Keep the PR unmerged until exact-SHA analysis/tests pass and the integrated feature slices are reviewable.
