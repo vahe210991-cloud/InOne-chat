@@ -780,3 +780,13 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Bounded current-main code search found no matching canonical cross-platform reservation/platform-account registry implementation.
 - Added this evidence and IAM-19–IAM-22 risks to Identity Phase 1, ADR and threat model; expanded audit report. Updated issue #147/#148 evidence links. PR #149 remains Draft/open, no merge.
 - Product code/tests/DB were not changed or executed; Identity remains NOT ACCEPTED. Next: inventory all foreign keys and migration ledger, close owner policy decisions, approve ADR/contracts, then implement isolated service.
+
+
+### 2026-11-25 — Identity dependency graph and startup audit
+
+- Parsed current canonical InOne schema.sql: 55 tables; 26 tables with 29 direct FK columns referencing accounts(user_id).
+- Identified ten identity/actor-like columns without direct account FK; documented per-field semantic classification as required before migration.
+- Reviewed migrate.js and tests: schema version 0033; 32 migration marker entries from 0002–0033; integrity and DB test definitions exist, but were not executed.
+- Actual DB schema_migrations ledger and live FK graph remain blocked pending authorized read-only DB access.
+- Found exported startServer accepts null pool and createServer falls back to memory store; normal CLI production path passes PostgreSQL, but the exported production boundary lacks a fail-fast guard. Created P0 issue #150; no Beta 1 source code changed.
+- Updated Identity Phase 1 plan, threat model, CTO audit report and roadmap. No source code, SQL, database, secrets, Beta 1 PR #135 or production settings changed.
