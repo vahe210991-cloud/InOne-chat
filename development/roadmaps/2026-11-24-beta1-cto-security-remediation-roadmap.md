@@ -1,11 +1,13 @@
 # InOne Beta 1.0 — CTO Security Remediation & Release Plan
 
 **Owner:** Product owner / CTO  
-**Execution branch:** `security/beta1-backend-remediation-2026-11-24`  
-**Tracking PR:** [#135](https://github.com/vahe210991-cloud/InOne-chat/pull/135) — Draft, open, not merged  
+**Stage 1 + 2 base branch:** `security/beta1-backend-remediation-2026-11-24`  
+**Stage 1 + 2 tracking PR:** [#135](https://github.com/vahe210991-cloud/InOne-chat/pull/135) — Draft, open, not merged  
+**Stage 3 branch:** `security/beta1-stage3-runtime-hardening-2026-11-25` (stacked on the accepted Stage 1 + 2 candidate)
 **Baseline:** `main` at `02880940c1e4d8261405fbeaa01f40879eb44f3a` when the remediation branch was created  
 **Plan date:** 2026-11-24  
-**Current reviewed head:** `4824dfc3b3f4e3aab5d39b16c1adf934a108d660`
+**Stage 1 + 2 accepted candidate:** `7b8af4f00c15db759253dd9ce7b7666dda9eab3b`  
+**Stage 3 implementation checkpoint:** see `development/reports/2026-11-25-beta1-stage3-runtime-hardening.md`
 
 ## 1. CTO directive
 
@@ -30,7 +32,7 @@ The work is performed only on the existing remediation branch and tracked in PR 
 
 **Purpose:** establish an accepted security baseline before expanding the change surface.
 
-**Current status:** ACCEPTED on exact SHA `0d383e38da7def0aa77531d020c76ba5dbc392fb`. All eight required workflows completed successfully on that same immutable SHA: Backend Docker Compose #45441855408, Dev Container Compose #45441855601, Email/PostgreSQL #45441855554, recovered P0 #45441855372, Flutter mobile #45441855381, Native MLS #45441855364, Flutter iOS #45441855403 and Exact-SHA gate #45441855568. Job-level inspection confirmed iOS and aggregate gate concluded `success`. Stage 1 exit criteria are met.
+**Current status:** Stage 1 and Stage 2 were accepted together on exact SHA `7b8af4f00c15db759253dd9ce7b7666dda9eab3b`. All 17/17 check runs, including Flutter, Flutter iOS and the Exact-SHA required workflow gate, completed successfully on that immutable SHA. The earlier `0d383e38...` commit was documentation-only and is not used as proof of Stage 1 code acceptance. PR #135 records the joint acceptance and remains Draft/unmerged pending owner decision.
 
 **Work / acceptance criteria:**
 1. Re-fetch PR head and all workflow runs; identify the exact failed/skipped/cancelled gate dependency from job-level evidence.
@@ -44,7 +46,7 @@ The work is performed only on the existing remediation branch and tracked in PR 
 
 ### Stage 2 — File transfer, quota and object lifecycle (B-04/B-13)
 
-**Purpose:** bound memory and storage consumption, eliminate quota races and make file lifecycle crash-safe.
+**Purpose:** bound memory and storage consumption, eliminate quota races and make file lifecycle crash-safe.\n\n**Current status:** ACCEPTED jointly with Stage 1 on exact SHA `7b8af4f00c15db759253dd9ce7b7666dda9eab3b`; all 17/17 check runs passed on this same SHA.
 
 **Implementation packages:**
 1. **Streaming upload:** replace whole-body buffering with bounded streaming and backpressure; incrementally count bytes and calculate SHA-256; reject short/long bodies and checksum mismatch; enforce declared size and existing per-kind limits.
@@ -69,7 +71,7 @@ The work is performed only on the existing remediation branch and tracked in PR 
 
 ### Stage 3 — Runtime boundary, secrets, logging and identity-provider resilience (B-06/B-08/B-09/B-10/B-11/B-15)
 
-**Purpose:** make runtime failure modes deterministic and prevent configuration, request or provider boundaries from becoming security gaps.
+**Purpose:** make runtime failure modes deterministic and prevent configuration, request or provider boundaries from becoming security gaps.\n\n**Current status:** IMPLEMENTATION IN PROGRESS on stacked branch `security/beta1-stage3-runtime-hardening-2026-11-25`; exact-SHA validation pending.
 
 **Implementation packages:**
 1. **Persistent object-signing secret (B-06):** load a stable secret from the supported production configuration; fail startup in production if missing/invalid; no random-per-process production fallback. Keep test-only generation explicit.
@@ -135,52 +137,36 @@ The backend is eligible for a CTO recommendation of READY only when:
 
 ## 5. Current checkpoint and immediate next actions
 
-### Stage 1 — ACCEPTED
+### Stage 1 + Stage 2 — JOINTLY ACCEPTED
 
-Accepted source SHA: `0d383e38da7def0aa77531d020c76ba5dbc392fb`.
+Accepted exact source SHA: `7b8af4f00c15db759253dd9ce7b7666dda9eab3b`.
 
-All eight required workflows completed successfully on this same SHA:
-- Backend Docker Compose runtime acceptance #45441855408.
-- Dev Container Compose runtime validation #45441855601.
-- Email delivery and PostgreSQL validation #45441855554.
-- Validate recovered InOne P0 source #45441855372.
-- Flutter mobile validation #45441855381.
-- Native MLS client validation #45441855364.
-- Flutter iOS validation #45441855403.
-- Exact-SHA acceptance gate #45441855568.
+All 17/17 check runs passed on that same SHA, including Backend Node, PostgreSQL integration, P0 room-list, Rust bridge, OpenMLS, iOS Keychain, Flutter host/mobile/iOS, Email/PostgreSQL, Compose runtime, Dev Container, Native MLS exact-head verification and Exact-SHA required workflow acceptance.
 
-### Stage 2 — IMPLEMENTATION IN PROGRESS, NOT ACCEPTED
+PR #135 is updated with the exact SHA and evidence. It remains Draft, open and unmerged. No merge is authorized by this plan.
 
-Current implementation checkpoint before the latest regression additions: `dafb0b33f618e796d2bedafb0775ab6f29c54359` (the branch head may advance with test/documentation commits).
+### Stage 3 — IMPLEMENTATION IN PROGRESS
 
-Implemented:
-- Compatible streaming write/read primitives in filesystem and memory object stores; filesystem streaming writes use unique temporary files, file sync, atomic rename and directory sync where supported.
-- Streaming HTTP uploads with incremental size enforcement and SHA-256 calculation; no full-body Buffer aggregation on the upload route.
-- Streaming HTTP downloads with content length from metadata and direct stream piping.
-- PostgreSQL advisory transaction locks serialize owner quota, organization quota and pending-upload reservations; the in-memory store implements equivalent reservation semantics.
-- A pending upload is atomically claimed into an `uploading` state before the request body is consumed, so only one concurrent PUT can own a reservation; active uploads remain included in quota, pending-count and stale-cleanup accounting.
-- Upload authorization is revalidated after body transfer; the transition to `ready` is a database transaction that locks and rechecks the active owner device, approved organization/link membership, room membership and `send_messages` capability.
-- Retryable `deleting` tombstones for stale and failed uploads; metadata is finalized only after object deletion succeeds.
-- Failed size/checksum/device/membership uploads release their reservation after cleanup; failed object deletion remains retryable.
+Stage 3 branch: `security/beta1-stage3-runtime-hardening-2026-11-25`, based on the accepted Stage 1 + Stage 2 candidate. The implementation report is `development/reports/2026-11-25-beta1-stage3-runtime-hardening.md`.
 
-Added regressions for:
-- Atomic filesystem stream publication, stream abort cleanup and missing-object handling.
-- Concurrent owner quota reservations.
-- Concurrent organization quota reservations across different owners.
-- Concurrent pending-upload reservations and duplicate concurrent PUT attempts against one upload URL.
-- Membership revocation during upload and between PUT and complete.
-- Failed upload reservation release.
-- Retryable object deletion when the object store is temporarily unavailable.
+Implemented in the Stage 3 branch:
+- Production persistent object URL signing secret `INONE_OBJECT_SIGNING_SECRET`, passed from configuration to the signer; production fails closed if missing/invalid.
+- Request logs use allowlisted static route labels and bounded metadata; request bodies, dynamic path segments and query strings are excluded from the wire log.
+- Global request error boundary covers health/readiness, maintenance, object routes, request parsing and regular API routes.
+- Forwarded client IP metadata is accepted only from an explicitly allowlisted immediate proxy; chain is validated and walked right-to-left.
+- JWKS fetch timeout (5 seconds), response cap (256 KiB), content-type/shape validation, refresh coalescing, unknown-kid cooldown (30 seconds) and `nbf` validation.
+- Provider fetch failures return a stable 503.
+- Liveness/readiness contract is documented and regression tests added.
 
-**Evidence status:** Stage 2 exact-head CI has been triggered on the remediation branch. At the last check, the applicable Backend Node/PostgreSQL, Compose, iOS, mobile/native and Exact-SHA runs were queued. Queued jobs are not passes. No Stage 2 acceptance claim is made until all required workflows finish successfully on one exact final SHA.
+**Evidence status:** Stage 3 has not yet passed CI. No Stage 3 acceptance claim is made until all applicable jobs are terminal and successful on one exact final SHA.
 
 **Next actions:**
-1. Let the current exact-head CI complete; inspect Node, PostgreSQL, Compose, file disk, and fault-injection results at job level.
-2. Fix any implementation/test failures without weakening authorization or acceptance gates.
-3. Add/confirm PostgreSQL fault-injection for object-write/metadata transition and tombstone retry boundaries.
-4. Verify signed URL expiry, wrong-device, revoked-device, encrypted-payload and client API compatibility on the final Stage 2 SHA.
-5. Re-run all applicable workflows and the exact-SHA acceptance gate on that final SHA.
-6. Only after Stage 2 acceptance, proceed to Stage 3.
+1. Open a Draft stacked PR targeting the Stage 1 + Stage 2 branch, not `main`.
+2. Run the complete backend Node suite, PostgreSQL integration suite, Compose runtime acceptance and exact-SHA workflow gate.
+3. Fix any test or implementation failures without weakening authorization, logging, proxy or provider validation.
+4. Review production config examples, health probes, and object signing behavior across restarts/replicas.
+5. Re-run the full applicable gate on the final Stage 3 SHA and record job-level evidence.
+6. Keep Stage 3 Draft and unmerged until Stage 1 + Stage 2 base is merged and the owner authorizes the final merge sequence.
 
 Do not implement automatic ready-file expiry. Existing pending-upload stale cutoff remains separate from ready-file retention, which still requires an owner decision.
 
