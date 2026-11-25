@@ -399,6 +399,18 @@ export function createMemoryStore({ pinPepper }) {
       const m = orgMembers.get(orgId)?.get(userId);
       if (m) m.role = role;
     },
+    addOrgMemberAtomic({ orgId, actor, target, role, at }) {
+      const org = organizations.get(orgId);
+      if (!org) return { ok: false, reason: 'not_found' };
+      if (org.status !== 'approved') return { ok: false, reason: 'org_not_approved' };
+      const actorRole = orgMembers.get(orgId)?.get(actor)?.role;
+      if (actorRole !== 'owner' && actorRole !== 'admin') return { ok: false, reason: 'forbidden' };
+      if (actorRole === 'admin' && role !== 'member') return { ok: false, reason: 'forbidden' };
+      if (!accounts.has(target)) return { ok: false, reason: 'unknown_user' };
+      if (!addOrgMembership(orgId, target, role, at)) return { ok: false, reason: 'already_member' };
+      adminActions.push({ orgId, actor, action: 'member_add', target, detail: role, at });
+      return { ok: true };
+    },
     changeOrgMemberRoleAtomic({ orgId, actor, target, role, at }) {
       const members = orgMembers.get(orgId);
       if (!organizations.has(orgId)) return { ok: false, reason: 'not_found' };
