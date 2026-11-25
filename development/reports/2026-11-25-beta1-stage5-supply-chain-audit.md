@@ -24,11 +24,11 @@ The active workflow set references actions through major tags such as `@v4`, `@v
 ### S5-02 — Rust dependency advisory scanning is not visible in CI
 **Severity: Medium; visibility gap, not evidence of a vulnerable dependency.**
 
-The engine CI runs `npm audit --audit-level=high` and the exact-SHA gate also runs dependency audit checks. Three Rust lockfiles are committed (mobile bridge, canonical MLS client and mobile Rust bridge), but the inspected workflows do not run `cargo audit` against all three.
+The engine CI runs `npm audit --audit-level=high` and the exact-SHA gate also runs dependency audit checks. Five Cargo.lock files are committed. Three are the current/canonical mobile Rust bridge, Engine B MLS client and Engine B MLS bridge; two are legacy Engine A POC lockfiles under `inone-engine-poc-0.6.0`. The legacy client is still exercised by an existing CI workflow, so the advisory gate now scans all five committed lockfiles.
 
 **Evidence:** lockfiles contain approximately 325, 252 and 153 package records respectively; no Git-sourced Cargo dependencies were found in these lockfiles.
 
-**Required remediation:** add a reproducible Rust advisory scan for each maintained lockfile, pin the scanner/tool version, retain machine-readable output, and define a documented exception process. Do not auto-upgrade cryptographic dependencies without compatibility and MLS regression review.
+**Required remediation:** add a reproducible Rust advisory scan for all five committed Cargo.lock files, pin the scanner/tool version, retain machine-readable output, and define a documented exception process. Do not auto-upgrade cryptographic dependencies without compatibility and MLS regression review.
 
 ### S5-03 — Container base images use mutable tags
 **Severity: Medium.**
@@ -72,7 +72,11 @@ The engine image sets `NODE_ENV=production`, installs production dependencies on
 | Ecosystem | Lockfile | Approx. package records | Git dependencies |
 |---|---|---:|---|
 | Node engine | package-lock v3 | 119 | None observed |
-| Rust mobile bridge | Cargo.lock | 325 | None observed |
+| Rust mobile bridge | `mobile/rust/Cargo.lock` | 325 | None observed |
+| Rust Engine B MLS client | `inone-development-archive-0.6.0/engine/mobile-mls/mls-client/Cargo.lock` | 252 | None observed |
+| Rust Engine B MLS bridge | `inone-development-archive-0.6.0/engine/mobile-mls/mls-bridge/Cargo.lock` | 153 | None observed |
+| Rust legacy Engine A MLS client | `inone-engine-poc-0.6.0/mobile-mls/mls-client/Cargo.lock` | 252 | None observed |
+| Rust legacy Engine A MLS bridge | `inone-engine-poc-0.6.0/mobile-mls/mls-bridge/Cargo.lock` | 153 | None observed |
 | Rust MLS client | Cargo.lock | 252 | None observed |
 | Rust MLS bridge | Cargo.lock | 153 | None observed |
 
@@ -142,6 +146,8 @@ A dedicated `rust-advisory-audit` job now installs `cargo-audit` at exact versio
 - `mobile/rust/Cargo.lock`
 - `inone-development-archive-0.6.0/engine/mobile-mls/mls-client/Cargo.lock`
 - `inone-development-archive-0.6.0/engine/mobile-mls/mls-bridge/Cargo.lock`
+- `inone-engine-poc-0.6.0/mobile-mls/mls-client/Cargo.lock` (legacy Engine A, still referenced by CI)
+- `inone-engine-poc-0.6.0/mobile-mls/mls-bridge/Cargo.lock` (legacy Engine A)
 
 The job writes JSON reports and uploads them with 14-day retention. It does not run `cargo audit fix`, update dependencies, or modify lockfiles. Advisory findings must be triaged before acceptance; cryptographic/MLS dependency upgrades remain subject to compatibility review.
 
@@ -182,7 +188,7 @@ No WBS weight or cumulative percentage is changed by this Draft PR. The approved
 ## Next five tasks
 
 1. Complete all applicable GitHub Actions on one final PR #159 head SHA; inspect every job and retain exact run links.
-2. Review the three RustSec JSON reports; triage every advisory by severity, dependency path, reachability and platform applicability. Do not auto-upgrade MLS/crypto.
+2. Review the five RustSec JSON reports; triage every advisory by severity, dependency path, reachability and platform applicability. Do not auto-upgrade MLS/crypto.
 3. Inspect the SPDX SBOM for package coverage and validate its source-SHA and checksum sidecar; keep PR artifacts separate from release attestations.
 4. Obtain the actual production deployment target/configuration and verify read-only filesystem compatibility, dropped capabilities, resource limits, secret isolation and image digest use. No production manifest is currently present in this repository.
 5. Complete owner/operator evidence for production backup/restore, cloud IAM, monitoring, secret manager, HTTPS/proxy, SMTP/domain and rollback before any production-readiness claim.
