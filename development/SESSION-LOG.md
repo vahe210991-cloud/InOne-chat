@@ -756,3 +756,75 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Main now has 8/9 push workflows completed PASS. The only remaining workflow is `Native MLS client validation`: its four non-iOS jobs PASS; the iOS Keychain native-target job's first attempt was cancelled, and the targeted rerun remains QUEUED.
 - The cancelled job had no retrievable logs; the rerun is the next evidence point. Do not call main fully validated until it completes.
 
+
+
+## 2026-11-24 — Beta 2.0 CTO roadmap and Identity Phase 1 opened
+
+- Owner instruction in this session explicitly starts Beta 2.0 and makes Identity the first phase; this supersedes the older 2026-11-11 “Beta 1.0 only” execution instruction for this new, isolated planning branch. Beta 1.0 source/release scope and PR #135 remain untouched.
+- Verified current main baseline: `02880940c1e4d8261405fbeaa01f40879eb44f3a`. Created `planning/beta-2.0-cto-2026-11-24` from that exact main SHA; the branch is currently ahead of main and not behind it.
+- Audited approved identity/product decisions, canonical InOne backend identity rules and current source ownership. The reviewed source shows local identity rules/auth flows; no independent cross-platform Identity Service or authoritative shared identity registry is evidenced.
+- Preserved the legacy `planning/beta-2.0-roadmap` branch unchanged because it is diverged and 1,262 commits behind main. No stale branch was merged or force-updated.
+- Added roadmap, Phase 1 Identity execution plan, draft ADR B2-ADR-001, initial Identity threat model and CTO audit report under `docs/product/` and `development/reports/`.
+- Created GitHub workstream issues #137–#146 for Identity, InOne social, InOne Business, group collaboration, Tasks/Calendar, Cindy, localization/design, platform/Propo integration, security/privacy and QA/SRE/release. Created Phase 1 discovery/ADR tasks #147 and #148. Role owners are recorded; no external agent is assigned (ChatGPT remains sole executor under mandate).
+- WBS v1.1 was read and not modified. Beta 2.0 baseline remains 2% implementation / 0% verification; this session created planning artifacts only and did not implement or test product code.
+- Verification: repository-native GitHub writes and subsequent fetch/compare. No test/build/security scan or Propo runtime integration was run. Identity implementation acceptance: NOT RUN / NOT ACCEPTED.
+- Next execution: finish identity schema/route/provider inventory; resolve owner policy decisions; finalize ADR/OpenAPI/AsyncAPI; only then implement isolated Identity service/database and failure-injection tests.
+
+
+### 2026-11-24 — Identity source inventory deepened
+
+- Expanded source review of canonical InOne backend: production `src/main.js` initializes PostgreSQL, runs migrations and injects the persistent store; local identity data remains product-local.
+- Read `schema.sql`, `migrate.js`, `store.js`, `account-rules.js`, `identity-db.test.js` and `providers-db.test.js`. Current migration runner schema version is `0033-org-request-document-metadata`; schema header still says 0.6.0-alpha.1, requiring provenance/version reconciliation.
+- Confirmed local records/constraints for accounts, profiles, phones, provider links, backup email, email verification, auth tokens, device/session and recovery. Existing IDs are `u` + 24 hex; scrypt password hash and existing foreign keys must be preserved during migration.
+- Existing DB tests cover local email/nickname uniqueness and provider-link persistence; tests are conditional on DATABASE_URL and were NOT RUN in this session.
+- Bounded current-main code search found no matching canonical cross-platform reservation/platform-account registry implementation.
+- Added this evidence and IAM-19–IAM-22 risks to Identity Phase 1, ADR and threat model; expanded audit report. Updated issue #147/#148 evidence links. PR #149 remains Draft/open, no merge.
+- Product code/tests/DB were not changed or executed; Identity remains NOT ACCEPTED. Next: inventory all foreign keys and migration ledger, close owner policy decisions, approve ADR/contracts, then implement isolated service.
+
+
+### 2026-11-25 — Identity dependency graph and startup audit
+
+- Parsed current canonical InOne schema.sql: 55 tables; 26 tables with 29 direct FK columns referencing accounts(user_id).
+- Identified ten identity/actor-like columns without direct account FK; documented per-field semantic classification as required before migration.
+- Reviewed migrate.js and tests: schema version 0033; 32 migration marker entries from 0002–0033; integrity and DB test definitions exist, but were not executed.
+- Actual DB schema_migrations ledger and live FK graph remain blocked pending authorized read-only DB access.
+- Found exported startServer accepts null pool and createServer falls back to memory store; normal CLI production path passes PostgreSQL, but the exported production boundary lacks a fail-fast guard. Created P0 issue #150; no Beta 1 source code changed.
+- Updated Identity Phase 1 plan, threat model, CTO audit report and roadmap. No source code, SQL, database, secrets, Beta 1 PR #135 or production settings changed.
+
+
+### 2026-11-25 — Identity route and verification-policy inventory
+
+- Enumerated current canonical InOne auth routes: email/provider registration, login, refresh/logout, phone, provider linking, backup email, step-up, devices, PIN, recovery, profile and nickname search.
+- Reviewed route handlers and local identity/provider/phone/recovery rule modules and test definitions.
+- Flagged phone-policy inconsistency for owner decision: INONE_REQUIRE_PHONE defaults true for email/password registration, while /register/provider accepts no phone; no Beta 1 change made.
+- Confirmed migration 0008 intentionally reserves pending/unverified phone claims. Need TTL/release policy before central reservation.
+- Created P0 issue #151 and documented IAM-27–IAM-29. Test definitions reviewed only; no tests run.
+
+
+### 2026-11-25 — Identity non-FK reference classification and canonical-ID proposal
+
+- Completed source-level semantic classification of all ten non-FK actor/identity fields using canonical Beta 1 `schema.sql` and `store.js`; details and migration rules are in Phase 1 plan section 14 and issue #150.
+- Key distinctions: `auth_tokens.user_id` is ephemeral and should be invalidated/reissued at cutover; `mls_client_messages.user_id` is part of the durable idempotency keyspace and must not be rewritten; `mls_device_removals.user_id` identifies the member being removed; event/MLS sender and administrative actor fields require durable historical attribution; `files.owner_id` is a live ownership/security reference.
+- Recommended stable local-to-canonical mapping projection. No direct replacement of local IDs, no cross-database foreign keys, no cascading deletion of historical actors.
+- Added a technical recommendation to use Identity-generated opaque UUIDv4 canonical subjects, with UUIDv7 as an alternative if index locality is prioritized over timestamp opacity. This remains UNAPPROVED; no DDL or contract freeze.
+- Updated #150 with completed source classification. Live DB ledger/FK evidence, exact-SHA PostgreSQL tests, production no-pool fail-fast hardening and file lifecycle audit remain open.
+- No product source code, SQL, database, secrets, Beta 1.0 PR #135 or production settings changed. No tests were run.
+- Next: inspect file ownership/object lifecycle and system actor formats; prepare canonical identifier/claim uniqueness decision matrix; obtain Propo contract evidence; then ask owner to approve canonical subject format and global identifier scope before freezing OpenAPI/AsyncAPI.
+
+
+### 2026-11-25 — Identity file ownership and actor provenance audit
+
+- Followed file ownership through canonical server/store paths: owner ID is used in upload HMACs, owner-device checks, private download authorization, file completion, MLS attachment ownership and per-user storage quotas.
+- Confirmed stale cleanup only proves cleanup of abandoned pending/uploaded uploads; it does not define lifecycle for ready files after account closure.
+- Confirmed authenticated organization admin log calls use the session user ID. The set-flag CLI accepts a free-form --actor label, so flag_changes.actor cannot safely be assumed to be a canonical human subject.
+- Added call-path evidence and migration constraints to Phase 1 plan section 14.1. No code/schema/data changes; no tests run.
+
+
+### 2026-11-25 — Global identifier registry policy analysis
+
+- Re-read the authoritative owner product decision for InOne↔Propo Identity. It explicitly requires atomic cross-platform reservation of normalized username/handle, email and phone as applicable in both registration directions.
+- Added a source-backed identifier matrix and claim lifecycle proposal to ADR B2-ADR-001 and Phase 1 plan section 16.
+- Proposed global handle and primary-email namespace across InOne/Propo; optional independently verified phone claim; federated key by exact (iss, sub); product-local IDs remain local; Propo Seller Account is a separate business principal.
+- Flagged unresolved boundary: source decision names InOne+Propo, while current ADR also names InOne Business. Do not extend global handle reservation to InOne Business until owner confirms its role in Identity.
+- Open policy details: backup-email role, email/handle normalization, pending reservation TTL/release, recycled phone handling, handle rename/cooldown, and provider unlink/recovery.
+- No implementation/schema changes or tests. ADR remains DRAFT.

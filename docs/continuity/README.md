@@ -39,3 +39,6 @@
 ## Owner-approved cumulative baseline — 2026-11-09
 
 The owner approved the WBS and release split. All future agents/chats MUST read [development/PROGRESS-BASELINE.md](../../development/PROGRESS-BASELINE.md) before work. Baseline: Beta 1.0 42% implementation / 31% verification; Beta 2.0 2% / 0%; historical InOne overall 25% retained. Scope, weights and percentages are not to be changed without explicit owner approval and a versioned baseline update. Every work item/report must map to the WBS. Current UI integration stage report: [2026-11-09 UI integration](../../development/reports/2026-11-09-1015-ui-integration-start.md).
+
+
+| 2026-11-24 | Owner explicitly started Beta 2.0 with Identity Phase 1; CTO roadmap, Identity execution plan, draft ADR, threat model, audit report and issues #137–#148 added on isolated main-based planning branch. |

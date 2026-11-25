@@ -74,3 +74,8 @@ Read [PROGRESS-BASELINE.md](PROGRESS-BASELINE.md) in full before every implement
 
 - [Full Beta 1.0 / 2.0 audit](reports/2026-11-09-0935-full-beta-audit.md)
 - [UI source import and integration stage](reports/2026-11-09-1015-ui-integration-start.md)
+
+
+## Beta 2.0 — owner-started program (2026-11-24)
+
+The owner has explicitly started Beta 2.0 with Identity as Phase 1. Read the [CTO roadmap](../docs/product/BETA-2.0-CTO-ROADMAP.md), [Identity Phase 1 plan](../docs/product/BETA-2.0-IDENTITY-PHASE-1.md), [draft ADR](../docs/product/BETA-2.0-IDENTITY-ADR-DRAFT.md), [threat model](../docs/product/BETA-2.0-IDENTITY-THREAT-MODEL.md), and [CTO audit report](reports/2026-11-24-beta2-cto-audit.md). Work is isolated on `planning/beta-2.0-cto-2026-11-24`; do not use the stale legacy Beta 2 planning branch as a base. The Beta 2.0 issue backlog is #137–#148. Beta 1.0 PR #135 and its release gates remain separate and unchanged.

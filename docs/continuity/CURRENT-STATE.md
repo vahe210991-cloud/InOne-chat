@@ -668,3 +668,37 @@ Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone
 - No backend source modules, schema/migrations, Rust/FFI source, directory paths or database data were changed. Do not merge to `main` without owner approval.
 
 - PR #120 remains open as Draft against `main`, not merged. Its README received a preservation correction after review; re-read the latest PR head and require fresh exact-head CI before acceptance.
+
+
+## Beta 2.0 CTO planning update — 2026-11-24
+
+- Owner has explicitly started Beta 2.0 with **Identity as Phase 1**. This is a separate program; Beta 1.0 remediation/release scope is unchanged.
+- Current planning branch: `planning/beta-2.0-cto-2026-11-24`, based on main SHA `02880940c1e4d8261405fbeaa01f40879eb44f3a`. Do not use the old `planning/beta-2.0-roadmap` as a base: it is diverged and 1,262 commits behind main; it remains preserved unchanged.
+- Roadmap: [Beta 2.0 CTO roadmap](../../docs/product/BETA-2.0-CTO-ROADMAP.md). Identity plan: [Phase 1 execution plan](../../docs/product/BETA-2.0-IDENTITY-PHASE-1.md). Draft ADR: [B2-ADR-001](../../docs/product/BETA-2.0-IDENTITY-ADR-DRAFT.md). Threat model: [Identity threat model](../../docs/product/BETA-2.0-IDENTITY-THREAT-MODEL.md). Audit: [2026-11-24 CTO audit](../../development/reports/2026-11-24-beta2-cto-audit.md).
+- Workstream tracking: #137 Identity; #138 InOne personal/social; #139 InOne Business; #140 group collaboration; #141 Tasks/Calendar; #142 Cindy; #143 localization/design/themes/icons; #144 platform/Propo integration; #145 security/privacy; #146 QA/SRE/release. Identity first tasks: #147 inventory/threat model and #148 ADR/contracts.
+- Current source review found local InOne identity rules and auth/recovery flows, but no independently deployed cross-platform Identity authority/registry evidenced. Identity is therefore a foundational architecture gap, not a completed feature.
+- Architecture guardrails: separate InOne and InOne Business apps; independent product backends/domain databases; independent Identity database/service; no shadow identity on Identity outage; central atomic identifier reservation; durable outbox/inbox and reconciliation; no automatic account merge based on email/phone alone.
+- Beta 1.0 PR #135 remains separate; its Stage 2 is not accepted until exact-head checks pass. No Beta 1.0 code, PR, release gate or production setting was changed in this Beta 2.0 planning work.
+- WBS v1.1 unchanged. Beta 2.0 baseline remains 2% implementation / 0% verification; roadmap/spec/issue creation does not count as product implementation. No tests/builds or production migrations were run.
+
+
+### Identity source audit refinement — 2026-11-24
+
+The current InOne backend already has a persistent local identity subsystem: production `src/main.js` initializes PostgreSQL, runs migrations and injects `createStore`. The schema includes accounts, profiles, phones, provider links, backup email, email codes, one-time auth tokens, device/session and recovery records. Existing DB constraints cover local verified-email/nickname/phone/provider uniqueness. Current user IDs are `u` + 24 hex; local account rows are referenced by product tables and must not be moved/deleted as the first extraction step.
+
+The cross-platform gap remains the independent canonical Identity authority, shared identifier reservation and durable cross-platform provisioning/reconciliation. `migrate.js` declares schema version 0033 while `schema.sql` header retains an alpha.1 label; reconcile provenance/version and inspect actual migration ledger before migration. Existing `identity-db.test.js` and `providers-db.test.js` are conditional DB tests; their presence is not evidence they ran in this session.
+
+
+### 2026-11-25 — Identity dependency graph audit
+
+- Current schema source: 55 tables; 26 tables contain 29 direct FKs to accounts(user_id). Preserve all local IDs and local account rows during first Identity rollout.
+- Ten additional identity/actor-like fields have no direct FK; semantics (live ref vs event/protocol snapshot vs tombstone) must be decided individually.
+- Migration source: SCHEMA_VERSION 0033; 32 migration markers from 0002 through 0033. Static tests cover parity/continuity and DB upgrade paths, but no tests were run in this session.
+- Actual DB migration ledger and live FK graph remain blocked until authorized read-only DB access.
+- Production CLI passes PostgreSQL pool, but exported startServer can be called with null pool and server then uses memory store. P0 hardening tracked in #150; no Beta 1 code changed.
+- Identity schema/API freeze is not ready pending owner decisions, Propo contract and actual DB evidence.
+
+
+### 2026-11-25 — Identity registration path audit
+
+Canonical InOne identity route inventory is recorded in Phase 1. Email/password registration checks requirePhone (default true in runtime config); provider registration creates an account without a phone. This may be an intentional exception, but must be confirmed before global policy freeze. Migration 0008 explicitly reserves pending/unverified phone numbers, so reservation TTL/release semantics must be defined. Follow-up #151; no Beta 1 behavior changed.
