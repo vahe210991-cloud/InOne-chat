@@ -17,6 +17,7 @@ const PROD = {
   INONE_EMAIL_ENCRYPTION_KEY: randomBytes(32).toString('base64'),
   INONE_FIREBASE_PROJECT_ID: 'inone-messenger',
   INONE_PUSH_ENCRYPTION_KEY: randomBytes(32).toString('hex'),
+  INONE_OBJECT_SIGNING_SECRET: randomBytes(32).toString('hex'),
   DATABASE_URL: 'postgresql://db.example/inone',
 };
 
