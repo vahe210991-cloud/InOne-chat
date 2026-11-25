@@ -587,7 +587,7 @@ Latest documented checkpoint: code SHA `4824dfc3b3f4e3aab5d39b16c1adf934a108d660
 
 Active work is [Draft PR #159](https://github.com/vahe210991-cloud/InOne-chat/pull/159), branch `security/beta1-stage5-supply-chain-main-2026-11-25`, based directly on `main` SHA `74169a449de182ea734049e21d8424dfc4091c88`. Re-fetch its live head before any action. PR #157 is a superseded stacked Draft; do not use it. PR #154 Stage 4 remains separate and unmerged.
 
-1. Poll Actions runs for the exact live PR #159 head. Inspect every job, including the new `RustSec advisory audit (all maintained lockfiles)` and `Source SBOM (SPDX JSON)` jobs. Any prior-SHA success is stale for acceptance.
+1. Poll Actions runs for the exact live PR #159 head. Inspect every job, including the new `RustSec advisory audit (all committed Cargo lockfiles)` and `Source SBOM (SPDX JSON)` jobs. Any prior-SHA success is stale for acceptance.
 2. If RustSec reports vulnerabilities, classify advisory ID, affected version, dependency path, target platform and reachability. Fix only after compatibility review; never run `cargo audit fix` automatically or upgrade MLS/crypto dependencies blindly.
 3. Download/inspect the SPDX SBOM artifact and provenance sidecar. Confirm source SHA equals the checked-out PR head and recompute the SBOM checksum. Treat it as PR CI evidence only, not a release attestation.
 4. Review any action/container digest failures against the pinned refs. Preserve exact 40-character SHA pins and OCI index digests; do not revert to mutable tags.
