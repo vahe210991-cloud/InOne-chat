@@ -194,7 +194,7 @@ export function createPushDelivery({
     try {
       await client.query('BEGIN');
       const deleted = await client.query(
-        'DELETE FROM push_tokens WHERE device_key = $1 AND token_ciphertext = $2 RETURNING device_key',
+        'DELETE FROM push_tokens WHERE device_key = $1 AND provider = \'fcm\' AND identifier_kind = \'fid\' AND token_ciphertext = $2 RETURNING device_key',
         [row.device_key, registration.token_ciphertext],
       );
       if (deleted.rowCount === 1) {
