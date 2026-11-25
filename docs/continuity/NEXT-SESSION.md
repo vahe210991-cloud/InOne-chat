@@ -586,3 +586,14 @@ Current status: planning artifacts and issue backlog are saved in GitHub. Identi
 - Audit every production bootstrap/call site to ensure the in-memory `createServer` fallback cannot be used in production accidentally.
 - Reuse existing local PostgreSQL identity/provider regression tests where their scope is unchanged; execute them only on an authorized runner with a configured test DB and record exact SHA/results.
 - Do not replace local IDs or password/provider state until canonical mapping, account conflict and rollback strategies are approved.
+
+
+### Next Identity execution step — 2026-11-25
+
+1. Continue ID-09 #150: classify all ten non-FK actor/identity columns and produce an explicit local/canonical subject mapping policy.
+2. Obtain authorized read-only DB evidence for schema_migrations and actual FK graph; do not export PII or secrets.
+3. Run migration-integrity and PostgreSQL migration tests on an authorized test DB at an exact SHA; report skips/failures accurately.
+4. Implement production-only no-pool fail-fast guard plus regression test in a separately authorized code change; keep test/development memory mode.
+5. Close owner decisions in ADR B2-ADR-001 (canonical subject format, global identifier scope/normalization/aliases, phone policy, credential ownership, account linking, Propo Seller Account relationship, retention/deletion, SLO/RPO/RTO).
+6. Obtain Propo integration contract/sandbox evidence before finalizing adapter schemas.
+7. Only then freeze Identity schema/OpenAPI/AsyncAPI and open implementation PR. No production migration or Beta 1 account cutover without explicit approval.
