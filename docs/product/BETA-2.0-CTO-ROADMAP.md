@@ -226,3 +226,10 @@ Identity is the first active execution item. Other workstreams are backlog tasks
 - Found a policy discrepancy requiring owner decision: runtime config defaults mandatory phone for email/password registration, while provider registration currently permits a verified-email account without phone. This may be an intentional exception; no Beta 1 behavior changed.
 - Pending phone numbers are intentionally reserved by unique DB index, including unverified claims; define expiry/release before centralizing.
 - Added [ID-10 #151](https://github.com/vahe210991-cloud/InOne-chat/issues/151). Identity ADR/API freeze remains blocked on the phone/verification matrix.
+
+
+## Identity architecture decision and implementation plan — 2026-11-25
+
+The product owner approved UUIDv4 as the canonical internal human subject ID and a privacy-preserving pairwise identifier model. InOne and Propo must receive distinct product-scoped opaque subject IDs; existing InOne local IDs and Propo CUID primary keys/FKs remain unchanged. IDs are never authorization credentials; BOLA/IDOR prevention, tenant isolation, enumeration resistance, token audience separation and privacy-safe telemetry are mandatory.
+
+Execution sequence and acceptance gates are defined in [Identity implementation roadmap](./BETA-2.0-IDENTITY-IMPLEMENTATION-ROADMAP.md). Canonical ID format is no longer an open owner decision. Remaining policy/integration/operational decisions still block contract/schema freeze. No Beta 1.0, production schema or production data changes are authorized by this decision.
