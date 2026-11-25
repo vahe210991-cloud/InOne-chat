@@ -167,7 +167,7 @@ test('журнал запросов сервера не хранит тела с
     const c = await clubWith(base);
     const sent = await sendEvent(c.bob, 'ЖУРНАЛ-МЕТКА-5150');
     const { wireLog } = JSON.parse(await srv.dump());
-    assert.ok(wireLog.some((entry) => entry.includes('/messages')), 'запрос сообщения записан в журнал');
+    assert.ok(wireLog.some((entry) => entry.includes(' /rooms ')), 'запрос сообщения записан под статическим route label');
     assert.ok(!JSON.stringify(wireLog).includes('ЖУРНАЛ-МЕТКА-5150'));
     assert.ok(!JSON.stringify(wireLog).includes(sent.message), 'тело сообщения не записано');
   } finally {
