@@ -71,6 +71,7 @@ test('в продакшене тестовый экран включить не�
     INONE_FIREBASE_PROJECT_ID: 'inone-messenger',
     INONE_PUSH_ENCRYPTION_KEY: 'b'.repeat(64),
     INONE_DOCS_SECRET: 'docs-secret-9f2e7c1a4b8d6035e1f0a9c7b2d4e6f8',
+    INONE_OBJECT_SIGNING_SECRET: 'object-signing-secret-9f2e7c1a4b8d6035e1f0a9c7b2d4e6f8',
     DATABASE_URL: 'postgresql://db.example/inone',
   };
   assert.throws(() => loadConfig({ ...prod, INONE_TEST_UI: '1' }), /INONE_TEST_UI/);
