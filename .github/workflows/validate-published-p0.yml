@@ -247,8 +247,12 @@ jobs:
             local output="$RUNNER_TEMP/rustsec/$name.json"
             test -f "$lockfile" || { echo "::error::Missing maintained lockfile: $lockfile"; status=1; return; }
             echo "Auditing $lockfile"
-            cargo audit --file "$lockfile" --json > "$output"
-            local result=$?
+            local result=0
+            if cargo audit --file "$lockfile" --json > "$output"; then
+              result=0
+            else
+              result=$?
+            fi
             echo "$name cargo-audit exit: $result"
             if [ "$result" -ne 0 ]; then status=1; fi
           }
