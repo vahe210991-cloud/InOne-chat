@@ -617,3 +617,14 @@ CREATE INDEX IF NOT EXISTS email_deliveries_ready
 CREATE INDEX IF NOT EXISTS email_deliveries_stale
   ON email_deliveries (locked_at, id)
   WHERE status = 'processing';
+
+
+-- Stage 4 schema baseline: same definitions as migrations 0034 and 0035.
+CREATE INDEX IF NOT EXISTS rate_limits_window_start_idx
+  ON rate_limits (window_start);
+CREATE INDEX IF NOT EXISTS login_throttle_expiry_idx
+  ON login_throttle (window_start, blocked_until);
+ALTER TABLE push_deliveries
+  ADD COLUMN IF NOT EXISTS registration_generation CHAR(64);
+CREATE INDEX IF NOT EXISTS push_deliveries_registration_generation_idx
+  ON push_deliveries (device_key, registration_generation, status);
