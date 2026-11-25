@@ -694,3 +694,14 @@ Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone
 - Expanded source review confirms B-12 and B-13 defects; B-14 is already implemented at source level (invalid FID cleanup, non-retryable classification, queue cancellation, plaintext-free allowlisted push payload), pending DB-backed test execution; B-15 readiness is partial.
 - Current `main` already has device-bound signed downloads; avoid duplicating PR #86. PR #42 workflow targets old engine paths and does not implement atomic revocation. PR #65 is narrow and does not fix the global request boundary.
 - Updated Stage 0 report addendum in `development/reports/2026-11-24-cto-backend-security-remediation-stage0.md`.
+
+
+## 2026-11-25 — Beta 2.0 screen-gap audit
+
+- Current work branch: `feature/ui-dart-archive-stage1-2026-11-25`, PR #158 (Draft/open/unmerged).
+- UI integration workflow: technical-specification-first Dart integration; temporary HTML approval files are not runtime dependencies, must not be restored, and are not a pixel-parity gate. Owner screenshots drive later visual corrections.
+- Beta 2.0 source inventory is recorded in `development/reports/2026-11-25-beta2-screen-gap-audit.md`.
+- Existing native CRM UI widgets (Leads, Deals Board, Deal Detail) are exported but have demo-gallery call sites only; they are not production-integrated CRM. The owner-supplied archives include add-lead, lead-card, move-stage, add-note, task list/details/create/Kanban, project list/card and other-user profile Dart screens, none integrated into the current production tree.
+- Calendar screens 60–65, Cindy/AI and group collaboration extra screens have no Dart source in the supplied archives/current native screen tree. Wallet, Flags, Stories, Geolocation and Propo map are not screen-level Beta 2.0 commitments in the approved WBS and remain scope-clarification items.
+- Product boundary: InOne is personal/social; InOne Business owns CRM, Kanban, Leads, Deals, Wallet, Flags and Propo Seller Account interoperation. Do not merge their navigation.
+- No Flutter tests/builds or device tests were run for this inventory. Beta 2.0 WBS remains 2% implementation / 0% verification.
