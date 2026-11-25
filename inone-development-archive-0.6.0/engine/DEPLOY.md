@@ -15,10 +15,12 @@
 | Переменная | Что делает | По умолчанию |
 |---|---|---|
 | `DATABASE_URL` | адрес базы PostgreSQL | обязательна |
-| `INONE_PIN_PEPPER` | перец для хэшей PIN и кодов | обязательна в продакшене |\n| `INONE_OBJECT_SIGNING_SECRET` | постоянный HMAC-ключ для подписанных URL объектов; одинаковый на всех репликах и сохраняется при рестартах | обязателен в продакшене; `openssl rand -hex 32` |
+| `INONE_PIN_PEPPER` | перец для хэшей PIN и кодов | обязательна в продакшене |
+| `INONE_OBJECT_SIGNING_SECRET` | постоянный HMAC-ключ для подписанных URL объектов; одинаковый на всех репликах и сохраняется при рестартах | обязателен в продакшене; `openssl rand -hex 32` |
 | `INONE_PUBLIC_URL` | публичный адрес за прокси, https в продакшене | — |
 | `INONE_REGISTRATION_MODE` | `verified` (с проверкой почты) или `open` | `verified` |
-| `INONE_TRUST_PROXY` | включить обработку forwarded headers только от allowlisted immediate peer | `false` |\n| `INONE_TRUSTED_PROXY_IPS` | comma-separated exact IP allowlist для прокси; цепочка проверяется справа налево | обязателен при `INONE_TRUST_PROXY=true` |
+| `INONE_TRUST_PROXY` | включить обработку forwarded headers только от allowlisted immediate peer | `false` |
+| `INONE_TRUSTED_PROXY_IPS` | comma-separated exact IP allowlist для прокси; цепочка проверяется справа налево | обязателен при `INONE_TRUST_PROXY=true` |
 | `INONE_BODY_LIMIT_BYTES` | максимальный размер тела запроса | 4 МБ |
 | `INONE_REQUEST_TIMEOUT_MS` | время на запрос | 30 с |
 | `LOG_LEVEL` | уровень журнала | `info` |
