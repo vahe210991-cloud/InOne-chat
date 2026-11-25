@@ -269,3 +269,86 @@ Reviewed against current `main` SHA `02880940c1e4d8261405fbeaa01f40879eb44f3a` (
 ### Updated CTO gap statement
 
 InOne already has a persistent, product-local identity subsystem with database constraints, password/provider authentication, phone/email verification and device/recovery state. The missing capability is the **independent canonical cross-platform authority and atomic reservation/provisioning layer**. The extraction plan must preserve existing local account behavior and migrate/link local records deliberately; do not rebuild or discard these working mechanisms.
+
+## 12. Dependency graph, migration and startup audit — 2026-11-25
+
+### Direct account foreign keys
+
+Static inspection of engine/src/schema.sql (55 tables) found **29 direct FK columns across 26 tables** referencing accounts(user_id):
+
+| Table | Referencing column(s) |
+|---|---|
+| devices | user_id |
+| pins | user_id |
+| recoveries | user_id |
+| approvals | user_id |
+| recovery | user_id |
+| rooms | owner |
+| room_members | user_id |
+| join_requests | user_id |
+| invites | created_by |
+| group_assets | created_by |
+| phones | user_id |
+| profiles | user_id |
+| provider_links | user_id |
+| backup_emails | user_id |
+| device_waits | user_id |
+| recovery_cancel_codes | user_id |
+| mls_key_packages | user_id |
+| mls_welcomes | user_id |
+| organizations | created_by |
+| org_members | user_id |
+| platform_roles | user_id |
+| org_requests | applicant_id, decided_by |
+| org_request_documents | uploaded_by |
+| org_links | proposed_by, decided_by |
+| mls_key_package_claims | target_user_id, requester_user_id |
+| mls_commit_operations | sender_id |
+
+This dependency boundary prevents direct replacement of local IDs. The first migration should add canonical mapping/projection capability while preserving local accounts.user_id and its FKs. No existing FK is to be redirected until every consumer and rollback path is proven.
+
+### Identity-bearing columns without direct account FK
+
+The schema also contains these identity/actor-like fields without a direct FK to accounts:
+
+- room_events.sender
+- auth_tokens.user_id (nullable/ephemeral token context)
+- mls_commits.sender_id
+- mls_device_removals.user_id (removal/tombstone history)
+- mls_client_messages.user_id
+- files.owner_id
+- flag_changes.actor
+- org_request_log.actor
+- org_settings_log.actor
+- admin_action_log.actor
+
+Do not add FKs mechanically. Decide per field whether it is a live account relation, immutable historical actor snapshot, protocol identifier or tombstone. Specify canonical-to-local mapping, deletion behavior, audit retention and whether a record must remain readable after account closure.
+
+### Migration source audit
+
+- migrate.js declares SCHEMA_VERSION = 0033-org-request-document-metadata.
+- The migration marker map contains 32 entries, from 0002-room-capabilities through 0033-org-request-document-metadata.
+- migration-integrity.test.js asserts marker/file parity, no duplicate/gapped numeric versions, and equality between SCHEMA_VERSION and the last migration.
+- migrate.test.js defines PostgreSQL tests for fresh schema creation, upgrade from the alpha.21 fixture with preserved data, and manually-applied migration detection. These tests are conditional on DATABASE_URL and were **not run** in this repository review.
+- The actual applied schema_migrations ledger and live DB FK graph are not present in GitHub source and remain **BLOCKED pending authorized read-only DB inspection**. No live database was accessed.
+- The first-line schema.sql comment still labels the file 0.6.0-alpha.1; this is stale provenance text. The runtime migration version is 0033. Reconcile the comment and document that schema.sql is the consolidated fresh-install schema; do not treat the comment as the active database version.
+
+### Startup / in-memory fallback audit
+
+- CLI production entrypoint in src/main.js loads config, creates a PostgreSQL pool and passes it to startServer.
+- Exported startServer nevertheless accepts pool = null; when null, it leaves store undefined.
+- src/server.js then executes store ?? createMemoryStore({ pinPepper }).
+- Existing test/main.test.js intentionally exercises this no-pool mode with nodeEnv: test.
+- Production config requires DATABASE_URL, but the exported function does not explicitly reject a production config without a pool. A caller using the exported API could therefore start with ephemeral in-memory state if it passes production config but omits pool. CLI's normal path does pass pool, so this is a hardening gap rather than evidence that current CLI production starts in memory.
+
+**Required remediation:** add a production-only fail-fast guard (config.production && !pool) plus a regression test. Preserve no-pool memory mode for test/development. Track separately; do not change Beta 1 code or PR #135 as part of this documentation-only Beta 2.0 step.
+
+### Phase status after this step
+
+- Repository schema dependency inventory: **SOURCE REVIEW COMPLETE** (26 tables / 29 direct FKs, plus 10 unlinked identity-like columns classified for policy review).
+- Migration source integrity: **STATIC REVIEW COMPLETE** (32 marker entries and existing test definitions reviewed).
+- Test execution against PostgreSQL: **NOT RUN**.
+- Actual database ledger/FK verification: **BLOCKED** (no authorized DB connection/data provided).
+- Production startup fail-closed remediation: **OPEN** — tracked in [ID-09 #150](https://github.com/vahe210991-cloud/InOne-chat/issues/150).
+- Identity schema/API freeze: **NOT READY** until ID policy, orphan-field semantics, Propo contract and owner ADR decisions are resolved.
+- No code, SQL schema, production data, secrets or Beta 1 PR #135 changed.
