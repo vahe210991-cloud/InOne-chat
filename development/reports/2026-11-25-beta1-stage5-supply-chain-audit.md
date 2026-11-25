@@ -1,7 +1,7 @@
 # InOne Beta 1.0 — Stage 5 Supply-Chain and Production Operability Audit
 
 **Date:** 2026-11-25  
-**Branch:** `security/beta1-stage5-supply-chain-2026-11-25`  
+**Branch:** `security/beta1-stage5-supply-chain-main-2026-11-25`  
 **Base:** `main` at `74169a449de182ea734049e21d8424dfc4091c88`  
 **Separate Stage 4 evidence:** Stage 4 PR #154 was independently validated 15/15 on `ee787deacb051cee981ef5c76038fd71e65cd305`; this Stage 5 branch is based directly on `main` and does not depend on Stage 4  
 **Status:** Initial audit complete; Stage 5 remediation and acceptance are in progress
