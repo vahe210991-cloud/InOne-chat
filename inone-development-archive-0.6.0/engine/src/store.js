@@ -545,6 +545,32 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
     async setOrgMemberRole(orgId, userId, role) {
       await pool.query('UPDATE org_members SET role = $3 WHERE org_id = $1 AND user_id = $2', [orgId, userId, role]);
     },
+    async addOrgMemberAtomic({ orgId, actor, target, role, at }) {
+      return inTransaction(async (client) => {
+        const { rows: orgRows } = await client.query('SELECT status FROM organizations WHERE org_id = $1 FOR UPDATE', [orgId]);
+        if (!orgRows[0]) return { ok: false, reason: 'not_found' };
+        if (orgRows[0].status !== 'approved') return { ok: false, reason: 'org_not_approved' };
+        const { rows: actorRows } = await client.query(
+          'SELECT role FROM org_members WHERE org_id = $1 AND user_id = $2 FOR UPDATE',
+          [orgId, actor],
+        );
+        const actorRole = actorRows[0]?.role;
+        if (actorRole !== 'owner' && actorRole !== 'admin') return { ok: false, reason: 'forbidden' };
+        if (actorRole === 'admin' && role !== 'member') return { ok: false, reason: 'forbidden' };
+        const { rows: accountRows } = await client.query('SELECT user_id FROM accounts WHERE user_id = $1', [target]);
+        if (!accountRows[0]) return { ok: false, reason: 'unknown_user' };
+        const inserted = await client.query(
+          'INSERT INTO org_members (org_id, user_id, role, joined_at) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING RETURNING user_id',
+          [orgId, target, role, at],
+        );
+        if (!inserted.rowCount) return { ok: false, reason: 'already_member' };
+        await client.query(
+          'INSERT INTO admin_action_log (org_id, actor, action, target, detail, at) VALUES ($1, $2, $3, $4, $5, $6)',
+          [orgId, actor, 'member_add', target, role, at],
+        );
+        return { ok: true };
+      });
+    },
     async changeOrgMemberRoleAtomic({ orgId, actor, target, role, at }) {
       return inTransaction(async (client) => {
         const { rows: orgRows } = await client.query('SELECT org_id FROM organizations WHERE org_id = $1 FOR UPDATE', [orgId]);
