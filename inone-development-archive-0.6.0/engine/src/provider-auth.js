@@ -31,7 +31,6 @@ export async function fetchProviderKeys(provider, { fetchImpl = fetch, timeoutMs
   if (!url) throw new Error('jwks provider is not supported');
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(new Error('jwks request timeout')), timeoutMs);
-  timer.unref?.();
   try {
     const res = await fetchImpl(url, { signal: controller.signal, headers: { accept: 'application/json, application/jwk-set+json' } });
     if (!res.ok) throw new Error(`jwks ${provider}: HTTP ${res.status}`);
