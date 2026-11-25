@@ -810,3 +810,11 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Updated #150 with completed source classification. Live DB ledger/FK evidence, exact-SHA PostgreSQL tests, production no-pool fail-fast hardening and file lifecycle audit remain open.
 - No product source code, SQL, database, secrets, Beta 1.0 PR #135 or production settings changed. No tests were run.
 - Next: inspect file ownership/object lifecycle and system actor formats; prepare canonical identifier/claim uniqueness decision matrix; obtain Propo contract evidence; then ask owner to approve canonical subject format and global identifier scope before freezing OpenAPI/AsyncAPI.
+
+
+### 2026-11-25 — Identity file ownership and actor provenance audit
+
+- Followed file ownership through canonical server/store paths: owner ID is used in upload HMACs, owner-device checks, private download authorization, file completion, MLS attachment ownership and per-user storage quotas.
+- Confirmed stale cleanup only proves cleanup of abandoned pending/uploaded uploads; it does not define lifecycle for ready files after account closure.
+- Confirmed authenticated organization admin log calls use the session user ID. The set-flag CLI accepts a free-form --actor label, so flag_changes.actor cannot safely be assumed to be a canonical human subject.
+- Added call-path evidence and migration constraints to Phase 1 plan section 14.1. No code/schema/data changes; no tests run.
