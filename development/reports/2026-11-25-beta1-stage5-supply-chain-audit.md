@@ -148,3 +148,7 @@ The job writes JSON reports and uploads them with 14-day retention. It does not 
 ### Validation status
 
 These implementation changes trigger new exact-head CI runs. The earlier successful runs on `7636766d3789e9026ce5d8013282fecaceb03e67` do not count as validation for the updated head. Stage 5 remains in progress until all applicable workflows finish successfully on one final SHA and findings are triaged.
+
+### Controlled update cadence
+
+Added `.github/dependabot.yml` with weekly Monday proposals for GitHub Actions, the three Docker/Compose locations, the backend npm project and all three maintained Cargo projects. Dependabot only opens update PRs; no auto-merge or automatic dependency mutation is configured. The operations runbook now requires manual upstream provenance review, exact-SHA CI, relevant runtime tests and explicit triage of Rust advisories before accepting updates.
