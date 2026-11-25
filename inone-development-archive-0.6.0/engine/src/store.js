@@ -376,12 +376,34 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
     },
     async purgeExpired(nowMs) {
       const run = async (sql) => (await pool.query(sql, [nowMs])).rowCount;
+      const batchDelete = async (table, predicate, params) => {
+        const { rows } = await pool.query(
+          `WITH expired AS (
+             SELECT ctid FROM ${table}
+             WHERE ${predicate}
+             ORDER BY window_start
+             LIMIT 500
+           )
+           DELETE FROM ${table} target USING expired
+           WHERE target.ctid = expired.ctid`,
+          params,
+        );
+        return rows.length;
+      };
+      const rateLimits = await batchDelete('rate_limits', 'window_start <= $1 - $2', [nowMs, 24 * 60 * 60_000]);
+      const loginThrottle = await batchDelete(
+        'login_throttle',
+        'window_start <= $1 - $2 AND blocked_until <= $1',
+        [nowMs, 15 * 60_000],
+      );
       return {
         inbox: await run('DELETE FROM inbox WHERE expires_at <= $1'),
         tokens: await run('DELETE FROM tokens WHERE expires_at <= $1'),
         refreshTokens: await run('DELETE FROM refresh_tokens WHERE expires_at <= $1'),
         authTokens: await run('DELETE FROM auth_tokens WHERE expires_at < $1'),
         recoveryCancelCodes: await run('DELETE FROM recovery_cancel_codes WHERE expires_at <= $1'),
+        rateLimits,
+        loginThrottle,
       };
     },
     async clearExpiredCodes(nowMs) {
