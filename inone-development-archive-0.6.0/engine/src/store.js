@@ -377,7 +377,7 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
     async purgeExpired(nowMs) {
       const run = async (sql) => (await pool.query(sql, [nowMs])).rowCount;
       const batchDelete = async (table, predicate, params) => {
-        const { rows } = await pool.query(
+        const result = await pool.query(
           `WITH expired AS (
              SELECT ctid FROM ${table}
              WHERE ${predicate}
@@ -388,7 +388,7 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
            WHERE target.ctid = expired.ctid`,
           params,
         );
-        return rows.length;
+        return result.rowCount;
       };
       const rateLimits = await batchDelete('rate_limits', 'window_start <= $1 - $2', [nowMs, 24 * 60 * 60_000]);
       const loginThrottle = await batchDelete(
