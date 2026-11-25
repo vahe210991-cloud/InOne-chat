@@ -70,6 +70,11 @@ Read [PROGRESS-BASELINE.md](PROGRESS-BASELINE.md) in full before every implement
 
 - [A2 FRB reconciliation audit — 2026-11-19](reports/2026-11-19-A2-frb-reconciliation-audit.md). Initial source inventory is complete; generated-binding verification and the full platform matrix remain pending.
 
+## Current UI integration and Beta 2.0 screen audit — 2026-11-25
+
+- [Dart archive integration audit](reports/2026-11-25-ui-dart-archive-stage1-integration-audit.md) — owner-approved technical-specification-first workflow and integration constraints; no HTML restoration or pixel-perfect gate.
+- [Beta 2.0 screen-gap audit](reports/2026-11-25-beta2-screen-gap-audit.md) — distinguishes existing CRM placeholders, delivered-but-not-integrated Dart screens, missing Calendar/Cindy/group-extra screens, and future scope requiring classification.
+
 ## Historical UI integration work
 
 - [Full Beta 1.0 / 2.0 audit](reports/2026-11-09-0935-full-beta-audit.md)
