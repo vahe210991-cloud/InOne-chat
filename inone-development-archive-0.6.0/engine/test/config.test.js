@@ -26,12 +26,13 @@ test('production requires a persistent object URL signing secret', () => {
 });
 
 test('trusted proxy mode requires an explicit valid IP allowlist', () => {
-  assert.throws(() => loadConfig({ ...GOOD, INONE_TRUST_PROXY: 'true' }), /INONE_TRUSTED_PROXY_IPS/);
-  assert.throws(() => loadConfig({ ...GOOD, INONE_TRUST_PROXY: 'true', INONE_TRUSTED_PROXY_IPS: 'not-an-ip' }), /valid IP addresses/);
-  const config = loadConfig({ ...GOOD, INONE_TRUST_PROXY: 'true', INONE_TRUSTED_PROXY_IPS: '127.0.0.1, 192.0.2.10' });
+  const testEnv = { ...GOOD, NODE_ENV: 'development', INONE_MAIL_TRANSPORT: 'memory' };
+  assert.throws(() => loadConfig({ ...testEnv, INONE_TRUST_PROXY: 'true' }), /INONE_TRUSTED_PROXY_IPS/);
+  assert.throws(() => loadConfig({ ...testEnv, INONE_TRUST_PROXY: 'true', INONE_TRUSTED_PROXY_IPS: 'not-an-ip' }), /valid IP addresses/);
+  const config = loadConfig({ ...testEnv, INONE_TRUST_PROXY: 'true', INONE_TRUSTED_PROXY_IPS: '127.0.0.1, 192.0.2.10' });
   assert.deepEqual(config.trustedProxyIps, ['127.0.0.1', '192.0.2.10']);
   assert.equal(config.trustProxy, true);
-  assert.throws(() => loadConfig({ ...GOOD, INONE_TRUSTED_PROXY_IPS: '127.0.0.1' }), /requires INONE_TRUST_PROXY=true/);
+  assert.throws(() => loadConfig({ ...testEnv, INONE_TRUSTED_PROXY_IPS: '127.0.0.1' }), /requires INONE_TRUST_PROXY=true/);
 });
 
 test('продакшен без реального почтового транспорта не стартует', () => {
