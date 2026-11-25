@@ -947,11 +947,12 @@ export function createMemoryStore({ pinPepper }) {
     },
     transferRoomOwner(roomId, newOwner) {
       const r = rooms.get(roomId);
-      if (!r) return;
+      if (!r || !r.members.has(newOwner)) return false;
       const previous = r.owner;
       r.owner = newOwner;
       r.admins.delete(newOwner);
       r.admins.delete(previous);
+      return true;
     },
     channelNameTaken(name, exceptRoomId) {
       const key = channelNameKey(name);
