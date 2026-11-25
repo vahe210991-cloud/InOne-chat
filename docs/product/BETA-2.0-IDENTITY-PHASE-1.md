@@ -395,3 +395,40 @@ Reviewed the canonical server.js route blocks and the supporting identity rule m
 - Phone uniqueness currently reserves pending/unverified numbers as well as verified numbers. A pending claim may occupy a number until explicit change/cleanup; define expiry and release before centralizing phone claims.
 
 Follow-up: [ID-10 #151](https://github.com/vahe210991-cloud/InOne-chat/issues/151). Resolve whether phone is mandatory for all signups, only password signups, or a risk/region policy; define verification levels, recovery implications and pending reservation expiry. Only then freeze global identifier policy and API contract.
+
+
+## 14. Non-FK identity/actor reference classification — source review 2026-11-25
+
+**Scope/evidence:** canonical Beta 1 source at main baseline `02880940c1e4d8261405fbeaa01f40879eb44f3a`; files reviewed: `inone-development-archive-0.6.0/engine/src/schema.sql` and `src/store.js`. This is a source-level semantic classification, not a live database inventory. The applied production schema and actual row distributions remain unverified.
+
+| Field | Observed role from schema/store | Classification | Migration / target policy |
+|---|---|---|---|
+| `room_events.sender` | Sender attribution stored on durable room events; store reads it for event history and writes it on append. Redaction stores `redacted_by` in event content. | Immutable event actor reference / historical snapshot. | Preserve original local sender value for historical compatibility. Add a canonical-subject mapping/projection for cross-product display and authorization where required. Do not cascade-delete events or rewrite sender strings in place. |
+| `auth_tokens.user_id` | Nullable subject association on short-lived nonce/registration/provider-auth tokens; tokens are consumed by deleting the row and returning user_id/payload; expired tokens are purged. | Ephemeral live reference, not durable identity history. | Do not migrate outstanding tokens as durable identity. At cutover revoke/delete outstanding auth tokens and require flow restart; issue new tokens against canonical subject after migration. |
+| `mls_commits.sender_id` | Sender attribution on durable MLS epoch commits; stored with protocol commit bytes and returned in commit history. | Immutable protocol actor reference / historical snapshot. | Preserve exact legacy sender ID for protocol/history compatibility. Add a separate canonical-subject mapping only if a product feature needs cross-platform attribution. Never mutate signed/committed protocol artifacts to replace IDs. |
+| `mls_device_removals.user_id` | `mlsRecordDeviceRemovals(userId,...)` inserts the member being removed from MLS device membership; pending rows drive completion. | Live operational subject while pending; protocol tombstone after completion. | Resolve through local-to-canonical mapping while pending. Preserve completed removal records as tombstones. Do not interpret this field as the actor who initiated removal. |
+| `mls_client_messages.user_id` | Part of primary key `(room_id,user_id,client_message_id)`; scopes message idempotency/reservation and supports pending/done/release logic. | Live protocol idempotency namespace with durable dedupe history. | Keep the original local user ID in the existing keyspace during migration; do not rewrite primary keys or collapse dedupe namespaces. New canonical IDs require an explicit versioned idempotency design and coexistence period. |
+| `files.owner_id` | Owner attribution on file records; used by file ownership/access and lifecycle code. | Live ownership/security reference; may need retained tombstone after account closure. | Resolve to canonical subject through the mapping projection for authorization. Preserve local owner ID until every dependent file/object/ACL path is migrated. Define retention/transfer/deletion separately; never orphan or silently reassign ownership. |
+| `flag_changes.actor` | Actor recorded with feature-flag old/new values and reason; read by history tooling. | Administrative audit snapshot; may represent a human or automation principal. | Preserve historical actor string. For new events store typed actor identity (human canonical subject vs service principal) in additive columns/metadata; do not force every actor to be an account. |
+| `org_request_log.actor` | Log rows are written for applicant creation, document upload and request decisions; actor is a user reference at event time. | Historical audit snapshot. | Preserve original actor value and event ordering. Add canonical subject mapping where provable; retain unresolved/deleted actors as historical references, not nulls. |
+| `org_settings_log.actor` | Actor recorded with organization setting changes and returned by audit-history reads. | Historical audit snapshot. | Preserve actor and log rows. New writes should carry typed actor identity and canonical subject where available; no cascade deletion. |
+| `admin_action_log.actor` | Actor recorded for administrative actions across organization membership, roles, links and settings. | Historical audit snapshot; human/service actor distinction must be explicit. | Preserve legacy actor value. New contract must distinguish canonical human subject, service principal and system actor; keep audit evidence after account closure. |
+
+### Cross-cutting migration rules
+
+1. Keep each Beta 1 local `accounts.user_id` stable. The 29 existing FK columns and these ten non-FK fields make a direct in-place replacement unsafe.
+2. Use an explicit local-to-canonical subject mapping/projection, keyed by product/tenant and local user ID, with a unique canonical subject association and audited lifecycle. Do not create cross-database foreign keys.
+3. For live ownership/authorization fields, resolve the local account through the mapping while retaining local IDs during compatibility. For historical/protocol/audit fields, preserve the original actor value and add canonical attribution only as a separate, verifiable projection.
+4. Never infer canonical identity from an email/phone string or actor display text. Map only through an approved, proof-backed migration record.
+5. Preserve deleted/closed actor attribution in durable events and audit records. Account deletion must not rewrite history; apply an approved pseudonymization/retention policy instead.
+6. Outstanding short-lived `auth_tokens` should be invalidated at cutover, not carried across identity namespaces.
+7. Keep `mls_client_messages` idempotency keys and protocol sender fields stable. A change to those namespaces needs a separate compatibility protocol and test plan.
+8. No schema or data change is authorized by this classification. It informs future design only.
+
+### Remaining evidence gaps
+
+- No authorized read-only query against a live/non-production database was performed; actual FK graph, row counts, nullability and actor-value distributions remain UNKNOWN.
+- File authorization/deletion lifecycle and all external object-storage references need a dedicated call-path audit before defining account closure semantics.
+- `flag_changes.actor` and `admin_action_log.actor` accepted value formats need inspection of CLI/admin callers to enumerate service/system identities.
+- MLS historical retention and room-event deletion/redaction semantics need product/privacy policy approval.
+- This classification does not close #150; its DB ledger, exact-SHA migration tests and production fail-fast regression remain outstanding.
