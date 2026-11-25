@@ -124,3 +124,12 @@ Additional migration/security risks IAM-19–IAM-22 are recorded in the Identity
 - Reviewed production bootstrap: normal CLI path always creates/passes PostgreSQL pool. However exported startServer accepts null pool and server falls back to memory store; production config does not currently force pool presence at that exported boundary. This is a hardening issue, not proof the CLI production path uses memory. Created ID-09 #150 for fail-closed guard/test, FK policy, DB verification and schema provenance comment.
 - No Beta 1 source, SQL schema, PR #135, database, secrets or production settings were changed. No test/build/DB execution performed.
 - Identity schema/API freeze remains NOT READY: owner decisions in B2-ADR-001 and Propo contract are still open.
+
+## 2026-11-25 — Identity routes and verification-policy audit
+
+- Enumerated current auth/identity routes in canonical server.js: email registration, provider registration, login, refresh/logout, phone, provider linking, backup email, step-up, devices, PIN, recovery, profile and nickname search.
+- Reviewed identity-rules.js, email-code-rules.js, phone-rules.js, recovery-rules.js and provider-auth.js plus identity/provider/phone test definitions.
+- Found policy decision requiring owner resolution: config defaults INONE_REQUIRE_PHONE=true and email/password registration enforces it, but /register/provider does not require/create phone. Provider test explicitly covers no-phone provider registration. Do not change until owner decides whether this is an exception.
+- Migration 0008 explicitly reserves both pending and verified phone numbers. Need TTL/release semantics for abandoned pending claims before centralizing.
+- Added ID-10 #151 and recorded IAM-27–IAM-29 in threat model. Existing test definitions were read, not run.
+- No Beta 1 source behavior changed; no tests or production DB were executed.
