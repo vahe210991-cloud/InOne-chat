@@ -91,7 +91,7 @@ class InOneMyOrganizationsScreen extends StatelessWidget {
                     child: Padding(
                       padding: const EdgeInsets.all(24),
                       child: InOneEmptyState(
-                        icon: InOneIcons.building,
+                        icon: Icons.business_outlined,
                         title: _copy(
                           'Կազմակերպություններ չկան',
                           'Нет доступных организаций',
