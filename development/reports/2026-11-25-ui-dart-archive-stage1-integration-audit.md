@@ -74,3 +74,10 @@ Further observations:
 - Do not change backend or MLS code as part of this UI import.
 - Do not add candidate Dart files to the active `mobile/lib` tree while imports are unresolved.
 - Do not merge this work to `main` until exact-SHA analysis, tests and HTML-to-Dart visual acceptance pass.
+
+
+## Additional source-branch and visual-reference checks
+
+- The branch `feat/flutter-ui-dart-migration-2026-11-14` is heavily diverged from current `main`: GitHub compare reports 646 commits ahead and 1,168 behind, with merge base `1df19a001acb5f8c4892471ca4eaa0696e02c54d`. It is not a safe wholesale source for copying into current main.
+- The approved-reference path `mobile/assets/approved-ui/InOne-approved-cross-platform.html` is absent on current `main`. It exists on the old Flutter migration branch, but the repository fetch returned an empty content body for that file. Therefore no screen-by-screen visual comparison was possible in this pass.
+- Keep the HTML baseline preservation requirement active. Before visual acceptance, locate a readable authoritative copy of the approved HTML screens (including the relevant per-screen files if the single-file reference is no longer maintained). Do not infer approval from the Dart archive README.
