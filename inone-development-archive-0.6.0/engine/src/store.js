@@ -545,6 +545,74 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
     async setOrgMemberRole(orgId, userId, role) {
       await pool.query('UPDATE org_members SET role = $3 WHERE org_id = $1 AND user_id = $2', [orgId, userId, role]);
     },
+    async changeOrgMemberRoleAtomic({ orgId, actor, target, role, at }) {
+      return inTransaction(async (client) => {
+        const { rows: orgRows } = await client.query('SELECT org_id FROM organizations WHERE org_id = $1 FOR UPDATE', [orgId]);
+        if (!orgRows[0]) return { ok: false, reason: 'not_found' };
+        const { rows } = await client.query(
+          'SELECT user_id, role FROM org_members WHERE org_id = $1 AND user_id = ANY($2::text[]) ORDER BY user_id FOR UPDATE',
+          [orgId, [...new Set([actor, target])]],
+        );
+        const roles = new Map(rows.map((row) => [row.user_id, row.role]));
+        if (roles.get(actor) !== 'owner') return { ok: false, reason: 'forbidden' };
+        const current = roles.get(target);
+        if (!current) return { ok: false, reason: 'not_found' };
+        if (current === 'owner' && role !== 'owner') {
+          const { rows: owners } = await client.query(
+            "SELECT COUNT(*)::int AS n FROM org_members WHERE org_id = $1 AND role = 'owner'",
+            [orgId],
+          );
+          if (owners[0].n <= 1) return { ok: false, reason: 'last_owner' };
+        }
+        await client.query('UPDATE org_members SET role = $3 WHERE org_id = $1 AND user_id = $2', [orgId, target, role]);
+        await client.query(
+          'INSERT INTO admin_action_log (org_id, actor, action, target, detail, at) VALUES ($1, $2, $3, $4, $5, $6)',
+          [orgId, actor, 'role_change', target, current + '->' + role, at],
+        );
+        return { ok: true, current };
+      });
+    },
+    async removeOrgMemberAtomic({ orgId, actor, target, action, at }) {
+      return inTransaction(async (client) => {
+        const { rows: orgRows } = await client.query('SELECT org_id FROM organizations WHERE org_id = $1 FOR UPDATE', [orgId]);
+        if (!orgRows[0]) return { ok: false, reason: 'not_found' };
+        const { rows } = await client.query(
+          'SELECT user_id, role FROM org_members WHERE org_id = $1 AND user_id = ANY($2::text[]) ORDER BY user_id FOR UPDATE',
+          [orgId, [...new Set([actor, target])]],
+        );
+        const roles = new Map(rows.map((row) => [row.user_id, row.role]));
+        const actorRole = roles.get(actor);
+        const targetRole = roles.get(target);
+        if (!targetRole) return { ok: false, reason: 'not_found' };
+        if (action === 'member_leave') {
+          if (actor !== target || !actorRole) return { ok: false, reason: 'not_found' };
+        } else if (actorRole !== 'owner' && !(actorRole === 'admin' && targetRole === 'member')) {
+          return { ok: false, reason: 'forbidden' };
+        }
+        if (targetRole === 'owner') {
+          const { rows: owners } = await client.query(
+            "SELECT COUNT(*)::int AS n FROM org_members WHERE org_id = $1 AND role = 'owner'",
+            [orgId],
+          );
+          if (owners[0].n <= 1) return { ok: false, reason: 'last_owner' };
+        }
+        const { rows: ownedRooms } = await client.query(
+          'SELECT room_id FROM rooms WHERE org_id = $1 AND owner = $2 ORDER BY room_id FOR UPDATE',
+          [orgId, target],
+        );
+        if (ownedRooms.length) return { ok: false, reason: 'owns_rooms' };
+        await client.query(
+          'DELETE FROM room_members WHERE user_id = $2 AND room_id IN (SELECT room_id FROM rooms WHERE org_id = $1)',
+          [orgId, target],
+        );
+        await client.query('DELETE FROM org_members WHERE org_id = $1 AND user_id = $2', [orgId, target]);
+        await client.query(
+          'INSERT INTO admin_action_log (org_id, actor, action, target, detail, at) VALUES ($1, $2, $3, $4, $5, $6)',
+          [orgId, actor, action, target, targetRole, at],
+        );
+        return { ok: true, role: targetRole };
+      });
+    },
     async countOrgOwners(orgId) {
       const { rows } = await pool.query("SELECT COUNT(*)::int AS n FROM org_members WHERE org_id = $1 AND role = 'owner'", [orgId]);
       return rows[0].n;
@@ -582,6 +650,32 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
       const old = !r ? { maxGroupMembers: null, channelsEnabled: true, fileQuotaBytes: null }[field] : { maxGroupMembers: r.max_group_members, channelsEnabled: r.channels_enabled, fileQuotaBytes: r.file_quota_bytes === null ? null : Number(r.file_quota_bytes) }[field];
       await pool.query(`INSERT INTO org_settings (org_id, ${column}) VALUES ($1, $2) ON CONFLICT (org_id) DO UPDATE SET ${column} = EXCLUDED.${column}`, [orgId, value]);
       await pool.query('INSERT INTO org_settings_log (org_id, actor, field, old_value, new_value, at) VALUES ($1, $2, $3, $4, $5, $6)', [orgId, actor, field, JSON.stringify(old), JSON.stringify(value), at]);
+    },
+    async setOrgSettingAtomic({ orgId, field, value, actor, at }) {
+      const column = { maxGroupMembers: 'max_group_members', channelsEnabled: 'channels_enabled', fileQuotaBytes: 'file_quota_bytes' }[field];
+      if (!column) throw new Error('invalid organization setting field');
+      return inTransaction(async (client) => {
+        const { rows: orgRows } = await client.query('SELECT org_id FROM organizations WHERE org_id = $1 FOR UPDATE', [orgId]);
+        if (!orgRows[0]) return { ok: false, reason: 'not_found' };
+        const { rows } = await client.query('SELECT max_group_members, channels_enabled, file_quota_bytes FROM org_settings WHERE org_id = $1 FOR UPDATE', [orgId]);
+        const row = rows[0];
+        const old = !row
+          ? { maxGroupMembers: null, channelsEnabled: true, fileQuotaBytes: null }[field]
+          : { maxGroupMembers: row.max_group_members, channelsEnabled: row.channels_enabled, fileQuotaBytes: row.file_quota_bytes === null ? null : Number(row.file_quota_bytes) }[field];
+        await client.query(
+          `INSERT INTO org_settings (org_id, ${column}) VALUES ($1, $2) ON CONFLICT (org_id) DO UPDATE SET ${column} = EXCLUDED.${column}`,
+          [orgId, value],
+        );
+        await client.query(
+          'INSERT INTO org_settings_log (org_id, actor, field, old_value, new_value, at) VALUES ($1, $2, $3, $4, $5, $6)',
+          [orgId, actor, field, JSON.stringify(old), JSON.stringify(value), at],
+        );
+        await client.query(
+          'INSERT INTO admin_action_log (org_id, actor, action, target, detail, at) VALUES ($1, $2, $3, $4, $5, $6)',
+          [orgId, actor, 'setting_change', field, JSON.stringify(value), at],
+        );
+        return { ok: true };
+      });
     },
     async listOrgSettingsLog(orgId) {
       const { rows } = await pool.query('SELECT actor, field, old_value, new_value, at FROM org_settings_log WHERE org_id = $1 ORDER BY id', [orgId]);
