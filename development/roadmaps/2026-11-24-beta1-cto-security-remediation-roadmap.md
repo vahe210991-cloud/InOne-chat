@@ -13,7 +13,7 @@
 
 Deliver a secure, testable Beta 1.0 backend through a sequence of independently reviewable remediation stages. Preserve the existing client/API contracts unless a compatibility review proves a change is necessary. Fix root causes; do not weaken authorization, MLS invariants, tests, or acceptance gates to obtain green CI.
 
-The work is performed only on the existing remediation branch and tracked in PR #135. Do not modify `main`, merge the PR, close related issues, change repository protection/settings, or mutate secrets without explicit owner approval.
+Stage 1 + Stage 2 remain on the existing remediation branch and PR #135. Later stages may use separate stacked stage branches and Draft PRs based on the immediately preceding accepted stage; do not retarget them to `main` until the dependency PR is merged. Do not modify `main`, merge any PR, close related issues, change repository protection/settings, or mutate secrets without explicit owner approval.
 
 ## 2. Non-negotiable product and engineering boundaries
 
