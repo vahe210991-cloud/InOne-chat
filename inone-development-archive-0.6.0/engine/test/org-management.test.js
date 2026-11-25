@@ -7,6 +7,7 @@ import { createServer } from '../src/server.js';
 import { ChatClient, DEFAULT_PASSWORD as PW } from '../src/client.js';
 import { storeForTest } from './helpers.js';
 import { createMemoryStore } from '../src/store-memory.js';
+import { createStore } from '../src/store.js';
 
 const PEPPER = randomBytes(24).toString('hex');
 const DOCS = 'test-docs-secret-0123456789-abcdefgh';
@@ -76,6 +77,61 @@ test('менять роли может только владелец; после
     assert.equal(demoteSelf.status, 200, 'при втором владельце понижение возможно');
   } finally {
     await s.stop();
+  }
+});
+
+
+test('параллельное самопонижение двух владельцев не оставляет организацию без владельца', async () => {
+  const s = await start();
+  try {
+    await s.store.addOrgMember(ORG, BORIS, 'owner', 5);
+    const results = await Promise.all([
+      call(s.base, 'POST', `/orgs/${ORG}/members/${enc(ANNA)}/role`, s.anna.token, { role: 'member' }),
+      call(s.base, 'POST', `/orgs/${ORG}/members/${enc(BORIS)}/role`, s.boris.token, { role: 'member' }),
+    ]);
+    assert.deepEqual(results.map((r) => r.status).sort(), [200, 403]);
+    assert.equal(await s.store.countOrgOwners(ORG), 1, 'после гонки ровно один владелец');
+    const actions = await s.store.listAdminActions(ORG);
+    assert.equal(actions.filter((a) => a.action === 'role_change').length, 1, 'успешное изменение и аудит зафиксированы ровно один раз');
+  } finally {
+    await s.stop();
+  }
+});
+
+test('ошибка записи admin audit откатывает изменение роли и удаление участника', async (t) => {
+  const db = await storeForTest(PEPPER);
+  if (!db?.pool || !db?.store) {
+    t.skip('PostgreSQL test database is not configured');
+    return;
+  }
+  const orgId = `org-audit-rollback-${randomBytes(6).toString('hex')}`;
+  const owner = `@owner-${randomBytes(5).toString('hex')}:inone.test`;
+  const member = `@member-${randomBytes(5).toString('hex')}:inone.test`;
+  try {
+    await db.store.createOrganization({ orgId, name: 'Audit rollback', status: 'approved', createdBy: owner, createdAt: 1 });
+    await db.store.addOrgMember(orgId, owner, 'owner', 2);
+    await db.store.addOrgMember(orgId, member, 'member', 3);
+    const failingStore = createStore({
+      pool: db.pool, pinPepper: PEPPER,
+      testHooks: { beforeAdminActionInsert() { throw new Error('injected admin audit failure'); } },
+    });
+    await assert.rejects(
+      failingStore.changeOrgMemberRoleAtomic({ orgId, actor: owner, target: owner, role: 'member', at: 4 }),
+      /injected admin audit failure/,
+    );
+    assert.equal(await db.store.orgRoleOf(orgId, owner), 'owner', 'понижение откатилось');
+    await assert.rejects(
+      failingStore.removeOrgMemberAtomic({ orgId, actor: owner, target: member, action: 'member_remove', at: 5 }),
+      /injected admin audit failure/,
+    );
+    assert.equal(await db.store.orgRoleOf(orgId, member), 'member', 'удаление участника откатилось');
+  } finally {
+    await db.pool.query('DELETE FROM admin_action_log WHERE org_id = $1', [orgId]);
+    await db.pool.query('DELETE FROM room_members WHERE room_id IN (SELECT room_id FROM rooms WHERE org_id = $1)', [orgId]);
+    await db.pool.query('DELETE FROM rooms WHERE org_id = $1', [orgId]);
+    await db.pool.query('DELETE FROM org_members WHERE org_id = $1', [orgId]);
+    await db.pool.query('DELETE FROM organizations WHERE org_id = $1', [orgId]);
+    await db.close();
   }
 });
 
