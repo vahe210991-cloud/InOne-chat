@@ -218,3 +218,11 @@ Identity is the first active execution item. Other workstreams are backlog tasks
 - ADR/contracts task #148 remains open pending owner policy decisions and Propo contract.
 - Follow-up P0 issue #150 tracks the remaining identity dependency graph classifications, actual DB-ledger verification, exact-SHA PostgreSQL migration tests, and production-only fail-closed startup guard/test.
 - No product code or database migration has been performed. Identity remains NOT ACCEPTED; schema/API freeze is blocked on unresolved owner decisions and DB evidence.
+
+
+### Identity registration-policy follow-up — 2026-11-25
+
+- Auth route inventory is documented in the Phase 1 plan.
+- Found a policy discrepancy requiring owner decision: runtime config defaults mandatory phone for email/password registration, while provider registration currently permits a verified-email account without phone. This may be an intentional exception; no Beta 1 behavior changed.
+- Pending phone numbers are intentionally reserved by unique DB index, including unverified claims; define expiry/release before centralizing.
+- Added [ID-10 #151](https://github.com/vahe210991-cloud/InOne-chat/issues/151). Identity ADR/API freeze remains blocked on the phone/verification matrix.
