@@ -2,13 +2,13 @@
 
 **Date:** 2026-11-25  
 **Stage branch:** `security/beta1-stage3-runtime-hardening-2026-11-25`  
-**Base:** `security/beta1-backend-remediation-2026-11-24`  
+**Base:** `main` at `74169a449de182ea734049e21d8424dfc4091c88`  
 **Dependency:** PR #135, joint Stage 1 + Stage 2 accepted CI candidate  
-**Status:** Implementation committed; exact-SHA validation pending
+**Status:** ACCEPTED: all 15/15 check runs passed on exact candidate SHA `bd7d8d5e5cdee594f77e399ac3d37252e463263b`
 
 ## Scope
 
-Stage 3 covers B-06, B-08, B-09, B-10, B-11 and B-15. The implementation is intentionally stacked on the Stage 1 + Stage 2 branch so that PR #135 remains unchanged at its accepted source SHA.
+Stage 3 covers B-06, B-08, B-09, B-10, B-11 and B-15. It is based directly on `main` after Stage 1 + Stage 2 were merged by PR #135 (merge commit `74169a449de182ea734049e21d8424dfc4091c88`).
 
 ## Findings and changes
 
@@ -68,12 +68,16 @@ Stage 3 covers B-06, B-08, B-09, B-10, B-11 and B-15. The implementation is inte
 
 ## Validation status
 
-No Stage 3 test result is claimed yet. The complete backend Node suite, PostgreSQL suite, runtime Compose checks and exact-SHA workflow gate must pass on the final Stage 3 SHA. Any failure will be investigated without weakening security assertions.
+**ACCEPTED on exact SHA:** `bd7d8d5e5cdee594f77e399ac3d37252e463263b`.
+
+All 15/15 check runs completed successfully on this exact SHA. The evidence includes Backend Node suite, PostgreSQL integration suite, P0 room-list regression, Rust format/check/tests, canonical MLS regression, persistent Flutter-Rust bridge tests, OpenMLS attachment/session integration, iOS Keychain native target build, Compose PostgreSQL/migrations/API smoke, Compose build/migrations/HTTP smoke, engine, non-mutating exact-head MLS source verification, and the Exact-SHA required workflow acceptance gate.
+
+No required check was left queued, skipped or cancelled in the observed check-run set. This is CI acceptance for the Stage 3 candidate, not authorization to merge or deploy.
 
 ## Safety boundaries
 
 - No change to `main`.
-- PR #135 remains unchanged at its accepted Stage 1 + Stage 2 candidate SHA and remains Draft/unmerged.
-- This Stage 3 branch is stacked on PR #135 and must not be merged ahead of its base.
+- PR #135 is merged; `main` includes merge commit `74169a449de182ea734049e21d8424dfc4091c88`.
+- Stage 3 PR #152 remains Draft and unmerged pending owner review/authorization.
 - No secrets or secret values are committed.
 - No production deployment or key rotation was performed.
