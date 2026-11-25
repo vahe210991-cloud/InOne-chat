@@ -812,7 +812,12 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         const nonce = typeof body.nonce === 'string' ? body.nonce : '';
         const spent = nonce === '' ? null : await storage.consumeAuthToken('nonce', authTokenHash('nonce', nonce), now());
         if (!spent) return send(res, 401, { error: 'nonce invalid or already used' });
-        const checked = await verifyProviderToken(provider, body.idToken, nonce);
+        let checked;
+        try {
+          checked = await verifyProviderToken(provider, body.idToken, nonce);
+        } catch {
+          return send(res, 503, { error: 'identity provider verification is temporarily unavailable' });
+        }
         if (!checked.ok) return send(res, checked.reason === 'unverified-email' ? 403 : 401, { error: `provider token rejected: ${checked.reason}` });
         const linked = await storage.providerLinkFind(provider, checked.identity.sub);
         if (linked) {
