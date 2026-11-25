@@ -565,6 +565,7 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
           if (owners[0].n <= 1) return { ok: false, reason: 'last_owner' };
         }
         await client.query('UPDATE org_members SET role = $3 WHERE org_id = $1 AND user_id = $2', [orgId, target, role]);
+        testHooks.beforeAdminActionInsert?.({ orgId, actor, action: 'role_change', target });
         await client.query(
           'INSERT INTO admin_action_log (org_id, actor, action, target, detail, at) VALUES ($1, $2, $3, $4, $5, $6)',
           [orgId, actor, 'role_change', target, current + '->' + role, at],
@@ -606,6 +607,7 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
           [orgId, target],
         );
         await client.query('DELETE FROM org_members WHERE org_id = $1 AND user_id = $2', [orgId, target]);
+        testHooks.beforeAdminActionInsert?.({ orgId, actor, action, target });
         await client.query(
           'INSERT INTO admin_action_log (org_id, actor, action, target, detail, at) VALUES ($1, $2, $3, $4, $5, $6)',
           [orgId, actor, action, target, targetRole, at],
@@ -676,6 +678,7 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
           'INSERT INTO org_settings_log (org_id, actor, field, old_value, new_value, at) VALUES ($1, $2, $3, $4, $5, $6)',
           [orgId, actor, field, JSON.stringify(old), JSON.stringify(value), at],
         );
+        testHooks.beforeAdminActionInsert?.({ orgId, actor, action: 'setting_change', target: field });
         await client.query(
           'INSERT INTO admin_action_log (org_id, actor, action, target, detail, at) VALUES ($1, $2, $3, $4, $5, $6)',
           [orgId, actor, 'setting_change', field, JSON.stringify(value), at],
