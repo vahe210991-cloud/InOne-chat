@@ -89,7 +89,7 @@ test('параллельное самопонижение двух владел�
       call(s.base, 'POST', `/orgs/${ORG}/members/${enc(ANNA)}/role`, s.anna.token, { role: 'member' }),
       call(s.base, 'POST', `/orgs/${ORG}/members/${enc(BORIS)}/role`, s.boris.token, { role: 'member' }),
     ]);
-    assert.deepEqual(results.map((r) => r.status).sort(), [200, 403]);
+    assert.deepEqual(results.map((r) => r.status).sort(), [200, 409]);
     assert.equal(await s.store.countOrgOwners(ORG), 1, 'после гонки ровно один владелец');
     const actions = await s.store.listAdminActions(ORG);
     assert.equal(actions.filter((a) => a.action === 'role_change').length, 1, 'успешное изменение и аудит зафиксированы ровно один раз');
