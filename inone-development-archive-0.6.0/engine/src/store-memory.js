@@ -600,7 +600,7 @@ export function createMemoryStore({ pinPepper }) {
         { orgId: orgA, actor, action: 'link_revoke', target: orgB, detail: linkId, at },
         { orgId: orgB, actor, action: 'link_revoke', target: orgA, detail: linkId, at },
       );
-      return { ok: true };
+      return true;
     },
     logAdminAction({ orgId, actor, action, target, detail, at }) {
       adminActions.push({ orgId: orgId ?? null, actor, action, target: target ?? null, detail: detail ?? null, at });
