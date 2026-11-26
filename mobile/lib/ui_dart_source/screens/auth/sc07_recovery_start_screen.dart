@@ -53,7 +53,7 @@ class _InOneRecoveryStartScreenState extends State<InOneRecoveryStartScreen>
       onBack: widget.onBack,
       banner: bannerText,
       dock: [
-        if (_sent) const InOneBanner.info('Եթե հաշիվը գոյություն ունի, վերականգնման հրահանգներն ուղարկվել են գրանցված կապի միջոցով'),
+        if (_sent) const InOneBanner.info('Եթե հաշիվը գոյություն ունի, վերականգնման հրահանգներն ուղարկվել են գրանցված կապի միջոցով։ Եթե ստացել եք հաստատման հղում, նախ բացեք այն։'),
         InOneField(
           form: _form,
           name: 'email',
