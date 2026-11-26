@@ -126,4 +126,60 @@ void main() {
       const InOneRoom(roomId: 'r', kind: 'group', name: null, role: 'member'),
     ), throwsUnsupportedError);
   });
+  test('parses opaque encrypted room activity and unread summary metadata', () {
+    final room = InOneRoom.fromJson({
+      'roomId': 'room-1',
+      'kind': 'group',
+      'name': 'Project',
+      'role': 'member',
+      'lastEventSeq': 42,
+      'lastEventAt': 1795720000000,
+      'unreadCount': 3,
+    });
+
+    expect(room.lastEventSeq, 42);
+    expect(room.lastEventAt, 1795720000000);
+    expect(room.unreadCount, 3);
+    expect(room.hasSummary, isTrue);
+  });
+
+  test('room list enables unread filtering only when every room has summary metadata', () {
+    final complete = InOneRoomList.fromJson({
+      'rooms': [
+        {
+          'roomId': 'room-1',
+          'kind': 'group',
+          'name': 'Project',
+          'role': 'member',
+          'lastEventSeq': 42,
+          'lastEventAt': 1795720000000,
+          'unreadCount': 2,
+        },
+      ],
+    });
+    expect(complete.unreadCountsAvailable, isTrue);
+
+    final legacy = InOneRoomList.fromJson({
+      'rooms': [
+        {'roomId': 'room-1', 'kind': 'group', 'name': 'Project', 'role': 'member'},
+      ],
+    });
+    expect(legacy.unreadCountsAvailable, isFalse);
+  });
+
+  test('rejects malformed unread summary metadata', () {
+    expect(
+      () => InOneRoom.fromJson({
+        'roomId': 'room-1',
+        'kind': 'group',
+        'name': 'Project',
+        'role': 'member',
+        'lastEventSeq': 42,
+        'lastEventAt': 1795720000000,
+        'unreadCount': -1,
+      }),
+      throwsA(isA<ApiException>()),
+    );
+  });
+
 }
