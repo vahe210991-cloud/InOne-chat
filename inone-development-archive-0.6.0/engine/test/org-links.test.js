@@ -98,9 +98,17 @@ test('отзыв связи любой стороной убирает учас�
     const linkId = (await call(s.base, 'POST', `/orgs/${ORG_A}/links`, s.boris.token, { targetOrgId: ORG_B })).json.linkId;
     await call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/accept`, s.carol.token, {});
     await s.anna.addMember(ROOM, CAROL);
+    assert.equal((await s.anna.raw('POST', `/rooms/${enc(ROOM)}/owner`, { userId: CAROL })).owner, CAROL);
+    const ownerBlocked = await call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/revoke`, s.carol.token, {});
+    assert.equal(ownerBlocked.status, 409);
+    assert.equal(ownerBlocked.json.code, 'mls_removal_required');
+    assert.deepEqual(ownerBlocked.json.ownerRoomIds, [ROOM], 'room ownership must be transferred before MLS removal');
+
+    assert.equal((await s.carol.raw('POST', `/rooms/${enc(ROOM)}/owner`, { userId: ANNA })).owner, ANNA);
     const blocked = await call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/revoke`, s.carol.token, {});
     assert.equal(blocked.status, 409, 'link revoke cannot bypass MLS removal');
     assert.equal(blocked.json.code, 'mls_removal_required');
+    assert.deepEqual(blocked.json.ownerRoomIds, []);
     assert.ok((await s.store.getRoom(ROOM)).members.includes(CAROL), 'membership remains until an MLS Remove Commit');
     await s.anna.removeMember(ROOM, CAROL);
     const revoked = await call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/revoke`, s.carol.token, {});
