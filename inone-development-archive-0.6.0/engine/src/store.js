@@ -1510,6 +1510,7 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
 
     // ---- беседы ----
     async createRoom(roomId, owner, memberIds, opts = {}) {
+      if ([...new Set(memberIds)].some((userId) => userId !== owner)) return { status: 'mls_commit_required' };
       return inTransaction(async (c) => {
         const orgId = opts.orgId ?? 'org-default';
         const { rows: orgRows } = await c.query(
