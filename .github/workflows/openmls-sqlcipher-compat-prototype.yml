@@ -3,7 +3,7 @@ name: OpenMLS 0.10 SQLCipher compatibility prototype
 on:
   push:
     branches:
-      - security/prototype-openmls-0.10-sqlcipher-2026-11-26
+      - security/prototype-openmls-signer-compat-2026-11-26
   workflow_dispatch:
 
 permissions:
