@@ -55,6 +55,9 @@ jobs:
                 starts("development/prototypes/openmls-0.10-sqlcipher-compat/")) {
               expected.add("Validate recovered InOne P0 source");
             }
+            if (starts("development/prototypes/openmls-0.10-sqlcipher-compat/")) {
+              expected.add("OpenMLS 0.10 SQLCipher compatibility prototype");
+            }
             if (workflowChanged("mls-native-validation.yml") ||
                 starts(pocMls) || starts(engineMls) || starts(mobileRust)) {
               expected.add("Native MLS client validation");
