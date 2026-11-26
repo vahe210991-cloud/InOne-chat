@@ -1911,33 +1911,60 @@ async mlsPendingRemovalsFor(userId) {
     async mlsClaimKeyPackages(targetUserId, requesterUserId, requesterDeviceId, claimId, roomId, nowMs) {
       return inTransaction(async (c) => {
         if (roomId) {
-          // Lock the active cross-org link before the room row, matching revokeOrgLink.
+          // Direct conversations are personal and are authorized by their canonical pair.
+          // Group/channel claims lock the cross-org link before the room row, matching revokeOrgLink.
           const { rows: roomLookup } = await c.query(
-            'SELECT org_id, owner FROM rooms WHERE room_id = $1',
+            'SELECT org_id, owner, kind FROM rooms WHERE room_id = $1',
             [roomId],
           );
           if (!roomLookup[0]) return { ok: false, reason: 'room_not_found' };
-          const roomOrgId = roomLookup[0].org_id;
-          const { rows: orgRows } = await c.query(
-            'SELECT status FROM organizations WHERE org_id = $1 FOR SHARE',
-            [roomOrgId],
-          );
-          if (!orgRows[0] || orgRows[0].status !== 'approved') return { ok: false, reason: 'org_not_approved' };
-          const requesterAllowed = await lockUserOrgAccess(c, requesterUserId, roomOrgId);
-          const targetAllowed = await lockUserOrgAccess(c, targetUserId, roomOrgId);
-          if (!requesterAllowed || !targetAllowed) return { ok: false, reason: 'not_authorized' };
-          const { rows: lockedRoom } = await c.query(
-            'SELECT org_id, owner FROM rooms WHERE room_id = $1 FOR SHARE',
-            [roomId],
-          );
-          if (!lockedRoom[0] || lockedRoom[0].org_id !== roomOrgId) return { ok: false, reason: 'room_not_found' };
-          const { rows: inviterMembership } = await c.query(
-            'SELECT capabilities FROM room_members WHERE room_id = $1 AND user_id = $2 FOR SHARE',
-            [roomId, requesterUserId],
-          );
-          if (lockedRoom[0].owner !== requesterUserId
-            && (!inviterMembership[0] || !inviterMembership[0].capabilities.includes('invite_members'))) {
-            return { ok: false, reason: 'invite_capability_required' };
+          if (roomLookup[0].kind === 'direct') {
+            const { rows: conversations } = await c.query(
+              'SELECT user_a, user_b, created_by, status FROM direct_conversations WHERE room_id = $1 FOR SHARE',
+              [roomId],
+            );
+            const conversation = conversations[0];
+            const counterpart = conversation?.user_a === requesterUserId
+              ? conversation.user_b
+              : conversation?.user_b === requesterUserId ? conversation.user_a : null;
+            if (!conversation || conversation.status !== 'pending'
+              || conversation.created_by !== requesterUserId || roomLookup[0].owner !== requesterUserId
+              || counterpart !== targetUserId) {
+              return { ok: false, reason: 'not_authorized' };
+            }
+            const { rows: lockedRoom } = await c.query(
+              "SELECT kind FROM rooms WHERE room_id = $1 FOR SHARE",
+              [roomId],
+            );
+            if (!lockedRoom[0] || lockedRoom[0].kind !== 'direct') return { ok: false, reason: 'room_not_found' };
+            const { rows: inviterMembership } = await c.query(
+              'SELECT 1 FROM room_members WHERE room_id = $1 AND user_id = $2 FOR SHARE',
+              [roomId, requesterUserId],
+            );
+            if (!inviterMembership.length) return { ok: false, reason: 'invite_capability_required' };
+          } else {
+            const roomOrgId = roomLookup[0].org_id;
+            const { rows: orgRows } = await c.query(
+              'SELECT status FROM organizations WHERE org_id = $1 FOR SHARE',
+              [roomOrgId],
+            );
+            if (!orgRows[0] || orgRows[0].status !== 'approved') return { ok: false, reason: 'org_not_approved' };
+            const requesterAllowed = await lockUserOrgAccess(c, requesterUserId, roomOrgId);
+            const targetAllowed = await lockUserOrgAccess(c, targetUserId, roomOrgId);
+            if (!requesterAllowed || !targetAllowed) return { ok: false, reason: 'not_authorized' };
+            const { rows: lockedRoom } = await c.query(
+              'SELECT org_id, owner FROM rooms WHERE room_id = $1 FOR SHARE',
+              [roomId],
+            );
+            if (!lockedRoom[0] || lockedRoom[0].org_id !== roomOrgId) return { ok: false, reason: 'room_not_found' };
+            const { rows: inviterMembership } = await c.query(
+              'SELECT capabilities FROM room_members WHERE room_id = $1 AND user_id = $2 FOR SHARE',
+              [roomId, requesterUserId],
+            );
+            if (lockedRoom[0].owner !== requesterUserId
+              && (!inviterMembership[0] || !inviterMembership[0].capabilities.includes('invite_members'))) {
+              return { ok: false, reason: 'invite_capability_required' };
+            }
           }
         } else if (!(await lockUsersShareOrgOrLink(c, requesterUserId, targetUserId))) {
           return { ok: false, reason: 'not_authorized' };
