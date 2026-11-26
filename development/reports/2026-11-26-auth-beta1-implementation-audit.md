@@ -77,7 +77,7 @@ The canonical Beta 1.0 backend in this change set is `inone-development-archive-
 - SC-01 login now handles normal login, waiting-period, device-approval, and post-recovery identity-check states.
 - SC-03 supports registration code entry and identity-code entry with a challenge ID and resend action.
 - SC-04 registration submits through the host session and the atomic registration backend path.
-- SC-07 starts recovery with channel-neutral copy and exposes the separate recovery-cancellation code path. Current backend behavior sends an email code for accounts without a verified phone, and an SMS code plus email confirmation link for accounts with a verified phone.
+- SC-07 starts recovery with channel-neutral copy and exposes the separate recovery-cancellation code path. Current backend behavior sends an email code to accounts without a verified phone and without provider links, an SMS code plus email confirmation link to accounts with a verified phone, and expects provider sign-in for provider-linked accounts without a verified phone. The latter currently has no working route because native provider sign-in is blocked.
 - SC-08 stages recovery deep-link data in memory and performs the mutating confirmation request only after explicit user action; Back discards the staged payload.
 - SC-09 completes recovery with the new password and the code delivered to the registered recovery channel. For verified-phone accounts, SC-08 email-link confirmation must happen before SC-09 completion. The encryption-key-reset warning is still a D8 placeholder and needs owner-approved user-facing copy before release.
 - SC-10 distinguishes admission cancellation from recovery cancellation.
@@ -107,7 +107,7 @@ No local test run or CI run is claimed. The final test suite must run only after
 
 1. **AUTH-03 phone policy:** decide whether a verified phone is mandatory for Beta 1.0, when registration must block, and whether unverified accounts may use the product. SMS confirmation UI is not yet connected.
 2. **AUTH-04 biometric grant:** add a platform-backed biometric grant bridge for trusted devices with signing-key protection. Server-side checks remain fail-closed.
-3. **AUTH-08 recovery policy:** current backend behavior allows email-code recovery for accounts without a verified phone, while verified-phone accounts use SMS code plus email-link confirmation. This behavior remains subject to owner approval; decide whether email-only recovery is permitted and define restrictions.
+3. **AUTH-08 recovery policy:** current backend behavior allows email-code recovery for accounts without a verified phone and without provider links; verified-phone accounts use SMS code plus email-link confirmation; provider-linked accounts without a verified phone are expected to use provider sign-in. This behavior remains subject to owner approval; decide whether email-only recovery is permitted and define restrictions, including the provider-linked account case.
 4. **AUTH-09 session restore:** persistent refresh-token restoration must remain Rust/platform-owned. The native session runtime is still opt-in; do not introduce Dart preferences/plaintext token persistence.
 5. **Provider sign-in:** Google/Apple native SDKs and client configuration are absent; screens remain blocked rather than pretending to authenticate.
 6. **SC-09 warning copy:** the encryption-key-reset warning still displays a D8 placeholder; owner-approved copy is required before release.
