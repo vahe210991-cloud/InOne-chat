@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, RECOVERY_DELAY_MS } from '../src/server.js';
+import { createMemoryStore } from '../src/store-memory.js';
 import { ChatClient, DEFAULT_PASSWORD as PW } from '../src/client.js';
 import { createVerified, startRecovery, smsCodeFrom, linkTokenFrom, confirmLink } from './recovery-helpers.js';
 
@@ -18,8 +19,14 @@ const NEW_PW = 'новый-пароль-2026';
 const IDENTITY_SUBJECT = 'Подтверждение входа после восстановления';
 const HOUR = 3600_000;
 
-async function start() {
-  const srv = createServer({ defaultOrgAutoJoin: true, registrationMode: 'open', requirePhone: false, pinPepper: 'test-pepper-0123456789-0123456789-abcd' });
+async function start({ store } = {}) {
+  const srv = createServer({
+    defaultOrgAutoJoin: true,
+    registrationMode: 'open',
+    requirePhone: false,
+    pinPepper: 'test-pepper-0123456789-0123456789-abcd',
+    store,
+  });
   await new Promise((resolve) => srv.server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${srv.server.address().port}`;
   return { srv, base, stop: () => new Promise((r) => srv.server.close(r)) };
@@ -429,6 +436,41 @@ test('кнопка на странице подтверждения отправ
     const wrong = await fetch(`${base}/recovery/confirm`, { method: 'POST', headers: form, body: new URLSearchParams({ user: ALICE, token: FIXTURE_3 }).toString() });
     assert.equal(wrong.status, 403);
     assert.match(await wrong.text(), /неверная/);
+  } finally {
+    await stop();
+  }
+});
+
+test('повторяет очистку устройств после частичного сбоя и закрывает окно только после успеха', async () => {
+  const store = createMemoryStore({
+    pinPepper: 'test-pepper-0123456789-0123456789-abcd',
+  });
+  const originalDrop = store.mlsDropDevicePackages.bind(store);
+  let failOnce = true;
+  store.mlsDropDevicePackages = async (...args) => {
+    if (failOnce) {
+      failOnce = false;
+      throw new Error('injected device cleanup failure');
+    }
+    return originalDrop(...args);
+  };
+
+  const { srv, base, stop } = await start({ store });
+  try {
+    const phone = await createVerified(base, srv, ALICE, 'A_PHONE', PW, PHONE_A);
+    const code = await startRecovery(base, srv, ALICE, PHONE_A);
+    await post(base, '/recovery/complete', { userId: ALICE, code, newPassword: NEW_PW });
+    srv.advance(RECOVERY_DELAY_MS + 1000);
+
+    await assert.rejects(phone.sync(), (error) => error.status === 500);
+    const interrupted = await store.recoveryGet(ALICE);
+    assert.notEqual(interrupted.windowKeyResetAt, null);
+    assert.equal((await store.deviceRecord(`${ALICE}|A_PHONE`)).revoked, true);
+
+    await assert.rejects(phone.sync(), (error) => error.status === 401);
+    const completed = await store.recoveryGet(ALICE);
+    assert.equal(completed.windowKeyResetAt, null);
+    assert.ok(srv.mailbox(ALICE).some((mail) => mail.templateId === 'old_devices_revoked'));
   } finally {
     await stop();
   }
