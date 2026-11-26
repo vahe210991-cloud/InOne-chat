@@ -15,6 +15,6 @@ cargo run --manifest-path "$ROOT/legacy-writer/Cargo.toml" -- "$DB"
   cargo tree -i libsqlite3-sys
 )
 
-INONE_COMPAT_DB="$DB" cargo test --manifest-path "$ROOT/current-reader/Cargo.toml" -- --nocapture
+INONE_COMPAT_DB="$DB" cargo test --manifest-path "$ROOT/current-reader/Cargo.toml" -- --nocapture --test-threads=1
 
 (cd "$ROOT/current-reader" && cargo audit)
