@@ -161,9 +161,9 @@ test('F-01: stale accept after a concurrent revoke is rejected without an accept
 
 
 
-test('F-04 PostgreSQL: a room invitation racing link revocation cannot leave stale membership', { skip: !process.env.DATABASE_URL }, async () => {
+test('F-04 PostgreSQL: MLS Add Commit and link revocation serialize without bypassing Remove Commit', { skip: !process.env.DATABASE_URL }, async () => {
   const s = await start();
-  let releaseInvite;
+  let releaseAdd;
   const originalConnect = s.pool.connect.bind(s.pool);
   try {
     await s.anna.createRoom(ROOM, [ANNA, BORIS], { orgId: ORG_A });
@@ -172,11 +172,11 @@ test('F-04 PostgreSQL: a room invitation racing link revocation cannot leave sta
     const linkId = proposed.json.linkId;
     assert.equal((await call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/accept`, s.carol.token, {})).status, 200);
 
-    let signalInviteLock;
+    let signalLinkShare;
     let signalRevokeAttempt;
-    const inviteLockReady = new Promise((resolve) => { signalInviteLock = resolve; });
+    const linkShareReady = new Promise((resolve) => { signalLinkShare = resolve; });
     const revokeAttempted = new Promise((resolve) => { signalRevokeAttempt = resolve; });
-    const inviteGate = new Promise((resolve) => { releaseInvite = resolve; });
+    const addGate = new Promise((resolve) => { releaseAdd = resolve; });
 
     s.pool.connect = async (...args) => {
       if (args.length > 0) return originalConnect(...args);
@@ -185,10 +185,10 @@ test('F-04 PostgreSQL: a room invitation racing link revocation cannot leave sta
       client.query = async (query, ...params) => {
         const sql = typeof query === 'string' ? query : query?.text ?? '';
         if (sql.includes('SELECT org_a, org_b FROM org_links') && sql.includes('FOR UPDATE')) signalRevokeAttempt();
-        if (sql.includes('FOR SHARE OF member, member_org, link')) {
+        if (sql.includes('SELECT link_id FROM org_links') && sql.includes('FOR SHARE')) {
           const result = await originalQuery(query, ...params);
-          signalInviteLock();
-          await inviteGate;
+          signalLinkShare();
+          await addGate;
           return result;
         }
         return originalQuery(query, ...params);
@@ -196,30 +196,29 @@ test('F-04 PostgreSQL: a room invitation racing link revocation cannot leave sta
       return client;
     };
 
-    const inviting = s.anna.addMember(ROOM, CAROL).then(() => ({ status: 200 }), (error) => ({ status: error.status }));
-    await waitForSignal(inviteLockReady, 'room invitation did not acquire active-link share lock');
+    const adding = s.anna.addMember(ROOM, CAROL);
+    await waitForSignal(linkShareReady, 'MLS Add Commit did not acquire the active-link share lock');
     const revoking = call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/revoke`, s.carol.token, {});
-    await waitForSignal(revokeAttempted, 'link revocation did not attempt its conditional update');
-    releaseInvite();
+    await waitForSignal(revokeAttempted, 'link revocation did not attempt its exclusive link lock');
+    releaseAdd();
 
-    assert.equal((await inviting).status, 200, 'MLS Add Commit holding the active-link lock may finish first');
+    await adding;
     const blocked = await revoking;
-    assert.equal(blocked.status, 409, 'link revocation cannot remove the newly added member without MLS');
+    assert.equal(blocked.status, 409, 'the completed Add Commit remains in the roster and blocks link revocation');
     assert.equal(blocked.json.code, 'mls_removal_required');
-    assert.equal((await s.store.getRoom(ROOM)).members.includes(CAROL), true);
+    assert.ok((await s.store.getRoom(ROOM)).members.includes(CAROL));
+
     await s.anna.removeMember(ROOM, CAROL);
-    assert.equal((await call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/revoke`, s.carol.token, {})).status, 200);
-    assert.equal((await s.store.getOrgLink(linkId)).status, 'revoked');
-    assert.equal((await s.store.getRoom(ROOM)).members.includes(CAROL), false);
+    const revoked = await call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/revoke`, s.carol.token, {});
+    assert.equal(revoked.status, 200, 'link revocation succeeds only after MLS Remove Commit');
   } finally {
-    releaseInvite?.();
+    releaseAdd?.();
     s.pool.connect = originalConnect;
     await s.stop();
   }
 });
 
-
-test('F-05 PostgreSQL: a room message write is serialized before link revocation and denied afterward', { skip: !process.env.DATABASE_URL }, async () => {
+test('F-05 PostgreSQL: an in-flight room message serializes with link revocation, which remains blocked until MLS removal', { skip: !process.env.DATABASE_URL }, async () => {
   const s = await start();
   let releaseWrite;
   const originalConnect = s.pool.connect.bind(s.pool);
@@ -254,20 +253,21 @@ test('F-05 PostgreSQL: a room message write is serialized before link revocation
     );
     await waitForSignal(writeLockReady, 'message write did not reach its in-transaction boundary');
     const revoking = call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/revoke`, s.carol.token, {});
-    await waitForSignal(revokeAttempted, 'link revocation did not attempt its conditional update');
+    await waitForSignal(revokeAttempted, 'link revocation did not attempt its exclusive link lock');
     releaseWrite();
 
     const writtenSeq = await writing;
-    assert.equal(typeof writtenSeq, 'number', 'message authorized before revoke commits');
+    assert.equal(typeof writtenSeq, 'number', 'message authorized before revocation commits');
     const blocked = await revoking;
-    assert.equal(blocked.status, 409);
+    assert.equal(blocked.status, 409, 'active MLS membership prevents revocation from silently changing the roster');
     assert.equal(blocked.json.code, 'mls_removal_required');
-    await s.anna.removeMember(ROOM, CAROL);
-    assert.equal((await call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/revoke`, s.carol.token, {})).status, 200);
-    assert.equal((await s.store.getRoom(ROOM)).members.includes(CAROL), false);
+    assert.ok((await s.store.getRoom(ROOM)).members.includes(CAROL));
     const rows = await s.store.roomEventRows(ROOM, 0);
     assert.ok(rows.some((event) => event.sender === CAROL), 'the message committed before the revoke linearization point');
 
+    await s.anna.removeMember(ROOM, CAROL);
+    const revoked = await call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/revoke`, s.carol.token, {});
+    assert.equal(revoked.status, 200);
     const denied = await s.store.appendRoomEvent(ROOM, CAROL, 'm.room.encrypted', { ciphertext: 'after-revoke' }, Date.now());
     assert.equal(denied.state, 'org_not_member', 'writes after revocation are rejected');
   } finally {
@@ -277,7 +277,7 @@ test('F-05 PostgreSQL: a room message write is serialized before link revocation
   }
 });
 
-test('F-03 PostgreSQL: injected audit failure rolls back link revocation and cross-room membership deletion', { skip: !process.env.DATABASE_URL }, async () => {
+test('F-03 PostgreSQL: injected audit failure rolls back link revocation after MLS membership removal', { skip: !process.env.DATABASE_URL }, async () => {
   const s = await start();
   const originalConnect = s.pool.connect.bind(s.pool);
   try {
@@ -311,7 +311,7 @@ test('F-03 PostgreSQL: injected audit failure rolls back link revocation and cro
 
     s.pool.connect = originalConnect;
     assert.equal((await s.store.getOrgLink(linkId)).status, 'active', 'link state rolls back');
-    assert.equal((await s.store.getRoom(ROOM)).members.includes(CAROL), false, 'MLS removal remains committed independently of link revocation');
+    assert.equal((await s.store.getRoom(ROOM)).members.includes(CAROL), false, 'MLS Remove Commit remains durable');
     const revokeA = (await s.store.listAdminActions(ORG_A)).filter((event) => event.action === 'link_revoke' && event.detail === linkId);
     const revokeB = (await s.store.listAdminActions(ORG_B)).filter((event) => event.action === 'link_revoke' && event.detail === linkId);
     assert.equal(revokeA.length + revokeB.length, 0, 'no partial audit event survives');
