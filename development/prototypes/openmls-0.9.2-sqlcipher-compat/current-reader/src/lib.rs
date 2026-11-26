@@ -298,10 +298,7 @@ mod tests {
             ProcessedMessageContent::ApplicationMessage(_)
         ));
 
-        let next_epoch = alice_group
-            .propose_self_update(&alice_provider, &alice_signer)
-            .expect("Alice creates self-update proposal");
-        let _ = next_epoch;
+        // Adding Bob already advanced the group from epoch 0 to epoch 1.
         assert_eq!(alice_group.epoch().as_u64(), 1);
     }
 
