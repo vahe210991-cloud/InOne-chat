@@ -1746,6 +1746,7 @@ if (req.method === 'POST' && orgLinkActRoute) {
       error: 'remove cross-organization members from every affected MLS room before revoking the link',
       code: 'mls_removal_required',
       memberships: revoked.memberships,
+      ownerRoomIds: revoked.memberships.filter((membership) => membership.owner).map((membership) => membership.roomId),
     });
   }
   if (!revoked.ok) return send(res, 409, { error: 'link state changed; reload and retry' });
