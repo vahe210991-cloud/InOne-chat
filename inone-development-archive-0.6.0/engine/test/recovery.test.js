@@ -72,7 +72,7 @@ async function rawLogin(base, userId, password, deviceId, identityCode) {
 
 /** Код входа после восстановления приходит письмом (D1). */
 const identityCodeFrom = (srv, userId) => {
-  const mail = srv.mailbox(userId).filter((m) => /\b\d{6}\b/.test(m.text)).at(-1);
+  const mail = srv.mailbox(userId).filter((m) => m.templateId === 'recovery_login_code' && /\b\d{6}\b/.test(m.text)).at(-1);
   return mail.text.match(/\b(\d{6})\b/)[1];
 };
 
