@@ -82,7 +82,7 @@ class _InOneRecoveryStartScreenState extends State<InOneRecoveryStartScreen>
         if (widget.onCancelRecovery != null) ...[
           const SizedBox(height: 12),
           InOneButton(
-            label: 'Ես չեմ նախաձեռնել վերականգնումը',
+            label: 'Արդեն ունե՞ք չեղարկման կոդը',
             kind: InOneButtonKind.outline,
             onPressed: widget.onCancelRecovery,
           ),
