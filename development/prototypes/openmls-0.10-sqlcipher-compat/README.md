@@ -42,3 +42,16 @@ The fixture key and group identity are deterministic test data only. They are no
 - OpenMLS 0.10.0-rc.1 is a release candidate. Passing this prototype is evidence for further review, not approval to ship the prerelease dependency.
 
 Run locally with Rust 1.94.0, then execute `scripts/run.sh`; CI runs the same fixture-generation and read-back sequence. The generated candidate lockfile is uploaded as evidence and is evaluated by the repository's existing Stage 5 RustSec gate once committed.
+
+
+## Initial CI result — 2026-11-26
+
+Prototype workflow run `45760553977` passed. It created a SQLCipher 4.5.7 fixture with OpenMLS 0.8.1 and then, with OpenMLS 0.10.0-rc.1, Libcrux and rusqlite 0.41.1:
+- loaded the existing group (epoch 0, one member);
+- passed SQLite integrity checking;
+- reopened and loaded the same group a second time;
+- rejected an incorrect SQLCipher key.
+
+The generated candidate lockfile is committed in this prototype directory. It resolves `crypto-bigint 0.7.11`, `libcrux-aead/libcrux-kem/libcrux-chacha20poly1305 0.0.11`, `libcrux-secrets 0.0.8`, `libcrux-sha3 0.0.12`, and `libsqlite3-sys 0.39.1`. The repository's RustSec gate must still audit this committed lockfile; no finding is considered resolved until that check passes.
+
+This remains a prerelease compatibility experiment. It is not a production dependency update or a merge approval.
