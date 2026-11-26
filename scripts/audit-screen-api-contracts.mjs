@@ -24,6 +24,7 @@ const routeEvidence = new Map([
   ['POST /recovery/cancel-by-code', /req\.method === 'POST' && p === '\/recovery\/cancel-by-code'/u],
   ['POST /admission/cancel', /req\.method === 'POST' && p === '\/admission\/cancel'/u],
   ['POST /logout', /req\.method === 'POST' && p === '\/logout'/u],
+  ['POST /direct-chats/open', /req\\.method === 'POST' && p === '\\/direct-chats\\/open'/u],
   ['GET /rooms/mine', /req\.method === 'GET' && p === '\/rooms\/mine'/u],
   ['GET /rooms/:id/events', /roomRoute && req\.method === 'GET'/u],
   ['GET /orgs/mine', /req\.method === 'GET' && p === '\/orgs\/mine'/u],
