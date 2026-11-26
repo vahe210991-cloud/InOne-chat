@@ -70,3 +70,12 @@ Owner-approved variant В remains unchanged. Do not add public-by-default profil
 7. Complete Flutter widget/integration and exact-SHA acceptance.
 
 No tasks were closed or crossed out. No WBS percentage was recalculated.
+
+
+## WBS and task continuity
+
+- Approved WBS v1.1 baseline remains unchanged: Beta 1.0 42% implementation / 31% verification; Beta 2.0 2% / 0%. This audit does not recalculate progress.
+- Five prior/related project work items reviewed as existing context: (1) authenticated own-profile DTO and locale integration; (2) organization membership/role model; (3) organization settings and admin audit; (4) generic device-bound file delivery; (5) FEED/PROFILE source audit and privacy variant В.
+- Five next work items: (1) PROFILE-SEC-001 / CHAT-P0-01 MLS-safe organization member removal; (2) PROFILE-CORE-001 and PROFILE-PRIVACY-001 backend regression coverage; (3) ORG-CORE-001 and ORG-ROLES-001 exact PostgreSQL authorization verification; (4) owner decision on guest visibility/editable fields/media; (5) approved Flutter/API implementation and exact-SHA acceptance.
+- Task branch: audit/account-organization-profiles-beta1-main-7d34b99-20261126.
+- Documentation PR: to be recorded after creation. No merge is authorized.
