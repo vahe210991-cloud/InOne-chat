@@ -131,7 +131,7 @@ export function issueIdentity(r, {
       resendAfter: cooldownUntil,
     };
   }
-  if (nowMs < cooldownUntil) {
+  if (r.identityLastSentAt > 0 && nowMs < cooldownUntil) {
     return {
       next: { ...r, identityAttempts: attempts },
       outcome: hasActiveCode ? 'device_mismatch' : 'cooldown',
