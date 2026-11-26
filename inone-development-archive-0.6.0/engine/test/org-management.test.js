@@ -137,6 +137,36 @@ test('ошибка записи admin audit откатывает изменен�
   }
 });
 
+test('удаление участника организации блокируется, пока он состоит в MLS-комнате связанной организации', async () => {
+  const s = await start();
+  try {
+    const linkedOrg = 'org-management-linked';
+    await s.store.createOrganization({ orgId: linkedOrg, name: 'Связанная организация', status: 'approved', createdBy: DAVE, createdAt: 5 });
+    await s.store.addOrgMember(linkedOrg, DAVE, 'owner', 6);
+    await s.store.addOrgMember(linkedOrg, EVE, 'member', 7);
+
+    const room = '!org-member-cross-link:inone.test';
+    await s.anna.createRoom(room, [ANNA], { orgId: ORG });
+    const proposed = await call(s.base, 'POST', `/orgs/${ORG}/links`, s.anna.token, { targetOrgId: linkedOrg });
+    assert.equal(proposed.status, 200);
+    const linkId = proposed.json.linkId;
+    assert.equal((await call(s.base, 'POST', `/orgs/${linkedOrg}/links/${enc(linkId)}/accept`, s.dave.token, {})).status, 200);
+
+    await s.anna.addMember(room, EVE);
+    const blocked = await call(s.base, 'POST', `/orgs/${linkedOrg}/members/${enc(EVE)}/remove`, s.dave.token, {});
+    assert.equal(blocked.status, 409);
+    assert.equal(blocked.json.code, 'mls_removal_required');
+    assert.deepEqual(blocked.json.roomIds, [room]);
+
+    await s.anna.removeMember(room, EVE);
+    const removed = await call(s.base, 'POST', `/orgs/${linkedOrg}/members/${enc(EVE)}/remove`, s.dave.token, {});
+    assert.equal(removed.status, 200);
+    await assert.rejects(s.anna.addMember(room, EVE), (error) => error.status === 403);
+  } finally {
+    await s.stop();
+  }
+});
+
 test('выход из организации снимает доступ к её комнатам; владелец с комнатами не выходит; администратор удаляет только обычных', async () => {
   const s = await start();
   try {
