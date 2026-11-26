@@ -2,6 +2,7 @@ use std::{path::Path, sync::Arc};
 
 use openmls::prelude::*;
 use openmls_libcrux_crypto::CryptoProvider as LibcruxCrypto;
+use openmls_traits::crypto::OpenMlsCrypto;
 use openmls_sqlite_storage::{Codec, Connection, SqliteStorageProvider};
 use serde::{de::DeserializeOwned, Serialize};
 
