@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from '../src/server.js';
+import { createMemoryStore } from '../src/store-memory.js';
 import { ChatClient, DEFAULT_PASSWORD as PW } from '../src/client.js';
 import { storeForTest } from './helpers.js';
 
@@ -15,16 +16,17 @@ const keyPackage = (label) => b64(`KEYPACKAGE-${label}-${'x'.repeat(48)}`);
 
 async function start() {
   const db = await storeForTest(PEPPER);
+  const store = db?.store ?? createMemoryStore({ pinPepper: PEPPER });
   const srv = createServer({
     defaultOrgAutoJoin: false,
     registrationMode: 'open',
     requirePhone: false,
     pinPepper: PEPPER,
-    store: db?.store,
+    store,
   });
   await new Promise((resolve) => srv.server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${srv.server.address().port}`;
-  return { base, db, stop: async () => { await new Promise((resolve) => srv.server.close(resolve)); await db?.close(); } };
+  return { base, db, store, stop: async () => { await new Promise((resolve) => srv.server.close(resolve)); await db?.close(); } };
 }
 
 test('direct chats are canonical per unordered pair and activate only through claimed multi-device MLS Welcome', async () => {
@@ -87,6 +89,16 @@ test('direct chats are canonical per unordered pair and activate only through cl
     assert.ok((await bob.raw('GET', '/rooms/mine')).rooms.some((room) => room.roomId === opened.roomId && room.kind === 'direct'));
     assert.equal((await bob.raw('GET', '/mls/welcomes')).welcomes.length, 1);
     assert.equal((await bobTablet.raw('GET', '/mls/welcomes')).welcomes.length, 1);
+    assert.equal(typeof await s.store.appendRoomEvent(
+      opened.roomId, ALICE, 'm.room.encrypted', { ciphertext: 'alice-ciphertext' }, Date.now(),
+    ), 'number', 'creator can write after the pair is MLS-active without organization membership');
+    assert.equal(typeof await s.store.appendRoomEvent(
+      opened.roomId, BOB, 'm.room.encrypted', { ciphertext: 'bob-ciphertext' }, Date.now(),
+    ), 'number', 'recipient can write after processing the server-side Add Commit');
+    const thirdPartyWrite = await s.store.appendRoomEvent(
+      opened.roomId, CAROL, 'm.room.encrypted', { ciphertext: 'third-party' }, Date.now(),
+    );
+    assert.equal(thirdPartyWrite.state, 'not_member');
 
     const activeOpen = await bob.raw('POST', '/direct-chats/open', { userId: ALICE });
     assert.equal(activeOpen.roomId, opened.roomId);
