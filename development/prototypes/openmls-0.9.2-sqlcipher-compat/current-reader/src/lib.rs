@@ -255,7 +255,7 @@ mod tests {
             signature_key: bob_signer.to_public_vec().into(),
         };
         let bob_key_package = KeyPackage::builder()
-            .build(&bob_provider, &bob_signer, bob_credential)
+            .build(CIPHERSUITE, &bob_provider, &bob_signer, bob_credential)
             .expect("build Bob key package");
 
         let (_commit, welcome, _group_info) = alice_group
@@ -271,8 +271,15 @@ mod tests {
         assert_eq!(alice_group.epoch().as_u64(), 1);
         assert_eq!(alice_group.members().count(), 2);
 
-        let staged = StagedWelcome::new_from_welcome(&bob_provider, &welcome, None)
-            .expect("stage Bob Welcome");
+        let welcome: MlsMessageIn = welcome.into();
+        let welcome = welcome.into_welcome().expect("extract Bob Welcome");
+        let staged = StagedWelcome::new_from_welcome(
+            &bob_provider,
+            &MlsGroupJoinConfig::default(),
+            welcome,
+            None,
+        )
+        .expect("stage Bob Welcome");
         let mut bob_group = staged
             .into_group(&bob_provider)
             .expect("Bob joins through Welcome");
@@ -286,8 +293,14 @@ mod tests {
                 b"alice-to-bob",
             )
             .expect("Alice encrypts application message");
+        let alice_message: MlsMessageIn = alice_message.into();
         let bob_received = bob_group
-            .process_message(&bob_provider, alice_message)
+            .process_message(
+                &bob_provider,
+                alice_message
+                    .into_protocol_message()
+                    .expect("Alice message is a protocol message"),
+            )
             .expect("Bob decrypts Alice application message");
         assert!(matches!(
             bob_received.into_content(),
@@ -301,8 +314,14 @@ mod tests {
                 b"bob-to-alice",
             )
             .expect("Bob encrypts application message");
+        let bob_message: MlsMessageIn = bob_message.into();
         let alice_received = alice_group
-            .process_message(&alice_provider, bob_message)
+            .process_message(
+                &alice_provider,
+                bob_message
+                    .into_protocol_message()
+                    .expect("Bob message is a protocol message"),
+            )
             .expect("Alice decrypts Bob application message");
         assert!(matches!(
             alice_received.into_content(),
