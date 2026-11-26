@@ -197,6 +197,7 @@ class InOneSession extends ChangeNotifier {
         retryable: false,
       ));
     }
+    _registrationToken = null;
     final operation = _loginOnce(email: email, password: password, identityCode: identityCode, identityChallengeId: identityChallengeId);
     _loginInFlight = operation;
     return operation.whenComplete(() {
