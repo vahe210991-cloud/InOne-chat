@@ -136,3 +136,13 @@ test('SMTP rejects non-canonical base64 padding and reports the encryption-key e
     });
   }
 });
+
+
+test('продакшен запрещает фиксированный код подтверждения почты и тестовый UI', () => {
+  assert.throws(() => loadConfig({ ...GOOD, INONE_DEV_EMAIL_CODE: '123456' }), /INONE_DEV_EMAIL_CODE is not allowed in production/);
+  assert.throws(() => loadConfig({ ...GOOD, INONE_TEST_UI: '1' }), /INONE_TEST_UI must not be set in production/);
+});
+
+test('продакшен требует корректный ключ шифрования push', () => {
+  assert.throws(() => loadConfig({ ...GOOD, INONE_PUSH_ENCRYPTION_KEY: 'development-key' }), /INONE_PUSH_ENCRYPTION_KEY must be 32 bytes/);
+});

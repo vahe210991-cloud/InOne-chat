@@ -27,6 +27,37 @@ const CIPHERSUITE: Ciphersuite = Ciphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA2
 /// Сколько прошлых эпох хранит группа (см. mls-bridge: по умолчанию OpenMLS не хранит ни одной).
 const MAX_PAST_EPOCHS: usize = 16;
 
+fn ensure_supported_welcome_ciphersuite(suite: Ciphersuite) -> Result<(), String> {
+    if suite == CIPHERSUITE {
+        Ok(())
+    } else {
+        Err("unsupported MLS ciphersuite; only X25519/Ed25519 is enabled".to_string())
+    }
+}
+
+fn parse_signed_object_url(base_raw: &str, raw_url: &str) -> Result<Url, String> {
+    let base = Url::parse(base_raw).map_err(text)?;
+    let target = Url::parse(raw_url).map_err(text)?;
+
+    // Check schemes before origin(): url <= 2.5.8 recursively evaluated nested blob: URLs.
+    if !matches!(base.scheme(), "http" | "https") || !matches!(target.scheme(), "http" | "https") {
+        return Err("signed object URL must use HTTP or HTTPS".to_string());
+    }
+
+    if base.origin() != target.origin()
+        || !target.username().is_empty()
+        || target.password().is_some()
+        || target.fragment().is_some()
+        || !target.path().starts_with("/objects/")
+    {
+        return Err(
+            "signed object URL must remain on the authenticated API origin and /objects path"
+                .to_string(),
+        );
+    }
+    Ok(target)
+}
+
 /// Класс ошибки обработки сообщения (аудит, P0.1). Временная — событие не помечается обработанным,
 /// повтор при следующей синхронизации. Постоянная — сообщение нельзя расшифровать, причина пишется в диагностику.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1499,20 +1530,7 @@ impl Client {
     }
 
     fn same_origin_url(&self, raw_url: &str) -> Result<Url, String> {
-        let base = Url::parse(&self.base).map_err(text)?;
-        let target = Url::parse(raw_url).map_err(text)?;
-        if base.origin() != target.origin()
-            || !target.username().is_empty()
-            || target.password().is_some()
-            || target.fragment().is_some()
-            || !target.path().starts_with("/objects/")
-        {
-            return Err(
-                "signed object URL must remain on the authenticated API origin and /objects path"
-                    .to_string(),
-            );
-        }
-        Ok(target)
+        parse_signed_object_url(&self.base, raw_url)
     }
 
     /// Upload capability URLs are unauthenticated and never receive the bearer token.
@@ -4026,6 +4044,24 @@ impl Client {
                     continue;
                 }
             };
+            if ensure_supported_welcome_ciphersuite(staged.group_context().ciphersuite()).is_err() {
+                drop(staged);
+                drop(transactional_provider);
+                drop(transaction);
+                if self
+                    .persist_welcome_receipt(
+                        welcome_id,
+                        room_id,
+                        &bytes,
+                        "quarantined",
+                        Some("Unsupported MLS ciphersuite; only X25519/Ed25519 is enabled"),
+                    )
+                    .is_ok()
+                {
+                    let _ = self.ack_welcome(welcome_id);
+                }
+                continue;
+            }
             let mls = match staged.into_group(&transactional_provider) {
                 Ok(group) => group,
                 Err(error) => {
@@ -5807,5 +5843,40 @@ mod session_persistence_tests {
         drop(connection);
         drop(client);
         remove_db(&database);
+    }
+}
+
+#[cfg(test)]
+mod security_policy_tests {
+    use super::*;
+
+    #[test]
+    fn signed_object_url_rejects_nested_blob_scheme_before_origin() {
+        let nested_blob = format!(
+            "{}https://api.example.invalid/objects/file",
+            "blob:".repeat(10_000)
+        );
+        let error = parse_signed_object_url("https://api.example.invalid", &nested_blob)
+            .expect_err("nested blob URL must be rejected before origin evaluation");
+        assert!(error.contains("HTTP or HTTPS"));
+    }
+
+    #[test]
+    fn signed_object_url_accepts_same_origin_https_objects() {
+        let parsed = parse_signed_object_url(
+            "https://api.example.invalid",
+            "https://api.example.invalid/objects/file",
+        )
+        .unwrap();
+        assert_eq!(parsed.path(), "/objects/file");
+    }
+
+    #[test]
+    fn welcome_policy_rejects_p256_ciphersuite() {
+        assert!(ensure_supported_welcome_ciphersuite(CIPHERSUITE).is_ok());
+        assert!(ensure_supported_welcome_ciphersuite(
+            Ciphersuite::MLS_128_DHKEMP256_AES128GCM_SHA256_P256
+        )
+        .is_err());
     }
 }
