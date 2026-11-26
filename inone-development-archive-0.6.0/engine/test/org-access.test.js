@@ -59,12 +59,10 @@ test('в комнату организации нельзя добавить п�
     await s.store.addOrgMember(ORG_B, ANNA, 'owner', 2);
     const created = await post(s.base, s.anna.token, '/rooms', { roomId: '!acc-3:inone.test', orgId: ORG_B });
     assert.equal(created.status, 200);
-    const outsider = await post(s.base, s.anna.token, `/rooms/${enc('!acc-3:inone.test')}/members`, { userId: BORIS });
-    assert.equal(outsider.status, 403, 'посторонний не добавляется в комнату организации');
-    assert.equal(outsider.json.code, 'org_not_member');
+    await assert.rejects(s.anna.addMember('!acc-3:inone.test', BORIS), (error) => error.status === 403, 'посторонний не добавляется в комнату организации');
     await s.store.addOrgMember(ORG_B, BORIS, 'member', 3);
-    const member = await post(s.base, s.anna.token, `/rooms/${enc('!acc-3:inone.test')}/members`, { userId: BORIS });
-    assert.equal(member.status, 200, 'участник организации добавляется в комнату');
+    await s.anna.addMember('!acc-3:inone.test', BORIS);
+    assert.ok((await s.anna.raw('GET', `/rooms/${enc('!acc-3:inone.test')}/members`)).members.includes(BORIS), 'участник организации добавляется через MLS');
   } finally {
     await s.stop();
   }
