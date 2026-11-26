@@ -55,3 +55,8 @@ Prototype workflow run `45760553977` passed. It created a SQLCipher 4.5.7 fixtur
 The generated candidate lockfile is committed in this prototype directory. It resolves `crypto-bigint 0.7.11`, `libcrux-aead/libcrux-kem/libcrux-chacha20poly1305 0.0.11`, `libcrux-secrets 0.0.8`, `libcrux-sha3 0.0.12`, and `libsqlite3-sys 0.39.1`. The repository's RustSec gate must still audit this committed lockfile; no finding is considered resolved until that check passes.
 
 This remains a prerelease compatibility experiment. It is not a production dependency update or a merge approval.
+
+
+## RustSec audit integration
+
+The Stage 5 P0 workflow now discovers every tracked `Cargo.lock` in the checked-out PR tree (rather than auditing only a hard-coded list). This includes this prototype's candidate lockfile and records its default-feature dependency graph. Existing Stage 5 lockfiles are still audited independently and remain blocking until their dependency remediation is complete.
