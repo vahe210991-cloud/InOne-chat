@@ -21,7 +21,6 @@ async function setup() {
   const alice = await ChatClient.create(base, ALICE, 'A_PHONE', PW);
   const bob = await ChatClient.create(base, BOB, 'B_PHONE', PW);
   await alice.createRoom(ROOM, [BOB]);
-  await alice.raw('POST', `/mls/groups/${enc(ROOM)}/commits`, { epoch: 0, commit: b64('FIRST'), changes: { adds: [], removes: [] } });
   return { db, srv, base, alice, bob, stop: async () => { await new Promise((r) => srv.server.close(r)); await db?.close(); } };
 }
 
