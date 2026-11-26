@@ -72,7 +72,7 @@ class _InOneMessagesScreenState extends State<InOneMessagesScreen> {
                 InOneIconAction(icon: InOneIcons.filter, semanticLabel: 'Toggle group filter', onTap: () => setState(() => _filter = _filter == 0 ? 1 : 0)),
                 InOneIconAction(icon: InOneIcons.search, semanticLabel: 'Search', onTap: widget.onSearch),
                 if (widget.onAdd != null)
-                  InOneIconAction(icon: InOneIcons.plus, semanticLabel: 'New protected chat', onTap: widget.onAdd),
+                  InOneIconAction(icon: InOneIcons.plus, semanticLabel: 'New direct chat', onTap: widget.onAdd),
               ],
             ),
             const SizedBox(height: 16),
