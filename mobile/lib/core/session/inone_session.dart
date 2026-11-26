@@ -198,7 +198,12 @@ class InOneSession extends ChangeNotifier {
       ));
     }
     _registrationToken = null;
-    final operation = _loginOnce(email: email, password: password, identityCode: identityCode, identityChallengeId: identityChallengeId);
+    final operation = _loginOnce(
+      email: email,
+      password: password,
+      identityCode: identityCode,
+      identityChallengeId: identityChallengeId,
+    );
     _loginInFlight = operation;
     return operation.whenComplete(() {
       if (identical(_loginInFlight, operation)) _loginInFlight = null;
