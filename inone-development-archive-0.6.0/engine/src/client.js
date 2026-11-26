@@ -404,7 +404,17 @@ export class ChatClient {
 
   /** Читает беседу и расшифровывает. Нерасшифрованные события помечаются, а не пропускаются. */
   async readText(roomId) {
-    const { events } = await this.raw('GET', `/rooms/${enc(roomId)}/events`);
+    const events = [];
+    let since = 0;
+    let hasMore = true;
+    while (hasMore) {
+      const page = await this.raw('GET', `/rooms/${enc(roomId)}/events?since=${since}&limit=200`);
+      events.push(...(page.events ?? []));
+      const nextSince = Number(page.nextSince ?? since);
+      hasMore = page.hasMore === true;
+      if (hasMore && nextSince <= since) throw new Error('room event pagination cursor did not advance');
+      since = nextSince;
+    }
     const out = [];
     for (const ev of events) {
       try {
