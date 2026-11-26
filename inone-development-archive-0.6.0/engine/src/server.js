@@ -2343,6 +2343,7 @@ if (req.method === 'POST' && p === '/login') {
         if (!d) return send(res, 401, { error: 'unauthorized' });
         const roomId = decodeURIComponent(roleRoute[1]);
         const r = await storage.getRoom(roomId);
+        if ((await storage.roomKind(roomId)) === 'direct') return send(res, 404, { error: 'not found' });
         // Роли назначает только владелец.
         if (!r || r.owner !== d.userId) return send(res, 403, { error: 'only the owner can change roles' });
         const target = String(body.userId ?? '');
@@ -2359,6 +2360,7 @@ if (req.method === 'POST' && p === '/login') {
         if (!d) return send(res, 401, { error: 'unauthorized' });
         const roomId = decodeURIComponent(capsRoute[1]);
         const r = await storage.getRoom(roomId);
+        if ((await storage.roomKind(roomId)) === 'direct') return send(res, 404, { error: 'not found' });
         // Права выдаёт и отбирает только владелец.
         if (!r || r.owner !== d.userId) return send(res, 403, { error: 'only the owner can change capabilities' });
         const target = String(body.userId ?? '');
@@ -2378,6 +2380,7 @@ if (req.method === 'POST' && p === '/login') {
         if (!d) return send(res, 401, { error: 'unauthorized' });
         const roomId = decodeURIComponent(ownerRoute[1]);
         const r = await storage.getRoom(roomId);
+        if ((await storage.roomKind(roomId)) === 'direct') return send(res, 404, { error: 'not found' });
         if (!r) return send(res, 404, { error: 'group not found' });
         if (d.userId !== r.owner) return send(res, 403, { error: 'only the owner can transfer ownership' });
         const target = typeof body?.userId === 'string' ? body.userId : '';
@@ -2959,6 +2962,7 @@ if (req.method === 'POST' && p === '/login') {
         if (!d) return send(res, 401, { error: 'unauthorized' });
         const roomId = decodeURIComponent(appearanceRoute[1]);
         const r = await storage.getRoom(roomId);
+        if ((await storage.roomKind(roomId)) === 'direct') return send(res, 404, { error: 'not found' });
         if (!r || !r.members.includes(d.userId)) return send(res, 403, { error: 'not a member' });
         if (!hasCapability(r, d.userId, 'edit_group_appearance')) return send(res, 403, { error: 'missing capability: edit_group_appearance' });
         const checked = validateAppearance(body);
@@ -2982,6 +2986,7 @@ if (req.method === 'POST' && p === '/login') {
         if (!d) return send(res, 401, { error: 'unauthorized' });
         const roomId = decodeURIComponent(assetsRoute[1]);
         const r = await storage.getRoom(roomId);
+        if ((await storage.roomKind(roomId)) === 'direct') return send(res, 404, { error: 'not found' });
         if (!r || !r.members.includes(d.userId)) return send(res, 403, { error: 'not a member' });
         if (!hasCapability(r, d.userId, 'edit_group_appearance')) return send(res, 403, { error: 'missing capability: edit_group_appearance' });
         const checked = validateAssetUpload(body, r);
@@ -3004,6 +3009,7 @@ if (req.method === 'POST' && p === '/login') {
         if (!d) return send(res, 401, { error: 'unauthorized' });
         const roomId = decodeURIComponent(pendingRoute[1]);
         const r = await storage.getRoom(roomId);
+        if ((await storage.roomKind(roomId)) === 'direct') return send(res, 404, { error: 'not found' });
         if (!r || !hasCapability(r, d.userId, 'edit_group_appearance')) return send(res, 403, { error: 'missing capability: edit_group_appearance' });
         const assets = (await storage.listRoomAssets(roomId)).filter((a) => !assetMatchesVisibility(a, r));
         return send(res, 200, { assets: assets.map(({ assetId, kind, encrypted, shortcode }) => ({ assetId, kind, encrypted, shortcode })) });
@@ -3056,6 +3062,7 @@ if (req.method === 'POST' && p === '/login') {
         if (!d) return send(res, 401, { error: 'unauthorized' });
         const roomId = decodeURIComponent(stickersRoute[1]);
         const r = await storage.getRoom(roomId);
+        if ((await storage.roomKind(roomId)) === 'direct') return send(res, 404, { error: 'not found' });
         if (!r || !r.members.includes(d.userId)) return send(res, 403, { error: 'not a member' });
         return send(res, 200, { stickers: (await storage.listRoomStickers(roomId)).filter((s) => assetMatchesVisibility(s, r)) });
       }
