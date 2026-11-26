@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:inone_mobile/ui_dart_source/models/inone_models.dart';
 import 'package:inone_mobile/ui_dart_source/screens/main/inone_messages_screen.dart';
 import 'package:inone_mobile/ui_dart_source/theme/inone_theme.dart';
-import 'package:inone_mobile/ui_dart_source/widgets/inone_bottom_nav.dart';
 
 void main() {
   testWidgets('channel filter excludes ordinary groups', (tester) async {
