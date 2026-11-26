@@ -153,6 +153,12 @@ test('удаление участника организации блокиру�
     assert.equal((await call(s.base, 'POST', `/orgs/${linkedOrg}/links/${enc(linkId)}/accept`, s.dave.token, {})).status, 200);
 
     await s.anna.addMember(room, EVE);
+    assert.equal((await s.anna.raw('POST', `/rooms/${enc(room)}/owner`, { userId: EVE })).owner, EVE);
+    const ownerBlocked = await call(s.base, 'POST', `/orgs/${linkedOrg}/members/${enc(EVE)}/remove`, s.dave.token, {});
+    assert.equal(ownerBlocked.status, 409);
+    assert.equal(ownerBlocked.json.code, 'owns_rooms', 'cross-org room ownership must be transferred first');
+    assert.equal((await s.eve.raw('POST', `/rooms/${enc(room)}/owner`, { userId: ANNA })).owner, ANNA);
+
     const blocked = await call(s.base, 'POST', `/orgs/${linkedOrg}/members/${enc(EVE)}/remove`, s.dave.token, {});
     assert.equal(blocked.status, 409);
     assert.equal(blocked.json.code, 'mls_removal_required');
