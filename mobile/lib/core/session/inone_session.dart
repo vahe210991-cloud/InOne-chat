@@ -1010,6 +1010,13 @@ class InOneSession extends ChangeNotifier {
       );
       try {
         await _acceptSession(result);
+        if (!isAuthenticated || _refreshToken == null) {
+          throw const ApiException(
+            code: 'invalid_refresh_response',
+            statusCode: 502,
+            retryable: false,
+          );
+        }
       } catch (_) {
         await _clearSession();
         rethrow;
