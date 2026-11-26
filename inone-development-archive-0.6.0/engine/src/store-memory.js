@@ -1383,9 +1383,9 @@ export function createMemoryStore({ pinPepper }) {
       if (afterAppend) return Promise.resolve(afterAppend(null, { seq, roomId, eventId: `$${seq}` })).then(() => seq);
       return seq;
     },
-    roomEventRows(roomId, sinceSeq) {
+    roomEventRows(roomId, sinceSeq, limit = 200) {
       const r = rooms.get(roomId);
-      return (r ? r.events : []).filter((e) => e.seq > sinceSeq).map((e) => structuredClone(e));
+      return (r ? r.events : []).filter((e) => e.seq > sinceSeq).slice(0, limit).map((e) => structuredClone(e));
     },
 
     /** Всё, что сервер хранит по беседам и очереди. Нужно тестам: проверить, что открытого текста нет. */
