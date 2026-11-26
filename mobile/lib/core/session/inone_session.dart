@@ -71,6 +71,9 @@ class InOneSession extends ChangeNotifier {
   String? _userId;
   String? _savedMlsUserId;
   String? _registrationToken;
+  String? _pendingApprovalId;
+  String? _pendingApprovalPollSecret;
+  String? _pendingApprovalCode;
   String _locale = 'hy';
   bool _localeSyncPending = false;
   bool _localeSyncInFlight = false;
@@ -96,6 +99,8 @@ class InOneSession extends ChangeNotifier {
   bool get isAuthenticated => _accessToken != null && _accessToken!.isNotEmpty;
   bool get isConfigured => baseUrl.trim().isNotEmpty;
   bool get hasNativeMlsSession => _mlsBridge != null;
+  String? get pendingApprovalCode => _pendingApprovalCode;
+  bool get hasPendingApproval => _pendingApprovalId != null && _pendingApprovalPollSecret != null;
   String? _mlsError;
   String? get mlsError => _mlsError;
 
@@ -174,6 +179,7 @@ class InOneSession extends ChangeNotifier {
   Future<Map<String, dynamic>> login({
     required String email,
     required String password,
+    String? identityCode,
   }) {
     if (_loggingOut) {
       return Future<Map<String, dynamic>>.error(const ApiException(
@@ -190,7 +196,7 @@ class InOneSession extends ChangeNotifier {
         retryable: false,
       ));
     }
-    final operation = _loginOnce(email: email, password: password);
+    final operation = _loginOnce(email: email, password: password, identityCode: identityCode);
     _loginInFlight = operation;
     return operation.whenComplete(() {
       if (identical(_loginInFlight, operation)) _loginInFlight = null;
@@ -200,6 +206,7 @@ class InOneSession extends ChangeNotifier {
   Future<Map<String, dynamic>> _loginOnce({
     required String email,
     required String password,
+    String? identityCode,
   }) async {
     await initialize();
     final platform = Platform.isIOS
@@ -216,9 +223,29 @@ class InOneSession extends ChangeNotifier {
         'deviceId': _deviceId,
         'label': 'InOne Flutter test client',
         'platform': platform,
+        if (identityCode != null && identityCode.trim().isNotEmpty)
+          'identityCode': identityCode.trim(),
         if (_localeSyncPending) 'locale': _locale,
       },
     );
+    _clearPendingApproval();
+    if (result['status'] == 'approval_required') {
+      final approvalId = result['approvalId'];
+      final pollSecret = result['pollSecret'];
+      final code = result['code'];
+      if (approvalId is! String || approvalId.isEmpty ||
+          pollSecret is! String || pollSecret.isEmpty ||
+          code is! String || code.isEmpty) {
+        throw const ApiException(
+          code: 'invalid_device_approval_response',
+          statusCode: 502,
+          retryable: false,
+        );
+      }
+      _pendingApprovalId = approvalId;
+      _pendingApprovalPollSecret = pollSecret;
+      _pendingApprovalCode = code;
+    }
     final safeResult = Map<String, dynamic>.from(result)
       ..remove('token')
       ..remove('refreshToken')
@@ -241,7 +268,7 @@ class InOneSession extends ChangeNotifier {
     result['pollSecret'] = null;
     result['approvalId'] = null;
     final native = _nativeMlsBridge;
-    if (native != null) {
+    if (native != null && isAuthenticated) {
       try {
         await adoptMlsSession(native);
       } catch (error) {
@@ -254,6 +281,152 @@ class InOneSession extends ChangeNotifier {
     }
     await _syncLocaleAfterAuthentication();
     return safeResult;
+  }
+
+  /// Claims the one-time approval result on the device that initiated login.
+  /// The poll secret never leaves this session object.
+  Future<Map<String, dynamic>> claimPendingApproval() async {
+    await initialize();
+    final id = _pendingApprovalId;
+    final pollSecret = _pendingApprovalPollSecret;
+    if (id == null || pollSecret == null) {
+      throw const ApiException(
+        code: 'device_approval_not_pending',
+        statusCode: 409,
+        retryable: false,
+      );
+    }
+    final result = await _client.post(
+      '/approvals/${Uri.encodeComponent(id)}/claim',
+      authenticated: false,
+      body: {'pollSecret': pollSecret},
+    );
+    try {
+      final status = result['status'];
+      if (status == 'pending') return const {'status': 'pending'};
+      if (status == 'denied' || status == 'expired') {
+        _clearPendingApproval();
+        return {'status': status as String};
+      }
+      if (status != 'approved') {
+        throw const ApiException(
+          code: 'invalid_device_approval_status',
+          statusCode: 502,
+          retryable: false,
+        );
+      }
+      _acceptSession(result);
+      if (!isAuthenticated) {
+        throw const ApiException(
+          code: 'invalid_device_approval_session',
+          statusCode: 502,
+          retryable: false,
+        );
+      }
+      final native = _nativeMlsBridge;
+      if (native != null) {
+        try {
+          await adoptMlsSession(native);
+        } catch (error) {
+          _mlsError = 'MLS runtime could not be opened after device approval: $error';
+          notifyListeners();
+          rethrow;
+        }
+      }
+      await _syncLocaleAfterAuthentication();
+      return const {'status': 'approved'};
+    } finally {
+      result['token'] = null;
+      result['refreshToken'] = null;
+      result['pollSecret'] = null;
+      result['approvalId'] = null;
+    }
+  }
+
+  /// Pending requests visible to the currently authenticated trusted device.
+  Future<List<Map<String, dynamic>>> pendingDeviceApprovals() async {
+    final result = await request('GET', '/approvals');
+    final raw = result['approvals'];
+    if (raw is! List) {
+      throw const ApiException(
+        code: 'invalid_device_approvals_response',
+        statusCode: 502,
+        retryable: false,
+      );
+    }
+    final approvals = <Map<String, dynamic>>[];
+    for (final item in raw) {
+      if (item is! Map) {
+        throw const ApiException(
+          code: 'invalid_device_approval_item',
+          statusCode: 502,
+          retryable: false,
+        );
+      }
+      final id = item['id'];
+      final label = item['label'];
+      final platform = item['platform'];
+      final createdAt = item['createdAt'];
+      final expiresAt = item['expiresAt'];
+      if (id is! String || id.isEmpty ||
+          (label != null && label is! String) ||
+          (platform != null && platform is! String) ||
+          createdAt is! String || expiresAt is! String) {
+        throw const ApiException(
+          code: 'invalid_device_approval_item',
+          statusCode: 502,
+          retryable: false,
+        );
+      }
+      approvals.add({
+        'id': id,
+        'label': label,
+        'platform': platform,
+        'createdAt': createdAt,
+        'expiresAt': expiresAt,
+      });
+    }
+    return approvals;
+  }
+
+  Future<void> approvePendingDevice({
+    required String approvalId,
+    required String code,
+    String? bioGrant,
+  }) async {
+    final id = approvalId.trim();
+    final normalizedCode = code.trim();
+    if (id.isEmpty || normalizedCode.isEmpty) {
+      throw const ApiException(
+        code: 'device_approval_input_required',
+        statusCode: 400,
+        retryable: false,
+      );
+    }
+    await request(
+      'POST',
+      '/approvals/${Uri.encodeComponent(id)}/approve',
+      body: {
+        'code': normalizedCode,
+        if (bioGrant != null && bioGrant.isNotEmpty) 'bioGrant': bioGrant,
+      },
+    );
+  }
+
+  Future<void> denyPendingDevice({required String approvalId}) async {
+    final id = approvalId.trim();
+    if (id.isEmpty) {
+      throw const ApiException(
+        code: 'device_approval_id_required',
+        statusCode: 400,
+        retryable: false,
+      );
+    }
+    await request(
+      'POST',
+      '/approvals/${Uri.encodeComponent(id)}/deny',
+      body: const <String, dynamic>{},
+    );
   }
 
   Future<void> setLocale(String locale) async {
@@ -1163,7 +1336,14 @@ class InOneSession extends ChangeNotifier {
     }
   }
 
+  void _clearPendingApproval() {
+    _pendingApprovalId = null;
+    _pendingApprovalPollSecret = null;
+    _pendingApprovalCode = null;
+  }
+
   void _clearSession() {
+    _clearPendingApproval();
     _mlsError = null;
     _accessToken = null;
     _refreshToken = null;
