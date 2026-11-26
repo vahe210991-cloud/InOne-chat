@@ -16,19 +16,19 @@
 2. Verify the branch is still based on latest main and has no new conflicting edits. Keep this task isolated; coordinate any shared-path changes with other agents.
 3. Resolve or explicitly record owner decisions for AUTH-03 (verified phone policy) and AUTH-08 (recovery channels; current backend sends email code for unverified-phone accounts and SMS code plus email-link for verified-phone accounts). Do not guess product/security policy.
 4. Obtain owner-approved user-facing copy for the SC-09 encryption-key-reset warning; remove the D8 placeholder only after approval.
-4. Keep AUTH-04 fail-closed for biometric-protected signing keys until a platform biometric-grant bridge is implemented and tested. Do not bypass server `bioGrant` checks.
-5. Keep AUTH-09 blocked until Rust/platform-owned persistent refresh-token restoration is accepted and the native runtime gate is satisfied. Never persist refresh tokens in ordinary Dart preferences or plaintext files.
-6. Confirm Google/Apple provider login remains explicitly blocked until native SDK proof acquisition and client configuration exist.
-7. Only after the implementation is ready, run focused Node tests, PostgreSQL migration/transaction tests, Flutter analyze/widget/session tests, then applicable full Beta 1.0 CI on one exact immutable SHA. Record exact run IDs and results; tests listed in source are NOT RUN until executed.
-8. Fix every failure and repeat only justified deltas plus the exact-SHA release gate. Obtain independent review, open/update a PR, and do not merge without owner approval and all required evidence.
-9. Update the AUTH plan, report, SESSION-LOG and continuity docs. Do not cross out any task until the unified completion rule is fully met.
+5. Keep AUTH-04 fail-closed for biometric-protected signing keys until a platform biometric-grant bridge is implemented and tested. Do not bypass server `bioGrant` checks.
+6. Keep AUTH-09 blocked until Rust/platform-owned persistent refresh-token restoration is accepted and the native runtime gate is satisfied. Never persist refresh tokens in ordinary Dart preferences or plaintext files.
+7. Confirm Google/Apple provider login remains explicitly blocked until native SDK proof acquisition and client configuration exist.
+8. Only after the implementation is ready, run focused Node tests, PostgreSQL migration/transaction tests, Flutter analyze/widget/session tests, then applicable full Beta 1.0 CI on one exact immutable SHA. Record exact run IDs and results; tests listed in source are NOT RUN until executed.
+9. Fix every failure and repeat only justified deltas plus the exact-SHA release gate. Obtain independent review, open/update a PR, and do not merge without owner approval and all required evidence.
+10. Update the AUTH plan, report, SESSION-LOG and continuity docs. Do not cross out any task until the unified completion rule is fully met.
 
 ## Current acceptance status
 
 - Implementation is in progress and unmerged.
 - No tests/builds/CI/device checks have been run on the final branch SHA.
 - AUTH-01, AUTH-02, AUTH-04, AUTH-05, AUTH-06, AUTH-07, AUTH-10, AUTH-11 and AUTH-12 have implementation work recorded, but remain open.
-- AUTH-03, AUTH-08 and AUTH-09 remain blocked by owner/platform decisions; biometric approval and provider sign-in also remain incomplete.
+- AUTH-03, AUTH-08 and AUTH-09 remain blocked by owner/platform decisions; biometric approval and provider sign-in also remain incomplete. SC-09 D8 warning copy also requires owner approval.
 - All task checkboxes remain unchecked and uncrossed.
 
 ---
