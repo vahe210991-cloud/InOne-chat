@@ -91,6 +91,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   String _recoveryLinkLocale = 'hy';
   bool _cancelingAdmission = false;
   bool _deviceApprovalDialogInFlight = false;
+  Timer? _deviceApprovalPollTimer;
   final Set<String> _shownDeviceApprovalIds = <String>{};
   final Set<int> _handledRecoveryLinkFingerprints = <int>{};
 
@@ -141,7 +142,10 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       }
       if (!mounted) return;
       setState(() => _initializing = false);
-      if (_session.isAuthenticated) await _loadAuthenticatedData();
+      if (_session.isAuthenticated) {
+        _startDeviceApprovalPolling();
+        await _loadAuthenticatedData();
+      }
     } finally {
       if (!_initializationComplete.isCompleted) {
         _initializationComplete.complete();
@@ -175,6 +179,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _stopDeviceApprovalPolling();
     _session.removeListener(_handleSessionStateChanged);
     unawaited(_clearDocumentPreviewCache().catchError((Object _) {}));
     _pushLifecycle?.dispose();
@@ -210,6 +215,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   }
 
   Future<void> _handleUnauthorizedSessionOnce(String? requestedOwnerUserId) async {
+    _stopDeviceApprovalPolling();
     final ownerUserId = requestedOwnerUserId ?? _documentOwnerId ?? _profile?.userId ?? _session.userId;
     if (ownerUserId != null) {
       try {
@@ -506,6 +512,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
 
   void _afterLogin() {
     if (!_session.isAuthenticated) return;
+    _startDeviceApprovalPolling();
     _pendingLoginEmail = '';
     _pendingLoginPassword = '';
     _pendingIdentityChallengeId = null;
@@ -802,6 +809,25 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       }
       if (mounted) setState(() => _screen = 'loadError');
     }
+  }
+
+  void _startDeviceApprovalPolling() {
+    if (_deviceApprovalPollTimer != null) return;
+    _deviceApprovalPollTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
+      if (!mounted || !_session.isAuthenticated) {
+        timer.cancel();
+        _deviceApprovalPollTimer = null;
+        return;
+      }
+      if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
+        unawaited(_checkPendingDeviceApprovals());
+      }
+    });
+  }
+
+  void _stopDeviceApprovalPolling() {
+    _deviceApprovalPollTimer?.cancel();
+    _deviceApprovalPollTimer = null;
   }
 
   Future<void> _checkPendingDeviceApprovals() async {
@@ -1161,6 +1187,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   }
 
   Future<InOneFailure?> _logout() async {
+    _stopDeviceApprovalPolling();
     final ownerUserId = _documentOwnerId ?? _profile?.userId ?? _session.userId;
     InOneFailure? failure;
     _manualLogoutInProgress = true;
@@ -1194,6 +1221,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   }
 
   void _finishLogout() {
+    _stopDeviceApprovalPolling();
     setState(() {
       _profile = null;
       _documentOwnerId = null;
