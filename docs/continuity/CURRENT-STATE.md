@@ -1,3 +1,14 @@
+# Current state addendum — owner-approved Feed visibility (2026-11-26)
+
+- Owner approved: every published item intentionally included in the general/news feed is readable by every registered and authenticated InOne account; anonymous access is denied.
+- Feed attachments inherit the same eligibility and must be re-authorized at download. IDs and URLs never grant access.
+- This is a narrow feed-publication rule. Privacy variant В remains binding for profiles, drafts, private account data and other domains. No public-profile, block/follow or subscription model is introduced.
+- `FEED-PRIVACY-001` is resolved at the product-decision level and READY FOR IMPLEMENTATION. The audited source still lacks the enforcement, so do not serve cross-account posts/media until server-side checks and regression tests pass.
+- Continue with `PROFILE-CORE-001`, `PROFILE-PRIVACY-001` and `FEED-SEC-001`, then post lifecycle/list/pagination/media/native Flutter and exact-SHA tests.
+- PR #172 remains documentation-only and draft until reviewed/merged. No code or tests were changed/run by this decision update.
+
+---
+
 # Current state addendum — FEED / PROFILE (2026-11-26)
 
 This addendum supersedes older Feed scope statements below. Fetch live `main` before further work.
