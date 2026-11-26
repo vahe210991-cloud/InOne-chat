@@ -44,14 +44,30 @@ async function post(base, path, body) {
 }
 
 /** Вход без клиента: сервер может ответить просьбой ввести код из письма, а не токеном. */
+const identityChallenges = new Map();
+
 async function rawLogin(base, userId, password, deviceId, identityCode) {
+  const key = `${userId}|${deviceId}`;
+  const identityChallengeId = identityCode ? identityChallenges.get(key) : undefined;
   const res = await fetch(`${base}/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ userId, password, deviceId, ...(identityCode ? { identityCode } : {}) }),
+    body: JSON.stringify({
+      userId,
+      password,
+      deviceId,
+      ...(identityCode ? { identityCode } : {}),
+      ...(identityCode && identityChallengeId ? { identityChallengeId } : {}),
+    }),
   });
   const text = await res.text();
-  return { status: res.status, body: text ? JSON.parse(text) : {} };
+  const body = text ? JSON.parse(text) : {};
+  if (body.status === 'identity_check_required' && typeof body.challengeId === 'string') {
+    identityChallenges.set(key, body.challengeId);
+  } else if (res.status === 200 && identityCode) {
+    identityChallenges.delete(key);
+  }
+  return { status: res.status, body };
 }
 
 /** Код входа после восстановления приходит письмом (D1). */
@@ -166,7 +182,7 @@ test('украденное старое устройство: после окн�
     const code = await startRecovery(base, srv, BOB, PHONE_B);
     await post(base, '/recovery/complete', { userId: BOB, code, newPassword: NEW_PW });
     await rawLogin(base, BOB, NEW_PW, 'B_NEW');
-    const bobNew = await ChatClient.login(base, BOB, NEW_PW, 'B_NEW', { identityCode: identityCodeFrom(srv, BOB) });
+    const bobNew = await ChatClient.login(base, BOB, NEW_PW, 'B_NEW', { identityCode: identityCodeFrom(srv, BOB), identityChallengeId: identityChallenges.get(`${BOB}|B_NEW`) });
     // Пока окно открыто, новое устройство ничего не меняет: ключи не публикуются.
     await assert.rejects(bobNew.publishKeys(), (e) => e.status === 403);
 
@@ -256,7 +272,7 @@ test('устройство, добавленное во время окна, ч�
     const code = await startRecovery(base, srv, ALICE, PHONE_A);
     await post(base, '/recovery/complete', { userId: ALICE, code, newPassword: NEW_PW });
     await rawLogin(base, ALICE, NEW_PW, 'B_NEW');
-    const frozen = await ChatClient.login(base, ALICE, NEW_PW, 'B_NEW', { identityCode: identityCodeFrom(srv, ALICE) });
+    const frozen = await ChatClient.login(base, ALICE, NEW_PW, 'B_NEW', { identityCode: identityCodeFrom(srv, ALICE), identityChallengeId: identityChallenges.get(`${ALICE}|B_NEW`) });
 
     await frozen.sync(); // читать можно
     await assert.rejects(frozen.raw('POST', '/pin/set', { pin: '246810' }), (e) => e.status === 403, 'PIN не ставится');
@@ -280,7 +296,7 @@ test('после окна устройство, добавленное в окн
     const code = await startRecovery(base, srv, ALICE, PHONE_A);
     await post(base, '/recovery/complete', { userId: ALICE, code, newPassword: NEW_PW });
     await rawLogin(base, ALICE, NEW_PW, 'B_NEW');
-    const frozen = await ChatClient.login(base, ALICE, NEW_PW, 'B_NEW', { identityCode: identityCodeFrom(srv, ALICE) });
+    const frozen = await ChatClient.login(base, ALICE, NEW_PW, 'B_NEW', { identityCode: identityCodeFrom(srv, ALICE), identityChallengeId: identityChallenges.get(`${ALICE}|B_NEW`) });
     srv.advance(RECOVERY_DELAY_MS + 1000);
     await frozen.raw('POST', '/pin/set', { pin: '246810' });
     await assert.rejects(phone.sync(), (e) => e.status === 401, 'старое устройство отключено');
