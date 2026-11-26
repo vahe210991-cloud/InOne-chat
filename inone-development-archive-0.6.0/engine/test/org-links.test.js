@@ -285,6 +285,84 @@ test('F-05 PostgreSQL: an in-flight room message serializes with link revocation
   }
 });
 
+test('F-06 PostgreSQL: KeyPackage claim and link revocation serialize; a stale claim cannot add a member', { skip: !process.env.DATABASE_URL }, async () => {
+  const s = await start();
+  let releaseClaim;
+  const originalConnect = s.pool.connect.bind(s.pool);
+  try {
+    await s.anna.createRoom(ROOM, [ANNA, BORIS], { orgId: ORG_A });
+    const proposed = await call(s.base, 'POST', `/orgs/${ORG_A}/links`, s.boris.token, { targetOrgId: ORG_B });
+    assert.equal(proposed.status, 200);
+    const linkId = proposed.json.linkId;
+    assert.equal((await call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/accept`, s.carol.token, {})).status, 200);
+    await s.carol.raw('POST', '/mls/key-packages', {
+      packages: [Buffer.from(`KEYPACKAGE-CAROL-${'x'.repeat(48)}`, 'utf8').toString('base64')],
+    });
+
+    let signalLinkShare;
+    let signalRevokeAttempt;
+    const linkShareReady = new Promise((resolve) => { signalLinkShare = resolve; });
+    const revokeAttempted = new Promise((resolve) => { signalRevokeAttempt = resolve; });
+    const claimGate = new Promise((resolve) => { releaseClaim = resolve; });
+    s.pool.connect = async (...args) => {
+      const client = await originalConnect(...args);
+      const originalQuery = client.query.bind(client);
+      client.query = async (query, ...params) => {
+        const sql = typeof query === 'string' ? query : query?.text ?? '';
+        if (sql.includes('SELECT org_a, org_b FROM org_links') && sql.includes('FOR UPDATE')) signalRevokeAttempt();
+        if (sql.includes('SELECT link_id FROM org_links') && sql.includes('FOR SHARE')) {
+          const result = await originalQuery(query, ...params);
+          signalLinkShare();
+          await claimGate;
+          return result;
+        }
+        return originalQuery(query, ...params);
+      };
+      return client;
+    };
+
+    const claimId = 'link-claim-carol-0001';
+    const claiming = s.anna.raw('POST', `/mls/key-packages/${enc(CAROL)}/claims`, {
+      claimId,
+      roomId: ROOM,
+    });
+    await waitForSignal(linkShareReady, 'KeyPackage claim did not lock the active organization link');
+    const revoking = call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/revoke`, s.carol.token, {});
+    await waitForSignal(revokeAttempted, 'link revocation did not attempt its exclusive lock');
+    releaseClaim();
+
+    const claim = await claiming;
+    assert.equal(claim.packages.length, 1);
+    const revoked = await revoking;
+    assert.equal(revoked.status, 200, 'a claim alone does not create MLS room membership');
+
+    s.pool.connect = originalConnect;
+    const beforeEpoch = (await s.anna.raw('GET', `/mls/groups/${enc(ROOM)}/epoch`)).epoch;
+    await assert.rejects(
+      s.anna.raw('POST', `/mls/groups/${enc(ROOM)}/commits`, {
+        epoch: beforeEpoch,
+        clientOperationId: claimId,
+        keyPackageClaimId: claimId,
+        commit: Buffer.from('COMMIT-AFTER-LINK-REVOKE').toString('base64'),
+        changes: { adds: [CAROL], removes: [] },
+        welcomes: claim.packages.map((item) => ({
+          userId: CAROL,
+          deviceId: item.deviceId,
+          welcome: Buffer.from(`WELCOME-${item.deviceId}`).toString('base64'),
+        })),
+      }),
+      (error) => error.status === 403,
+      'the stale KeyPackage claim cannot bypass a revoked organization link',
+    );
+    assert.ok(!(await s.store.getRoom(ROOM)).members.includes(CAROL));
+    assert.equal((await s.anna.raw('GET', `/mls/groups/${enc(ROOM)}/epoch`)).epoch, beforeEpoch);
+  } finally {
+    releaseClaim?.();
+    s.pool.connect = originalConnect;
+    await s.stop();
+  }
+});
+
 test('F-03 PostgreSQL: injected audit failure rolls back link revocation after MLS membership removal', { skip: !process.env.DATABASE_URL }, async () => {
   const s = await start();
   const originalConnect = s.pool.connect.bind(s.pool);
