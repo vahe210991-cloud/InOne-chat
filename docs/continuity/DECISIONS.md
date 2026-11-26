@@ -188,3 +188,34 @@ This decision is strategic and does not authorize changes to Beta 1.0 code, APIs
 Canonical details:
 - [ADR-005 — Free-first growth, monetization and Creator Economy](../../development/architecture/ADR-005-FREE-FIRST-MONETIZATION-AND-CREATOR-ECONOMY.md)
 - [InOne Monetization & Growth Strategy v2.0](../../development/roadmaps/2026-11-25-inone-monetization-growth-strategy-v2.md)
+
+
+## 9. Feed / publications are part of Beta 1.0 — 2026-11-26
+
+**Owner decision (approved 2026-11-26):** InOne publications and the news feed are included in Beta 1.0. This decision supersedes any older statement that Feed is unavailable, conditional, or Beta 2.0-only. The scope amendment is recorded in WBS v1.2 at `development/PROGRESS-BASELINE.md`.
+
+### Minimum Beta 1.0 Feed scope
+
+- Create, read, edit and delete the authenticated user's own publications; the server owns author identity and timestamps.
+- Own-publications list and a general/news feed containing only posts the requesting account is authorized to read.
+- Stable cursor pagination, deterministic ordering, refresh, duplicate prevention and deleted-record exclusion.
+- Native Flutter/Dart Feed UI, typed API/repository integration and loading/empty/error/offline states.
+- Server-side object authorization, idempotency, abuse controls, safe logging and backend/mobile regression tests.
+- Attachments, where included in the approved Feed screen contract, use validated media objects bound to the post and re-authorized at download; no public/unprotected object URLs.
+
+### Privacy remains unchanged — variant В
+
+- Preserve the existing InOne privacy model. This Feed decision does not make profiles or posts public by default.
+- Do not add new public/private settings, block/follow semantics, subscriptions, social graph, or broad access rules under this decision.
+- The existing `sharesOrgOrLink` gate is evidenced for user search only; it must not be silently reused as post visibility authorization.
+- The audited code contains no post visibility policy. Until the owner separately approves the exact cross-account read rule, another user's posts and attached media must not be returned. Own-post CRUD and own-post listing can proceed without cross-account reads.
+
+### Not automatically included
+
+Comments/reactions, follows/subscriptions, stories, advanced ranking/recommendations, creator tooling, promotion/analytics, public profiles and public media delivery require separate approval or remain Beta 2.0 candidates. This decision does not change commercial policy or the existing privacy baseline.
+
+### WBS / progress handling
+
+- WBS v1.2 adds Feed to the existing Backend/API, Flutter, API↔UI and QA/CI/E2E workstreams.
+- Existing domain weights remain unchanged. Historical WBS v1.1 baseline values (42% implementation / 31% verification) are preserved as historical starting values, not reported as current progress for the expanded scope.
+- No implementation percentage changes without evidence-based re-baselining and owner approval.
