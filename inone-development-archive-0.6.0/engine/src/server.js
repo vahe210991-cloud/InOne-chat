@@ -2412,6 +2412,7 @@ if (req.method === 'POST' && p === '/login') {
         const roomId = decodeURIComponent(settingsRoute[1]);
         const r = await storage.getRoom(roomId);
         if (!r || !r.members.includes(d.userId)) return send(res, 403, { error: 'not a member' });
+        if ((await storage.roomKind(roomId)) === 'direct') return send(res, 404, { error: 'not found' });
         const checked = validateRoomSettings(body);
         if (checked.error) return send(res, 400, { error: checked.error });
         if (checked.value.name !== undefined && !hasCapability(r, d.userId, 'edit_group_name')) {
@@ -2494,6 +2495,7 @@ if (req.method === 'POST' && p === '/login') {
         const roomId = decodeURIComponent(requestsRoute[1]);
         const r = await storage.getRoom(roomId);
         if (!r || !hasCapability(r, d.userId, 'invite_members')) return send(res, 403, { error: 'missing capability: invite_members' });
+        if ((await storage.roomKind(roomId)) === 'direct') return send(res, 404, { error: 'not found' });
         return send(res, 200, { requests: await storage.listJoinRequests(roomId) });
       }
 
@@ -2505,6 +2507,7 @@ if (req.method === 'POST' && p === '/login') {
         const target = decodeURIComponent(decideRoute[2]);
         const r = await storage.getRoom(roomId);
         if (!r || !hasCapability(r, d.userId, 'invite_members')) return send(res, 403, { error: 'missing capability: invite_members' });
+        if ((await storage.roomKind(roomId)) === 'direct') return send(res, 404, { error: 'not found' });
         if (decideRoute[3] === 'approve') {
           return send(res, 409, {
             error: 'approval requires an MLS Add Commit and per-device Welcome',
@@ -2523,6 +2526,7 @@ if (req.method === 'POST' && p === '/login') {
         const roomId = decodeURIComponent(invitesRoute[1]);
         const r = await storage.getRoom(roomId);
         if (!r || !hasCapability(r, d.userId, 'invite_members')) return send(res, 403, { error: 'missing capability: invite_members' });
+        if ((await storage.roomKind(roomId)) === 'direct') return send(res, 404, { error: 'not found' });
         const checked = validateInviteOptions(body);
         if (checked.error) return send(res, 400, { error: checked.error });
         const token = createInviteToken();
@@ -2542,6 +2546,7 @@ if (req.method === 'POST' && p === '/login') {
         const roomId = decodeURIComponent(invitesRoute[1]);
         const r = await storage.getRoom(roomId);
         if (!r || !hasCapability(r, d.userId, 'invite_members')) return send(res, 403, { error: 'missing capability: invite_members' });
+        if ((await storage.roomKind(roomId)) === 'direct') return send(res, 404, { error: 'not found' });
         // Сами ссылки здесь не показываются: токен известен только в момент создания.
         return send(res, 200, { invites: await storage.listInvites(roomId) });
       }
