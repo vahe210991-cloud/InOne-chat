@@ -611,7 +611,7 @@ The repository contains both `inone-development-archive-0.6.0/engine` and `inone
 - **Тесты:** authorized/unauthorized cross-account matrix; anonymous access denied; relationship edge cases; revoked device; post/media direct-ID access.
 - **Acceptance:** a direct API request can return another user's post only when the newly approved rule explicitly allows it; no account-private field leakage.
 - **Релиз:** Beta 1.0, mandatory before global feed exposure.
-- **Статус:** BLOCKED ON OWNER DECISION. Own-post CRUD/list may proceed independently without cross-account reads.
+- **Статус:** OWNER DECISION APPROVED / READY FOR IMPLEMENTATION. Rule: every published item intentionally included in the general/news feed is readable by every registered and authenticated InOne account; anonymous access is denied. Apply the same rule to its attachments at download. This does not expose profiles, drafts or private account data. The audited code still lacks the implementation, so cross-account reads must remain disabled until server-side enforcement and regression tests pass.
 
 ### FEED-SEC-001 — Authorization model for posts, comments and media
 
@@ -772,18 +772,18 @@ The repository contains both `inone-development-archive-0.6.0/engine` and `inone
 ## 17. Порядок реализации и контрольные точки
 
 1. **Gate 0 — SCOPE-001:** COMPLETE; Feed is approved for Beta 1.0 and WBS v1.2 records the scope.
-2. **Gate 1 — FEED-PRIVACY-001:** obtain exact owner-approved visibility semantics before returning other users' posts; own-post work may proceed.
-3. **Gate 2 — PROFILE-CORE-001 / PROFILE-PRIVACY-001 / FEED-SEC-001:** establish auth, DTO privacy, ownership and object authorization before feed APIs.
+2. **Gate 1 — FEED-PRIVACY-001:** OWNER DECISION APPROVED. Implement the approved rule: all registered/authenticated InOne accounts may read published general-feed posts; anonymous access is denied. Feed attachments inherit the same rule and are re-authorized at download. This does not expose profiles, drafts or private account data.
+3. **Gate 2 — PROFILE-CORE-001 / PROFILE-PRIVACY-001 / FEED-SEC-001:** establish session validation, DTO privacy, ownership and server-side object authorization before feed APIs.
 4. **Gate 3 — FEED-CORE-001:** own post lifecycle and database integrity.
-5. **Gate 4 — FEED-LIST-001 + FEED-PAGINATION-001:** own and policy-authorized feed query with deterministic traversal.
-6. **Gate 5 — FEED-MEDIA-001:** validated post attachment pipeline where attachments are in approved UI contract.
+5. **Gate 4 — FEED-LIST-001 + FEED-PAGINATION-001:** own and authenticated general-feed query with deterministic traversal and published-item eligibility.
+6. **Gate 5 — FEED-MEDIA-001:** validated post attachment pipeline; enforce parent-post eligibility on every download.
 7. **Gate 6 — FLUTTER-FEED-001 / FLUTTER-PROFILE-001:** native Dart integration only after backend contracts/security gates.
-8. **Gate 7 — FEED-TESTS-001 / FEED-PERFORMANCE-001:** exact-SHA test matrix, PostgreSQL query plan, mobile analysis/widget/integration tests.
+8. **Gate 7 — FEED-TESTS-001 / FEED-PERFORMANCE-001:** exact-SHA test matrix, anonymous-denial and cross-account-authenticated allow tests, IDOR/media tests, PostgreSQL query plan, mobile analysis/widget/integration tests.
 9. **Gate 8 — FEED-ACCEPTANCE-001:** owner acceptance; no open P0/P1 and no unresolved security/privacy blockers.
 
 ## 18. Зависимости
 
-`SCOPE-001 (COMPLETE) → FEED-PRIVACY-001 → PROFILE-PRIVACY-001 / FEED-SEC-001 → FEED-CORE-001 → FEED-LIST-001 → FEED-PAGINATION-001 → FEED-MEDIA-001 → FLUTTER-FEED-001 → FEED-TESTS-001 → FEED-ACCEPTANCE-001`.
+`SCOPE-001 (COMPLETE) + FEED-PRIVACY-001 (OWNER DECISION APPROVED) → PROFILE-PRIVACY-001 / FEED-SEC-001 → FEED-CORE-001 → FEED-LIST-001 → FEED-PAGINATION-001 → FEED-MEDIA-001 → FLUTTER-FEED-001 → FEED-TESTS-001 → FEED-ACCEPTANCE-001`.
 
 Profile path: `PROFILE-CORE-001 → PROFILE-PRIVACY-001 → PROFILE-EDIT-001 → PROFILE-MEDIA-001 → FLUTTER-PROFILE-001 → FEED-TESTS-001`.
 
@@ -811,7 +811,7 @@ A task is complete only when implementation, tests, review and merge are complet
 
 For a closed task preserve ID, original description, acceptance criteria, PR link, merge SHA, completion date, test results, implementer and reviewer. Then strike through the task title without deleting the record. If a regression is found, remove the strike-through and reopen the task with previous closure evidence retained.
 
-**No implementation task is closed.** SCOPE-001 is complete as a governance decision only; FEED-PRIVACY-001 is blocked; all implementation tasks remain NOT STARTED. No implementation task has been struck through.
+**No implementation task is closed.** SCOPE-001 is complete as a governance decision and FEED-PRIVACY-001 has an approved owner policy; its backend enforcement remains unimplemented and must be verified. All implementation tasks remain NOT STARTED. No implementation task has been struck through.
 
 ## 21. Журнал выполнения и закрытия задач
 
