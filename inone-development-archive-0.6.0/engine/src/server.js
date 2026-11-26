@@ -2178,13 +2178,55 @@ if (req.method === 'POST' && p === '/login') {
         });
       }
 
+      // ---------- личные диалоги ----------
+      if (req.method === 'POST' && p === '/direct-chats/open') {
+        const d = await authed(req);
+        if (!d) return send(res, 401, { error: 'unauthorized' });
+        const targetUserId = typeof body.userId === 'string' ? body.userId.trim() : '';
+        if (!targetUserId || targetUserId.length > 255 || targetUserId === d.userId) {
+          return send(res, 400, { error: 'a different valid userId is required' });
+        }
+        if (!(await storage.hasAccount(targetUserId))) return send(res, 404, { error: 'user not found' });
+        let result = null;
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          const roomId = `!dm_${randomBytes(24).toString('hex')}:inone.test`;
+          result = await storage.createOrOpenDirectConversation({
+            requester: d.userId,
+            target: targetUserId,
+            roomId,
+            createdAt: now(),
+          });
+          if (result.status !== 'room_id_conflict') break;
+        }
+        if (!result || result.status === 'room_id_conflict' || result.status === 'retry') {
+          return send(res, 503, { error: 'direct conversation reservation is temporarily unavailable' });
+        }
+        if (result.status === 'unknown_user') return send(res, 404, { error: 'user not found' });
+        const peerUserId = result.userA === d.userId ? result.userB : result.userA;
+        return send(res, 200, {
+          roomId: result.roomId,
+          status: result.status,
+          created: result.created === true,
+          isCreator: result.isCreator === true,
+          peerUserId,
+          mlsInitializationRequired: result.created === true,
+        });
+      }
+
       // ---------- беседы и участники ----------
       if (req.method === 'POST' && p === '/rooms') {
         const d = await authed(req);
         if (!d) return send(res, 401, { error: 'unauthorized' });
         const roomId = String(body.roomId ?? '');
         if (!roomId) return send(res, 400, { error: 'roomId required' });
-        if (await storage.getRoom(roomId)) return send(res, 409, { error: 'room exists' });
+        const existingRoom = await storage.getRoom(roomId);
+        if (existingRoom) {
+          const directConversation = await storage.directConversation(roomId);
+          if (directConversation?.status === 'pending' && directConversation.createdBy === d.userId) {
+            return send(res, 200, { roomId, kind: 'direct', status: 'pending', resumed: true });
+          }
+          return send(res, 409, { error: 'room exists' });
+        }
         const kindParam = body.kind ?? 'group';
         if (!['group', 'channel'].includes(kindParam)) return send(res, 400, { error: 'kind must be group or channel' });
         if (body.members !== undefined && !Array.isArray(body.members)) return send(res, 400, { error: 'members must be an array' });
