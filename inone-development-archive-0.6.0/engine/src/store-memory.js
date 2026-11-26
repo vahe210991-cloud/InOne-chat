@@ -1006,26 +1006,6 @@ export function createMemoryStore({ pinPepper }) {
       return true;
     },
 
-    addRoomMember(roomId, userId) {
-      const r = rooms.get(roomId);
-      if (!r || r.members.has(userId)) return false;
-      const org = organizations.get(r.orgId);
-      if (!org || org.status !== 'approved') return { status: 'org_not_approved' };
-      const direct = orgMembers.get(r.orgId)?.has(userId) ?? false;
-      const linked = !direct && [...orgLinks.values()].some((link) => {
-        if (link.status !== 'active') return false;
-        const memberOrg = link.orgA === r.orgId ? link.orgB : link.orgB === r.orgId ? link.orgA : null;
-        return memberOrg !== null
-          && organizations.get(memberOrg)?.status === 'approved'
-          && (orgMembers.get(memberOrg)?.has(userId) ?? false);
-      });
-      if (!direct && !linked) return { status: 'org_not_member' };
-      r.members.add(userId);
-      r.joinedSeq.set(userId, counters.eventSeq);
-      r.capabilities.set(userId, [...DEFAULT_MEMBER_CAPABILITIES]);
-      r.readUpTo.set(userId, 0);
-      return true;
-    },
     setRoomAdmin(roomId, userId, isAdmin) {
       const r = rooms.get(roomId);
       if (!r) return;
@@ -1041,15 +1021,6 @@ export function createMemoryStore({ pinPepper }) {
       const r = rooms.get(roomId);
       if (!r) return;
       r.capabilities.set(userId, [...list]);
-    },
-    removeRoomMember(roomId, userId) {
-      const r = rooms.get(roomId);
-      if (!r) return;
-      r.members.delete(userId);
-      r.admins.delete(userId);
-      r.joinedSeq.delete(userId); // при повторном добавлении история начинается заново
-      r.capabilities.delete(userId);
-      r.readUpTo.delete(userId);
     },
     setRoomAppearance(roomId, patch) {
       const r = rooms.get(roomId);
