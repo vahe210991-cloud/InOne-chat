@@ -1216,12 +1216,15 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         }
         final localRoomIds = await _session.localMlsRoomIds();
         rows = localRoomIds
-            .map((roomId) => InOneRoom(
-                  roomId: roomId,
-                  name: roomId,
-                  kind: 'group',
-                  role: 'member',
-                ))
+            .map((roomId) {
+              final isDirect = roomId.startsWith('!dm_');
+              return InOneRoom(
+                roomId: roomId,
+                name: isDirect ? 'Личный диалог' : roomId,
+                kind: isDirect ? 'direct' : 'group',
+                role: 'member',
+              );
+            })
             .toList(growable: false);
         _notice('Серверный список комнат недоступен; восстановлены локальные комнаты из SQLCipher: $error');
       }
