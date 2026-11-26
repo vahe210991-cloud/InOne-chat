@@ -37,7 +37,7 @@ test('коммит, который поднимает состав сверх л
   const s = await start();
   try {
     await assert.rejects(s.alice.raw('POST', COMMITS, {
-      epoch: 0, commit: b64('COMMIT-ADD-DAVE'), changes: { adds: [DAVE], removes: [] },
+      epoch: 1, commit: b64('COMMIT-ADD-DAVE'), changes: { adds: [DAVE], removes: [] },
       welcomes: [{ userId: DAVE, deviceId: 'D_PHONE', welcome: b64('WELCOME-DAVE') }],
     }), (e) => e.status === 409, 'четвёртый участник не добавляется');
     const members = (await s.alice.raw('GET', `/rooms/${enc(ROOM)}/members`)).members;
