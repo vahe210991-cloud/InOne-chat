@@ -8,7 +8,8 @@ This addendum is newer than the historical post-PR #131 snapshot below. Fetch li
 - Revalidated main before publication: `920e2a2ecef244c925061348eb68c8b09fe63922`; the two commits since the source snapshot changed only development rules.
 - Implementation plan: [FEED-PROFILE-BETA-1.0-IMPLEMENTATION-PLAN.md](../../development/FEED-PROFILE-BETA-1.0-IMPLEMENTATION-PLAN.md).
 - Audit report: [2026-11-26 FEED / PROFILE audit](../../development/reports/2026-11-26-feed-profile-beta1-audit.md).
-- Plan publication commit: `8260beb7070d959dce17ee423e2768dbea4399c9`; report publication commit: `e43632e0f1e78742f193793c0dc3558cc910b689`.
+- Plan initial publication commit: `8260beb7070d959dce17ee423e2768dbea4399c9`; plan publication-record correction: `9166a82448d2e06847e7212982aeecaf0acb9f19`; current plan blob: `08b1f984a3ded0543d5c20670c9b4e1d5d6e07ab`.
+- Audit report initial publication: `e43632e0f1e78742f193793c0dc3558cc910b689`; report reference update: `06862d1458035c868ad01606bcb4dda50669a1e4`.
 - FEED/posts: not implemented or connected in the reviewed production source.
 - PROFILE: own-profile read and locale update exist; general edit, other-user profile API and avatar/cover binding are absent.
 - Generic file upload/download authorization exists; social/profile media lifecycle does not.
