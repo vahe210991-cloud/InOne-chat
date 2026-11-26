@@ -422,7 +422,7 @@ dbTest('SD19: беседа, участники и история пережив�
     first = await startOn(store);
     const alice = await ChatClient.create(first.base, ALICE, 'A_PHONE', PW);
     const bob = await ChatClient.create(first.base, BOB_ID, 'B_PHONE', PW);
-    await alice.raw('POST', '/rooms', { roomId: ROOM_ID, members: [BOB_ID] });
+    await alice.createRoom(ROOM_ID, [ALICE, BOB_ID]);
     const before = await postGroupEvent(alice, decodeURIComponent(enc), { type: 'm.room.encrypted', content: { c: 'до перезапуска' } });
     await first.stop();
     first = null;
