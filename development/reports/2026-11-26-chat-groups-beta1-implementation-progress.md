@@ -19,9 +19,10 @@ A recipient does not accept or reject a request when another user sends a person
 5. Kept the legacy room member add/remove endpoints fail-closed with `409 mls_commit_required`. They cannot mutate MLS membership directly.
 6. Updated Flutter direct-chat DTO and UI: `provisioning` is an internal MLS state, with no recipient accept/reject action or prompt.
 7. Added per-device KeyPackage reserve maintenance after authenticated app loading and on resume, so a recipient device can be reached without first creating a conversation.
-8. Added backend regression coverage for canonical pair creation, concurrent opens, multi-device Welcome, third-party isolation and message delivery to the recipient without an acceptance step.
-9. Added Flutter DTO tests for provisioning and active direct conversations, including rejection of the old `pending` response shape.
-10. Registered migration 0036 in the migration runner and added schema assertions for fresh and upgraded PostgreSQL databases.
+8. Added backend regression coverage for canonical pair creation, concurrent opens, multi-device Welcome, third-party isolation, pre-activation fail-closed behavior, group-only route denial and bidirectional message delivery without an acceptance step.
+9. Added a real Rust/OpenMLS scenario: sender opens a direct room, automatically welcomes every active recipient device, sends while the recipient is offline, and both recipient devices receive the first message on sync without an approval action.
+10. Added Flutter DTO/repository/preview tests for provisioning and active direct conversations, including rejection of the old `pending` response shape and suppression of opaque room IDs in display labels.
+11. Registered migration 0036 in the migration runner, included direct-chat regressions in `npm test` and `npm run test:db`, and added schema assertions for fresh and upgraded PostgreSQL databases.
 
 ## Important behavior and limits
 
