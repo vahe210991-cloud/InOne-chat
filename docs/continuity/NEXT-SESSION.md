@@ -1,3 +1,33 @@
+# Next execution addendum — FEED / PROFILE (2026-11-26)
+
+This addendum supersedes the older historical starting-SHA instructions below for FEED/PROFILE work. **Always fetch the live `main` ref first**; the latest source baseline and exact publication commits are recorded in [CURRENT-STATE.md](CURRENT-STATE.md).
+
+## Required reading
+
+1. [FEED / PROFILE implementation plan](../../development/FEED-PROFILE-BETA-1.0-IMPLEMENTATION-PLAN.md).
+2. [FEED / PROFILE audit report](../../development/reports/2026-11-26-feed-profile-beta1-audit.md).
+3. [Approved WBS v1.1](../../development/PROGRESS-BASELINE.md).
+4. [Owner decisions](DECISIONS.md), [source of truth](SOURCE-OF-TRUTH.md), and current repository working/Git integration rules.
+
+## Immediate order
+
+1. Resolve `SCOPE-001`: explicitly decide whether minimum publications/feed are part of Beta 1.0 or remain Beta 2.0. Do not modify WBS v1.1, weights or percentages without explicit approval.
+2. Keep owner-approved privacy variant В: preserve the existing model unchanged. Do not introduce public-by-default profiles/posts, new visibility preferences, block/follow semantics or expanded access.
+3. Complete `PROFILE-CORE-001` and `PROFILE-PRIVACY-001` with backend HTTP and Flutter regression tests for own-profile auth, locale, revoked device, search relationship gate, DTO field allowlist, owner/device-bound files and room membership.
+4. Do not add a public-profile endpoint or public media delivery unless the owner separately approves the required access semantics.
+5. If Feed is approved for Beta 1.0, update the WBS through a versioned owner-approved change, then implement security/authorization before post CRUD, feed listing/cursors, media and interactions.
+6. Run tests only on a complete, immutable PR SHA. Record exact commands, results and limitations. Test source presence is not PASS.
+7. Do not restore HTML/WebView screens; production UI remains Flutter/Dart.
+
+## Current status
+
+- Audit plan is published in `main`; report and development index are published.
+- No application code, schema, migration, workflow, configuration or Flutter UI changed during the audit.
+- No tests/builds/dynamic security/production/device acceptance were run.
+- The audit did not change WBS v1.1 or close implementation tasks.
+
+---
+
 # Next execution — post-PR #131 Beta 1.0 acceptance (2026-11-23)
 
 Start from repository `vahe210991-cloud/InOne-chat`, `main` SHA `2430b0365ab71c60b0926b27854d17a9090e1fba`. PR #131 is already merged. Do not repeat it, do not restart the project, and do not copy Engine A code.
