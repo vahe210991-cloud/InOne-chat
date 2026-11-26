@@ -16,7 +16,6 @@ const BOB = '@bob:inone.test';
 const PHONE_A = '+37477000001';
 const PHONE_B = '+37477000002';
 const NEW_PW = 'новый-пароль-2026';
-const IDENTITY_SUBJECT = 'Подтверждение входа после восстановления';
 const HOUR = 3600_000;
 
 async function start({ store } = {}) {
