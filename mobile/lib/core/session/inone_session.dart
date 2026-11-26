@@ -1353,6 +1353,7 @@ class InOneSession extends ChangeNotifier {
 
   void _clearSession() {
     _clearPendingApproval();
+    _registrationToken = null;
     _mlsError = null;
     _accessToken = null;
     _refreshToken = null;
