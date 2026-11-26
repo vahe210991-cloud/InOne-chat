@@ -57,7 +57,7 @@ The GitHub repository `vahe210991-cloud/InOne-chat` is the only authoritative pr
 - [AUTH implementation audit report](reports/2026-11-26-auth-beta1-implementation-audit.md) — current implementation, defects addressed, tests NOT RUN and owner/platform blockers.
 - [Mobile API contracts](../mobile/API-CONTRACTS-BETA-1.md) — screen-to-backend wiring and current AUTH boundaries.
 - [Unified task-completion rules](UNIFIED-TASK-COMPLETION-RULES.md) — mandatory rule for every AI agent and developer.
-- Working branch: `feat/auth-senior-backend-implementation-2026-11-26`, current handoff SHA `a94f0b0bacd61693f51790b0cce5c8185c1cc86f`, based on current main `7d34b99fcc026a828b838e211d039c575aeace1d`.
+- Working branch: `feat/auth-senior-backend-implementation-2026-11-26`, based on current main `7d34b99fcc026a828b838e211d039c575aeace1d`. Fetch the live branch HEAD before continuing.
 - State: implementation in progress; no merge; automated tests have not been run on the final SHA.
 
 ## Current status at a glance
