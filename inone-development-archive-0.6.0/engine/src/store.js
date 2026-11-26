@@ -1696,22 +1696,52 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
       return rows.length > 0;
     },
 
-    // Комнаты, где пользователь участник (G1, этап 0.7.3): без чужих комнат.
-  async roomsOfUser(userId) {
-    const { rows } = await pool.query(
-      `SELECT r.room_id, r.kind,
-              COALESCE(r.name, NULLIF(peer.nickname, '')) AS name,
-              r.owner, m.is_admin
-         FROM room_members m
-         JOIN rooms r ON r.room_id = m.room_id
-         LEFT JOIN direct_conversations dc ON dc.room_id = r.room_id
-         LEFT JOIN profiles peer
-           ON peer.user_id = CASE WHEN dc.user_a = $1 THEN dc.user_b ELSE dc.user_a END
-        WHERE m.user_id = $1 ORDER BY r.room_id`,
-      [userId],
-    );
-    return rows.map((r) => ({ roomId: r.room_id, kind: r.kind, name: r.name, owner: r.owner, isAdmin: r.is_admin }));
-  },
+    // Room-list projection: encrypted last activity and unread count only; never project plaintext.
+    async roomsOfUser(userId) {
+      const { rows } = await pool.query(
+        `SELECT r.room_id, r.kind,
+                COALESCE(r.name, NULLIF(peer.nickname, '')) AS name,
+                r.owner, m.is_admin,
+                last_message.seq AS last_event_seq,
+                last_message.origin_ts AS last_event_at,
+                COALESCE(unread.unread_count, 0)::integer AS unread_count
+           FROM room_members m
+           JOIN rooms r ON r.room_id = m.room_id
+           LEFT JOIN direct_conversations dc ON dc.room_id = r.room_id
+           LEFT JOIN profiles peer
+             ON peer.user_id = CASE WHEN dc.user_a = $1 THEN dc.user_b ELSE dc.user_a END
+           LEFT JOIN LATERAL (
+             SELECT e.seq, e.origin_ts
+               FROM room_events e
+              WHERE e.room_id = r.room_id
+                AND e.type = 'm.room.encrypted'
+                AND e.seq > m.joined_seq
+              ORDER BY e.seq DESC
+              LIMIT 1
+           ) last_message ON TRUE
+           LEFT JOIN LATERAL (
+             SELECT COUNT(*)::integer AS unread_count
+               FROM room_events e
+              WHERE e.room_id = r.room_id
+                AND e.type = 'm.room.encrypted'
+                AND e.seq > GREATEST(m.read_seq, m.joined_seq)
+                AND e.sender <> $1
+           ) unread ON TRUE
+          WHERE m.user_id = $1
+          ORDER BY COALESCE(last_message.seq, 0) DESC, r.room_id`,
+        [userId],
+      );
+      return rows.map((r) => ({
+        roomId: r.room_id,
+        kind: r.kind,
+        name: r.name,
+        owner: r.owner,
+        isAdmin: r.is_admin,
+        lastEventSeq: r.last_event_seq === null ? null : Number(r.last_event_seq),
+        lastEventAt: r.last_event_at === null ? null : Number(r.last_event_at),
+        unreadCount: Number(r.unread_count ?? 0),
+      }));
+    },
 
   async roomKind(roomId) {
       const { rows } = await pool.query('SELECT kind FROM rooms WHERE room_id = $1', [roomId]);
