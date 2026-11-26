@@ -47,6 +47,15 @@ export function createMemoryStore({ pinPepper }) {
     if (members.has(userId)) return false;
     members.set(userId, { role, joinedAt });
     return true;
+  }
+  function isOrgMemberRoom(orgId, roomOrgId, userId) {
+    if (roomOrgId === orgId) return true;
+    if (!roomOrgId || (orgMembers.get(roomOrgId)?.has(userId) ?? false)) return false;
+    return [...orgLinks.values()].some((link) => {
+      if (link.status !== 'active') return false;
+      const linkedOrg = link.orgA === orgId ? link.orgB : link.orgB === orgId ? link.orgA : null;
+      return linkedOrg === roomOrgId && organizations.get(linkedOrg)?.status === 'approved';
+    });
   } // ключевой хэш токена обновления -> { deviceKey, expiresAt, usedAt }
   const throttle = new Map();      // ключ счётчика входа -> { failed, windowStart, blockedUntil }
   const recovery = new Map();      // пользователь -> состояние восстановления (см. recovery-rules.js)
@@ -444,9 +453,9 @@ export function createMemoryStore({ pinPepper }) {
       if ([...rooms.values()].some((room) => room.orgId === orgId && room.owner === target)) {
         return { ok: false, reason: 'owns_rooms' };
       }
-      const roomIds = [...rooms.entries()].filter(([, room]) => room.orgId === orgId && room.members.has(target)).map(([roomId]) => roomId).sort();
+      const roomIds = [...rooms.entries()].filter(([, room]) => room.members.has(target) && isOrgMemberRoom(orgId, room.orgId, target)).map(([roomId]) => roomId).sort();
       if (roomIds.length) return { ok: false, reason: 'mls_removal_required', roomIds };
-      for (const room of rooms.values()) if (room.orgId === orgId) room.joinRequests.delete(target);
+      for (const room of rooms.values()) if (isOrgMemberRoom(orgId, room.orgId, target)) room.joinRequests.delete(target);
       members.delete(target);
       adminActions.push({ orgId, actor, action, target, detail: targetRole, at });
       return { ok: true, role: targetRole };
@@ -462,9 +471,9 @@ export function createMemoryStore({ pinPepper }) {
       return n;
     },
     removeOrgMember(orgId, userId) {
-      const roomIds = [...rooms.entries()].filter(([, room]) => room.orgId === orgId && room.members.has(userId)).map(([roomId]) => roomId).sort();
+      const roomIds = [...rooms.entries()].filter(([, room]) => room.members.has(userId) && isOrgMemberRoom(orgId, room.orgId, userId)).map(([roomId]) => roomId).sort();
       if (roomIds.length) return { ok: false, reason: 'mls_removal_required', roomIds };
-      for (const room of rooms.values()) if (room.orgId === orgId) room.joinRequests.delete(userId);
+      for (const room of rooms.values()) if (isOrgMemberRoom(orgId, room.orgId, userId)) room.joinRequests.delete(userId);
       orgMembers.get(orgId)?.delete(userId);
       return { ok: true };
     },
