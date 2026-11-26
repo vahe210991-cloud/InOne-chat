@@ -11,3 +11,5 @@ Do not register a different package name in Firebase. See [platform identifiers]
 ## App launcher icon
 
 The platform generator derives Android launcher resources from the repository-root editable master at `branding/app-icon/inone-app-icon.svg`. It creates density-specific legacy launcher PNGs, plus Android 8+ adaptive icon XML and foreground resources. The source artwork remains full-bleed and square; Android applies the device launcher mask. The rasterizer dependencies are pinned in `../tool/requirements-app-icons.txt` and are installed only when missing.
+
+The Android CI preview build also checks that the Gradle Kotlin DSL plugin marker is reachable before invoking Gradle, then retries transient dependency-resolution failures with verbose diagnostics. This is a CI resilience check; it does not change application runtime dependencies.
