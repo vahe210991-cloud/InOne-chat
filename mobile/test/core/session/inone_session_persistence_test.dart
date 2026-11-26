@@ -54,30 +54,30 @@ void main() {
     String? persistedRefreshToken;
     var writes = 0;
     var deletes = 0;
-    final client = MockClient((request) async {
-      if (request.url.path == '/login') {
-        return http.Response(
-          jsonEncode({'token': 'access-login', 'refreshToken': 'refresh-1'}),
-          200,
-        );
-      }
-      if (request.url.path == '/token/refresh') {
-        expect(
-          (jsonDecode(request.body) as Map<String, dynamic>)['refreshToken'],
-          'refresh-1',
-        );
-        return http.Response(
-          jsonEncode({'token': 'access-restored', 'refreshToken': 'refresh-2'}),
-          200,
-        );
-      }
-      if (request.url.path == '/logout') return http.Response('{}', 200);
-      return http.Response('{}', 404);
-    });
+    http.Client clientForLaunch() => MockClient((request) async {
+          if (request.url.path == '/login') {
+            return http.Response(
+              jsonEncode({'token': 'access-login', 'refreshToken': 'refresh-1'}),
+              200,
+            );
+          }
+          if (request.url.path == '/token/refresh') {
+            expect(
+              (jsonDecode(request.body) as Map<String, dynamic>)['refreshToken'],
+              'refresh-1',
+            );
+            return http.Response(
+              jsonEncode({'token': 'access-restored', 'refreshToken': 'refresh-2'}),
+              200,
+            );
+          }
+          if (request.url.path == '/logout') return http.Response('{}', 200);
+          return http.Response('{}', 404);
+        });
 
     InOneSession createSession() => InOneSession(
           baseUrl: 'https://api.inone.test',
-          httpClient: client,
+          httpClient: clientForLaunch(),
           readDeviceId: () async => 'device-persist',
           writeDeviceId: (_) async {},
           readMlsUserId: () async => null,
