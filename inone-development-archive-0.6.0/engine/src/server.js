@@ -2319,7 +2319,7 @@ if (req.method === 'POST' && p === '/login') {
           if (asset && !assetMatchesVisibility(asset, r)) pending.push(r[key]);
         }
         const appearance = { description: r.description, backgroundColor: r.backgroundColor, avatarAssetId: r.avatarAssetId, coverAssetId: r.coverAssetId, backgroundAssetId: r.backgroundAssetId, pending };
-        return send(res, 200, { owner: r.owner, admins: r.admins, members: r.members, capabilities, name: r.name, visibility: r.visibility, join_policy: r.joinPolicy, read_upto: readUpTo, appearance });
+        return send(res, 200, { owner: r.owner, admins: r.admins, members: r.members, capabilities, name: r.name, kind: await storage.roomKind(roomId), visibility: r.visibility, join_policy: r.joinPolicy, read_upto: readUpTo, appearance });
       }
       if (memberRoute && req.method === 'POST') {
         const d = await authed(req);
