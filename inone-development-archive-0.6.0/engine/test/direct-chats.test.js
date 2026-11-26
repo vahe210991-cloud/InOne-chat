@@ -111,6 +111,38 @@ test('direct chats are canonical per unordered pair and activate only through cl
       (error) => error.status === 404,
       'direct conversations do not expose group invite links',
     );
+    await assert.rejects(
+      alice.raw('POST', `/rooms/${enc(opened.roomId)}/members`, { userId: CAROL }),
+      (error) => error.status === 409,
+      'a direct conversation cannot add a third account through the legacy route',
+    );
+    await assert.rejects(
+      alice.raw('POST', `/mls/key-packages/${enc(CAROL)}/claims`, {
+        claimId: 'direct-chat-claim-carol-0001',
+        roomId: opened.roomId,
+      }),
+      (error) => error.status === 403,
+      'the direct pair cannot claim a Welcome for a third account',
+    );
+  } finally {
+    await s.stop();
+  }
+});
+
+test('concurrent opens from opposite sides reserve exactly one direct room', async () => {
+  const s = await start();
+  try {
+    const alice = await ChatClient.create(s.base, ALICE, 'A_PHONE', PW);
+    const bob = await ChatClient.create(s.base, BOB, 'B_PHONE', PW);
+    const [fromAlice, fromBob] = await Promise.all([
+      alice.raw('POST', '/direct-chats/open', { userId: BOB }),
+      bob.raw('POST', '/direct-chats/open', { userId: ALICE }),
+    ]);
+    assert.equal(fromAlice.roomId, fromBob.roomId);
+    assert.equal([fromAlice.created, fromBob.created].filter(Boolean).length, 1);
+    assert.equal([fromAlice.isCreator, fromBob.isCreator].filter(Boolean).length, 1);
+    assert.equal(fromAlice.status, 'pending');
+    assert.equal(fromBob.status, 'pending');
   } finally {
     await s.stop();
   }
