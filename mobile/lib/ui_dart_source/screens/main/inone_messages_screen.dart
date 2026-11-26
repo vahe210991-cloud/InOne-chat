@@ -36,15 +36,22 @@ class _InOneMessagesScreenState extends State<InOneMessagesScreen> {
 
   List<InOneChatPreview> get _visible {
     if (!widget.unreadCountsAvailable) {
-      return _filter == 1
-          ? widget.chats.where((c) => c.kind == InOneChatKind.group).toList()
-          : widget.chats;
+      switch (_filter) {
+        case 1:
+          return widget.chats.where((c) => c.kind == InOneChatKind.group).toList();
+        case 2:
+          return widget.chats.where((c) => c.kind == InOneChatKind.channel).toList();
+        default:
+          return widget.chats;
+      }
     }
     switch (_filter) {
       case 1:
         return widget.chats.where((c) => c.unread > 0).toList();
       case 2:
         return widget.chats.where((c) => c.kind == InOneChatKind.group).toList();
+      case 3:
+        return widget.chats.where((c) => c.kind == InOneChatKind.channel).toList();
       default:
         return widget.chats;
     }
