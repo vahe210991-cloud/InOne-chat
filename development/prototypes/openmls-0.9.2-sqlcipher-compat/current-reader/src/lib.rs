@@ -4,7 +4,7 @@ use openmls::prelude::*;
 use openmls_basic_credential::SignatureKeyPair;
 use openmls_libcrux_crypto::CryptoProvider as LibcruxCrypto;
 use openmls_sqlite_storage::{Codec, Connection, SqliteStorageProvider};
-use openmls_traits::crypto::OpenMlsCrypto;
+use openmls_traits::{crypto::OpenMlsCrypto, random::OpenMlsRand};
 use serde::{de::DeserializeOwned, Serialize};
 
 const GROUP_ID: &[u8] = b"inone-openmls-081-compat-fixture";
@@ -26,14 +26,17 @@ impl Codec for JsonCodec {
     }
 }
 
-struct CandidateProvider {
-    crypto: LibcruxCrypto,
+struct CandidateProvider<C> {
+    crypto: C,
     storage: SqliteStorageProvider<JsonCodec, Arc<Connection>>,
 }
 
-impl OpenMlsProvider for CandidateProvider {
-    type CryptoProvider = LibcruxCrypto;
-    type RandProvider = LibcruxCrypto;
+impl<C> OpenMlsProvider for CandidateProvider<C>
+where
+    C: OpenMlsCrypto + OpenMlsRand,
+{
+    type CryptoProvider = C;
+    type RandProvider = C;
     type StorageProvider = SqliteStorageProvider<JsonCodec, Arc<Connection>>;
 
     fn storage(&self) -> &Self::StorageProvider {
@@ -49,19 +52,18 @@ impl OpenMlsProvider for CandidateProvider {
     }
 }
 
-fn open_sqlcipher(path: &Path, key_hex: &str) -> Result<Connection, Box<dyn std::error::Error>> {
-    let connection = Connection::open(path)?;
-    connection.pragma_update(None, "key", format!("x'{key_hex}'"))?;
+fn load_group<C>(
+    path: &Path,
+    crypto: C,
+) -> Result<(MlsGroup, CandidateProvider<C>, String), Box<dyn std::error::Error>>
+where
+    C: OpenMlsCrypto + OpenMlsRand,
+{
+    let mut connection = Connection::open(path)?;
+    connection.pragma_update(None, "key", format!("x'{TEST_KEY_HEX}'"))?;
     connection.query_row("SELECT count(*) FROM sqlite_master", [], |row| {
         row.get::<_, i64>(0)
     })?;
-    Ok(connection)
-}
-
-fn load_group(
-    path: &Path,
-) -> Result<(MlsGroup, CandidateProvider, String), Box<dyn std::error::Error>> {
-    let mut connection = open_sqlcipher(path, TEST_KEY_HEX)?;
     let cipher_version: String =
         connection.query_row("PRAGMA cipher_version", [], |row| row.get(0))?;
     if !cipher_version.trim().starts_with("4.20.0") {
@@ -77,7 +79,6 @@ fn load_group(
     }
 
     let connection = Arc::new(connection);
-    let crypto = LibcruxCrypto::new()?;
     let provider = CandidateProvider {
         crypto,
         storage: SqliteStorageProvider::new(Arc::clone(&connection)),
@@ -116,7 +117,8 @@ mod tests {
             .expect("read legacy signer public-key sidecar");
 
         let (mut group, provider, cipher_version) =
-            load_group(path).expect("load legacy group with candidate");
+            load_group(path, LibcruxCrypto::new().expect("initialize Libcrux provider"))
+                .expect("load legacy group with candidate");
         assert_eq!(group.group_id().as_slice(), GROUP_ID);
         assert_eq!(group.epoch().as_u64(), 0);
         assert_eq!(group.members().count(), 1);
@@ -124,12 +126,13 @@ mod tests {
 
         // The private signing key remains inside SQLCipher storage. Read it with the
         // candidate OpenMLS version and prove Libcrux can sign a new application message.
-        let signer = SignatureKeyPair::read(
+        let key_pair = SignatureKeyPair::read(
             provider.storage(),
             &public_key,
             CIPHERSUITE.signature_algorithm(),
         )
         .expect("read legacy signing key from candidate storage");
+        let signer = key_pair.signer(provider.crypto());
         let signed_message = group
             .create_message(&provider, &signer, b"legacy-key-to-candidate-message")
             .expect("candidate Libcrux signs and encrypts with the legacy key");
@@ -139,18 +142,20 @@ mod tests {
 
         // A second independent open proves both group state and signer persistence survive reopen.
         let (mut reopened, reopened_provider, reopened_cipher) =
-            load_group(path).expect("reopen and reload legacy group");
+            load_group(path, LibcruxCrypto::new().expect("initialize Libcrux provider"))
+                .expect("reopen and reload legacy group");
         assert_eq!(reopened.group_id().as_slice(), GROUP_ID);
         assert_eq!(reopened.epoch().as_u64(), 0);
         assert_eq!(reopened.members().count(), 1);
         assert_eq!(reopened_cipher, cipher_version);
 
-        let reopened_signer = SignatureKeyPair::read(
+        let reopened_key_pair = SignatureKeyPair::read(
             reopened_provider.storage(),
             &public_key,
             CIPHERSUITE.signature_algorithm(),
         )
         .expect("re-read legacy signing key after reopen");
+        let reopened_signer = reopened_key_pair.signer(reopened_provider.crypto());
         let second_message = reopened
             .create_message(
                 &reopened_provider,
@@ -158,6 +163,40 @@ mod tests {
                 b"reopened-legacy-key-to-candidate-message",
             )
             .expect("candidate Libcrux signs and encrypts after reopen");
+        drop(second_message);
+    }
+
+    #[test]
+    fn rustcrypto_provider_reads_legacy_state_and_signs_with_reloaded_key() {
+        let path = std::env::var("INONE_COMPAT_DB")
+            .expect("INONE_COMPAT_DB must point to the generated fixture");
+        let path = Path::new(&path);
+        let public_key = std::fs::read(path.with_extension("signer.pub"))
+            .expect("read legacy signer public-key sidecar");
+
+        let (mut group, provider, cipher_version) =
+            load_group(path, openmls_rust_crypto::RustCrypto::default())
+                .expect("load legacy group with RustCrypto provider");
+        assert_eq!(group.group_id().as_slice(), GROUP_ID);
+        assert_eq!(group.epoch().as_u64(), 0);
+        assert_eq!(group.members().count(), 1);
+        assert!(cipher_version.trim().starts_with("4.20.0"));
+
+        let key_pair = SignatureKeyPair::read(
+            provider.storage(),
+            &public_key,
+            CIPHERSUITE.signature_algorithm(),
+        )
+        .expect("read legacy signing key through RustCrypto storage adapter");
+        let signer = key_pair.signer(provider.crypto());
+        let message = group
+            .create_message(
+                &provider,
+                &signer,
+                b"legacy-key-to-rustcrypto-candidate-message",
+            )
+            .expect("RustCrypto provider signs and encrypts with the legacy key");
+        drop(message);
     }
 
     #[test]
