@@ -25,13 +25,13 @@ export function checkPassword(password, stored) {
   const length = passwordLength(password);
   if (length < MIN_PASSWORD_LENGTH || length > MAX_PASSWORD_LENGTH) return false;
   if (typeof stored !== 'string') return false;
-  const [saltB64, hashB64] = stored.split('
-  const expected = Buffer.from(hashB64, 'base64');
-  const actual = scryptSync(password, Buffer.from(saltB64, 'base64'), 32);
-  return expected.length === actual.length && timingSafeEqual(expected, actual);
-}
-);
-  const expected = Buffer.from(hashB64, 'base64');
-  const actual = scryptSync(password, Buffer.from(saltB64, 'base64'), 32);
-  return expected.length === actual.length && timingSafeEqual(expected, actual);
+
+  const parts = stored.split('$');
+  if (parts.length !== 2 || !parts[0] || !parts[1]) return false;
+  const salt = Buffer.from(parts[0], 'base64');
+  const expected = Buffer.from(parts[1], 'base64');
+  if (salt.length !== 16 || expected.length !== 32) return false;
+
+  const actual = scryptSync(password, salt, 32);
+  return timingSafeEqual(expected, actual);
 }
