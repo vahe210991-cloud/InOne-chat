@@ -15,7 +15,7 @@
 - **PROFILE:** PARTIAL / READ-ONLY. Authenticated own-profile `GET /profile`, `PATCH /profile/locale`, typed DTO/repository, and native own-profile screen exist. General profile editing, other-user profile read, and avatar/cover binding are absent.
 - **MEDIA:** Generic file upload and signed-download infrastructure exists, including owner/device binding and room-membership checks. A profile/social media lifecycle does not exist.
 - **SECURITY:** Static source review did not establish a confirmed P0/P1 vulnerability in the reviewed current profile/file routes. This is not a dynamic penetration-test result.
-- **Privacy decision:** Owner-approved variant В remains binding. Preserve existing privacy behavior unchanged. No post visibility policy exists in the audited code; `sharesOrgOrLink` is proven for user search only and must not be reused for post reads without separate approval. Own-post operations may proceed; cross-account feed reads remain blocked pending an exact owner decision.
+- **Privacy decision:** Owner-approved variant В remains binding for profiles and non-feed account data. The owner has separately approved a narrow feed rule: every published item intentionally included in the general/news feed is readable by every registered and authenticated InOne account; anonymous access is denied. Attachments inherit the same rule and are re-authorized at download. The audited code still has no implementation of this policy, so cross-account reads must remain disabled until server-side enforcement and regression tests pass. `sharesOrgOrLink` remains a user-search gate only and is not reused for feed authorization.
 - **Release scope:** Owner approved Feed in Beta 1.0 on 2026-11-26. WBS v1.2 adds Feed across existing workstreams without changing domain weights. Historical v1.1 percentages are not a current progress measurement for the expanded scope.
 
 ## 2. Findings and priorities
@@ -62,7 +62,7 @@ No implementation was repeated and no old HTML/WebView screen was restored.
 
 ## 6. Next actions
 
-1. Resolve `FEED-PRIVACY-001`: approve the exact rule that allows one account to read another account's posts. Do not infer it from user search or make posts public by default.
+1. Implement `FEED-PRIVACY-001` according to the owner-approved rule: every published item intentionally included in the general/news feed is readable by every registered and authenticated InOne account; anonymous access is denied. Apply the same rule to attached media at download. This does not expose profiles, drafts or private account data.
 2. Complete `PROFILE-CORE-001` and `PROFILE-PRIVACY-001`: add backend HTTP and Flutter regression coverage for authenticated own-profile read, locale, revoked device, DTO allowlist, and existing owner/device/room boundaries.
 3. Implement the Beta 1.0 Feed workstream in security-first order: `FEED-SEC-001`, `FEED-CORE-001`, `FEED-LIST-001`, `FEED-PAGINATION-001`, secure media as scoped, native Flutter integration, then the exact-SHA regression matrix.
 4. Keep comments/reactions and advanced social features out of the minimum scope unless separately approved.
