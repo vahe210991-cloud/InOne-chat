@@ -17,7 +17,7 @@ permissions:
 # Keep runs for distinct SHAs alive: each job set is a complete, reproducible
 # acceptance run for exactly one PR head, and all independent gates run in parallel.
 concurrency:
-  group: p0-validate-${{ github.event.pull_request.head.ref || github.ref_name }}-${{ github.event.pull_request.head.sha || github.sha }}
+  group: p0-validate-${{ github.event_name }}-${{ github.event.pull_request.head.ref || github.ref_name }}-${{ github.event.pull_request.head.sha || github.sha }}
   cancel-in-progress: true
 
 env:
