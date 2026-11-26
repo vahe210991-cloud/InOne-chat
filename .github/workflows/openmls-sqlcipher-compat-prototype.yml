@@ -1,0 +1,43 @@
+name: OpenMLS 0.10 SQLCipher compatibility prototype
+
+on:
+  push:
+    branches:
+      - security/prototype-openmls-0.10-sqlcipher-2026-11-26
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compatibility:
+    name: Legacy 0.8.1 SQLCipher database read by candidate 0.10
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout prototype
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install Rust 1.94
+        uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # pinned toolchain action snapshot
+        with:
+          toolchain: "1.94.0"
+          components: rustfmt
+
+      - name: Install SQLCipher build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libssl-dev perl make
+
+      - name: Install RustSec CLI
+        run: |
+          cargo install cargo-audit --locked
+          cargo audit --version
+
+      - name: Check prototype formatting
+        run: |
+          cargo fmt --manifest-path development/prototypes/openmls-0.10-sqlcipher-compat/legacy-writer/Cargo.toml -- --check
+          cargo fmt --manifest-path development/prototypes/openmls-0.10-sqlcipher-compat/current-reader/Cargo.toml -- --check
+
+      - name: Generate legacy SQLCipher database and validate candidate reader
+        run: bash development/prototypes/openmls-0.10-sqlcipher-compat/scripts/run.sh
