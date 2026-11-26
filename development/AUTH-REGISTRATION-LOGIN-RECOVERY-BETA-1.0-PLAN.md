@@ -45,7 +45,7 @@
 
 - Рабочий PR: [#171 — регистрация, вход и восстановление Beta 1.0](https://github.com/vahe210991-cloud/InOne-chat/pull/171), пока Draft.
 - Ветка: `feat/auth-screen-backend-wiring-beta1-2026-11-26`.
-- Последний зафиксированный SHA на момент обновления: `8f9f4501c4a626aa190cabe353e3ede4f3221fa`.
+- Последний зафиксированный SHA на момент обновления: `40c6d92e222787f2fe49d175665cbfd782250b0c`.
 - В PR подключаются native Flutter-сценарии регистрации по email, входа, device approval, recovery, recovery deep link и отмены; дополнительно реализуется ограниченный device-bound identity challenge после recovery.
 - Добавлены durable поля и миграция `0036-recovery-identity-challenges`, синхронизированы migration runner и API contract; refresh token теперь хранится в OS secure storage до передачи владения Rust и восстанавливает Dart-сессию после перезапуска. Расширены backend/mobile/DB/session persistence tests.
 - Первый запуск Node suite на промежуточном SHA выявил пять регрессий/несогласованных тестовых ожиданий. Причины локализованы: необязательная локаль регистрации, privacy-preserving ответ для уже зарегистрированного email, отсутствие передачи challenge ID в одном тестовом helper и сценарий повторной финализации после отзыва старого устройства. Исправления внесены; повторная проверка на актуальном SHA ожидает GitHub Actions.
@@ -83,7 +83,7 @@
 
 #### AUTH-05. Завершить дополнительную проверку личности после recovery — P0
 
- > **Текущий статус PR #171:** реализованы device-bound challenge ID, срок кода 10 минут, cooldown 60 секунд, пять попыток и часовая блокировка; Flutter передаёт challenge ID и поддерживает повторную отправку. Backend, PostgreSQL и Flutter tests добавлены; обязательный CI ещё не завершён. Задача не закрыта.
+> **Текущий статус PR #171:** реализованы device-bound challenge ID, срок кода 10 минут, cooldown 60 секунд, пять попыток и часовая блокировка; Flutter передаёт challenge ID и поддерживает повторную отправку. Backend, PostgreSQL и Flutter tests добавлены; обязательный CI ещё не завершён. Задача не закрыта.
 
 - [ ] **AUTH-05. Поддержать `identity_check_required` в мобильном входе.**
   - Проверить backend-контракт выдачи и проверки `identityCode`, включая срок действия, лимит попыток, повторную отправку и привязку к конкретной попытке входа/устройству.
@@ -139,7 +139,7 @@
 
 #### AUTH-09. Обеспечить безопасное восстановление сессии после перезапуска — P1
 
-> **Текущий статус PR #171:** добавлены injectable secure-storage callbacks, restore/re-rotation, logout/revocation cleanup (including expired-access logout retry) и тесты restart/rotation/revocation/native handoff. Обязательные Flutter/iOS CI и проверка платформенных Keychain/Keystore adapter ещё ожидаются. Задача не закрыта.
+> **Текущий статус PR #171:** добавлены injectable secure-storage callbacks, restore/re-rotation, очистка при logout/revocation, включая повторный logout после истечения access token и тесты restart/rotation/revocation/native handoff. Обязательные Flutter/iOS CI и проверка платформенных Keychain/Keystore adapter ещё ожидаются. Задача не закрыта.
 
 
 - [ ] **AUTH-09. Устранить зависимость сохранения сессии от выключенного по умолчанию Native MLS режима.**
