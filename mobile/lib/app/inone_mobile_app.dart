@@ -1154,18 +1154,27 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     final invitee = await _promptMlsInvitee();
     if (invitee == null || invitee.isEmpty) return;
     try {
-      await _session.ensureMlsKeyPackages(10);
-      final random = math.Random.secure();
-      final suffix = List<int>.generate(16, (_) => random.nextInt(256))
-          .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
-          .join();
-      final roomId = '!$suffix:inone.test';
-      await _session.createMlsRoom(roomId);
-      await _session.inviteMlsMember(roomId, invitee);
+      final conversation = await _repositories.openDirectConversation(invitee);
+      if (conversation.status == 'pending' && !conversation.isCreator) {
+        await _loadMlsRooms();
+        _notice('Ожидается защищённое приглашение от собеседника.');
+        return;
+      }
+      if (conversation.requiresCreatorSetup) {
+        await _session.ensureMlsKeyPackages(10);
+        await _session.createMlsRoom(conversation.roomId);
+        await _session.inviteMlsMember(conversation.roomId, conversation.peerUserId);
+        _notice('Личный диалог создан. MLS-приглашение отправлено на устройства собеседника.');
+      }
       await _loadMlsRooms();
-      if (mounted) _notice('Защищённая комната создана. MLS-приглашение отправлено.');
+      for (final chat in _mlsChats) {
+        if (chat.id == conversation.roomId) {
+          await _openMlsChat(chat);
+          break;
+        }
+      }
     } catch (error) {
-      _notice('Не удалось создать защищённую комнату: $error');
+      _notice('Не удалось открыть личный диалог: $error');
     }
   }
 
