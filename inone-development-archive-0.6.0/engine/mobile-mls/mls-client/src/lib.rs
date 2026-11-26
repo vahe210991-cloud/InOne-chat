@@ -2056,6 +2056,9 @@ impl Client {
             "/rooms",
             Some(json!({ "roomId": room_id, "members": [self.user_id] })),
         )?;
+        if self.server_epoch(room_id)? != 0 {
+            return Err("server MLS epoch is non-zero but this device has no local group state; restore the protected backup before continuing".to_string());
+        }
         let config = MlsGroupCreateConfig::builder()
             .ciphersuite(CIPHERSUITE)
             .use_ratchet_tree_extension(true)
