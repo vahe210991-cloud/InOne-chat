@@ -866,7 +866,7 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
         if (!rows[0]) return { ok: false, reason: 'state_changed' };
         const { org_a: orgA, org_b: orgB } = rows[0];
         const { rows: memberships } = await c.query(
-          `SELECT r.room_id, rm.user_id
+          `SELECT r.room_id, rm.user_id, r.owner
              FROM room_members rm
              JOIN rooms r ON r.room_id = rm.room_id
             WHERE (r.org_id = $1
@@ -883,7 +883,7 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
           return {
             ok: false,
             reason: 'mls_removal_required',
-            memberships: memberships.map((row) => ({ roomId: row.room_id, userId: row.user_id })),
+            memberships: memberships.map((row) => ({ roomId: row.room_id, userId: row.user_id, owner: row.owner === row.user_id })),
           };
         }
         await c.query(
