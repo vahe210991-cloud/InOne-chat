@@ -62,7 +62,7 @@ class _InOneEmailCodeScreenState extends State<InOneEmailCodeScreen>
           name: 'code',
           label: widget.codeLabel,
           maxLength: 6,
-          keyboardType: TextInputType.text,
+          keyboardType: TextInputType.number,
           autofillHints: const [AutofillHints.oneTimeCode],
           textInputAction: TextInputAction.done,
           onSubmitted: _confirm,
