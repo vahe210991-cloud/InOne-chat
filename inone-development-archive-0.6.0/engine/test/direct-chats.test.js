@@ -86,7 +86,11 @@ test('direct chats are canonical per unordered pair and activate only through cl
 
     const members = (await alice.raw('GET', `/rooms/${enc(opened.roomId)}/members`)).members;
     assert.deepEqual([...members].sort(), [ALICE, BOB].sort());
-    assert.ok((await bob.raw('GET', '/rooms/mine')).rooms.some((room) => room.roomId === opened.roomId && room.kind === 'direct'));
+    const bobRooms = (await bob.raw('GET', '/rooms/mine')).rooms;
+    const bobDirectRoom = bobRooms.find((room) => room.roomId === opened.roomId);
+    assert.ok(bobDirectRoom);
+    assert.equal(bobDirectRoom.kind, 'direct');
+    assert.notEqual(bobDirectRoom.name, opened.roomId, 'the room list uses the peer display name instead of the opaque room ID');
     assert.equal((await bob.raw('GET', '/mls/welcomes')).welcomes.length, 1);
     assert.equal((await bobTablet.raw('GET', '/mls/welcomes')).welcomes.length, 1);
     assert.equal(typeof await s.store.appendRoomEvent(
