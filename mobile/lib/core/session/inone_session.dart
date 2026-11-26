@@ -12,7 +12,8 @@ import '../network/api_client.dart';
 import '../network/api_exception.dart';
 
 /// Owns the authenticated app session. Before MLS adoption, Flutter owns the
-/// refresh pair in memory. After adoption, Rust is the only refresh-token owner.
+/// refresh pair and persists only the rotating refresh token in platform secure storage.
+/// After adoption, Rust is the only refresh-token owner.
 class InOneSession extends ChangeNotifier {
   InOneSession({
     required this.baseUrl,
@@ -23,6 +24,9 @@ class InOneSession extends ChangeNotifier {
     Future<String?> Function()? readMlsUserId,
     Future<void> Function(String)? writeMlsUserId,
     Future<void> Function()? deleteMlsUserId,
+    Future<String?> Function()? readRefreshToken,
+    Future<void> Function(String)? writeRefreshToken,
+    Future<void> Function()? deleteRefreshToken,
     Future<String?> Function()? readLocale,
     Future<void> Function(String)? writeLocale,
     Future<String?> Function()? readLocaleSyncPending,
@@ -37,6 +41,12 @@ class InOneSession extends ChangeNotifier {
             ((value) => _storage.write(key: _mlsUserIdKey, value: value)),
         _deleteMlsUserId = deleteMlsUserId ??
             (() => _storage.delete(key: _mlsUserIdKey)),
+        _readRefreshToken = readRefreshToken ??
+            (() => _storage.read(key: _refreshTokenKey)),
+        _writeRefreshToken = writeRefreshToken ??
+            ((value) => _storage.write(key: _refreshTokenKey, value: value)),
+        _deleteRefreshToken = deleteRefreshToken ??
+            (() => _storage.delete(key: _refreshTokenKey)),
         _readLocale = readLocale ?? (() => _storage.read(key: _localeKey)),
         _writeLocale = writeLocale ??
             ((value) => _storage.write(key: _localeKey, value: value)),
@@ -47,6 +57,7 @@ class InOneSession extends ChangeNotifier {
 
   static const _deviceIdKey = 'inone.device_id';
   static const _mlsUserIdKey = 'inone.mls_user_id';
+  static const _refreshTokenKey = 'inone.refresh_token';
   static const _localeKey = 'inone.app_locale';
   static const _localePendingKey = 'inone.app_locale_pending';
   static const _storage = FlutterSecureStorage();
@@ -60,6 +71,9 @@ class InOneSession extends ChangeNotifier {
   final Future<String?> Function() _readMlsUserId;
   final Future<void> Function(String) _writeMlsUserId;
   final Future<void> Function() _deleteMlsUserId;
+  final Future<String?> Function() _readRefreshToken;
+  final Future<void> Function(String) _writeRefreshToken;
+  final Future<void> Function() _deleteRefreshToken;
   final Future<String?> Function() _readLocale;
   final Future<void> Function(String) _writeLocale;
   final Future<String?> Function() _readLocaleSyncPending;
