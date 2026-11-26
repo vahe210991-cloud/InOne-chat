@@ -18,6 +18,8 @@ jobs:
       - name: Checkout prototype
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
+      - name: Validate the stacked Stage 5 RustSec workflow YAML
+        run: ruby -e 'require "yaml"; YAML.load_file(".github/workflows/validate-published-p0.yml")'
       - name: Install Rust 1.94
         uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # pinned toolchain action snapshot
         with:
