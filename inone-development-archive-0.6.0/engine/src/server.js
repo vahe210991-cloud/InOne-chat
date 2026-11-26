@@ -1130,7 +1130,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         if (nickError) return send(res, 400, { error: nickError });
         if (await storage.userIdByEmail(email)) return send(res, 409, { error: 'email already registered' });
         if (await storage.searchNickname(body.nickname)) return send(res, 409, { error: 'nickname taken' });
-                const hasPhoneV = body.phone !== undefined && body.phone !== null && body.phone !== '';
+        const hasPhoneV = body.phone !== undefined && body.phone !== null && body.phone !== '';
         if (requirePhone && !hasPhoneV) return send(res, 400, { error: 'phone required' });
         const phoneV = hasPhoneV ? normalizePhone(body.phone, { blockedCountries: phoneBlockedCountries, allowedCountries: phoneAllowedCountries }) : null;
         if (phoneV?.error) return send(res, 400, { error: phoneV.error });
