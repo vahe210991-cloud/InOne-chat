@@ -2873,16 +2873,28 @@ if (req.method === 'POST' && p === '/login') {
         }
         const room = await storage.getRoom(roomId);
         if (!room || !room.members.includes(d.userId)) return send(res, 403, { error: 'not a room member' });
-        const roomOrgId = await storage.roomOrg(roomId);
-        const targetAccess = roomOrgId ? await orgGate(targetUserId, roomOrgId) : { status: 403 };
-        if (targetAccess) {
-          return send(res, 403, { error: 'target user is not eligible for this room', code: 'target_not_authorized' });
-        }
+        const roomKind = await storage.roomKind(roomId);
         if (room.members.includes(targetUserId)) return send(res, 409, { error: 'already a member', code: 'already_member' });
-        if (d.userId !== room.owner && !hasCapability(room, d.userId, 'invite_members')) {
-          return send(res, 403, { error: 'missing capability: invite_members' });
-        }
         if (!(await storage.hasAccount(targetUserId))) return send(res, 400, { error: 'unknown account' });
+        if (roomKind === 'direct') {
+          const conversation = await storage.directConversation(roomId);
+          const counterpart = conversation?.userA === d.userId
+            ? conversation.userB
+            : conversation?.userB === d.userId ? conversation.userA : null;
+          if (!conversation || conversation.status !== 'pending' || conversation.createdBy !== d.userId
+            || room.owner !== d.userId || counterpart !== targetUserId) {
+            return send(res, 403, { error: 'only the pending direct-chat creator may claim the paired recipient', code: 'direct_pair_only' });
+          }
+        } else {
+          const roomOrgId = await storage.roomOrg(roomId);
+          const targetAccess = roomOrgId ? await orgGate(targetUserId, roomOrgId) : { status: 403 };
+          if (targetAccess) {
+            return send(res, 403, { error: 'target user is not eligible for this room', code: 'target_not_authorized' });
+          }
+          if (d.userId !== room.owner && !hasCapability(room, d.userId, 'invite_members')) {
+            return send(res, 403, { error: 'missing capability: invite_members' });
+          }
+        }
         const rate = await checkRate('mlsClaimPerAccount', d.userId);
         if (!rate.allowed) return send(res, 429, { error: 'too many key requests, try later' });
         const claimed = await storage.mlsClaimKeyPackages(targetUserId, d.userId, d.deviceId, claimId, roomId, now());
