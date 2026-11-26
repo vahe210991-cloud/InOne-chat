@@ -155,8 +155,36 @@ jobs:
           cargo test --locked --no-fail-fast --manifest-path rust/Cargo.toml
       - run: flutter analyze lib test integration_test
       - run: flutter test
+      - name: Preflight Gradle Kotlin DSL plugin marker
+        shell: bash
+        run: |
+          set -euo pipefail
+          marker="https://plugins.gradle.org/m2/org/gradle/kotlin/kotlin-dsl/org.gradle.kotlin.kotlin-dsl.gradle.plugin/6.4.2/org.gradle.kotlin.kotlin-dsl.gradle.plugin-6.4.2.pom"
+          echo "Checking Gradle Kotlin DSL plugin marker availability..."
+          curl --fail --show-error --silent --location \
+            --retry 5 --retry-all-errors --retry-delay 5 \
+            --output "$RUNNER_TEMP/kotlin-dsl-plugin-marker.pom" "$marker"
+          grep -q '<project' "$RUNNER_TEMP/kotlin-dsl-plugin-marker.pom"
+          echo "Gradle Kotlin DSL 6.4.2 marker is reachable."
       - name: Build Android preview APK
-        run: flutter build apk --debug
+        shell: bash
+        env:
+          GRADLE_OPTS: "-Dorg.gradle.logging.level=info"
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            echo "Android debug build attempt $attempt/3"
+            if flutter build apk --debug --verbose; then
+              exit 0
+            fi
+            if [[ "$attempt" -lt 3 ]]; then
+              echo "Android build failed; refreshing Gradle dependency metadata before retry."
+              find "$HOME/.gradle/caches" -type f -name '*.lock' -delete 2>/dev/null || true
+              sleep $((attempt * 10))
+            fi
+          done
+          echo "::error::Android debug build failed after three attempts."
+          exit 1
       - name: Verify and grant access to KVM on the ephemeral runner
         working-directory: .
         shell: bash
