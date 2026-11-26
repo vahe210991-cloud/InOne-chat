@@ -145,8 +145,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(submittedEmail, 'person@example.test');
 
-    await tester.ensureVisible(find.text('Մուտքագրել նամակի կոդը'));
-    await tester.tap(find.text('Մուտքագրել նամակի կոդը'));
+    await tester.ensureVisible(find.text('Մուտքագրել վերականգնման կոդը'));
+    await tester.tap(find.text('Մուտքագրել վերականգնման կոդը'));
     await tester.pumpAndSettle();
     expect(enteredCode, isTrue);
   });
