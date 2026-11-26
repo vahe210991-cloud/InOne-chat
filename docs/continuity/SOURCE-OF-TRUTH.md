@@ -1,3 +1,13 @@
+# Latest source-of-truth addendum — Feed visibility owner decision (2026-11-26)
+
+- Owner-approved rule: every published item intentionally included in the general/news feed is readable by every registered and authenticated InOne account. Anonymous access is denied.
+- Attached media inherits the same rule and must be re-authorized on every download. IDs/URLs are not credentials.
+- This is a feed-publication-only rule. Privacy variant В remains binding for profiles, drafts, private account data and other domains; no public-profile, block/follow or subscription model is authorized.
+- `FEED-PRIVACY-001`: owner decision approved; ready for implementation. Current source still lacks policy enforcement. Keep cross-account reads disabled until server-side implementation and security regression tests pass.
+- Documentation update is on PR #172 (draft, unmerged); no application code or tests changed.
+
+---
+
 # Latest source-of-truth addendum — 2026-11-26
 
 Fetch live `main` before any further work. This addendum supersedes older Feed scope statements.
