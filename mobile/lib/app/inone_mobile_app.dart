@@ -81,6 +81,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   List<InOneThreadItem> _activeMlsThread = const [];
   bool _messagesLoading = false;
   String? _messagesError;
+  bool _unreadCountsAvailable = false;
   Future<void>? _mlsKeyPackageMaintenanceInFlight;
   bool _darkMode = false;
   bool _initializing = true;
@@ -1223,8 +1224,11 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       }
 
       late final List<InOneRoom> rows;
+      late final bool unreadCountsAvailable;
       try {
-        rows = (await _repositories.myRooms()).rooms;
+        final roomList = await _repositories.myRooms();
+        rows = roomList.rooms;
+        unreadCountsAvailable = roomList.unreadCountsAvailable;
       } catch (error) {
         // Local SQLCipher room recovery is permitted only when a native
         // Engine B session is present, and only for transport outages.
@@ -1246,6 +1250,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
               );
             })
             .toList(growable: false);
+        unreadCountsAvailable = false;
         _notice('Серверный список комнат недоступен; восстановлены локальные комнаты из SQLCipher: $error');
       }
 
@@ -1271,13 +1276,15 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           id: row.roomId,
           name: row.displayName,
           lastMessage: lastMessage,
-          time: '—',
+          time: _formatRoomTime(row.lastEventAt),
           kind: kind,
+          unread: row.unreadCount,
         ));
       }
       if (!mounted) return;
       setState(() {
         _mlsChats = chats;
+        _unreadCountsAvailable = unreadCountsAvailable;
         _messagesLoading = false;
         _messagesError = null;
       });
@@ -1288,6 +1295,18 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         _messagesError = 'Не удалось загрузить список комнат: $error';
       });
     }
+  }
+
+  String _formatRoomTime(int? timestamp) {
+    if (timestamp == null || timestamp <= 0) return '';
+    final value = DateTime.fromMillisecondsSinceEpoch(timestamp, isUtc: true).toLocal();
+    final now = DateTime.now();
+    String two(int part) => part.toString().padLeft(2, '0');
+    if (value.year == now.year && value.month == now.month && value.day == now.day) {
+      return '${two(value.hour)}:${two(value.minute)}';
+    }
+    if (value.year == now.year) return '${two(value.day)}.${two(value.month)}';
+    return '${two(value.day)}.${two(value.month)}.${value.year}';
   }
 
   Future<void> _markMlsRoomReadAfterPersistence(
@@ -3138,7 +3157,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         }
         return InOneMessagesScreen(
           chats: _mlsChats,
-          unreadCountsAvailable: false,
+          unreadCountsAvailable: _unreadCountsAvailable,
           onOpenChat: _openMlsChat,
           onSearch: () => unawaited(_discoverPublicRooms()),
           onTab: _selectTab,
