@@ -60,7 +60,7 @@ void main() {
     final session = _ProfileSession({
       'roomId': '!dm_0123456789abcdef',
       'peerUserId': 'peer-1',
-      'status': 'pending',
+      'status': 'provisioning',
       'created': true,
       'isCreator': true,
       'mlsInitializationRequired': true,
@@ -74,7 +74,7 @@ void main() {
     expect(session.authenticated, isTrue);
     expect(session.body, {'userId': 'peer-1'});
     expect(conversation.roomId, '!dm_0123456789abcdef');
-    expect(conversation.status, 'pending');
+    expect(conversation.status, 'provisioning');
     expect(conversation.requiresCreatorSetup, isTrue);
     expect(conversation.mlsInitializationRequired, isTrue);
     session.dispose();
@@ -84,7 +84,7 @@ void main() {
     final session = _ProfileSession({
       'roomId': '',
       'peerUserId': 'peer-1',
-      'status': 'pending',
+      'status': 'provisioning',
       'created': true,
       'isCreator': true,
       'mlsInitializationRequired': true,
