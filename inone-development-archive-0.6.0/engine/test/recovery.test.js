@@ -491,3 +491,91 @@ test('повторяет очистку устройств после части
     await stop();
   }
 });
+
+test('identity challenge is bound to the requesting device and resend is rate limited', async () => {
+  const { srv, base, stop } = await start();
+  try {
+    await createVerified(base, srv, ALICE, 'A_PHONE', PW, PHONE_A);
+    const recoveryCode = await startRecovery(base, srv, ALICE, PHONE_A);
+    await post(base, '/recovery/complete', { userId: ALICE, code: recoveryCode, newPassword: NEW_PW });
+
+    const first = await rawLogin(base, ALICE, NEW_PW, 'B_NEW');
+    assert.equal(first.status, 202);
+    assert.equal(first.body.status, 'identity_check_required');
+    assert.equal(typeof first.body.challengeId, 'string');
+    assert.equal(first.body.codeSent, true);
+    const firstChallengeId = first.body.challengeId;
+    const sentBefore = srv.mailbox(ALICE).filter((mail) => mail.templateId === 'recovery_login_code').length;
+
+    const repeated = await rawLogin(base, ALICE, NEW_PW, 'B_NEW');
+    assert.equal(repeated.status, 202);
+    assert.equal(repeated.body.challengeId, firstChallengeId);
+    assert.equal(repeated.body.codeSent, false);
+    assert.equal(
+      srv.mailbox(ALICE).filter((mail) => mail.templateId === 'recovery_login_code').length,
+      sentBefore,
+      'active challenge does not send duplicate email inside the cooldown',
+    );
+
+    const code = identityCodeFrom(srv, ALICE);
+    assert.equal((await rawLogin(base, ALICE, NEW_PW, 'C_OTHER', code)).status, 403);
+    assert.equal((await rawLogin(base, ALICE, NEW_PW, 'B_NEW', code)).status, 200);
+  } finally {
+    await stop();
+  }
+});
+
+test('identity challenge expires and can be reissued after its resend cooldown', async () => {
+  const { srv, base, stop } = await start();
+  try {
+    await createVerified(base, srv, ALICE, 'A_PHONE', PW, PHONE_A);
+    const recoveryCode = await startRecovery(base, srv, ALICE, PHONE_A);
+    await post(base, '/recovery/complete', { userId: ALICE, code: recoveryCode, newPassword: NEW_PW });
+
+    const first = await rawLogin(base, ALICE, NEW_PW, 'B_NEW');
+    const firstChallengeId = first.body.challengeId;
+    srv.advance(HOUR + 1);
+    assert.equal((await rawLogin(base, ALICE, NEW_PW, 'B_NEW', identityCodeFrom(srv, ALICE))).status, 410);
+
+    const renewed = await rawLogin(base, ALICE, NEW_PW, 'B_NEW');
+    assert.equal(renewed.status, 202);
+    assert.equal(renewed.body.codeSent, true);
+    assert.notEqual(renewed.body.challengeId, firstChallengeId);
+    assert.equal((await rawLogin(base, ALICE, NEW_PW, 'B_NEW', identityCodeFrom(srv, ALICE))).status, 200);
+  } finally {
+    await stop();
+  }
+});
+
+test('identity code attempts remain bounded across resend and lock the challenge', async () => {
+  const { srv, base, stop } = await start();
+  try {
+    await createVerified(base, srv, ALICE, 'A_PHONE', PW, PHONE_A);
+    const recoveryCode = await startRecovery(base, srv, ALICE, PHONE_A);
+    await post(base, '/recovery/complete', { userId: ALICE, code: recoveryCode, newPassword: NEW_PW });
+
+    const first = await rawLogin(base, ALICE, NEW_PW, 'B_NEW');
+    const actualCode = identityCodeFrom(srv, ALICE);
+    const wrongCode = actualCode === '000000' ? '000001' : '000000';
+    for (let i = 0; i < 4; i++) {
+      assert.equal((await rawLogin(base, ALICE, NEW_PW, 'B_NEW', wrongCode)).status, 403);
+    }
+
+    srv.advance(60_001);
+    const resent = await rawLogin(base, ALICE, NEW_PW, 'B_NEW');
+    assert.equal(resent.status, 202);
+    assert.equal(resent.body.codeSent, true);
+    assert.notEqual(resent.body.challengeId, first.body.challengeId);
+
+    assert.equal((await rawLogin(base, ALICE, NEW_PW, 'B_NEW', wrongCode)).status, 429);
+    assert.equal((await rawLogin(base, ALICE, NEW_PW, 'B_NEW')).status, 429);
+
+    srv.advance(HOUR + 1);
+    const unlocked = await rawLogin(base, ALICE, NEW_PW, 'B_NEW');
+    assert.equal(unlocked.status, 202);
+    assert.equal(unlocked.body.codeSent, true);
+    assert.equal((await rawLogin(base, ALICE, NEW_PW, 'B_NEW', identityCodeFrom(srv, ALICE))).status, 200);
+  } finally {
+    await stop();
+  }
+});
