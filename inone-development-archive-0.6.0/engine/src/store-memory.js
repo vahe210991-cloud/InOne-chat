@@ -989,7 +989,7 @@ export function createMemoryStore({ pinPepper }) {
         joinPolicy: 'approval', joinRequests: new Map(), invites: new Map(),
         description: '', backgroundColor: null, avatarAssetId: null, coverAssetId: null, backgroundAssetId: null, assets: new Map(),
       });
-      return { ...structuredClone(conversation), isCreator: true };
+      return { ...structuredClone(conversation), isCreator: true, created: true };
     },
     directConversation(roomId) {
       const conversation = directConversationsByRoom.get(roomId);
