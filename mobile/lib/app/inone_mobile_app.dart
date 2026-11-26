@@ -609,6 +609,9 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     setState(() {
       _recoveryEmail = '';
       _recoveryUserId = '';
+      _pendingLoginEmail = '';
+      _pendingLoginPassword = '';
+      _waitingActivateAt = '';
       _cancelingAdmission = false;
       _screen = 'login';
     });
@@ -3048,7 +3051,13 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       case 'notYou':
         return InOneNotYouScreen(
           onSubmit: _cancelingAdmission ? _cancelAdmissionByCode : _cancelRecoveryByCode,
-          onBack: () => setState(() => _screen = 'login'),
+          onBack: () => setState(() {
+            _cancelingAdmission = false;
+            _pendingLoginEmail = '';
+            _pendingLoginPassword = '';
+            _waitingActivateAt = '';
+            _screen = 'login';
+          }),
           onDone: _finishRecoveryCancellation,
         );
       case 'registerEmail':
