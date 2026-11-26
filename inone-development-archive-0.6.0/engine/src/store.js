@@ -1665,45 +1665,6 @@ async mlsPendingRemovalsFor(userId) {
       const { rows } = await pool.query('SELECT device_id FROM mls_device_removals WHERE room_id = $1 AND done_at IS NULL', [roomId]);
       return rows.map((r) => r.device_id);
     },
-    async addRoomMember(roomId, userId) {
-      return inTransaction(async (c) => {
-        const { rows: roomRows } = await c.query(
-          'SELECT r.org_id, o.status AS org_status FROM rooms r JOIN organizations o ON o.org_id = r.org_id WHERE r.room_id = $1 FOR SHARE OF r, o',
-          [roomId],
-        );
-        if (!roomRows[0]) return false;
-        const orgId = roomRows[0].org_id;
-        if (roomRows[0].org_status !== 'approved') return { status: 'org_not_approved' };
-
-        const { rows: directMembership } = await c.query(
-          'SELECT 1 FROM org_members WHERE org_id = $1 AND user_id = $2 FOR SHARE',
-          [orgId, userId],
-        );
-        if (!directMembership.length) {
-          const { rows: linkedMembership } = await c.query(
-            `SELECT 1
-               FROM org_members member
-               JOIN organizations member_org ON member_org.org_id = member.org_id
-               JOIN org_links link
-                 ON link.status = 'active'
-                AND ((link.org_a = member.org_id AND link.org_b = $1)
-                  OR (link.org_b = member.org_id AND link.org_a = $1))
-              WHERE member.user_id = $2 AND member_org.status = 'approved'
-              LIMIT 1 FOR SHARE OF member, member_org, link`,
-            [orgId, userId],
-          );
-          if (!linkedMembership.length) return { status: 'org_not_member' };
-        }
-
-        const { rows } = await c.query("SELECT value FROM counters WHERE name = 'event_seq' FOR UPDATE");
-        const ins = await c.query(
-          'INSERT INTO room_members (room_id, user_id, is_admin, joined_seq, capabilities) VALUES ($1, $2, FALSE, $3, $4::text[]) ON CONFLICT (room_id, user_id) DO NOTHING',
-          [roomId, userId, Number(rows[0].value), [...DEFAULT_MEMBER_CAPABILITIES]],
-        );
-        return ins.rowCount === 1;
-      });
-    },
-
     async setRoomAdmin(roomId, userId, isAdmin) {
       if (isAdmin) {
         await pool.query(
@@ -1720,10 +1681,6 @@ async mlsPendingRemovalsFor(userId) {
 
     async setRoomCapabilities(roomId, userId, list) {
       await pool.query('UPDATE room_members SET capabilities = $3::text[] WHERE room_id = $1 AND user_id = $2', [roomId, userId, list]);
-    },
-
-    async removeRoomMember(roomId, userId) {
-      await pool.query('DELETE FROM room_members WHERE room_id = $1 AND user_id = $2', [roomId, userId]);
     },
 
     async setRoomAppearance(roomId, patch) {
