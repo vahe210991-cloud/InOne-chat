@@ -3023,6 +3023,7 @@ if (req.method === 'POST' && p === '/login') {
         if (!d) return send(res, 401, { error: 'unauthorized' });
         const roomId = decodeURIComponent(assetRoute[1]);
         const r = await storage.getRoom(roomId);
+        if ((await storage.roomKind(roomId)) === 'direct') return send(res, 404, { error: 'asset not found' });
         if (!r || !assetVisibleTo(r, d.userId)) return send(res, 404, { error: 'asset not found' });
         const asset = await storage.getRoomAsset(roomId, decodeURIComponent(assetRoute[2]));
         if (!asset) return send(res, 404, { error: 'asset not found' });
@@ -3036,6 +3037,7 @@ if (req.method === 'POST' && p === '/login') {
         const roomId = decodeURIComponent(assetRoute[1]);
         const assetId = decodeURIComponent(assetRoute[2]);
         const r = await storage.getRoom(roomId);
+        if ((await storage.roomKind(roomId)) === 'direct') return send(res, 404, { error: 'not found' });
         if (!r || !hasCapability(r, d.userId, 'edit_group_appearance')) return send(res, 403, { error: 'missing capability: edit_group_appearance' });
         const current = await storage.getRoomAsset(roomId, assetId);
         if (!current) return send(res, 404, { error: 'asset not found' });
@@ -3050,6 +3052,7 @@ if (req.method === 'POST' && p === '/login') {
         if (!d) return send(res, 401, { error: 'unauthorized' });
         const roomId = decodeURIComponent(assetRoute[1]);
         const r = await storage.getRoom(roomId);
+        if ((await storage.roomKind(roomId)) === 'direct') return send(res, 404, { error: 'not found' });
         if (!r || !hasCapability(r, d.userId, 'edit_group_appearance')) return send(res, 403, { error: 'missing capability: edit_group_appearance' });
         if (!(await storage.deleteRoomAsset(roomId, decodeURIComponent(assetRoute[2])))) return send(res, 404, { error: 'asset not found' });
         return send(res, 200, { ok: true });
