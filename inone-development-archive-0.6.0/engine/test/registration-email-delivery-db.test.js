@@ -217,3 +217,55 @@ test('registration ticket is not consumed when account creation rolls back on ni
     await db.close();
   }
 });
+
+test('PostgreSQL persists device-bound identity challenge lifecycle fields', async () => {
+  const db = await testDatabase();
+  const store = createStore({ pool: db.pool, pinPepper: PEPPER });
+  const suffix = randomBytes(6).toString('hex');
+  const userId = `@identity-${suffix}:inone.test`;
+
+  try {
+    assert.equal(await store.createVerifiedAccount({
+      userId,
+      passwordHash: 'identity-password-hash',
+      email: `identity-${suffix}@example.test`,
+      nickname: `identity-${suffix}`,
+      nowMs: 1,
+    }), 'ok');
+
+    await store.recoveryUpdate(userId, (current) => ({
+      next: {
+        ...current,
+        identityCheck: true,
+        identityCodeHash: 'identity-code-hash',
+        identityAttempts: 2,
+        identityCodeExpiresAt: 10000,
+        identityDeviceId: 'device-1',
+        identityChallengeId: 'challenge-1',
+        identityLockedUntil: 20000,
+        identityLastSentAt: 3000,
+      },
+      result: 'updated',
+    }));
+    let state = await store.recoveryGet(userId);
+    assert.equal(state.identityCodeExpiresAt, 10000);
+    assert.equal(state.identityDeviceId, 'device-1');
+    assert.equal(state.identityChallengeId, 'challenge-1');
+    assert.equal(state.identityLockedUntil, 20000);
+    assert.equal(state.identityLastSentAt, 3000);
+
+    await store.recoveryUpdateWithOutbox(
+      userId,
+      (current) => ({
+        next: { ...current, identityAttempts: 3, identityLastSentAt: 4000 },
+        result: 'outbox-transaction',
+      }),
+      async () => {},
+    );
+    state = await store.recoveryGet(userId);
+    assert.equal(state.identityAttempts, 3);
+    assert.equal(state.identityLastSentAt, 4000);
+  } finally {
+    await db.close();
+  }
+});
