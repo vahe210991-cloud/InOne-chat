@@ -1159,10 +1159,16 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
           return send(res, 409, { error });
         }
         if (phoneV) {
-      const e164 = phoneV.value.e164;
-      try {
-        if (smsEnabled) await sendPhoneCode(userId, e164);
-        else await storage.phoneUpdate(userId, () => ({ next: { phone: e164, verified: false, codeHash: null, codeAttempts: 0, codeExpiresAt: 0, sends: [] }, result: 'saved' }));
+          const e164 = phoneV.value.e164;
+          try {
+            if (smsEnabled) await sendPhoneCode(userId, e164);
+            else await storage.phoneUpdate(userId, () => ({ next: { phone: e164, verified: false, codeHash: null, codeAttempts: 0, codeExpiresAt: 0, sends: [] }, result: 'saved' }));
+          } catch (e) {
+            if (e.code === '23505') return send(res, 409, { error: 'phone already used by another account' });
+            throw e;
+          }
+        }
+        return send(res, 200, { userId, nickname: body.nickname, verificationLevel: 1 });
       } catch (e) {
         if (e.code === '23505') return send(res, 409, { error: 'phone already used by another account' });
         throw e;
