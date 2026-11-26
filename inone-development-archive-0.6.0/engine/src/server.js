@@ -439,7 +439,8 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
   const authed = async (req) => {
     const raw = (req.headers.authorization || '').replace('Bearer ', '');
     const dk = raw ? await storage.deviceKeyForToken(raw, now()) : null;
-    if (dk) await finalizeRecoveryIfDue((await storage.deviceRecord(dk))?.userId);
+    const beforeFinalize = dk ? await storage.deviceRecord(dk) : null;
+    if (beforeFinalize?.userId) await finalizeRecoveryIfDue(beforeFinalize.userId);
     const rec = dk ? await storage.deviceRecord(dk) : null;
     return rec && !rec.revoked ? rec : null;
   };
