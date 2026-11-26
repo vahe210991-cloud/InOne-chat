@@ -185,6 +185,25 @@ class InOneSession extends ChangeNotifier {
           }
         }
       }
+    } else {
+      final savedRefreshToken = await _readRefreshToken();
+      if (savedRefreshToken != null && savedRefreshToken.isNotEmpty) {
+        _refreshToken = savedRefreshToken;
+        try {
+          await _refreshOnce();
+          final bridge = _nativeMlsBridge;
+          if (bridge != null && isAuthenticated) {
+            await adoptMlsSession(bridge);
+          }
+          _mlsError = null;
+        } on ApiException catch (error) {
+          _mlsError = error.statusCode == 401 || error.statusCode == 403
+              ? null
+              : 'Saved session could not be restored: ' + error.code;
+        } catch (_) {
+          _mlsError = 'Saved session could not be restored';
+        }
+      }
     }
     notifyListeners();
     if (isAuthenticated) await _syncLocaleAfterAuthentication();
