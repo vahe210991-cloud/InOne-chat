@@ -45,9 +45,9 @@
 
 - Рабочий PR: [#171 — регистрация, вход и восстановление Beta 1.0](https://github.com/vahe210991-cloud/InOne-chat/pull/171), пока Draft.
 - Ветка: `feat/auth-screen-backend-wiring-beta1-2026-11-26`.
-- Последний зафиксированный SHA на момент обновления: `604b94f61c52de896291ab8bef36a5a02713b2b4`.
+- Последний зафиксированный SHA на момент обновления: `0e5506bce1392b4dc8f16d2f7f8b259e7dfc39f0`.
 - В PR подключаются native Flutter-сценарии регистрации по email, входа, device approval, recovery, recovery deep link и отмены; дополнительно реализуется ограниченный device-bound identity challenge после recovery.
-- Добавлены durable поля и миграция `0036-recovery-identity-challenges`, синхронизированы migration runner и API contract, расширены backend/mobile/DB tests.
+- Добавлены durable поля и миграция `0036-recovery-identity-challenges`, синхронизированы migration runner и API contract; refresh token теперь хранится в OS secure storage до передачи владения Rust и восстанавливает Dart-сессию после перезапуска. Расширены backend/mobile/DB/session persistence tests.
 - Первый запуск Node suite на промежуточном SHA выявил пять регрессий/несогласованных тестовых ожиданий. Причины локализованы: необязательная локаль регистрации, privacy-preserving ответ для уже зарегистрированного email, отсутствие передачи challenge ID в одном тестовом helper и сценарий повторной финализации после отзыва старого устройства. Исправления внесены; повторная проверка на актуальном SHA ожидает GitHub Actions.
 - **Статус приёмки: В РАБОТЕ.** Ни одна задача ниже не закрывается и не зачёркивается до прохождения всех обязательных CI jobs, ревью и слияния PR.
 
