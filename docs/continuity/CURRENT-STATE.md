@@ -1,3 +1,19 @@
+# AUTH implementation addendum — 2026-11-26
+
+This is an active, unmerged Beta 1.0 implementation branch, not a main/release acceptance record.
+
+- Canonical plan: [AUTH registration/login/recovery plan](../../development/AUTH-REGISTRATION-LOGIN-RECOVERY-BETA-1.0-PLAN.md).
+- Implementation audit: [2026-11-26 AUTH report](../../development/reports/2026-11-26-auth-beta1-implementation-audit.md).
+- Mobile screen/API matrix: [API-CONTRACTS-BETA-1.md](../../mobile/API-CONTRACTS-BETA-1.md).
+- Working branch: `feat/auth-senior-backend-implementation-2026-11-26`; current implementation snapshot before continuity updates: `9d1e46a406feb40a77cca3fafafb8d0e8bc8d73b`.
+- Base `main`: `7d34b99fcc026a828b838e211d039c575aeace1d`; branch comparison: 80 ahead, 0 behind. The branch preserves parallel migration-runner/schema test changes; it was forked to avoid further concurrent writes to the original AUTH branch.
+- Implemented in source but not yet accepted: registration email-enumeration protections; atomic registration ticket/account transaction; retry-safe recovery finalization; expiring/device-bound identity challenges; bounded password policy; host-controlled device approval and recovery screen wiring.
+- Verification: **NOT RUN**. No test, build, CI or device result is PASS until executed on one exact final SHA.
+- Blockers: phone verification policy (AUTH-03), email-only recovery policy (AUTH-08), Rust/platform persistent session restoration (AUTH-09), biometric grant for protected signing-key approvals (AUTH-04), and native Google/Apple proof acquisition.
+- All AUTH task checkboxes remain open. No product source has been merged to main.
+
+---
+
 # Current state addendum — FEED / PROFILE audit (2026-11-26)
 
 This addendum is newer than the historical post-PR #131 snapshot below. Fetch live `main` before further work; the FEED/PROFILE audit and its follow-up records were documentation-only.
