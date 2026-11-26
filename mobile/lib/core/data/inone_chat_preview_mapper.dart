@@ -6,7 +6,10 @@ InOneChatKind mapInOneRoomKind(String rawKind) {
   return switch (rawKind.toLowerCase()) {
     'direct' || 'dm' || 'person' => InOneChatKind.person,
     'support' => InOneChatKind.support,
-    _ => InOneChatKind.group,
+    'group' => InOneChatKind.group,
+    'channel' => InOneChatKind.channel,
+    'system' => InOneChatKind.system,
+    _ => InOneChatKind.unknown,
   };
 }
 
