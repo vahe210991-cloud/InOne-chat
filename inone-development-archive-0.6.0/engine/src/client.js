@@ -78,6 +78,7 @@ export class ChatClient {
       client.token = res.token;
       client.refreshToken = res.refreshToken;
       client.password = password;
+      registerTestClient(client);
       return client;
     }
     await approver.approveDevice(res.approvalId, res.code);
@@ -87,6 +88,7 @@ export class ChatClient {
         client.token = claim.token;
         client.refreshToken = claim.refreshToken;
         client.password = password;
+        registerTestClient(client);
         return client;
       }
       if (claim.status !== 'pending') throw new Error(`вход отклонён: ${claim.status}`);
