@@ -784,3 +784,13 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Confirmed current `main` already contains device-bound signed file downloads (same class of work as PR #86); do not duplicate. PR #42 is only a PostgreSQL workflow against old `inone-engine-poc-0.6.0` paths, not a current-engine transaction fix. PR #65 only hardens one error catch, not the global request boundary.
 - Reviewed mobile code-search results for legacy KeyPackage/to-device endpoint usage; no direct mobile references surfaced in the searched source paths. This is not yet a complete API compatibility proof; inspect Rust/Flutter transport adapters and runtime traces before retiring legacy API.
 - Expanded the Stage 0 report with the updated matrix and exact PR dispositions. No source changes, test runs, issue closures, merges, secret edits or repo setting changes.
+
+
+## 2026-11-25 — Beta 2.0 screen-gap audit and Dart UI continuation
+
+- Continued the owner-approved Dart archive workflow on `feature/ui-dart-archive-stage1-2026-11-25`; no HTML files were restored and no HTML pixel-comparison gate was introduced.
+- Audited approved WBS v1.1, the 2026-11-13 InOne / InOne Business product split, current Flutter native screen tree, current CRM screen exports/demo-only references, and both owner-supplied Dart archives.
+- Added `development/reports/2026-11-25-beta2-screen-gap-audit.md`. Findings: current Leads/Deals Board/Deal Detail widgets exist but are demo-gallery-only; four CRM add/card/stage/note screens and seven task/project/other-profile screens are delivered in Dart archives but not integrated; Calendar screens 60–65, Cindy screens and group collaboration extras have no Dart source in the supplied archives/current native tree.
+- Classified CRM/Kanban/Leads/Deals under InOne Business. Wallet, Flags, Stories, Geolocation and Propo map remain scope clarification/candidate backlog because the approved Beta 2.0 WBS does not provide screen-level scope for them.
+- Updated `development/README.md` to link the current UI integration and Beta 2.0 gap reports. PR #158 remains Draft/open/unmerged; no product code or main branch was changed.
+- Verification: source/document inventory only. Flutter analyze/tests/builds and physical-device tests were NOT RUN. Beta 2.0 WBS remains unchanged at 2% implementation / 0% verification.
