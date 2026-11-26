@@ -6,7 +6,7 @@ import '../../widgets/inone_bottom_nav.dart';
 import '../../widgets/inone_ds_widgets.dart';
 import '../../widgets/inone_icons.dart';
 
-/// Screen 05 / D05 · Chats: список диалогов с фильтрами All / Unread / Groups.
+/// Screen 05 / D05 · Chats: список диалогов с фильтрами All / Unread / Groups / Channels.
 class InOneMessagesScreen extends StatefulWidget {
   const InOneMessagesScreen({
     super.key,
