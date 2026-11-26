@@ -483,7 +483,11 @@ test('повторяет очистку устройств после части
     assert.notEqual(interrupted.windowKeyResetAt, null);
     assert.equal((await store.deviceRecord(`${ALICE}|A_PHONE`)).revoked, true);
 
-    await assert.rejects(phone.sync(), (error) => error.status === 401);
+    await assert.rejects(phone.sync(), (error) => error.status === 401, 'revoked device cannot retry finalization');
+    // A fresh authenticated login retries the idempotent cleanup before issuing its identity challenge.
+    const retry = await rawLogin(base, ALICE, NEW_PW, 'B_NEW');
+    assert.equal(retry.status, 202);
+    assert.equal(retry.body.status, 'identity_check_required');
     const completed = await store.recoveryGet(ALICE);
     assert.equal(completed.windowKeyResetAt, null);
     assert.ok(srv.mailbox(ALICE).some((mail) => mail.templateId === 'old_devices_revoked'));
