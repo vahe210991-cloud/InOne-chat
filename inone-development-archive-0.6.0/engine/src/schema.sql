@@ -483,7 +483,7 @@ CREATE TABLE direct_conversations (
   user_a TEXT NOT NULL REFERENCES accounts (user_id) ON DELETE CASCADE,
   user_b TEXT NOT NULL REFERENCES accounts (user_id) ON DELETE CASCADE,
   created_by TEXT NOT NULL REFERENCES accounts (user_id),
-  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'active')),
+  status TEXT NOT NULL DEFAULT 'provisioning' CHECK (status IN ('provisioning', 'active')),
   created_at BIGINT NOT NULL,
   CHECK (user_a COLLATE "C" < user_b COLLATE "C"),
   CHECK (created_by = user_a OR created_by = user_b),
