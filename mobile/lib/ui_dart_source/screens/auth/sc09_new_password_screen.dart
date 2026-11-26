@@ -77,7 +77,7 @@ class _InOneNewPasswordScreenState extends State<InOneNewPasswordScreen>
               InOneField(
                 form: _form,
                 name: 'code',
-                label: 'Կոդը նամակից',
+                label: 'Վերականգնման կոդը',
                 maxLength: 6,
                 keyboardType: TextInputType.number,
                 autofillHints: const [AutofillHints.oneTimeCode],
