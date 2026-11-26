@@ -219,4 +219,68 @@ void main() {
     session.dispose();
     client.close();
   });
+
+  test('denied and expired approval claims clear their one-time poll secrets', () async {
+    for (final terminalStatus in ['denied', 'expired']) {
+      final client = MockClient((request) async {
+        if (request.url.path == '/login') {
+          return http.Response(
+            jsonEncode({
+              'status': 'approval_required',
+              'approvalId': 'approval-terminal',
+              'pollSecret': 'terminal-secret',
+              'code': '123456',
+            }),
+            202,
+          );
+        }
+        if (request.url.path == '/approvals/approval-terminal/claim') {
+          expect(jsonDecode(request.body), {'pollSecret': 'terminal-secret'});
+          return http.Response(jsonEncode({'status': terminalStatus}), 200);
+        }
+        return http.Response('{}', 404);
+      });
+      final session = makeSession(client);
+      await session.login(
+        email: 'person@example.test',
+        password: 'correct horse battery staple',
+      );
+
+      final result = await session.claimPendingApproval();
+
+      expect(result, {'status': terminalStatus});
+      expect(session.hasPendingApproval, isFalse);
+      expect(session.pendingApprovalCode, isNull);
+      expect(session.isAuthenticated, isFalse);
+
+      session.dispose();
+      client.close();
+    }
+  });
+
+  test('leaving approval screen drops the in-memory poll secret', () async {
+    final client = MockClient((request) async => http.Response(
+          jsonEncode({
+            'status': 'approval_required',
+            'approvalId': 'approval-leave',
+            'pollSecret': 'leave-secret',
+            'code': '123456',
+          }),
+          202,
+        ));
+    final session = makeSession(client);
+    await session.login(
+      email: 'person@example.test',
+      password: 'correct horse battery staple',
+    );
+
+    expect(session.hasPendingApproval, isTrue);
+    session.discardPendingApproval();
+    expect(session.hasPendingApproval, isFalse);
+    expect(session.pendingApprovalCode, isNull);
+
+    session.dispose();
+    client.close();
+  });
+
 }
