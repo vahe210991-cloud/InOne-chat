@@ -7,6 +7,7 @@ import { createServer } from '../src/server.js';
 import { ChatClient, DEFAULT_PASSWORD as PW } from '../src/client.js';
 import { storeForTest } from './helpers.js';
 import { createMemoryStore } from '../src/store-memory.js';
+import { createStore } from '../src/store.js';
 
 const PEPPER = randomBytes(24).toString('hex');
 const DOCS = 'test-docs-secret-0123456789-abcdefgh';
@@ -109,5 +110,39 @@ test('квота файлов организации: загрузка свер�
     assert.equal(second.json.code, 'org_quota_exceeded');
   } finally {
     await s.stop();
+  }
+});
+
+test('ошибка admin audit откатывает настройку организации и её журнал', async (t) => {
+  const db = await storeForTest(PEPPER);
+  if (!db?.pool || !db?.store) {
+    t.skip('PostgreSQL test database is not configured');
+    return;
+  }
+  const orgId = `org-setting-rollback-${randomBytes(6).toString('hex')}`;
+  const owner = `@setting-owner-${randomBytes(5).toString('hex')}:inone.test`;
+  try {
+    await db.store.addAccount(owner, 'test-password-hash');
+    await db.store.createOrganization({ orgId, name: 'Settings rollback', status: 'approved', createdBy: owner, createdAt: 1 });
+    await db.store.addOrgMember(orgId, owner, 'owner', 2);
+    const failingStore = createStore({
+      pool: db.pool, pinPepper: PEPPER,
+      testHooks: { beforeAdminActionInsert() { throw new Error('injected admin audit failure'); } },
+    });
+    await assert.rejects(
+      failingStore.setOrgSettingAtomic({ orgId, field: 'channelsEnabled', value: false, actor: owner, at: 3 }),
+      /injected admin audit failure/,
+    );
+    assert.equal((await db.store.orgSettings(orgId)).channelsEnabled, true, 'настройка вернулась к прежнему значению');
+    assert.deepEqual(await db.store.listOrgSettingsLog(orgId), [], 'журнал настройки тоже откатился');
+    assert.equal((await db.store.listAdminActions(orgId)).filter((a) => a.action === 'setting_change').length, 0);
+  } finally {
+    await db.pool.query('DELETE FROM admin_action_log WHERE org_id = $1', [orgId]);
+    await db.pool.query('DELETE FROM org_settings_log WHERE org_id = $1', [orgId]);
+    await db.pool.query('DELETE FROM org_settings WHERE org_id = $1', [orgId]);
+    await db.pool.query('DELETE FROM org_members WHERE org_id = $1', [orgId]);
+    await db.pool.query('DELETE FROM organizations WHERE org_id = $1', [orgId]);
+    await db.pool.query('DELETE FROM accounts WHERE user_id = $1', [owner]);
+    await db.close();
   }
 });

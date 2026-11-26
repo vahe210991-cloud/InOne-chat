@@ -376,12 +376,34 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
     },
     async purgeExpired(nowMs) {
       const run = async (sql) => (await pool.query(sql, [nowMs])).rowCount;
+      const batchDelete = async (table, predicate, params) => {
+        const result = await pool.query(
+          `WITH expired AS (
+             SELECT ctid FROM ${table}
+             WHERE ${predicate}
+             ORDER BY window_start
+             LIMIT 500
+           )
+           DELETE FROM ${table} target USING expired
+           WHERE target.ctid = expired.ctid`,
+          params,
+        );
+        return result.rowCount;
+      };
+      const rateLimits = await batchDelete('rate_limits', 'window_start <= $1::bigint - $2::bigint', [nowMs, 24 * 60 * 60_000]);
+      const loginThrottle = await batchDelete(
+        'login_throttle',
+        'window_start <= $1::bigint - $2::bigint AND blocked_until <= $1::bigint',
+        [nowMs, 15 * 60_000],
+      );
       return {
         inbox: await run('DELETE FROM inbox WHERE expires_at <= $1'),
         tokens: await run('DELETE FROM tokens WHERE expires_at <= $1'),
         refreshTokens: await run('DELETE FROM refresh_tokens WHERE expires_at <= $1'),
         authTokens: await run('DELETE FROM auth_tokens WHERE expires_at < $1'),
         recoveryCancelCodes: await run('DELETE FROM recovery_cancel_codes WHERE expires_at <= $1'),
+        rateLimits,
+        loginThrottle,
       };
     },
     async clearExpiredCodes(nowMs) {
@@ -523,6 +545,102 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
     async setOrgMemberRole(orgId, userId, role) {
       await pool.query('UPDATE org_members SET role = $3 WHERE org_id = $1 AND user_id = $2', [orgId, userId, role]);
     },
+    async addOrgMemberAtomic({ orgId, actor, target, role, at }) {
+      return inTransaction(async (client) => {
+        const { rows: orgRows } = await client.query('SELECT status FROM organizations WHERE org_id = $1 FOR UPDATE', [orgId]);
+        if (!orgRows[0]) return { ok: false, reason: 'not_found' };
+        if (orgRows[0].status !== 'approved') return { ok: false, reason: 'org_not_approved' };
+        const { rows: actorRows } = await client.query(
+          'SELECT role FROM org_members WHERE org_id = $1 AND user_id = $2 FOR UPDATE',
+          [orgId, actor],
+        );
+        const actorRole = actorRows[0]?.role;
+        if (actorRole !== 'owner' && actorRole !== 'admin') return { ok: false, reason: 'forbidden' };
+        if (actorRole === 'admin' && role !== 'member') return { ok: false, reason: 'forbidden' };
+        const { rows: accountRows } = await client.query('SELECT user_id FROM accounts WHERE user_id = $1', [target]);
+        if (!accountRows[0]) return { ok: false, reason: 'unknown_user' };
+        const inserted = await client.query(
+          'INSERT INTO org_members (org_id, user_id, role, joined_at) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING RETURNING user_id',
+          [orgId, target, role, at],
+        );
+        if (!inserted.rowCount) return { ok: false, reason: 'already_member' };
+        await client.query(
+          'INSERT INTO admin_action_log (org_id, actor, action, target, detail, at) VALUES ($1, $2, $3, $4, $5, $6)',
+          [orgId, actor, 'member_add', target, role, at],
+        );
+        return { ok: true };
+      });
+    },
+    async changeOrgMemberRoleAtomic({ orgId, actor, target, role, at }) {
+      return inTransaction(async (client) => {
+        const { rows: orgRows } = await client.query('SELECT org_id FROM organizations WHERE org_id = $1 FOR UPDATE', [orgId]);
+        if (!orgRows[0]) return { ok: false, reason: 'not_found' };
+        const { rows } = await client.query(
+          'SELECT user_id, role FROM org_members WHERE org_id = $1 AND user_id = ANY($2::text[]) ORDER BY user_id FOR UPDATE',
+          [orgId, [...new Set([actor, target])]],
+        );
+        const roles = new Map(rows.map((row) => [row.user_id, row.role]));
+        if (roles.get(actor) !== 'owner') return { ok: false, reason: 'forbidden' };
+        const current = roles.get(target);
+        if (!current) return { ok: false, reason: 'not_found' };
+        if (current === 'owner' && role !== 'owner') {
+          const { rows: owners } = await client.query(
+            "SELECT COUNT(*)::int AS n FROM org_members WHERE org_id = $1 AND role = 'owner'",
+            [orgId],
+          );
+          if (owners[0].n <= 1) return { ok: false, reason: 'last_owner' };
+        }
+        await client.query('UPDATE org_members SET role = $3 WHERE org_id = $1 AND user_id = $2', [orgId, target, role]);
+        testHooks.beforeAdminActionInsert?.({ orgId, actor, action: 'role_change', target });
+        await client.query(
+          'INSERT INTO admin_action_log (org_id, actor, action, target, detail, at) VALUES ($1, $2, $3, $4, $5, $6)',
+          [orgId, actor, 'role_change', target, current + '->' + role, at],
+        );
+        return { ok: true, current };
+      });
+    },
+    async removeOrgMemberAtomic({ orgId, actor, target, action, at }) {
+      return inTransaction(async (client) => {
+        const { rows: orgRows } = await client.query('SELECT org_id FROM organizations WHERE org_id = $1 FOR UPDATE', [orgId]);
+        if (!orgRows[0]) return { ok: false, reason: 'not_found' };
+        const { rows } = await client.query(
+          'SELECT user_id, role FROM org_members WHERE org_id = $1 AND user_id = ANY($2::text[]) ORDER BY user_id FOR UPDATE',
+          [orgId, [...new Set([actor, target])]],
+        );
+        const roles = new Map(rows.map((row) => [row.user_id, row.role]));
+        const actorRole = roles.get(actor);
+        const targetRole = roles.get(target);
+        if (!targetRole) return { ok: false, reason: 'not_found' };
+        if (action === 'member_leave') {
+          if (actor !== target || !actorRole) return { ok: false, reason: 'not_found' };
+        } else if (actorRole !== 'owner' && !(actorRole === 'admin' && targetRole === 'member')) {
+          return { ok: false, reason: 'forbidden' };
+        }
+        if (targetRole === 'owner') {
+          const { rows: owners } = await client.query(
+            "SELECT COUNT(*)::int AS n FROM org_members WHERE org_id = $1 AND role = 'owner'",
+            [orgId],
+          );
+          if (owners[0].n <= 1) return { ok: false, reason: 'last_owner' };
+        }
+        const { rows: ownedRooms } = await client.query(
+          'SELECT room_id FROM rooms WHERE org_id = $1 AND owner = $2 ORDER BY room_id FOR UPDATE',
+          [orgId, target],
+        );
+        if (ownedRooms.length) return { ok: false, reason: 'owns_rooms' };
+        await client.query(
+          'DELETE FROM room_members WHERE user_id = $2 AND room_id IN (SELECT room_id FROM rooms WHERE org_id = $1)',
+          [orgId, target],
+        );
+        await client.query('DELETE FROM org_members WHERE org_id = $1 AND user_id = $2', [orgId, target]);
+        testHooks.beforeAdminActionInsert?.({ orgId, actor, action, target });
+        await client.query(
+          'INSERT INTO admin_action_log (org_id, actor, action, target, detail, at) VALUES ($1, $2, $3, $4, $5, $6)',
+          [orgId, actor, action, target, targetRole, at],
+        );
+        return { ok: true, role: targetRole };
+      });
+    },
     async countOrgOwners(orgId) {
       const { rows } = await pool.query("SELECT COUNT(*)::int AS n FROM org_members WHERE org_id = $1 AND role = 'owner'", [orgId]);
       return rows[0].n;
@@ -560,6 +678,39 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
       const old = !r ? { maxGroupMembers: null, channelsEnabled: true, fileQuotaBytes: null }[field] : { maxGroupMembers: r.max_group_members, channelsEnabled: r.channels_enabled, fileQuotaBytes: r.file_quota_bytes === null ? null : Number(r.file_quota_bytes) }[field];
       await pool.query(`INSERT INTO org_settings (org_id, ${column}) VALUES ($1, $2) ON CONFLICT (org_id) DO UPDATE SET ${column} = EXCLUDED.${column}`, [orgId, value]);
       await pool.query('INSERT INTO org_settings_log (org_id, actor, field, old_value, new_value, at) VALUES ($1, $2, $3, $4, $5, $6)', [orgId, actor, field, JSON.stringify(old), JSON.stringify(value), at]);
+    },
+    async setOrgSettingAtomic({ orgId, field, value, actor, at }) {
+      const column = { maxGroupMembers: 'max_group_members', channelsEnabled: 'channels_enabled', fileQuotaBytes: 'file_quota_bytes' }[field];
+      if (!column) throw new Error('invalid organization setting field');
+      return inTransaction(async (client) => {
+        const { rows: orgRows } = await client.query('SELECT status FROM organizations WHERE org_id = $1 FOR UPDATE', [orgId]);
+        if (!orgRows[0]) return { ok: false, reason: 'not_found' };
+        if (orgRows[0].status !== 'approved') return { ok: false, reason: 'org_not_approved' };
+        const { rows: actorRows } = await client.query(
+          'SELECT role FROM org_members WHERE org_id = $1 AND user_id = $2 FOR UPDATE',
+          [orgId, actor],
+        );
+        if (!['owner', 'admin'].includes(actorRows[0]?.role)) return { ok: false, reason: 'forbidden' };
+        const { rows } = await client.query('SELECT max_group_members, channels_enabled, file_quota_bytes FROM org_settings WHERE org_id = $1 FOR UPDATE', [orgId]);
+        const row = rows[0];
+        const old = !row
+          ? { maxGroupMembers: null, channelsEnabled: true, fileQuotaBytes: null }[field]
+          : { maxGroupMembers: row.max_group_members, channelsEnabled: row.channels_enabled, fileQuotaBytes: row.file_quota_bytes === null ? null : Number(row.file_quota_bytes) }[field];
+        await client.query(
+          `INSERT INTO org_settings (org_id, ${column}) VALUES ($1, $2) ON CONFLICT (org_id) DO UPDATE SET ${column} = EXCLUDED.${column}`,
+          [orgId, value],
+        );
+        await client.query(
+          'INSERT INTO org_settings_log (org_id, actor, field, old_value, new_value, at) VALUES ($1, $2, $3, $4, $5, $6)',
+          [orgId, actor, field, JSON.stringify(old), JSON.stringify(value), at],
+        );
+        testHooks.beforeAdminActionInsert?.({ orgId, actor, action: 'setting_change', target: field });
+        await client.query(
+          'INSERT INTO admin_action_log (org_id, actor, action, target, detail, at) VALUES ($1, $2, $3, $4, $5, $6)',
+          [orgId, actor, 'setting_change', field, JSON.stringify(value), at],
+        );
+        return { ok: true };
+      });
     },
     async listOrgSettingsLog(orgId) {
       const { rows } = await pool.query('SELECT actor, field, old_value, new_value, at FROM org_settings_log WHERE org_id = $1 ORDER BY id', [orgId]);
@@ -1354,11 +1505,20 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
 
     async transferRoomOwner(roomId, newOwner) {
       await inTransaction(async (c) => {
+        const { rows: roomOrg } = await c.query('SELECT org_id FROM rooms WHERE room_id = $1', [roomId]);
+        if (!roomOrg[0]) return;
+        await c.query('SELECT org_id FROM organizations WHERE org_id = $1 FOR SHARE', [roomOrg[0].org_id]);
         const { rows } = await c.query('SELECT owner FROM rooms WHERE room_id = $1 FOR UPDATE', [roomId]);
-        if (rows.length === 0) return;
+        if (rows.length === 0) return false;
+        const { rows: membership } = await c.query(
+          'SELECT 1 FROM room_members WHERE room_id = $1 AND user_id = $2 FOR SHARE',
+          [roomId, newOwner],
+        );
+        if (!membership.length) return false;
         const previous = rows[0].owner;
         await c.query('UPDATE rooms SET owner = $2 WHERE room_id = $1', [roomId, newOwner]);
         await c.query('UPDATE room_members SET is_admin = FALSE WHERE room_id = $1 AND user_id IN ($2, $3)', [roomId, newOwner, previous]);
+        return true;
       });
     },
     async channelNameTaken(name, exceptRoomId) {
