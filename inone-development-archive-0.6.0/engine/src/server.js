@@ -2789,6 +2789,9 @@ if (req.method === 'POST' && p === '/login') {
                 if (result.state === 'done') return send(res, 200, { event_id: `$${result.seq}` });
                 if (result.state === 'pending') return send(res, 409, { error: 'a legacy pending message requires reconciliation' });
                 if (result.state === 'room_not_found') return send(res, 404, { error: 'group not found' });
+                if (result.state === 'direct_not_active') {
+                  return send(res, 409, { error: 'direct conversation is not ready for message delivery', code: result.state });
+                }
                 if (['not_member', 'org_not_member', 'org_not_approved'].includes(result.state)) {
                   return send(res, 403, { error: 'current room organization access is required', code: result.state });
                 }
@@ -2796,6 +2799,9 @@ if (req.method === 'POST' && p === '/login') {
               } else {
                 seq = await storage.appendRoomEvent(roomId, d.userId, 'm.room.encrypted', eventContent, now(), enqueuePush);
                 if (seq && typeof seq === 'object' && seq.state === 'room_not_found') return send(res, 404, { error: 'group not found' });
+                if (seq && typeof seq === 'object' && seq.state === 'direct_not_active') {
+                  return send(res, 409, { error: 'direct conversation is not ready for message delivery', code: seq.state });
+                }
                 if (seq && typeof seq === 'object' && ['not_member', 'org_not_member', 'org_not_approved'].includes(seq.state)) {
                   return send(res, 403, { error: 'current room organization access is required', code: seq.state });
                 }
