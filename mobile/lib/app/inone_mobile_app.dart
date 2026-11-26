@@ -85,6 +85,10 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   bool _initializing = true;
   final Completer<void> _initializationComplete = Completer<void>();
   bool _recoveryLinkInFlight = false;
+  RecoveryDeepLinkPayload? _pendingRecoveryLinkPayload;
+  int? _pendingRecoveryLinkFingerprint;
+  String _recoveryLinkLocale = 'hy';
+  bool _cancelingAdmission = false;
   final Set<int> _handledRecoveryLinkFingerprints = <int>{};
 
   @override
@@ -528,6 +532,69 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     }
   }
 
+  Future<InOneFailure?> _cancelAdmissionByCode(String email, String code) async {
+    try {
+      await _session.cancelAdmissionByCode(email: email, code: code);
+      return null;
+    } catch (error) {
+      return _toFailure(error);
+    }
+  }
+
+  Future<InOneFailure?> _confirmRecoveryLink() async {
+    final payload = _pendingRecoveryLinkPayload;
+    final fingerprint = _pendingRecoveryLinkFingerprint;
+    if (payload == null || fingerprint == null) {
+      return const InOneFailure(
+        InOneScreenState.error,
+        message: 'Ссылка восстановления не найдена. Откройте письмо и перейдите по ссылке ещё раз.',
+      );
+    }
+    if (_recoveryLinkInFlight) {
+      return const InOneFailure(
+        InOneScreenState.error,
+        message: 'Подтверждение уже выполняется. Подождите.',
+      );
+    }
+    _recoveryLinkInFlight = true;
+    try {
+      await _session.confirmRecoveryLink(
+        userId: payload.userId,
+        token: payload.token,
+      );
+      if (!mounted) return null;
+      _handledRecoveryLinkFingerprints.add(fingerprint);
+      _pendingRecoveryLinkPayload = null;
+      _pendingRecoveryLinkFingerprint = null;
+      _recoveryUserId = payload.userId;
+      _recoveryEmail = '';
+      return null;
+    } catch (error) {
+      return _toFailure(error);
+    } finally {
+      _recoveryLinkInFlight = false;
+    }
+  }
+
+  void _finishRecoveryLinkConfirmation() {
+    setState(() => _screen = 'recoveryPassword');
+    final message = switch (_recoveryLinkLocale) {
+      'ru' => 'Ссылка подтверждена. Введите код восстановления и новый пароль.',
+      'en' => 'The link is confirmed. Enter your recovery code and new password.',
+      _ => 'Հղումը հաստատված է։ Մուտքագրեք վերականգնման կոդը և նոր գաղտնաբառը։',
+    };
+    _notice(message);
+  }
+
+  void _cancelPendingRecoveryLink() {
+    setState(() {
+      _pendingRecoveryLinkPayload = null;
+      _pendingRecoveryLinkFingerprint = null;
+      _recoveryUserId = '';
+      _screen = 'login';
+    });
+  }
+
   void _finishRecovery() {
     setState(() {
       _recoveryEmail = '';
@@ -538,12 +605,16 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   }
 
   void _finishRecoveryCancellation() {
+    final wasAdmissionCancellation = _cancelingAdmission;
     setState(() {
       _recoveryEmail = '';
       _recoveryUserId = '';
+      _cancelingAdmission = false;
       _screen = 'login';
     });
-    _notice('Восстановление отменено. Прежний пароль восстановлен.');
+    _notice(wasAdmissionCancellation
+        ? 'Запрос входа с нового устройства отменён.'
+        : 'Восстановление отменено. Прежний пароль восстановлен.');
   }
 
 
@@ -2951,8 +3022,17 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         return InOneLoginWaitingScreen(
           activateAt: _waitingActivateAt,
           onRecheck: _recheckWaitingLogin,
-          onNotMe: () => setState(() => _screen = 'notYou'),
+          onNotMe: () => setState(() {
+            _cancelingAdmission = true;
+            _screen = 'notYou';
+          }),
           onDone: _afterLogin,
+        );
+      case 'recoveryConfirm':
+        return InOneRecoveryConfirmScreen(
+          onConfirm: _confirmRecoveryLink,
+          onBack: _cancelPendingRecoveryLink,
+          onDone: _finishRecoveryLinkConfirmation,
         );
       case 'recoveryStart':
         return InOneRecoveryStartScreen(
@@ -2967,7 +3047,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         );
       case 'notYou':
         return InOneNotYouScreen(
-          onSubmit: _cancelRecoveryByCode,
+          onSubmit: _cancelingAdmission ? _cancelAdmissionByCode : _cancelRecoveryByCode,
           onBack: () => setState(() => _screen = 'login'),
           onDone: _finishRecoveryCancellation,
         );
@@ -3202,52 +3282,18 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
 
     final fingerprint = Object.hash(payload.userId, payload.token);
     if (_handledRecoveryLinkFingerprints.contains(fingerprint)) return true;
-    if (_recoveryLinkInFlight) return true;
-
-    _recoveryLinkInFlight = true;
-    try {
-      await _session.confirmRecoveryLink(
-        userId: payload.userId,
-        token: payload.token,
-      );
-      if (!mounted) return true;
-      _handledRecoveryLinkFingerprints.add(fingerprint);
-      _recoveryEmail = '';
-      _recoveryUserId = payload.userId;
-      setState(() => _screen = 'recoveryPassword');
-      final message = switch (payload.locale) {
-        'ru' => 'Ссылка подтверждена. Введите код восстановления и новый пароль.',
-        'en' => 'The link is confirmed. Enter your recovery code and new password.',
-        _ => 'Հղումը հաստատված է։ Մուտքագրեք վերականգնման կոդը և նոր գաղտնաբառը։',
-      };
-      _notice(message);
-    } on ApiException catch (error) {
-      if (!mounted) return true;
-      if (!error.retryable) _handledRecoveryLinkFingerprints.add(fingerprint);
-      final message = switch (payload.locale) {
-        'ru' => error.code == 'recovery expired'
-            ? 'Ссылка восстановления истекла. Запросите новую.'
-            : 'Не удалось подтвердить ссылку восстановления. Проверьте ссылку и повторите попытку.',
-        'en' => error.code == 'recovery_expired'
-            ? 'The recovery link expired. Request a new one.'
-            : 'Could not confirm the recovery link. Check it and try again.',
-        _ => error.code == 'recovery_expired'
-            ? 'Վերականգնման հղումը ժամկետանց է։ Խնդրեք նորը։'
-            : 'Չհաջողվեց հաստատել վերականգնման հղումը։ Ստուգեք այն և կրկին փորձեք։',
-      };
-      _notice(message);
-    } catch (_) {
-      if (mounted) {
-        final message = switch (payload.locale) {
-          'ru' => 'Нет соединения. Не удалось подтвердить восстановление.',
-          'en' => 'Connection unavailable. Recovery could not be confirmed.',
-          _ => 'Կապ չկա։ Չհաջողվեց հաստատել վերականգնումը։',
-        };
-        _notice(message);
-      }
-    } finally {
-      _recoveryLinkInFlight = false;
+    if (_recoveryLinkInFlight || _pendingRecoveryLinkFingerprint == fingerprint) {
+      return true;
     }
+
+    // Opening a recovery URL only stages the secret in host memory. The
+    // one-time POST is performed only after the user taps Continue on SC-08.
+    _pendingRecoveryLinkPayload = payload;
+    _pendingRecoveryLinkFingerprint = fingerprint;
+    _recoveryLinkLocale = payload.locale;
+    _recoveryEmail = '';
+    _recoveryUserId = payload.userId;
+    setState(() => _screen = 'recoveryConfirm');
     return true;
   }
 
