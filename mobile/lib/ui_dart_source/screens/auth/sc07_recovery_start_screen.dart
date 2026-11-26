@@ -11,7 +11,6 @@ class InOneRecoveryStartScreen extends StatefulWidget {
     required this.onSubmit,
     required this.onBack,
     required this.onEnterCode,
-    this.onCancelRecovery,
   });
 
   /// POST /recovery/start. `null` — успех.
@@ -20,7 +19,6 @@ class InOneRecoveryStartScreen extends StatefulWidget {
 
   /// Перейти к вводу кода (SC-09).
   final VoidCallback onEnterCode;
-  final VoidCallback? onCancelRecovery;
 
   @override
   State<InOneRecoveryStartScreen> createState() => _InOneRecoveryStartScreenState();
@@ -77,14 +75,6 @@ class _InOneRecoveryStartScreenState extends State<InOneRecoveryStartScreen>
             label: 'Մուտքագրել նամակի կոդը',
             kind: InOneButtonKind.outline,
             onPressed: widget.onEnterCode,
-          ),
-        ],
-        if (widget.onCancelRecovery != null) ...[
-          const SizedBox(height: 12),
-          InOneButton(
-            label: 'Ես չեմ նախաձեռնել վերականգնումը',
-            kind: InOneButtonKind.outline,
-            onPressed: widget.onCancelRecovery,
           ),
         ],
       ],
