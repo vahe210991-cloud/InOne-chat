@@ -79,3 +79,12 @@ No tasks were closed or crossed out. No WBS percentage was recalculated.
 - Five next work items: (1) PROFILE-SEC-001 / CHAT-P0-01 MLS-safe organization member removal; (2) PROFILE-CORE-001 and PROFILE-PRIVACY-001 backend regression coverage; (3) ORG-CORE-001 and ORG-ROLES-001 exact PostgreSQL authorization verification; (4) owner decision on guest visibility/editable fields/media; (5) approved Flutter/API implementation and exact-SHA acceptance.
 - Task branch: audit/account-organization-profiles-beta1-main-7d34b99-20261126.
 - Documentation PR: to be recorded after creation. No merge is authorized.
+
+
+## Publication record
+
+- Documentation PR: [#170](https://github.com/vahe210991-cloud/InOne-chat/pull/170), Draft / open / not merged.
+- Task branch: audit/account-organization-profiles-beta1-main-7d34b99-20261126.
+- PR creation head: b87ccb24fb6d200362974ab0f0f897add9f0903e. The final branch head must be re-fetched after all documentation updates.
+- Merge SHA: pending; no merge is authorized.
+- Tests: NOT RUN.
