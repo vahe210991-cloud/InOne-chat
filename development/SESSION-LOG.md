@@ -1,3 +1,11 @@
+## 2026-11-26 — Owner approved cross-account news-feed visibility
+
+- Owner decision: every published item intentionally included in the general/news feed is readable by every registered and authenticated InOne account; anonymous access is denied.
+- The same eligibility applies to attached media, with server-side authorization repeated on every download. IDs and URLs are not authorization credentials.
+- This is a feed-only publication rule. Privacy variant В remains binding for profiles, drafts, private account data and other product domains; no public-profile, block/follow or subscription model is introduced.
+- `FEED-PRIVACY-001` is no longer blocked on owner input. It is OWNER DECISION APPROVED / READY FOR IMPLEMENTATION. The audited source still lacks enforcement, so cross-account reads remain disabled until backend implementation and security regression tests pass.
+- Updated decision register, implementation plan, audit report, WBS and continuity handoff on the existing documentation branch / PR #172. Documentation-only change; no application code/schema/migrations/UI/workflows changed. No tests/builds run.
+
 ## 2026-11-26 — Owner approved Feed in Beta 1.0
 
 - Owner confirmed: publications/news feed are part of Beta 1.0. This supersedes the earlier conditional scope note in the FEED/PROFILE audit.
