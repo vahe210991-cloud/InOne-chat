@@ -208,7 +208,17 @@ Canonical details:
 - Preserve the existing InOne privacy model. This Feed decision does not make profiles or posts public by default.
 - Do not add new public/private settings, block/follow semantics, subscriptions, social graph, or broad access rules under this decision.
 - The existing `sharesOrgOrLink` gate is evidenced for user search only; it must not be silently reused as post visibility authorization.
-- The audited code contains no post visibility policy. Until the owner separately approves the exact cross-account read rule, another user's posts and attached media must not be returned. Own-post CRUD and own-post listing can proceed without cross-account reads.
+- The audited code contains no implemented post visibility policy. The owner has now approved a narrow rule: every published item intentionally included in the general/news feed is readable by every registered and authenticated InOne account; anonymous access is denied. This rule applies to feed publications and their attachments only, not profiles, drafts, private files or other account data. The backend must enforce it on list/detail/download paths; IDs and URLs are not authorization credentials. The user-search `sharesOrgOrLink` gate is not reused. The owner decision resolves policy, but implementation and security tests remain mandatory.
+
+### Owner-approved cross-account publication visibility — 2026-11-26
+
+**Owner decision (approved 2026-11-26):** Every published item intentionally included in the general/news feed is readable by every registered and authenticated InOne account. Anonymous/unauthenticated requests must be denied. This is a feed-publication rule only; it does not make account profiles, private account data, drafts, private files or other product domains public.
+
+- The backend must enforce the authenticated-session requirement and the published/general-feed eligibility rule on every list, detail and media-download request. A post ID, media ID, guessed URL or cached URL is never an authorization credential.
+- Attachments inherit the same read eligibility as their parent feed publication and must be checked again at download. No unauthenticated/public object URLs.
+- The existing `sharesOrgOrLink` user-search gate is not the authorization rule for feed posts and must not be reused for this purpose.
+- Preserve privacy variant В for profiles and all other data. Do not introduce profile visibility settings, block/follow semantics, subscriptions or a general social graph under this decision.
+- The audited source still has no implemented post visibility policy. The owner decision resolves the product-policy question, not the engineering implementation or security acceptance; the backend must explicitly implement and test this rule before cross-account feed data is served.
 
 ### Not automatically included
 
