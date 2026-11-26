@@ -7,6 +7,7 @@ export const RECOVERY_RULES = {
   lockMs: 60 * 60_000,
   maxStartsPerHour: 3,
   maxIdentityAttempts: 5,
+  // Post-recovery login codes are deliberately shorter-lived than recovery request codes.
   identityCodeTtlMs: 10 * 60_000,
   identityResendCooldownMs: 60_000,
   identityLockMs: 60 * 60_000,
