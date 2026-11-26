@@ -937,7 +937,9 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
             _notice('Запрос входа с нового устройства отклонён.');
           }
         } catch (error) {
-          _shownDeviceApprovalIds.remove(id);
+          final biometricBlocked = error is ApiException &&
+              error.code.toLowerCase().contains('biometric');
+          if (!biometricBlocked) _shownDeviceApprovalIds.remove(id);
           final failure = _toFailure(error);
           if (mounted) {
             _notice(failure.message ??
