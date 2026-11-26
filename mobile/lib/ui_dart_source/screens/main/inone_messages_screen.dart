@@ -143,6 +143,22 @@ class _ChatRow extends StatelessWidget {
           size: 44,
           circle: true,
         );
+      case InOneChatKind.channel:
+        return InOneIconTile(
+          icon: InOneIcons.campaign,
+          background: c.blueTint,
+          foreground: c.blue,
+          size: 44,
+          circle: true,
+        );
+      case InOneChatKind.unknown:
+        return InOneIconTile(
+          icon: InOneIcons.help,
+          background: c.soft,
+          foreground: c.muted,
+          size: 44,
+          circle: true,
+        );
       case InOneChatKind.system:
         return InOneIconTile(
           icon: InOneIcons.files,
