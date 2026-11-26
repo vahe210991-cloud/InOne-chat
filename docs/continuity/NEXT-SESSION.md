@@ -14,7 +14,8 @@
 
 1. Perform a full static review of all changed backend, store, migration, mobile session, screen and test files. Pay special attention to SQL transaction rollback, recovery state serialization, identity challenge expiry/lockout, approval terminal handling, and registration phone block formatting.
 2. Verify the branch is still based on latest main and has no new conflicting edits. Keep this task isolated; coordinate any shared-path changes with other agents.
-3. Resolve or explicitly record owner decisions for AUTH-03 (verified phone policy) and AUTH-08 (email-only recovery policy). Do not guess product/security policy.
+3. Resolve or explicitly record owner decisions for AUTH-03 (verified phone policy) and AUTH-08 (recovery channels; current backend sends email code for unverified-phone accounts and SMS code plus email-link for verified-phone accounts). Do not guess product/security policy.
+4. Obtain owner-approved user-facing copy for the SC-09 encryption-key-reset warning; remove the D8 placeholder only after approval.
 4. Keep AUTH-04 fail-closed for biometric-protected signing keys until a platform biometric-grant bridge is implemented and tested. Do not bypass server `bioGrant` checks.
 5. Keep AUTH-09 blocked until Rust/platform-owned persistent refresh-token restoration is accepted and the native runtime gate is satisfied. Never persist refresh tokens in ordinary Dart preferences or plaintext files.
 6. Confirm Google/Apple provider login remains explicitly blocked until native SDK proof acquisition and client configuration exist.
