@@ -81,6 +81,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   List<InOneThreadItem> _activeMlsThread = const [];
   bool _messagesLoading = false;
   String? _messagesError;
+  Future<void>? _mlsKeyPackageMaintenanceInFlight;
   bool _darkMode = false;
   bool _initializing = true;
   final Completer<void> _initializationComplete = Completer<void>();
@@ -154,6 +155,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       unawaited(pushLifecycle.refreshRegistration().catchError((Object _) {}));
     }
     if (_session.hasNativeMlsSession) {
+      unawaited(_ensureMlsKeyPackages());
       // Resume retries durable Engine B outbox work and refreshes the active
       // room (or the room list) without creating a second logical send.
       if (_activeMlsRoomId != null) {
@@ -547,6 +549,23 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   }
 
 
+  Future<void> _ensureMlsKeyPackages() {
+    if (!_session.hasNativeMlsSession) return Future<void>.value();
+    final active = _mlsKeyPackageMaintenanceInFlight;
+    if (active != null) return active;
+    final operation = _session.ensureMlsKeyPackages(10).catchError((Object error) {
+      if (mounted) {
+        _notice('Не удалось обновить резерв защищённых ключей этого устройства. Отправка личных сообщений повторится после восстановления связи: $error');
+      }
+    });
+    _mlsKeyPackageMaintenanceInFlight = operation;
+    return operation.whenComplete(() {
+      if (identical(_mlsKeyPackageMaintenanceInFlight, operation)) {
+        _mlsKeyPackageMaintenanceInFlight = null;
+      }
+    });
+  }
+
   Future<void> _loadAuthenticatedData() async {
     if (!_session.isAuthenticated) {
       setState(() => _screen = 'login');
@@ -571,6 +590,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       if (organizations.isNotEmpty) {
         unawaited(_refreshOrganizationMemberCount(organizations.first));
       }
+      await _ensureMlsKeyPackages();
       await _loadMlsRooms();
       if (_pendingPushRoutes.next != null) {
         unawaited(_processPendingPushRoute());
