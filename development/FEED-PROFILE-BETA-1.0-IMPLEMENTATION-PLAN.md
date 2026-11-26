@@ -811,7 +811,7 @@ A task is complete only when implementation, tests, review and merge are complet
 
 For a closed task preserve ID, original description, acceptance criteria, PR link, merge SHA, completion date, test results, implementer and reviewer. Then strike through the task title without deleting the record. If a regression is found, remove the strike-through and reopen the task with previous closure evidence retained.
 
-**No task in this audit is closed.** No strike-through has been applied.
+**No implementation task is closed.** SCOPE-001 is complete as a governance decision only; FEED-PRIVACY-001 and all implementation tasks remain open/blocked/not started as shown. No implementation task has been struck through.
 
 ## 21. Журнал выполнения и закрытия задач
 
@@ -821,6 +821,7 @@ For a closed task preserve ID, original description, acceptance criteria, PR lin
 | 2026-11-26 | PRIVACY-DECISION-V | Owner selected variant В: preserve current privacy model without policy changes | — | — | Owner decision recorded | COMPLETE |
 | 2026-11-26 | SCOPE-001 | Owner approved Feed in Beta 1.0; WBS v1.2 scope amendment prepared | — | — | Owner decision + document review | COMPLETE |
 | 2026-11-26 | FEED-PRIVACY-001 | Post visibility policy absent; must not infer from user-search relationship gate | — | — | Product decision required | BLOCKED ON OWNER DECISION |
+| 2026-11-26 | WBS-1.2-FEED | Owner approved Feed in Beta 1.0; scope amendment mapped into existing weighted domains | — | — | Document review | APPROVED / PR REVIEW PENDING |
 | — | All implementation tasks | No implementation performed | — | — | NOT RUN | NOT STARTED |
 
 ## 22. Ограничения и что не выполнялось
@@ -844,3 +845,16 @@ For a closed task preserve ID, original description, acceptance criteria, PR lin
 - Change scope: one documentation file only.
 
 Владелец запросил публикацию этого документа в `main`. Документ опубликован отдельным документационным коммитом `8260beb7070d959dce17ee423e2768dbea4399c9`, без изменения product source, API, схемы, миграций, конфигурации или Flutter UI. После повторного чтения файла из `main` черновой PR [#167](https://github.com/vahe210991-cloud/InOne-chat/pull/167) закрыт как superseded; его task branch сохранена. Blob SHA опубликованного файла: `7365dfa59e6feec057c232cd9c7454b84e11deba`.
+
+## 24. Owner scope approval — Feed in Beta 1.0 (2026-11-26)
+
+Владелец подтвердил включение ленты публикаций и новостей в Beta 1.0. WBS v1.2 и решение §9 в `docs/continuity/DECISIONS.md` фиксируют это изменение. Данный scope amendment находится в отдельной документационной ветке `docs/feed-beta1-scope-approval-20261126`, созданной от main SHA `7d34b99fcc026a828b838e211d039c575aeace1d`.
+
+- WBS v1.2 сохраняет все существующие доменные веса и исторический baseline v1.1; текущие проценты реализации/проверки не пересчитывались.
+- FP-001 становится безусловным P1 Beta 1.0 release blocker.
+- SCOPE-001 COMPLETE (owner decision); implementation tasks remain NOT STARTED.
+- FEED-PRIVACY-001 BLOCKED: exact cross-account post visibility rule is not present in the current model and requires owner decision. The user-search `sharesOrgOrLink` check must not be assumed to authorize post reads.
+- Own-post CRUD/list may proceed independently. Do not return another user's post or attachment until FEED-PRIVACY-001 is resolved.
+- Comments/reactions and advanced social features are not automatically included in the minimum Feed scope.
+- This branch changes documentation only. No application source, schema/migrations, configuration, workflow, Flutter UI or tests were changed/run.
+
