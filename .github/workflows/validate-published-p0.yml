@@ -1,3 +1,4 @@
+# PR #164: trigger a fresh exact-SHA P0 audit after the verified prototype lockfile was promoted.
 name: Validate recovered InOne P0 source
 
 on:
