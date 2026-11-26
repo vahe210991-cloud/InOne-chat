@@ -340,7 +340,7 @@ The repository contains both `inone-development-archive-0.6.0/engine` and `inone
 
 `docs/continuity/DECISIONS.md` §1 указывает текущий Beta 1.0 scope: Chats, Organizations, Profile, auth/recovery и серверные API для них. WBS v1.2 (`development/PROGRESS-BASELINE.md`) включает утверждённое владельцем расширение scope: Feed входит в Beta 1.0 с 2026-11-26. Веса доменов не меняются; исторические проценты v1.1 не являются новой оценкой расширенного scope.
 
-В то же время `DECISIONS.md` §7 определяет InOne как personal/social product с News feed и User publications/posts. В entitlement hypothesis § соответствующего раздела также упомянуты доступные публикации. Это product direction, но оно само по себе не добавляет feed в текущую Beta 1.0 WBS.
+В то же время `DECISIONS.md` §7 определяет InOne как personal/social product с News feed и User publications/posts. В entitlement hypothesis § соответствующего раздела также упомянуты доступные публикации. Владелец отдельно утвердил Feed для Beta 1.0 2026-11-26; решение и scope amendment зафиксированы в WBS v1.2 и `DECISIONS.md` §9.
 
 ### 12.2. Решение владельца и scope amendment (2026-11-26)
 
@@ -362,7 +362,7 @@ The repository contains both `inone-development-archive-0.6.0/engine` and `inone
 
 Критические security/privacy исправления обязательны до релиза и не переносятся в Beta 2.0. Коммерческие ограничения и paywalls в рамках этого аудита не вводятся.
 
-### 12.3. Предварительная классификация
+### 12.4. Детализация scope и исключения
 
 **Beta 1.0 approved scope**
 - Собственные публикации: create/read/edit/delete.
@@ -811,7 +811,7 @@ A task is complete only when implementation, tests, review and merge are complet
 
 For a closed task preserve ID, original description, acceptance criteria, PR link, merge SHA, completion date, test results, implementer and reviewer. Then strike through the task title without deleting the record. If a regression is found, remove the strike-through and reopen the task with previous closure evidence retained.
 
-**No implementation task is closed.** SCOPE-001 is complete as a governance decision only; FEED-PRIVACY-001 and all implementation tasks remain open/blocked/not started as shown. No implementation task has been struck through.
+**No implementation task is closed.** SCOPE-001 is complete as a governance decision only; FEED-PRIVACY-001 is blocked; all implementation tasks remain NOT STARTED. No implementation task has been struck through.
 
 ## 21. Журнал выполнения и закрытия задач
 
