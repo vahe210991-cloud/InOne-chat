@@ -1,8 +1,10 @@
-# InOne — current source of truth (2026-11-23)
+# InOne — current source of truth (2026-11-26)
 
-**Current `main` SHA:** `2430b0365ab71c60b0926b27854d17a9090e1fba`  
-**Last major merge:** PR #131 — G2 organization requests, canonical Engine B MLS and Beta 1.0 screen/backend integration.  
-**Current audit branch:** `work/mls-production-acceptance-2026-11-23` (draft PR #132), based directly on the current main SHA.
+**Current `main` SHA:** `216c6d9ea4e825182d3fc94b7aa6d9841e0ad250`  
+**Last code merge:** PR #154 — Stage 4 database integrity and FCM race hardening, merge SHA `baec9c083ed51ab5004e5f1b1e99aca6b4f2476a`. The latest main commit after that merge is documentation-only.  
+**Current documentation audit branch:** `audit/chat-groups-beta1-main-216c6d9-20261126` (chat/groups Beta 1.0 audit; no application source changed).  
+**Latest audit artifacts:** `development/CHAT-GROUPS-BETA-1.0-IMPLEMENTATION-PLAN.md` and `development/reports/2026-11-26-chat-groups-beta1-audit.md`.  
+**Current audit result:** SOURCE REVIEW COMPLETE / RELEASE ACCEPTANCE NOT READY; P0=1, P1=2, P2=8, P3=0.
 
 ## Authority order
 

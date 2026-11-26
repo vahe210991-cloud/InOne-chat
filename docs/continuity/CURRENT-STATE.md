@@ -1,12 +1,21 @@
-# Current state — post-PR #131 Beta 1.0 acceptance (2026-11-23)
+# Current state — 2026-11-26 (post-PR #154, chat/groups audit)
 
-## Source of truth
+## Latest source of truth
 
 - Repository: `vahe210991-cloud/InOne-chat`.
-- Current `main`: `2430b0365ab71c60b0926b27854d17a9090e1fba`.
-- PR #131 is merged. Do not repeat its implementation or copy it from older branches.
-- Current audit/remediation branch: `work/mls-production-acceptance-2026-11-23`, based directly on the above main SHA; work is tracked by draft PR #132. No changes have been merged to main.
-- WBS v1.1 is unchanged. Percentages in the audit are engineering estimates, not WBS changes.
+- Current `main`: `216c6d9ea4e825182d3fc94b7aa6d9841e0ad250`.
+- Last code merge: PR #154 at `baec9c083ed51ab5004e5f1b1e99aca6b4f2476a`. The only commit after that SHA adds the auth/recovery plan document; no application code changed.
+- PR #131, #132 and #154 are merged. PR #90 remains owner-protected Draft/open/unmerged.
+- Current documentation audit branch: `audit/chat-groups-beta1-main-216c6d9-20261126`; plan and report are in this branch. No product code, schema, migrations, config, workflows or release flags changed.
+- Latest chat/groups report: [2026-11-26 chat/groups audit](../../development/reports/2026-11-26-chat-groups-beta1-audit.md).
+- Detailed plan: [CHAT-GROUPS-BETA-1.0-IMPLEMENTATION-PLAN.md](../../development/CHAT-GROUPS-BETA-1.0-IMPLEMENTATION-PLAN.md).
+- Audit result: SOURCE REVIEW COMPLETE / RELEASE ACCEPTANCE NOT READY. P0=1, P1=2, P2=8, P3=0. Key blocker: legacy server-side room member removal changes PostgreSQL membership without MLS Remove Commit/epoch transition; direct member add also bypasses MLS Add/Welcome; one-to-one chat model/API is absent.
+- `INONE_MLS_NATIVE_ENABLED` remains false. Do not enable it without exact-SHA Android/iOS/runtime/security acceptance and explicit owner approval.
+- WBS v1.1 and Beta 1.0/Beta 2.0 boundaries are unchanged.
+
+## Historical post-PR #131 snapshot
+
+The sections below retain the previously recorded 2026-11-23 state and evidence. Treat their old branch/HEAD references as historical, not as the current main source of truth.
 
 ## Post-merge CI state
 

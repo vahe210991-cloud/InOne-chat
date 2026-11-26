@@ -74,3 +74,10 @@ Read [PROGRESS-BASELINE.md](PROGRESS-BASELINE.md) in full before every implement
 
 - [Full Beta 1.0 / 2.0 audit](reports/2026-11-09-0935-full-beta-audit.md)
 - [UI source import and integration stage](reports/2026-11-09-1015-ui-integration-start.md)
+
+
+## Latest Beta 1.0 chat and groups audit — 2026-11-26
+
+- [Chat & Groups Beta 1.0 technical audit and implementation plan](CHAT-GROUPS-BETA-1.0-IMPLEMENTATION-PLAN.md) — audited against main `216c6d9ea4e825182d3fc94b7aa6d9841e0ad250`; source review complete, release acceptance not ready.
+- [Dated audit report](reports/2026-11-26-chat-groups-beta1-audit.md) — findings, exact source baseline, CI evidence boundary and next actions.
+- Critical issue: direct server-side room member removal still bypasses MLS Remove Commit/epoch transition. See CHAT-P0-01.

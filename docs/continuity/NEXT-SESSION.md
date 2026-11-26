@@ -1,8 +1,31 @@
-# Next execution — post-PR #131 Beta 1.0 acceptance (2026-11-23)
+# Next execution — 2026-11-26 chat/groups Beta 1.0 audit handoff
 
-Start from repository `vahe210991-cloud/InOne-chat`, `main` SHA `2430b0365ab71c60b0926b27854d17a9090e1fba`. PR #131 is already merged. Do not repeat it, do not restart the project, and do not copy Engine A code.
+Start from repository `vahe210991-cloud/InOne-chat`, current `main` SHA `216c6d9ea4e825182d3fc94b7aa6d9841e0ad250`. Do not repeat PR #131/#132/#154 implementation; they are already merged. Canonical production MLS remains Engine B at `inone-development-archive-0.6.0/engine/mobile-mls/mls-client`. Do not copy Engine A or modify the owner-protected PR #90.
 
-Current work branch: `work/mls-production-acceptance-2026-11-23` (draft PR #132), created from the exact main SHA. Continue on this branch unless it is merged by owner approval. No main merge is authorized.
+Current documentation branch: `audit/chat-groups-beta1-main-216c6d9-20261126`. Main deliverables:
+- `development/CHAT-GROUPS-BETA-1.0-IMPLEMENTATION-PLAN.md`
+- `development/reports/2026-11-26-chat-groups-beta1-audit.md`
+
+## Immediate execution order
+
+1. Review the audit plan and findings on the task branch. Preserve all source and history; do not treat static source review as runtime acceptance.
+2. Resolve CHAT-P0-01 first: block direct room-member DELETE for MLS rooms unless a valid MLS Remove Commit and epoch transition have completed. Add PostgreSQL concurrency and Engine B former-member decryption regressions.
+3. Resolve CHAT-P1-01: prevent direct REST member addition without MLS Add Commit/per-device Welcome.
+4. Implement the approved Beta 1.0 direct-chat model/create-or-open contract. Do not invent a route or schema without reconciling the product/API contract.
+5. Continue P2 work only after P0/P1 access and product blockers are closed: channel mapping, event pagination, chat summaries/unread, group lifecycle UI, sync reconciliation and Flutter widget/integration coverage.
+6. Keep `INONE_MLS_NATIVE_ENABLED=false` until the owner-approved exact-SHA Android/iOS, persistence, recovery, two-device and security gates pass.
+7. No physical-device tests before the authorized Beta 1.0 acceptance stage. Do not start servers, expose infrastructure or create paid Codespaces resources without owner permission.
+8. Do not merge any PR without explicit owner approval. WBS v1.1 and Beta 1.0/Beta 2.0 boundaries remain unchanged.
+
+## Evidence boundary
+
+The audit did not run tests/builds/devices. Five existing CI workflows passed on parent source SHA `baec9c083ed51ab5004e5f1b1e99aca6b4f2476a`; current docs-only main SHA `216c6d9...` has no Actions runs. Reuse those results only for their exact SHA and recorded scope. Full report: [2026-11-26 chat/groups audit](../../development/reports/2026-11-26-chat-groups-beta1-audit.md).
+
+---
+
+## Historical post-PR #131 continuation snapshot
+
+The instructions below are retained as historical context from 2026-11-23; re-check them against the latest dated report before acting.
 
 ## Immediate execution order
 

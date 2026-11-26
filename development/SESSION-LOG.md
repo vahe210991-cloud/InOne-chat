@@ -1,3 +1,15 @@
+## 2026-11-26 — Beta 1.0 chats/groups source audit recorded
+
+- Audited current `main` at `216c6d9ea4e825182d3fc94b7aa6d9841e0ad250`; the sole commit after parent `baec9c083ed51ab5004e5f1b1e99aca6b4f2476a` adds only the auth/recovery plan document, not application code.
+- Created detailed audit/implementation plan: `development/CHAT-GROUPS-BETA-1.0-IMPLEMENTATION-PLAN.md`; dated report: `development/reports/2026-11-26-chat-groups-beta1-audit.md`.
+- Findings: P0=1, P1=2, P2=8, P3=0. Critical source finding: legacy `DELETE /rooms/:roomId/members/:userId` mutates PostgreSQL membership without MLS Remove Commit/epoch transition. Direct POST member addition also bypasses MLS Add/Welcome. One-to-one chat create-or-open model/API is absent.
+- Canonical production MLS dependency remains Engine B under `inone-development-archive-0.6.0/engine/mobile-mls/mls-client`. `INONE_MLS_NATIVE_ENABLED` remains false; no release gate was changed.
+- Existing CI: five workflows PASS on parent source SHA `baec9c083ed51ab5004e5f1b1e99aca6b4f2476a` (runs #45759098791, #45759098767, #45759098819, #45759098778, #45759098794). Current documentation-only HEAD `216c6d9...` has no Actions runs. No tests/builds/device checks were run during this audit.
+- No application source, backend, database schema, migration, configuration, workflow or release flag was modified. WBS v1.1 and Beta 1.0/Beta 2.0 boundaries unchanged.
+- Working branch: `audit/chat-groups-beta1-main-216c6d9-20261126`; awaiting Draft PR creation and review. Do not merge without owner approval.
+
+---
+
 ## 2026-11-24 — CTO Beta 1.0 security remediation roadmap recorded
 
 - Added authoritative staged plan: `development/roadmaps/2026-11-24-beta1-cto-security-remediation-roadmap.md`.
