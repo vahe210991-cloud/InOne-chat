@@ -822,7 +822,7 @@ class InOneSession extends ChangeNotifier {
       } catch (_) {
         // Never keep a resumable identity after an incomplete handoff.
       }
-      _clearSession();
+      await _clearSession();
       rethrow;
     } finally {
       _handoffGate = null;
@@ -970,7 +970,7 @@ class InOneSession extends ChangeNotifier {
       } catch (_) {
         // Do not restore an identity that the server has rejected.
       }
-      _clearSession();
+      await _clearSession();
     }
   }
 
@@ -993,7 +993,7 @@ class InOneSession extends ChangeNotifier {
   Future<void> _rotateRefreshToken() async {
     final current = _refreshToken;
     if (current == null || current.isEmpty) {
-      _clearSession();
+      await _clearSession();
       throw const ApiException(
         code: 'session_expired',
         statusCode: 401,
@@ -1379,7 +1379,7 @@ class InOneSession extends ChangeNotifier {
             // Locale preference remains local; logout must still clear credentials.
           }
           _localeSyncPending = false;
-          _clearSession();
+          await _clearSession();
         }
       }
     }
@@ -1391,13 +1391,17 @@ class InOneSession extends ChangeNotifier {
     _pendingApprovalCode = null;
   }
 
-  void _clearSession() {
-    _clearPendingApproval();
-    _mlsError = null;
-    _accessToken = null;
-    _refreshToken = null;
-    _userId = null;
-    notifyListeners();
+  Future<void> _clearSession() async {
+    try {
+      await _deleteRefreshToken();
+    } finally {
+      _clearPendingApproval();
+      _mlsError = null;
+      _accessToken = null;
+      _refreshToken = null;
+      _userId = null;
+      notifyListeners();
+    }
   }
 
   @override
