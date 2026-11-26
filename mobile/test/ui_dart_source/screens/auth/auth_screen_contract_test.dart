@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../../../lib/ui_dart_source/theme/inone_theme.dart';
+
 import '../../../../lib/ui_dart_source/screens/auth/sc01_login_screen.dart';
 import '../../../../lib/ui_dart_source/screens/auth/sc02_register_email_screen.dart';
 import '../../../../lib/ui_dart_source/screens/auth/sc03_email_code_screen.dart';
@@ -15,6 +17,7 @@ void main() {
     String? submittedEmail;
     String? submittedPassword;
     await tester.pumpWidget(MaterialApp(
+      theme: InOneTheme.light(),
       home: InOneLoginScreen(
         onSubmit: (email, password) async {
           submittedEmail = email;
@@ -40,6 +43,7 @@ void main() {
     String? submittedEmail;
     var advanced = false;
     await tester.pumpWidget(MaterialApp(
+      theme: InOneTheme.light(),
       home: InOneRegisterEmailScreen(
         onSubmit: (email) async {
           submittedEmail = email;
@@ -63,6 +67,7 @@ void main() {
     String? submittedCode;
     var resent = false;
     await tester.pumpWidget(MaterialApp(
+      theme: InOneTheme.light(),
       home: InOneEmailCodeScreen(
         onConfirm: (code) async {
           submittedCode = code;
@@ -91,6 +96,7 @@ void main() {
     String? password;
     String? phone;
     await tester.pumpWidget(MaterialApp(
+      theme: InOneTheme.light(),
       home: InOneCreateAccountScreen(
         onSubmit: (value, secret, number) async {
           nickname = value;
@@ -117,6 +123,7 @@ void main() {
     String? submittedEmail;
     var enteredCode = false;
     await tester.pumpWidget(MaterialApp(
+      theme: InOneTheme.light(),
       home: InOneRecoveryStartScreen(
         onSubmit: (email) async {
           submittedEmail = email;
@@ -142,6 +149,7 @@ void main() {
     String? password;
     String? pin;
     await tester.pumpWidget(MaterialApp(
+      theme: InOneTheme.light(),
       home: InOneNewPasswordScreen(
         keyResetWarning: 'Encryption keys will be reset.',
         onSubmit: (value, secret, pinValue) async {
@@ -168,6 +176,7 @@ void main() {
     String? email;
     String? code;
     await tester.pumpWidget(MaterialApp(
+      theme: InOneTheme.light(),
       home: InOneNotYouScreen(
         onSubmit: (value, oneTimeCode) async {
           email = value;
@@ -190,6 +199,7 @@ void main() {
   testWidgets('SC-12 delegates logout to the host session', (tester) async {
     var loggedOut = false;
     await tester.pumpWidget(MaterialApp(
+      theme: InOneTheme.light(),
       home: InOneLogoutScreen(
         onLogout: () async {
           loggedOut = true;
