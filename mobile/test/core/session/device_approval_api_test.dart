@@ -118,6 +118,7 @@ void main() {
       requests.add(request);
       if (request.url.path == '/login') {
         expect(jsonDecode(request.body), containsPair('identityCode', '654321'));
+        expect(jsonDecode(request.body), containsPair('identityChallengeId', 'challenge-1'));
         return http.Response(
           jsonEncode({
             'token': 'identity-access',
@@ -138,6 +139,7 @@ void main() {
       email: 'person@example.test',
       password: 'correct horse battery staple',
       identityCode: ' 654321 ',
+      identityChallengeId: 'challenge-1',
     );
 
     expect(result.containsKey('token'), isFalse);
