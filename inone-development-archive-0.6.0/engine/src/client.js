@@ -229,8 +229,26 @@ export class ChatClient {
   async createRoom(roomId, members = []) {
     const created = await this.raw('POST', '/rooms', { roomId });
     this.roomMembers.set(roomId, [this.userId]);
-    for (const userId of [...new Set(members)].filter((id) => id !== this.userId)) {
-      await this.addMember(roomId, userId);
+    const targets = [...new Set(members)].filter((id) => id !== this.userId);
+    if (targets.length > 0) {
+      const welcomes = targets.flatMap((userId) => {
+        const devices = [...(testClientsByUser.get(`${this.baseUrl}|${userId}`)?.values() ?? [])];
+        if (devices.length === 0) throw new Error(`no active test device registered for ${userId}`);
+        return devices.map((device) => ({
+          userId,
+          deviceId: device.deviceId,
+          welcome: randomBytes(32).toString('base64'),
+        }));
+      });
+      const epoch = (await this.raw('GET', `/mls/groups/${enc(roomId)}/epoch`)).epoch;
+      await this.raw('POST', `/mls/groups/${enc(roomId)}/commits`, {
+        epoch,
+        clientOperationId: `test-create-${randomBytes(16).toString('hex')}`,
+        commit: randomBytes(32).toString('base64'),
+        changes: { adds: targets, removes: [] },
+        welcomes,
+      });
+      await this.applyMembership(roomId);
     }
     return created;
   }
