@@ -737,3 +737,6 @@ Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone
 - P0 cross-module finding: organization membership removal clears room_members without an MLS Remove Commit/epoch transition; coordinate with CHAT-P0-01 and PR #166.
 - P1 guest-profile gaps remain conditional on owner-approved privacy/scope. Owner privacy variant В and WBS v1.1 unchanged.
 - No product source/schema/API/config/UI changes. Tests, builds, dynamic security and device checks NOT RUN. No task closed or merge performed.
+
+
+- Documentation PR: [#170](https://github.com/vahe210991-cloud/InOne-chat/pull/170), Draft and not merged. It contains only the account/organization profile audit plan, report and continuity/index updates.
