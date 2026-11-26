@@ -338,42 +338,44 @@ The repository contains both `inone-development-archive-0.6.0/engine` and `inone
 
 ### 12.1. Утверждённая продуктовая граница
 
-`docs/continuity/DECISIONS.md` §1 указывает текущий Beta 1.0 scope: Chats, Organizations, Profile, auth/recovery и серверные API для них. WBS v1.1 (`development/PROGRESS-BASELINE.md`) содержит profile read в критериях, но не отдельный workstream публикаций. WBS запрещено менять без явного owner approval.
+`docs/continuity/DECISIONS.md` §1 указывает текущий Beta 1.0 scope: Chats, Organizations, Profile, auth/recovery и серверные API для них. WBS v1.2 (`development/PROGRESS-BASELINE.md`) включает утверждённое владельцем расширение scope: Feed входит в Beta 1.0 с 2026-11-26. Веса доменов не меняются; исторические проценты v1.1 не являются новой оценкой расширенного scope.
 
 В то же время `DECISIONS.md` §7 определяет InOne как personal/social product с News feed и User publications/posts. В entitlement hypothesis § соответствующего раздела также упомянуты доступные публикации. Это product direction, но оно само по себе не добавляет feed в текущую Beta 1.0 WBS.
 
-### 12.2. Решение аудита
+### 12.2. Решение владельца и scope amendment (2026-11-26)
 
-**SCOPE GATE — требуется явное решение владельца.**
+**APPROVED FOR BETA 1.0:** владелец подтвердил, что лента публикаций и новостей входит в Beta 1.0. SCOPE-001 закрыт как продуктовое решение; WBS обновляется до v1.2. Отсутствие Feed является безусловным P1 release blocker до реализации и приёмки минимального объёма.
 
-- Если владелец включает базовую публикационную систему в Beta 1.0, отсутствие feed/posts становится P1 release blocker и работы FEED-SEC/CORE/LIST/MEDIA/TESTS должны быть добавлены в утверждённую WBS с версией/историей.
-- Утверждённый вариант В фиксирует неизменность действующей модели приватности. Он не разрешает менять существующие правила или вводить новые visibility/block/follow controls в рамках этого аудита.
-- Если WBS v1.1 остаётся неизменной, публикации, news feed, comments/reactions, public profiles и расширенное social media lifecycle следует вести как Beta 2.0 candidate backlog, не выдавая их за уже выполненную Beta 1.0 функцию.
-- Текущая Beta 1.0 profile read + locale path остаётся в scope и должна быть стабилизирована/проверена.
-- Критические security/privacy исправления не могут быть отложены до Beta 2.0.
+- Вариант В остаётся обязательным: существующая модель приватности сохраняется без изменений.
+- Решение не вводит публичность по умолчанию, новые visibility preferences, блокировки, подписки или новую социальную графику.
+- Минимальный Feed Beta 1.0: create/read/edit/delete собственных публикаций; собственная лента; общая новостная лента только для записей, чтение которых разрешено утверждённой серверной политикой; стабильная cursor pagination; native Flutter/Dart UI; server-side authorization, idempotency, abuse controls and security regression tests.
+- Вложения проходят только через validated media lifecycle: content validation, association to post, owner/access checks on download, cleanup. Никаких открытых object URLs.
+- Comments/reactions, follows/subscriptions, stories, recommendations/ranking, public profiles, public-by-default posts/media и новые visibility controls не считаются автоматически включёнными этим решением; для них требуется отдельное решение или они остаются Beta 2.0 candidates.
+- **Privacy gate:** в текущей реализации отсутствует post visibility policy. Вариант В запрещает автоматически использовать `sharesOrgOrLink` для чтения публикаций: этот gate подтверждён только для user search. До отдельного решения владельца чужие публикации не возвращаются; можно реализовывать собственные публикации и собственный список.
+- WBS v1.2 сохраняет существующие веса 25/25/15/20/10/5 и не пересчитывает исторический baseline 42%/31%. Эти цифры не являются текущей оценкой расширенного scope.
 
-Никакие коммерческие ограничения, paywalls или платные ограничения в этом аудите не предлагаются.
+### 12.3. Разделение релизов
+
+**Beta 1.0:** минимальный lifecycle собственных публикаций, собственная лента, общая лента после решения visibility policy, cursor pagination, безопасные вложения при наличии в утверждённом UI, native Flutter/Dart UI и backend/API/DB/security tests.
+
+**Beta 2.0 candidates / separate approval required:** comments/reactions (если не утверждены отдельно), follows/subscriptions, stories, сложное ранжирование/персонализация, creator tooling, promotion/analytics, расширенные публичные профили и social graph.
+
+Критические security/privacy исправления обязательны до релиза и не переносятся в Beta 2.0. Коммерческие ограничения и paywalls в рамках этого аудита не вводятся.
 
 ### 12.3. Предварительная классификация
 
-**Beta 1.0 при текущей утверждённой WBS**
-- Поддержать существующий authenticated own-profile read и locale update.
-- Проверить минимизацию DTO, auth boundary, error handling и регрессионные тесты.
-- Сохранить Feed/Calls недоступными, пока scope/API не утверждены.
-- Не включать публичное редактирование, avatar publishing или social feed через обходные заглушки.
+**Beta 1.0 approved scope**
+- Собственные публикации: create/read/edit/delete.
+- Собственная лента и общая лента только после утверждения точной visibility policy.
+- Stable cursor pagination, refresh, deduplication and deletion consistency.
+- Native Flutter/Dart Feed screens and typed API/repository integration.
+- Server-side authorization, idempotency, abuse controls and security/regression tests.
+- Secure post attachment lifecycle where attachments are in the approved screen contract.
 
-**Beta 1.0 только после owner scope approval**
-- Минимальный жизненный цикл публикации.
-- Базовая общая и собственная лента с безопасной пагинацией.
-- Защита авторства/видимости и минимальный media lifecycle.
-- Комментарии/реакции только если явно включены в approved feature scope.
-
-**Beta 2.0 candidates**
-- Сложные рекомендации/ранжирование и персонализация.
-- Развитая социальная графика/подписки/интересы.
-- Расширенные форматы публикаций, stories, promotion, analytics.
-- Развитая модерация и creator tooling beyond minimum safe controls.
-- Расширенные публичные профили, кастомизация и аналитика.
+**Beta 2.0 candidates / separate approval required**
+- Comments/reactions unless separately approved.
+- Follows/subscriptions, stories, advanced recommendations/ranking, creator tools, promotion and analytics.
+- Public profiles, public-by-default posts/media, new visibility preferences and block semantics.
 
 ## 13. Реестр подтверждённых пробелов и рисков
 
@@ -381,20 +383,20 @@ The repository contains both `inone-development-archive-0.6.0/engine` and `inone
 
 ### FP-001 — Публикационная подсистема отсутствует
 
-- **Приоритет:** P1 conditional on Beta 1.0 scope approval.
+- **Приоритет:** P1 — безусловный Beta 1.0 release blocker.
 - **Подсистема:** feed/posts.
 - **Фактическое поведение:** отсутствуют post/feed endpoints, domain tables, Flutter screens и typed repository operations.
-- **Ожидаемое:** сквозной lifecycle публикации и ленты, если включён в Beta 1.0.
+- **Ожидаемое:** сквозной lifecycle собственных публикаций и собственной ленты; общая лента после решения privacy gate.
 - **Расположение:** backend `engine/src/server.js`; schema `engine/src/schema.sql`; mobile `mobile/lib/core/data/inone_repositories.dart`; production screen tree `mobile/lib/ui_dart_source/screens/main/`.
 - **Доказательство:** полный tree inventory, route review и schema table inventory на указанном SHA; `mobile/app` блокирует Feed tab.
 - **Воспроизведение:** выбрать Feed в нижней навигации; app показывает notice «раздел пока не входит в подключённый объём Beta 1.0».
 - **Влияние:** публикации и новости недоступны.
 - **Security/privacy:** пока нет endpoint, нет доказанной уязвимости; будущие read/write endpoints должны быть object-authorized.
-- **Исправление:** только после scope gate; проектировать минимальные контракты в текущей архитектуре, не создавать параллельный backend.
+- **Исправление:** реализовать в Beta 1.0 после FEED-PRIVACY-001; использовать существующий canonical backend, DB and object store, не создавать параллельный backend.
 - **Тесты:** create/read/edit/delete, auth, owner, visibility, idempotency, feed pagination, multi-device.
 - **Acceptance:** пользователь проходит create → own view → feed view → edit/delete; сервер гарантирует owner/visibility.
 - **Зависимости:** SCOPE-001, FEED-SEC-001, FEED-CORE-001.
-- **Релиз:** Beta 1.0 conditional; иначе Beta 2.0.
+- **Релиз:** Beta 1.0.
 - **Статус:** OPEN / NOT IMPLEMENTED.
 
 ### FP-002 — Профиль поддерживает чтение, но не полноценное редактирование
@@ -429,7 +431,7 @@ The repository contains both `inone-development-archive-0.6.0/engine` and `inone
 - **Исправление:** не расширять текущий API. Если владелец отдельно утвердит чужой профиль, сначала зафиксировать точные разрешённые поля и совместимость с существующей моделью доступа; отдельный versioned DTO и server-side authorization обязательны.
 - **Тесты:** текущий search relationship gate (допустимая связь/нет связи), минимальный DTO, отсутствие email/phone/backupEmail/providers/securityHints/platformRole/device metadata; никаких тестов новой public/private или block policy до её отдельного утверждения.
 - **Acceptance:** текущий search не раскрывает account fields и не обходит relationship gate; endpoint чтения чужого профиля не создаётся без отдельного решения владельца.
-- **Зависимости:** SCOPE-001, PROFILE-PRIVACY-001.
+- **Зависимости:** SCOPE-001 COMPLETE, FEED-PRIVACY-001, PROFILE-PRIVACY-001.
 - **Релиз:** Beta 2.0 unless owner explicitly approves.
 - **Статус:** OPEN / NOT IMPLEMENTED.
 
@@ -561,19 +563,19 @@ The repository contains both `inone-development-archive-0.6.0/engine` and `inone
 
 ## 16. Обязательные задачи и порядок реализации
 
-Все задачи ниже имеют статус **NOT STARTED**. Закрытых задач нет; зачёркивание не применяется. Если владелец не утверждает расширение Beta 1.0, feed workstream остаётся Beta 2.0 backlog. Задачи security/privacy нельзя переносить после появления соответствующих endpoints.
+Все implementation tasks ниже имеют статус **NOT STARTED**, если не указано иное. Закрытых implementation tasks нет; зачёркивание не применяется. Feed включён в Beta 1.0 по решению владельца; security/privacy gates должны предшествовать feed endpoints.
 
-### SCOPE-001 — Утвердить релизную границу feed/profile
+### SCOPE-001 — Утвердить релизную границу Feed/Profile
 
 - **Приоритет:** P1.
-- **Описание:** сопоставить product decision InOne social с WBS v1.1; письменно решить, входит ли minimum feed/posts в Beta 1.0.
-- **Файлы:** `docs/continuity/DECISIONS.md`, `development/PROGRESS-BASELINE.md` (изменять только после owner approval).
-- **Ожидаемое изменение:** versioned scope decision; не менять baseline без явного согласования.
+- **Описание:** владелец подтвердил включение Feed в Beta 1.0 2026-11-26.
+- **Файлы:** `docs/continuity/DECISIONS.md`, `development/PROGRESS-BASELINE.md`.
+- **Ожидаемое изменение:** versioned scope decision WBS v1.2.
 - **Зависимости:** none.
 - **Тесты:** document consistency review.
-- **Acceptance:** release scope однозначен; Beta 1.0/Beta 2.0 boundary записана.
+- **Acceptance:** release scope однозначно фиксирует Feed в Beta 1.0.
 - **Релиз:** governance gate.
-- **Статус:** BLOCKED ON OWNER DECISION.
+- **Статус:** COMPLETE — owner decision recorded; implementation is tracked by FEED tasks.
 
 ### PROFILE-CORE-001 — Зафиксировать и проверить own-profile contract
 
@@ -599,13 +601,25 @@ The repository contains both `inone-development-archive-0.6.0/engine` and `inone
 - **Релиз:** Beta 1.0 для защиты существующих границ; новый public-profile contract — только после отдельного решения.
 - **Статус:** NOT STARTED.
 
+### FEED-PRIVACY-001 — Owner decision for visibility of other users' publications
+
+- **Приоритет:** P1 — blocks global feed exposure.
+- **Описание:** вариант В сохраняет существующую модель, но в ней отсутствует post visibility policy. До выдачи чужих публикаций владелец должен определить точное правило доступа. Не переиспользовать `sharesOrgOrLink` search gate как post authorization без отдельного решения.
+- **Файлы:** `docs/continuity/DECISIONS.md`, API contract, `engine/src/server.js`, `engine/src/schema.sql`.
+- **Ожидаемое изменение:** owner-approved, versioned read policy for another user's posts and attached media; no implementation of public-by-default.
+- **Зависимости:** SCOPE-001 COMPLETE; privacy variant В.
+- **Тесты:** authorized/unauthorized cross-account matrix; anonymous access denied; relationship edge cases; revoked device; post/media direct-ID access.
+- **Acceptance:** a direct API request can return another user's post only when the newly approved rule explicitly allows it; no account-private field leakage.
+- **Релиз:** Beta 1.0, mandatory before global feed exposure.
+- **Статус:** BLOCKED ON OWNER DECISION. Own-post CRUD/list may proceed independently without cross-account reads.
+
 ### FEED-SEC-001 — Authorization model for posts, comments and media
 
 - **Приоритет:** P1.
 - **Описание:** до создания feed endpoints определить object-level access для read/edit/delete/comment/react/media на основе уже утверждённых правил; owner immutable; server time. Не предполагать block/private semantics, которых нет в текущей модели; отсутствие согласованного правила для новой функции означает BLOCKED до решения владельца.
 - **Файлы:** будущие backend handlers/services/schema; reuse existing authenticated session and object store.
 - **Ожидаемое изменение:** server-authoritative access checks and transactional rules.
-- **Зависимости:** SCOPE-001, PROFILE-PRIVACY-001.
+- **Зависимости:** SCOPE-001 COMPLETE, FEED-PRIVACY-001, PROFILE-PRIVACY-001.
 - **Тесты:** BOLA/IDOR matrix for post/comment/reaction/media; cross-account/device; negative cases for the exact approved access rules. Block/private cases only if separately approved.
 - **Acceptance:** все direct API negative cases deny access; no UI-only authorization.
 - **Релиз:** Beta 1.0 if feed approved; otherwise before Beta 2.0 feed.
@@ -617,7 +631,7 @@ The repository contains both `inone-development-archive-0.6.0/engine` and `inone
 - **Описание:** define supported post types/fields, validation, idempotent create, edit/delete and ownership semantics using current backend architecture.
 - **Файлы:** future domain modules, `engine/src/server.js`, `engine/src/schema.sql`, migrations, typed DTO/repository.
 - **Ожидаемое изменение:** create/read/edit/delete of own publication.
-- **Зависимости:** SCOPE-001, FEED-SEC-001.
+- **Зависимости:** SCOPE-001 COMPLETE, FEED-PRIVACY-001, FEED-SEC-001.
 - **Тесты:** create, malformed/oversized input, duplicate retry, foreign edit/delete, concurrent edit/delete, deleted URL/API.
 - **Acceptance:** server owns authorId/timestamps; transaction keeps post and relations consistent.
 - **Релиз:** conditional Beta 1.0; otherwise Beta 2.0.
@@ -757,19 +771,19 @@ The repository contains both `inone-development-archive-0.6.0/engine` and `inone
 
 ## 17. Порядок реализации и контрольные точки
 
-1. **Gate 0 — SCOPE-001:** resolve Beta 1.0 vs Beta 2.0 publication scope. Do not create social tables/routes before approval.
-2. **Gate 1 — PROFILE-CORE-001 / FEED-SEC-001:** establish authorization, DTO privacy and ownership invariants before write APIs.
-3. **Gate 2 — FEED-CORE-001:** post lifecycle and database integrity.
-4. **Gate 3 — FEED-LIST-001 + FEED-PAGINATION-001:** stable feed query and deterministic traversal.
-5. **Gate 4 — FEED-MEDIA-001 / PROFILE-MEDIA-001:** validated file pipeline and ownership/visibility.
-6. **Gate 5 — FEED-INTERACTION-001:** comments/reactions only if approved.
-7. **Gate 6 — FLUTTER-FEED-001 / FLUTTER-PROFILE-001:** integrate native Dart screens only after backend contracts and security gates.
+1. **Gate 0 — SCOPE-001:** COMPLETE; Feed is approved for Beta 1.0 and WBS v1.2 records the scope.
+2. **Gate 1 — FEED-PRIVACY-001:** obtain exact owner-approved visibility semantics before returning other users' posts; own-post work may proceed.
+3. **Gate 2 — PROFILE-CORE-001 / PROFILE-PRIVACY-001 / FEED-SEC-001:** establish auth, DTO privacy, ownership and object authorization before feed APIs.
+4. **Gate 3 — FEED-CORE-001:** own post lifecycle and database integrity.
+5. **Gate 4 — FEED-LIST-001 + FEED-PAGINATION-001:** own and policy-authorized feed query with deterministic traversal.
+6. **Gate 5 — FEED-MEDIA-001:** validated post attachment pipeline where attachments are in approved UI contract.
+7. **Gate 6 — FLUTTER-FEED-001 / FLUTTER-PROFILE-001:** native Dart integration only after backend contracts/security gates.
 8. **Gate 7 — FEED-TESTS-001 / FEED-PERFORMANCE-001:** exact-SHA test matrix, PostgreSQL query plan, mobile analysis/widget/integration tests.
 9. **Gate 8 — FEED-ACCEPTANCE-001:** owner acceptance; no open P0/P1 and no unresolved security/privacy blockers.
 
 ## 18. Зависимости
 
-`SCOPE-001 → PROFILE-PRIVACY-001 → FEED-SEC-001 → FEED-CORE-001 → FEED-LIST-001 → FEED-PAGINATION-001 → FEED-MEDIA-001 → FLUTTER-FEED-001 → FEED-TESTS-001 → FEED-ACCEPTANCE-001`.
+`SCOPE-001 (COMPLETE) → FEED-PRIVACY-001 → PROFILE-PRIVACY-001 / FEED-SEC-001 → FEED-CORE-001 → FEED-LIST-001 → FEED-PAGINATION-001 → FEED-MEDIA-001 → FLUTTER-FEED-001 → FEED-TESTS-001 → FEED-ACCEPTANCE-001`.
 
 Profile path: `PROFILE-CORE-001 → PROFILE-PRIVACY-001 → PROFILE-EDIT-001 → PROFILE-MEDIA-001 → FLUTTER-PROFILE-001 → FEED-TESTS-001`.
 
@@ -805,7 +819,8 @@ For a closed task preserve ID, original description, acceptance criteria, PR lin
 |---|---|---|---|---|---|---|
 | 2026-11-26 | AUDIT-BASELINE | Read-only source review of code snapshot 216c6d9; revalidated against current main 920e2a2 (two intervening commits changed only development rules) | — | — | NOT RUN | COMPLETE |
 | 2026-11-26 | PRIVACY-DECISION-V | Owner selected variant В: preserve current privacy model without policy changes | — | — | Owner decision recorded | COMPLETE |
-| 2026-11-26 | SCOPE-001 | Beta 1.0 feed scope vs approved WBS v1.1 remains unresolved; privacy choice does not change release scope | — | — | Document review | BLOCKED ON OWNER DECISION |
+| 2026-11-26 | SCOPE-001 | Owner approved Feed in Beta 1.0; WBS v1.2 scope amendment prepared | — | — | Owner decision + document review | COMPLETE |
+| 2026-11-26 | FEED-PRIVACY-001 | Post visibility policy absent; must not infer from user-search relationship gate | — | — | Product decision required | BLOCKED ON OWNER DECISION |
 | — | All implementation tasks | No implementation performed | — | — | NOT RUN | NOT STARTED |
 
 ## 22. Ограничения и что не выполнялось
@@ -815,7 +830,7 @@ For a closed task preserve ID, original description, acceptance criteria, PR lin
 - Не проводились destructive tests, load tests или live penetration tests.
 - Не менялись исходный код, SQL schema/migrations, configuration, workflows, Flutter screens or UI assets.
 - Не восстанавливались HTML/WebView screens.
-- Не менялась approved WBS v1.1, коммерческая политика или Beta release boundary.
+- WBS v1.2 scope amendment prepared on this documentation branch; existing weights and historical v1.1 baseline are preserved. No implementation progress percentage is recalculated. Commercial policy unchanged.
 - CI evidence from other SHAs was not counted as PASS for this audited SHA.
 
 ## 23. Публикация документа
