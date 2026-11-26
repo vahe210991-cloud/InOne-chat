@@ -2184,45 +2184,74 @@ async mlsPendingRemovalsFor(userId) {
           return { ok: false, reason: 'epoch_outdated', epoch: current };
         }
         if ((changes.adds ?? []).length > 0) {
-          const { rows: roomRows } = await client.query(
-            'SELECT org_id FROM rooms WHERE room_id = $1 FOR SHARE',
+          // Lock order is intentional: active organization links are locked before
+          // room/member rows. revokeOrgLink takes FOR UPDATE on the same link before
+          // inspecting room_members. Acquiring the link here first prevents the
+          // add-commit/revoke deadlock and gives the race one clear linearization point.
+          const { rows: roomOrgRows } = await client.query(
+            'SELECT org_id FROM rooms WHERE room_id = $1',
             [roomId],
           );
-          if (!roomRows[0]) {
+          if (!roomOrgRows[0]) {
             await client.query('ROLLBACK');
             return { ok: false, reason: 'room_not_found', epoch: current };
           }
-          const roomOrgId = roomRows[0].org_id;
-          const { rows: roomOrgRows } = await client.query(
+          const roomOrgId = roomOrgRows[0].org_id;
+          const { rows: roomStatusRows } = await client.query(
             'SELECT status FROM organizations WHERE org_id = $1 FOR SHARE',
             [roomOrgId],
           );
-          if (!roomOrgRows[0] || roomOrgRows[0].status !== 'approved') {
+          if (!roomStatusRows[0] || roomStatusRows[0].status !== 'approved') {
             await client.query('ROLLBACK');
             return { ok: false, reason: 'org_not_approved', epoch: current };
           }
-          // Recheck every new member's organization eligibility under locks in the same
-          // transaction as the MLS commit. This closes the gap between HTTP authorization
-          // and membership mutation when an organization link is revoked concurrently.
+
           for (const targetUserId of [...changes.adds].sort()) {
             const { rows: directMembership } = await client.query(
               'SELECT 1 FROM org_members WHERE org_id = $1 AND user_id = $2 FOR SHARE',
               [roomOrgId, targetUserId],
             );
             if (directMembership.length) continue;
-            const { rows: linkedMembership } = await client.query(
-              `SELECT 1
+
+            // Discover candidate organizations without taking row locks, then acquire
+            // the active link lock first. The membership/org rows are locked only after
+            // the link, matching revokeOrgLink's lock order.
+            const { rows: candidates } = await client.query(
+              `SELECT member.org_id
                  FROM org_members member
                  JOIN organizations member_org ON member_org.org_id = member.org_id
-                 JOIN org_links link
-                   ON link.status = 'active'
-                  AND ((link.org_a = member.org_id AND link.org_b = $1)
-                    OR (link.org_b = member.org_id AND link.org_a = $1))
-                WHERE member.user_id = $2 AND member_org.status = 'approved'
-                LIMIT 1 FOR SHARE OF member, member_org, link`,
-              [roomOrgId, targetUserId],
+                WHERE member.user_id = $1
+                  AND member.org_id <> $2
+                  AND member_org.status = 'approved'
+                ORDER BY member.org_id`,
+              [targetUserId, roomOrgId],
             );
-            if (!linkedMembership.length) {
+            let authorized = false;
+            for (const candidate of candidates) {
+              const orgA = candidate.org_id < roomOrgId ? candidate.org_id : roomOrgId;
+              const orgB = candidate.org_id < roomOrgId ? roomOrgId : candidate.org_id;
+              const { rows: links } = await client.query(
+                `SELECT link_id FROM org_links
+                  WHERE org_a = $1 AND org_b = $2 AND status = 'active'
+                  FOR SHARE`,
+                [orgA, orgB],
+              );
+              if (!links.length) continue;
+              const { rows: memberRows } = await client.query(
+                `SELECT 1
+                   FROM org_members member
+                   JOIN organizations member_org ON member_org.org_id = member.org_id
+                  WHERE member.org_id = $1 AND member.user_id = $2
+                    AND member_org.status = 'approved'
+                  FOR SHARE OF member, member_org`,
+                [candidate.org_id, targetUserId],
+              );
+              if (memberRows.length) {
+                authorized = true;
+                break;
+              }
+            }
+            if (!authorized) {
               await client.query('ROLLBACK');
               return { ok: false, reason: 'org_not_member', epoch: current };
             }
