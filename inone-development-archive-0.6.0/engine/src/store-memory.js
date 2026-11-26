@@ -1587,9 +1587,9 @@ mlsPendingRemovalsFor(userId) {
         if (profile.nickname.toLowerCase() === nickname.toLowerCase()) return { outcome: 'ok', created: 'nickname', locale };
       }
       // Commit the consumed ticket and account state together after every uniqueness check.
+      if (joinDefaultOrg) addOrgMembership(DEFAULT_ORG_ID, userId, 'member', nowMs);
       emailCodes.set(email, structuredClone(next));
       accounts.set(userId, passwordHash);
-      if (joinDefaultOrg) addOrgMembership(DEFAULT_ORG_ID, userId, 'member', nowMs);
       profiles.set(userId, { email, emailVerified: true, nickname, createdAt: nowMs, locale });
       return { outcome: 'ok', created: 'ok', locale };
     },
