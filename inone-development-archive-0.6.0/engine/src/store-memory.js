@@ -65,6 +65,8 @@ export function createMemoryStore({ pinPepper }) {
   const inbox = new Map();         // ключ устройства -> события очереди доставки
   const sends = new Map();         // (отправитель, тип, номер) -> время отправки
   const rooms = new Map();
+  const directConversations = new Map(); // unordered pair key -> direct conversation
+  const directConversationsByRoom = new Map();
   const mlsPackages = [];
   const mlsPackageClaims = new Map();
   const mlsGroups = new Map();
@@ -968,6 +970,31 @@ export function createMemoryStore({ pinPepper }) {
       });
       return true;
     },
+    createOrOpenDirectConversation({ requester, target, roomId, createdAt }) {
+      const userA = requester < target ? requester : target;
+      const userB = requester < target ? target : requester;
+      const pairKey = JSON.stringify([userA, userB]);
+      const existing = directConversations.get(pairKey);
+      if (existing) return { ...structuredClone(existing), isCreator: existing.createdBy === requester };
+      if (rooms.has(roomId)) return { status: 'room_id_conflict' };
+      if (!accounts.has(requester) || !accounts.has(target)) return { status: 'unknown_user' };
+      const conversation = { roomId, userA, userB, createdBy: requester, status: 'pending', createdAt };
+      directConversations.set(pairKey, conversation);
+      directConversationsByRoom.set(roomId, conversation);
+      rooms.set(roomId, {
+        owner: requester, orgId: null, admins: new Set(), members: new Set([requester]),
+        joinedSeq: new Map([[requester, counters.eventSeq]]), events: [],
+        capabilities: new Map([[requester, [...DEFAULT_MEMBER_CAPABILITIES]]]),
+        name: null, kind: 'direct', visibility: 'private', readUpTo: new Map([[requester, 0]]),
+        joinPolicy: 'approval', joinRequests: new Map(), invites: new Map(),
+        description: '', backgroundColor: null, avatarAssetId: null, coverAssetId: null, backgroundAssetId: null, assets: new Map(),
+      });
+      return { ...structuredClone(conversation), isCreator: true };
+    },
+    directConversation(roomId) {
+      const conversation = directConversationsByRoom.get(roomId);
+      return conversation ? structuredClone(conversation) : null;
+    },
     getRoom(roomId) {
       const r = rooms.get(roomId);
       if (!r) return null;
@@ -1102,13 +1129,22 @@ export function createMemoryStore({ pinPepper }) {
       if (roomId) {
         const room = rooms.get(roomId);
         if (!room) return { ok: false, reason: 'room_not_found' };
-        if (organizations.get(room.orgId)?.status !== 'approved') return { ok: false, reason: 'org_not_approved' };
-        if (!hasOrgAccess(requesterUserId, room.orgId) || !hasOrgAccess(targetUserId, room.orgId)) {
-          return { ok: false, reason: 'not_authorized' };
-        }
-        if (!room.members.has(requesterUserId)
-          || (requesterUserId !== room.owner && !room.capabilities.get(requesterUserId)?.includes('invite_members'))) {
-          return { ok: false, reason: 'invite_capability_required' };
+        if (room.kind === 'direct') {
+          const conversation = directConversationsByRoom.get(roomId);
+          const counterpart = conversation?.userA === requesterUserId ? conversation.userB : conversation?.userB === requesterUserId ? conversation.userA : null;
+          if (!conversation || conversation.status !== 'pending' || conversation.createdBy !== requesterUserId
+            || counterpart !== targetUserId || !room.members.has(requesterUserId)) {
+            return { ok: false, reason: 'not_authorized' };
+          }
+        } else {
+          if (organizations.get(room.orgId)?.status !== 'approved') return { ok: false, reason: 'org_not_approved' };
+          if (!hasOrgAccess(requesterUserId, room.orgId) || !hasOrgAccess(targetUserId, room.orgId)) {
+            return { ok: false, reason: 'not_authorized' };
+          }
+          if (!room.members.has(requesterUserId)
+            || (requesterUserId !== room.owner && !room.capabilities.get(requesterUserId)?.includes('invite_members'))) {
+            return { ok: false, reason: 'invite_capability_required' };
+          }
         }
       } else if (requesterUserId !== targetUserId) {
         const requesterOrgs = [...orgMembers.entries()]
@@ -1272,17 +1308,23 @@ export function createMemoryStore({ pinPepper }) {
     appendRoomEvent(roomId, sender, type, content, nowMs, afterAppend = null) {
       const r = rooms.get(roomId);
       if (!r) return { state: 'room_not_found' };
-      const roomOrg = organizations.get(r.orgId);
-      if (!roomOrg || roomOrg.status !== 'approved') return { state: 'org_not_approved' };
-      const direct = orgMembers.get(r.orgId)?.has(sender) ?? false;
-      const linked = !direct && [...orgLinks.values()].some((link) => {
-        if (link.status !== 'active') return false;
-        const memberOrg = link.orgA === r.orgId ? link.orgB : link.orgB === r.orgId ? link.orgA : null;
-        return memberOrg !== null
-          && organizations.get(memberOrg)?.status === 'approved'
-          && (orgMembers.get(memberOrg)?.has(sender) ?? false);
-      });
-      if (!direct && !linked) return { state: 'org_not_member' };
+      if (r.kind === 'direct') {
+        const conversation = directConversationsByRoom.get(roomId);
+        if (!conversation || conversation.status !== 'active') return { state: 'direct_not_active' };
+        if (![conversation.userA, conversation.userB].includes(sender)) return { state: 'not_member' };
+      } else {
+        const roomOrg = organizations.get(r.orgId);
+        if (!roomOrg || roomOrg.status !== 'approved') return { state: 'org_not_approved' };
+        const direct = orgMembers.get(r.orgId)?.has(sender) ?? false;
+        const linked = !direct && [...orgLinks.values()].some((link) => {
+          if (link.status !== 'active') return false;
+          const memberOrg = link.orgA === r.orgId ? link.orgB : link.orgB === r.orgId ? link.orgA : null;
+          return memberOrg !== null
+            && organizations.get(memberOrg)?.status === 'approved'
+            && (orgMembers.get(memberOrg)?.has(sender) ?? false);
+        });
+        if (!direct && !linked) return { state: 'org_not_member' };
+      }
       if (!r.members.has(sender)) return { state: 'not_member' };
       const seq = ++counters.eventSeq;
       r.events.push({ event_id: `$${seq}`, seq, room_id: roomId, sender, origin_server_ts: nowMs, type, content: structuredClone(content ?? null) });
@@ -1347,10 +1389,21 @@ export function createMemoryStore({ pinPepper }) {
           entry.userId === welcome.userId && entry.deviceId === welcome.deviceId && !entry.revoked);
         if (!welcomeDeviceActive) return { ok: false, reason: 'welcome_device_revoked', epoch: current };
       }
+      if (room.kind === 'direct' && (changes.removes?.length ?? 0) > 0) {
+        return { ok: false, reason: 'direct_membership_fixed', epoch: current };
+      }
       if ((changes.adds ?? []).length > 0) {
-        const roomOrg = organizations.get(room.orgId);
-        if (!roomOrg || roomOrg.status !== 'approved') return { ok: false, reason: 'org_not_approved', epoch: current };
-        for (const targetUserId of [...changes.adds].sort()) {
+        if (room.kind === 'direct') {
+          const conversation = directConversationsByRoom.get(roomId);
+          const counterpart = conversation?.userA === senderId ? conversation.userB : conversation?.userB === senderId ? conversation.userA : null;
+          if (!conversation || conversation.status !== 'pending' || conversation.createdBy !== senderId
+            || changes.adds.length !== 1 || changes.adds[0] !== counterpart || !keyPackageClaimId || joinRequestUserId) {
+            return { ok: false, reason: 'direct_add_not_authorized', epoch: current };
+          }
+        } else {
+          const roomOrg = organizations.get(room.orgId);
+          if (!roomOrg || roomOrg.status !== 'approved') return { ok: false, reason: 'org_not_approved', epoch: current };
+          for (const targetUserId of [...changes.adds].sort()) {
           const direct = orgMembers.get(room.orgId)?.has(targetUserId) ?? false;
           const linked = !direct && [...orgLinks.values()].some((link) => {
             if (link.status !== 'active') return false;
@@ -1360,6 +1413,7 @@ export function createMemoryStore({ pinPepper }) {
               && (orgMembers.get(memberOrg)?.has(targetUserId) ?? false);
           });
           if (!direct && !linked) return { ok: false, reason: 'org_not_member', epoch: current };
+          }
         }
       }
       if (joinRequestUserId) {
@@ -1388,6 +1442,11 @@ export function createMemoryStore({ pinPepper }) {
       }
       for (const userId of changes.adds) {
         if (room && !room.members.has(userId)) { room.members.add(userId); room.joinedSeq.set(userId, counters.eventSeq); room.capabilities.set(userId, [...DEFAULT_MEMBER_CAPABILITIES]); room.readUpTo.set(userId, 0); }
+      }
+      if (room?.kind === 'direct' && (changes.adds ?? []).length === 1) {
+        const conversation = directConversationsByRoom.get(roomId);
+        if (!conversation || conversation.status !== 'pending') return { ok: false, reason: 'direct_state_changed', epoch: current };
+        conversation.status = 'active';
       }
       const next = current + 1;
       mlsGroups.set(roomId, next);
