@@ -22,7 +22,8 @@ A recipient does not accept or reject a request when another user sends a person
 8. Added backend regression coverage for canonical pair creation, concurrent opens, multi-device Welcome, third-party isolation, pre-activation fail-closed behavior, group-only route denial and bidirectional message delivery without an acceptance step.
 9. Added a real Rust/OpenMLS scenario: sender opens a direct room, automatically welcomes every active recipient device, sends while the recipient is offline, and both recipient devices receive the first message on sync without an approval action.
 10. Added Flutter DTO/repository/preview tests for provisioning and active direct conversations, including rejection of the old `pending` response shape and suppression of opaque room IDs in display labels.
-11. Registered migration 0036 in the migration runner, included direct-chat regressions in `npm test` and `npm run test:db`, and added schema assertions for fresh and upgraded PostgreSQL databases.
+11. Added a server-side room-list projection for encrypted last activity and per-user unread count, mirrored in the memory store; Flutter now renders timestamps/unread badges, supports the unread filter, and clears badges after a persisted read marker.
+12. Registered migration 0036 in the migration runner, included direct-chat and room-summary regressions in `npm test` and `npm run test:db`, and added schema assertions for fresh and upgraded PostgreSQL databases.
 
 ## Important behavior and limits
 
