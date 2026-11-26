@@ -65,6 +65,15 @@ test('every operation declared by the v0.8 approval manifest has a backend handl
   assert.match(server, /action === 'claim'/u);
 });
 
+test('direct conversations use a canonical pair and MLS-only activation', () => {
+  assert.match(server, /req\.method === 'POST' && p === '\/direct-chats\/open'/u);
+  assert.match(server, /createOrOpenDirectConversation/u);
+  assert.match(server, /direct_pair_only/u);
+  assert.match(server, /mlsInitializationRequired/u);
+  assert.match(server, /directConversation\.status !== 'pending'/u);
+  assert.match(server, /direct_membership_fixed/u);
+});
+
 test('production Flutter entry uses native Dart UI and keeps MLS disabled by default', () => {
   assert.ok(mobileHost.includes('Firebase.initializeApp()'));
   assert.ok(mobileHost.includes('Platform.isAndroid || Platform.isIOS'));
