@@ -51,6 +51,15 @@ The GitHub repository `vahe210991-cloud/InOne-chat` is the only authoritative pr
 
 - [InOne ↔ Propo authentication integration brief](integrations/INONE-PROPO-AUTH-INTEGRATION-BRIEF.md). This is a planned contract, not an implemented feature; open security/product decisions remain unresolved.
 
+## Beta 1.0 AUTH work — 2026-11-26
+
+- [AUTH registration, login and recovery plan](AUTH-REGISTRATION-LOGIN-RECOVERY-BETA-1.0-PLAN.md) — canonical task list; all tasks remain open until evidence, review and merge.
+- [AUTH implementation audit report](reports/2026-11-26-auth-beta1-implementation-audit.md) — current implementation, defects addressed, tests NOT RUN and owner/platform blockers.
+- [Mobile API contracts](../mobile/API-CONTRACTS-BETA-1.md) — screen-to-backend wiring and current AUTH boundaries.
+- [Unified task-completion rules](UNIFIED-TASK-COMPLETION-RULES.md) — mandatory rule for every AI agent and developer.
+- Working branch: `feat/auth-senior-backend-implementation-2026-11-26`, snapshot SHA `9d1e46a406feb40a77cca3fafafb8d0e8bc8d73b`, based on current main `7d34b99fcc026a828b838e211d039c575aeace1d`.
+- State: implementation in progress; no merge; automated tests have not been run on the final SHA.
+
 ## Current status at a glance
 
 - P0 Wave 3 recovery bundle: verified locally from the owner-provided archive; details and checksum in [BASELINE-2026-11-08.md](BASELINE-2026-11-08.md).
