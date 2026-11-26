@@ -39,6 +39,31 @@ const members = async (c) => (await c.raw('GET', `/rooms/${enc(ROOM)}/members`))
 const currentEpoch = async (c) => (await c.raw('GET', `/mls/groups/${enc(ROOM)}/epoch`)).epoch;
 const commit = (c, body) => c.raw('POST', `/mls/groups/${enc(ROOM)}/commits`, body);
 
+test('legacy REST member add and remove fail closed without changing the MLS roster', async () => {
+  const g = await group();
+  try {
+    const beforeMembers = await members(g.alice);
+    const beforeEpoch = await currentEpoch(g.alice);
+
+    await assert.rejects(
+      g.alice.raw('POST', `/rooms/${enc(ROOM)}/members`, { userId: DAVE }),
+      (error) => error.status === 409,
+      'legacy REST addition must require an MLS Add Commit and Welcome',
+    );
+    await assert.rejects(
+      g.alice.raw('DELETE', `/rooms/${enc(ROOM)}/members/${enc(CAROL)}`),
+      (error) => error.status === 409,
+      'legacy REST removal must require an MLS Remove Commit',
+    );
+
+    assert.deepEqual(await members(g.alice), beforeMembers, 'neither legacy route mutates the room roster');
+    assert.equal(await currentEpoch(g.alice), beforeEpoch, 'neither legacy route changes the MLS epoch');
+  } finally {
+    await g.stop();
+  }
+});
+
+
 test('владелец добавляет участника коммитом: новый участник в группе, читает коммиты и получает приветствие', async () => {
   const g = await group();
   try {
