@@ -22,6 +22,7 @@ void main() {
 
     final action = find.text('Արդեն ունե՞ք չեղարկման կոդը');
     expect(action, findsOneWidget);
+    await tester.ensureVisible(action);
     await tester.tap(action);
     await tester.pumpAndSettle();
 
