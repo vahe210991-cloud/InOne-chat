@@ -69,6 +69,59 @@ class InOneRoomList {
 }
 
 
+/// Result of POST /direct-chats/open. A pending conversation becomes usable
+/// only after the creator initializes Engine B and commits a per-device MLS Welcome.
+class InOneDirectConversation {
+  const InOneDirectConversation({
+    required this.roomId,
+    required this.peerUserId,
+    required this.status,
+    required this.created,
+    required this.isCreator,
+    required this.mlsInitializationRequired,
+  });
+
+  final String roomId;
+  final String peerUserId;
+  final String status;
+  final bool created;
+  final bool isCreator;
+  final bool mlsInitializationRequired;
+
+  bool get requiresCreatorSetup => status == 'pending' && isCreator;
+
+  factory InOneDirectConversation.fromJson(Map<String, dynamic> json) {
+    final roomId = json['roomId'];
+    final peerUserId = json['peerUserId'];
+    final status = json['status'];
+    final created = json['created'];
+    final isCreator = json['isCreator'];
+    final mlsInitializationRequired = json['mlsInitializationRequired'];
+    if (roomId is! String || roomId.trim().isEmpty ||
+        peerUserId is! String || peerUserId.trim().isEmpty ||
+        status is! String || !const {'pending', 'active'}.contains(status) ||
+        created is! bool || isCreator is! bool ||
+        mlsInitializationRequired is! bool ||
+        created && (status != 'pending' || !isCreator || !mlsInitializationRequired) ||
+        status == 'active' && mlsInitializationRequired) {
+      throw const ApiException(
+        code: 'invalid_response',
+        statusCode: 200,
+        retryable: false,
+      );
+    }
+    return InOneDirectConversation(
+      roomId: roomId,
+      peerUserId: peerUserId,
+      status: status,
+      created: created,
+      isCreator: isCreator,
+      mlsInitializationRequired: mlsInitializationRequired,
+    );
+  }
+}
+
+
 /// Public group search result returned by GET /rooms/search.
 class InOnePublicRoom {
   const InOnePublicRoom({
