@@ -1426,17 +1426,14 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
               meta: 'Сохранено в зашифрованной очереди',
             ),
           ];
-          _mlsChats = _mlsChats.map((chat) => chat.id == roomId
-              ? InOneChatPreview(
-                  id: chat.id,
-                  name: chat.name,
-                  lastMessage: plaintext,
-                  time: chat.time,
-                  kind: chat.kind,
-                  unread: chat.unread,
-                  initials: chat.initials,
-                )
-              : chat).toList(growable: false);
+          _mlsChats = _mlsChats
+              .map((chat) => chat.id == roomId
+                  ? chat.copyWith(
+                      lastMessage: plaintext,
+                      time: _formatRoomTime(DateTime.now().millisecondsSinceEpoch),
+                    )
+                  : chat)
+              .toList(growable: false);
         });
       }
       await _session.flushMlsOutbox();
