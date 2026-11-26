@@ -31,7 +31,7 @@ jobs:
 
       - name: Install RustSec CLI
         run: |
-          cargo install cargo-audit --locked
+          cargo install --locked --version 0.23.0 cargo-audit
           cargo audit --version
 
       - name: Check prototype formatting

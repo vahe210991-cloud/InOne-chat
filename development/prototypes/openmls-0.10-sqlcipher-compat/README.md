@@ -41,4 +41,4 @@ The fixture key and group identity are deterministic test data only. They are no
 - Do not merge the prototype into the runtime until the full compatibility matrix passes on Linux, Android and iOS, including pending commits, Welcome join, message encryption/decryption, restart/reopen, migration rollback and key rotation/revocation.
 - OpenMLS 0.10.0-rc.1 is a release candidate. Passing this prototype is evidence for further review, not approval to ship the prerelease dependency.
 
-Run locally with `scripts/run.sh`; CI runs the same fixture-generation and read-back sequence.
+Run locally with Rust 1.94.0 and `cargo-audit` 0.23.0 installed, then execute `scripts/run.sh`; CI runs the same fixture-generation and read-back sequence.
