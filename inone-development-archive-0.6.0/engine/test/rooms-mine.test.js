@@ -26,7 +26,7 @@ async function start() {
   const carol = await ChatClient.create(base, CAROL, 'C_PHONE', PW);
   await anna.createRoom(ROOM_A, [ANNA]);
   await boris.createRoom(ROOM_B, [BORIS]);
-  await boris.raw('POST', `/rooms/${enc(ROOM_B)}/members`, { userId: ANNA });
+  await boris.addMember(ROOM_B, ANNA);
   return { base, anna, boris, carol, stop: async () => { await new Promise((r) => srv.server.close(r)); await db?.close(); } };
 }
 
