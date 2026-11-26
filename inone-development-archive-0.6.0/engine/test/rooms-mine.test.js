@@ -64,6 +64,8 @@ test('room list projects encrypted last activity and per-user unread count', asy
     assert.equal(room.lastEventSeq, lastSeq);
     assert.equal(room.lastEventAt, 2000);
     assert.equal(room.unreadCount, 1, 'only the other participant message is unread');
+    assert.equal(Object.hasOwn(room, 'lastMessage'), false, 'server does not project plaintext into room summaries');
+    assert.equal(JSON.stringify(room).includes('ciphertext'), false, 'room summary contains no encrypted payload bytes');
     assert.ok(firstSeq < lastSeq);
 
     await s.anna.raw('POST', `/rooms/${enc(ROOM_B)}/read`, { upTo: `${lastSeq}` });
