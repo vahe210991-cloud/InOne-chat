@@ -1743,7 +1743,7 @@ if (req.method === 'POST' && orgLinkActRoute) {
   const revoked = await storage.revokeOrgLink({ linkId, fromStatus: link.status, actor: d.userId, at: now() });
   if (!revoked.ok && revoked.reason === 'mls_removal_required') {
     return send(res, 409, {
-      error: 'remove cross-organization members from every affected MLS room before revoking the link',
+      error: 'transfer ownership of affected rooms first, then remove cross-organization members through MLS before revoking the link',
       code: 'mls_removal_required',
       memberships: revoked.memberships,
       ownerRoomIds: revoked.memberships.filter((membership) => membership.owner).map((membership) => membership.roomId),
