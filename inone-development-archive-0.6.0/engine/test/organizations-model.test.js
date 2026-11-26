@@ -52,7 +52,8 @@ test('комната принадлежит организации: по умо�
     await store.addAccount(BORIS, 'hash-boris');
     await store.addOrgMember(DEFAULT_ORG, ANNA, 'owner', 1);
     await store.addOrgMember(DEFAULT_ORG, BORIS, 'member', 2);
-    assert.equal(await store.createRoom('!org-room-1:inone.test', ANNA, [ANNA, BORIS], {}), true);
+    assert.deepEqual(await store.createRoom('!org-room-invalid:inone.test', ANNA, [ANNA, BORIS], {}), { status: 'mls_commit_required' }, 'store не допускает начальное добавление другого участника без MLS');
+    assert.equal(await store.createRoom('!org-room-1:inone.test', ANNA, [ANNA], {}), true);
     assert.equal(await store.roomOrg('!org-room-1:inone.test'), DEFAULT_ORG, 'комната по умолчанию в организации по умолчанию');
     await store.createOrganization({ orgId: 'org-c', name: 'Третья', status: 'approved', createdBy: BORIS, createdAt: 4 });
     await store.addOrgMember('org-c', BORIS, 'owner', 5);
