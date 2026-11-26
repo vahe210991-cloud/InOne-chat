@@ -3,7 +3,8 @@
 **Дата аудита:** 2026-11-26 (UTC+4)  
 **Репозиторий:** `vahe210991-cloud/InOne-chat`  
 **Проверенная ветка:** `main`  
-**Точный HEAD:** `216c6d9ea4e825182d3fc94b7aa6d9841e0ad250`  
+**Кодовый срез аудита:** `216c6d9ea4e825182d3fc94b7aa6d9841e0ad250`  
+**Текущий HEAD main при актуализации:** `920e2a2ecef244c925061348eb68c8b09fe63922`  
 **Рабочая ветка документа:** `audit/feed-profile-beta1-main-216c6d9-20261126`  
 **Статус:** SOURCE REVIEW COMPLETE / RELEASE ACCEPTANCE NOT READY  
 **Режим:** read-only source/document/PR review; runtime tests NOT RUN  
@@ -38,7 +39,17 @@
 
 Последний предшествующий merge в main — Stage 4 database integrity/cleanup hardening (`baec9c083ed51ab5004e5f1b1e99aca6b4f2476a`). Более ранние изменения включают атомарность административных операций, индексы очистки и generation-aware push delivery. Эти изменения не добавляют домен публикаций или публичный профиль.
 
-### 2.2. Связанные PR
+### 2.2. Повторная проверка актуальности main
+
+После первоначального source review `main` продвинулся с `216c6d9ea4e825182d3fc94b7aa6d9841e0ad250` до `920e2a2ecef244c925061348eb68c8b09fe63922`.
+
+`compare_commits` подтверждает ровно два новых коммита и только два изменённых документа:
+- `development/UNIFIED-TASK-COMPLETION-RULES.md` — добавлен;
+- `development/WORKING-RULES.md` — дополнен.
+
+Ни backend, ни Flutter, ни SQL schema/migrations, ни API contracts, ни media implementation не изменялись. Поэтому кодовые выводы этого аудита остаются применимыми к текущему `main` `920e2a2`. Сам документ актуализирован после повторного чтения действующих правил разработки.
+
+### 2.3. Связанные PR
 
 | PR | Состояние на момент аудита | Влияние на публикации/профиль |
 |---|---|---|
@@ -49,6 +60,18 @@
 | #90 — G2 MLS messaging/attachments | Draft/open; отдельный head | Чатовые вложения и MLS, не публикационная медиа-система |
 
 В просмотренном наборе открытых PR не найден PR, который уже подключает публикационную ленту, создание постов, публичный профиль, профильное редактирование или аватар/обложку к production Flutter app. PR #166 основан на точном SHA текущей main и не меняет эту оценку. PR #158 содержит только документационные изменения и не является доказательством реализации других профилей.
+
+### 2.4. Решение владельца о приватности — вариант В (2026-11-26)
+
+Владелец утвердил вариант В: **существующая модель приватности InOne сохраняется без изменений**. В рамках этого аудита запрещено вводить новые правила открытости профилей/публикаций, новые настройки public/private, новые блокировки или менять доступ к уже существующим данным.
+
+Проверяются и сохраняются только подтверждённые действующие границы:
+- собственный `GET /profile` доступен по текущей аутентифицированной сессии и использует `userId` из неё;
+- `GET /users/search` ограничен rate limit и проверкой `sharesOrgOrLink`, возвращает только `userId`, `nickname`, `verificationLevel`, не email и не телефон;
+- owner-only file download остаётся доступен только владельцу с действующей user/device session; room files остаются ограничены членством в комнате;
+- отсутствие public-profile API, social visibility settings, блокировок и feed policy не трактуется как разрешение сделать данные публичными.
+
+Если будущая функция требует правила, которого нет в текущих решениях или реализации, её реализация блокируется до отдельного решения владельца. Не подменять отсутствие политики самостоятельно придуманным правилом.
 
 ## 3. Краткое заключение о готовности
 
@@ -179,17 +202,14 @@
 4. Upload reservation и completion привязаны к владельцу и устройству.
 5. В мобильном профиле email используется как handle только на собственном профиле. Публичный профиль, который мог бы случайно раскрыть email, не обнаружен.
 
-### 7.2. Не подтверждено / требует будущего контракта
+### 7.2. Границы, которые не реализованы и не должны додумываться
 
-- Публичная/приватная видимость профиля.
-- Политика видимости nickname, bio, avatar, cover и иных атрибутов.
-- Блокировки и скрытие пользователей в социальной ленте.
-- Доступ к приватным публикациям, комментариям и вложениям.
-- Удаление аккаунта и правила сохранения/анонимизации опубликованного контента.
-- Отзыв доступа к уже выданным публичным media links.
-- Модерация, жалобы и anti-scraping для профилей/публикаций.
+- Public-profile API/DTO и social visibility settings отсутствуют. Вариант В не разрешает делать профиль публичным по умолчанию и не утверждает новую приватную/публичную модель.
+- Блокировки, скрытие пользователей, подписки и social graph не обнаружены; не добавлять их как предположение.
+- Публикации, комментарии и их visibility policy отсутствуют вместе с feed endpoints.
+- Правила сохранения/анонимизации публикаций после удаления аккаунта, публичные media links и social moderation не определены существующим production-контрактом.
 
-Нельзя делать вывод о безопасной реализации этих правил: сами социальные endpoints и модели не обнаружены.
+Это не дефекты действующего endpoint сами по себе. До отдельного решения владельца такие функции остаются не реализованными; нельзя открывать доступ или менять текущую политику на основании отсутствия таблиц/настроек.
 
 ## 8. Результаты security-аудита
 
@@ -214,7 +234,7 @@
 
 ### 8.3. Security requirements before social release
 
-- Server-side owner/visibility authorization on every read/write endpoint; never rely on Flutter visibility.
+- Server-side authorization on every read/write endpoint must enforce the existing approved access policy; never rely on Flutter visibility. Do not invent public/private, block or follow semantics that are absent from the approved model.
 - Object-level checks for post, comment, reaction and media IDs.
 - Immutable server-side authorId/createdAt; client must not choose author or publication timestamp.
 - Idempotency key and database uniqueness for create/reaction operations.
@@ -291,7 +311,7 @@ The repository contains both `inone-development-archive-0.6.0/engine` and `inone
 | Posts | Редактирование чужой публикации | 403/404; данные не изменены | NOT IMPLEMENTED |
 | Posts | Удаление чужой публикации | Отказ; связи не затронуты | NOT IMPLEMENTED |
 | Feed | Cursor pagination при вставке новых записей | Нет пропусков/дубликатов при фиксированном cursor | NOT IMPLEMENTED |
-| Feed | Удалённые/скрытые/заблокированные авторы | Недоступные записи не выдаются | NOT IMPLEMENTED |
+| Feed | Удалённые записи и записи, недоступные по утверждённой модели доступа | Недоступные записи не выдаются | NOT IMPLEMENTED |
 | Feed | Повторный запрос страницы | Детерминированная выдача | NOT IMPLEMENTED |
 | Comments | Изменение/удаление чужого комментария | Отказ в доступе | NOT IMPLEMENTED |
 | Reactions | Повторная реакция и конкурентные запросы | Уникальная реакция и согласованный счётчик | NOT IMPLEMENTED |
@@ -327,6 +347,7 @@ The repository contains both `inone-development-archive-0.6.0/engine` and `inone
 **SCOPE GATE — требуется явное решение владельца.**
 
 - Если владелец включает базовую публикационную систему в Beta 1.0, отсутствие feed/posts становится P1 release blocker и работы FEED-SEC/CORE/LIST/MEDIA/TESTS должны быть добавлены в утверждённую WBS с версией/историей.
+- Утверждённый вариант В фиксирует неизменность действующей модели приватности. Он не разрешает менять существующие правила или вводить новые visibility/block/follow controls в рамках этого аудита.
 - Если WBS v1.1 остаётся неизменной, публикации, news feed, comments/reactions, public profiles и расширенное social media lifecycle следует вести как Beta 2.0 candidate backlog, не выдавая их за уже выполненную Beta 1.0 функцию.
 - Текущая Beta 1.0 profile read + locale path остаётся в scope и должна быть стабилизирована/проверена.
 - Критические security/privacy исправления не могут быть отложены до Beta 2.0.
@@ -518,7 +539,7 @@ The repository contains both `inone-development-archive-0.6.0/engine` and `inone
 1. **Scope drift:** social product direction включает feed/posts, но approved Beta 1.0 WBS не выделяет feed workstream.
 2. **Media semantic mismatch:** общий file service поддерживает room attachments и owner-only avatar reservation, но это не готовая public media platform.
 3. **Public profile boundary:** search result и own account profile нельзя объединять в один DTO.
-4. **No social authorization graph:** блокировки, подписки, скрытие и visibility rules не представлены в текущем profile/feed path.
+4. **No social authorization graph:** блокировки, подписки, скрытие и social visibility controls не представлены в текущем profile/feed path. По варианту В их нельзя изобретать в рамках этого аудита; при необходимости будущая функция требует отдельного продуктового решения.
 5. **No feed consistency model:** нет cursor, stable ordering key, deduplication или invalidation semantics.
 6. **No post deletion/retention model:** нет политики для media/comments/reactions после удаления публикации/аккаунта.
 7. **Backend runbook drift:** `mobile/README.md` указывает локально запускать POC backend, в то время как canonical Beta 1.0 source/acceptance docs указывают на archive engine. Перед runtime tests нужно однозначно закрепить актуальный backend tree; в этом аудите использован canonical archive.
@@ -530,7 +551,7 @@ The repository contains both `inone-development-archive-0.6.0/engine` and `inone
 - Own publications list and public/global news feed.
 - Public profile DTO and other-user profile screen.
 - Profile edit API and UI beyond locale.
-- Profile visibility/privacy preferences.
+- Social profile visibility/preferences and block/follow controls (не входят в текущий scope; вариант В сохраняет действующую модель без изменений).
 - Avatar/cover binding, display, replacement and deletion lifecycle.
 - Post media binding and visibility-aware downloads.
 - Comments, reactions, counters and anti-abuse controls.
@@ -566,22 +587,22 @@ The repository contains both `inone-development-archive-0.6.0/engine` and `inone
 - **Релиз:** Beta 1.0.
 - **Статус:** NOT STARTED.
 
-### PROFILE-PRIVACY-001 — Утвердить public/private profile DTO and policy
+### PROFILE-PRIVACY-001 — Зафиксировать и защитить существующие границы приватности
 
-- **Приоритет:** P1 before public-profile implementation.
-- **Описание:** определить поля, видимость, block semantics and relation checks; keep own account DTO separate.
-- **Файлы:** будущий API contract; `server.js`, `schema.sql`, `mobile/lib/core/data/`.
-- **Ожидаемое изменение:** allowlisted public DTO and server-owned policy.
-- **Зависимости:** SCOPE-001.
-- **Тесты:** unrelated user, public/private, blocked, org/link relation, email/phone/provider/device leakage.
-- **Acceptance:** прямой API вызов не обходит visibility.
-- **Релиз:** Beta 2.0 unless explicitly approved.
+- **Приоритет:** P1 перед любым новым endpoint, который читает чужие профильные данные или медиа; P1 для security-регрессий текущих границ.
+- **Описание:** вариант В утверждён владельцем. Не проектировать новую public/private модель, не добавлять visibility preferences, блокировки или follow semantics. Зафиксировать фактические правила существующего API: own-profile только по authenticated user; поиск только через текущий `sharesOrgOrLink` gate с минимальным DTO; owner-only files только владельцу/устройству; room files только членам комнаты. Собственный account DTO не смешивать с social/public DTO.
+- **Файлы:** `inone-development-archive-0.6.0/engine/src/server.js`, `engine/src/store.js`, `engine/src/schema.sql`, `mobile/lib/core/data/inone_profile.dart`, `mobile/lib/core/data/inone_repositories.dart`, backend tests.
+- **Ожидаемое изменение:** регрессионные тесты и документированная матрица текущих правил; без изменения продуктовой политики и без создания public-profile API.
+- **Зависимости:** PROFILE-CORE-001. Public-profile implementation остаётся заблокированной до отдельного owner decision, если ей потребуется новая политика.
+- **Тесты:** own profile с действующей сессией; отказ без auth/после device revocation; search с допустимой связью; отказ при отсутствии связи; отсутствие email/phone в search DTO; cross-user owner-only file denial; room file membership checks; invalidation после device revocation.
+- **Acceptance:** текущие правила не ослаблены; прямой API запрос не обходит auth/relationship/owner/device checks; нет утечки закрытых account fields; никаких новых visibility semantics не добавлено.
+- **Релиз:** Beta 1.0 для защиты существующих границ; новый public-profile contract — только после отдельного решения.
 - **Статус:** NOT STARTED.
 
 ### FEED-SEC-001 — Authorization model for posts, comments and media
 
 - **Приоритет:** P1.
-- **Описание:** до создания feed endpoints определить object-level access for read/edit/delete/comment/react/media; owner immutable; server time; blocked/private visibility.
+- **Описание:** до создания feed endpoints определить object-level access для read/edit/delete/comment/react/media на основе уже утверждённых правил; owner immutable; server time. Не предполагать block/private semantics, которых нет в текущей модели; отсутствие согласованного правила для новой функции означает BLOCKED до решения владельца.
 - **Файлы:** будущие backend handlers/services/schema; reuse existing authenticated session and object store.
 - **Ожидаемое изменение:** server-authoritative access checks and transactional rules.
 - **Зависимости:** SCOPE-001, PROFILE-PRIVACY-001.
@@ -609,7 +630,7 @@ The repository contains both `inone-development-archive-0.6.0/engine` and `inone
 - **Файлы:** future feed query/service, indexes, typed repository, Flutter feed screens.
 - **Ожидаемое изменение:** authorized feed query, deterministic ordering and refresh.
 - **Зависимости:** FEED-CORE-001, FEED-SEC-001.
-- **Тесты:** own list, global visibility, private/blocked/deleted exclusion, duplicates, new post refresh.
+- **Тесты:** own list, только разрешённая по утверждённой модели выдача, удалённые записи исключены, duplicates, new post refresh. Не добавлять private/blocked cases без отдельного утверждённого правила.
 - **Acceptance:** no unauthorized rows and deterministic ordering.
 - **Релиз:** conditional Beta 1.0; otherwise Beta 2.0.
 - **Статус:** NOT STARTED.
@@ -670,7 +691,7 @@ The repository contains both `inone-development-archive-0.6.0/engine` and `inone
 - **Ожидаемое изменение:** full owner-controlled media lifecycle.
 - **Зависимости:** PROFILE-EDIT-001, PROFILE-PRIVACY-001, FP-008.
 - **Тесты:** image spoofing, dimensions, old file revocation, other user access, account deletion, device revocation.
-- **Acceptance:** public/private policy is enforced by API, not client; no orphaned public objects.
+- **Acceptance:** существующая owner/device/room access policy enforced by API, not client; никакой файл не становится публичным без отдельного решения и контракта; no orphaned accessible objects.
 - **Релиз:** Beta 2.0 unless approved.
 - **Статус:** NOT STARTED.
 
@@ -757,7 +778,7 @@ Comments/reactions depend on the post lifecycle and server authorization, not th
 ## 19. Критерии приёмки
 
 - Every endpoint has request/response/error contract and backend authorization.
-- Owner and visibility checks run server-side for every object.
+- Owner and access-policy checks run server-side for every object; новые visibility semantics не вводятся без решения владельца.
 - Public profile DTO is separate from authenticated own-account DTO.
 - Email, phone, backup email, provider details, platform role, device/session information and security hints never appear in public social DTO.
 - Author and creation timestamp are server-owned.
@@ -782,8 +803,9 @@ For a closed task preserve ID, original description, acceptance criteria, PR lin
 
 | Дата | Task ID | Событие | PR | Merge SHA | Тесты | Статус |
 |---|---|---|---|---|---|---|
-| 2026-11-26 | AUDIT-BASELINE | Read-only source review of main SHA 216c6d9 | — | — | NOT RUN | COMPLETE |
-| 2026-11-26 | SCOPE-001 | Product scope conflict identified | — | — | Document review | BLOCKED ON OWNER DECISION |
+| 2026-11-26 | AUDIT-BASELINE | Read-only source review of code snapshot 216c6d9; revalidated against current main 920e2a2 (two intervening commits changed only development rules) | — | — | NOT RUN | COMPLETE |
+| 2026-11-26 | PRIVACY-DECISION-V | Owner selected variant В: preserve current privacy model without policy changes | — | — | Owner decision recorded | COMPLETE |
+| 2026-11-26 | SCOPE-001 | Beta 1.0 feed scope vs approved WBS v1.1 remains unresolved; privacy choice does not change release scope | — | — | Document review | BLOCKED ON OWNER DECISION |
 | — | All implementation tasks | No implementation performed | — | — | NOT RUN | NOT STARTED |
 
 ## 22. Ограничения и что не выполнялось
@@ -800,7 +822,8 @@ For a closed task preserve ID, original description, acceptance criteria, PR lin
 
 Этот документ подготовлен в отдельной ветке от exact main SHA:
 
-- Base: `main` / `216c6d9ea4e825182d3fc94b7aa6d9841e0ad250`
+- Source snapshot: `main` / `216c6d9ea4e825182d3fc94b7aa6d9841e0ad250`
+- Current main revalidation: `920e2a2ecef244c925061348eb68c8b09fe63922` (two documentation-only commits ahead of source snapshot)
 - Task branch: `audit/feed-profile-beta1-main-216c6d9-20261126`
 - Intended path: `development/FEED-PROFILE-BETA-1.0-IMPLEMENTATION-PLAN.md`
 - Change scope: one documentation file only.
