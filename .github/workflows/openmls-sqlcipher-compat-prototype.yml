@@ -43,6 +43,8 @@ jobs:
         run: cargo install --locked --version 0.23.0 cargo-audit
 
       - name: Audit the candidate lockfile with RustSec
+        id: rustsec_audit
+        continue-on-error: true
         run: cargo audit --file development/prototypes/openmls-0.10-sqlcipher-compat/current-reader/Cargo.lock
 
       - name: Upload generated candidate dependency lockfile
@@ -70,3 +72,9 @@ jobs:
             git commit -m "test: record OpenMLS 0.10 SQLCipher compatibility lockfile"
             git push origin "HEAD:${GITHUB_REF_NAME}"
           fi
+
+      - name: Keep RustSec findings blocking after preserving test evidence
+        if: steps.rustsec_audit.outcome == 'failure'
+        run: |
+          echo "::error::Candidate RustSec audit found advisories; generated lockfile and evidence were preserved for review."
+          exit 1
