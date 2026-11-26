@@ -622,43 +622,43 @@ The repository contains both `inone-development-archive-0.6.0/engine` and `inone
 - **Зависимости:** SCOPE-001 COMPLETE, FEED-PRIVACY-001, PROFILE-PRIVACY-001.
 - **Тесты:** BOLA/IDOR matrix for post/comment/reaction/media; cross-account/device; negative cases for the exact approved access rules. Block/private cases only if separately approved.
 - **Acceptance:** все direct API negative cases deny access; no UI-only authorization.
-- **Релиз:** Beta 1.0 if feed approved; otherwise before Beta 2.0 feed.
+- **Релиз:** Beta 1.0.
 - **Статус:** NOT STARTED.
 
 ### FEED-CORE-001 — Minimal post lifecycle
 
-- **Приоритет:** P1 if Beta 1.0 feed approved.
+- **Приоритет:** P1 — Beta 1.0.
 - **Описание:** define supported post types/fields, validation, idempotent create, edit/delete and ownership semantics using current backend architecture.
 - **Файлы:** future domain modules, `engine/src/server.js`, `engine/src/schema.sql`, migrations, typed DTO/repository.
 - **Ожидаемое изменение:** create/read/edit/delete of own publication.
 - **Зависимости:** SCOPE-001 COMPLETE, FEED-PRIVACY-001, FEED-SEC-001.
 - **Тесты:** create, malformed/oversized input, duplicate retry, foreign edit/delete, concurrent edit/delete, deleted URL/API.
 - **Acceptance:** server owns authorId/timestamps; transaction keeps post and relations consistent.
-- **Релиз:** conditional Beta 1.0; otherwise Beta 2.0.
+- **Релиз:** Beta 1.0.
 - **Статус:** NOT STARTED.
 
 ### FEED-LIST-001 — Own publications and global feed
 
-- **Приоритет:** P1 if Beta 1.0 feed approved.
+- **Приоритет:** P1 — Beta 1.0.
 - **Описание:** implement own posts list and global/news feed only to the exact product rules approved; no invented ranking.
 - **Файлы:** future feed query/service, indexes, typed repository, Flutter feed screens.
 - **Ожидаемое изменение:** authorized feed query, deterministic ordering and refresh.
 - **Зависимости:** FEED-CORE-001, FEED-SEC-001.
 - **Тесты:** own list, только разрешённая по утверждённой модели выдача, удалённые записи исключены, duplicates, new post refresh. Не добавлять private/blocked cases без отдельного утверждённого правила.
 - **Acceptance:** no unauthorized rows and deterministic ordering.
-- **Релиз:** conditional Beta 1.0; otherwise Beta 2.0.
+- **Релиз:** Beta 1.0.
 - **Статус:** NOT STARTED.
 
 ### FEED-PAGINATION-001 — Stable cursor and ordering
 
-- **Приоритет:** P1 for release feed; P2 otherwise.
+- **Приоритет:** P1 — Beta 1.0 release feed.
 - **Описание:** use stable composite cursor (server timestamp + unique ID or equivalent) and explicit tie-breaker; avoid deep unbounded offset.
 - **Файлы:** feed query, schema indexes, repository and pagination state.
 - **Ожидаемое изменение:** stable pages across inserts/deletes.
 - **Зависимости:** FEED-LIST-001.
 - **Тесты:** concurrent inserts, equal timestamps, deleted rows, repeated cursor, boundary rows.
 - **Acceptance:** no skipped/duplicated rows for a stable traversal under documented consistency semantics.
-- **Релиз:** conditional Beta 1.0; otherwise Beta 2.0.
+- **Релиз:** Beta 1.0.
 - **Статус:** NOT STARTED.
 
 ### FEED-MEDIA-001 — Secure post attachment lifecycle
@@ -711,14 +711,14 @@ The repository contains both `inone-development-archive-0.6.0/engine` and `inone
 
 ### FLUTTER-FEED-001 — Native feed UI integration
 
-- **Приоритет:** P1 if feed is approved for Beta 1.0.
+- **Приоритет:** P1 — Beta 1.0.
 - **Описание:** build native Dart screens only after verified backend contracts; add loading/empty/error/refresh/pagination and post composer.
 - **Файлы:** `mobile/lib/ui_dart_source/screens/main/`, `mobile/lib/core/data/`, `mobile/lib/app/inone_mobile_app.dart`.
 - **Ожидаемое изменение:** real typed API integration; no mock/demo production data.
 - **Зависимости:** FEED-CORE-001, FEED-LIST-001, FEED-PAGINATION-001, FEED-MEDIA-001.
 - **Тесты:** repository, widget, state, refresh, pagination and offline tests.
 - **Acceptance:** complete Flutter → API → DB → Flutter path proven; no HTML/WebView restoration.
-- **Релиз:** conditional Beta 1.0; otherwise Beta 2.0.
+- **Релиз:** Beta 1.0.
 - **Статус:** NOT STARTED.
 
 ### FLUTTER-PROFILE-001 — Stabilize profile read and future edit screens
@@ -742,7 +742,7 @@ The repository contains both `inone-development-archive-0.6.0/engine` and `inone
 - **Зависимости:** FEED-LIST-001, FEED-PAGINATION-001.
 - **Тесты:** PostgreSQL query plan and representative data volume tests.
 - **Acceptance:** query plan and response-size budgets documented.
-- **Релиз:** Beta 1.0 minimum capacity if feed approved; advanced scaling Beta 2.0.
+- **Релиз:** Beta 1.0 minimum capacity; advanced scaling Beta 2.0.
 - **Статус:** NOT STARTED.
 
 ### FEED-TESTS-001 — Automated social security/regression matrix
