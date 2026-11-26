@@ -76,7 +76,6 @@ async function start(sender) {
   const carol = await ChatClient.create(base, CAROL, 'C_PHONE', PW);
   const bobTab = await ChatClient.loginFromNewDevice(base, BOB, PW, 'B_TAB', bob);
   await alice.createRoom(ROOM, [ALICE, BOB]);
-  await alice.raw('POST', `/mls/groups/${enc(ROOM)}/commits`, { epoch: 0, commit: b64('FIRST'), changes: { adds: [], removes: [] } });
   return {
     srv, base, alice, bob, carol, bobTab, pushDelivery,
     flush: () => pushDelivery.tick(),
