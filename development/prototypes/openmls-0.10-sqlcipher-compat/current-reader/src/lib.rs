@@ -1,6 +1,7 @@
 use std::{path::Path, sync::Arc};
 
 use openmls::prelude::*;
+use openmls_basic_credential::SignatureKeyPair;
 use openmls_libcrux_crypto::CryptoProvider as LibcruxCrypto;
 use openmls_sqlite_storage::{Codec, Connection, SqliteStorageProvider};
 use openmls_traits::crypto::OpenMlsCrypto;
@@ -106,19 +107,52 @@ mod tests {
             "group identifier must not appear in plaintext in the SQLCipher file"
         );
 
+        let public_key = std::fs::read(path.with_extension("signer.pub"))
+            .expect("read legacy signer public-key sidecar");
+
         let (group, cipher_version) = load_group(path).expect("load legacy group with candidate");
         assert_eq!(group.group_id().as_slice(), GROUP_ID);
         assert_eq!(group.epoch().as_u64(), 0);
         assert_eq!(group.members().count(), 1);
         assert!(!cipher_version.trim().is_empty());
+
+        // The private signing key remains inside SQLCipher storage. Read it with the
+        // candidate OpenMLS version and prove Libcrux can sign a new application message.
+        let signer = SignatureKeyPair::read(
+            group.provider().storage(),
+            &public_key,
+            CIPHERSUITE.signature_algorithm(),
+        )
+        .expect("read legacy signing key from candidate storage");
+        let signed_message = group
+            .create_message(group.provider(), &signer, b"legacy-key-to-candidate-message")
+            .expect("candidate Libcrux signs and encrypts with the legacy key");
+        assert!(!format!("{signed_message:?}").is_empty());
+        drop(signed_message);
+        drop(signer);
         drop(group);
 
-        // A second independent open proves that migration/readback survives process-style reopen.
+        // A second independent open proves both group state and signer persistence survive reopen.
         let (reopened, reopened_cipher) = load_group(path).expect("reopen and reload legacy group");
         assert_eq!(reopened.group_id().as_slice(), GROUP_ID);
         assert_eq!(reopened.epoch().as_u64(), 0);
         assert_eq!(reopened.members().count(), 1);
         assert_eq!(reopened_cipher, cipher_version);
+
+        let reopened_signer = SignatureKeyPair::read(
+            reopened.provider().storage(),
+            &public_key,
+            CIPHERSUITE.signature_algorithm(),
+        )
+        .expect("re-read legacy signing key after reopen");
+        let second_message = reopened
+            .create_message(
+                reopened.provider(),
+                &reopened_signer,
+                b"reopened-legacy-key-to-candidate-message",
+            )
+            .expect("candidate Libcrux signs and encrypts after reopen");
+        assert!(!format!("{second_message:?}").is_empty());
     }
 
     #[test]
