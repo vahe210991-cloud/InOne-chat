@@ -2893,7 +2893,7 @@ if (req.method === 'POST' && p === '/login') {
             : conversation?.userB === d.userId ? conversation.userA : null;
           if (!conversation || conversation.status !== 'provisioning' || conversation.createdBy !== d.userId
             || room.owner !== d.userId || counterpart !== targetUserId) {
-            return send(res, 403, { error: 'only the pending direct-chat creator may claim the paired recipient', code: 'direct_pair_only' });
+            return send(res, 403, { error: 'only the creator of a provisioning direct chat may claim the paired recipient', code: 'direct_pair_only' });
           }
         } else {
           const roomOrgId = await storage.roomOrg(roomId);
