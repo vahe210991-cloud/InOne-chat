@@ -1,7 +1,8 @@
 # InOne — утверждённая накопительная модель готовности Beta 1.0 и Beta 2.0
 
-**Версия:** 1.1 — WBS утверждена владельцем  
-**Дата утверждения:** 2026-11-09  
+**Версия:** 1.2 — WBS с утверждённым scope amendment Feed для Beta 1.0  
+**Первоначальное утверждение:** 2026-11-09 (v1.1)
+**Scope amendment:** 2026-11-26 (v1.2, Feed включён в Beta 1.0)  
 **Источник:** PR #34 full audit; владелец явно подтвердил оценку и поручил использовать её как обязательную базу всех последующих чатов/агентов.  
 **Актуальная ветка реализации UI:** `feat/beta1-ui-source-integration` (производная от `feat/claude-ui-beta1-integration`).
 
@@ -22,15 +23,35 @@
 
 | Направление | Вес | Реализация baseline | Проверка baseline | Критерии |
 |---|---:|---:|---:|---|
-| Backend/API и данные | 25% | 65% | 55% | independent InOne backend/DB, auth/recovery, profile, rooms, organizations, API contracts, migrations |
-| Frontend Flutter и утверждённый UI | 25% | 35% | 15% | auth/menu/chat/org/profile/settings screens, exact assets, states, navigation, localization |
-| API ↔ UI интеграция | 15% | 35% | 20% | typed transport/session/repositories, real screens, verified routes, writes/errors |
+| Backend/API и данные | 25% | 65% | 55% | independent InOne backend/DB, auth/recovery, profile, rooms, organizations, **publications/posts, own publications, authorized news feed, cursor query, post media authorization**, API contracts, migrations |
+| Frontend Flutter и утверждённый UI | 25% | 35% | 15% | auth/menu/chat/org/profile/**native Feed and post composer/list/detail screens**, settings, exact assets, states, navigation, localization |
+| API ↔ UI интеграция | 15% | 35% | 20% | typed transport/session/repositories, real screens, verified routes, **post CRUD/feed read/cursor/media integration**, writes/errors |
 | MLS, mobile security и storage | 20% | 35% | 25% | Rust/OpenMLS, Android/iOS FFI, Keychain/Keystore, encrypted durable local store, ACK/outbox, device recovery |
-| QA, CI и E2E | 10% | 50% | 45% | unit/integration, Flutter tests, golden, two-device E2E, regression/security |
+| QA, CI и E2E | 10% | 50% | 45% | unit/integration, Flutter tests, golden, two-device E2E, **Feed authorization/IDOR/idempotency/pagination/media regression**, regression/security |
 | DevOps и release readiness | 5% | 20% | 10% | staging, SMTP/SMS, deploy/proxy, backups, monitoring, release/rollback |
 | **ИТОГО Beta 1.0** | **100%** | **42%** | **31%** | исходный утверждённый baseline |
 
-**Baseline Beta 1.0:** 42% implementation / 31% verification. Каждая строка — отдельный поток работ; UI integration теперь начинается с Frontend и API↔UI criteria. Не повышать общий процент только за импорт исходников: импорт закрывает provenance/asset readiness, но не визуальную и функциональную приёмку.
+**Historical starting baseline Beta 1.0 (WBS v1.1, 2026-11-09):** 42% implementation / 31% verification. WBS v1.2 adds Feed scope on 2026-11-26 without changing domain weights or rewriting the historical v1.1 baseline. These percentages are **not a current progress measurement for the expanded scope**; do not report them as recalculated/current until a full evidence-based re-baseline is approved. Each row remains a separate workstream. Do not raise overall progress for imported source alone: import proves provenance/asset readiness, not visual or functional acceptance.
+
+### 1.1.1. Approved scope amendment — Feed in Beta 1.0 (2026-11-26)
+
+Owner decision: publications and news feed are included in Beta 1.0. This amendment supersedes the earlier Feed exclusion/conditional statements in WBS v1.1 and the 2026-11-26 audit plan.
+
+**Minimum Beta 1.0 Feed scope:**
+- Create, read, edit and delete the authenticated user's own publications; author and timestamps are server-owned.
+- Show the user's own publications and a news feed containing only publications the caller is authorized to read.
+- Stable deterministic cursor pagination, refresh, duplicate prevention and deleted-record exclusion.
+- Native Flutter/Dart Feed UI with loading, empty, error, offline and pagination states; typed repository/API integration.
+- Server-side object authorization, idempotency, rate/abuse controls, audit-safe logging and regression tests before release.
+- Post attachments only through validated, owner-bound and access-checked media lifecycle; no public/unprotected object URLs.
+
+**Explicitly not implied by this scope approval:** comments/reactions, follows/subscriptions, stories, ranking/recommendations, public-by-default profiles/posts, public media links, blocks, or new visibility preferences. These require separate product approval or remain later-stage candidates. Variant В remains binding: preserve existing privacy behavior; do not infer that the user-search relationship gate automatically defines post visibility.
+
+**Owner-approved visibility rule (2026-11-26):** every published item intentionally included in the general/news feed is readable by every registered and authenticated InOne account; anonymous access is denied. Attachments inherit the same eligibility and must be re-authorized at download. This rule does not expose profiles, drafts, private account data or other product domains. The audited source has no implementation yet; cross-account reads must remain disabled until server-side enforcement and regression tests pass. The existing `sharesOrgOrLink` user-search gate is not the feed authorization rule.
+
+**Weight handling:** existing six domain weights remain unchanged and sum to 100%. Feed work is allocated inside Backend/API (25%), Flutter (25%), API↔UI (15%), and QA/CI/E2E (10%). No new percentage or current progress score is invented by this amendment. A full progress re-baseline must be based on source inventory and executed acceptance evidence.
+
+**Version history:** v1.1 (2026-11-09) owner-approved starting WBS; v1.2 (2026-11-26) owner-approved Feed Beta 1.0 scope amendment, with weights and historical baseline preserved.
 
 ## 2. Beta 2.0 — утверждённая предварительная WBS
 

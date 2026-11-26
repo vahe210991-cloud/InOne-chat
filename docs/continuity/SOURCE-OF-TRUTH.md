@@ -1,15 +1,27 @@
+# Latest source-of-truth addendum — Feed visibility owner decision (2026-11-26)
+
+- Owner-approved rule: every published item intentionally included in the general/news feed is readable by every registered and authenticated InOne account. Anonymous access is denied.
+- Attached media inherits the same rule and must be re-authorized on every download. IDs/URLs are not credentials.
+- This is a feed-publication-only rule. Privacy variant В remains binding for profiles, drafts, private account data and other domains; no public-profile, block/follow or subscription model is authorized.
+- `FEED-PRIVACY-001`: owner decision approved; ready for implementation. Current source still lacks policy enforcement. Keep cross-account reads disabled until server-side implementation and security regression tests pass.
+- Documentation update is on PR #172 (draft, unmerged); no application code or tests changed.
+
+---
+
 # Latest source-of-truth addendum — 2026-11-26
 
-Fetch the live `main` branch before any further work. The dated header below (2026-11-23) is historical and is superseded for current FEED/PROFILE status by this addendum and [CURRENT-STATE.md](CURRENT-STATE.md).
+Fetch live `main` before any further work. This addendum supersedes older Feed scope statements.
 
-- FEED/PROFILE source audit snapshot: `216c6d9ea4e825182d3fc94b7aa6d9841e0ad250`.
-- Source revalidation: main `920e2a2ecef244c925061348eb68c8b09fe63922`; two intervening commits were development-rule documentation only, with no FEED/PROFILE product-source changes.
-- Plan initial publication commit: `8260beb7070d959dce17ee423e2768dbea4399c9`; follow-up publication-record correction: `9166a82448d2e06847e7212982aeecaf0acb9f19`; current plan blob: `08b1f984a3ded0543d5c20670c9b4e1d5d6e07ab`.
-- Audit report: [2026-11-26 FEED / PROFILE audit](../../development/reports/2026-11-26-feed-profile-beta1-audit.md).
+- FEED/PROFILE source audit snapshot: `216c6d9ea4e825182d3fc94b7aa6d9841e0ad250`; source revalidation: main `920e2a2ecef244c925061348eb68c8b09fe63922`.
 - Implementation plan: [FEED-PROFILE-BETA-1.0-IMPLEMENTATION-PLAN.md](../../development/FEED-PROFILE-BETA-1.0-IMPLEMENTATION-PLAN.md).
-- Owner-approved privacy variant В: preserve existing privacy behavior unchanged; no new public/private, visibility, block/follow semantics or expanded access.
-- Feed Beta 1.0 scope remains unresolved against WBS v1.1. Do not change the baseline without explicit owner approval.
-- No product source, API, schema/migration, workflow, configuration or Flutter UI was changed by this audit. Runtime and dynamic security tests were NOT RUN.
+- Audit report: [2026-11-26 FEED / PROFILE audit](../../development/reports/2026-11-26-feed-profile-beta1-audit.md).
+- Owner approved Feed in Beta 1.0 on 2026-11-26; WBS v1.2 scope amendment is recorded on the current documentation branch.
+- Existing WBS domain weights remain unchanged. Historical v1.1 baseline percentages are not a current progress measurement for the expanded scope.
+- Owner-approved privacy variant В remains binding. No public-by-default posts/profiles, new visibility preferences, block/follow semantics or expanded access.
+- Current code has no post visibility policy. `sharesOrgOrLink` is proven for user search only. Do not use it for post authorization without a separate owner decision. Until resolved, cross-account post/media reads remain blocked; own-post CRUD/list may proceed.
+- Minimum Beta 1.0 Feed: own post CRUD/list, authorized news feed, stable cursor pagination, native Flutter/Dart integration, server-side authorization and security regression tests. Comments/reactions and advanced social capabilities require separate approval.
+- FEED finding FP-001 is an unconditional P1 Beta 1.0 release blocker. Tests/builds/dynamic security/production/device acceptance have NOT RUN.
+- No product source, API, schema/migration, workflow, configuration or Flutter UI changed in the documentation-only scope amendment.
 
 ---
 

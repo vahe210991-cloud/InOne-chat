@@ -15,15 +15,15 @@
 - **PROFILE:** PARTIAL / READ-ONLY. Authenticated own-profile `GET /profile`, `PATCH /profile/locale`, typed DTO/repository, and native own-profile screen exist. General profile editing, other-user profile read, and avatar/cover binding are absent.
 - **MEDIA:** Generic file upload and signed-download infrastructure exists, including owner/device binding and room-membership checks. A profile/social media lifecycle does not exist.
 - **SECURITY:** Static source review did not establish a confirmed P0/P1 vulnerability in the reviewed current profile/file routes. This is not a dynamic penetration-test result.
-- **Privacy decision:** Owner approved variant В. Preserve the existing privacy model without changes. Do not add new public/private rules, visibility preferences, block/follow semantics, or wider access. Missing public-profile/feed policy is not permission to expose data.
-- **Release scope:** The approved WBS v1.1 includes Profile but does not include a dedicated Feed workstream. The strategic product direction mentions news feed and publications. Whether Feed enters Beta 1.0 remains an owner decision; do not change WBS weights or release scope without explicit approval.
+- **Privacy decision:** Owner-approved variant В remains binding for profiles and non-feed account data. The owner has separately approved a narrow feed rule: every published item intentionally included in the general/news feed is readable by every registered and authenticated InOne account; anonymous access is denied. Attachments inherit the same rule and are re-authorized at download. The audited code still has no implementation of this policy, so cross-account reads must remain disabled until server-side enforcement and regression tests pass. `sharesOrgOrLink` remains a user-search gate only and is not reused for feed authorization.
+- **Release scope:** Owner approved Feed in Beta 1.0 on 2026-11-26. WBS v1.2 adds Feed across existing workstreams without changing domain weights. Historical v1.1 percentages are not a current progress measurement for the expanded scope.
 
 ## 2. Findings and priorities
 
 | Priority | Count | Meaning |
 |---|---:|---|
 | P0 | 0 | No confirmed critical vulnerability/data-loss issue in reviewed paths |
-| P1 | 1 | FP-001: missing feed/posts subsystem, conditional release blocker only if Feed is approved for Beta 1.0 |
+| P1 | 1 | FP-001: missing Feed/posts subsystem, unconditional Beta 1.0 release blocker after owner scope approval |
 | P2 | 6 | Profile editing/public profile/media lifecycle, profile API regression matrix, comments/reactions, future avatar validation |
 | P3 | 1 | Profile statistics shown as placeholders |
 
@@ -43,12 +43,12 @@ If a future feature requires a privacy rule not present in the current approved 
 
 ## 4. Scope and verification
 
-- Source review covered the canonical Node/PostgreSQL backend, SQL schema/migrations, Flutter/Dart profile model/repository/screen wiring, API contract matrix, relevant tests, product decisions, WBS v1.1, repository rules, and related PR inventory.
+- Source review covered the canonical Node/PostgreSQL backend, SQL schema/migrations, Flutter/Dart profile model/repository/screen wiring, API contract matrix, relevant tests, product decisions, WBS v1.1, repository rules, and related PR inventory. The owner-approved Feed scope amendment is recorded in WBS v1.2.
 - Main advanced from source snapshot `216c6d9` to `920e2a2` by two documentation-only commits. The FEED/PROFILE source paths, API, schema, migrations, and Flutter implementation did not change in that interval.
 - **NOT RUN:** Node tests, PostgreSQL tests, Flutter/Dart tests or builds, Rust/OpenMLS tests, Android/iOS builds/device tests, production checks, dynamic BOLA/IDOR tests, load tests, destructive tests, and live penetration testing.
 - Existing test files were inventoried but were not treated as passing evidence.
 - No product source, SQL schema/migration, configuration, workflow, or Flutter screen was changed.
-- WBS v1.1 weights, baseline percentages, commercial policy, and release scope were not changed.
+- WBS v1.2 scope amendment preserves the existing domain weights and historical v1.1 baseline; no current progress percentage is recalculated. Commercial policy is unchanged.
 
 ## 5. Previous work reused
 
@@ -62,11 +62,11 @@ No implementation was repeated and no old HTML/WebView screen was restored.
 
 ## 6. Next actions
 
-1. Resolve `SCOPE-001`: explicitly decide whether minimum Feed/posts belongs in Beta 1.0 or remains Beta 2.0. Do not alter WBS v1.1 without approval.
-2. Complete `PROFILE-CORE-001`: add backend HTTP and Flutter regression coverage for authenticated own-profile read, locale, revoked device, DTO allowlist, and malformed response.
-3. Complete `PROFILE-PRIVACY-001`: protect current auth, relationship, owner/device, and room-membership boundaries without inventing new visibility semantics.
-4. If Feed is approved for Beta 1.0, version the WBS scope change first, then implement `FEED-SEC-001`, post lifecycle, list/cursor, media, and required security tests in dependency order.
-5. Keep public-profile, public media, blocks, follows, and new visibility controls blocked until a separate explicit product decision authorizes their semantics.
+1. Implement `FEED-PRIVACY-001` according to the owner-approved rule: every published item intentionally included in the general/news feed is readable by every registered and authenticated InOne account; anonymous access is denied. Apply the same rule to attached media at download. This does not expose profiles, drafts or private account data.
+2. Complete `PROFILE-CORE-001` and `PROFILE-PRIVACY-001`: add backend HTTP and Flutter regression coverage for authenticated own-profile read, locale, revoked device, DTO allowlist, and existing owner/device/room boundaries.
+3. Implement the Beta 1.0 Feed workstream in security-first order: `FEED-SEC-001`, `FEED-CORE-001`, `FEED-LIST-001`, `FEED-PAGINATION-001`, secure media as scoped, native Flutter integration, then the exact-SHA regression matrix.
+4. Keep comments/reactions and advanced social features out of the minimum scope unless separately approved.
+
 
 ## 7. Publication and hand-back
 

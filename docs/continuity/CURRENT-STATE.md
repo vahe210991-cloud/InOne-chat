@@ -1,31 +1,41 @@
-# Current state addendum — FEED / PROFILE audit (2026-11-26)
+# Current state addendum — owner-approved Feed visibility (2026-11-26)
 
-This addendum is newer than the historical post-PR #131 snapshot below. Fetch live `main` before further work; the FEED/PROFILE audit and its follow-up records were documentation-only.
+- Owner approved: every published item intentionally included in the general/news feed is readable by every registered and authenticated InOne account; anonymous access is denied.
+- Feed attachments inherit the same eligibility and must be re-authorized at download. IDs and URLs never grant access.
+- This is a narrow feed-publication rule. Privacy variant В remains binding for profiles, drafts, private account data and other domains. No public-profile, block/follow or subscription model is introduced.
+- `FEED-PRIVACY-001` is resolved at the product-decision level and READY FOR IMPLEMENTATION. The audited source still lacks the enforcement, so do not serve cross-account posts/media until server-side checks and regression tests pass.
+- Continue with `PROFILE-CORE-001`, `PROFILE-PRIVACY-001` and `FEED-SEC-001`, then post lifecycle/list/pagination/media/native Flutter and exact-SHA tests.
+- PR #172 remains documentation-only and draft until reviewed/merged. No code or tests were changed/run by this decision update.
 
-## FEED / PROFILE
+---
 
-- Source snapshot audited: `216c6d9ea4e825182d3fc94b7aa6d9841e0ad250`.
-- Revalidated main before publication: `920e2a2ecef244c925061348eb68c8b09fe63922`; the two commits since the source snapshot changed only development rules.
-- Implementation plan: [FEED-PROFILE-BETA-1.0-IMPLEMENTATION-PLAN.md](../../development/FEED-PROFILE-BETA-1.0-IMPLEMENTATION-PLAN.md).
+# Current state addendum — FEED / PROFILE (2026-11-26)
+
+This addendum supersedes older Feed scope statements below. Fetch live `main` before further work.
+
+## FEED / PROFILE audit and approved scope
+
+- Source audit snapshot: `216c6d9ea4e825182d3fc94b7aa6d9841e0ad250`; revalidated main before original publication: `920e2a2ecef244c925061348eb68c8b09fe63922`.
+- Audit plan: [FEED-PROFILE-BETA-1.0-IMPLEMENTATION-PLAN.md](../../development/FEED-PROFILE-BETA-1.0-IMPLEMENTATION-PLAN.md).
 - Audit report: [2026-11-26 FEED / PROFILE audit](../../development/reports/2026-11-26-feed-profile-beta1-audit.md).
-- Plan initial publication commit: `8260beb7070d959dce17ee423e2768dbea4399c9`; plan publication-record correction: `9166a82448d2e06847e7212982aeecaf0acb9f19`; current plan blob: `08b1f984a3ded0543d5c20670c9b4e1d5d6e07ab`.
-- Audit report initial publication: `e43632e0f1e78742f193793c0dc3558cc910b689`; report reference update: `06862d1458035c868ad01606bcb4dda50669a1e4`.
-- FEED/posts: not implemented or connected in the reviewed production source.
-- PROFILE: own-profile read and locale update exist; general edit, other-user profile API and avatar/cover binding are absent.
-- Generic file upload/download authorization exists; social/profile media lifecycle does not.
-- Owner-approved privacy variant В: preserve existing privacy behavior. No new public/private, visibility, block/follow semantics or expanded access. Missing policy does not imply public access.
-- Audit finding counts: P0 0; P1 1 conditional on Feed being approved for Beta 1.0; P2 6; P3 1. No confirmed P0/P1 security vulnerability was established by static review of existing profile/file routes.
-- Tests, builds, dynamic security testing, production checks and physical-device acceptance were NOT RUN. Do not infer PASS from test-file presence.
-- WBS v1.1, its percentages, product privacy policy and release boundaries are unchanged. Feed Beta 1.0 scope remains pending owner decision.
-- No product source, schema/migration, workflow, configuration or Flutter UI was changed.
+- Owner approved Feed in Beta 1.0 on 2026-11-26. WBS v1.2 scope amendment is prepared in the current documentation branch. Existing domain weights remain unchanged; historical v1.1 baseline 42%/31% is not a current progress measurement for expanded scope.
+- Minimum Beta 1.0 Feed: own publication CRUD/list, authorized news feed, stable cursor pagination, native Flutter/Dart integration, server-side authorization, idempotency and regression/security tests. Secure post media lifecycle applies where attachments are in the approved screen contract.
+- Owner-approved privacy variant В remains binding. No public-by-default posts/profiles or new visibility/block/follow controls are authorized.
+- **Outstanding privacy gate:** no post visibility policy exists in the audited source. `sharesOrgOrLink` is evidenced only for user search. Do not use it for post authorization without owner approval. Until then, do not return another user's post/media; own-post CRUD/list can proceed.
+- Comments/reactions and advanced social features are not automatically included in minimum Feed scope; separate approval required.
+- FEED finding FP-001 is an unconditional P1 Beta 1.0 release blocker. No implementation task is closed.
+- Profile: own-profile read and locale update exist; general edit, other-user profile API and avatar/cover binding are absent.
+- Audit finding counts remain P0 0, P1 1, P2 6, P3 1. No confirmed P0/P1 security vulnerability was established by static review of current profile/file paths.
+- Tests, builds, dynamic security testing, production checks and physical-device acceptance were NOT RUN. No application source, schema/migration, workflow, configuration or Flutter UI changed.
+- Product decision recorded in [DECISIONS.md](DECISIONS.md) §9; implementation tasks and gates are in the plan.
 
 ## Next FEED / PROFILE actions
 
-1. Resolve `SCOPE-001`: Feed in Beta 1.0 or Beta 2.0; do not alter WBS without explicit approval.
-2. Add and run current own-profile/auth/privacy regression tests under `PROFILE-CORE-001` and `PROFILE-PRIVACY-001`.
-3. Preserve existing relationship/owner/device/room access checks; do not invent new privacy semantics.
-4. If Feed is approved for Beta 1.0, version the WBS change first, then follow the plan's security-first task dependencies.
-5. Keep public-profile and public-media routes blocked until their required access policy is explicitly approved.
+1. Resolve `FEED-PRIVACY-001`: owner must approve exact cross-account post visibility semantics.
+2. Complete `PROFILE-CORE-001` and `PROFILE-PRIVACY-001` regression coverage for existing auth, DTO, relationship, owner/device and room boundaries.
+3. Implement own-post lifecycle, own list, cursor pagination and native Flutter integration in security-first order.
+4. Implement global feed only after the privacy gate is explicitly resolved.
+5. Keep comments/reactions and advanced social features out of the minimum scope unless separately approved.
 
 ---
 
