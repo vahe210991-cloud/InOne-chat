@@ -85,12 +85,12 @@ No tasks were closed or crossed out. No WBS percentage was recalculated.
 
 - Documentation PR: [#170](https://github.com/vahe210991-cloud/InOne-chat/pull/170), Draft / open / not merged.
 - Task branch: audit/account-organization-profiles-beta1-main-7d34b99-20261126.
-- PR creation head: b87ccb24fb6d200362974ab0f0f897add9f0903e. Subsequent documentation-only updates produced branch head 309a38e39952e83cfb36d17c9bdecf4a160fd923 at the last pre-publication verification; the PR head metadata remains authoritative.
+- PR creation head: b87ccb24fb6d200362974ab0f0f897add9f0903e. Subsequent documentation-only updates produced final branch head 91dd53d7b164579ca04266a7844f32d016bc0cdd at the last verification; the PR head metadata remains authoritative.
 - Merge SHA: pending; no merge is authorized.
 - Tests: NOT RUN.
 
 
-- PR #170 currently has seven GitHub Actions check runs queued on its exact head; no completed result is claimed. They include general repository workflows and are not a substitute for the profile-specific acceptance matrix.
+- PR #170 has seven GitHub Actions check runs queued on exact head 91dd53d7b164579ca04266a7844f32d016bc0cdd; no completed result is claimed. They include general repository workflows and are not a substitute for the profile-specific acceptance matrix.
 
 
 ## Remediation handoff — 2026-11-26
