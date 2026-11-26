@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   compatibility:
@@ -42,3 +42,18 @@ jobs:
             development/prototypes/openmls-0.10-sqlcipher-compat/current-reader/src/lib.rs
           if-no-files-found: error
           retention-days: 7
+
+      - name: Commit candidate lockfile and rustfmt output to the prototype branch
+        if: github.event_name == 'push'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add development/prototypes/openmls-0.10-sqlcipher-compat/current-reader/Cargo.lock
+          git add development/prototypes/openmls-0.10-sqlcipher-compat/legacy-writer/src/main.rs
+          git add development/prototypes/openmls-0.10-sqlcipher-compat/current-reader/src/lib.rs
+          if git diff --cached --quiet; then
+            echo "Candidate lockfile and formatted sources are already committed."
+          else
+            git commit -m "test: record OpenMLS 0.10 SQLCipher compatibility lockfile"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
