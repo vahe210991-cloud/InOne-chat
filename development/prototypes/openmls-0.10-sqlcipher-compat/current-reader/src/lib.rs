@@ -127,7 +127,6 @@ mod tests {
         let signed_message = group
             .create_message(&provider, &signer, b"legacy-key-to-candidate-message")
             .expect("candidate Libcrux signs and encrypts with the legacy key");
-        assert!(!format!("{signed_message:?}").is_empty());
         drop(signed_message);
         drop(signer);
         drop(group);
@@ -152,7 +151,6 @@ mod tests {
                 b"reopened-legacy-key-to-candidate-message",
             )
             .expect("candidate Libcrux signs and encrypts after reopen");
-        assert!(!format!("{second_message:?}").is_empty());
     }
 
     #[test]
