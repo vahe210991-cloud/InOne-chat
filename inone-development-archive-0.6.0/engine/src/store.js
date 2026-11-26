@@ -783,6 +783,10 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
     },
     async removeCrossOrgMemberships(orgX, orgY) {
       return inTransaction(async (c) => {
+        await c.query(
+          'SELECT room_id FROM rooms WHERE org_id = ANY($1::text[]) ORDER BY room_id FOR UPDATE',
+          [[orgX, orgY]],
+        );
         const { rows: mlsRooms } = await c.query(
           `SELECT DISTINCT r.room_id
              FROM room_members rm
