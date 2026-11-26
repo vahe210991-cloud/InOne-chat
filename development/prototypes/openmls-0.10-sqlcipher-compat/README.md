@@ -60,3 +60,13 @@ This remains a prerelease compatibility experiment. It is not a production depen
 ## RustSec audit integration
 
 The Stage 5 P0 workflow now discovers every tracked `Cargo.lock` in the checked-out PR tree (rather than auditing only a hard-coded list). This includes this prototype's candidate lockfile and records its default-feature dependency graph. Existing Stage 5 lockfiles are still audited independently and remain blocking until their dependency remediation is complete.
+
+## Extended signing-key compatibility test — 2026-11-26
+
+The next isolated test extends the read-only baseline. The legacy writer exports only the signer's public key to a sidecar fixture file; the private signing key remains in the encrypted OpenMLS storage. The candidate reader must:
+
+1. Read the legacy signing key from the SQLCipher-backed storage using the candidate OpenMLS API.
+2. Create a new application message with the candidate Libcrux provider and that legacy private key.
+3. Close and reopen the database, read the same signer again, and create a second message.
+
+This is a compatibility test only. The current candidate lockfile has a RustSec finding in the bundled SQLCipher source (sqlcipher-src 419.0.6, RUSTSEC-2026-0502 / CVE-2026-119375). It must be remediated before any production consideration. The newer libsqlite3-sys 0.40.0 line uses sqlcipher-src 420.0.0, but the current OpenMLS 0.10.0-rc.1 SQLite storage dependency resolves rusqlite 0.41.1; upgrading that dependency chain needs a separately validated compatibility change. The test must not be described as security-clean until the candidate audit passes.
