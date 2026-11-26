@@ -27,7 +27,7 @@ async function start() {
   await anna.createRoom(ROOM_A, [ANNA]);
   await boris.createRoom(ROOM_B, [BORIS]);
   await boris.addMember(ROOM_B, ANNA);
-  return { base, anna, boris, carol, stop: async () => { await new Promise((r) => srv.server.close(r)); await db?.close(); } };
+  return { base, store, anna, boris, carol, stop: async () => { await new Promise((r) => srv.server.close(r)); await db?.close(); } };
 }
 
 test('список комнат: свои комнаты с ролью; чужие не видны', async () => {
@@ -43,6 +43,34 @@ test('список комнат: свои комнаты с ролью; чужи
     assert.deepEqual(boris.rooms.map((r) => r.roomId), [ROOM_B], 'у Бориса только его комната');
     const carol = await s.carol.raw('GET', '/rooms/mine');
     assert.deepEqual(carol.rooms, [], 'посторонний не видит чужих комнат');
+  } finally {
+    await s.stop();
+  }
+});
+
+test('room list projects encrypted last activity and per-user unread count', async () => {
+  const s = await start();
+  try {
+    const firstSeq = await s.store.appendRoomEvent(
+      ROOM_B, BORIS, 'm.room.encrypted', { mls: 'ciphertext-boris' }, 1000,
+    );
+    const lastSeq = await s.store.appendRoomEvent(
+      ROOM_B, ANNA, 'm.room.encrypted', { mls: 'ciphertext-anna' }, 2000,
+    );
+
+    const beforeRead = await s.anna.raw('GET', '/rooms/mine');
+    const room = beforeRead.rooms.find((item) => item.roomId === ROOM_B);
+    assert.ok(room);
+    assert.equal(room.lastEventSeq, lastSeq);
+    assert.equal(room.lastEventAt, 2000);
+    assert.equal(room.unreadCount, 1, 'only the other participant message is unread');
+    assert.ok(firstSeq < lastSeq);
+
+    await s.anna.raw('POST', `/rooms/${enc(ROOM_B)}/read`, { upTo: `${lastSeq}` });
+    const afterRead = await s.anna.raw('GET', '/rooms/mine');
+    const readRoom = afterRead.rooms.find((item) => item.roomId === ROOM_B);
+    assert.equal(readRoom.unreadCount, 0, 'read marker clears the unread count');
+    assert.equal(readRoom.lastEventSeq, lastSeq, 'read marker does not change last activity');
   } finally {
     await s.stop();
   }
