@@ -490,6 +490,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           setState(() {
             _pendingLoginEmail = '';
             _pendingLoginPassword = '';
+            _pendingIdentityChallengeId = null;
             _screen = 'login';
           });
         }
@@ -513,6 +514,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           setState(() {
             _pendingLoginEmail = '';
             _pendingLoginPassword = '';
+            _pendingIdentityChallengeId = null;
             _screen = 'login';
           });
           _notice('Запрос подтверждения недействителен или истёк. Начните вход заново.');
