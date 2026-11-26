@@ -60,6 +60,22 @@ test('direct chats require no recipient approval and activate automatically thro
     assert.equal(resumed.status, 'provisioning');
     assert.equal(resumed.resumed, true, 'native MLS group initialization can resume the reserved direct room');
 
+    const setupCommit = await alice.raw('POST', `/mls/groups/${enc(opened.roomId)}/commits`, {
+      epoch: 0,
+      commit: b64('DIRECT-SETUP-SELF-UPDATE'),
+      changes: { adds: [], removes: [] },
+    });
+    assert.equal(setupCommit.epoch, 1);
+    const prematureMessage = Buffer.concat([
+      buildPrivateMessageHeader(opened.roomId, setupCommit.epoch),
+      Buffer.from('not-yet-deliverable'),
+    ]).toString('base64');
+    await assert.rejects(
+      alice.raw('POST', `/mls/groups/${enc(opened.roomId)}/messages`, { message: prematureMessage, kind: 'text' }),
+      (error) => error.status === 409 && error.message.includes('direct_not_active'),
+      'a provisioning direct room must not falsely acknowledge a message before the paired Welcome commit',
+    );
+
     await bob.raw('POST', '/mls/key-packages', { packages: [keyPackage('B_PHONE')] });
     await bobTablet.raw('POST', '/mls/key-packages', { packages: [keyPackage('B_TABLET')] });
     const claimId = 'direct-chat-claim-bob-0001';
