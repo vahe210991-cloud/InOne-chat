@@ -116,9 +116,9 @@ fn direct_messages_are_delivered_without_recipient_approval() {
     alice.create_room(&room).unwrap();
     alice.invite(&room, "@bob:inone.test").unwrap();
 
-    // Sync processes the MLS Welcome; this is cryptographic provisioning, not consent.
-    assert!(bob.sync().unwrap().is_empty());
-    assert!(bob_tablet.sync().unwrap().is_empty());
+    // Bob stays offline while Alice sends the first message. On the next sync,
+    // each device processes its MLS Welcome and then reads the queued ciphertext.
+    // No recipient approval action exists or is needed.
     alice.send_text(&room, "первое личное сообщение").unwrap();
     assert_eq!(texts(&bob.sync().unwrap()), vec!["первое личное сообщение"]);
     assert_eq!(texts(&bob_tablet.sync().unwrap()), vec!["первое личное сообщение"]);
