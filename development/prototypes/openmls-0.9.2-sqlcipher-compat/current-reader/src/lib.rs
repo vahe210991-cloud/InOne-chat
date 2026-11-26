@@ -204,13 +204,16 @@ mod tests {
     }
 
     fn in_memory_provider() -> CandidateProvider<openmls_rust_crypto::RustCrypto> {
-        let mut connection = Connection::open(":memory:").expect("open in-memory SQLCipher database");
+        let mut connection =
+            Connection::open(":memory:").expect("open in-memory SQLCipher database");
         connection
             .pragma_update(None, "key", format!("x'{TEST_KEY_HEX}'"))
             .expect("apply SQLCipher key");
         {
             let mut migrations = SqliteStorageProvider::<JsonCodec, _>::new(&mut connection);
-            migrations.run_migrations().expect("migrate in-memory MLS storage");
+            migrations
+                .run_migrations()
+                .expect("migrate in-memory MLS storage");
         }
         let connection = Arc::new(connection);
         CandidateProvider {
@@ -226,7 +229,9 @@ mod tests {
 
         let alice_signer =
             SignatureKeyPair::new(CIPHERSUITE.signature_algorithm()).expect("create Alice signer");
-        alice_signer.store(alice_provider.storage()).expect("persist Alice signer");
+        alice_signer
+            .store(alice_provider.storage())
+            .expect("persist Alice signer");
         let alice_credential = CredentialWithKey {
             credential: BasicCredential::new(b"inone-candidate-alice".to_vec()).into(),
             signature_key: alice_signer.to_public_vec().into(),
@@ -236,17 +241,15 @@ mod tests {
             .use_ratchet_tree_extension(true)
             .max_past_epochs(16)
             .build();
-        let mut alice_group = MlsGroup::new(
-            &alice_provider,
-            &alice_signer,
-            &config,
-            alice_credential,
-        )
-        .expect("create Alice group");
+        let mut alice_group =
+            MlsGroup::new(&alice_provider, &alice_signer, &config, alice_credential)
+                .expect("create Alice group");
 
         let bob_signer =
             SignatureKeyPair::new(CIPHERSUITE.signature_algorithm()).expect("create Bob signer");
-        bob_signer.store(bob_provider.storage()).expect("persist Bob signer");
+        bob_signer
+            .store(bob_provider.storage())
+            .expect("persist Bob signer");
         let bob_credential = CredentialWithKey {
             credential: BasicCredential::new(b"inone-candidate-bob".to_vec()).into(),
             signature_key: bob_signer.to_public_vec().into(),
@@ -277,7 +280,11 @@ mod tests {
         assert_eq!(bob_group.members().count(), 2);
 
         let alice_message = alice_group
-            .create_message(&alice_provider, &alice_signer.signer(alice_provider.crypto()), b"alice-to-bob")
+            .create_message(
+                &alice_provider,
+                &alice_signer.signer(alice_provider.crypto()),
+                b"alice-to-bob",
+            )
             .expect("Alice encrypts application message");
         let bob_received = bob_group
             .process_message(&bob_provider, alice_message)
@@ -288,7 +295,11 @@ mod tests {
         ));
 
         let bob_message = bob_group
-            .create_message(&bob_provider, &bob_signer.signer(bob_provider.crypto()), b"bob-to-alice")
+            .create_message(
+                &bob_provider,
+                &bob_signer.signer(bob_provider.crypto()),
+                b"bob-to-alice",
+            )
             .expect("Bob encrypts application message");
         let alice_received = alice_group
             .process_message(&alice_provider, bob_message)
