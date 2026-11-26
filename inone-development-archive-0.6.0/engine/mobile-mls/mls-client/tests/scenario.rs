@@ -73,6 +73,43 @@ fn login(engine: &Engine, keys: &MemoryKeyStore, user: &str, device: &str, file:
     connect(&engine.base, user, PW, device, file, keys).expect("вход")
 }
 
+fn open_direct_room(engine: &Engine, creator: &Client, peer_user_id: &str) -> String {
+    let token = creator.access_token_snapshot().expect("access token snapshot");
+    let response = ureq::post(&format!("{}/direct-chats/open", engine.base))
+        .set("Authorization", &format!("Bearer {token}"))
+        .send_json(serde_json::json!({ "userId": peer_user_id }))
+        .expect("create or open direct conversation");
+    let payload: serde_json::Value = response.into_json().expect("direct conversation response");
+    assert_eq!(payload["status"], "provisioning");
+    assert_eq!(payload["created"], true);
+    assert_eq!(payload["isCreator"], true);
+    payload["roomId"].as_str().expect("opaque room ID").to_string()
+}
+
+#[test]
+fn direct_messages_are_delivered_without_recipient_approval() {
+    let engine = start_engine();
+    let keys = MemoryKeyStore::default();
+    let (alice_db, bob_db) = (db("alice-direct"), db("bob-direct"));
+    let mut alice = login(&engine, &keys, "@alice:inone.test", "A_DIRECT", &alice_db);
+    let mut bob = login(&engine, &keys, "@bob:inone.test", "B_DIRECT", &bob_db);
+
+    // The recipient publishes KeyPackages automatically as part of device readiness.
+    // No request is presented to Bob and there is no accept/reject operation.
+    bob.ensure_key_packages(10).unwrap();
+    let room = open_direct_room(&engine, &alice, "@bob:inone.test");
+    alice.create_room(&room).unwrap();
+    alice.invite(&room, "@bob:inone.test").unwrap();
+
+    // Sync processes the MLS Welcome; this is cryptographic provisioning, not consent.
+    assert!(bob.sync().unwrap().is_empty());
+    alice.send_text(&room, "первое личное сообщение").unwrap();
+    assert_eq!(texts(&bob.sync().unwrap()), vec!["первое личное сообщение"]);
+
+    bob.send_text(&room, "ответ без подтверждения запроса").unwrap();
+    assert_eq!(texts(&alice.sync().unwrap()), vec!["ответ без подтверждения запроса"]);
+}
+
 #[test]
 fn offline_member_catches_up_after_restart_and_new_member_reads_from_join() {
     let engine = start_engine();
