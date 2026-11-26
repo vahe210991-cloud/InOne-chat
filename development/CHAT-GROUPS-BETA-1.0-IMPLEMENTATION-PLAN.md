@@ -690,6 +690,7 @@ The owner clarified the intended Beta 1.0 behavior:
 | Legacy member removal | `DELETE /rooms/:roomId/members/:userId` is fail-closed with `409 mls_commit_required`; membership removal must use MLS Remove Commit | Code present; tests pending |
 | Legacy member addition | `POST /rooms/:roomId/members` is fail-closed with `409 mls_commit_required`; addition must use MLS Add Commit and per-device Welcome | Code present; tests pending |
 | Direct conversation data | Migration `0036-direct-conversations`; canonical unordered pair, unique constraint, private non-organization room, `provisioning/active` states | Code present; PostgreSQL migration test pending |
+| Chat-list summary | Server returns encrypted last-event cursor/time and per-user unread count; Flutter renders time/unread filter and clears badge after persisted read marker; no plaintext is projected | Code and regression tests present; not run |
 | Direct create-or-open | Authenticated `POST /direct-chats/open`; opaque room ID; same room returned for either side of the pair | Code present; concurrency test pending |
 | MLS provisioning | Only the paired recipient can be claimed and added; direct membership activates only with the claimed Add Commit/Welcome | Code present; end-to-end test pending |
 | Recipient experience | Flutter DTO and UI treat provisioning as internal; no accept/reject action or approval prompt | Code present; Flutter tests pending |
