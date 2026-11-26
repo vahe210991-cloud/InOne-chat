@@ -257,4 +257,63 @@ void main() {
       session.dispose();
     }
   });
+  test('logout rotates an expired access token before revoking the server session', () async {
+    String? persistedRefreshToken;
+    var logoutCalls = 0;
+    var refreshCalls = 0;
+    final client = MockClient((request) async {
+      if (request.url.path == '/login') {
+        return http.Response(
+          jsonEncode({'token': 'access-1', 'refreshToken': 'refresh-1'}),
+          200,
+        );
+      }
+      if (request.url.path == '/logout') {
+        logoutCalls++;
+        if (request.headers['authorization'] == 'Bearer access-1') {
+          return http.Response('{"error":"expired"}', 401);
+        }
+        return http.Response('{}', 200);
+      }
+      if (request.url.path == '/token/refresh') {
+        refreshCalls++;
+        expect(
+          (jsonDecode(request.body) as Map<String, dynamic>)['refreshToken'],
+          'refresh-1',
+        );
+        return http.Response(
+          jsonEncode({'token': 'access-2', 'refreshToken': 'refresh-2'}),
+          200,
+        );
+      }
+      return http.Response('{}', 404);
+    });
+    final session = InOneSession(
+      baseUrl: 'https://api.inone.test',
+      httpClient: client,
+      readDeviceId: () async => 'device-logout-refresh',
+      writeDeviceId: (_) async {},
+      readMlsUserId: () async => null,
+      writeMlsUserId: (_) async {},
+      deleteMlsUserId: () async {},
+      readRefreshToken: () async => persistedRefreshToken,
+      writeRefreshToken: (value) async { persistedRefreshToken = value; },
+      deleteRefreshToken: () async { persistedRefreshToken = null; },
+      readLocale: () async => null,
+      writeLocale: (_) async {},
+      readLocaleSyncPending: () async => 'false',
+      writeLocaleSyncPending: (_) async {},
+    );
+    await session.login(
+      email: 'alice@example.test',
+      password: 'correct-password',
+    );
+    await session.logout();
+
+    expect(logoutCalls, 2);
+    expect(refreshCalls, 1);
+    expect(persistedRefreshToken, isNull);
+    session.dispose();
+  });
+
 }
