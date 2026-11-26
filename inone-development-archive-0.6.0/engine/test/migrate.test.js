@@ -20,6 +20,19 @@ async function assertOrgRequestDocumentMetadata(pool) {
   assert.deepEqual(rows.map((row) => row.column_name), ['filename', 'mime_type']);
 }
 
+async function assertRecoveryIdentityChallengeSchema(pool) {
+  const { rows } = await pool.query(
+    "SELECT column_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'recovery' AND column_name IN ('identity_code_expires_at', 'identity_device_id', 'identity_challenge_id', 'identity_locked_until', 'identity_last_sent_at') ORDER BY column_name",
+  );
+  assert.deepEqual(rows.map((row) => row.column_name), [
+    'identity_challenge_id',
+    'identity_code_expires_at',
+    'identity_device_id',
+    'identity_last_sent_at',
+    'identity_locked_until',
+  ]);
+}
+
 async function isolatedPool() {
   const admin = new pg.Pool({ connectionString: URL_, max: 1 });
   const schema = `t_mig_${randomBytes(6).toString('hex')}`;
@@ -42,6 +55,7 @@ test('новая база создаётся из schema.sql и получает
     const { rows } = await db.pool.query('SELECT version FROM schema_migrations ORDER BY version');
     assert.deepEqual(rows.map((r) => r.version), listMigrations());
     await assertOrgRequestDocumentMetadata(db.pool);
+    await assertRecoveryIdentityChallengeSchema(db.pool);
     assert.deepEqual(await migrate(db.pool), [], 'повторный запуск ничего не меняет');
   } finally {
     await db.close();
@@ -64,6 +78,7 @@ test('старая база из выпуска alpha.21 обновляется,
     assert.deepEqual(room, { owner: '@alice', visibility: 'private', join_policy: 'approval' });
     assert.equal((await db.pool.query("SELECT to_regclass('group_assets') IS NOT NULL AS ok")).rows[0].ok, true);
     await assertOrgRequestDocumentMetadata(db.pool);
+    await assertRecoveryIdentityChallengeSchema(db.pool);
   } finally {
     await db.close();
   }
