@@ -635,9 +635,9 @@ Static review не доказал IDOR/BOLA на own-profile GET, выдачу e
 |---|---:|---|
 | P0 | 1 | Confirmed MLS/server membership consistency defect |
 | P1 | 2 | Missing guest profile capabilities; conditional on approved Beta 1.0 scope |
-| P2 | 7 | Missing editing/media/transfer/lifecycle and test coverage |
+| P2 | 8 | Missing editing/media/transfer/lifecycle and test coverage |
 | P3 | 1 | Placeholder presentation |
-| **Total** | **11** | P1 are functional gaps, not confirmed exploitable vulnerabilities |
+| **Total** | **12** | P1 are functional gaps, not confirmed exploitable vulnerabilities |
 
 ## 14. Разделение Beta 1.0 / Beta 2.0
 
