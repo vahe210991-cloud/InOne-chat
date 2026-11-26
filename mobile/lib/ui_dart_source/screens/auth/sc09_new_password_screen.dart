@@ -86,6 +86,7 @@ class _InOneNewPasswordScreenState extends State<InOneNewPasswordScreen>
                 name: 'newPassword',
                 label: 'Նոր գաղտնաբառ',
                 obscure: true,
+                maxLength: 128,
                 autofillHints: const [AutofillHints.newPassword],
                 textInputAction: TextInputAction.next,
               ),
