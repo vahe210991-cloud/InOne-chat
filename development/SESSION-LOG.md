@@ -1,3 +1,13 @@
+## 2026-11-26 — Owner approved Feed in Beta 1.0
+
+- Owner confirmed: publications/news feed are part of Beta 1.0. This supersedes the earlier conditional scope note in the FEED/PROFILE audit.
+- Created isolated documentation branch `docs/feed-beta1-scope-approval-20261126` from main `7d34b99fcc026a828b838e211d039c575aeace1d`.
+- Prepared WBS v1.2 scope amendment: Feed is mapped into existing Backend/API, Flutter, API↔UI and QA/CI/E2E workstreams. Existing domain weights are unchanged. Historical v1.1 baseline 42%/31% is preserved as a historical starting point and is not claimed as current progress for expanded scope.
+- Updated the FEED/PROFILE plan: SCOPE-001 is COMPLETE; FP-001 is an unconditional P1 Beta 1.0 release blocker; minimum Feed scope is own-post CRUD/list, authorized news feed, deterministic cursor pagination, native Flutter/Dart integration, server-side authorization, idempotency and security regression tests. Comments/reactions and advanced social features are not assumed to be in the minimum scope.
+- Privacy variant В remains binding. The audited backend has no post visibility policy. The existing `sharesOrgOrLink` gate is proven for user search only and cannot be silently reused for post visibility. Cross-account feed reads remain blocked until a precise owner-approved access rule is recorded. Own-post CRUD/list may proceed independently.
+- Recorded the product decision in `docs/continuity/DECISIONS.md` §9 and updated the audit report, development index and WBS. Documentation-only branch; no product code/schema/migrations/UI/workflows changed. No tests/builds run.
+- **Outstanding owner input:** specify who may read another user's post in the general feed. Until then, no cross-account post data may be returned.
+
 ## 2026-11-26 — FEED / PROFILE Beta 1.0 audit and plan published
 
 - Audited publications/news feed and personal profile against source snapshot `216c6d9ea4e825182d3fc94b7aa6d9841e0ad250`; revalidated against main `920e2a2ecef244c925061348eb68c8b09fe63922`. The two intervening main commits changed only development rules, not FEED/PROFILE source, contracts, schema or Flutter files.
