@@ -1,3 +1,16 @@
+
+## 2026-11-26 — Direct chats: no recipient approval; automatic MLS provisioning
+
+- Owner clarified that personal messages are delivered without recipient acceptance. A recipient must never be shown an accept/reject request for a direct message.
+- Direct-chat `provisioning` is an internal cryptographic state only. The sender initializes Engine B, claims KeyPackages for all active recipient devices, and submits the MLS Add Commit with per-device Welcome. The recipient is added automatically after server acceptance of that commit.
+- Added canonical direct conversation pair storage, migration `0036-direct-conversations.sql`, authenticated create-or-open API, pair-only KeyPackage claim/Add Commit authorization, and message-delivery regression coverage.
+- Updated Flutter direct conversation DTO and UI wording to remove recipient-approval semantics. Added per-device KeyPackage reserve maintenance after authenticated app loading and app resume.
+- Added migration schema assertions and Flutter DTO tests. Tests/builds have not been run; do not claim acceptance until GitHub Actions verifies one exact SHA.
+- MLS native feature flag remains disabled by default. No merge without explicit owner approval.
+- Detailed plan: `development/CHAT-GROUPS-BETA-1.0-IMPLEMENTATION-PLAN.md`; progress report: `development/reports/2026-11-26-chat-groups-beta1-implementation-progress.md`.
+
+---
+
 ## 2026-11-24 — CTO Beta 1.0 security remediation roadmap recorded
 
 - Added authoritative staged plan: `development/roadmaps/2026-11-24-beta1-cto-security-remediation-roadmap.md`.
