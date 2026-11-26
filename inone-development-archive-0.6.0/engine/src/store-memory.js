@@ -444,6 +444,7 @@ export function createMemoryStore({ pinPepper }) {
       }
       const roomIds = [...rooms.entries()].filter(([, room]) => room.orgId === orgId && room.members.has(target)).map(([roomId]) => roomId).sort();
       if (roomIds.length) return { ok: false, reason: 'mls_removal_required', roomIds };
+      for (const room of rooms.values()) if (room.orgId === orgId) room.joinRequests.delete(target);
       members.delete(target);
       adminActions.push({ orgId, actor, action, target, detail: targetRole, at });
       return { ok: true, role: targetRole };
@@ -461,6 +462,7 @@ export function createMemoryStore({ pinPepper }) {
     removeOrgMember(orgId, userId) {
       const roomIds = [...rooms.entries()].filter(([, room]) => room.orgId === orgId && room.members.has(userId)).map(([roomId]) => roomId).sort();
       if (roomIds.length) return { ok: false, reason: 'mls_removal_required', roomIds };
+      for (const room of rooms.values()) if (room.orgId === orgId) room.joinRequests.delete(userId);
       orgMembers.get(orgId)?.delete(userId);
       return { ok: true };
     },
