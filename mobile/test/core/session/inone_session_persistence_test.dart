@@ -92,6 +92,10 @@ void main() {
             deletes++;
             persistedRefreshToken = null;
           },
+          readLocale: () async => null,
+          writeLocale: (_) async {},
+          readLocaleSyncPending: () async => 'false',
+          writeLocaleSyncPending: (_) async {},
         );
 
     final firstLaunch = createSession();
@@ -154,6 +158,10 @@ void main() {
       readRefreshToken: () async => persistedRefreshToken,
       writeRefreshToken: (value) async { persistedRefreshToken = value; },
       deleteRefreshToken: () async { persistedRefreshToken = null; },
+      readLocale: () async => null,
+      writeLocale: (_) async {},
+      readLocaleSyncPending: () async => 'false',
+      writeLocaleSyncPending: (_) async {},
     );
     try {
       await session.login(
@@ -188,6 +196,10 @@ void main() {
       readRefreshToken: () async => persistedRefreshToken,
       writeRefreshToken: (value) async => persistedRefreshToken = value,
       deleteRefreshToken: () async => persistedRefreshToken = null,
+      readLocale: () async => null,
+      writeLocale: (_) async {},
+      readLocaleSyncPending: () async => 'false',
+      writeLocaleSyncPending: (_) async {},
     );
     try {
       await session.initialize();
@@ -226,6 +238,10 @@ void main() {
       readRefreshToken: () async => persistedRefreshToken,
       writeRefreshToken: (value) async => persistedRefreshToken = value,
       deleteRefreshToken: () async => persistedRefreshToken = null,
+      readLocale: () async => null,
+      writeLocale: (_) async {},
+      readLocaleSyncPending: () async => 'false',
+      writeLocaleSyncPending: (_) async {},
     );
     try {
       await session.login(
