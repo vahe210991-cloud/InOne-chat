@@ -206,10 +206,10 @@
 
 - Public-profile API/DTO и social visibility settings отсутствуют. Вариант В не разрешает делать профиль публичным по умолчанию и не утверждает новую приватную/публичную модель.
 - Блокировки, скрытие пользователей, подписки и social graph не обнаружены; не добавлять их как предположение.
-- Публикации, комментарии и их visibility policy отсутствуют вместе с feed endpoints.
+- Публикации и их feed endpoints отсутствуют; post visibility policy не реализована в коде. На уровне продукта владелец отдельно утвердил: опубликованные элементы общей новостной ленты доступны всем зарегистрированным и авторизованным аккаунтам, анонимный доступ запрещён. Это решение ещё необходимо реализовать и протестировать на сервере.
 - Правила сохранения/анонимизации публикаций после удаления аккаунта, публичные media links и social moderation не определены существующим production-контрактом.
 
-Это не дефекты действующего endpoint сами по себе. До отдельного решения владельца такие функции остаются не реализованными; нельзя открывать доступ или менять текущую политику на основании отсутствия таблиц/настроек.
+Отсутствие реализации не отменяет утверждённую политику. До server-side enforcement и regression acceptance нельзя возвращать чужие публикации или их вложения; отсутствие других политик не является разрешением менять доступ к профилям, черновикам или личным данным.
 
 ## 8. Результаты security-аудита
 
@@ -348,15 +348,15 @@ The repository contains both `inone-development-archive-0.6.0/engine` and `inone
 
 - Вариант В остаётся обязательным: существующая модель приватности сохраняется без изменений.
 - Решение не вводит публичность по умолчанию, новые visibility preferences, блокировки, подписки или новую социальную графику.
-- Минимальный Feed Beta 1.0: create/read/edit/delete собственных публикаций; собственная лента; общая новостная лента только для записей, чтение которых разрешено утверждённой серверной политикой; стабильная cursor pagination; native Flutter/Dart UI; server-side authorization, idempotency, abuse controls and security regression tests.
+- Минимальный Feed Beta 1.0: create/read/edit/delete собственных публикаций; собственная лента; общая новостная лента с опубликованными элементами, доступными всем зарегистрированным и авторизованным аккаунтам InOne; анонимный доступ запрещён; стабильная cursor pagination; native Flutter/Dart UI; server-side authorization, idempotency, abuse controls and security regression tests.
 - Вложения проходят только через validated media lifecycle: content validation, association to post, owner/access checks on download, cleanup. Никаких открытых object URLs.
 - Comments/reactions, follows/subscriptions, stories, recommendations/ranking, public profiles, public-by-default posts/media и новые visibility controls не считаются автоматически включёнными этим решением; для них требуется отдельное решение или они остаются Beta 2.0 candidates.
-- **Privacy gate:** в текущей реализации отсутствует post visibility policy. Вариант В запрещает автоматически использовать `sharesOrgOrLink` для чтения публикаций: этот gate подтверждён только для user search. До отдельного решения владельца чужие публикации не возвращаются; можно реализовывать собственные публикации и собственный список.
+- **Feed visibility decision:** владелец утвердил, что все опубликованные элементы общей новостной ленты доступны каждому зарегистрированному и авторизованному аккаунту InOne; анонимный доступ запрещён. Вложения наследуют это правило и повторно проверяются при скачивании. Это не делает публичными профили, черновики и личные данные. Код пока не реализует эту политику; межаккаунтное чтение остаётся выключенным до server-side enforcement и security tests. `sharesOrgOrLink` не используется как feed authorization.
 - WBS v1.2 сохраняет существующие веса 25/25/15/20/10/5 и не пересчитывает исторический baseline 42%/31%. Эти цифры не являются текущей оценкой расширенного scope.
 
 ### 12.3. Разделение релизов
 
-**Beta 1.0:** минимальный lifecycle собственных публикаций, собственная лента, общая лента после решения visibility policy, cursor pagination, безопасные вложения при наличии в утверждённом UI, native Flutter/Dart UI и backend/API/DB/security tests.
+**Beta 1.0:** минимальный lifecycle собственных публикаций, собственная лента и общая лента опубликованных записей для всех зарегистрированных и авторизованных аккаунтов (анонимный доступ запрещён), cursor pagination, безопасные вложения с повторной проверкой доступа, native Flutter/Dart UI и backend/API/DB/security tests.
 
 **Beta 2.0 candidates / separate approval required:** comments/reactions (если не утверждены отдельно), follows/subscriptions, stories, сложное ранжирование/персонализация, creator tooling, promotion/analytics, расширенные публичные профили и social graph.
 
@@ -366,7 +366,7 @@ The repository contains both `inone-development-archive-0.6.0/engine` and `inone
 
 **Beta 1.0 approved scope**
 - Собственные публикации: create/read/edit/delete.
-- Собственная лента и общая лента только после утверждения точной visibility policy.
+- Собственная лента и общая лента опубликованных элементов для всех зарегистрированных и авторизованных аккаунтов InOne; анонимный доступ запрещён.
 - Stable cursor pagination, refresh, deduplication and deletion consistency.
 - Native Flutter/Dart Feed screens and typed API/repository integration.
 - Server-side authorization, idempotency, abuse controls and security/regression tests.
@@ -386,13 +386,13 @@ The repository contains both `inone-development-archive-0.6.0/engine` and `inone
 - **Приоритет:** P1 — безусловный Beta 1.0 release blocker.
 - **Подсистема:** feed/posts.
 - **Фактическое поведение:** отсутствуют post/feed endpoints, domain tables, Flutter screens и typed repository operations.
-- **Ожидаемое:** сквозной lifecycle собственных публикаций и собственной ленты; общая лента после решения privacy gate.
+- **Ожидаемое:** сквозной lifecycle собственных публикаций, собственной ленты и общей ленты с опубликованными записями, доступными всем зарегистрированным и авторизованным аккаунтам; анонимный доступ запрещён.
 - **Расположение:** backend `engine/src/server.js`; schema `engine/src/schema.sql`; mobile `mobile/lib/core/data/inone_repositories.dart`; production screen tree `mobile/lib/ui_dart_source/screens/main/`.
 - **Доказательство:** полный tree inventory, route review и schema table inventory на указанном SHA; `mobile/app` блокирует Feed tab.
 - **Воспроизведение:** выбрать Feed в нижней навигации; app показывает notice «раздел пока не входит в подключённый объём Beta 1.0».
 - **Влияние:** публикации и новости недоступны.
 - **Security/privacy:** пока нет endpoint, нет доказанной уязвимости; будущие read/write endpoints должны быть object-authorized.
-- **Исправление:** реализовать в Beta 1.0 после FEED-PRIVACY-001; использовать существующий canonical backend, DB and object store, не создавать параллельный backend.
+- **Исправление:** реализовать в Beta 1.0 согласно уже утверждённому FEED-PRIVACY-001; использовать существующий canonical backend, DB and object store, не создавать параллельный backend.
 - **Тесты:** create/read/edit/delete, auth, owner, visibility, idempotency, feed pagination, multi-device.
 - **Acceptance:** пользователь проходит create → own view → feed view → edit/delete; сервер гарантирует owner/visibility.
 - **Зависимости:** SCOPE-001, FEED-SEC-001, FEED-CORE-001.
@@ -603,13 +603,13 @@ The repository contains both `inone-development-archive-0.6.0/engine` and `inone
 
 ### FEED-PRIVACY-001 — Owner decision for visibility of other users' publications
 
-- **Приоритет:** P1 — blocks global feed exposure.
-- **Описание:** вариант В сохраняет существующую модель, но в ней отсутствует post visibility policy. До выдачи чужих публикаций владелец должен определить точное правило доступа. Не переиспользовать `sharesOrgOrLink` search gate как post authorization без отдельного решения.
-- **Файлы:** `docs/continuity/DECISIONS.md`, API contract, `engine/src/server.js`, `engine/src/schema.sql`.
-- **Ожидаемое изменение:** owner-approved, versioned read policy for another user's posts and attached media; no implementation of public-by-default.
-- **Зависимости:** SCOPE-001 COMPLETE; privacy variant В.
-- **Тесты:** authorized/unauthorized cross-account matrix; anonymous access denied; relationship edge cases; revoked device; post/media direct-ID access.
-- **Acceptance:** a direct API request can return another user's post only when the newly approved rule explicitly allows it; no account-private field leakage.
+- **Приоритет:** P1 — security/privacy release gate for cross-account feed exposure.
+- **Описание:** owner policy is approved: all published items intentionally included in the general/news feed are readable by every registered and authenticated InOne account; anonymous requests are denied. Attached media inherits the same eligibility and is re-authorized at download. This rule does not expose profiles, drafts or private account data. Do not reuse `sharesOrgOrLink`, which is a user-search gate only.
+- **Файлы:** API contract, `engine/src/server.js`, `engine/src/schema.sql`, media download handler and regression tests.
+- **Ожидаемое изменение:** implement the approved authenticated-feed read policy and parent-post media authorization; no unauthenticated/public object URLs.
+- **Зависимости:** SCOPE-001 COMPLETE; owner policy approved; PROFILE-PRIVACY-001 and FEED-SEC-001 implementation.
+- **Тесты:** authenticated cross-account allow; anonymous/expired/revoked-device deny; malformed/unknown IDs; direct post/media ID access; media URL replay and reauthorization; private DTO leakage checks.
+- **Acceptance:** any registered/authenticated account can read a published general-feed item; anonymous access is denied; direct identifiers do not bypass session checks; no profile/private account fields leak.
 - **Релиз:** Beta 1.0, mandatory before global feed exposure.
 - **Статус:** OWNER DECISION APPROVED / READY FOR IMPLEMENTATION. Rule: every published item intentionally included in the general/news feed is readable by every registered and authenticated InOne account; anonymous access is denied. Apply the same rule to its attachments at download. This does not expose profiles, drafts or private account data. The audited code still lacks the implementation, so cross-account reads must remain disabled until server-side enforcement and regression tests pass.
 
@@ -820,7 +820,7 @@ For a closed task preserve ID, original description, acceptance criteria, PR lin
 | 2026-11-26 | AUDIT-BASELINE | Read-only source review of code snapshot 216c6d9; revalidated against current main 920e2a2 (two intervening commits changed only development rules) | — | — | NOT RUN | COMPLETE |
 | 2026-11-26 | PRIVACY-DECISION-V | Owner selected variant В: preserve current privacy model without policy changes | — | — | Owner decision recorded | COMPLETE |
 | 2026-11-26 | SCOPE-001 | Owner approved Feed in Beta 1.0; WBS v1.2 scope amendment prepared | — | — | Owner decision + document review | COMPLETE |
-| 2026-11-26 | FEED-PRIVACY-001 | Post visibility policy absent; must not infer from user-search relationship gate | — | — | Product decision required | BLOCKED ON OWNER DECISION |
+| 2026-11-26 | FEED-PRIVACY-001 | Owner approved authenticated cross-account read of published general-feed items; anonymous denied; attachment access inherits the rule | — | — | Owner decision recorded; implementation tests NOT RUN | OWNER DECISION APPROVED / IMPLEMENTATION PENDING |
 | 2026-11-26 | WBS-1.2-FEED | Owner approved Feed in Beta 1.0; scope amendment mapped into existing weighted domains | — | — | Document review | APPROVED / PR REVIEW PENDING |
 | — | All implementation tasks | No implementation performed | — | — | NOT RUN | NOT STARTED |
 
@@ -853,8 +853,8 @@ For a closed task preserve ID, original description, acceptance criteria, PR lin
 - WBS v1.2 сохраняет все существующие доменные веса и исторический baseline v1.1; текущие проценты реализации/проверки не пересчитывались.
 - FP-001 становится безусловным P1 Beta 1.0 release blocker.
 - SCOPE-001 COMPLETE (owner decision); implementation tasks remain NOT STARTED.
-- FEED-PRIVACY-001 BLOCKED: exact cross-account post visibility rule is not present in the current model and requires owner decision. The user-search `sharesOrgOrLink` check must not be assumed to authorize post reads.
-- Own-post CRUD/list may proceed independently. Do not return another user's post or attachment until FEED-PRIVACY-001 is resolved.
+- FEED-PRIVACY-001 owner policy is APPROVED: published general-feed items are readable by all registered/authenticated InOne accounts; anonymous access is denied. Feed attachments inherit the rule and are re-authorized at download. The source still lacks enforcement, so do not return cross-account post/media data until server-side implementation and security tests pass. `sharesOrgOrLink` remains user-search-only.
+- Own-post CRUD/list may proceed independently while the approved global-feed policy is implemented.
 - Comments/reactions and advanced social features are not automatically included in the minimum Feed scope.
 - This branch changes documentation only. No application source, schema/migrations, configuration, workflow, Flutter UI or tests were changed/run.
 
