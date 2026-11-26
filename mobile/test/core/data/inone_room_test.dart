@@ -3,6 +3,62 @@ import 'package:inone_mobile/core/data/inone_room.dart';
 import 'package:inone_mobile/core/network/api_exception.dart';
 
 void main() {
+  test('direct conversation provisioning is internal and does not require peer approval', () {
+    final conversation = InOneDirectConversation.fromJson({
+      'roomId': '!dm_opaque:inone.test',
+      'peerUserId': '@bob:inone.test',
+      'status': 'provisioning',
+      'created': true,
+      'isCreator': true,
+      'mlsInitializationRequired': true,
+    });
+
+    expect(conversation.status, 'provisioning');
+    expect(conversation.requiresCreatorSetup, isTrue);
+  });
+
+  test('recipient can open an automatically provisioned direct conversation without accepting it', () {
+    final conversation = InOneDirectConversation.fromJson({
+      'roomId': '!dm_opaque:inone.test',
+      'peerUserId': '@alice:inone.test',
+      'status': 'provisioning',
+      'created': false,
+      'isCreator': false,
+      'mlsInitializationRequired': false,
+    });
+
+    expect(conversation.requiresCreatorSetup, isFalse);
+    expect(conversation.isCreator, isFalse);
+  });
+
+  test('active direct conversation no longer requires MLS initialization', () {
+    final conversation = InOneDirectConversation.fromJson({
+      'roomId': '!dm_opaque:inone.test',
+      'peerUserId': '@alice:inone.test',
+      'status': 'active',
+      'created': false,
+      'isCreator': false,
+      'mlsInitializationRequired': false,
+    });
+
+    expect(conversation.status, 'active');
+    expect(conversation.requiresCreatorSetup, isFalse);
+  });
+
+  test('legacy recipient-approval state is rejected by direct-chat DTO', () {
+    expect(
+      () => InOneDirectConversation.fromJson({
+        'roomId': '!dm_opaque:inone.test',
+        'peerUserId': '@bob:inone.test',
+        'status': 'pending',
+        'created': false,
+        'isCreator': false,
+        'mlsInitializationRequired': false,
+      }),
+      throwsA(isA<ApiException>()),
+    );
+  });
+
   test('parses the authenticated rooms envelope', () {
     final rooms = InOneRoomList.fromJson({
       'rooms': [
