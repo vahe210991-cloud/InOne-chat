@@ -138,6 +138,31 @@ test('direct chats require no recipient approval and activate automatically thro
       'direct conversations do not expose group invite links',
     );
     await assert.rejects(
+      alice.raw('POST', `/rooms/${enc(opened.roomId)}/roles`, { userId: BOB, role: 'admin' }),
+      (error) => error.status === 404,
+      'direct conversations do not expose group roles',
+    );
+    await assert.rejects(
+      alice.raw('POST', `/rooms/${enc(opened.roomId)}/capabilities`, { userId: BOB, capabilities: [] }),
+      (error) => error.status === 404,
+      'direct conversations do not expose group capabilities',
+    );
+    await assert.rejects(
+      alice.raw('POST', `/rooms/${enc(opened.roomId)}/owner`, { userId: BOB }),
+      (error) => error.status === 404,
+      'direct conversations do not expose group ownership transfer',
+    );
+    await assert.rejects(
+      alice.raw('POST', `/rooms/${enc(opened.roomId)}/appearance`, {}),
+      (error) => error.status === 404,
+      'direct conversations do not expose group appearance',
+    );
+    await assert.rejects(
+      alice.raw('GET', `/rooms/${enc(opened.roomId)}/stickers`),
+      (error) => error.status === 404,
+      'direct conversations do not expose group stickers',
+    );
+    await assert.rejects(
       alice.raw('POST', `/rooms/${enc(opened.roomId)}/members`, { userId: CAROL }),
       (error) => error.status === 409,
       'a direct conversation cannot add a third account through the legacy route',
