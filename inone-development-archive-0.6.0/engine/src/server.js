@@ -1124,7 +1124,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         if (!reg.allowed) return send(res, 429, { error: 'too many registrations from this address', retryAt: new Date(reg.retryAt).toISOString() });
         if (!isEmail(email) || token === '') return send(res, 400, { error: 'email and registrationToken required' });
         if (typeof body.password !== 'string' || Array.from(body.password).length < MIN_PASSWORD_LENGTH || Array.from(body.password).length > MAX_PASSWORD_LENGTH) {
-          return send(res, 400, { error: `password required (min ${MIN_PASSWORD_LENGTH} chars)` });
+          return send(res, 400, { error: `password must be ${MIN_PASSWORD_LENGTH}-${MAX_PASSWORD_LENGTH} characters` });
         }
         const nickError = validateNickname(body.nickname);
         if (nickError) return send(res, 400, { error: nickError });
@@ -3291,7 +3291,7 @@ if (req.method === 'POST' && p === '/login') {
           if (!r.ok) return pinError(res, r);
         }
         if (typeof newPassword !== 'string' || Array.from(newPassword).length < MIN_PASSWORD_LENGTH || Array.from(newPassword).length > MAX_PASSWORD_LENGTH) {
-          return send(res, 400, { error: `newPassword required (min ${MIN_PASSWORD_LENGTH} chars)` });
+          return send(res, 400, { error: `newPassword must be ${MIN_PASSWORD_LENGTH}-${MAX_PASSWORD_LENGTH} characters` });
         }
         // Пароль, окно восстановления, код отмены и письмо фиксируются одной транзакцией.
         const previousHash = await storage.accountHash(userId);
