@@ -32,6 +32,7 @@ void main() {
 
     await tester.enterText(find.byType(TextField).at(0), ' person@example.test ');
     await tester.enterText(find.byType(TextField).at(1), 'correct-horse-battery');
+    await tester.ensureVisible(find.text('Մուտք գործել'));
     await tester.tap(find.text('Մուտք գործել'));
     await tester.pumpAndSettle();
 
@@ -56,6 +57,7 @@ void main() {
     ));
 
     await tester.enterText(find.byType(TextField), ' person@example.test ');
+    await tester.ensureVisible(find.text('Ուղարկել կոդը'));
     await tester.tap(find.text('Ուղարկել կոդը'));
     await tester.pumpAndSettle();
 
@@ -82,10 +84,12 @@ void main() {
     ));
 
     await tester.enterText(find.byType(TextField), '123456');
+    await tester.ensureVisible(find.text('Հաստատել'));
     await tester.tap(find.text('Հաստատել'));
     await tester.pumpAndSettle();
     expect(submittedCode, '123456');
 
+    await tester.ensureVisible(find.text('Կրկին ուղարկել կոդը'));
     await tester.tap(find.text('Կրկին ուղարկել կոդը'));
     await tester.pumpAndSettle();
     expect(resent, isTrue);
@@ -111,6 +115,7 @@ void main() {
     await tester.enterText(find.byType(TextField).at(0), 'newmember');
     await tester.enterText(find.byType(TextField).at(1), 'correct-horse-battery');
     await tester.enterText(find.byType(TextField).at(2), '+37499123456');
+    await tester.ensureVisible(find.text('Ստեղծել հաշիվ'));
     await tester.tap(find.text('Ստեղծել հաշիվ'));
     await tester.pumpAndSettle();
 
@@ -135,10 +140,12 @@ void main() {
     ));
 
     await tester.enterText(find.byType(TextField), 'person@example.test');
+    await tester.ensureVisible(find.text('Վերականգնել'));
     await tester.tap(find.text('Վերականգնել'));
     await tester.pumpAndSettle();
     expect(submittedEmail, 'person@example.test');
 
+    await tester.ensureVisible(find.text('Մուտքագրել նամակի կոդը'));
     await tester.tap(find.text('Մուտքագրել նամակի կոդը'));
     await tester.pumpAndSettle();
     expect(enteredCode, isTrue);
@@ -164,6 +171,7 @@ void main() {
     await tester.enterText(find.byType(TextField).at(0), '123456');
     await tester.enterText(find.byType(TextField).at(1), 'new-secure-password');
     await tester.enterText(find.byType(TextField).at(2), '654321');
+    await tester.ensureVisible(find.text('Պահպանել'));
     await tester.tap(find.text('Պահպանել'));
     await tester.pumpAndSettle();
 
@@ -189,6 +197,7 @@ void main() {
 
     await tester.enterText(find.byType(TextField).at(0), 'person@example.test');
     await tester.enterText(find.byType(TextField).at(1), '123456');
+    await tester.ensureVisible(find.text('Չեղարկել'));
     await tester.tap(find.text('Չեղարկել'));
     await tester.pumpAndSettle();
 
@@ -209,6 +218,7 @@ void main() {
       ),
     ));
 
+    await tester.ensureVisible(find.text('Դուրս գալ'));
     await tester.tap(find.text('Դուրս գալ'));
     await tester.pumpAndSettle();
 
