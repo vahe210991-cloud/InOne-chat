@@ -96,8 +96,13 @@ test('I3: одна подтверждённая почта — один акка
     const again = await call(base, 'POST', '/register/email', { body: { email: 'anna@example.test', locale: 'ru' } });
     assert.equal(again.status, 202, 'ответ тот же, что и для новой почты');
     assert.equal(srv.mailbox('anna@example.test').length, 1, 'письмо на занятую почту не уходит');
-    const confirm = await call(base, 'POST', '/register/email/confirm', { body: { email: 'anna@example.test', code: '123456' } });
-    assert.equal(confirm.status, 409);
+    const [existingConfirm, unknownConfirm] = await Promise.all([
+      call(base, 'POST', '/register/email/confirm', { body: { email: 'anna@example.test', code: '123456' } }),
+      call(base, 'POST', '/register/email/confirm', { body: { email: 'nobody@example.test', code: '123456' } }),
+    ]);
+    assert.equal(existingConfirm.status, 404);
+    assert.equal(unknownConfirm.status, 404);
+    assert.deepEqual(existingConfirm.body, unknownConfirm.body, 'confirmation does not reveal whether the email is registered');
   } finally {
     await stop();
   }
