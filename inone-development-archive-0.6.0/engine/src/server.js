@@ -844,7 +844,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         const reg = await checkRate('registrationsPerAddress', clientIp(req));
         if (!reg.allowed) return send(res, 429, { error: 'too many registrations from this address', retryAt: new Date(reg.retryAt).toISOString() });
         // Ник и язык проверяем до погашения билета: ошибка ввода не должна сжигать одноразовый ticket.
-        const locale = resolveEmailLocale(body.locale);
+        const locale = body.locale === undefined ? 'hy' : resolveEmailLocale(body.locale);
         if (!locale) return send(res, 400, { error: 'locale must be hy, ru or en' });
         const nickError = validateNickname(body.nickname);
         if (nickError) return send(res, 400, { error: nickError });
