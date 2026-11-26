@@ -8,6 +8,16 @@ import { TemporaryMatrixEngine, RequestType } from './crypto-engine.js';
 // Пароль, которым тесты создают аккаунты. В приложении пароль выбирает пользователь.
 export const DEFAULT_PASSWORD = randomBytes(24).toString('hex'); // случайный пароль на запуск, в коде секретов нет
 const enc = encodeURIComponent;
+const testClientsByUser = new Map();
+
+function registerTestClient(client) {
+  let devices = testClientsByUser.get(client.userId);
+  if (!devices) {
+    devices = new Map();
+    testClientsByUser.set(client.userId, devices);
+  }
+  devices.set(client.deviceId, client);
+}
 
 export class ChatClient {
   constructor(baseUrl, userId, deviceId, engine) {
@@ -39,6 +49,7 @@ export class ChatClient {
     client.token = session.token;
     client.refreshToken = session.refreshToken;
     client.password = password;
+    registerTestClient(client);
     return client;
   }
 
@@ -50,6 +61,7 @@ export class ChatClient {
     client.token = session.token;
     client.refreshToken = session.refreshToken;
     client.password = password;
+    registerTestClient(client);
     return client;
   }
 
@@ -213,8 +225,13 @@ export class ChatClient {
   }
 
   /** Создаёт беседу. Создатель становится владельцем. */
-  async createRoom(roomId, members) {
-    return this.raw('POST', '/rooms', { roomId, members });
+  async createRoom(roomId, members = []) {
+    const created = await this.raw('POST', '/rooms', { roomId });
+    this.roomMembers.set(roomId, [this.userId]);
+    for (const userId of [...new Set(members)].filter((id) => id !== this.userId)) {
+      await this.addMember(roomId, userId);
+    }
+    return created;
   }
 
   /** Владелец назначает роль: 'admin' или 'member'. Состав беседы при этом не меняется. */
@@ -229,13 +246,32 @@ export class ChatClient {
 
   /** Владелец добавляет участника. Текущий ключ отправителя получает новичок, историю — нет. */
   async addMember(roomId, userId) {
-    await this.raw('POST', `/rooms/${enc(roomId)}/members`, { userId });
+    const targetDevices = [...(testClientsByUser.get(userId)?.values() ?? [])];
+    if (targetDevices.length === 0) throw new Error(`no active test device registered for ${userId}`);
+    const epoch = (await this.raw('GET', `/mls/groups/${enc(roomId)}/epoch`)).epoch;
+    await this.raw('POST', `/mls/groups/${enc(roomId)}/commits`, {
+      epoch,
+      clientOperationId: `test-add-${randomBytes(16).toString('hex')}`,
+      commit: randomBytes(32).toString('base64'),
+      changes: { adds: [userId], removes: [] },
+      welcomes: targetDevices.map((device) => ({
+        userId,
+        deviceId: device.deviceId,
+        welcome: randomBytes(32).toString('base64'),
+      })),
+    });
     await this.applyMembership(roomId);
   }
 
-  /** Удаляет участника (владелец) или выходит сам (участник). После удаления ключи меняются. */
+  /** Удаление и self-leave моделируются только через MLS Remove Commit. */
   async removeMember(roomId, userId) {
-    await this.raw('DELETE', `/rooms/${enc(roomId)}/members/${enc(userId)}`);
+    const epoch = (await this.raw('GET', `/mls/groups/${enc(roomId)}/epoch`)).epoch;
+    await this.raw('POST', `/mls/groups/${enc(roomId)}/commits`, {
+      epoch,
+      clientOperationId: `test-remove-${randomBytes(16).toString('hex')}`,
+      commit: randomBytes(32).toString('base64'),
+      changes: { adds: [], removes: [userId] },
+    });
     await this.applyMembership(roomId);
   }
 
