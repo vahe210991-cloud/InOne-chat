@@ -56,6 +56,30 @@ void main() {
     session.dispose();
   });
 
+  test('room list returns unread counts and encrypted activity cursors', () async {
+    final session = _ProfileSession({
+      'rooms': [
+        {
+          'roomId': 'room-1',
+          'kind': 'group',
+          'name': 'Project room',
+          'role': 'member',
+          'lastEventSeq': 57,
+          'lastEventAt': 1795720000000,
+          'unreadCount': 4,
+        },
+      ],
+    });
+
+    final rooms = await InOneRepositories(session).myRooms();
+
+    expect(rooms.unreadCountsAvailable, isTrue);
+    expect(rooms.rooms.single.lastEventSeq, 57);
+    expect(rooms.rooms.single.lastEventAt, 1795720000000);
+    expect(rooms.rooms.single.unreadCount, 4);
+    session.dispose();
+  });
+
   test('opens the canonical direct conversation through the authenticated API', () async {
     final session = _ProfileSession({
       'roomId': '!dm_0123456789abcdef',
