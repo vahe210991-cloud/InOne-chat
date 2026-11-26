@@ -1035,6 +1035,37 @@ export function createMemoryStore({ pinPepper }) {
       return true;
     },
 
+    // TEST ONLY: inject server/MLS membership divergence for native-client consistency tests.
+    // No HTTP route calls this helper; production membership changes must use mlsApplyCommit.
+    __testOnlyForceRoomMembership(roomId, userId, present) {
+      const room = rooms.get(roomId);
+      if (!room) return false;
+      if (present) {
+        if (room.members.has(userId)) return false;
+        const org = organizations.get(room.orgId);
+        if (!org || org.status !== 'approved') return { status: 'org_not_approved' };
+        const direct = orgMembers.get(room.orgId)?.has(userId) ?? false;
+        const linked = !direct && [...orgLinks.values()].some((link) => {
+          if (link.status !== 'active') return false;
+          const memberOrg = link.orgA === room.orgId ? link.orgB : link.orgB === room.orgId ? link.orgA : null;
+          return memberOrg !== null
+            && organizations.get(memberOrg)?.status === 'approved'
+            && (orgMembers.get(memberOrg)?.has(userId) ?? false);
+        });
+        if (!direct && !linked) return { status: 'org_not_member' };
+        room.members.add(userId);
+        room.joinedSeq.set(userId, counters.eventSeq);
+        room.capabilities.set(userId, [...DEFAULT_MEMBER_CAPABILITIES]);
+        room.readUpTo.set(userId, 0);
+        return true;
+      }
+      room.members.delete(userId);
+      room.admins.delete(userId);
+      room.joinedSeq.delete(userId);
+      room.capabilities.delete(userId);
+      room.readUpTo.delete(userId);
+      return true;
+    },
     setRoomAdmin(roomId, userId, isAdmin) {
       const r = rooms.get(roomId);
       if (!r) return;
