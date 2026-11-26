@@ -7,12 +7,20 @@ class InOneRoom {
     required this.kind,
     required this.name,
     required this.role,
+    this.lastEventSeq,
+    this.lastEventAt,
+    this.unreadCount = 0,
+    this.hasSummary = false,
   });
 
   final String roomId;
   final String kind;
   final String? name;
   final String role;
+  final int? lastEventSeq;
+  final int? lastEventAt;
+  final int unreadCount;
+  final bool hasSummary;
 
   String get displayName {
     final value = name?.trim();
@@ -28,6 +36,12 @@ class InOneRoom {
     final kind = json['kind'];
     final name = json['name'];
     final role = json['role'];
+    final lastEventSeq = json['lastEventSeq'];
+    final lastEventAt = json['lastEventAt'];
+    final unreadCount = json['unreadCount'];
+    final hasSummary = json.containsKey('lastEventSeq') &&
+        json.containsKey('lastEventAt') &&
+        json.containsKey('unreadCount');
 
     if (roomId is! String ||
         roomId.trim().isEmpty ||
@@ -35,7 +49,11 @@ class InOneRoom {
         kind.trim().isEmpty ||
         (name != null && name is! String) ||
         role is! String ||
-        !const {'owner', 'admin', 'member'}.contains(role)) {
+        !const {'owner', 'admin', 'member'}.contains(role) ||
+        (lastEventSeq != null && lastEventSeq is! int) ||
+        (lastEventAt != null && lastEventAt is! int) ||
+        (unreadCount != null && (unreadCount is! int || unreadCount < 0)) ||
+        hasSummary && unreadCount is! int) {
       throw const ApiException(
         code: 'invalid_response',
         statusCode: 200,
@@ -48,6 +66,10 @@ class InOneRoom {
       kind: kind,
       name: name as String?,
       role: role,
+      lastEventSeq: lastEventSeq as int?,
+      lastEventAt: lastEventAt as int?,
+      unreadCount: unreadCount as int? ?? 0,
+      hasSummary: hasSummary,
     );
   }
 }
@@ -57,6 +79,8 @@ class InOneRoomList {
   const InOneRoomList(this.rooms);
 
   final List<InOneRoom> rooms;
+
+  bool get unreadCountsAvailable => rooms.every((room) => room.hasSummary);
 
   factory InOneRoomList.fromJson(Map<String, dynamic> json) {
     final rawRooms = json['rooms'];
