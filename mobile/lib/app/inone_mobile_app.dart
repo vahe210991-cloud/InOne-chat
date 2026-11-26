@@ -245,6 +245,16 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         _selectedAdminRequest = null;
         _adminRequests = const [];
         _adminDocuments = const [];
+        _pendingLoginEmail = '';
+        _pendingLoginPassword = '';
+        _pendingIdentityChallengeId = null;
+        _registrationEmail = '';
+        _recoveryUserId = '';
+        _recoveryEmail = '';
+        _pendingRecoveryLinkPayload = null;
+        _pendingRecoveryLinkFingerprint = null;
+        _waitingActivateAt = '';
+        _cancelingAdmission = false;
         _screen = 'login';
       });
       _notice('Сессия отозвана. Локальные документы и ключи очищены. Войдите снова.');
