@@ -70,7 +70,7 @@ Read [PROGRESS-BASELINE.md](PROGRESS-BASELINE.md) in full before every implement
 
 - [FEED / PROFILE Beta 1.0 implementation plan](FEED-PROFILE-BETA-1.0-IMPLEMENTATION-PLAN.md) — source audit, findings, task register, dependencies and acceptance criteria. Owner-approved privacy variant В: preserve existing privacy behavior without introducing new visibility rules.
 - [FEED / PROFILE audit report](reports/2026-11-26-feed-profile-beta1-audit.md) — exact source/publication SHAs, priorities, verification limits and next actions.
-- Feed is approved for Beta 1.0; WBS v1.2 records the scope amendment without changing domain weights. Cross-account post visibility remains blocked pending a separate exact privacy decision. The plan is not implementation or test acceptance.
+- Feed is approved for Beta 1.0; WBS v1.2 records the scope amendment without changing domain weights. The owner has approved cross-account visibility for published general-feed items to all registered and authenticated InOne accounts; anonymous access is denied. Feed media inherits this rule and is re-authorized at download. The audited code still needs implementation and security tests; this decision is not implementation or test acceptance.
 
 ## Current product work — Beta 1.0 / A2 FRB reconciliation
 
