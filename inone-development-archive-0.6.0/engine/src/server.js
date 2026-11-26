@@ -1628,6 +1628,7 @@ if (req.method === 'DELETE' && orgMemberRoute) {
     if (removed.reason === 'forbidden') return send(res, 403, { error: 'org role required to remove this member', code: 'org_role_required' });
     if (removed.reason === 'last_owner') return send(res, 409, { error: 'the last owner cannot be removed', code: 'last_owner' });
     if (removed.reason === 'owns_rooms') return send(res, 409, { error: 'transfer ownership of the rooms first', code: 'owns_rooms' });
+    if (removed.reason === 'mls_removal_required') return send(res, 409, { error: 'remove the member from every MLS room before removing organization access', code: 'mls_removal_required', roomIds: removed.roomIds });
     throw new Error('organization member removal failed');
   }
   return send(res, 200, { removed: true });
@@ -1641,6 +1642,7 @@ if (req.method === 'POST' && orgLeaveRoute) {
     if (left.reason === 'not_found') return send(res, 404, { error: 'not found' });
     if (left.reason === 'last_owner') return send(res, 409, { error: 'the last owner cannot leave', code: 'last_owner' });
     if (left.reason === 'owns_rooms') return send(res, 409, { error: 'transfer ownership of the rooms first', code: 'owns_rooms' });
+    if (left.reason === 'mls_removal_required') return send(res, 409, { error: 'leave every MLS room before leaving the organization', code: 'mls_removal_required', roomIds: left.roomIds });
     throw new Error('organization leave failed');
   }
   return send(res, 200, { left: true });
@@ -1739,7 +1741,14 @@ if (req.method === 'POST' && orgLinkActRoute) {
   }
   if (link.status === 'revoked') return send(res, 409, { error: 'link is already revoked' });
   const revoked = await storage.revokeOrgLink({ linkId, fromStatus: link.status, actor: d.userId, at: now() });
-  if (!revoked) return send(res, 409, { error: 'link state changed; reload and retry' });
+  if (!revoked.ok && revoked.reason === 'mls_removal_required') {
+    return send(res, 409, {
+      error: 'remove cross-organization members from every affected MLS room before revoking the link',
+      code: 'mls_removal_required',
+      memberships: revoked.memberships,
+    });
+  }
+  if (!revoked.ok) return send(res, 409, { error: 'link state changed; reload and retry' });
   return send(res, 200, { status: 'revoked' });
 }
 // Журнал действий администраторов (шаг 5.7): читают владелец и администратор организации. Содержимое комнат сюда не попадает.
