@@ -24,7 +24,7 @@
 |---|---:|---|
 | P0 | 1 | Organization membership removal / MLS consistency |
 | P1 | 2 | Missing guest personal and organization profile capabilities; conditional on approved Beta 1.0 privacy/scope |
-| P2 | 7 | Missing editing/media/ownership transfer/lifecycle and regression coverage |
+| P2 | 8 | Missing editing/media/ownership transfer/lifecycle and regression coverage |
 | P3 | 1 | Placeholder profile/organization metrics |
 
 P1 findings are functional gaps, not confirmed exploitable vulnerabilities.
