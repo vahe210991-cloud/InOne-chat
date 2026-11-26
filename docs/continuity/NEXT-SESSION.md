@@ -25,8 +25,8 @@ This addendum supersedes older Feed scope instructions. Fetch live `main` and re
 
 1. Feed is approved for Beta 1.0. Keep the WBS v1.2 scope amendment and existing domain weights; do not invent current progress percentages from the historical v1.1 baseline.
 2. Preserve privacy variant В. Do not introduce public-by-default posts/profiles, new visibility preferences, block/follow semantics or expanded access.
-3. Resolve `FEED-PRIVACY-001`: obtain the owner's exact rule for cross-account post reads. `sharesOrgOrLink` is a user-search gate only and cannot be silently reused for post visibility.
-4. Until FEED-PRIVACY-001 is resolved, implement only own-post CRUD/list and other work that cannot expose another account's posts/media. No cross-account post data may be returned.
+3. `FEED-PRIVACY-001` owner policy is approved: all published general-feed items are readable by registered/authenticated InOne accounts; anonymous access is denied. `sharesOrgOrLink` is a user-search gate only and is not used for feed authorization.
+4. Implement server-side enforcement and tests for cross-account authenticated reads, anonymous denial, direct-ID/media access and repeated authorization on download. Until these pass, do not serve cross-account post/media data.
 5. Complete `PROFILE-CORE-001` and `PROFILE-PRIVACY-001` regression tests for current own-profile auth, locale, revoked device, DTO allowlist, relationship gate, owner/device-bound files and room membership.
 6. Implement Feed security-first: `FEED-SEC-001`, `FEED-CORE-001`, `FEED-LIST-001`, `FEED-PAGINATION-001`, secure media as scoped, Flutter Feed UI, then `FEED-TESTS-001` and acceptance.
 7. Comments/reactions, follows/subscriptions, stories, advanced ranking, public profiles and new privacy controls are not included automatically. Obtain separate approval before adding them to Beta 1.0.
@@ -37,7 +37,7 @@ This addendum supersedes older Feed scope instructions. Fetch live `main` and re
 
 - Owner approved Feed in Beta 1.0; SCOPE-001 is complete.
 - WBS v1.2 scope amendment is on the documentation task branch and requires PR review/merge.
-- Cross-account post visibility remains blocked pending owner decision.
+- Owner has approved cross-account visibility for published general-feed items to every registered/authenticated InOne account; anonymous access is denied. Backend enforcement and regression tests remain pending, so do not serve cross-account posts/media until those gates pass.
 - No application code, schema, migration, workflow, configuration or Flutter UI changed in the scope-documentation task.
 - No tests/builds/dynamic security/production/device acceptance were run.
 
