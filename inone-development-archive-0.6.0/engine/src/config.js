@@ -1,6 +1,8 @@
 // Настройки сервера из переменных окружения. Неверная конфигурация останавливает запуск до открытия порта.
 import { DEFAULT_PHONE_COUNTRIES } from './phone-international.js';
+import { isIP } from 'node:net';
 const TEST_PEPPER_MARKERS = ['test-pepper', 'change-me', 'example', 'dev-only'];
+const normalizeProxyIp = (value) => String(value).trim().toLowerCase().replace(/^::ffff:/, '');
 const isValidAes256Key = (value) => {
   if (typeof value !== 'string') return false;
   if (/^[a-f0-9]{64}$/i.test(value)) return true;
@@ -14,6 +16,7 @@ const isValidAes256Key = (value) => {
 export function loadConfig(env = process.env) {
   const nodeEnv = env.NODE_ENV ?? 'development';
   const production = nodeEnv === 'production';
+  const trustedProxyIpsRaw = (env.INONE_TRUSTED_PROXY_IPS ?? '').split(',').map((value) => normalizeProxyIp(value)).filter(Boolean);
   const config = {
     nodeEnv,
     production,
@@ -24,6 +27,8 @@ export function loadConfig(env = process.env) {
     publicUrl: env.INONE_PUBLIC_URL ?? (production ? '' : 'http://localhost:8080'),
     registrationMode: env.INONE_REGISTRATION_MODE ?? 'verified',
     trustProxy: env.INONE_TRUST_PROXY === 'true',
+    trustedProxyIps: [...new Set(trustedProxyIpsRaw)],
+    objectSigningSecret: env.INONE_OBJECT_SIGNING_SECRET ?? '',
     filesDir: env.INONE_FILES_DIR ?? '',
   docsSecret: env.INONE_DOCS_SECRET ?? '',
   testUi: env.INONE_TEST_UI === '1',
@@ -56,6 +61,11 @@ export function loadConfig(env = process.env) {
   };
   const errors = [];
   if (!config.databaseUrl) errors.push('DATABASE_URL is required');
+  for (const address of config.trustedProxyIps) {
+    if (isIP(address) === 0) errors.push('INONE_TRUSTED_PROXY_IPS must contain valid IP addresses');
+  }
+  if (config.trustProxy && config.trustedProxyIps.length === 0) errors.push('INONE_TRUST_PROXY=true requires INONE_TRUSTED_PROXY_IPS');
+  if (!config.trustProxy && config.trustedProxyIps.length > 0) errors.push('INONE_TRUSTED_PROXY_IPS requires INONE_TRUST_PROXY=true');
   if (!['verified', 'open'].includes(config.registrationMode)) errors.push('INONE_REGISTRATION_MODE must be verified or open');
   if (!['memory', 'smtp'].includes(config.mailTransport)) errors.push('INONE_MAIL_TRANSPORT must be memory or smtp');
   if (!Number.isInteger(config.port) || config.port < 0 || config.port > 65535) errors.push('PORT must be a port number');
@@ -63,6 +73,8 @@ export function loadConfig(env = process.env) {
   if (production) {
     if (config.registrationMode === 'open') errors.push('open registration is not allowed in production');
     if (config.pinPepper.length < 32) errors.push('INONE_PIN_PEPPER must be at least 32 characters in production');
+    if (config.objectSigningSecret.length < 32) errors.push('INONE_OBJECT_SIGNING_SECRET must be at least 32 characters in production');
+    if (TEST_PEPPER_MARKERS.some((m) => config.objectSigningSecret.includes(m))) errors.push('INONE_OBJECT_SIGNING_SECRET looks like a test or example value');
     if (TEST_PEPPER_MARKERS.some((m) => config.pinPepper.includes(m))) errors.push('INONE_PIN_PEPPER looks like a test or example value');
     if (!config.publicUrl.startsWith('https://')) errors.push('INONE_PUBLIC_URL must start with https:// in production');
     // Production требует SMTP transport и зашифрованную PostgreSQL queue; memory transport запрещён.

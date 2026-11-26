@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { createServer } from '../src/server.js';
 import { ChatClient, DEFAULT_PASSWORD as PW } from '../src/client.js';
 import { storeForTest } from './helpers.js';
+import { createMemoryStore } from '../src/store-memory.js';
 
 const PEPPER = randomBytes(24).toString('hex');
 const FIXTURE_1 = randomBytes(16).toString('hex');
@@ -122,6 +123,102 @@ test('журнал запросов в памяти ограничен и не �
     const { wireLog } = JSON.parse(await app.dump());
     assert.ok(wireLog.length <= 3, `журнал из ${wireLog.length} записей при лимите 3`);
     assert.ok(wireLog.length >= 1);
+  } finally {
+    await stop();
+  }
+});
+
+test('liveness remains healthy while PostgreSQL readiness is unavailable', async () => {
+  const store = createMemoryStore({ pinPepper: PEPPER });
+  store.ping = async () => { throw new Error('database outage sentinel'); };
+  const { base, stop } = await start({ store });
+  try {
+    assert.equal((await fetch(`${base}/healthz`)).status, 200);
+    assert.equal((await fetch(`${base}/readyz`)).status, 503);
+  } finally {
+    await stop();
+  }
+});
+
+test('request logs retain only allowlisted route labels and never raw path, query or body', async () => {
+  const entries = [];
+  const logger = { debug() {}, warn() {}, error() {}, info: (msg, fields) => entries.push({ msg, ...fields }) };
+  const { app, base, stop } = await start({ logger });
+  const pathSecret = 'path-secret-sentinel-9834';
+  const querySecret = 'query-secret-sentinel-2741';
+  const bodySecret = 'body-secret-sentinel-6152';
+  try {
+    await fetch(`${base}/unmapped/${pathSecret}?token=${querySecret}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ arbitrarySecret: bodySecret }),
+    });
+    const line = entries.find((entry) => entry.msg === 'request');
+    assert.equal(line.path, '/__other__');
+    const dump = await app.dump();
+    for (const secret of [pathSecret, querySecret, bodySecret]) assert.ok(!dump.includes(secret), `redacted ${secret}`);
+  } finally {
+    await stop();
+  }
+});
+
+test('forwarded client IP is accepted only from an allowlisted immediate proxy and trusted chain', async () => {
+  const store = createMemoryStore({ pinPepper: PEPPER });
+  const hits = [];
+  const originalRateHit = store.rateHit.bind(store);
+  store.rateHit = async (...args) => { hits.push(args[0]); return originalRateHit(...args); };
+  const { base, stop } = await start({
+    store,
+    trustProxy: true,
+    trustedProxyIps: ['127.0.0.1', '192.0.2.10'],
+  });
+  try {
+    const response = await fetch(`${base}/auth/nonce`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-forwarded-for': '203.0.113.9, 192.0.2.10' },
+      body: '{}',
+    });
+    assert.equal(response.status, 200);
+    assert.ok(hits.some((key) => key.includes('203.0.113.9')));
+  } finally {
+    await stop();
+  }
+
+  const untrustedStore = createMemoryStore({ pinPepper: PEPPER });
+  const untrustedHits = [];
+  const untrustedRateHit = untrustedStore.rateHit.bind(untrustedStore);
+  untrustedStore.rateHit = async (...args) => { untrustedHits.push(args[0]); return untrustedRateHit(...args); };
+  const untrusted = await start({ store: untrustedStore, trustProxy: true, trustedProxyIps: ['192.0.2.10'] });
+  try {
+    const response = await fetch(`${untrusted.base}/auth/nonce`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-forwarded-for': '198.51.100.7' },
+      body: '{}',
+    });
+    assert.equal(response.status, 200);
+    assert.ok(untrustedHits.some((key) => key.includes('127.0.0.1')));
+    assert.ok(!untrustedHits.some((key) => key.includes('198.51.100.7')));
+  } finally {
+    await untrusted.stop();
+  }
+});
+
+test('global request boundary catches failures before body parsing and returns a stable error', async () => {
+  const store = createMemoryStore({ pinPepper: PEPPER });
+  store.flagOverrides = async () => { throw Object.assign(new Error('private database host sentinel'), { code: 'XX000' }); };
+  const entries = [];
+  const logger = { debug() {}, info() {}, warn() {}, error: (message, fields) => entries.push({ message, ...fields }) };
+  const { base, stop } = await start({ store, logger });
+  try {
+    const response = await fetch(`${base}/auth/nonce`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    });
+    assert.equal(response.status, 500);
+    assert.deepEqual(await response.json(), { error: 'internal server error' });
+    assert.ok(!JSON.stringify(entries).includes('private database host sentinel'));
+    assert.equal(entries.at(-1)?.errorCode, 'XX000');
   } finally {
     await stop();
   }

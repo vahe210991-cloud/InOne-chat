@@ -202,7 +202,7 @@ test('токен не хранится на сервере в явном вид�
     const dump = await srv.dump();
     assert.ok(!dump.includes(tokenOf(invite)));
     const { wireLog } = JSON.parse(dump);
-    assert.ok(wireLog.some((entry) => entry.includes('/invites/join') && entry.includes('"token":"***"')));
+    assert.ok(wireLog.some((entry) => entry.includes('/invites')), 'invite request uses an allowlisted static route label');
     assert.ok(!JSON.stringify(wireLog).includes(tokenOf(invite)));
   } finally {
     await stop();

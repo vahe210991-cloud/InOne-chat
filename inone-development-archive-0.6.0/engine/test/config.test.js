@@ -10,12 +10,30 @@ const GOOD = {
   DATABASE_URL: 'postgresql://db.example/inone',
   INONE_PIN_PEPPER: 'q8Lw2rT6vN1zXc4bH9mK0pJs7dFg5aYe',
   INONE_DOCS_SECRET: DOCS_SECRET,
+  INONE_OBJECT_SIGNING_SECRET: randomBytes(32).toString('hex'),
   INONE_EMAIL_ENCRYPTION_KEY: randomBytes(32).toString('hex'),
   INONE_FIREBASE_PROJECT_ID: 'inone-messenger',
   INONE_PUSH_ENCRYPTION_KEY: randomBytes(32).toString('hex'),
   INONE_PUBLIC_URL: 'https://inone.example',
   INONE_FILES_DIR: '/var/lib/inone/objects',
 };
+
+test('production requires a persistent object URL signing secret', () => {
+  const { INONE_OBJECT_SIGNING_SECRET, ...withoutSecret } = GOOD;
+  assert.throws(() => loadConfig(withoutSecret), /INONE_OBJECT_SIGNING_SECRET/);
+  assert.throws(() => loadConfig({ ...GOOD, INONE_OBJECT_SIGNING_SECRET: 'short' }), /INONE_OBJECT_SIGNING_SECRET/);
+  assert.equal(loadConfig({ ...GOOD, INONE_MAIL_TRANSPORT: 'memory', NODE_ENV: 'development' }).objectSigningSecret, GOOD.INONE_OBJECT_SIGNING_SECRET);
+});
+
+test('trusted proxy mode requires an explicit valid IP allowlist', () => {
+  const testEnv = { ...GOOD, NODE_ENV: 'development', INONE_MAIL_TRANSPORT: 'memory' };
+  assert.throws(() => loadConfig({ ...testEnv, INONE_TRUST_PROXY: 'true' }), /INONE_TRUSTED_PROXY_IPS/);
+  assert.throws(() => loadConfig({ ...testEnv, INONE_TRUST_PROXY: 'true', INONE_TRUSTED_PROXY_IPS: 'not-an-ip' }), /valid IP addresses/);
+  const config = loadConfig({ ...testEnv, INONE_TRUST_PROXY: 'true', INONE_TRUSTED_PROXY_IPS: '127.0.0.1, 192.0.2.10' });
+  assert.deepEqual(config.trustedProxyIps, ['127.0.0.1', '192.0.2.10']);
+  assert.equal(config.trustProxy, true);
+  assert.throws(() => loadConfig({ ...testEnv, INONE_TRUSTED_PROXY_IPS: '127.0.0.1' }), /requires INONE_TRUST_PROXY=true/);
+});
 
 test('продакшен без реального почтового транспорта не стартует', () => {
   assert.throws(() => loadConfig(GOOD), /needs a real mail transport/);
