@@ -87,6 +87,7 @@ class _InOneLoginScreenState extends State<InOneLoginScreen> with InOneActionSta
                 name: 'password',
                 label: 'Գաղտնաբառ',
                 obscure: true,
+                maxLength: 128,
                 autofillHints: const [AutofillHints.password],
                 textInputAction: TextInputAction.done,
                 onSubmitted: _submit,
