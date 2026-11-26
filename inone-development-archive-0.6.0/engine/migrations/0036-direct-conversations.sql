@@ -12,7 +12,7 @@ CREATE TABLE direct_conversations (
   created_by TEXT NOT NULL REFERENCES accounts (user_id),
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'active')),
   created_at BIGINT NOT NULL,
-  CHECK (user_a < user_b),
+  CHECK (user_a COLLATE "C" < user_b COLLATE "C"),
   CHECK (created_by = user_a OR created_by = user_b),
   UNIQUE (user_a, user_b)
 );
