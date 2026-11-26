@@ -159,5 +159,35 @@ void main() {
       session.dispose();
     });
 
+    test('cancels recovery by code through the separate recovery endpoint', () async {
+      final client = MockClient((request) async {
+        expect(request.method, 'POST');
+        expect(request.url.path, '/recovery/cancel-by-code');
+        expect(request.headers['authorization'], isNull);
+        expect(jsonDecode(request.body), {
+          'email': 'person@example.test',
+          'code': '123456',
+        });
+        return http.Response(jsonEncode({'ok': true}), 200);
+      });
+      final session = InOneSession(
+        baseUrl: 'https://api.inone.test',
+        httpClient: client,
+        readDeviceId: () async => 'device-1',
+        writeDeviceId: (_) async {},
+        readMlsUserId: () async => null,
+        writeMlsUserId: (_) async {},
+        deleteMlsUserId: () async {},
+      );
+
+      final result = await session.cancelRecoveryByCode(
+        email: ' person@example.test ',
+        code: ' 123456 ',
+      );
+
+      expect(result['ok'], isTrue);
+      session.dispose();
+    });
+
   });
 }
