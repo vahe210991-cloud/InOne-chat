@@ -74,7 +74,7 @@ class _InOneRecoveryStartScreenState extends State<InOneRecoveryStartScreen>
         if (_sent) ...[
           const SizedBox(height: 12),
           InOneButton(
-            label: 'Մուտքագրել նամակի կոդը',
+            label: 'Մուտքագրել վերականգնման կոդը',
             kind: InOneButtonKind.outline,
             onPressed: widget.onEnterCode,
           ),
