@@ -945,6 +945,7 @@ export function createMemoryStore({ pinPepper }) {
       const org = organizations.get(orgId);
       if (!org || org.status !== 'approved') return { status: 'org_not_approved' };
       const members = [...new Set(memberIds)];
+      if (members.some((userId) => userId !== owner)) return { status: 'mls_commit_required' };
       for (const userId of [...members].sort()) {
         const direct = orgMembers.get(orgId)?.has(userId) ?? false;
         const linked = !direct && [...orgLinks.values()].some((link) => {
