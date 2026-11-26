@@ -44,3 +44,51 @@ test('в продакшене фиксированный код запрещён
   assert.throws(() => loadConfig({ NODE_ENV: 'development', DATABASE_URL: 'postgresql://localhost/x', INONE_DEV_EMAIL_CODE: '12345' }), /must be 6 digits/);
   assert.equal(loadConfig({ NODE_ENV: 'development', DATABASE_URL: 'postgresql://localhost/x', INONE_DEV_EMAIL_CODE: '000000' }).devEmailCode, '000000');
 });
+
+test('existing and unknown emails have the same registration-confirmation response without a ticket', async () => {
+  const { base, stop } = await start('000000');
+  try {
+    const requestCode = await fetch(`${base}/register/email`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'owner@example.test' }),
+    });
+    assert.equal(requestCode.status, 202);
+    const confirmed = await fetch(`${base}/register/email/confirm`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'owner@example.test', code: '000000' }),
+    });
+    assert.equal(confirmed.status, 200);
+    const ticket = await confirmed.json();
+    const created = await fetch(`${base}/register`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        email: 'owner@example.test',
+        registrationToken: ticket.registrationToken,
+        password: 'correct-horse-battery',
+        nickname: 'owner-account',
+      }),
+    });
+    assert.equal(created.status, 200);
+
+    const [existing, unknown] = await Promise.all([
+      fetch(`${base}/register/email/confirm`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: 'owner@example.test', code: '000000' }),
+      }),
+      fetch(`${base}/register/email/confirm`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: 'nobody@example.test', code: '000000' }),
+      }),
+    ]);
+    assert.equal(existing.status, 404);
+    assert.equal(unknown.status, 404);
+    assert.deepEqual(await existing.json(), await unknown.json());
+  } finally {
+    await stop();
+  }
+});
