@@ -410,7 +410,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
     if (outcome === 'sent') await smsSender.send(phone, `Код: ${code}. Введите его в InOne, чтобы подтвердить номер.`);
     return outcome;
   };
-  const identityCodeHash = (userId, code) => keyedHash(pinPepper, `identity:${userId}`, code);
+  const identityCodeHash = (userId, deviceId, challengeId, code) => keyedHash(pinPepper, `identity:${userId}:${deviceId}:${challengeId}`, code);
   // Токены и устройства лежат в хранилище; токен там хранится как ключевой хэш (C-08).
   // Через 48 часов после восстановления старые устройства отключаются, если их не отменили (D5, D8).
   // Окно хранится в базе: переживает перезапуск сервера.
@@ -1831,22 +1831,65 @@ if (req.method === 'POST' && p === '/login') {
         if (!existing && rec.identityCheck) {
           if (identityCode === undefined) {
             const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
+            const challengeId = randomBytes(24).toString('base64url');
             const profile = await storage.profileGet(userId);
             const primaryEmail = profile?.email ?? userId;
             const locale = profile?.locale ?? requestedLocale ?? 'hy';
             const backup = await storage.backupEmailGet(userId);
-            await storage.recoveryUpdateWithOutbox(userId,
-              (r) => ({ next: issueIdentity(r, { codeHash: identityCodeHash(userId, code) }), result: null }),
-              (tx) => mailToRecipients([primaryEmail, backup?.email], '', '', 'recovery_login_code', { code }, tx, locale));
-            return send(res, 202, { status: 'identity_check_required' });
+            const challenge = await storage.recoveryUpdateWithOutbox(userId, (r) => {
+              const issued = issueIdentity(r, {
+                codeHash: identityCodeHash(userId, deviceId, challengeId, code),
+                deviceId,
+                challengeId,
+                nowMs: now(),
+              });
+              return {
+                next: issued.next,
+                result: {
+                  outcome: issued.outcome,
+                  challengeId: issued.challengeId,
+                  expiresAt: issued.expiresAt,
+                  resendAfter: issued.resendAfter,
+                  shouldSend: issued.outcome === 'sent',
+                },
+              };
+            }, (tx, result) => result.shouldSend
+              ? mailToRecipients([primaryEmail, backup?.email], '', '', 'recovery_login_code', { code }, tx, locale)
+              : null);
+            if (challenge.outcome === 'locked') {
+              return send(res, 429, { error: 'identity verification temporarily locked' });
+            }
+            if (challenge.outcome === 'device_mismatch') {
+              return send(res, 409, { error: 'identity challenge is active on another device; retry after cooldown' });
+            }
+            if (challenge.outcome === 'cooldown') {
+              return send(res, 429, {
+                error: 'identity code resend cooldown active',
+                retryAt: new Date(challenge.resendAfter).toISOString(),
+              });
+            }
+            return send(res, 202, {
+              status: 'identity_check_required',
+              challengeId: challenge.challengeId,
+              expiresAt: new Date(challenge.expiresAt).toISOString(),
+              resendAfter: new Date(challenge.resendAfter).toISOString(),
+              codeSent: challenge.outcome === 'sent',
+            });
           }
           const outcome = await storage.recoveryUpdate(userId, (r) => {
             const out = checkIdentity(r, {
-              codeOk: typeof identityCode === 'string' && !!r.identityCodeHash && sameHex(identityCodeHash(userId, identityCode), r.identityCodeHash),
+              nowMs: now(),
+              deviceId,
+              challengeId: typeof identityChallengeId === 'string' ? identityChallengeId : '',
+              codeOk: typeof identityCode === 'string' && typeof identityChallengeId === 'string' &&
+                !!r.identityCodeHash &&
+                sameHex(identityCodeHash(userId, deviceId, identityChallengeId, identityCode), r.identityCodeHash),
             });
             return { next: out.next, result: out.outcome };
           });
-          if (outcome !== 'ok') return send(res, 403, { error: 'wrong identity code' });
+          if (outcome === 'expired') return send(res, 410, { error: 'identity code expired; request a new code' });
+          if (outcome === 'locked') return send(res, 429, { error: 'too many wrong identity codes; try later' });
+          if (outcome !== 'ok') return send(res, 403, { error: 'identity verification failed' });
           identityPassed = true;
         }
         // В окне восстановления новые устройства не добавляются, кроме первого входа по коду (D8).
