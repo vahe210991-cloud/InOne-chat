@@ -64,6 +64,7 @@ class _InOneNotYouScreenState extends State<InOneNotYouScreen> with InOneActionS
                 form: _form,
                 name: 'code',
                 label: 'Կոդը նամակից',
+                maxLength: 6,
                 autofillHints: const [AutofillHints.oneTimeCode],
                 textInputAction: TextInputAction.done,
                 onSubmitted: _submit,
