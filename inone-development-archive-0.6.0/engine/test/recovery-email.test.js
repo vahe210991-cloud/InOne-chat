@@ -56,8 +56,27 @@ async function registerByEmail(base, srv, email, nickname) {
   return call(base, 'POST', '/register', { body: { email, registrationToken: confirmed.body.registrationToken, password: PW, nickname } });
 }
 
-const loginWith = (base, email, password, deviceId, identityCode) =>
-  call(base, 'POST', '/login', { body: { email, password, deviceId, ...(identityCode ? { identityCode } : {}) } });
+const identityChallenges = new Map();
+
+async function loginWith(base, email, password, deviceId, identityCode) {
+  const key = `${email}|${deviceId}`;
+  const challengeId = identityCode ? identityChallenges.get(key) : undefined;
+  const result = await call(base, 'POST', '/login', {
+    body: {
+      email,
+      password,
+      deviceId,
+      ...(identityCode ? { identityCode } : {}),
+      ...(identityCode && challengeId ? { identityChallengeId: challengeId } : {}),
+    },
+  });
+  if (result.body.status === 'identity_check_required' && typeof result.body.challengeId === 'string') {
+    identityChallenges.set(key, result.body.challengeId);
+  } else if (result.status === 200 && identityCode) {
+    identityChallenges.delete(key);
+  }
+  return result;
+}
 
 const codeOf = (srv, mailbox, subject, pattern = /\b(\d{6})\b/) =>
   srv.mailbox(mailbox).filter((m) => m.templateId === subject).at(-1).text.match(pattern)[1];
