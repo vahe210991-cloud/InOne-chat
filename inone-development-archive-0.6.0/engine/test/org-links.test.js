@@ -377,3 +377,37 @@ test('F-02 PostgreSQL: cross-organization link revocation waits for an in-flight
     await s.stop();
   }
 });
+
+
+test('organization link revocation fails closed while inherited MLS room membership remains', async () => {
+  const s = await start();
+  try {
+    assert.equal((await call(s.base, 'POST', '/rooms', s.anna.token, { roomId: ROOM, orgId: ORG_A, members: [BORIS] })).status, 200);
+    const proposed = await call(s.base, 'POST', \`/orgs/\${ORG_A}/links\`, s.boris.token, { targetOrgId: ORG_B });
+    assert.equal(proposed.status, 200);
+    const linkId = proposed.json.linkId;
+    assert.equal((await call(s.base, 'POST', \`/orgs/\${ORG_B}/links/\${enc(linkId)}/accept\`, s.carol.token, {})).status, 200);
+    assert.equal((await call(s.base, 'POST', \`/rooms/\${enc(ROOM)}/members\`, s.anna.token, { userId: CAROL })).status, 200);
+
+    await s.anna.raw('POST', \`/mls/groups/\${enc(ROOM)}/commits\`, {
+      epoch: 0, commit: Buffer.from('INITIAL-LINK-MLS').toString('base64'),
+      changes: { adds: [], removes: [] },
+    });
+    const blocked = await call(s.base, 'POST', \`/orgs/\${ORG_B}/links/\${enc(linkId)}/revoke\`, s.carol.token, {});
+    assert.equal(blocked.status, 409);
+    assert.equal(blocked.json.code, 'mls_removal_required');
+    assert.deepEqual(blocked.json.rooms, [ROOM]);
+    assert.equal((await s.store.getOrgLink(linkId)).status, 'active', 'link remains active until MLS revocation completes');
+    assert.ok((await s.store.getRoom(ROOM)).members.includes(CAROL), 'inherited room membership remains until MLS commit');
+
+    await s.anna.raw('POST', \`/mls/groups/\${enc(ROOM)}/commits\`, {
+      epoch: 1, commit: Buffer.from('REMOVE-CAROL').toString('base64'),
+      changes: { adds: [], removes: [CAROL] },
+    });
+    const revoked = await call(s.base, 'POST', \`/orgs/\${ORG_B}/links/\${enc(linkId)}/revoke\`, s.carol.token, {});
+    assert.equal(revoked.status, 200);
+    assert.equal((await s.store.getOrgLink(linkId)).status, 'revoked');
+  } finally {
+    await s.stop();
+  }
+});
