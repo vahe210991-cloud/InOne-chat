@@ -701,13 +701,13 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
         );
         if (ownedRooms.length) return { ok: false, reason: 'owns_rooms' };
         const { rows: roomMemberships } = await client.query(
-          'SELECT rm.room_id FROM room_members rm JOIN rooms r ON r.room_id = rm.room_id WHERE r.org_id = $1 AND rm.user_id = $2 ORDER BY rm.room_id FOR UPDATE OF rm',
+          `SELECT rm.room_id FROM room_members rm JOIN rooms r ON r.room_id = rm.room_id WHERE rm.user_id = $2 AND (r.org_id = $1 OR (EXISTS (SELECT 1 FROM org_links l WHERE l.status = 'active' AND ((l.org_a = $1 AND l.org_b = r.org_id) OR (l.org_b = $1 AND l.org_a = r.org_id))) AND NOT EXISTS (SELECT 1 FROM org_members own WHERE own.org_id = r.org_id AND own.user_id = rm.user_id))) ORDER BY rm.room_id FOR UPDATE OF rm`,
           [orgId, target],
         );
         if (roomMemberships.length) {
           return { ok: false, reason: 'mls_removal_required', roomIds: roomMemberships.map((row) => row.room_id) };
         }
-        await client.query('DELETE FROM join_requests WHERE user_id = $2 AND room_id IN (SELECT room_id FROM rooms WHERE org_id = $1)', [orgId, target]);
+        await client.query(`DELETE FROM join_requests jr USING rooms r WHERE jr.room_id = r.room_id AND jr.user_id = $2 AND (r.org_id = $1 OR (EXISTS (SELECT 1 FROM org_links l WHERE l.status = 'active' AND ((l.org_a = $1 AND l.org_b = r.org_id) OR (l.org_b = $1 AND l.org_a = r.org_id))) AND NOT EXISTS (SELECT 1 FROM org_members own WHERE own.org_id = r.org_id AND own.user_id = jr.user_id)))`, [orgId, target]);
         await client.query('DELETE FROM org_members WHERE org_id = $1 AND user_id = $2', [orgId, target]);
         testHooks.beforeAdminActionInsert?.({ orgId, actor, action, target });
         await client.query(
@@ -729,11 +729,11 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
       return inTransaction(async (c) => {
         await c.query('SELECT user_id FROM org_members WHERE org_id = $1 AND user_id = $2 FOR UPDATE', [orgId, userId]);
         const { rows } = await c.query(
-          'SELECT rm.room_id FROM room_members rm JOIN rooms r ON r.room_id = rm.room_id WHERE r.org_id = $1 AND rm.user_id = $2 ORDER BY rm.room_id FOR UPDATE OF rm',
+          `SELECT rm.room_id FROM room_members rm JOIN rooms r ON r.room_id = rm.room_id WHERE rm.user_id = $2 AND (r.org_id = $1 OR (EXISTS (SELECT 1 FROM org_links l WHERE l.status = 'active' AND ((l.org_a = $1 AND l.org_b = r.org_id) OR (l.org_b = $1 AND l.org_a = r.org_id))) AND NOT EXISTS (SELECT 1 FROM org_members own WHERE own.org_id = r.org_id AND own.user_id = rm.user_id))) ORDER BY rm.room_id FOR UPDATE OF rm`,
           [orgId, userId],
         );
         if (rows.length) return { ok: false, reason: 'mls_removal_required', roomIds: rows.map((row) => row.room_id) };
-        await c.query('DELETE FROM join_requests WHERE user_id = $2 AND room_id IN (SELECT room_id FROM rooms WHERE org_id = $1)', [orgId, userId]);
+        await c.query(`DELETE FROM join_requests jr USING rooms r WHERE jr.room_id = r.room_id AND jr.user_id = $2 AND (r.org_id = $1 OR (EXISTS (SELECT 1 FROM org_links l WHERE l.status = 'active' AND ((l.org_a = $1 AND l.org_b = r.org_id) OR (l.org_b = $1 AND l.org_a = r.org_id))) AND NOT EXISTS (SELECT 1 FROM org_members own WHERE own.org_id = r.org_id AND own.user_id = jr.user_id)))`, [orgId, userId]);
         await c.query('DELETE FROM org_members WHERE org_id = $1 AND user_id = $2', [orgId, userId]);
         return { ok: true };
       });
