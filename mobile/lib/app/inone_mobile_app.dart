@@ -1234,6 +1234,15 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
 
   void _finishLogout() {
     _stopDeviceApprovalPolling();
+    _session.discardPendingApproval();
+    _pendingLoginEmail = '';
+    _pendingLoginPassword = '';
+    _pendingIdentityChallengeId = null;
+    _cancelingAdmission = false;
+    _pendingRecoveryLinkPayload = null;
+    _pendingRecoveryLinkFingerprint = null;
+    _recoveryUserId = '';
+    _recoveryEmail = '';
     setState(() {
       _profile = null;
       _documentOwnerId = null;
