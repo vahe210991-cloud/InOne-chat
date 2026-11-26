@@ -418,7 +418,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
     const current = await storage.recoveryGet(userId);
     if (current.windowKeyResetAt === null || now() < current.windowKeyResetAt) return;
     const dueSince = current.windowStartedAt;
-    if (dueSince === null) return;
+    if (dueSince === null) throw new Error('recovery finalization is missing its start timestamp');
     // Keep the recovery window marker until every device cleanup step has succeeded.
     // If any step fails, the next authenticated request retries all pre-window devices;
     // revokeDevice and the associated cleanup operations are idempotent.
