@@ -59,10 +59,8 @@ async function waitForSignal(signal, description) {
 test('по умолчанию организации не общаются: участник другой организации в комнату не добавляется', async () => {
   const s = await start();
   try {
-    assert.equal((await call(s.base, 'POST', '/rooms', s.anna.token, { roomId: ROOM, orgId: ORG_A, members: [BORIS] })).status, 200);
-    const outsider = await call(s.base, 'POST', `/rooms/${enc(ROOM)}/members`, s.anna.token, { userId: CAROL });
-    assert.equal(outsider.status, 403, 'без связи участник другой организации не входит');
-    assert.equal(outsider.json.code, 'org_not_member');
+    await s.anna.createRoom(ROOM, [ANNA, BORIS], { orgId: ORG_A });
+    await assert.rejects(s.anna.addMember(ROOM, CAROL), (error) => error.status === 403, 'без связи участник другой организации не входит через MLS');
   } finally {
     await s.stop();
   }
@@ -71,7 +69,7 @@ test('по умолчанию организации не общаются: уч
 test('связь открывается: предлагает администратор одной стороны, принимает администратор другой; принимать свою нельзя', async () => {
   const s = await start();
   try {
-    assert.equal((await call(s.base, 'POST', '/rooms', s.anna.token, { roomId: ROOM, orgId: ORG_A, members: [BORIS] })).status, 200);
+    await s.anna.createRoom(ROOM, [ANNA, BORIS], { orgId: ORG_A });
     const proposed = await call(s.base, 'POST', `/orgs/${ORG_A}/links`, s.boris.token, { targetOrgId: ORG_B });
     assert.equal(proposed.status, 200, 'администратор первой стороны предлагает связь');
     assert.equal(proposed.json.status, 'proposed');
@@ -86,8 +84,8 @@ test('связь открывается: предлагает администр
     const accepted = await call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/accept`, s.carol.token, {});
     assert.equal(accepted.status, 200);
     assert.equal(accepted.json.status, 'active');
-    const added = await call(s.base, 'POST', `/rooms/${enc(ROOM)}/members`, s.anna.token, { userId: CAROL });
-    assert.equal(added.status, 200, 'при активной связи участник другой стороны входит в комнату');
+    await s.anna.addMember(ROOM, CAROL);
+    assert.ok((await s.anna.listMembers(ROOM)).members.includes(CAROL), 'при активной связи участник другой стороны входит через MLS');
   } finally {
     await s.stop();
   }
@@ -96,16 +94,20 @@ test('связь открывается: предлагает администр
 test('отзыв связи любой стороной убирает участников другой стороны из комнат', async () => {
   const s = await start();
   try {
-    assert.equal((await call(s.base, 'POST', '/rooms', s.anna.token, { roomId: ROOM, orgId: ORG_A, members: [BORIS] })).status, 200);
+    await s.anna.createRoom(ROOM, [ANNA, BORIS], { orgId: ORG_A });
     const linkId = (await call(s.base, 'POST', `/orgs/${ORG_A}/links`, s.boris.token, { targetOrgId: ORG_B })).json.linkId;
     await call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/accept`, s.carol.token, {});
-    assert.equal((await call(s.base, 'POST', `/rooms/${enc(ROOM)}/members`, s.anna.token, { userId: CAROL })).status, 200);
+    await s.anna.addMember(ROOM, CAROL);
+    const blocked = await call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/revoke`, s.carol.token, {});
+    assert.equal(blocked.status, 409, 'link revoke cannot bypass MLS removal');
+    assert.equal(blocked.json.code, 'mls_removal_required');
+    assert.ok((await s.store.getRoom(ROOM)).members.includes(CAROL), 'membership remains until an MLS Remove Commit');
+    await s.anna.removeMember(ROOM, CAROL);
     const revoked = await call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/revoke`, s.carol.token, {});
-    assert.equal(revoked.status, 200, 'отзывает любая сторона');
+    assert.equal(revoked.status, 200, 'after MLS removal either organization can revoke');
     const room = await s.store.getRoom(ROOM);
-    assert.ok(!room.members.includes(CAROL), 'участник другой стороны удалён из комнаты при отзыве');
-    const back = await call(s.base, 'POST', `/rooms/${enc(ROOM)}/members`, s.anna.token, { userId: CAROL });
-    assert.equal(back.status, 403, 'после отзыва участник другой стороны не возвращается');
+    assert.ok(!room.members.includes(CAROL), 'member was removed by MLS before link revocation');
+    await assert.rejects(s.anna.addMember(ROOM, CAROL), (error) => error.status === 403, 'after revocation cross-org re-add is denied');
     const again = await call(s.base, 'POST', `/orgs/${ORG_A}/links/${enc(linkId)}/revoke`, s.boris.token, {});
     assert.equal(again.status, 409, 'отозванную связь повторно не отзывают');
   } finally {
@@ -164,7 +166,7 @@ test('F-04 PostgreSQL: a room invitation racing link revocation cannot leave sta
   let releaseInvite;
   const originalConnect = s.pool.connect.bind(s.pool);
   try {
-    assert.equal((await call(s.base, 'POST', '/rooms', s.anna.token, { roomId: ROOM, orgId: ORG_A, members: [BORIS] })).status, 200);
+    await s.anna.createRoom(ROOM, [ANNA, BORIS], { orgId: ORG_A });
     const proposed = await call(s.base, 'POST', `/orgs/${ORG_A}/links`, s.boris.token, { targetOrgId: ORG_B });
     assert.equal(proposed.status, 200);
     const linkId = proposed.json.linkId;
@@ -218,7 +220,7 @@ test('F-05 PostgreSQL: a room message write is serialized before link revocation
   let releaseWrite;
   const originalConnect = s.pool.connect.bind(s.pool);
   try {
-    assert.equal((await call(s.base, 'POST', '/rooms', s.anna.token, { roomId: ROOM, orgId: ORG_A, members: [BORIS] })).status, 200);
+    await s.anna.createRoom(ROOM, [ANNA, BORIS], { orgId: ORG_A });
     const proposed = await call(s.base, 'POST', `/orgs/${ORG_A}/links`, s.boris.token, { targetOrgId: ORG_B });
     assert.equal(proposed.status, 200);
     const linkId = proposed.json.linkId;
@@ -271,7 +273,7 @@ test('F-03 PostgreSQL: injected audit failure rolls back link revocation and cro
   const s = await start();
   const originalConnect = s.pool.connect.bind(s.pool);
   try {
-    assert.equal((await call(s.base, 'POST', '/rooms', s.anna.token, { roomId: ROOM, orgId: ORG_A, members: [BORIS] })).status, 200);
+    await s.anna.createRoom(ROOM, [ANNA, BORIS], { orgId: ORG_A });
     const proposed = await call(s.base, 'POST', `/orgs/${ORG_A}/links`, s.boris.token, { targetOrgId: ORG_B });
     assert.equal(proposed.status, 200);
     const linkId = proposed.json.linkId;
@@ -322,7 +324,7 @@ test('F-02 PostgreSQL: cross-organization link revocation waits for an in-flight
   let releaseJoin;
   let restorePoolHooks = () => {};
   try {
-    assert.equal((await call(s.base, 'POST', '/rooms', s.anna.token, { roomId: ROOM, orgId: ORG_A, members: [BORIS] })).status, 200);
+    await s.anna.createRoom(ROOM, [ANNA, BORIS], { orgId: ORG_A });
     assert.equal((await call(s.base, 'POST', `/rooms/${enc(ROOM)}/settings`, s.anna.token, { name: 'Связь и открытый вход', visibility: 'public', joinPolicy: 'open' })).status, 200);
 
     const proposed = await call(s.base, 'POST', `/orgs/${ORG_A}/links`, s.boris.token, { targetOrgId: ORG_B });
