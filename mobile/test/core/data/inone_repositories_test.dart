@@ -56,6 +56,47 @@ void main() {
     session.dispose();
   });
 
+  test('opens the canonical direct conversation through the authenticated API', () async {
+    final session = _ProfileSession({
+      'roomId': '!dm_0123456789abcdef',
+      'peerUserId': 'peer-1',
+      'status': 'pending',
+      'created': true,
+      'isCreator': true,
+      'mlsInitializationRequired': true,
+    });
+
+    final conversation =
+        await InOneRepositories(session).openDirectConversation(' peer-1 ');
+
+    expect(session.method, 'POST');
+    expect(session.path, '/direct-chats/open');
+    expect(session.authenticated, isTrue);
+    expect(session.body, {'userId': 'peer-1'});
+    expect(conversation.roomId, '!dm_0123456789abcdef');
+    expect(conversation.status, 'pending');
+    expect(conversation.requiresCreatorSetup, isTrue);
+    expect(conversation.mlsInitializationRequired, isTrue);
+    session.dispose();
+  });
+
+  test('rejects malformed direct conversation responses', () async {
+    final session = _ProfileSession({
+      'roomId': '',
+      'peerUserId': 'peer-1',
+      'status': 'pending',
+      'created': true,
+      'isCreator': true,
+      'mlsInitializationRequired': true,
+    });
+
+    await expectLater(
+      InOneRepositories(session).openDirectConversation('peer-1'),
+      throwsA(isA<ApiException>()),
+    );
+    session.dispose();
+  });
+
   test('rejects a malformed rooms response instead of showing fake chats', () async {
     final session = _ProfileSession({'rooms': [{'roomId': ''}]});
 
