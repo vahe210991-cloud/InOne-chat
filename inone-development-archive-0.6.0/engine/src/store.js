@@ -1700,7 +1700,7 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
   async roomsOfUser(userId) {
     const { rows } = await pool.query(
       `SELECT r.room_id, r.kind,
-              COALESCE(r.name, NULLIF(peer.nickname, ''), peer.user_id) AS name,
+              COALESCE(r.name, NULLIF(peer.nickname, '')) AS name,
               r.owner, m.is_admin
          FROM room_members m
          JOIN rooms r ON r.room_id = m.room_id
