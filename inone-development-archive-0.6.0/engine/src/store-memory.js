@@ -450,7 +450,7 @@ export function createMemoryStore({ pinPepper }) {
       if (targetRole === 'owner' && [...members.values()].filter((m) => m.role === 'owner').length <= 1) {
         return { ok: false, reason: 'last_owner' };
       }
-      if ([...rooms.values()].some((room) => room.orgId === orgId && room.owner === target)) {
+      if ([...rooms.values()].some((room) => room.owner === target && isOrgMemberRoom(orgId, room.orgId, target))) {
         return { ok: false, reason: 'owns_rooms' };
       }
       const roomIds = [...rooms.entries()].filter(([, room]) => room.members.has(target) && isOrgMemberRoom(orgId, room.orgId, target)).map(([roomId]) => roomId).sort();
@@ -471,6 +471,7 @@ export function createMemoryStore({ pinPepper }) {
       return n;
     },
     removeOrgMember(orgId, userId) {
+      if ([...rooms.values()].some((room) => room.owner === userId && isOrgMemberRoom(orgId, room.orgId, userId))) return { ok: false, reason: 'owns_rooms' };
       const roomIds = [...rooms.entries()].filter(([, room]) => room.members.has(userId) && isOrgMemberRoom(orgId, room.orgId, userId)).map(([roomId]) => roomId).sort();
       if (roomIds.length) return { ok: false, reason: 'mls_removal_required', roomIds };
       for (const room of rooms.values()) if (isOrgMemberRoom(orgId, room.orgId, userId)) room.joinRequests.delete(userId);
