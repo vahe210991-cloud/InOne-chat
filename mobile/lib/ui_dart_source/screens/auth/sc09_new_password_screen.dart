@@ -78,6 +78,7 @@ class _InOneNewPasswordScreenState extends State<InOneNewPasswordScreen>
                 form: _form,
                 name: 'code',
                 label: 'Կոդը նամակից',
+                maxLength: 6,
                 autofillHints: const [AutofillHints.oneTimeCode],
                 textInputAction: TextInputAction.next,
               ),
