@@ -71,12 +71,10 @@ test('лимит группы организации действует и не 
     const set = await call(s.base, 'POST', `/orgs/${ORG}/settings`, s.anna.token, { field: 'maxGroupMembers', value: 3 });
     assert.equal(set.status, 200);
     const room = '!set-group:inone.test';
-    assert.equal((await call(s.base, 'POST', '/rooms', s.anna.token, { roomId: room, orgId: ORG, members: [CAROL] })).status, 200);
-    assert.equal((await call(s.base, 'POST', `/rooms/${enc(room)}/members`, s.anna.token, { userId: BORIS })).status, 200, 'третий участник входит в лимит');
+    await s.anna.createRoom(room, [ANNA, CAROL], { orgId: ORG });
+    await s.anna.addMember(room, BORIS);
     await s.store.addOrgMember(ORG, DAVE, 'member', 9);
-    const full = await call(s.base, 'POST', `/rooms/${enc(room)}/members`, s.anna.token, { userId: DAVE });
-    assert.equal(full.status, 409, 'четвёртый участник не входит: лимит организации');
-    assert.equal(full.json.error, 'group is full');
+    await assert.rejects(s.anna.addMember(room, DAVE), (error) => error.status === 409 && error.message.includes('group is full'), 'четвёртый участник не входит: лимит организации');
   } finally {
     await s.stop();
   }
