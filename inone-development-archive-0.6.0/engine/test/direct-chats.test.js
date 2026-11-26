@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { createServer } from '../src/server.js';
 import { createMemoryStore } from '../src/store-memory.js';
 import { ChatClient, DEFAULT_PASSWORD as PW } from '../src/client.js';
+import { buildPrivateMessageHeader } from '../src/mls-wire.js';
 import { storeForTest } from './helpers.js';
 
 const PEPPER = randomBytes(24).toString('hex');
@@ -93,13 +94,18 @@ test('direct chats require no recipient approval and activate automatically thro
     assert.notEqual(bobDirectRoom.name, opened.roomId, 'the room list uses the peer display name instead of the opaque room ID');
     assert.equal((await bob.raw('GET', '/mls/welcomes')).welcomes.length, 1);
     assert.equal((await bobTablet.raw('GET', '/mls/welcomes')).welcomes.length, 1);
-    const deliveredSeq = await s.store.appendRoomEvent(
-      opened.roomId, ALICE, 'm.room.encrypted', { ciphertext: 'alice-ciphertext' }, Date.now(),
-    );
-    assert.equal(typeof deliveredSeq, 'number', 'creator can write after automatic MLS provisioning without organization membership');
+    const wireMessage = Buffer.concat([
+      buildPrivateMessageHeader(opened.roomId, committed.epoch),
+      Buffer.from('opaque-mls-ciphertext'),
+    ]).toString('base64');
+    const sent = await alice.raw('POST', `/mls/groups/${enc(opened.roomId)}/messages`, {
+      message: wireMessage,
+      kind: 'text',
+    });
+    assert.equal(typeof sent.event_id, 'string', 'creator can send through the MLS-only message route');
     const delivered = await bob.raw('GET', `/rooms/${enc(opened.roomId)}/events?since=0`);
-    assert.ok(delivered.events.some((event) => event.content?.ciphertext === 'alice-ciphertext'),
-      'recipient receives the message without accepting a chat request');
+    assert.ok(delivered.events.some((event) => event.event_id === sent.event_id),
+      'recipient receives the sent message without accepting a chat request');
     assert.equal(typeof await s.store.appendRoomEvent(
       opened.roomId, BOB, 'm.room.encrypted', { ciphertext: 'bob-ciphertext' }, Date.now(),
     ), 'number', 'recipient can write after processing the server-side Add Commit');
