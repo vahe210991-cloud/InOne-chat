@@ -435,7 +435,7 @@ dbTest('SD19: беседа, участники и история пережив�
     assert.deepEqual([...members.members].sort(), [ALICE, BOB_ID].sort(), 'участники сохранились');
     // Вступивший после перезапуска не видит того, что было раньше (C-07).
     const carol = await ChatClient.create(second.base, CAROL_ID, 'C_PHONE', PW);
-    await alice.raw('POST', `/rooms/${enc}/members`, { userId: CAROL_ID });
+    await alice.addMember(ROOM_ID, CAROL_ID);
     assert.deepEqual((await carol.raw('GET', `/rooms/${enc}/events`)).events, [], 'прошлое новичку не отдаётся');
     const after = await postGroupEvent(alice, decodeURIComponent(enc), { type: 'm.room.encrypted', content: { c: 'после' } });
     assert.deepEqual((await carol.raw('GET', `/rooms/${enc}/events`)).events.map((e) => e.content.mls), [after.message]);
