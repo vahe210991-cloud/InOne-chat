@@ -14,6 +14,8 @@ export const DEFAULT_RATE_LIMITS = {
   emailCodePerAddress: [{ windowMs: HOUR_MS, limit: 10 }],
   searchPerAccount: [{ windowMs: HOUR_MS, limit: 30 }],
   searchPerAddress: [{ windowMs: HOUR_MS, limit: 60 }],
+  directChatOpenPerAccount: [{ windowMs: HOUR_MS, limit: 20 }],
+  directChatOpenPerAddress: [{ windowMs: HOUR_MS, limit: 60 }],
   authNoncePerAddress: [{ windowMs: HOUR_MS, limit: 60 }],
   providerAuthPerAddress: [{ windowMs: HOUR_MS, limit: 30 }],
   stepupPerAccount: [{ windowMs: HOUR_MS, limit: 5 }],
