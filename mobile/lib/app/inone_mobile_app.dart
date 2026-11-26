@@ -354,16 +354,16 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         return null;
       }
       if (status == 'approval_required') {
-        return const InOneFailure(
-          InOneScreenState.error,
-          message: 'Вход ожидает подтверждения на другом устройстве. Сценарий подтверждения устройства ещё не подключён.',
-        );
+        _pendingLoginEmail = email.trim();
+        _pendingLoginPassword = password;
+        if (mounted) setState(() => _screen = 'loginApproval');
+        return null;
       }
       if (status == 'identity_check_required') {
-        return const InOneFailure(
-          InOneScreenState.error,
-          message: 'Для этого входа требуется дополнительное подтверждение. Текущий мобильный контракт его не поддерживает; вход не выполнен.',
-        );
+        _pendingLoginEmail = email.trim();
+        _pendingLoginPassword = password;
+        if (mounted) setState(() => _screen = 'identityCheck');
+        return null;
       }
       return const InOneFailure(
         InOneScreenState.error,
@@ -374,8 +374,80 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     }
   }
 
+  Future<InOneFailure?> _submitIdentityCode(String code) async {
+    if (_pendingLoginEmail.isEmpty || _pendingLoginPassword.isEmpty) {
+      return const InOneFailure(
+        InOneScreenState.error,
+        message: 'Срок проверки истёк. Начните вход заново.',
+      );
+    }
+    try {
+      final response = await _session.login(
+        email: _pendingLoginEmail,
+        password: _pendingLoginPassword,
+        identityCode: code,
+      );
+      if (_session.isAuthenticated) return null;
+      final status = response['status'];
+      if (status == 'approval_required') {
+        if (mounted) setState(() => _screen = 'loginApproval');
+        return null;
+      }
+      if (status == 'waiting_period' && response['activateAt'] is String) {
+        _waitingActivateAt = _formatActivationTime(response['activateAt'] as String);
+        if (mounted) setState(() => _screen = 'loginWaiting');
+        return null;
+      }
+      return const InOneFailure(
+        InOneScreenState.error,
+        message: 'Дополнительная проверка не завершена. Проверьте код и попробуйте снова.',
+      );
+    } catch (error) {
+      return _toFailure(error);
+    }
+  }
+
+  Future<InOneFailure?> _claimPendingApproval() async {
+    try {
+      final result = await _session.claimPendingApproval();
+      final status = result['status'];
+      if (status == 'pending') {
+        return const InOneFailure(
+          InOneScreenState.error,
+          message: 'Ожидаем подтверждения на доверенном устройстве.',
+        );
+      }
+      if (status == 'denied' || status == 'expired') {
+        if (mounted) {
+          setState(() {
+            _pendingLoginEmail = '';
+            _pendingLoginPassword = '';
+            _screen = 'login';
+          });
+        }
+        return InOneFailure(
+          InOneScreenState.error,
+          message: status == 'denied'
+              ? 'Запрос входа отклонён. Начните вход заново, если это были вы.'
+              : 'Время подтверждения истекло. Начните вход заново.',
+        );
+      }
+      if (_session.isAuthenticated) return null;
+      return const InOneFailure(
+        InOneScreenState.error,
+        message: 'Подтверждение не выдало сессию. Повторите вход.',
+      );
+    } catch (error) {
+      return _toFailure(error);
+    }
+  }
+
   void _afterLogin() {
-    if (_session.isAuthenticated) unawaited(_loadAuthenticatedData());
+    if (!_session.isAuthenticated) return;
+    _pendingLoginEmail = '';
+    _pendingLoginPassword = '';
+    _waitingActivateAt = '';
+    unawaited(_loadAuthenticatedData());
   }
 
   void _showForegroundPush(InOnePushRoute route) {
@@ -489,6 +561,14 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       if (result['status'] == 'waiting_period' && result['activateAt'] is String) {
         _waitingActivateAt = _formatActivationTime(result['activateAt'] as String);
         if (mounted) setState(() {});
+        return null;
+      }
+      if (result['status'] == 'approval_required') {
+        if (mounted) setState(() => _screen = 'loginApproval');
+        return null;
+      }
+      if (result['status'] == 'identity_check_required') {
+        if (mounted) setState(() => _screen = 'identityCheck');
         return null;
       }
       return const InOneFailure(InOneScreenState.error, message: 'Вход пока не подтверждён.');
@@ -3028,6 +3108,39 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           onNotMe: () => setState(() {
             _cancelingAdmission = true;
             _screen = 'notYou';
+          }),
+          onDone: _afterLogin,
+        );
+      case 'loginApproval':
+        final approvalCode = _session.pendingApprovalCode;
+        if (approvalCode == null) {
+          return InOneLoadingErrorScreen(
+            onRetry: () => unawaited(_login(_pendingLoginEmail, _pendingLoginPassword)),
+          );
+        }
+        return InOneLoginWaitingScreen(
+          activateAt: '',
+          approvalCode: approvalCode,
+          autoPoll: true,
+          showNotMe: false,
+          onRecheck: _claimPendingApproval,
+          onNotMe: () {},
+          onDone: _afterLogin,
+        );
+      case 'identityCheck':
+        return InOneEmailCodeScreen(
+          title: 'Մուտքի հաստատում',
+          codeLabel: 'Կոդը նամակից',
+          showResend: false,
+          onConfirm: _submitIdentityCode,
+          onResend: () async => const InOneFailure(
+            InOneScreenState.error,
+            message: 'Повторная отправка кода пока недоступна.',
+          ),
+          onBack: () => setState(() {
+            _pendingLoginEmail = '';
+            _pendingLoginPassword = '';
+            _screen = 'login';
           }),
           onDone: _afterLogin,
         );
