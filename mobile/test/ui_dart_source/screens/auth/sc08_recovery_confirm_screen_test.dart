@@ -15,6 +15,7 @@ void main() {
             confirmations++;
             return null;
           },
+          onBack: () {},
           onDone: () => completed++,
         ),
       ),
