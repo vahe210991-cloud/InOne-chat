@@ -33,6 +33,29 @@ async function post(base, token, p, body) {
   return { status: res.status, json: await res.json().catch(() => ({})) };
 }
 
+const b64 = (value) => Buffer.from(value, 'utf8').toString('base64');
+const keyPackage = (value) => b64(`KEYPACKAGE-${value}-${'x'.repeat(48)}`);
+
+async function approveJoinRequestViaMls(owner, requester, roomId, targetUserId, claimId) {
+  await requester.raw('POST', '/mls/key-packages', { packages: [keyPackage(`${targetUserId}-${claimId}`)] });
+  const claim = await owner.raw('POST', `/mls/key-packages/${enc(targetUserId)}/claims`, { claimId, roomId });
+  const epoch = (await owner.raw('GET', `/mls/groups/${enc(roomId)}/epoch`)).epoch;
+  const welcomes = claim.packages.map((item) => ({
+    userId: targetUserId,
+    deviceId: item.deviceId,
+    welcome: b64(`WELCOME-${claimId}-${item.deviceId}`),
+  }));
+  return owner.raw('POST', `/mls/groups/${enc(roomId)}/commits`, {
+    epoch,
+    commit: b64(`COMMIT-${claimId}`),
+    changes: { adds: [targetUserId], removes: [] },
+    welcomes,
+    clientOperationId: claimId,
+    keyPackageClaimId: claimId,
+    joinRequestUserId: targetUserId,
+  });
+}
+
 async function waitForSignal(signal, description) {
   let timeout;
   try {
@@ -57,7 +80,10 @@ test('открытая группа: посторонний организаци
     await s.store.addOrgMember(ORG, BORIS, 'member', 3);
     const joined = await post(s.base, s.boris.token, `/rooms/${enc(room)}/join`, {});
     assert.equal(joined.status, 200);
-    assert.equal(joined.json.status, 'joined', 'участник организации входит');
+    assert.equal(joined.json.status, 'requested', 'участник организации создаёт запрос, а не меняет состав напрямую');
+    assert.equal((await s.anna.raw('GET', `/rooms/${enc(room)}/members`)).members.includes(BORIS), false);
+    await approveJoinRequestViaMls(s.anna, s.boris, room, BORIS, 'org-join-approval-boris-0001');
+    assert.equal((await s.anna.raw('GET', `/rooms/${enc(room)}/members`)).members.includes(BORIS), true);
   } finally {
     await s.stop();
   }
@@ -102,7 +128,9 @@ test('приглашение: вступить по нему может толь
     await s.store.addOrgMember(ORG, BORIS, 'member', 3);
     const joined = await post(s.base, s.boris.token, '/invites/join', { token });
     assert.equal(joined.status, 200);
-    assert.equal(joined.json.status, 'joined', 'участник организации входит по приглашению');
+    assert.equal(joined.json.status, 'requested', 'участник организации создаёт заявку по ссылке');
+    await approveJoinRequestViaMls(s.anna, s.boris, room, BORIS, 'org-invite-approval-boris-0002');
+    assert.equal((await s.anna.raw('GET', `/rooms/${enc(room)}/members`)).members.includes(BORIS), true);
   } finally {
     await s.stop();
   }
