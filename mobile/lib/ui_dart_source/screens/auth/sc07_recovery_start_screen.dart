@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../state/inone_state.dart';
 import '../../widgets/inone_widgets.dart';
 
-/// SC-07 · Մուտքի վերականգնում: запрос письма для восстановления.
+/// SC-07 · Մուտքի վերականգնում: request the account's registered recovery contact.
 /// Ответ не раскрывает, существует ли аккаунт.
 class InOneRecoveryStartScreen extends StatefulWidget {
   const InOneRecoveryStartScreen({
