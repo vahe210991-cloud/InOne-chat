@@ -1004,40 +1004,6 @@ export function createMemoryStore({ pinPepper }) {
       return true;
     },
 
-    joinPublicRoomOpen({ roomId, userId, maxMembers }) {
-      const r = rooms.get(roomId);
-      if (!r) return { status: 'not_found' };
-      if (r.visibility !== 'public') return { status: 'not_public' };
-      if (r.joinPolicy !== 'open') return { status: 'not_open' };
-      if (r.members.has(userId)) return { status: 'already_member' };
-      const roomOrg = organizations.get(r.orgId);
-      if (!roomOrg || roomOrg.status !== 'approved') return { status: 'org_not_approved' };
-
-      let allowed = orgMembers.get(r.orgId)?.has(userId) ?? false;
-      if (!allowed) {
-        for (const [memberOrgId, members] of orgMembers) {
-          if (!members.has(userId) || organizations.get(memberOrgId)?.status !== 'approved') continue;
-          for (const link of orgLinks.values()) {
-            if (link.status === 'active'
-              && ((link.orgA === memberOrgId && link.orgB === r.orgId)
-                || (link.orgB === memberOrgId && link.orgA === r.orgId))) {
-              allowed = true;
-              break;
-            }
-          }
-          if (allowed) break;
-        }
-      }
-      if (!allowed) return { status: 'org_not_member' };
-      if (r.kind !== 'channel' && Number.isFinite(maxMembers) && r.members.size >= maxMembers) {
-        return { status: 'full' };
-      }
-      r.members.add(userId);
-      r.joinedSeq.set(userId, counters.eventSeq);
-      r.capabilities.set(userId, [...DEFAULT_MEMBER_CAPABILITIES]);
-      r.readUpTo.set(userId, 0);
-      return { status: 'joined', members: [...r.members] };
-    },
     addRoomMember(roomId, userId) {
       const r = rooms.get(roomId);
       if (!r || r.members.has(userId)) return false;
