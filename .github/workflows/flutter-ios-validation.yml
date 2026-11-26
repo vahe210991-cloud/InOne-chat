@@ -107,6 +107,26 @@ jobs:
       - name: Build unsigned iOS device app (verbose linker diagnostics)
         run: flutter build ios --no-codesign --verbose
 
+      - name: Package unsigned device build as diagnostic IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          package_root="$RUNNER_TEMP/inone-unsigned-ipa"
+          rm -rf "$package_root"
+          mkdir -p "$package_root/Payload"
+          ditto "$PWD/build/ios/iphoneos/Runner.app" "$package_root/Payload/Runner.app"
+          (cd "$package_root" && /usr/bin/zip -qry "$RUNNER_TEMP/inone-beta1-unsigned.ipa" Payload)
+          test -s "$RUNNER_TEMP/inone-beta1-unsigned.ipa"
+          echo "Created unsigned diagnostic IPA; it is not installable on a physical iPhone without Apple code signing."
+
+      - name: Upload unsigned diagnostic IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: inone-beta1-unsigned-ipa-diagnostic
+          path: ${{ runner.temp }}/inone-beta1-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Upload iOS build artifacts
         uses: actions/upload-artifact@v4
         with:
