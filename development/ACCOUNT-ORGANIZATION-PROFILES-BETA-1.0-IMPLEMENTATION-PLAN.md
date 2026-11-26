@@ -792,3 +792,19 @@ If regression is found, remove strikethrough and reopen while preserving history
 - mobile profile/organization DTOs, repositories, app host, profile/org screens and corresponding core/data tests.
 
 **Final audit state:** SOURCE REVIEW COMPLETE. Implementation NOT STARTED. Tests/builds/dynamic security/production/device checks NOT RUN. Product source, API, migrations, configuration and Flutter screens unchanged. WBS v1.1 and owner-approved privacy variant В unchanged.
+
+
+## 23. Execution journal — PROFILE-SEC-001
+
+### 2026-11-26 — remediation PR opened
+
+- Status: **IN PROGRESS / NOT ACCEPTED / NOT MERGED**.
+- Implementation PR: [#173](https://github.com/vahe210991-cloud/InOne-chat/pull/173).
+- Source base: main 7d34b99fcc026a828b838e211d039c575aeace1d.
+- Current implementation head at journal entry: b841e4f0a51d04dcdd2bf0cf80681055e04d394c.
+- Changes: legacy direct room DELETE is rejected after an MLS epoch exists; organization member removal/leave and organization-link revocation fail closed when affected MLS-protected room memberships remain; PostgreSQL and in-memory stores share the guard; regression tests cover the three public paths.
+- The organization action returns HTTP 409 with mls_removal_required and affected room IDs. Each affected room must first process an MLS Remove Commit; the organization action is then retried. This is a fail-closed backend guard, not a completed multi-room Flutter workflow.
+- PostgreSQL locking was adjusted to serialize room revocation checks with MLS commits and to keep room/link lock ordering consistent.
+- Validation: 11 GitHub Actions checks were queued on the exact implementation head; no PASS, test completion or merge is claimed yet.
+- No migration, Flutter change, release flag change, WBS change or product-policy change.
+- Closure criteria remain unchanged. Do not strike through this task until PR merge, review, exact-SHA test evidence and acceptance are complete.
