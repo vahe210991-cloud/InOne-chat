@@ -1030,21 +1030,29 @@ export function createMemoryStore({ pinPepper }) {
     roomsOfUser(userId) {
       const out = [];
       for (const [roomId, r] of rooms.entries()) {
-        if (![...r.members].includes(userId)) continue;
+        if (!r.members.has(userId)) continue;
         const conversation = directConversationsByRoom.get(roomId);
         const peerUserId = conversation
           ? (conversation.userA === userId ? conversation.userB : conversation.userA)
           : null;
         const peerName = peerUserId ? profiles.get(peerUserId)?.nickname : null;
+        const joinedSeq = r.joinedSeq.get(userId) ?? 0;
+        const readSeq = r.readUpTo.get(userId) ?? 0;
+        const messages = r.events.filter((event) => event.seq > joinedSeq && event.type === 'm.room.encrypted');
+        const lastMessage = messages.at(-1) ?? null;
+        const unreadCount = messages.filter((event) => event.seq > Math.max(joinedSeq, readSeq) && event.sender !== userId).length;
         out.push({
           roomId,
           kind: r.kind,
           name: r.name ?? (peerName?.trim() || null),
           owner: r.owner,
           isAdmin: [...r.admins].includes(userId),
+          lastEventSeq: lastMessage?.seq ?? null,
+          lastEventAt: lastMessage?.origin_server_ts ?? null,
+          unreadCount,
         });
       }
-      return out.sort((a, b) => (a.roomId < b.roomId ? -1 : a.roomId > b.roomId ? 1 : 0));
+      return out.sort((a, b) => (b.lastEventSeq ?? 0) - (a.lastEventSeq ?? 0) || (a.roomId < b.roomId ? -1 : a.roomId > b.roomId ? 1 : 0));
     },
     roomKind(roomId) {
       return rooms.get(roomId)?.kind ?? null;
