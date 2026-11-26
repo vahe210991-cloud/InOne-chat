@@ -51,12 +51,16 @@ impl OpenMlsProvider for FixtureProvider {
 fn open_sqlcipher(path: &Path) -> Result<Connection, Box<dyn std::error::Error>> {
     let connection = Connection::open(path)?;
     connection.pragma_update(None, "key", format!("x'{TEST_KEY_HEX}'"))?;
-    connection.query_row("SELECT count(*) FROM sqlite_master", [], |row| row.get::<_, i64>(0))?;
+    connection.query_row("SELECT count(*) FROM sqlite_master", [], |row| {
+        row.get::<_, i64>(0)
+    })?;
     Ok(connection)
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let path = std::env::args().nth(1).ok_or("usage: fixture-writer <database-path>")?;
+    let path = std::env::args()
+        .nth(1)
+        .ok_or("usage: fixture-writer <database-path>")?;
     let path = Path::new(&path);
     if path.exists() {
         std::fs::remove_file(path)?;
@@ -98,8 +102,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(group.epoch().as_u64(), 0);
     assert_eq!(group.members().count(), 1);
 
-    let cipher_version: String = connection.query_row("PRAGMA cipher_version", [], |row| row.get(0))?;
-    assert!(!cipher_version.trim().is_empty(), "fixture must be SQLCipher-encrypted");
+    let cipher_version: String =
+        connection.query_row("PRAGMA cipher_version", [], |row| row.get(0))?;
+    assert!(
+        !cipher_version.trim().is_empty(),
+        "fixture must be SQLCipher-encrypted"
+    );
 
     println!("fixture_created=true");
     println!("fixture_epoch={}", group.epoch().as_u64());

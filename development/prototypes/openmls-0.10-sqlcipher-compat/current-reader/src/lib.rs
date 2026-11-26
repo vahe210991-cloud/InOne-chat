@@ -2,8 +2,8 @@ use std::{path::Path, sync::Arc};
 
 use openmls::prelude::*;
 use openmls_libcrux_crypto::CryptoProvider as LibcruxCrypto;
-use openmls_traits::crypto::OpenMlsCrypto;
 use openmls_sqlite_storage::{Codec, Connection, SqliteStorageProvider};
+use openmls_traits::crypto::OpenMlsCrypto;
 use serde::{de::DeserializeOwned, Serialize};
 
 const GROUP_ID: &[u8] = b"inone-openmls-081-compat-fixture";
@@ -51,13 +51,16 @@ impl OpenMlsProvider for CandidateProvider {
 fn open_sqlcipher(path: &Path, key_hex: &str) -> Result<Connection, Box<dyn std::error::Error>> {
     let connection = Connection::open(path)?;
     connection.pragma_update(None, "key", format!("x'{key_hex}'"))?;
-    connection.query_row("SELECT count(*) FROM sqlite_master", [], |row| row.get::<_, i64>(0))?;
+    connection.query_row("SELECT count(*) FROM sqlite_master", [], |row| {
+        row.get::<_, i64>(0)
+    })?;
     Ok(connection)
 }
 
 fn load_group(path: &Path) -> Result<(MlsGroup, String), Box<dyn std::error::Error>> {
     let mut connection = open_sqlcipher(path, TEST_KEY_HEX)?;
-    let cipher_version: String = connection.query_row("PRAGMA cipher_version", [], |row| row.get(0))?;
+    let cipher_version: String =
+        connection.query_row("PRAGMA cipher_version", [], |row| row.get(0))?;
     if cipher_version.trim().is_empty() {
         return Err("candidate connection is not using SQLCipher".into());
     }
@@ -93,12 +96,15 @@ mod tests {
 
     #[test]
     fn opens_and_reloads_existing_openmls_081_group_with_sqlcipher_and_libcrux() {
-        let path = std::env::var("INONE_COMPAT_DB").expect("INONE_COMPAT_DB must point to the generated fixture");
+        let path = std::env::var("INONE_COMPAT_DB")
+            .expect("INONE_COMPAT_DB must point to the generated fixture");
         let path = Path::new(&path);
 
         let raw = std::fs::read(path).expect("read encrypted fixture");
-        assert!(!raw.windows(GROUP_ID.len()).any(|window| window == GROUP_ID),
-            "group identifier must not appear in plaintext in the SQLCipher file");
+        assert!(
+            !raw.windows(GROUP_ID.len()).any(|window| window == GROUP_ID),
+            "group identifier must not appear in plaintext in the SQLCipher file"
+        );
 
         let (group, cipher_version) = load_group(path).expect("load legacy group with candidate");
         assert_eq!(group.group_id().as_slice(), GROUP_ID);
@@ -117,9 +123,15 @@ mod tests {
 
     #[test]
     fn rejects_a_wrong_sqlcipher_key() {
-        let path = std::env::var("INONE_COMPAT_DB").expect("INONE_COMPAT_DB must point to the generated fixture");
+        let path = std::env::var("INONE_COMPAT_DB")
+            .expect("INONE_COMPAT_DB must point to the generated fixture");
         let connection = Connection::open(Path::new(&path)).expect("open database handle");
-        connection.pragma_update(None, "key", format!("x'{}'", "99".repeat(32))).unwrap();
-        assert!(connection.query_row("SELECT count(*) FROM sqlite_master", [], |row| row.get::<_, i64>(0)).is_err());
+        connection
+            .pragma_update(None, "key", format!("x'{}'", "99".repeat(32)))
+            .unwrap();
+        assert!(connection
+            .query_row("SELECT count(*) FROM sqlite_master", [], |row| row
+                .get::<_, i64>(0))
+            .is_err());
     }
 }
