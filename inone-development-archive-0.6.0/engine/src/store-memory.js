@@ -566,7 +566,7 @@ export function createMemoryStore({ pinPepper }) {
         if (room.orgId !== orgX && room.orgId !== orgY) continue;
         const other = room.orgId === orgX ? orgY : orgX;
         for (const userId of room.members) {
-          if (inOrg(other, userId) && !inOrg(room.orgId, userId)) memberships.push({ roomId, userId });
+          if (inOrg(other, userId) && !inOrg(room.orgId, userId)) memberships.push({ roomId, userId, owner: room.owner === userId });
         }
       }
       return memberships.length
@@ -584,7 +584,7 @@ export function createMemoryStore({ pinPepper }) {
         if (room.orgId !== orgA && room.orgId !== orgB) continue;
         const other = room.orgId === orgA ? orgB : orgA;
         for (const userId of room.members) {
-          if (inOrg(other, userId) && !inOrg(room.orgId, userId)) memberships.push({ roomId, userId });
+          if (inOrg(other, userId) && !inOrg(room.orgId, userId)) memberships.push({ roomId, userId, owner: room.owner === userId });
         }
       }
       if (memberships.length) return { ok: false, reason: 'mls_removal_required', memberships };
