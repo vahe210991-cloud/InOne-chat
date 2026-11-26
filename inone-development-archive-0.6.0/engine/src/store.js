@@ -848,8 +848,8 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
         ? { ok: false, reason: 'mls_removal_required', memberships: rows.map((row) => ({ roomId: row.room_id, userId: row.user_id })) }
         : { ok: true };
     },
-    // Revoke the cross-organization link, remove inherited room memberships and write both audit
-    // records atomically. The org_links row lock serializes with join/invite paths that use FOR SHARE.
+    // Revoke the cross-organization link only after all inherited room memberships have been
+    // removed through MLS Remove Commit. The link-row lock serializes with MLS Add Commit.
     async revokeOrgLink({ linkId, fromStatus, actor, at }) {
       return inTransaction(async (c) => {
         // Lock the active link first. MLS Add Commit transactions take FOR SHARE
