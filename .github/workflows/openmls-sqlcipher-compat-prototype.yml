@@ -39,6 +39,12 @@ jobs:
       - name: Generate legacy SQLCipher database and validate candidate reader
         run: bash development/prototypes/openmls-0.10-sqlcipher-compat/scripts/run.sh
 
+      - name: Install pinned RustSec CLI
+        run: cargo install --locked --version 0.23.0 cargo-audit
+
+      - name: Audit the candidate lockfile with RustSec
+        run: cargo audit --file development/prototypes/openmls-0.10-sqlcipher-compat/current-reader/Cargo.lock
+
       - name: Upload generated candidate dependency lockfile
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
