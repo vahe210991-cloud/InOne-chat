@@ -1,7 +1,7 @@
 ## 2026-11-26 — Owner approved Feed in Beta 1.0
 
 - Owner confirmed: publications/news feed are part of Beta 1.0. This supersedes the earlier conditional scope note in the FEED/PROFILE audit.
-- Created isolated documentation branch `docs/feed-beta1-scope-approval-20261126` from main `7d34b99fcc026a828b838e211d039c575aeace1d`.
+- Created isolated documentation branch `docs/feed-beta1-scope-approval-20261126` from main `7d34b99fcc026a828b838e211d039c575aeace1d`; opened Draft PR [#172](https://github.com/vahe210991-cloud/InOne-chat/pull/172) for review.
 - Prepared WBS v1.2 scope amendment: Feed is mapped into existing Backend/API, Flutter, API↔UI and QA/CI/E2E workstreams. Existing domain weights are unchanged. Historical v1.1 baseline 42%/31% is preserved as a historical starting point and is not claimed as current progress for expanded scope.
 - Updated the FEED/PROFILE plan: SCOPE-001 is COMPLETE; FP-001 is an unconditional P1 Beta 1.0 release blocker; minimum Feed scope is own-post CRUD/list, authorized news feed, deterministic cursor pagination, native Flutter/Dart integration, server-side authorization, idempotency and security regression tests. Comments/reactions and advanced social features are not assumed to be in the minimum scope.
 - Privacy variant В remains binding. The audited backend has no post visibility policy. The existing `sharesOrgOrLink` gate is proven for user search only and cannot be silently reused for post visibility. Cross-account feed reads remain blocked until a precise owner-approved access rule is recorded. Own-post CRUD/list may proceed independently.
