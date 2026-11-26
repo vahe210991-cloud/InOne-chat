@@ -1031,7 +1031,18 @@ export function createMemoryStore({ pinPepper }) {
       const out = [];
       for (const [roomId, r] of rooms.entries()) {
         if (![...r.members].includes(userId)) continue;
-        out.push({ roomId, kind: r.kind, name: r.name ?? null, owner: r.owner, isAdmin: [...r.admins].includes(userId) });
+        const conversation = directConversationsByRoom.get(roomId);
+        const peerUserId = conversation
+          ? (conversation.userA === userId ? conversation.userB : conversation.userA)
+          : null;
+        const peerName = peerUserId ? profiles.get(peerUserId)?.nickname : null;
+        out.push({
+          roomId,
+          kind: r.kind,
+          name: r.name ?? (peerName?.trim() || peerUserId || null),
+          owner: r.owner,
+          isAdmin: [...r.admins].includes(userId),
+        });
       }
       return out.sort((a, b) => (a.roomId < b.roomId ? -1 : a.roomId > b.roomId ? 1 : 0));
     },
