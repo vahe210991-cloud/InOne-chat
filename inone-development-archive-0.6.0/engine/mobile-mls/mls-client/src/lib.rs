@@ -2031,9 +2031,26 @@ impl Client {
         self.upload_last_resort()
     }
 
-    /// Создаёт комнату на сервере и группу MLS на этом устройстве (эпоха 0).
+    /// Создаёт серверную комнату (или возобновляет зарезервированный direct room)
+    /// и локальную MLS-группу. Повторный вызов восстанавливает сохранённую группу.
     pub fn create_room(&mut self, room_id: &str) -> Result<(), String> {
         self.ensure_writable()?;
+        let local_join_epoch: Option<i64> = self
+            .meta
+            .query_row(
+                "SELECT join_epoch FROM client_rooms WHERE room_id = ?1",
+                [room_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(text)?;
+        if local_join_epoch.is_some() {
+            self.reload_group(room_id)?;
+            self.server_epoch(room_id)?;
+            return Ok(());
+        }
+        // For a direct chat, /direct-chats/open has already reserved the server room.
+        // The server permits only its creator to resume this pending reservation.
         self.call(
             "POST",
             "/rooms",
