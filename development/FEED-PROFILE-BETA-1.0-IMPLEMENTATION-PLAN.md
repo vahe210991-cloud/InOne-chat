@@ -828,4 +828,4 @@ For a closed task preserve ID, original description, acceptance criteria, PR lin
 - Intended path: `development/FEED-PROFILE-BETA-1.0-IMPLEMENTATION-PLAN.md`
 - Change scope: one documentation file only.
 
-В соответствии с repository policy документ должен пройти Draft PR review. Он не должен быть автоматически слит в main: merge выполняется только после review и явного owner authorization. После публикации файл необходимо повторно прочитать с GitHub и сверить blob/commit SHA.
+Владелец запросил публикацию этого документа в `main`. Публикация выполняется отдельным документационным коммитом, без изменения product source, API, схемы, миграций, конфигурации или Flutter UI. Рабочий Draft PR #167 будет закрыт как superseded только после проверки файла в `main`. После публикации файл повторно читается из GitHub; точный commit SHA и blob SHA фиксируются в hand-back отчёте.
