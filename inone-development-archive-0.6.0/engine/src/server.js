@@ -729,7 +729,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
       return r.members.length >= (await effectiveMaxMembers(roomId));
     };
 
-    
+
   const server = http.createServer(async (req, res) => {
     const startedAt = Date.now();
     const pathOnly = String(req.url || '/').split('?')[0];
