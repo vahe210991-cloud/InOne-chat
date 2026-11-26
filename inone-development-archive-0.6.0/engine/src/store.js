@@ -601,6 +601,12 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
     },
     async removeOrgMemberAtomic({ orgId, actor, target, action, at }) {
       return inTransaction(async (client) => {
+        // Serialize membership revocation with room creation, room membership changes and MLS commits.
+        // Room rows are locked before organization/member rows to preserve the room -> authorization lock order.
+        await client.query(
+          'SELECT room_id FROM rooms WHERE org_id = $1 AND room_id IN (SELECT room_id FROM room_members WHERE user_id = $2) ORDER BY room_id FOR UPDATE',
+          [orgId, target],
+        );
         const { rows: orgRows } = await client.query('SELECT org_id FROM organizations WHERE org_id = $1 FOR UPDATE', [orgId]);
         if (!orgRows[0]) return { ok: false, reason: 'not_found' };
         const { rows } = await client.query(
@@ -660,11 +666,11 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
       return rows[0].n;
     },
     async removeOrgMember(orgId, userId) {
-      // Lock the authorization row before removing room memberships. Open joins
-      // take FOR SHARE on this row inside their own transaction; this ordering
-      // prevents a revoke from deleting membership first and then leaving a
-      // stale room_members row inserted by an in-flight join.
       return inTransaction(async (c) => {
+        await c.query(
+          'SELECT room_id FROM rooms WHERE org_id = $1 AND room_id IN (SELECT room_id FROM room_members WHERE user_id = $2) ORDER BY room_id FOR UPDATE',
+          [orgId, userId],
+        );
         await c.query('SELECT user_id FROM org_members WHERE org_id = $1 AND user_id = $2 FOR UPDATE', [orgId, userId]);
         const { rows: mlsRooms } = await c.query(
           `SELECT DISTINCT r.room_id
@@ -807,12 +813,22 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
     // records atomically. The org_links row lock serializes with join/invite paths that use FOR SHARE.
     async revokeOrgLink({ linkId, fromStatus, actor, at }) {
       return inTransaction(async (c) => {
+        const { rows: linkSnapshot } = await c.query(
+          'SELECT org_a, org_b, status FROM org_links WHERE link_id = $1',
+          [linkId],
+        );
+        if (!linkSnapshot[0] || linkSnapshot[0].status !== fromStatus) return false;
+        const { org_a: orgA, org_b: orgB } = linkSnapshot[0];
+        // Match room -> link lock order used by membership-add and MLS commit transactions.
+        await c.query(
+          'SELECT room_id FROM rooms WHERE org_id = ANY($1::text[]) ORDER BY room_id FOR UPDATE',
+          [[orgA, orgB]],
+        );
         const { rows: linkRows } = await c.query(
           'SELECT org_a, org_b, status FROM org_links WHERE link_id = $1 FOR UPDATE',
           [linkId],
         );
         if (!linkRows[0] || linkRows[0].status !== fromStatus) return false;
-        const { org_a: orgA, org_b: orgB } = linkRows[0];
         const { rows: mlsRooms } = await c.query(
           `SELECT DISTINCT r.room_id
              FROM room_members rm
@@ -2267,6 +2283,11 @@ async mlsPendingRemovalsFor(userId) {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
+        const { rows: roomRows } = await client.query('SELECT room_id FROM rooms WHERE room_id = $1 FOR UPDATE', [roomId]);
+        if (!roomRows[0]) {
+          await client.query('ROLLBACK');
+          return { ok: false, reason: 'room_not_found', epoch: 0 };
+        }
         await client.query('INSERT INTO mls_groups (room_id, epoch) VALUES ($1, 0) ON CONFLICT (room_id) DO NOTHING', [roomId]);
         const { rows } = await client.query('SELECT epoch FROM mls_groups WHERE room_id = $1 FOR UPDATE', [roomId]);
         const current = Number(rows[0].epoch);
