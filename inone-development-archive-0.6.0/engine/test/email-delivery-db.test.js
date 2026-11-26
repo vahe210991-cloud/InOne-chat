@@ -163,6 +163,37 @@ test('recovery state and new-device wait are committed with their email outbox r
     assert.equal(recoveryIssued, true);
     assert.equal((await store.recoveryGet('@recovery-outbox')).reqCodeHash, 'recovery-code-hash');
 
+    const identityExpiry = Date.now() + 60 * 60_000;
+    const identitySentAt = Date.now();
+    await store.recoveryUpdateWithOutbox('@recovery-outbox', (current) => ({
+      next: {
+        ...current,
+        identityCheck: true,
+        identityCodeHash: 'device-bound-identity-code-hash',
+        identityAttempts: 2,
+        identityCodeExpiresAt: identityExpiry,
+        identityDeviceId: 'new-device',
+        identityChallengeId: 'challenge-identity-001',
+        identityLockedUntil: 0,
+        identityLastSentAt: identitySentAt,
+      },
+      result: true,
+    }), (tx) => queue.sendInTransaction(tx, {
+      to: 'recovery@example.test',
+      templateId: 'recovery_login_code',
+      variables: { code: '123456' },
+      locale: 'hy',
+      idempotencyKey: 'identity-challenge-transaction-001',
+    }));
+    const persistedIdentity = await store.recoveryGet('@recovery-outbox');
+    assert.equal(persistedIdentity.identityCodeHash, 'device-bound-identity-code-hash');
+    assert.equal(persistedIdentity.identityAttempts, 2);
+    assert.equal(persistedIdentity.identityCodeExpiresAt, identityExpiry);
+    assert.equal(persistedIdentity.identityDeviceId, 'new-device');
+    assert.equal(persistedIdentity.identityChallengeId, 'challenge-identity-001');
+    assert.equal(persistedIdentity.identityLockedUntil, 0);
+    assert.equal(persistedIdentity.identityLastSentAt, identitySentAt);
+
     const wait = await store.deviceWaitCreateWithOutbox({
       userId: '@recovery-outbox', deviceId: 'new-device', label: 'New device', platform: 'test',
       activateAt: Date.now() + 48 * 60 * 60_000, cancelHash: 'cancel-hash', createdAt: Date.now(),
