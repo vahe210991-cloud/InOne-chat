@@ -77,7 +77,7 @@ test('файлы: посторонняя организация не загру�
 
 test('состав: посторонний не добавляет себя в комнату организации', async () => {
   await withRoom(async (s) => {
-    await assert.rejects(s.carol.addMember(ROOM, CAROL), (error) => error.status === 403, 'посторонний не добавляется в чужую комнату через MLS');
+    await assert.rejects(s.anna.addMember(ROOM, CAROL), (error) => error.status === 403, 'участник другой организации не добавляется без активной связи через MLS');
   });
 });
 
