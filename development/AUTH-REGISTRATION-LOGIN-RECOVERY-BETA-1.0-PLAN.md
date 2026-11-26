@@ -244,3 +244,43 @@
 ---
 
 **Правило для всех агентов:** сначала прочитай этот файл и актуальную целевую ветку. Не дублируй уже закрытые задачи. Не ставь зачёркивание по собственному усмотрению без выполнения Definition of Done. Сохраняй закрытые пункты в документе как историю выполненной работы.
+
+
+---
+
+## Состояние реализации — сессия 2026-11-26
+
+**Рабочая ветка:** `feat/auth-senior-backend-implementation-2026-11-26`  
+**База:** ответвление от актуальной ветки параллельной AUTH-работы на SHA `3522e428b711f26233d3667ab63435421542e895`. Изменения параллельной работы сохранены.  
+**Общий статус:** `IN PROGRESS`. Ни одна задача ниже не закрывается до ревью, полного набора проверок на точном SHA и слияния PR. Все чекбоксы выше остаются открытыми.
+
+| ID | Статус на конец сессии | Выполненная работа / оставшееся условие |
+|---|---|---|
+| AUTH-01 | IN PROGRESS | Убран ранний ответ «email already registered» из подтверждения email; добавлен тест одинакового ответа для существующего и неизвестного email без действующего кода. Проверки NOT RUN. |
+| AUTH-02 | IN PROGRESS | Добавлена транзакция `createVerifiedAccountWithEmailToken` в PostgreSQL и memory store: ticket consumption и создание аккаунта атомарны; конфликт/rollback не сжигает ticket. Добавлен PostgreSQL retry/replay test. Проверки NOT RUN. |
+| AUTH-03 | BLOCKED | Требуется решение владельца: обязателен ли подтверждённый телефон для Beta 1.0 и на каком этапе блокировать доступ. SMS UI end-to-end пока не подключён. |
+| AUTH-04 | IN PROGRESS / BLOCKED | Подключены экран нового устройства, ограниченный polling claim, список ожидающих запросов на доверенном устройстве, approve/deny и foreground polling. Для устройств с настроенным signing key отсутствует безопасная platform biometric-grant интеграция; обход запрещён. |
+| AUTH-05 | IN PROGRESS | Добавлены TTL, device/challenge binding, resend cooldown, лимит попыток и lockout для post-recovery identity code; миграция `0036-recovery-identity-challenges.sql`, PostgreSQL mapping и API/mobile contract обновлены. Интеграционные тесты добавлены, NOT RUN. Зависит от решения AUTH-08 по политике каналов восстановления. |
+| AUTH-06 | IN PROGRESS | SC-10 разделяет `/admission/cancel` и `/recovery/cancel-by-code`; добавлен вход в recovery-cancel flow из SC-07. Тесты API добавлены, NOT RUN. |
+| AUTH-07 | IN PROGRESS | Recovery window больше не закрывается до успешного завершения всех идемпотентных device cleanup операций; при сбое следующий authenticated request повторяет очистку. Добавлен fault-injection test. Проверки NOT RUN. |
+| AUTH-08 | BLOCKED | Требуется решение владельца: разрешать ли восстановление аккаунта только по email при отсутствии подтверждённого телефона; определить допустимые ограничения и последствия для доверенных устройств. |
+| AUTH-09 | BLOCKED | Безопасное восстановление сессии после перезапуска требует принятого Rust/platform secure-session runtime. Refresh token нельзя переносить в обычные Dart preferences или plaintext storage. Текущий native runtime остаётся opt-in до прохождения security/runtime gate. |
+| AUTH-10 | IN PROGRESS | Серверная политика унифицирована: 8–128 Unicode code points; oversized password не передаётся в scrypt. UI ограничен до 128 символов; добавлен account-rules test. Проверки NOT RUN. |
+| AUTH-11 | IN PROGRESS | Добавлены/обновлены widget, session API, backend recovery, email-code, migration и PostgreSQL transaction tests. Ни один тест в этой сессии не объявляется PASS: всё NOT RUN до общего запуска на final SHA. |
+| AUTH-12 | IN PROGRESS | Обновлён `mobile/API-CONTRACTS-BETA-1.md`; требуется итоговый dated audit report и handoff/continuity updates после завершения реализации. |
+
+### Инженерные параметры identity challenge
+
+- Срок действия кода: 1 час.
+- Повторная отправка: не чаще одного раза в 60 секунд.
+- Максимум неверных кодов: 5.
+- Блокировка после лимита: 1 час.
+- Хэш кода привязан к user ID, device ID и challenge ID.
+- При повторном запросе в cooldown активный challenge переиспользуется без повторной отправки письма.
+- После истечения lockout лимит попыток сбрасывается; старый challenge недействителен.
+
+### Обязательные решения владельца
+
+До закрытия AUTH-03 и AUTH-08 требуется согласовать телефонную и recovery-политику. AUTH-04 нельзя считать полностью готовой для устройств с biometric-protected signing key до появления platform biometric-grant bridge. AUTH-09 остаётся заблокированной до безопасного принятия Rust-owned session persistence. Google/Apple provider sign-in остаётся явно заблокированным до интеграции native SDK и platform client configuration.
+
+**Запрет на преждевременное закрытие:** все задачи остаются незачёркнутыми до выполнения общего регламента `development/UNIFIED-TASK-COMPLETION-RULES.md`.
