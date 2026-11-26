@@ -2091,6 +2091,30 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     }
   }
 
+  Future<void> _refreshRoomSummaryMetadata() async {
+    try {
+      final roomList = await _repositories.myRooms();
+      final byId = {for (final room in roomList.rooms) room.roomId: room};
+      if (!mounted) return;
+      setState(() {
+        _unreadCountsAvailable = roomList.unreadCountsAvailable;
+        _mlsChats = _mlsChats
+            .map((chat) {
+              final room = byId[chat.id];
+              return room == null
+                  ? chat
+                  : chat.copyWith(
+                      unread: room.unreadCount,
+                      time: _formatRoomTime(room.lastEventAt),
+                    );
+            })
+            .toList(growable: false);
+      });
+    } catch (_) {
+      // Keep the last known summary if the room directory is temporarily offline.
+    }
+  }
+
   Future<void> _refreshActiveMlsChat() async {
     final roomId = _activeMlsRoomId;
     if (roomId == null) return;
@@ -2108,8 +2132,24 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       final messages = await _session.loadMlsRoomHistory(roomId);
       await _markMlsRoomReadAfterPersistence(roomId, messages);
       final pending = await _session.pendingMlsOutbox(roomId);
+      String? latestPreview;
+      for (final message in messages) {
+        if (message.text != null) {
+          latestPreview = message.text;
+        } else if (message.isAttachment) {
+          latestPreview = '📎 ${message.name ?? 'Вложение'}';
+        }
+      }
+      if (pending.isNotEmpty) {
+        latestPreview = pending.last.text ?? '📎 Вложение в очереди';
+      }
       if (!mounted) return;
       setState(() {
+        if (latestPreview != null) {
+          _mlsChats = _mlsChats
+              .map((chat) => chat.id == roomId ? chat.copyWith(lastMessage: latestPreview) : chat)
+              .toList(growable: false);
+        }
         _activeMlsThread = [
           ...messages.map((message) => message.isAttachment
               ? InOneThreadItem(
@@ -2143,6 +2183,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
                 )),
         ];
       });
+      await _refreshRoomSummaryMetadata();
     } catch (error) {
       _notice('Синхронизация MLS не выполнена: $error');
     }
