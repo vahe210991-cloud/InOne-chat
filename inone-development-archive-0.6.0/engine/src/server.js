@@ -1159,7 +1159,6 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
           const error = created.created === 'nickname' ? 'nickname taken' : created.created === 'email' ? 'email already registered' : 'account exists';
           return send(res, 409, { error });
         }
-        const locale = created.locale ?? 'hy';
         if (phoneV) {
       const e164 = phoneV.value.e164;
       try {
