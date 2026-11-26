@@ -1327,6 +1327,13 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     final latest = sequences.reduce((a, b) => a > b ? a : b);
     try {
       await _repositories.markRoomRead(roomId, prefix + latest.toString());
+      if (mounted) {
+        setState(() {
+          _mlsChats = _mlsChats
+              .map((chat) => chat.id == roomId ? chat.copyWith(unread: 0) : chat)
+              .toList(growable: false);
+        });
+      }
     } catch (error) {
       _notice('История сохранена, но отметку прочтения не удалось отправить: ${_toFailure(error).message}');
     }
