@@ -185,7 +185,7 @@ test('F-04 PostgreSQL: MLS Add Commit and link revocation serialize without bypa
       client.query = async (query, ...params) => {
         const sql = typeof query === 'string' ? query : query?.text ?? '';
         if (sql.includes('SELECT org_a, org_b FROM org_links') && sql.includes('FOR UPDATE')) signalRevokeAttempt();
-        if (sql.includes('SELECT link_id FROM org_links') && sql.includes('FOR SHARE')) {
+        if (sql.includes('FOR SHARE OF member, member_org, link')) {
           const result = await originalQuery(query, ...params);
           signalLinkShare();
           await addGate;
