@@ -13,7 +13,6 @@ const BOB = '@bob:inone.test';
 const CAROL = '@carol:inone.test';
 const EVE = '@eve:inone.test';
 const enc = encodeURIComponent;
-const b64 = (text) => Buffer.from(text, 'utf8').toString('base64');
 
 async function start() {
   const db = await storeForTest(PEPPER);
