@@ -2183,6 +2183,9 @@ if (req.method === 'POST' && p === '/login') {
       if (req.method === 'POST' && p === '/direct-chats/open') {
         const d = await authed(req);
         if (!d) return send(res, 401, { error: 'unauthorized' });
+        const perAccount = await checkRate('directChatOpenPerAccount', d.userId);
+        const perAddress = await checkRate('directChatOpenPerAddress', clientIp(req));
+        if (!perAccount.allowed || !perAddress.allowed) return send(res, 429, { error: 'too many direct-chat requests, try later' });
         const targetUserId = typeof body.userId === 'string' ? body.userId.trim() : '';
         if (!targetUserId || targetUserId.length > 255 || targetUserId === d.userId) {
           return send(res, 400, { error: 'a different valid userId is required' });
