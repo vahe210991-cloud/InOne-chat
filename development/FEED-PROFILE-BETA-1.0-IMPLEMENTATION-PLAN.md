@@ -631,7 +631,7 @@ The repository contains both `inone-development-archive-0.6.0/engine` and `inone
 - **Описание:** define supported post types/fields, validation, idempotent create, edit/delete and ownership semantics using current backend architecture.
 - **Файлы:** future domain modules, `engine/src/server.js`, `engine/src/schema.sql`, migrations, typed DTO/repository.
 - **Ожидаемое изменение:** create/read/edit/delete of own publication.
-- **Зависимости:** SCOPE-001 COMPLETE, FEED-PRIVACY-001, FEED-SEC-001.
+- **Зависимости:** SCOPE-001 COMPLETE, FEED-SEC-001. Cross-account reads remain gated separately by FEED-PRIVACY-001.
 - **Тесты:** create, malformed/oversized input, duplicate retry, foreign edit/delete, concurrent edit/delete, deleted URL/API.
 - **Acceptance:** server owns authorId/timestamps; transaction keeps post and relations consistent.
 - **Релиз:** Beta 1.0.
@@ -643,7 +643,7 @@ The repository contains both `inone-development-archive-0.6.0/engine` and `inone
 - **Описание:** implement own posts list and global/news feed only to the exact product rules approved; no invented ranking.
 - **Файлы:** future feed query/service, indexes, typed repository, Flutter feed screens.
 - **Ожидаемое изменение:** authorized feed query, deterministic ordering and refresh.
-- **Зависимости:** FEED-CORE-001, FEED-SEC-001.
+- **Зависимости:** FEED-CORE-001, FEED-SEC-001; FEED-PRIVACY-001 is required for cross-account rows.
 - **Тесты:** own list, только разрешённая по утверждённой модели выдача, удалённые записи исключены, duplicates, new post refresh. Не добавлять private/blocked cases без отдельного утверждённого правила.
 - **Acceptance:** no unauthorized rows and deterministic ordering.
 - **Релиз:** Beta 1.0.
