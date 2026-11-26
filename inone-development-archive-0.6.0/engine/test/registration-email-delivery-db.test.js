@@ -269,3 +269,99 @@ test('PostgreSQL persists device-bound identity challenge lifecycle fields', asy
     await db.close();
   }
 });
+
+
+test('registration ticket and account creation roll back together after an injected profile-write failure', async () => {
+  const db = await testDatabase();
+  const store = createStore({ pool: db.pool, pinPepper: PEPPER });
+  const suffix = randomBytes(6).toString('hex');
+  const email = `atomic-${suffix}@example.test`;
+  const userId = `@atomic-${suffix}:inone.test`;
+  const nickname = `atomic-${suffix}`;
+  const functionName = `fail_registration_profile_${suffix}`;
+  const triggerName = `fail_registration_profile_trigger_${suffix}`;
+  const ticketHash = `ticket-${suffix}`;
+
+  const changeEmailCode = (current) => ({
+    next: {
+      ...current,
+      tokenHash: null,
+      tokenExpiresAt: 0,
+    },
+    result: {
+      outcome: current.tokenHash === ticketHash && current.tokenExpiresAt > 10 ? 'ok' : 'none',
+      locale: current.locale ?? 'hy',
+    },
+  });
+
+  try {
+    await store.emailCodeUpdate(email, (current) => ({
+      next: { ...current, tokenHash: ticketHash, tokenExpiresAt: 1000, locale: 'hy' },
+      result: true,
+    }));
+
+    await db.pool.query(`
+      CREATE FUNCTION ${functionName}() RETURNS trigger
+      LANGUAGE plpgsql AS $$
+      BEGIN
+        IF NEW.email = '${email}' THEN
+          RAISE EXCEPTION 'injected profile insert failure' USING ERRCODE = 'P0001';
+        END IF;
+        RETURN NEW;
+      END;
+      $$;
+    `);
+    await db.pool.query(`
+      CREATE TRIGGER ${triggerName}
+      BEFORE INSERT ON profiles
+      FOR EACH ROW EXECUTE FUNCTION ${functionName}()
+    `);
+
+    await assert.rejects(
+      store.createVerifiedAccountWithEmailToken({
+        email,
+        changeEmailCode,
+        userId,
+        passwordHash: 'atomic-password-hash',
+        nickname,
+        nowMs: 10,
+      }),
+      /injected profile insert failure/,
+    );
+
+    const retainedTicket = await store.emailCodeUpdate(email, (current) => ({
+      next: current,
+      result: current.tokenHash,
+    }));
+    assert.equal(retainedTicket, ticketHash, 'failed account creation must roll back ticket consumption');
+    assert.equal(await store.userIdByEmail(email), null, 'failed transaction must not leave an account');
+
+    await db.pool.query(`DROP TRIGGER IF EXISTS ${triggerName} ON profiles`);
+    await db.pool.query(`DROP FUNCTION IF EXISTS ${functionName}()`);
+
+    const retried = await store.createVerifiedAccountWithEmailToken({
+      email,
+      changeEmailCode,
+      userId,
+      passwordHash: 'atomic-password-hash',
+      nickname,
+      nowMs: 10,
+    });
+    assert.deepEqual(retried, { outcome: 'ok', created: 'ok', locale: 'hy' });
+
+    const replay = await store.createVerifiedAccountWithEmailToken({
+      email,
+      changeEmailCode,
+      userId: `@atomic-replay-${suffix}:inone.test`,
+      passwordHash: 'replay-password-hash',
+      nickname: `atomic-replay-${suffix}`,
+      nowMs: 11,
+    });
+    assert.equal(replay.outcome, 'none');
+    assert.equal(replay.created, null);
+  } finally {
+    await db.pool.query(`DROP TRIGGER IF EXISTS ${triggerName} ON profiles`).catch(() => {});
+    await db.pool.query(`DROP FUNCTION IF EXISTS ${functionName}()`).catch(() => {});
+    await db.close();
+  }
+});
