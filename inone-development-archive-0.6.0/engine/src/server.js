@@ -1778,7 +1778,7 @@ if (req.method === 'POST' && p === '/login') {
         // Вход по почте (подтверждённый аккаунт) или по внутреннему идентификатору (режим open и старые аккаунты).
         const loginEmail = normalizeEmail(body.email);
         const userId = body.userId ?? ((loginEmail && (await storage.userIdByEmail(loginEmail))) || loginEmail);
-        const { password, deviceId, label, platform, identityCode, proof: providerProof } = body;
+        const { password, deviceId, label, platform, identityCode, identityChallengeId, proof: providerProof } = body;
         const requestedLocale = body.locale === undefined ? null : resolveEmailLocale(body.locale);
         if (body.locale !== undefined && !requestedLocale) return send(res, 400, { error: 'locale must be hy, ru or en' });
         const stored = await storage.accountHash(userId);
