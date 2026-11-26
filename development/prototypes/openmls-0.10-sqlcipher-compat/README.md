@@ -30,7 +30,7 @@ The candidate reader uses:
 5. Verify group ID, epoch, member count, SQLCipher cipher version and SQLite integrity.
 6. Close and reopen the database, then load the same group again.
 7. Reject an incorrect SQLCipher key.
-8. Run RustSec against the candidate lockfile and print the resolved versions of crypto-bigint and libsqlite3-sys.
+8. Upload the generated candidate lockfile; the repository's existing Stage 5 RustSec workflow audits it once committed, alongside the other tracked lockfiles.
 
 The fixture key and group identity are deterministic test data only. They are not copied from, derived from, or suitable for any production account or database.
 

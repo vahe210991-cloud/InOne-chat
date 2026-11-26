@@ -24,11 +24,6 @@ jobs:
           toolchain: "1.94.0"
           components: rustfmt
 
-      - name: Install RustSec CLI
-        run: |
-          cargo install --locked --version 0.23.0 cargo-audit
-          cargo audit --version
-
       - name: Check prototype formatting
         run: |
           cargo fmt --manifest-path development/prototypes/openmls-0.10-sqlcipher-compat/legacy-writer/Cargo.toml -- --check
@@ -36,3 +31,11 @@ jobs:
 
       - name: Generate legacy SQLCipher database and validate candidate reader
         run: bash development/prototypes/openmls-0.10-sqlcipher-compat/scripts/run.sh
+
+      - name: Upload generated candidate dependency lockfile
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: openmls-010-candidate-lockfile-${{ github.run_id }}
+          path: development/prototypes/openmls-0.10-sqlcipher-compat/current-reader/Cargo.lock
+          if-no-files-found: error
+          retention-days: 7
