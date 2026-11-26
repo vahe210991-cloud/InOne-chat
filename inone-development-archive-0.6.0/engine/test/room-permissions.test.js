@@ -41,7 +41,7 @@ function sendEvent(client, body = {}) {
 }
 
 function addMember(client, userId) {
-  return client.raw('POST', `/rooms/${enc(ROOM)}/members`, { userId });
+  return client.addMember(ROOM, userId);
 }
 
 test('права по умолчанию: участник пишет, но не приглашает и не удаляет людей', async () => {
