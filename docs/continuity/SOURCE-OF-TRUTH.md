@@ -8,7 +8,7 @@
 - The canonical Beta 1.0 backend changed here is `inone-development-archive-0.6.0/engine`. The separate `inone-engine-poc-0.6.0` tree was not changed by this AUTH implementation.
 - New schema version: `0036-recovery-identity-challenges`; migration adds identity-code expiry, device/challenge binding, lockout and resend timestamps. Fresh and legacy migration coverage was added.
 - No code has been merged to main. Tests, builds, CI and device acceptance are **NOT RUN** on the final implementation SHA.
-- Outstanding gates: AUTH-03 phone verification policy, AUTH-08 email-only recovery policy, AUTH-09 Rust/platform-owned persistent session restoration, biometric grant for protected device approvals, and native provider sign-in.
+- Outstanding gates: AUTH-03 phone verification policy; AUTH-08 recovery-channel approval (current behavior is email code for unverified-phone accounts and SMS code plus email-link for verified-phone accounts); AUTH-09 Rust/platform-owned persistent session restoration; biometric grant for protected device approvals; native provider sign-in; SC-09 D8 warning copy.
 
 ---
 
