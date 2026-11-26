@@ -316,6 +316,7 @@ class InOneSession extends ChangeNotifier {
         );
       }
       _acceptSession(result);
+      _clearPendingApproval();
       if (!isAuthenticated) {
         throw const ApiException(
           code: 'invalid_device_approval_session',
