@@ -152,8 +152,8 @@ void main() {
       writeMlsUserId: (_) async {},
       deleteMlsUserId: () async {},
       readRefreshToken: () async => persistedRefreshToken,
-      writeRefreshToken: (value) async => persistedRefreshToken = value,
-      deleteRefreshToken: () async => persistedRefreshToken = null,
+      writeRefreshToken: (value) async { persistedRefreshToken = value; },
+      deleteRefreshToken: () async { persistedRefreshToken = null; },
     );
     try {
       await session.login(
@@ -221,8 +221,8 @@ void main() {
       readDeviceId: () async => 'device-native',
       writeDeviceId: (_) async {},
       readMlsUserId: () async => persistedMlsUserId,
-      writeMlsUserId: (value) async => persistedMlsUserId = value,
-      deleteMlsUserId: () async => persistedMlsUserId = null,
+      writeMlsUserId: (value) async { persistedMlsUserId = value; },
+      deleteMlsUserId: () async { persistedMlsUserId = null; },
       readRefreshToken: () async => persistedRefreshToken,
       writeRefreshToken: (value) async => persistedRefreshToken = value,
       deleteRefreshToken: () async => persistedRefreshToken = null,
