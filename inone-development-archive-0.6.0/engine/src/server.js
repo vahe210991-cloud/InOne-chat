@@ -2433,6 +2433,9 @@ if (req.method === 'POST' && p === '/login') {
         if (!r || r.visibility !== 'public') return send(res, 404, { error: 'room not found' });
         if (r.members.includes(d.userId)) return send(res, 409, { error: 'already a member' });
         if (r.joinPolicy === 'open') {
+          const joinOrgId = await storage.roomOrg(roomId);
+          const joinGate = await orgGate(d.userId, joinOrgId);
+          if (joinGate) return send(res, joinGate.status, { error: joinGate.error, code: joinGate.code });
           if (await groupFull(roomId)) return send(res, 409, { error: 'group is full' });
           if (!(await storage.hasJoinRequest(roomId, d.userId))) {
             await storage.createJoinRequest(roomId, d.userId, now());
