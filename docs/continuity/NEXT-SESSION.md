@@ -1,30 +1,33 @@
 # Next execution addendum — FEED / PROFILE (2026-11-26)
 
-This addendum supersedes the older historical starting-SHA instructions below for FEED/PROFILE work. **Always fetch the live `main` ref first**; the latest source baseline and exact publication commits are recorded in [CURRENT-STATE.md](CURRENT-STATE.md).
+This addendum supersedes older Feed scope instructions. Fetch live `main` and read the current task PR before starting.
 
 ## Required reading
 
 1. [FEED / PROFILE implementation plan](../../development/FEED-PROFILE-BETA-1.0-IMPLEMENTATION-PLAN.md).
 2. [FEED / PROFILE audit report](../../development/reports/2026-11-26-feed-profile-beta1-audit.md).
-3. [Approved WBS v1.1](../../development/PROGRESS-BASELINE.md).
+3. [WBS v1.2](../../development/PROGRESS-BASELINE.md).
 4. [Owner decisions](DECISIONS.md), [source of truth](SOURCE-OF-TRUTH.md), and current repository working/Git integration rules.
 
-## Immediate order
+## Immediate execution order
 
-1. Resolve `SCOPE-001`: explicitly decide whether minimum publications/feed are part of Beta 1.0 or remain Beta 2.0. Do not modify WBS v1.1, weights or percentages without explicit approval.
-2. Keep owner-approved privacy variant В: preserve the existing model unchanged. Do not introduce public-by-default profiles/posts, new visibility preferences, block/follow semantics or expanded access.
-3. Complete `PROFILE-CORE-001` and `PROFILE-PRIVACY-001` with backend HTTP and Flutter regression tests for own-profile auth, locale, revoked device, search relationship gate, DTO field allowlist, owner/device-bound files and room membership.
-4. Do not add a public-profile endpoint or public media delivery unless the owner separately approves the required access semantics.
-5. If Feed is approved for Beta 1.0, update the WBS through a versioned owner-approved change, then implement security/authorization before post CRUD, feed listing/cursors, media and interactions.
-6. Run tests only on a complete, immutable PR SHA. Record exact commands, results and limitations. Test source presence is not PASS.
-7. Do not restore HTML/WebView screens; production UI remains Flutter/Dart.
+1. Feed is approved for Beta 1.0. Keep the WBS v1.2 scope amendment and existing domain weights; do not invent current progress percentages from the historical v1.1 baseline.
+2. Preserve privacy variant В. Do not introduce public-by-default posts/profiles, new visibility preferences, block/follow semantics or expanded access.
+3. Resolve `FEED-PRIVACY-001`: obtain the owner's exact rule for cross-account post reads. `sharesOrgOrLink` is a user-search gate only and cannot be silently reused for post visibility.
+4. Until FEED-PRIVACY-001 is resolved, implement only own-post CRUD/list and other work that cannot expose another account's posts/media. No cross-account post data may be returned.
+5. Complete `PROFILE-CORE-001` and `PROFILE-PRIVACY-001` regression tests for current own-profile auth, locale, revoked device, DTO allowlist, relationship gate, owner/device-bound files and room membership.
+6. Implement Feed security-first: `FEED-SEC-001`, `FEED-CORE-001`, `FEED-LIST-001`, `FEED-PAGINATION-001`, secure media as scoped, Flutter Feed UI, then `FEED-TESTS-001` and acceptance.
+7. Comments/reactions, follows/subscriptions, stories, advanced ranking, public profiles and new privacy controls are not included automatically. Obtain separate approval before adding them to Beta 1.0.
+8. Run tests only on a complete immutable PR SHA. Record exact commands/results. Test source presence is not PASS.
+9. Do not restore HTML/WebView screens; production UI remains Flutter/Dart.
 
 ## Current status
 
-- Audit plan is published in `main`; report and development index are published.
-- No application code, schema, migration, workflow, configuration or Flutter UI changed during the audit.
+- Owner approved Feed in Beta 1.0; SCOPE-001 is complete.
+- WBS v1.2 scope amendment is on the documentation task branch and requires PR review/merge.
+- Cross-account post visibility remains blocked pending owner decision.
+- No application code, schema, migration, workflow, configuration or Flutter UI changed in the scope-documentation task.
 - No tests/builds/dynamic security/production/device acceptance were run.
-- The audit did not change WBS v1.1 or close implementation tasks.
 
 ---
 
