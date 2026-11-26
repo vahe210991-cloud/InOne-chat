@@ -2093,7 +2093,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     }
   }
 
-  Future<void> _refreshRoomSummaryMetadata() async {
+  Future<void> _refreshRoomSummaryMetadata({String? preserveLocalTimeForRoomId}) async {
     try {
       final roomList = await _repositories.myRooms();
       final byId = {for (final room in roomList.rooms) room.roomId: room};
@@ -2107,7 +2107,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
                   ? chat
                   : chat.copyWith(
                       unread: room.unreadCount,
-                      time: _formatRoomTime(room.lastEventAt),
+                      time: chat.id == preserveLocalTimeForRoomId ? chat.time : _formatRoomTime(room.lastEventAt),
                     );
             })
             .toList(growable: false);
@@ -2149,7 +2149,14 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       setState(() {
         if (latestPreview != null) {
           _mlsChats = _mlsChats
-              .map((chat) => chat.id == roomId ? chat.copyWith(lastMessage: latestPreview) : chat)
+              .map((chat) => chat.id == roomId
+                  ? chat.copyWith(
+                      lastMessage: latestPreview,
+                      time: pending.isNotEmpty
+                          ? _formatRoomTime(DateTime.now().millisecondsSinceEpoch)
+                          : null,
+                    )
+                  : chat)
               .toList(growable: false);
         }
         _activeMlsThread = [
@@ -2185,7 +2192,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
                 )),
         ];
       });
-      await _refreshRoomSummaryMetadata();
+      await _refreshRoomSummaryMetadata(preserveLocalTimeForRoomId: pending.isNotEmpty ? roomId : null);
     } catch (error) {
       _notice('Синхронизация MLS не выполнена: $error');
     }
