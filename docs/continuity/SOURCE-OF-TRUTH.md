@@ -4,7 +4,7 @@ Fetch the live `main` branch before any further work. The dated header below (20
 
 - FEED/PROFILE source audit snapshot: `216c6d9ea4e825182d3fc94b7aa6d9841e0ad250`.
 - Source revalidation: main `920e2a2ecef244c925061348eb68c8b09fe63922`; two intervening commits were development-rule documentation only, with no FEED/PROFILE product-source changes.
-- Plan publication commit: `8260beb7070d959dce17ee423e2768dbea4399c9`.
+- Plan initial publication commit: `8260beb7070d959dce17ee423e2768dbea4399c9`; follow-up publication-record correction: `9166a82448d2e06847e7212982aeecaf0acb9f19`; current plan blob: `08b1f984a3ded0543d5c20670c9b4e1d5d6e07ab`.
 - Audit report: [2026-11-26 FEED / PROFILE audit](../../development/reports/2026-11-26-feed-profile-beta1-audit.md).
 - Implementation plan: [FEED-PROFILE-BETA-1.0-IMPLEMENTATION-PLAN.md](../../development/FEED-PROFILE-BETA-1.0-IMPLEMENTATION-PLAN.md).
 - Owner-approved privacy variant В: preserve existing privacy behavior unchanged; no new public/private, visibility, block/follow semantics or expanded access.
