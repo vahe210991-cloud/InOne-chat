@@ -694,7 +694,7 @@ The owner clarified the intended Beta 1.0 behavior:
 | MLS provisioning | Only the paired recipient can be claimed and added; direct membership activates only with the claimed Add Commit/Welcome | Code present; end-to-end test pending |
 | Recipient experience | Flutter DTO and UI treat provisioning as internal; no accept/reject action or approval prompt | Code present; Flutter tests pending |
 | Device KeyPackages | Native Flutter app maintains a per-device KeyPackage reserve after authentication and on app resume | Code present; native runtime tests pending |
-| Message delivery | Regression test covers the MLS message endpoint and recipient event retrieval without a consent action | Test authored; not run |
+| Message delivery | Backend regression covers MLS message route, pre-activation fail-closed behavior and recipient retrieval; Rust/OpenMLS scenario sends while both recipient devices are offline and verifies delivery after sync without an acceptance action | Tests authored; not run |
 
 ### 13.3. Security and release constraints
 
