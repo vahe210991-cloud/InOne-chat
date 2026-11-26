@@ -420,15 +420,15 @@ The repository contains both `inone-development-archive-0.6.0/engine` and `inone
 - **Приоритет:** P2.
 - **Подсистема:** public profile/privacy.
 - **Фактическое поведение:** `GET /users/search` выдаёт ограниченный search result; отдельного public profile read endpoint/DTO нет.
-- **Ожидаемое:** публичный профиль с явным allowlist и проверкой visibility/block relation, если такая функция утверждена.
+- **Ожидаемое:** отдельный профиль другого пользователя может появиться только после отдельного owner decision; вариант В сам по себе не разрешает публичное чтение. До этого search result остаётся единственным ограниченным способом обнаружения пользователя.
 - **Расположение:** `server.js:1165–1193`; `mobile/lib/core/data/inone_repositories.dart`; production mobile screen tree.
 - **Доказательство:** только search route и own-profile route обнаружены.
 - **Воспроизведение:** найти nickname; API возвращает краткую карточку, не полноценный профиль.
 - **Влияние:** просмотр чужого профиля не поддерживается.
 - **Security/privacy:** расширять search response до profile response нельзя; email/phone/backupEmail/providers/securityHints/platformRole/device metadata не должны попасть в public DTO.
-- **Исправление:** отдельный versioned public DTO + policy check; не принимать произвольный userId без authorization.
-- **Тесты:** public/private, blocked, unrelated user, org relation, allowlist negative tests.
-- **Acceptance:** чужой профиль возвращает только разрешённые поля; закрытые данные отсутствуют даже при прямом API вызове.
+- **Исправление:** не расширять текущий API. Если владелец отдельно утвердит чужой профиль, сначала зафиксировать точные разрешённые поля и совместимость с существующей моделью доступа; отдельный versioned DTO и server-side authorization обязательны.
+- **Тесты:** текущий search relationship gate (допустимая связь/нет связи), минимальный DTO, отсутствие email/phone/backupEmail/providers/securityHints/platformRole/device metadata; никаких тестов новой public/private или block policy до её отдельного утверждения.
+- **Acceptance:** текущий search не раскрывает account fields и не обходит relationship gate; endpoint чтения чужого профиля не создаётся без отдельного решения владельца.
 - **Зависимости:** SCOPE-001, PROFILE-PRIVACY-001.
 - **Релиз:** Beta 2.0 unless owner explicitly approves.
 - **Статус:** OPEN / NOT IMPLEMENTED.
@@ -445,7 +445,7 @@ The repository contains both `inone-development-archive-0.6.0/engine` and `inone
 - **Влияние:** avatar/cover не редактируются и не видны другим пользователям.
 - **Security/privacy:** owner-only current file access is safer than accidental public access. Before public image delivery validate actual file format, enforce size/dimensions, use safe processing, keep owner and visibility checks.
 - **Исправление:** profile-media binding contract and cleanup lifecycle after scope approval.
-- **Тесты:** wrong owner/device, MIME/magic bytes, replacement race, revoked device, public/private access, old object cleanup.
+- **Тесты:** wrong owner/device, MIME/magic bytes, replacement race, revoked device, denial for another account, old object cleanup. Публичная выдача не включается без отдельного решения.
 - **Acceptance:** avatar visible only to permitted viewers; old link revoked or policy-retained; no orphan leaks.
 - **Зависимости:** FEED-MEDIA-001 if posts share media; PROFILE-MEDIA-001.
 - **Релиз:** Beta 2.0 unless owner approves profile edit in Beta 1.0.
@@ -463,7 +463,7 @@ The repository contains both `inone-development-archive-0.6.0/engine` and `inone
 - **Влияние:** взаимодействие с публикациями отсутствует.
 - **Security/privacy:** future endpoints must enforce post visibility, comment owner, uniqueness and rate limits.
 - **Исправление:** separate transactional data model; never trust client counters.
-- **Тесты:** foreign comment edit/delete, repeated reaction, concurrent reaction count, deleted post, blocked author.
+- **Тесты:** foreign comment edit/delete, repeated reaction, concurrent reaction count, deleted post, access checks strictly against approved current policy; no assumed block semantics.
 - **Acceptance:** counters equal persisted relation counts; unauthorized writes denied.
 - **Зависимости:** FEED-CORE-001, FEED-SEC-001.
 - **Релиз:** Beta 2.0 unless owner scope approval.
@@ -594,7 +594,7 @@ The repository contains both `inone-development-archive-0.6.0/engine` and `inone
 - **Файлы:** `inone-development-archive-0.6.0/engine/src/server.js`, `engine/src/store.js`, `engine/src/schema.sql`, `mobile/lib/core/data/inone_profile.dart`, `mobile/lib/core/data/inone_repositories.dart`, backend tests.
 - **Ожидаемое изменение:** регрессионные тесты и документированная матрица текущих правил; без изменения продуктовой политики и без создания public-profile API.
 - **Зависимости:** PROFILE-CORE-001. Public-profile implementation остаётся заблокированной до отдельного owner decision, если ей потребуется новая политика.
-- **Тесты:** own profile с действующей сессией; отказ без auth/после device revocation; search с допустимой связью; отказ при отсутствии связи; отсутствие email/phone в search DTO; cross-user owner-only file denial; room file membership checks; invalidation после device revocation.
+- **Тесты:** own profile с действующей сессией; отказ без auth/после device revocation; search с допустимой связью; отказ при отсутствии связи; отсутствие email/phone/backupEmail/providers/securityHints/platformRole в search DTO; cross-user owner-only file denial; room file membership checks; invalidation после device revocation.
 - **Acceptance:** текущие правила не ослаблены; прямой API запрос не обходит auth/relationship/owner/device checks; нет утечки закрытых account fields; никаких новых visibility semantics не добавлено.
 - **Релиз:** Beta 1.0 для защиты существующих границ; новый public-profile contract — только после отдельного решения.
 - **Статус:** NOT STARTED.
@@ -606,7 +606,7 @@ The repository contains both `inone-development-archive-0.6.0/engine` and `inone
 - **Файлы:** будущие backend handlers/services/schema; reuse existing authenticated session and object store.
 - **Ожидаемое изменение:** server-authoritative access checks and transactional rules.
 - **Зависимости:** SCOPE-001, PROFILE-PRIVACY-001.
-- **Тесты:** BOLA/IDOR matrix for post/comment/reaction/media; cross-account/device; blocked/private.
+- **Тесты:** BOLA/IDOR matrix for post/comment/reaction/media; cross-account/device; negative cases for the exact approved access rules. Block/private cases only if separately approved.
 - **Acceptance:** все direct API negative cases deny access; no UI-only authorization.
 - **Релиз:** Beta 1.0 if feed approved; otherwise before Beta 2.0 feed.
 - **Статус:** NOT STARTED.
@@ -654,7 +654,7 @@ The repository contains both `inone-development-archive-0.6.0/engine` and `inone
 - **Файлы:** `engine/src/server.js`, `engine/src/object-store.js`, `engine/src/store.js`, `engine/src/schema.sql`, migrations, Flutter media adapter.
 - **Ожидаемое изменение:** media upload → validation → association → authorized retrieval → cleanup.
 - **Зависимости:** FEED-SEC-001, FEED-CORE-001.
-- **Тесты:** MIME/magic mismatch, size/dimensions, wrong owner, visibility change, revoked device, orphan cleanup, path traversal.
+- **Тесты:** MIME/magic mismatch, size/dimensions, wrong owner, access change caused by existing owner/device/room membership revocation, orphan cleanup, path traversal.
 - **Acceptance:** only validated objects are associated; access policy is checked at retrieval; cleanup is observable/idempotent.
 - **Релиз:** before any feed media release.
 - **Статус:** NOT STARTED.
@@ -676,7 +676,7 @@ The repository contains both `inone-development-archive-0.6.0/engine` and `inone
 - **Приоритет:** P2 current scope; P1 only if owner includes it in Beta 1.0.
 - **Описание:** define editable field allowlist, validation and concurrency policy. Keep account email/phone/provider credentials outside generic profile PATCH.
 - **Файлы:** profile route/service/store/schema, DTO, repository, edit screen.
-- **Ожидаемое изменение:** authenticated owner edits approved public profile fields.
+- **Ожидаемое изменение:** authenticated owner edits only separately approved profile fields; existing privacy model remains unchanged.
 - **Зависимости:** PROFILE-CORE-001, PROFILE-PRIVACY-001.
 - **Тесты:** protected fields, foreign user, invalid input, concurrent edits, sync.
 - **Acceptance:** no mass assignment; only explicitly allowed fields persist.
