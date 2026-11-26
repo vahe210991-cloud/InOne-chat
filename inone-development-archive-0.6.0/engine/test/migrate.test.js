@@ -25,6 +25,10 @@ async function assertDirectConversationSchema(pool) {
     "SELECT to_regclass('direct_conversations') IS NOT NULL AS present",
   );
   assert.equal(tableRows[0].present, true, 'direct conversation pair table exists');
+  const { rows: indexRows } = await pool.query(
+    "SELECT to_regclass('direct_conversations_by_user_a') IS NOT NULL AS user_a, to_regclass('direct_conversations_by_user_b') IS NOT NULL AS user_b",
+  );
+  assert.equal(indexRows[0].user_a && indexRows[0].user_b, true, 'direct conversation participant indexes exist');
   const { rows: roomRows } = await pool.query(
     "SELECT is_nullable FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'rooms' AND column_name = 'org_id'",
   );
