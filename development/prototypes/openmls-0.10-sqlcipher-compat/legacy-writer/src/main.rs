@@ -81,6 +81,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let signer = SignatureKeyPair::new(CIPHERSUITE.signature_algorithm())?;
     signer.store(provider.storage())?;
+    std::fs::write(path.with_extension("signer.pub"), signer.to_public_vec())?;
     let credential = CredentialWithKey {
         credential: BasicCredential::new(b"inone-legacy-fixture-member".to_vec()).into(),
         signature_key: signer.to_public_vec().into(),
