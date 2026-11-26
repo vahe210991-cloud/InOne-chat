@@ -1,3 +1,15 @@
+# Next-session instructions — Feed visibility decision approved (2026-11-26)
+
+1. Treat `FEED-PRIVACY-001` as OWNER DECISION APPROVED / READY FOR IMPLEMENTATION, not blocked on owner input.
+2. Implement the approved rule: every published item intentionally included in the general/news feed is readable by every registered and authenticated InOne account; anonymous access is denied.
+3. Apply the same rule to attached media, with authorization repeated on every download. Never treat post/media IDs or URLs as credentials.
+4. Preserve privacy variant В for profiles, drafts, private account data and all other domains. Do not introduce public-profile, block/follow or subscription semantics.
+5. The source audit found no implementation of this policy. Keep cross-account reads disabled until backend enforcement and tests pass.
+6. Continue the security-first plan: `PROFILE-CORE-001`, `PROFILE-PRIVACY-001`, `FEED-SEC-001`, `FEED-CORE-001`, `FEED-LIST-001`, pagination, secure media, Flutter/Dart integration and exact-SHA tests.
+7. PR #172 is still a documentation-only draft PR; do not claim it is merged. No code/tests were changed/run by the owner-decision documentation update.
+
+---
+
 # Next execution addendum — FEED / PROFILE (2026-11-26)
 
 This addendum supersedes older Feed scope instructions. Fetch live `main` and read the current task PR before starting.
