@@ -1571,6 +1571,62 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
       });
     },
 
+    async createOrOpenDirectConversation({ requester, target, roomId, createdAt }) {
+      const userA = requester < target ? requester : target;
+      const userB = requester < target ? target : requester;
+      return inTransaction(async (c) => {
+        const roomInsert = await c.query(
+          "INSERT INTO rooms (room_id, owner, kind, name, org_id) VALUES ($1, $2, 'direct', NULL, NULL) ON CONFLICT (room_id) DO NOTHING",
+          [roomId, requester],
+        );
+        if (roomInsert.rowCount !== 1) return { status: 'room_id_conflict' };
+        const directInsert = await c.query(
+          "INSERT INTO direct_conversations (room_id, user_a, user_b, created_by, status, created_at) VALUES ($1, $2, $3, $4, 'pending', $5) ON CONFLICT (user_a, user_b) DO NOTHING RETURNING room_id",
+          [roomId, userA, userB, requester, createdAt],
+        );
+        if (directInsert.rowCount !== 1) {
+          const { rows } = await c.query(
+            'SELECT room_id, user_a, user_b, created_by, status, created_at FROM direct_conversations WHERE user_a = $1 AND user_b = $2',
+            [userA, userB],
+          );
+          await c.query('DELETE FROM rooms WHERE room_id = $1', [roomId]);
+          if (!rows[0]) return { status: 'retry' };
+          const row = rows[0];
+          return {
+            status: row.status,
+            roomId: row.room_id,
+            userA: row.user_a,
+            userB: row.user_b,
+            createdBy: row.created_by,
+            createdAt: Number(row.created_at),
+            isCreator: row.created_by === requester,
+          };
+        }
+        const { rows: counterRows } = await c.query("SELECT value FROM counters WHERE name = 'event_seq' FOR UPDATE");
+        await c.query(
+          'INSERT INTO room_members (room_id, user_id, is_admin, joined_seq, capabilities) VALUES ($1, $2, FALSE, $3, $4::text[])',
+          [roomId, requester, Number(counterRows[0].value), [...DEFAULT_MEMBER_CAPABILITIES]],
+        );
+        return { status: 'created', roomId, userA, userB, createdBy: requester, createdAt, isCreator: true };
+      });
+    },
+
+    async directConversation(roomId) {
+      const { rows } = await pool.query(
+        'SELECT room_id, user_a, user_b, created_by, status, created_at FROM direct_conversations WHERE room_id = $1',
+        [roomId],
+      );
+      const row = rows[0];
+      return row ? {
+        roomId: row.room_id,
+        userA: row.user_a,
+        userB: row.user_b,
+        createdBy: row.created_by,
+        status: row.status,
+        createdAt: Number(row.created_at),
+      } : null;
+    },
+
     async getRoom(roomId) {
       const head = await pool.query('SELECT owner, name, visibility, join_policy, description, background_color, avatar_asset_id, cover_asset_id, background_asset_id FROM rooms WHERE room_id = $1', [roomId]);
       if (head.rows.length === 0) return null;
