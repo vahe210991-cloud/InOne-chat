@@ -268,7 +268,8 @@ test('параллельные вступления по ссылке с лим�
     const requests = (await c.alice.raw('GET', `/rooms/${enc(ROOM)}/requests`)).requests;
     assert.equal(requests.length, 1);
     assert.ok(ids.includes(requests[0].userId));
-    assert.equal(ids.filter((id) => (await membersOf(c.alice)).members.includes(id)).length, 0);
+    const currentMembers = (await membersOf(c.alice)).members;
+    assert.equal(ids.filter((id) => currentMembers.includes(id)).length, 0);
   } finally {
     await stop();
   }
