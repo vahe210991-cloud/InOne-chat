@@ -1596,8 +1596,9 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
     },
 
     async createOrOpenDirectConversation({ requester, target, roomId, createdAt }) {
-      const userA = requester < target ? requester : target;
-      const userB = requester < target ? target : requester;
+      const requesterFirst = Buffer.compare(Buffer.from(requester, 'utf8'), Buffer.from(target, 'utf8')) < 0;
+      const userA = requesterFirst ? requester : target;
+      const userB = requesterFirst ? target : requester;
       return inTransaction(async (c) => {
         const roomInsert = await c.query(
           "INSERT INTO rooms (room_id, owner, kind, name, org_id) VALUES ($1, $2, 'direct', NULL, NULL) ON CONFLICT (room_id) DO NOTHING",
