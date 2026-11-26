@@ -93,9 +93,13 @@ test('direct chats require no recipient approval and activate automatically thro
     assert.notEqual(bobDirectRoom.name, opened.roomId, 'the room list uses the peer display name instead of the opaque room ID');
     assert.equal((await bob.raw('GET', '/mls/welcomes')).welcomes.length, 1);
     assert.equal((await bobTablet.raw('GET', '/mls/welcomes')).welcomes.length, 1);
-    assert.equal(typeof await s.store.appendRoomEvent(
+    const deliveredSeq = await s.store.appendRoomEvent(
       opened.roomId, ALICE, 'm.room.encrypted', { ciphertext: 'alice-ciphertext' }, Date.now(),
-    ), 'number', 'creator can write after the pair is MLS-active without organization membership');
+    );
+    assert.equal(typeof deliveredSeq, 'number', 'creator can write after automatic MLS provisioning without organization membership');
+    const delivered = await bob.raw('GET', `/rooms/${enc(opened.roomId)}/events?since=0`);
+    assert.ok(delivered.events.some((event) => event.content?.ciphertext === 'alice-ciphertext'),
+      'recipient receives the message without accepting a chat request');
     assert.equal(typeof await s.store.appendRoomEvent(
       opened.roomId, BOB, 'm.room.encrypted', { ciphertext: 'bob-ciphertext' }, Date.now(),
     ), 'number', 'recipient can write after processing the server-side Add Commit');
