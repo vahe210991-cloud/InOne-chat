@@ -150,11 +150,11 @@ class InOneChatPreview {
   final int unread;
   final String? initials;
 
-  InOneChatPreview copyWith({int? unread}) => InOneChatPreview(
+  InOneChatPreview copyWith({int? unread, String? lastMessage, String? time}) => InOneChatPreview(
         id: id,
         name: name,
-        lastMessage: lastMessage,
-        time: time,
+        lastMessage: lastMessage ?? this.lastMessage,
+        time: time ?? this.time,
         kind: kind,
         unread: unread ?? this.unread,
         initials: initials,
