@@ -765,7 +765,7 @@ If regression is found, remove strikethrough and reopen while preserving history
 
 | Date | Task ID | Change | PR | Merge SHA | Tests | Executor/reviewer | Status |
 |---|---|---|---|---|---|---|---|
-| 2026-11-26 | AUDIT-ACCOUNT-ORG-001 | Source-only audit and implementation plan | This documentation PR | Pending | NOT RUN | ChatGPT / owner review pending | SOURCE REVIEW COMPLETE |
+| 2026-11-26 | AUDIT-ACCOUNT-ORG-001 | Source-only audit and implementation plan | [PR #170](https://github.com/vahe210991-cloud/InOne-chat/pull/170) | Pending (not merged) | NOT RUN | ChatGPT / owner review pending | SOURCE REVIEW COMPLETE |
 
 ## 19. Решения владельца до реализации
 
