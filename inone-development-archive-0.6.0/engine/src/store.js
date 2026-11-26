@@ -604,7 +604,7 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
         // Serialize membership revocation with room creation, room membership changes and MLS commits.
         // Room rows are locked before organization/member rows to preserve the room -> authorization lock order.
         await client.query(
-          'SELECT room_id FROM rooms WHERE org_id = $1 AND room_id IN (SELECT room_id FROM room_members WHERE user_id = $2) ORDER BY room_id FOR UPDATE',
+          'SELECT room_id FROM rooms WHERE org_id = $1 AND (room_id IN (SELECT room_id FROM room_members WHERE user_id = $2) OR owner = $2) ORDER BY room_id FOR UPDATE',
           [orgId, target],
         );
         const { rows: orgRows } = await client.query('SELECT org_id FROM organizations WHERE org_id = $1 FOR UPDATE', [orgId]);
@@ -668,7 +668,7 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
     async removeOrgMember(orgId, userId) {
       return inTransaction(async (c) => {
         await c.query(
-          'SELECT room_id FROM rooms WHERE org_id = $1 AND room_id IN (SELECT room_id FROM room_members WHERE user_id = $2) ORDER BY room_id FOR UPDATE',
+          'SELECT room_id FROM rooms WHERE org_id = $1 AND (room_id IN (SELECT room_id FROM room_members WHERE user_id = $2) OR owner = $2) ORDER BY room_id FOR UPDATE',
           [orgId, userId],
         );
         await c.query('SELECT user_id FROM org_members WHERE org_id = $1 AND user_id = $2 FOR UPDATE', [orgId, userId]);
