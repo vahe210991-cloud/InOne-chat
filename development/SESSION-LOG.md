@@ -1,3 +1,14 @@
+## 2026-11-26 — FEED / PROFILE Beta 1.0 audit and plan published
+
+- Audited publications/news feed and personal profile against source snapshot `216c6d9ea4e825182d3fc94b7aa6d9841e0ad250`; revalidated against main `920e2a2ecef244c925061348eb68c8b09fe63922`. The two intervening main commits changed only development rules, not FEED/PROFILE source, contracts, schema or Flutter files.
+- Published [FEED-PROFILE-BETA-1.0-IMPLEMENTATION-PLAN.md](FEED-PROFILE-BETA-1.0-IMPLEMENTATION-PLAN.md) in main at `8260beb7070d959dce17ee423e2768dbea4399c9`; blob `7365dfa59e6feec057c232cd9c7454b84e11deba`. Added [dated audit report](reports/2026-11-26-feed-profile-beta1-audit.md), indexed both artifacts in development README.
+- Owner selected privacy variant В: preserve the existing privacy model unchanged. No new public/private defaults, visibility settings, block/follow semantics or broader access are authorized. Current own-profile auth, relationship-gated user search, owner/device file checks and room membership controls remain the baseline.
+- Findings: P0 0; P1 1 conditional functional scope gap (feed/posts only if approved for Beta 1.0); P2 6; P3 1. No confirmed P0/P1 security vulnerability was established in the statically reviewed profile/file paths. Dynamic security testing was NOT RUN.
+- Feed/posts are absent. Own-profile GET and locale update exist; general profile edit, other-user profile API, avatar/cover binding and social media lifecycle are absent. Generic file infrastructure exists.
+- Node/PostgreSQL/Flutter/Dart/Rust/Android/iOS tests and builds, dynamic BOLA/IDOR, production, load and device tests were NOT RUN. Existing test files were inventoried but not counted as PASS.
+- No product source, schema/migration, workflow, config or UI changed. WBS v1.1, baseline percentages, privacy policy and release scope remain unchanged. Feed Beta 1.0 vs Beta 2.0 remains an owner decision.
+- Draft PR #167 was closed as superseded after direct documentation-only publication; task branch retained. No implementation task was marked complete.
+
 ## 2026-11-24 — CTO Beta 1.0 security remediation roadmap recorded
 
 - Added authoritative staged plan: `development/roadmaps/2026-11-24-beta1-cto-security-remediation-roadmap.md`.
