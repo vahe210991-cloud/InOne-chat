@@ -70,3 +70,22 @@ The next isolated test extends the read-only baseline. The legacy writer exports
 3. Close and reopen the database, read the same signer again, and create a second message.
 
 This is a compatibility test only. The current candidate lockfile has a RustSec finding in the bundled SQLCipher source (sqlcipher-src 419.0.6, RUSTSEC-2026-0502 / CVE-2026-119375). It must be remediated before any production consideration. The newer libsqlite3-sys 0.40.0 line uses sqlcipher-src 420.0.0, but the current OpenMLS 0.10.0-rc.1 SQLite storage dependency resolves rusqlite 0.41.1; upgrading that dependency chain needs a separately validated compatibility change. The test must not be described as security-clean until the candidate audit passes.
+
+## SQLCipher advisory remediation analysis — 2026-11-26
+
+The dependency constraint is narrower than a direct rusqlite bump:
+
+- OpenMLS 0.10.0-rc.1's `openmls_sqlite_storage 0.4.0-rc.1` declares `rusqlite = "0.41"` and `refinery = "0.10"`.
+- `rusqlite 0.41.1` uses `libsqlite3-sys 0.39.x`; its bundled SQLCipher feature resolves `sqlcipher-src 419.0.6`, which is affected by RUSTSEC-2026-0502.
+- `rusqlite 0.42.0` moves to `libsqlite3-sys 0.40.0` and `sqlcipher-src 420.0.0`, which contains the upstream SQLCipher/SQLite fix.
+- However, `openmls_sqlite_storage 0.4.0-rc.1` constrains rusqlite to 0.41.x, and `refinery 0.10.1` currently advertises rusqlite support only through 0.41.x. Because rusqlite/libsqlite3-sys use Cargo's native `links = "sqlite3"` constraint, adding 0.42 alongside 0.41 is not a valid workaround.
+
+### Safe options to evaluate
+
+1. Ask upstream OpenMLS to publish a storage release whose rusqlite and refinery dependency ranges support the patched SQLCipher stack, then retest the exact crate set.
+2. Maintain a narrowly scoped, auditable fork/patch of the OpenMLS SQLite storage and migration dependency chain, then run the full storage migration and cross-platform build matrix.
+3. Use a separately built and pinned patched SQLCipher library rather than the bundled `sqlcipher-src`, but only after validating Android/iOS packaging, ABI, OpenSSL configuration, WAL behavior and runtime keying.
+
+Do not force a lockfile-only override, suppress the advisory, or introduce two rusqlite/libsqlite3-sys versions. None of those demonstrates that the binary actually contains the patched SQLCipher implementation.
+
+The current prototype intentionally stays on the affected candidate dependency set only to measure data/key compatibility in isolated CI. It is not suitable for release while this advisory remains.
