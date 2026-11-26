@@ -283,17 +283,18 @@ impl SignatureKeyPair {
     }
 
     /// Store this signature key pair in the key store.
-    #[openmls_traits::maybe_async]
-    pub async fn store<T>(&self, store: &T) -> Result<(), T::Error>
+    ///
+    /// OpenMLS 0.9.2 uses the synchronous StorageProvider interface. Keep this
+    /// API synchronous while retaining the provider-backed signer additions.
+    pub fn store<T>(&self, store: &T) -> Result<(), T::Error>
     where
         T: StorageProvider<CURRENT_VERSION>,
     {
-        store.write_signature_key_pair(&self.id(), self).await
+        store.write_signature_key_pair(&self.id(), self)
     }
 
     /// Read a signature key pair from the key store.
-    #[openmls_traits::maybe_async]
-    pub async fn read(
+    pub fn read(
         store: &impl StorageProvider<CURRENT_VERSION>,
         public_key: &[u8],
         signature_scheme: SignatureScheme,
@@ -302,14 +303,12 @@ impl SignatureKeyPair {
             .signature_key_pair(&StorageId {
                 value: id(public_key, signature_scheme),
             })
-            .await
             .ok()
             .flatten()
     }
 
     /// Delete a signature key pair from the key store.
-    #[openmls_traits::maybe_async]
-    pub async fn delete<T: StorageProvider<CURRENT_VERSION>>(
+    pub fn delete<T: StorageProvider<CURRENT_VERSION>>(
         store: &T,
         public_key: &[u8],
         signature_scheme: SignatureScheme,
@@ -317,7 +316,7 @@ impl SignatureKeyPair {
         let id = StorageId {
             value: id(public_key, signature_scheme),
         };
-        store.delete_signature_key_pair(&id).await
+        store.delete_signature_key_pair(&id)
     }
 
     /// Get the public key as byte slice.
