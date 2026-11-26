@@ -417,16 +417,25 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
   const finalizeRecoveryIfDue = async (userId, localeOverride = null) => {
     const current = await storage.recoveryGet(userId);
     if (current.windowKeyResetAt === null || now() < current.windowKeyResetAt) return;
-    const dueSince = await storage.recoveryUpdate(userId, (r) => {
-      const out = closeWindowIfDue(r, now());
-      return { next: out.next, result: out.dueSince };
-    });
+    const dueSince = current.windowStartedAt;
     if (dueSince === null) return;
+    // Keep the recovery window marker until every device cleanup step has succeeded.
+    // If any step fails, the next authenticated request retries all pre-window devices;
+    // revokeDevice and the associated cleanup operations are idempotent.
     for (const rec of await storage.devicesOfUser(userId)) {
-      if (!rec.revoked && rec.createdAt < dueSince) await revokeDevice(rec);
+      if (rec.createdAt < dueSince) await revokeDevice(rec);
     }
+    const finalized = await storage.recoveryUpdate(userId, (r) => {
+      if (r.windowStartedAt !== dueSince || r.windowKeyResetAt === null || now() < r.windowKeyResetAt) {
+        return { next: r, result: false };
+      }
+      const out = closeWindowIfDue(r, now());
+      return { next: out.next, result: out.dueSince !== null };
+    });
+    if (!finalized) return;
     await mail(userId, 'Старые устройства отключены', '', 'old_devices_revoked', {}, null, localeOverride);
   };
+
   const authed = async (req) => {
     const raw = (req.headers.authorization || '').replace('Bearer ', '');
     const dk = raw ? await storage.deviceKeyForToken(raw, now()) : null;
