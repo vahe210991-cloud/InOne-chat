@@ -566,8 +566,10 @@ test('identity code attempts remain bounded across resend and lock the challenge
     assert.equal(resent.status, 202);
     assert.equal(resent.body.codeSent, true);
     assert.notEqual(resent.body.challengeId, first.body.challengeId);
+    const renewedCode = identityCodeFrom(srv, ALICE);
+    const wrongAfterResend = renewedCode === '000000' ? '000001' : '000000';
 
-    assert.equal((await rawLogin(base, ALICE, NEW_PW, 'B_NEW', wrongCode)).status, 429);
+    assert.equal((await rawLogin(base, ALICE, NEW_PW, 'B_NEW', wrongAfterResend)).status, 429);
     assert.equal((await rawLogin(base, ALICE, NEW_PW, 'B_NEW')).status, 429);
 
     srv.advance(HOUR + 1);
