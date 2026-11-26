@@ -938,11 +938,9 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           codeController.dispose();
         }
       }
-    } catch (error) {
-      if (mounted) {
-        final failure = _toFailure(error);
-        _notice(failure.message ?? 'Не удалось проверить запросы входа.');
-      }
+    } catch (_) {
+      // This is background polling; transient network failures are retried on
+      // the next foreground interval and must not produce repeated snackbars.
     } finally {
       _deviceApprovalDialogInFlight = false;
     }
