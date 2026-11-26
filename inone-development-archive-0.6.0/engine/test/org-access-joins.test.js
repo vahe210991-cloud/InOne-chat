@@ -56,18 +56,6 @@ async function approveJoinRequestViaMls(owner, requester, roomId, targetUserId, 
   });
 }
 
-async function waitForSignal(signal, description) {
-  let timeout;
-  try {
-    await Promise.race([
-      signal,
-      new Promise((_, reject) => { timeout = setTimeout(() => reject(new Error(description)), 10000); }),
-    ]);
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
 test('открытая группа: посторонний организации не входит; после добавления в организацию входит', async () => {
   const s = await start();
   try {
