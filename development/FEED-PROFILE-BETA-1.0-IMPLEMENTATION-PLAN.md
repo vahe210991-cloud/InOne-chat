@@ -338,7 +338,7 @@ The repository contains both `inone-development-archive-0.6.0/engine` and `inone
 
 ### 12.1. Утверждённая продуктовая граница
 
-`docs/continuity/DECISIONS.md` §1 указывает текущий Beta 1.0 scope: Chats, Organizations, Profile, auth/recovery и серверные API для них. WBS v1.2 (`development/PROGRESS-BASELINE.md`) включает утверждённое владельцем расширение scope: Feed входит в Beta 1.0 с 2026-11-26. Веса доменов не меняются; исторические проценты v1.1 не являются новой оценкой расширенного scope.
+`docs/continuity/DECISIONS.md` §1 фиксирует первоначальный Beta 1.0 scope: Chats, Organizations, Profile, auth/recovery и серверные API. Для Feed это историческая запись, superseded решением владельца от 2026-11-26 в §9 того же документа. WBS v1.2 (`development/PROGRESS-BASELINE.md`) включает утверждённое владельцем расширение scope: Feed входит в Beta 1.0 с 2026-11-26. Веса доменов не меняются; исторические проценты v1.1 не являются новой оценкой расширенного scope.
 
 В то же время `DECISIONS.md` §7 определяет InOne как personal/social product с News feed и User publications/posts. В entitlement hypothesis § соответствующего раздела также упомянуты доступные публикации. Владелец отдельно утвердил Feed для Beta 1.0 2026-11-26; решение и scope amendment зафиксированы в WBS v1.2 и `DECISIONS.md` §9.
 
