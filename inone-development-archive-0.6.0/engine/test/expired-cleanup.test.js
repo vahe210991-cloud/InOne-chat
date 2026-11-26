@@ -86,6 +86,49 @@ test('PostgreSQL cleanup prunes only stale rate-limit and login-throttle rows in
   }
 });
 
+test('PostgreSQL cleanup enforces the 500-row cap independently for each security-state table', async (t) => {
+  const db = await storeForTest(PEPPER);
+  if (!db?.pool || !db?.store) {
+    t.skip('PostgreSQL test database is not configured');
+    return;
+  }
+  const suffix = randomBytes(8).toString('hex');
+  const now = Date.now();
+  const ratePrefix = `stage4-rate-batch-${suffix}-`;
+  const loginPrefix = `stage4-login-batch-${suffix}-`;
+  try {
+    await db.pool.query(
+      'INSERT INTO rate_limits (key, window_start, hits) SELECT $1 || n::text, $2, 1 FROM generate_series(1, 501) AS n',
+      [ratePrefix, now - 25 * HOUR],
+    );
+    const firstRateSweep = await db.store.purgeExpired(now);
+    assert.equal(firstRateSweep.rateLimits, 500, 'one sweep removes at most 500 rate-limit rows');
+    let remaining = await db.pool.query('SELECT count(*)::int AS n FROM rate_limits WHERE key LIKE $1', [`${ratePrefix}%`]);
+    assert.equal(remaining.rows[0].n, 1, 'the 501st rate-limit row remains for the next sweep');
+    const secondRateSweep = await db.store.purgeExpired(now);
+    assert.equal(secondRateSweep.rateLimits, 1);
+    remaining = await db.pool.query('SELECT count(*)::int AS n FROM rate_limits WHERE key LIKE $1', [`${ratePrefix}%`]);
+    assert.equal(remaining.rows[0].n, 0);
+
+    await db.pool.query(
+      'INSERT INTO login_throttle (key, failed, window_start, blocked_until) SELECT $1 || n::text, 3, $2, $3 FROM generate_series(1, 501) AS n',
+      [loginPrefix, now - 20 * MIN, now - 1],
+    );
+    const firstLoginSweep = await db.store.purgeExpired(now);
+    assert.equal(firstLoginSweep.loginThrottle, 500, 'one sweep removes at most 500 login-throttle rows');
+    remaining = await db.pool.query('SELECT count(*)::int AS n FROM login_throttle WHERE key LIKE $1', [`${loginPrefix}%`]);
+    assert.equal(remaining.rows[0].n, 1, 'the 501st login-throttle row remains for the next sweep');
+    const secondLoginSweep = await db.store.purgeExpired(now);
+    assert.equal(secondLoginSweep.loginThrottle, 1);
+    remaining = await db.pool.query('SELECT count(*)::int AS n FROM login_throttle WHERE key LIKE $1', [`${loginPrefix}%`]);
+    assert.equal(remaining.rows[0].n, 0);
+  } finally {
+    await db.pool.query('DELETE FROM rate_limits WHERE key LIKE $1', [`${ratePrefix}%`]);
+    await db.pool.query('DELETE FROM login_throttle WHERE key LIKE $1', [`${loginPrefix}%`]);
+    await db.close();
+  }
+});
+
 test('устаревшие rate-limit и login-throttle счётчики очищаются, активные окна и блокировки сохраняются', () => {
   const store = createMemoryStore({ pinPepper: PEPPER });
   const DAY = 24 * 60 * 60_000;
