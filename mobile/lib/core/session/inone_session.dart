@@ -283,6 +283,10 @@ class InOneSession extends ChangeNotifier {
     return safeResult;
   }
 
+  /// Drops the in-memory challenge when the user leaves the approval screen.
+  /// The server-side request remains pending until its short expiry or owner denial.
+  void discardPendingApproval() => _clearPendingApproval();
+
   /// Claims the one-time approval result on the device that initiated login.
   /// The poll secret never leaves this session object.
   Future<Map<String, dynamic>> claimPendingApproval() async {
