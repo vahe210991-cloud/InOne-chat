@@ -2465,7 +2465,8 @@ if (req.method === 'POST' && p === '/login') {
         return send(res, 200, { rooms: await storage.searchPublicRooms(q, 20) });
       }
 
-      // Вступление в публичную группу: свободно или по заявке, как настроено в группе.
+      // Вступление в публичную группу всегда начинается с заявки. Фактическое членство
+      // создаётся только после MLS Add Commit и Welcome от текущего участника.
       const joinRoute = p.match(/^\/rooms\/([^/]+)\/join$/);
       if (joinRoute && req.method === 'POST') {
         const d = await authed(req);
@@ -2475,19 +2476,10 @@ if (req.method === 'POST' && p === '/login') {
         // Приватная группа для постороннего не существует: тот же ответ, что и для несуществующей.
         if (!r || r.visibility !== 'public') return send(res, 404, { error: 'room not found' });
         if (r.members.includes(d.userId)) return send(res, 409, { error: 'already a member' });
-        if (r.joinPolicy === 'open') {
-          const joinOrgId = await storage.roomOrg(roomId);
-          const joinGate = await orgGate(d.userId, joinOrgId);
-          if (joinGate) return send(res, joinGate.status, { error: joinGate.error, code: joinGate.code });
-          if (await groupFull(roomId)) return send(res, 409, { error: 'group is full' });
-          if (!(await storage.hasJoinRequest(roomId, d.userId))) {
-            await storage.createJoinRequest(roomId, d.userId, now());
-          }
-          return send(res, 200, {
-            status: 'requested',
-            code: 'mls_approval_required',
-          });
-        }
+        const joinOrgId = await storage.roomOrg(roomId);
+        const joinGate = await orgGate(d.userId, joinOrgId);
+        if (joinGate) return send(res, joinGate.status, { error: joinGate.error, code: joinGate.code });
+        if (await groupFull(roomId)) return send(res, 409, { error: 'group is full' });
         if (!(await storage.hasJoinRequest(roomId, d.userId))) {
           await storage.createJoinRequest(roomId, d.userId, now());
         }
