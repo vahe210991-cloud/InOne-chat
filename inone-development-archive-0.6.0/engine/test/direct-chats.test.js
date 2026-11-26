@@ -163,6 +163,21 @@ test('direct chats require no recipient approval and activate automatically thro
       'direct conversations do not expose group stickers',
     );
     await assert.rejects(
+      alice.raw('POST', `/rooms/${enc(opened.roomId)}/assets`, {}),
+      (error) => error.status === 404,
+      'direct conversations do not accept group appearance assets',
+    );
+    await assert.rejects(
+      alice.raw('GET', `/rooms/${enc(opened.roomId)}/assets/pending`),
+      (error) => error.status === 404,
+      'direct conversations do not expose pending group assets',
+    );
+    await assert.rejects(
+      alice.raw('GET', `/rooms/${enc(opened.roomId)}/assets/not-an-asset`),
+      (error) => error.status === 404,
+      'direct conversations do not expose group assets',
+    );
+    await assert.rejects(
       alice.raw('POST', `/rooms/${enc(opened.roomId)}/members`, { userId: CAROL }),
       (error) => error.status === 409,
       'a direct conversation cannot add a third account through the legacy route',
