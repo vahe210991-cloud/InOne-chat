@@ -187,6 +187,7 @@ class InOnePublicRoomSearch {
 class InOneRoomDetails {
   const InOneRoomDetails({
     required this.owner,
+    required this.kind,
     required this.admins,
     required this.members,
     required this.capabilities,
@@ -197,6 +198,7 @@ class InOneRoomDetails {
   });
 
   final String owner;
+  final String kind;
   final List<String> admins;
   final List<String> members;
   final Map<String, List<String>> capabilities;
@@ -207,6 +209,7 @@ class InOneRoomDetails {
 
   factory InOneRoomDetails.fromJson(Map<String, dynamic> json) {
     final owner = json['owner'];
+    final kind = json['kind'] ?? 'group';
     final admins = json['admins'];
     final members = json['members'];
     final rawCapabilities = json['capabilities'];
@@ -214,7 +217,9 @@ class InOneRoomDetails {
     final visibility = json['visibility'];
     final joinPolicy = json['join_policy'];
     final rawReadUpTo = json['read_upto'];
-    if (owner is! String || admins is! List ||
+    if (owner is! String || kind is! String ||
+        !const {'group', 'channel', 'direct'}.contains(kind) ||
+        admins is! List ||
         admins.any((value) => value is! String) ||
         members is! List || members.any((value) => value is! String) ||
         rawCapabilities is! Map || name != null && name is! String ||
@@ -246,6 +251,7 @@ class InOneRoomDetails {
     }
     return InOneRoomDetails(
       owner: owner,
+      kind: kind,
       admins: List<String>.unmodifiable(admins.cast<String>()),
       members: parsedMembers,
       capabilities: Map<String, List<String>>.unmodifiable(parsedCapabilities),
