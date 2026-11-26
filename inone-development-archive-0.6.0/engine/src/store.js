@@ -1627,7 +1627,7 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
           'INSERT INTO room_members (room_id, user_id, is_admin, joined_seq, capabilities) VALUES ($1, $2, FALSE, $3, $4::text[])',
           [roomId, requester, Number(counterRows[0].value), [...DEFAULT_MEMBER_CAPABILITIES]],
         );
-        return { status: 'created', roomId, userA, userB, createdBy: requester, createdAt, isCreator: true };
+        return { status: 'pending', roomId, userA, userB, createdBy: requester, createdAt, isCreator: true, created: true };
       });
     },
 
