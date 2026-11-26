@@ -312,7 +312,7 @@ test('второе восстановление внутри окна не сд�
     const code1 = await startRecovery(base, srv, ALICE, PHONE_A);
     await post(base, '/recovery/complete', { userId: ALICE, code: code1, newPassword: NEW_PW });
     await rawLogin(base, ALICE, NEW_PW, 'C_NEW');
-    const added = await ChatClient.login(base, ALICE, NEW_PW, 'C_NEW', { identityCode: identityCodeFrom(srv, ALICE) });
+    const added = await ChatClient.login(base, ALICE, NEW_PW, 'C_NEW', { identityCode: identityCodeFrom(srv, ALICE), identityChallengeId: identityChallenges.get(`${ALICE}|C_NEW`) });
 
     srv.advance(HOUR);
     const SECOND_PW = 'второй-пароль-2026';
