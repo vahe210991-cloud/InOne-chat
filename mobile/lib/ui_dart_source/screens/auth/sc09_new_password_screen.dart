@@ -95,6 +95,7 @@ class _InOneNewPasswordScreenState extends State<InOneNewPasswordScreen>
                 form: _form,
                 name: 'pin',
                 label: 'PIN (եթե սահմանված է)',
+                maxLength: 6,
                 obscure: true,
                 keyboardType: TextInputType.number,
                 textInputAction: TextInputAction.done,
