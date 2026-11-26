@@ -1288,11 +1288,14 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
         await c.query(
           `UPDATE recovery SET req_status = $2, req_started_at = $3, req_expires_at = $4, req_code_hash = $5,
              req_attempts = $6, window_started_at = $7, window_key_reset_at = $8, window_previous_hash = $9,
-             identity_check = $10, identity_code_hash = $11, identity_attempts = $12, locked_until = $13, starts = $14, req_link_hash = $15, req_link_confirmed = $16
+             identity_check = $10, identity_code_hash = $11, identity_attempts = $12, locked_until = $13, starts = $14, req_link_hash = $15, req_link_confirmed = $16,
+             identity_code_expires_at = $17, identity_device_id = $18, identity_challenge_id = $19,
+             identity_locked_until = $20, identity_last_sent_at = $21
            WHERE user_id = $1`,
           [userId, next.reqStatus, next.reqStartedAt, next.reqExpiresAt, next.reqCodeHash, next.reqAttempts,
            next.windowStartedAt, next.windowKeyResetAt, next.windowPreviousHash, next.identityCheck,
-           next.identityCodeHash, next.identityAttempts, next.lockedUntil, JSON.stringify(next.starts), next.reqLinkHash, next.reqLinkConfirmed],
+           next.identityCodeHash, next.identityAttempts, next.lockedUntil, JSON.stringify(next.starts), next.reqLinkHash, next.reqLinkConfirmed,
+           next.identityCodeExpiresAt, next.identityDeviceId, next.identityChallengeId, next.identityLockedUntil, next.identityLastSentAt],
         );
         return result;
       });
@@ -1308,11 +1311,14 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
         await c.query(
           `UPDATE recovery SET req_status = $2, req_started_at = $3, req_expires_at = $4, req_code_hash = $5,
              req_attempts = $6, window_started_at = $7, window_key_reset_at = $8, window_previous_hash = $9,
-             identity_check = $10, identity_code_hash = $11, identity_attempts = $12, locked_until = $13, starts = $14, req_link_hash = $15, req_link_confirmed = $16
+             identity_check = $10, identity_code_hash = $11, identity_attempts = $12, locked_until = $13, starts = $14, req_link_hash = $15, req_link_confirmed = $16,
+             identity_code_expires_at = $17, identity_device_id = $18, identity_challenge_id = $19,
+             identity_locked_until = $20, identity_last_sent_at = $21
            WHERE user_id = $1`,
           [userId, next.reqStatus, next.reqStartedAt, next.reqExpiresAt, next.reqCodeHash, next.reqAttempts,
            next.windowStartedAt, next.windowKeyResetAt, next.windowPreviousHash, next.identityCheck,
-           next.identityCodeHash, next.identityAttempts, next.lockedUntil, JSON.stringify(next.starts), next.reqLinkHash, next.reqLinkConfirmed],
+           next.identityCodeHash, next.identityAttempts, next.lockedUntil, JSON.stringify(next.starts), next.reqLinkHash, next.reqLinkConfirmed,
+           next.identityCodeExpiresAt, next.identityDeviceId, next.identityChallengeId, next.identityLockedUntil, next.identityLastSentAt],
         );
         if (enqueue) await enqueue(c, result);
         return result;
@@ -1330,11 +1336,14 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
         await client.query(
           `UPDATE recovery SET req_status = $2, req_started_at = $3, req_expires_at = $4, req_code_hash = $5,
              req_attempts = $6, window_started_at = $7, window_key_reset_at = $8, window_previous_hash = $9,
-             identity_check = $10, identity_code_hash = $11, identity_attempts = $12, locked_until = $13, starts = $14, req_link_hash = $15, req_link_confirmed = $16
+             identity_check = $10, identity_code_hash = $11, identity_attempts = $12, locked_until = $13, starts = $14, req_link_hash = $15, req_link_confirmed = $16,
+             identity_code_expires_at = $17, identity_device_id = $18, identity_challenge_id = $19,
+             identity_locked_until = $20, identity_last_sent_at = $21
            WHERE user_id = $1`,
           [userId, next.reqStatus, next.reqStartedAt, next.reqExpiresAt, next.reqCodeHash, next.reqAttempts,
            next.windowStartedAt, next.windowKeyResetAt, next.windowPreviousHash, next.identityCheck,
-           next.identityCodeHash, next.identityAttempts, next.lockedUntil, JSON.stringify(next.starts), next.reqLinkHash, next.reqLinkConfirmed],
+           next.identityCodeHash, next.identityAttempts, next.lockedUntil, JSON.stringify(next.starts), next.reqLinkHash, next.reqLinkConfirmed,
+           next.identityCodeExpiresAt, next.identityDeviceId, next.identityChallengeId, next.identityLockedUntil, next.identityLastSentAt],
         );
         await client.query('DELETE FROM recovery_cancel_codes WHERE user_id = $1', [userId]);
         if (enqueue) await enqueue(client, result);
@@ -1352,11 +1361,14 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
         await client.query(
           `UPDATE recovery SET req_status = $2, req_started_at = $3, req_expires_at = $4, req_code_hash = $5,
              req_attempts = $6, window_started_at = $7, window_key_reset_at = $8, window_previous_hash = $9,
-             identity_check = $10, identity_code_hash = $11, identity_attempts = $12, locked_until = $13, starts = $14, req_link_hash = $15, req_link_confirmed = $16
+             identity_check = $10, identity_code_hash = $11, identity_attempts = $12, locked_until = $13, starts = $14, req_link_hash = $15, req_link_confirmed = $16,
+             identity_code_expires_at = $17, identity_device_id = $18, identity_challenge_id = $19,
+             identity_locked_until = $20, identity_last_sent_at = $21
            WHERE user_id = $1`,
           [userId, next.reqStatus, next.reqStartedAt, next.reqExpiresAt, next.reqCodeHash, next.reqAttempts,
            next.windowStartedAt, next.windowKeyResetAt, next.windowPreviousHash, next.identityCheck,
-           next.identityCodeHash, next.identityAttempts, next.lockedUntil, JSON.stringify(next.starts), next.reqLinkHash, next.reqLinkConfirmed],
+           next.identityCodeHash, next.identityAttempts, next.lockedUntil, JSON.stringify(next.starts), next.reqLinkHash, next.reqLinkConfirmed,
+           next.identityCodeExpiresAt, next.identityDeviceId, next.identityChallengeId, next.identityLockedUntil, next.identityLastSentAt],
         );
         await client.query(
           `INSERT INTO recovery_cancel_codes (user_id, code_hash, expires_at) VALUES ($1, $2, $3)
@@ -2784,6 +2796,9 @@ function fromRecoveryRow(r) {
     windowStartedAt: numOrNull(r.window_started_at), windowKeyResetAt: numOrNull(r.window_key_reset_at),
     windowPreviousHash: r.window_previous_hash,
     identityCheck: r.identity_check, identityCodeHash: r.identity_code_hash, identityAttempts: r.identity_attempts,
+    identityCodeExpiresAt: Number(r.identity_code_expires_at), identityDeviceId: r.identity_device_id,
+    identityChallengeId: r.identity_challenge_id, identityLockedUntil: Number(r.identity_locked_until),
+    identityLastSentAt: Number(r.identity_last_sent_at),
     lockedUntil: Number(r.locked_until), starts: r.starts.map(Number),
   };
 }
