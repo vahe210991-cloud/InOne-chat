@@ -226,8 +226,8 @@ export class ChatClient {
   }
 
   /** Создаёт беседу. Создатель становится владельцем. */
-  async createRoom(roomId, members = []) {
-    const created = await this.raw('POST', '/rooms', { roomId });
+  async createRoom(roomId, members = [], options = {}) {
+    const created = await this.raw('POST', '/rooms', { roomId, ...options });
     this.roomMembers.set(roomId, [this.userId]);
     const targets = [...new Set(members)].filter((id) => id !== this.userId);
     if (targets.length > 0) {
