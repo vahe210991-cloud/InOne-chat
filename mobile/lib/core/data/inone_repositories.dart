@@ -205,8 +205,8 @@ class InOneRepositories {
       InOneRoomList.fromJson(await session.request('GET', '/rooms/mine'));
 
   /// Reserves or opens the one canonical private conversation for this account pair.
-  /// If the result is pending and this device is the creator, initialize the local
-  /// Engine B group and send the counterpart's per-device MLS Welcome before use.
+  /// If the result is provisioning and this device is the creator, initialize the local
+  /// Engine B group and send the counterpart's per-device MLS Welcome. The peer never approves.
   Future<InOneDirectConversation> openDirectConversation(String userId) async {
     final peer = userId.trim();
     if (peer.isEmpty) throw ArgumentError.value(userId, 'userId');
