@@ -1039,7 +1039,7 @@ export function createMemoryStore({ pinPepper }) {
         out.push({
           roomId,
           kind: r.kind,
-          name: r.name ?? (peerName?.trim() || peerUserId || null),
+          name: r.name ?? (peerName?.trim() || null),
           owner: r.owner,
           isAdmin: [...r.admins].includes(userId),
         });
