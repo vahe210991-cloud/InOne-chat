@@ -2286,6 +2286,7 @@ if (req.method === 'POST' && p === '/login') {
         const roomId = decodeURIComponent(nameRoute[1]);
         const r = await storage.getRoom(roomId);
         if (!r) return send(res, 404, { error: 'room not found' });
+        if ((await storage.roomKind(roomId)) === 'direct') return send(res, 404, { error: 'not found' });
         if (d.userId !== r.owner) return send(res, 403, { error: 'only the owner can rename the room' });
         const checkedName = normalizeRoomName(body.name);
         if (checkedName.error) return send(res, 400, { error: checkedName.error });
