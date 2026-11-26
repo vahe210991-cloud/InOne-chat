@@ -2503,6 +2503,49 @@ async mlsPendingRemovalsFor(userId) {
       }
     },
 
+    /**
+     * Consumes a verified-email ticket and creates the account in one transaction.
+     * A failed account insert rolls back ticket consumption so the user can retry safely.
+     */
+    async createVerifiedAccountWithEmailToken({ email, changeEmailCode, userId, passwordHash, nickname, nowMs, joinDefaultOrg = false }) {
+      try {
+        return await inTransaction(async (c) => {
+          await c.query('INSERT INTO email_codes (email) VALUES ($1) ON CONFLICT (email) DO NOTHING', [email]);
+          const { rows } = await c.query('SELECT * FROM email_codes WHERE email = $1 FOR UPDATE', [email]);
+          const row = rows[0];
+          const current = {
+            codeHash: row.code_hash,
+            codeAttempts: row.code_attempts,
+            codeExpiresAt: Number(row.code_expires_at),
+            tokenHash: row.token_hash,
+            tokenExpiresAt: Number(row.token_expires_at),
+            locale: row.locale ?? 'hy',
+          };
+          const { next, result } = changeEmailCode(current);
+          const locale = result.locale ?? current.locale ?? 'hy';
+          await c.query(
+            `UPDATE email_codes SET code_hash = $2, code_attempts = $3, code_expires_at = $4, token_hash = $5, token_expires_at = $6, locale = $7
+             WHERE email = $1`,
+            [email, next.codeHash, next.codeAttempts, next.codeExpiresAt, next.tokenHash, next.tokenExpiresAt, next.locale ?? locale],
+          );
+          if (result.outcome !== 'ok') return { outcome: result.outcome, created: null, locale };
+          await c.query('INSERT INTO accounts (user_id, password_hash) VALUES ($1, $2)', [userId, passwordHash]);
+          if (joinDefaultOrg) {
+            await c.query("INSERT INTO org_members (org_id, user_id, role, joined_at) VALUES ('org-default', $1, 'member', $2) ON CONFLICT DO NOTHING", [userId, nowMs]);
+          }
+          await c.query(
+            'INSERT INTO profiles (user_id, email, email_verified, nickname, created_at, locale) VALUES ($1, $2, TRUE, $3, $4, $5)',
+            [userId, email, nickname, nowMs, locale],
+          );
+          return { outcome: 'ok', created: 'ok', locale };
+        });
+      } catch (error) {
+        if (error.code !== '23505') throw error;
+        if (error.constraint === 'profiles_email_verified') return { outcome: 'ok', created: 'email' };
+        if (error.constraint === 'profiles_nickname') return { outcome: 'ok', created: 'nickname' };
+        return { outcome: 'ok', created: 'account' };
+      }
+    },
     /** Код подтверждения почты при регистрации под блокировкой строки: change(current) -> { next, result }. */
     async emailCodeUpdate(email, change) {
       return inTransaction(async (c) => {
