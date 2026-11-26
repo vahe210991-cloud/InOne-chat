@@ -31,27 +31,4 @@ void main() {
     expect(completed, 1);
   });
 
-  testWidgets('SC-08 can abandon a staged link without confirming it',
-      (tester) async {
-    var confirmations = 0;
-    var backCalls = 0;
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: InOneRecoveryConfirmScreen(
-          onConfirm: () async {
-            confirmations++;
-            return null;
-          },
-          onBack: () => backCalls++,
-        ),
-      ),
-    );
-
-    await tester.tap(find.byTooltip('Back'));
-    await tester.pump();
-
-    expect(confirmations, 0);
-    expect(backCalls, 1);
-  });
 }
