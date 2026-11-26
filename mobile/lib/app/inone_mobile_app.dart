@@ -1103,7 +1103,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
                                 contentPadding: EdgeInsets.zero,
                                 title: Text(room.name),
                                 subtitle: Text(
-                                  '${room.members} участников · ${room.joinPolicy == 'open' ? 'Свободное вступление' : 'По заявке'}',
+                                  '${room.members} участников · ${room.joinPolicy == 'open' ? 'Открытая группа · MLS-подтверждение' : 'Вступление по заявке · MLS-подтверждение'}',
                                 ),
                                 trailing: statuses[room.roomId] == 'joined' ||
                                         statuses[room.roomId] == 'requested' ||
