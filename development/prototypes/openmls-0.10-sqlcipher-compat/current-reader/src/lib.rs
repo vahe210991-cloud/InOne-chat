@@ -58,7 +58,7 @@ fn open_sqlcipher(path: &Path, key_hex: &str) -> Result<Connection, Box<dyn std:
     Ok(connection)
 }
 
-fn load_group(path: &Path) -> Result<(MlsGroup, String), Box<dyn std::error::Error>> {
+fn load_group(path: &Path) -> Result<(MlsGroup, CandidateProvider, String), Box<dyn std::error::Error>> {
     let mut connection = open_sqlcipher(path, TEST_KEY_HEX)?;
     let cipher_version: String =
         connection.query_row("PRAGMA cipher_version", [], |row| row.get(0))?;
@@ -88,7 +88,7 @@ fn load_group(path: &Path) -> Result<(MlsGroup, String), Box<dyn std::error::Err
         return Err(format!("SQLite integrity_check failed: {integrity}").into());
     }
 
-    Ok((group, cipher_version))
+    Ok((group, provider, cipher_version))
 }
 
 #[cfg(test)]
@@ -110,7 +110,7 @@ mod tests {
         let public_key = std::fs::read(path.with_extension("signer.pub"))
             .expect("read legacy signer public-key sidecar");
 
-        let (group, cipher_version) = load_group(path).expect("load legacy group with candidate");
+        let (group, provider, cipher_version) = load_group(path).expect("load legacy group with candidate");
         assert_eq!(group.group_id().as_slice(), GROUP_ID);
         assert_eq!(group.epoch().as_u64(), 0);
         assert_eq!(group.members().count(), 1);
@@ -119,13 +119,13 @@ mod tests {
         // The private signing key remains inside SQLCipher storage. Read it with the
         // candidate OpenMLS version and prove Libcrux can sign a new application message.
         let signer = SignatureKeyPair::read(
-            group.provider().storage(),
+            provider.storage(),
             &public_key,
             CIPHERSUITE.signature_algorithm(),
         )
         .expect("read legacy signing key from candidate storage");
         let signed_message = group
-            .create_message(group.provider(), &signer, b"legacy-key-to-candidate-message")
+            .create_message(&provider, &signer, b"legacy-key-to-candidate-message")
             .expect("candidate Libcrux signs and encrypts with the legacy key");
         assert!(!format!("{signed_message:?}").is_empty());
         drop(signed_message);
@@ -133,21 +133,21 @@ mod tests {
         drop(group);
 
         // A second independent open proves both group state and signer persistence survive reopen.
-        let (reopened, reopened_cipher) = load_group(path).expect("reopen and reload legacy group");
+        let (reopened, reopened_provider, reopened_cipher) = load_group(path).expect("reopen and reload legacy group");
         assert_eq!(reopened.group_id().as_slice(), GROUP_ID);
         assert_eq!(reopened.epoch().as_u64(), 0);
         assert_eq!(reopened.members().count(), 1);
         assert_eq!(reopened_cipher, cipher_version);
 
         let reopened_signer = SignatureKeyPair::read(
-            reopened.provider().storage(),
+            reopened_provider.storage(),
             &public_key,
             CIPHERSUITE.signature_algorithm(),
         )
         .expect("re-read legacy signing key after reopen");
         let second_message = reopened
             .create_message(
-                reopened.provider(),
+                &reopened_provider,
                 &reopened_signer,
                 b"reopened-legacy-key-to-candidate-message",
             )
