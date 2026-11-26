@@ -43,7 +43,7 @@ Existing Beta 1.0 routes are maintained in the canonical engine. Account locale 
 
 | Method | Route | Use |
 |---|---|---|
-| GET | `/rooms/mine` | Current user's room list |
+| GET | `/rooms/mine` | Current user's room list, encrypted last-activity cursor/time and unread count per room; message plaintext is never included |
 | GET | `/rooms/search?q=...` | Search public rooms |
 | GET | `/rooms/:id` | Room details |
 | GET | `/rooms/:id/members` | Room members |
