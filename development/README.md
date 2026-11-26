@@ -88,3 +88,6 @@ Read [PROGRESS-BASELINE.md](PROGRESS-BASELINE.md) in full before every implement
 - [Account & Organization Profiles audit report — 2026-11-26](reports/2026-11-26-account-organization-profiles-beta1-audit.md).
 - Audited main SHA: 7d34b99fcc026a828b838e211d039c575aeace1d. Source review complete; implementation and runtime acceptance not started.
 - The report records one confirmed P0 MLS/server membership consistency issue, two conditional guest-profile scope gaps, and the P2/P3 backlog. No product source or WBS v1.1 changes were made.
+
+
+- Documentation review PR: [#170](https://github.com/vahe210991-cloud/InOne-chat/pull/170) — Draft, not merged. Keep the plan/report on the task branch until owner review.
