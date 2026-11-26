@@ -91,7 +91,7 @@ test('direct chats require no recipient approval and activate automatically thro
     const bobDirectRoom = bobRooms.find((room) => room.roomId === opened.roomId);
     assert.ok(bobDirectRoom);
     assert.equal(bobDirectRoom.kind, 'direct');
-    assert.notEqual(bobDirectRoom.name, opened.roomId, 'the room list uses the peer display name instead of the opaque room ID');
+    assert.equal(bobDirectRoom.name, null, 'the backend does not expose an opaque peer account ID as a display name when no nickname exists');
     assert.equal((await bob.raw('GET', '/mls/welcomes')).welcomes.length, 1);
     assert.equal((await bobTablet.raw('GET', '/mls/welcomes')).welcomes.length, 1);
     const wireMessage = Buffer.concat([
