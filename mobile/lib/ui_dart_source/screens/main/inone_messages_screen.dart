@@ -87,8 +87,8 @@ class _InOneMessagesScreenState extends State<InOneMessagesScreen> {
             const SizedBox(height: 14),
             InOneFilterChips(
               labels: widget.unreadCountsAvailable
-                  ? const ['All', 'Unread', 'Groups']
-                  : const ['All', 'Groups'],
+                  ? const ['All', 'Unread', 'Groups', 'Channels']
+                  : const ['All', 'Groups', 'Channels'],
               selectedIndex: _filter,
               onChanged: (i) => setState(() => _filter = i),
             ),
