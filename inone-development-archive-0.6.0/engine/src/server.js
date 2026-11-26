@@ -2624,7 +2624,10 @@ if (req.method === 'POST' && p === '/login') {
                   return send(res, 200, { epoch: replay.epoch, replayed: true });
                 }
               }
+              const roomKind = await storage.roomKind(roomId);
+              const directConversation = roomKind === 'direct' ? await storage.directConversation(roomId) : null;
               if (joinRequestUserId !== null) {
+                if (roomKind === 'direct') return send(res, 400, { error: 'direct conversations do not use group join requests' });
                 if (!(await storage.hasJoinRequest(roomId, joinRequestUserId))) {
                   return send(res, 409, { error: 'join request is no longer pending', code: 'join_request_not_pending' });
                 }
@@ -2637,8 +2640,10 @@ if (req.method === 'POST' && p === '/login') {
               // Do not reject here: a concurrent exact retry may have been accepted while this request waited.
 
               const { adds, removes } = checked.value.changes;
-              const commitOrgId = await storage.roomOrg(roomId);
               const isOwner = d.userId === r.owner;
+              if (roomKind === 'direct' && removes.length > 0) {
+                return send(res, 409, { error: 'direct conversation membership changes require a separate lifecycle operation', code: 'direct_membership_fixed' });
+              }
               for (const t of removes) {
                 if (!r.members.includes(t)) return send(res, 400, { error: `not a member: ${t}` });
                 if (t === r.owner) return send(res, 409, { error: 'owner cannot be removed' });
@@ -2647,12 +2652,24 @@ if (req.method === 'POST' && p === '/login') {
                   if (r.admins.includes(t)) return send(res, 403, { error: 'an admin cannot remove another admin' });
                 }
               }
+              const commitOrgId = roomKind === 'direct' ? null : await storage.roomOrg(roomId);
+              const directCounterpart = directConversation?.userA === d.userId
+                ? directConversation.userB
+                : directConversation?.userB === d.userId ? directConversation.userA : null;
               for (const u of adds) {
                 if (r.members.includes(u)) return send(res, 409, { error: `already a member: ${u}` });
                 if (!isOwner && !hasCapability(r, d.userId, 'invite_members')) return send(res, 403, { error: 'missing capability: invite_members' });
                 if (!(await storage.hasAccount(u))) return send(res, 400, { error: `unknown account: ${u}` });
-                const addGate = await orgGate(u, commitOrgId);
-                if (addGate) return send(res, 403, { error: 'target user is not eligible for this room', code: 'target_not_authorized' });
+                if (roomKind === 'direct') {
+                  if (!directConversation || directConversation.status !== 'pending'
+                    || directConversation.createdBy !== d.userId || adds.length !== 1 || u !== directCounterpart
+                    || !checked.value.keyPackageClaimId) {
+                    return send(res, 403, { error: 'only the paired recipient can be added through a claimed MLS Welcome', code: 'direct_pair_only' });
+                  }
+                } else {
+                  const addGate = await orgGate(u, commitOrgId);
+                  if (addGate) return send(res, 403, { error: 'target user is not eligible for this room', code: 'target_not_authorized' });
+                }
                 if (!checked.value.welcomes.some((w) => w.userId === u)) return send(res, 400, { error: `added member needs a welcome: ${u}` });
               }
               const pendingDevices = await storage.mlsPendingRemovalDevices(roomId);
@@ -2660,7 +2677,7 @@ if (req.method === 'POST' && p === '/login') {
                 if (!pendingDevices.includes(device)) return send(res, 400, { error: `device is not waiting for removal in this group: ${device}` });
               }
               const afterMembers = new Set([...r.members.filter((m) => !removes.includes(m)), ...adds]);
-              const maxMembers = await effectiveMaxMembers(roomId);
+              const maxMembers = roomKind === 'direct' ? 2 : await effectiveMaxMembers(roomId);
               if (afterMembers.size > maxMembers) return send(res, 409, { error: 'group is full', limit: maxMembers });
               for (const w of checked.value.welcomes) {
                 if (!afterMembers.has(w.userId)) return send(res, 400, { error: 'welcome recipient is not a member' });
