@@ -106,9 +106,17 @@ test('direct chats require no recipient approval and activate automatically thro
     const delivered = await bob.raw('GET', `/rooms/${enc(opened.roomId)}/events?since=0`);
     assert.ok(delivered.events.some((event) => event.event_id === sent.event_id),
       'recipient receives the sent message without accepting a chat request');
-    assert.equal(typeof await s.store.appendRoomEvent(
-      opened.roomId, BOB, 'm.room.encrypted', { ciphertext: 'bob-ciphertext' }, Date.now(),
-    ), 'number', 'recipient can write after processing the server-side Add Commit');
+    const replyWireMessage = Buffer.concat([
+      buildPrivateMessageHeader(opened.roomId, committed.epoch),
+      Buffer.from('opaque-mls-reply-ciphertext'),
+    ]).toString('base64');
+    const reply = await bob.raw('POST', `/mls/groups/${enc(opened.roomId)}/messages`, {
+      message: replyWireMessage,
+      kind: 'text',
+    });
+    const senderHistory = await alice.raw('GET', `/rooms/${enc(opened.roomId)}/events?since=0`);
+    assert.ok(senderHistory.events.some((event) => event.event_id === reply.event_id),
+      'recipient can reply without accepting a chat request');
     const thirdPartyWrite = await s.store.appendRoomEvent(
       opened.roomId, CAROL, 'm.room.encrypted', { ciphertext: 'third-party' }, Date.now(),
     );
