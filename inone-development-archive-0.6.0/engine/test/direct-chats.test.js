@@ -122,6 +122,8 @@ test('direct chats require no recipient approval and activate automatically thro
     const delivered = await bob.raw('GET', `/rooms/${enc(opened.roomId)}/events?since=0`);
     assert.ok(delivered.events.some((event) => event.event_id === sent.event_id),
       'recipient receives the sent message without accepting a chat request');
+    const bobSummary = (await bob.raw('GET', '/rooms/mine')).rooms.find((room) => room.roomId === opened.roomId);
+    assert.equal(bobSummary.unreadCount, 1, 'direct room summary marks the incoming message unread');
     const replyWireMessage = Buffer.concat([
       buildPrivateMessageHeader(opened.roomId, committed.epoch),
       Buffer.from('opaque-mls-reply-ciphertext'),
@@ -133,6 +135,8 @@ test('direct chats require no recipient approval and activate automatically thro
     const senderHistory = await alice.raw('GET', `/rooms/${enc(opened.roomId)}/events?since=0`);
     assert.ok(senderHistory.events.some((event) => event.event_id === reply.event_id),
       'recipient can reply without accepting a chat request');
+    const aliceSummary = (await alice.raw('GET', '/rooms/mine')).rooms.find((room) => room.roomId === opened.roomId);
+    assert.equal(aliceSummary.unreadCount, 1, 'sender sees the recipient reply as unread');
     const thirdPartyWrite = await s.store.appendRoomEvent(
       opened.roomId, CAROL, 'm.room.encrypted', { ciphertext: 'third-party' }, Date.now(),
     );
