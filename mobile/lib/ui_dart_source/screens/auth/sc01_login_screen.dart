@@ -18,6 +18,7 @@ class InOneLoginScreen extends StatefulWidget {
     required this.onForgotPassword,
     this.onSuccess,
     this.onProviderSuccess,
+    this.onCancelRecovery,
   });
 
   /// POST /login. `null` — успех.
@@ -31,6 +32,7 @@ class InOneLoginScreen extends StatefulWidget {
 
   /// После успешного ответа провайдера (дальше — ввод никнейма, SC-06).
   final VoidCallback? onProviderSuccess;
+  final VoidCallback? onCancelRecovery;
 
   @override
   State<InOneLoginScreen> createState() => _InOneLoginScreenState();
@@ -125,6 +127,12 @@ class _InOneLoginScreenState extends State<InOneLoginScreen> with InOneActionSta
             InOneLink(label: 'Մոռացել եմ գաղտնաբառը', onTap: widget.onForgotPassword),
           ],
         ),
+        if (widget.onCancelRecovery != null)
+          InOneLinks.row(
+            children: [
+              InOneLink(label: 'Չեղարկել վերականգնումը', onTap: widget.onCancelRecovery!),
+            ],
+          ),
       ],
     );
   }
