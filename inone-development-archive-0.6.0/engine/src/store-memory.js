@@ -988,7 +988,7 @@ export function createMemoryStore({ pinPepper }) {
       if (existing) return { ...structuredClone(existing), isCreator: existing.createdBy === requester, created: false };
       if (rooms.has(roomId)) return { status: 'room_id_conflict' };
       if (!accounts.has(requester) || !accounts.has(target)) return { status: 'unknown_user' };
-      const conversation = { roomId, userA, userB, createdBy: requester, status: 'pending', createdAt };
+      const conversation = { roomId, userA, userB, createdBy: requester, status: 'provisioning', createdAt };
       directConversations.set(pairKey, conversation);
       directConversationsByRoom.set(roomId, conversation);
       rooms.set(roomId, {
@@ -1184,7 +1184,7 @@ export function createMemoryStore({ pinPepper }) {
         if (room.kind === 'direct') {
           const conversation = directConversationsByRoom.get(roomId);
           const counterpart = conversation?.userA === requesterUserId ? conversation.userB : conversation?.userB === requesterUserId ? conversation.userA : null;
-          if (!conversation || conversation.status !== 'pending' || conversation.createdBy !== requesterUserId
+          if (!conversation || conversation.status !== 'provisioning' || conversation.createdBy !== requesterUserId
             || counterpart !== targetUserId || !room.members.has(requesterUserId)) {
             return { ok: false, reason: 'not_authorized' };
           }
@@ -1448,7 +1448,7 @@ export function createMemoryStore({ pinPepper }) {
         if (room.kind === 'direct') {
           const conversation = directConversationsByRoom.get(roomId);
           const counterpart = conversation?.userA === senderId ? conversation.userB : conversation?.userB === senderId ? conversation.userA : null;
-          if (!conversation || conversation.status !== 'pending' || conversation.createdBy !== senderId
+          if (!conversation || conversation.status !== 'provisioning' || conversation.createdBy !== senderId
             || changes.adds.length !== 1 || changes.adds[0] !== counterpart || !keyPackageClaimId || joinRequestUserId) {
             return { ok: false, reason: 'direct_add_not_authorized', epoch: current };
           }
@@ -1497,7 +1497,7 @@ export function createMemoryStore({ pinPepper }) {
       }
       if (room?.kind === 'direct' && (changes.adds ?? []).length === 1) {
         const conversation = directConversationsByRoom.get(roomId);
-        if (!conversation || conversation.status !== 'pending') return { ok: false, reason: 'direct_state_changed', epoch: current };
+        if (!conversation || conversation.status !== 'provisioning') return { ok: false, reason: 'direct_state_changed', epoch: current };
         conversation.status = 'active';
       }
       const next = current + 1;
