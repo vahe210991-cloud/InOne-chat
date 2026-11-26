@@ -2463,6 +2463,9 @@ if (req.method === 'POST' && p === '/login') {
             kind: r.kind ?? 'group',
             name: r.name ?? null,
             role: r.owner === d.userId ? 'owner' : r.isAdmin ? 'admin' : 'member',
+            lastEventSeq: r.lastEventSeq ?? null,
+            lastEventAt: r.lastEventAt ?? null,
+            unreadCount: r.unreadCount ?? 0,
           })),
         });
       }
