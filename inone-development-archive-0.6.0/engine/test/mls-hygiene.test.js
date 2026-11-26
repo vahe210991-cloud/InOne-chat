@@ -29,10 +29,11 @@ test('приветствие неизвестному аккаунту откл�
     const alice = await ChatClient.create(s.base, ALICE, 'A_PHONE', PW);
     await ChatClient.create(s.base, BOB, 'B_PHONE', PW);
     await alice.createRoom(ROOM, [ALICE, BOB]);
+    const epoch = (await alice.raw('GET', `/mls/groups/${enc(ROOM)}/epoch`)).epoch;
     await assert.rejects(alice.raw('POST', `/mls/groups/${enc(ROOM)}/commits`, {
-      epoch: 0, commit: b64('COMMIT-1'), welcomes: [{ userId: '@ghost:inone.test', deviceId: 'G_PHONE', welcome: b64('WELCOME') }],
+      epoch, commit: b64('COMMIT-1'), welcomes: [{ userId: '@ghost:inone.test', deviceId: 'G_PHONE', welcome: b64('WELCOME') }],
     }), (e) => e.status === 400, 'неизвестный получатель');
-    assert.equal((await alice.raw('GET', `/mls/groups/${enc(ROOM)}/epoch`)).epoch, 0, 'эпоха не сдвинулась');
+    assert.equal((await alice.raw('GET', `/mls/groups/${enc(ROOM)}/epoch`)).epoch, epoch, 'эпоха не сдвинулась');
   } finally {
     await s.stop();
   }
