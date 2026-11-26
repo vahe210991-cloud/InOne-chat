@@ -129,7 +129,7 @@ class InOneActivityItem {
 
 // --- Сообщения, уведомления (Screen 05, 06)
 
-enum InOneChatKind { person, support, group, system }
+enum InOneChatKind { person, support, group, channel, system, unknown }
 
 @immutable
 class InOneChatPreview {
