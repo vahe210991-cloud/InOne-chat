@@ -24,11 +24,6 @@ jobs:
           toolchain: "1.94.0"
           components: rustfmt
 
-      - name: Install SQLCipher build prerequisites
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y pkg-config libssl-dev perl make
-
       - name: Install RustSec CLI
         run: |
           cargo install --locked --version 0.23.0 cargo-audit
