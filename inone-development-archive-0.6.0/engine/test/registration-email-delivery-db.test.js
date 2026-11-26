@@ -150,3 +150,70 @@ test('verified account registration sends its email code through PostgreSQL outb
     await db.close();
   }
 });
+
+test('registration ticket is not consumed when account creation rolls back on nickname conflict', async () => {
+  const db = await testDatabase();
+  const store = createStore({ pool: db.pool, pinPepper: PEPPER });
+  const suffix = randomBytes(6).toString('hex');
+  const existingEmail = `existing-${suffix}@example.test`;
+  const newEmail = `new-${suffix}@example.test`;
+  const ticketHash = `ticket-${suffix}`;
+  const existingUserId = `@existing-${suffix}:inone.test`;
+  const newUserId = `@new-${suffix}:inone.test`;
+
+  try {
+    assert.equal(await store.createVerifiedAccount({
+      userId: existingUserId,
+      passwordHash: 'existing-password-hash',
+      email: existingEmail,
+      nickname: `taken-${suffix}`,
+      nowMs: 1,
+    }), 'ok');
+
+    await store.emailCodeUpdate(newEmail, (current) => ({
+      next: { ...current, tokenHash: ticketHash, tokenExpiresAt: 10000 },
+      result: null,
+    }));
+    const changeEmailCode = (current) => ({
+      next: { ...current, tokenHash: null, tokenExpiresAt: 0 },
+      result: {
+        outcome: current.tokenHash === ticketHash && current.tokenExpiresAt > 2 ? 'ok' : 'none',
+        locale: current.locale ?? 'hy',
+      },
+    });
+
+    const rejected = await store.createVerifiedAccountWithEmailToken({
+      email: newEmail,
+      changeEmailCode,
+      userId: newUserId,
+      passwordHash: 'new-password-hash',
+      nickname: `taken-${suffix}`,
+      nowMs: 2,
+    });
+    assert.equal(rejected.outcome, 'ok');
+    assert.equal(rejected.created, 'nickname');
+
+    const retried = await store.createVerifiedAccountWithEmailToken({
+      email: newEmail,
+      changeEmailCode,
+      userId: newUserId,
+      passwordHash: 'new-password-hash',
+      nickname: `available-${suffix}`,
+      nowMs: 3,
+    });
+    assert.deepEqual(retried, { outcome: 'ok', created: 'ok', locale: 'hy' });
+
+    const replay = await store.createVerifiedAccountWithEmailToken({
+      email: newEmail,
+      changeEmailCode,
+      userId: `@replay-${suffix}:inone.test`,
+      passwordHash: 'replay-password-hash',
+      nickname: `replay-${suffix}`,
+      nowMs: 4,
+    });
+    assert.equal(replay.outcome, 'none');
+    assert.equal(replay.created, null);
+  } finally {
+    await db.close();
+  }
+});
