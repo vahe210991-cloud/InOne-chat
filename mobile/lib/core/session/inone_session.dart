@@ -180,6 +180,7 @@ class InOneSession extends ChangeNotifier {
     required String email,
     required String password,
     String? identityCode,
+    String? identityChallengeId,
   }) {
     if (_loggingOut) {
       return Future<Map<String, dynamic>>.error(const ApiException(
@@ -196,7 +197,7 @@ class InOneSession extends ChangeNotifier {
         retryable: false,
       ));
     }
-    final operation = _loginOnce(email: email, password: password, identityCode: identityCode);
+    final operation = _loginOnce(email: email, password: password, identityCode: identityCode, identityChallengeId: identityChallengeId);
     _loginInFlight = operation;
     return operation.whenComplete(() {
       if (identical(_loginInFlight, operation)) _loginInFlight = null;
@@ -207,6 +208,7 @@ class InOneSession extends ChangeNotifier {
     required String email,
     required String password,
     String? identityCode,
+    String? identityChallengeId,
   }) async {
     await initialize();
     final platform = Platform.isIOS
@@ -225,6 +227,8 @@ class InOneSession extends ChangeNotifier {
         'platform': platform,
         if (identityCode != null && identityCode.trim().isNotEmpty)
           'identityCode': identityCode.trim(),
+        if (identityChallengeId != null && identityChallengeId.trim().isNotEmpty)
+          'identityChallengeId': identityChallengeId.trim(),
         if (_localeSyncPending) 'locale': _locale,
       },
     );
