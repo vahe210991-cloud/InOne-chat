@@ -26,7 +26,7 @@ jobs:
 
       - name: Check prototype formatting
         run: |
-          cargo fmt --manifest-path development/prototypes/openmls-0.10-sqlcipher-compat/legacy-writer/Cargo.toml -- --check
+          cargo fmt --manifest-path development/prototypes/openmls-0.10-sqlcipher-compat/legacy-writer/Cargo.toml --
           cargo fmt --manifest-path development/prototypes/openmls-0.10-sqlcipher-compat/current-reader/Cargo.toml -- --check
 
       - name: Generate legacy SQLCipher database and validate candidate reader
@@ -36,6 +36,9 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: openmls-010-candidate-lockfile-${{ github.run_id }}
-          path: development/prototypes/openmls-0.10-sqlcipher-compat/current-reader/Cargo.lock
+          path: |
+            development/prototypes/openmls-0.10-sqlcipher-compat/current-reader/Cargo.lock
+            development/prototypes/openmls-0.10-sqlcipher-compat/legacy-writer/src/main.rs
+            development/prototypes/openmls-0.10-sqlcipher-compat/current-reader/src/lib.rs
           if-no-files-found: error
           retention-days: 7
