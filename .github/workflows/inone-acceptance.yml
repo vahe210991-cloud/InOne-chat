@@ -51,7 +51,8 @@ jobs:
             const mobileRust = "mobile/rust/";
 
             if (workflowChanged("validate-published-p0.yml") ||
-                starts(engine) || starts(pocMls) || starts(mobileRust)) {
+                starts(engine) || starts(pocMls) || starts(mobileRust) ||
+                starts("development/prototypes/openmls-0.10-sqlcipher-compat/")) {
               expected.add("Validate recovered InOne P0 source");
             }
             if (workflowChanged("mls-native-validation.yml") ||
