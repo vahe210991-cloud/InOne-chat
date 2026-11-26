@@ -285,6 +285,9 @@ void main() {
       deleteMlsUserId: () async {
         deletedUserId = true;
       },
+      readRefreshToken: () async => null,
+      writeRefreshToken: (_) async {},
+      deleteRefreshToken: () async {},
     );
 
     final login = session.login(
@@ -474,6 +477,9 @@ void main() {
       readMlsUserId: () async => '@alice:inone.test',
       writeMlsUserId: (_) async {},
       deleteMlsUserId: () async { deletedUserId = true; },
+      readRefreshToken: () async => null,
+      writeRefreshToken: (_) async {},
+      deleteRefreshToken: () async {},
     );
 
     await session.initialize();
@@ -501,6 +507,9 @@ void main() {
       readMlsUserId: () async => '@alice:inone.test',
       writeMlsUserId: (_) async {},
       deleteMlsUserId: () async { deletedUserId = true; },
+      readRefreshToken: () async => null,
+      writeRefreshToken: (_) async {},
+      deleteRefreshToken: () async {},
     );
 
     await session.initialize();
@@ -679,6 +688,9 @@ void main() {
         deleteIdentityCalls++;
         savedUserId = null;
       },
+      readRefreshToken: () async => null,
+      writeRefreshToken: (_) async {},
+      deleteRefreshToken: () async {},
     );
 
     await session.login(email: 'alice@example.test', password: 'not-used-in-test');
