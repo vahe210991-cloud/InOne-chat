@@ -7,7 +7,7 @@ export const RECOVERY_RULES = {
   lockMs: 60 * 60_000,
   maxStartsPerHour: 3,
   maxIdentityAttempts: 5,
-  identityCodeTtlMs: 60 * 60_000,
+  identityCodeTtlMs: 10 * 60_000,
   identityResendCooldownMs: 60_000,
   identityLockMs: 60 * 60_000,
 };
