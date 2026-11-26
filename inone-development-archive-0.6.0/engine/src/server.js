@@ -2178,6 +2178,13 @@ if (req.method === 'POST' && p === '/login') {
         if (await storage.getRoom(roomId)) return send(res, 409, { error: 'room exists' });
         const kindParam = body.kind ?? 'group';
         if (!['group', 'channel'].includes(kindParam)) return send(res, 400, { error: 'kind must be group or channel' });
+        if (body.members !== undefined && !Array.isArray(body.members)) return send(res, 400, { error: 'members must be an array' });
+        if ((body.members ?? []).some((member) => member !== d.userId)) {
+          return send(res, 409, {
+            error: 'initial room membership requires an MLS Add Commit and per-device Welcome',
+            code: 'mls_commit_required',
+          });
+        }
         let roomName = null;
         if (body.name !== undefined && body.name !== null) {
           const checkedName = normalizeRoomName(body.name);
@@ -2266,17 +2273,11 @@ if (req.method === 'POST' && p === '/login') {
           return send(res, 403, { error: 'missing capability: invite_members' });
         }
         const userId = String(body.userId ?? '');
-        if (!(await storage.hasAccount(userId))) return send(res, 404, { error: 'unknown user' });
-        // Новый участник видит только то, что придёт после его добавления (C-07).
-        if (await groupFull(roomId)) return send(res, 409, { error: 'group is full' });
-        const memberOrgId = await storage.roomOrg(roomId);
-        const memberGate = await orgGate(userId, memberOrgId);
-        if (memberGate) return send(res, memberGate.status, { error: memberGate.error, code: memberGate.code });
-        const added = await storage.addRoomMember(roomId, userId);
-        if (added?.status === 'org_not_approved') return send(res, 403, { error: 'organization is not approved', code: 'org_not_approved' });
-        if (added?.status === 'org_not_member') return send(res, 403, { error: 'not an organization member', code: 'org_not_member' });
-        await markRoomChanged(roomId, (await storage.getRoom(roomId)).members);
-        return send(res, 200, { ok: true });
+        if (!userId) return send(res, 400, { error: 'userId required' });
+        return send(res, 409, {
+          error: 'member addition requires an MLS Add Commit and per-device Welcome',
+          code: 'mls_commit_required',
+        });
       }
 
       const roleRoute = p.match(/^\/rooms\/([^/]+)\/roles$/);
@@ -2344,9 +2345,10 @@ if (req.method === 'POST' && p === '/login') {
           if (!hasCapability(r, d.userId, 'remove_members')) return send(res, 403, { error: 'missing capability: remove_members' });
           if (r.admins.includes(target)) return send(res, 403, { error: 'an admin cannot remove another admin' });
         }
-        await storage.removeRoomMember(roomId, target); // при повторном добавлении история начинается заново
-        await markRoomChanged(roomId, r.members);       // прежние участники, включая удалённого, узнают об изменении
-        return send(res, 200, { ok: true });
+        return send(res, 409, {
+          error: 'member removal requires an MLS Remove Commit and epoch transition',
+          code: 'mls_commit_required',
+        });
       }
 
       // Правка и удаление сообщения. Автор правит своё сообщение; удаляет своё или чужое по праву.
@@ -2422,25 +2424,19 @@ if (req.method === 'POST' && p === '/login') {
         if (!r || r.visibility !== 'public') return send(res, 404, { error: 'room not found' });
         if (r.members.includes(d.userId)) return send(res, 409, { error: 'already a member' });
         if (r.joinPolicy === 'open') {
-          const joined = await storage.joinPublicRoomOpen({
-            roomId,
-            userId: d.userId,
-            maxMembers: await effectiveMaxMembers(roomId),
-          });
-          if (joined.status === 'not_found' || joined.status === 'not_public') {
-            return send(res, 404, { error: 'room not found' });
+          if (await groupFull(roomId)) return send(res, 409, { error: 'group is full' });
+          if (!(await storage.hasJoinRequest(roomId, d.userId))) {
+            await storage.createJoinRequest(roomId, d.userId, now());
           }
-          if (joined.status === 'not_open') return send(res, 409, { error: 'room is no longer open for joining' });
-          if (joined.status === 'already_member') return send(res, 409, { error: 'already a member' });
-          if (joined.status === 'org_not_approved') return send(res, 403, { error: 'organization is not approved', code: 'org_not_approved' });
-          if (joined.status === 'org_not_member') return send(res, 403, { error: 'not an organization member', code: 'org_not_member' });
-          if (joined.status === 'full') return send(res, 409, { error: 'group is full' });
-          if (joined.status !== 'joined') throw new Error(`unexpected open-join result: ${joined.status}`);
-          await markRoomChanged(roomId, joined.members);
-          return send(res, 200, { status: 'joined' });
+          return send(res, 200, {
+            status: 'requested',
+            code: 'mls_approval_required',
+          });
         }
-        await storage.createJoinRequest(roomId, d.userId, now());
-        return send(res, 200, { status: 'requested' });
+        if (!(await storage.hasJoinRequest(roomId, d.userId))) {
+          await storage.createJoinRequest(roomId, d.userId, now());
+        }
+        return send(res, 200, { status: 'requested', code: 'mls_approval_required' });
       }
 
       // Заявки на вступление: видят и решают те, у кого есть право приглашать.
@@ -2529,17 +2525,17 @@ if (req.method === 'POST' && p === '/login') {
         const inviteOrgId = await storage.roomOrg(invite.roomId);
         const inviteGate = await orgGate(d.userId, inviteOrgId);
         if (inviteGate) return send(res, inviteGate.status, { error: inviteGate.error, code: inviteGate.code });
-        if (invite.requiresApproval) {
-          if (await storage.hasJoinRequest(invite.roomId, d.userId)) return send(res, 200, { status: 'requested' });
-          if (!(await storage.useInvite(invite.inviteId, now()))) return send(res, 404, { error: 'invite is not valid' });
-          await storage.createJoinRequest(invite.roomId, d.userId, now());
-          return send(res, 200, { status: 'requested' });
+        if (await storage.hasJoinRequest(invite.roomId, d.userId)) {
+          return send(res, 200, { status: 'requested', code: 'mls_approval_required', roomId: invite.roomId });
         }
-        if (!(await storage.useInvite(invite.inviteId, now()))) return send(res, 404, { error: 'invite is not valid' });
         if (await groupFull(invite.roomId)) return send(res, 409, { error: 'group is full' });
-        await storage.addRoomMember(invite.roomId, d.userId);
-        await markRoomChanged(invite.roomId, (await storage.getRoom(invite.roomId)).members);
-        return send(res, 200, { status: 'joined', roomId: invite.roomId });
+        if (!(await storage.useInvite(invite.inviteId, now()))) return send(res, 404, { error: 'invite is not valid' });
+        await storage.createJoinRequest(invite.roomId, d.userId, now());
+        return send(res, 200, {
+          status: 'requested',
+          code: 'mls_approval_required',
+          roomId: invite.roomId,
+        });
       }
 
             // Группы MLS: эпоха группы, коммиты и приветственные сообщения. Коммит принимается только от актуальной эпохи.
