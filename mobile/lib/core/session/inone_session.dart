@@ -289,7 +289,7 @@ class InOneSession extends ChangeNotifier {
       ..remove('code')
       ..remove('pollSecret')
       ..remove('approvalId');
-    _acceptSession(result);
+    await _acceptSession(result);
     // The login endpoint applies a pending local language choice before it can queue
     // identity-check or new-device security mail. Clear the pending marker only when
     // the server actually issued an authenticated session.
@@ -1007,24 +1007,31 @@ class InOneSession extends ChangeNotifier {
         body: {'refreshToken': current},
       );
       try {
-        _acceptSession(result);
+        await _acceptSession(result);
+      } catch (_) {
+        await _clearSession();
+        rethrow;
       } finally {
         result['token'] = null;
         result['refreshToken'] = null;
       }
-    } on ApiException {
-      _clearSession();
+    } on ApiException catch (error) {
+      if (error.statusCode == 401 || error.statusCode == 403) {
+        await _clearSession();
+      }
       rethrow;
     }
   }
 
-  void _acceptSession(Map<String, dynamic> result) {
+  Future<void> _acceptSession(Map<String, dynamic> result) async {
     final access = result['token'];
     final refresh = result['refreshToken'];
     if (access is String &&
         access.isNotEmpty &&
         refresh is String &&
         refresh.isNotEmpty) {
+      // Persist the rotated refresh token before exposing the new access token.
+      await _writeRefreshToken(refresh);
       _accessToken = access;
       _refreshToken = refresh;
       notifyListeners();
