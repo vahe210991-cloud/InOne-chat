@@ -193,3 +193,31 @@ test('organization member removal fails closed until every MLS room has a Remove
     await s.stop();
   }
 });
+
+
+test('organization self-leave fails closed until the member submits an MLS self-Remove Commit', async () => {
+  const s = await start();
+  const room = '!org-self-leave-mls:inone.test';
+  try {
+    assert.equal((await call(s.base, 'POST', '/rooms', s.anna.token, { roomId: room, orgId: ORG, members: [CAROL] })).status, 200);
+    await s.anna.raw('POST', \`/mls/groups/\${enc(room)}/commits\`, {
+      epoch: 0, commit: Buffer.from('INITIAL-MLS').toString('base64'),
+      changes: { adds: [], removes: [] },
+    });
+    const blocked = await call(s.base, 'POST', \`/orgs/\${ORG}/leave\`, s.carol.token, {});
+    assert.equal(blocked.status, 409);
+    assert.equal(blocked.json.code, 'mls_removal_required');
+    assert.deepEqual(blocked.json.rooms, [room]);
+    assert.equal(await s.store.orgRoleOf(ORG, CAROL), 'member');
+
+    await s.carol.raw('POST', \`/mls/groups/\${enc(room)}/commits\`, {
+      epoch: 1, commit: Buffer.from('SELF-REMOVE-CAROL').toString('base64'),
+      changes: { adds: [], removes: [CAROL] },
+    });
+    const left = await call(s.base, 'POST', \`/orgs/\${ORG}/leave\`, s.carol.token, {});
+    assert.equal(left.status, 200);
+    assert.equal(await s.store.orgRoleOf(ORG, CAROL), null);
+  } finally {
+    await s.stop();
+  }
+});
