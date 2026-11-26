@@ -6,8 +6,10 @@ on:
       - security/prototype-openmls-signer-compat-2026-11-26
   workflow_dispatch:
 
+# This experiment must be read-only. Generated lockfiles and reports are retained
+# as workflow artifacts; a human reviews and commits any accepted change.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   compatibility:
@@ -33,8 +35,8 @@ jobs:
 
       - name: Check prototype formatting
         run: |
-          cargo fmt --manifest-path development/prototypes/openmls-0.10-sqlcipher-compat/legacy-writer/Cargo.toml --
-          cargo fmt --manifest-path development/prototypes/openmls-0.10-sqlcipher-compat/current-reader/Cargo.toml --
+          cargo fmt --manifest-path development/prototypes/openmls-0.10-sqlcipher-compat/legacy-writer/Cargo.toml -- --check
+          cargo fmt --manifest-path development/prototypes/openmls-0.10-sqlcipher-compat/current-reader/Cargo.toml -- --check
 
       - name: Generate legacy SQLCipher database and validate candidate reader
         run: bash development/prototypes/openmls-0.10-sqlcipher-compat/scripts/run.sh
@@ -42,36 +44,25 @@ jobs:
       - name: Install pinned RustSec CLI
         run: cargo install --locked --version 0.23.0 cargo-audit
 
-      - name: Audit the candidate lockfile with RustSec
+      - name: Audit the candidate lockfile with retained JSON report
         id: rustsec_audit
         continue-on-error: true
-        run: cargo audit --file development/prototypes/openmls-0.10-sqlcipher-compat/current-reader/Cargo.lock
+        run: |
+          mkdir -p "$RUNNER_TEMP/rustsec"
+          cargo audit --file development/prototypes/openmls-0.10-sqlcipher-compat/current-reader/Cargo.lock --json > "$RUNNER_TEMP/rustsec/openmls-010-candidate.json"
 
-      - name: Upload generated candidate dependency lockfile
+      - name: Upload candidate lockfile and RustSec evidence
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: openmls-010-candidate-lockfile-${{ github.run_id }}
+          name: openmls-010-candidate-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             development/prototypes/openmls-0.10-sqlcipher-compat/current-reader/Cargo.lock
             development/prototypes/openmls-0.10-sqlcipher-compat/legacy-writer/src/main.rs
             development/prototypes/openmls-0.10-sqlcipher-compat/current-reader/src/lib.rs
-          if-no-files-found: error
-          retention-days: 7
-
-      - name: Commit candidate lockfile and rustfmt output to the prototype branch
-        if: github.event_name == 'push'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add development/prototypes/openmls-0.10-sqlcipher-compat/current-reader/Cargo.lock
-          git add development/prototypes/openmls-0.10-sqlcipher-compat/legacy-writer/src/main.rs
-          git add development/prototypes/openmls-0.10-sqlcipher-compat/current-reader/src/lib.rs
-          if git diff --cached --quiet; then
-            echo "Candidate lockfile and formatted sources are already committed."
-          else
-            git commit -m "test: record OpenMLS 0.10 SQLCipher compatibility lockfile"
-            git push origin "HEAD:${GITHUB_REF_NAME}"
-          fi
+            ${{ runner.temp }}/rustsec/openmls-010-candidate.json
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Keep RustSec findings blocking after preserving test evidence
         if: steps.rustsec_audit.outcome == 'failure'
