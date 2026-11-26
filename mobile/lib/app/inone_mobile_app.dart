@@ -1155,16 +1155,16 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     if (invitee == null || invitee.isEmpty) return;
     try {
       final conversation = await _repositories.openDirectConversation(invitee);
-      if (conversation.status == 'pending' && !conversation.isCreator) {
+      if (conversation.status == 'provisioning' && !conversation.isCreator) {
         await _loadMlsRooms();
-        _notice('Ожидается защищённое приглашение от собеседника.');
+        _notice('Защищённый личный диалог готовится. Подтверждение от получателя не требуется.');
         return;
       }
       if (conversation.requiresCreatorSetup) {
         await _session.ensureMlsKeyPackages(10);
         await _session.createMlsRoom(conversation.roomId);
         await _session.inviteMlsMember(conversation.roomId, conversation.peerUserId);
-        _notice('Личный диалог создан. MLS-приглашение отправлено на устройства собеседника.');
+        _notice('Личный диалог создан. Собеседник подключается автоматически, подтверждение не требуется.');
       }
       await _loadMlsRooms();
       for (final chat in _mlsChats) {
