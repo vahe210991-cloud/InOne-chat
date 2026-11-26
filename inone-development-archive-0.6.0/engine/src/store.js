@@ -124,19 +124,38 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
       [orgId, userId],
     );
     if (direct.length) return true;
-    const { rows: linked } = await client.query(
-      `SELECT 1
+    const { rows: candidates } = await client.query(
+      `SELECT member.org_id
          FROM org_members member
          JOIN organizations member_org ON member_org.org_id = member.org_id
-         JOIN org_links link
-           ON link.status = 'active'
-          AND ((link.org_a = member.org_id AND link.org_b = $1)
-            OR (link.org_b = member.org_id AND link.org_a = $1))
-        WHERE member.user_id = $2 AND member_org.status = 'approved'
-        LIMIT 1 FOR SHARE OF member, member_org, link`,
-      [orgId, userId],
+        WHERE member.user_id = $1
+          AND member.org_id <> $2
+          AND member_org.status = 'approved'
+        ORDER BY member.org_id`,
+      [userId, orgId],
     );
-    return linked.length > 0;
+    for (const candidate of candidates) {
+      const orgA = candidate.org_id < orgId ? candidate.org_id : orgId;
+      const orgB = candidate.org_id < orgId ? orgId : candidate.org_id;
+      const { rows: links } = await client.query(
+        `SELECT link_id FROM org_links
+          WHERE org_a = $1 AND org_b = $2 AND status = 'active'
+          FOR SHARE`,
+        [orgA, orgB],
+      );
+      if (!links.length) continue;
+      const { rows: linked } = await client.query(
+        `SELECT 1
+           FROM org_members member
+           JOIN organizations member_org ON member_org.org_id = member.org_id
+          WHERE member.org_id = $1 AND member.user_id = $2
+            AND member_org.status = 'approved'
+          FOR SHARE OF member, member_org`,
+        [candidate.org_id, userId],
+      );
+      if (linked.length) return true;
+    }
+    return false;
   }
 
   async function lockUsersShareOrgOrLink(client, userA, userB) {
@@ -1817,12 +1836,13 @@ async mlsPendingRemovalsFor(userId) {
     async mlsClaimKeyPackages(targetUserId, requesterUserId, requesterDeviceId, claimId, roomId, nowMs) {
       return inTransaction(async (c) => {
         if (roomId) {
-          const { rows: roomRows } = await c.query(
-            'SELECT org_id, owner FROM rooms WHERE room_id = $1 FOR SHARE',
+          // Lock the active cross-org link before the room row, matching revokeOrgLink.
+          const { rows: roomLookup } = await c.query(
+            'SELECT org_id, owner FROM rooms WHERE room_id = $1',
             [roomId],
           );
-          if (!roomRows[0]) return { ok: false, reason: 'room_not_found' };
-          const roomOrgId = roomRows[0].org_id;
+          if (!roomLookup[0]) return { ok: false, reason: 'room_not_found' };
+          const roomOrgId = roomLookup[0].org_id;
           const { rows: orgRows } = await c.query(
             'SELECT status FROM organizations WHERE org_id = $1 FOR SHARE',
             [roomOrgId],
@@ -1831,11 +1851,16 @@ async mlsPendingRemovalsFor(userId) {
           const requesterAllowed = await lockUserOrgAccess(c, requesterUserId, roomOrgId);
           const targetAllowed = await lockUserOrgAccess(c, targetUserId, roomOrgId);
           if (!requesterAllowed || !targetAllowed) return { ok: false, reason: 'not_authorized' };
+          const { rows: lockedRoom } = await c.query(
+            'SELECT org_id, owner FROM rooms WHERE room_id = $1 FOR SHARE',
+            [roomId],
+          );
+          if (!lockedRoom[0] || lockedRoom[0].org_id !== roomOrgId) return { ok: false, reason: 'room_not_found' };
           const { rows: inviterMembership } = await c.query(
             'SELECT capabilities FROM room_members WHERE room_id = $1 AND user_id = $2 FOR SHARE',
             [roomId, requesterUserId],
           );
-          if (roomRows[0].owner !== requesterUserId
+          if (lockedRoom[0].owner !== requesterUserId
             && (!inviterMembership[0] || !inviterMembership[0].capabilities.includes('invite_members'))) {
             return { ok: false, reason: 'invite_capability_required' };
           }
