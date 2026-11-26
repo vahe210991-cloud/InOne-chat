@@ -410,6 +410,15 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     }
   }
 
+  void _leaveApprovalFlow() {
+    _session.discardPendingApproval();
+    setState(() {
+      _pendingLoginEmail = '';
+      _pendingLoginPassword = '';
+      _screen = 'login';
+    });
+  }
+
   Future<InOneFailure?> _claimPendingApproval() async {
     try {
       final result = await _session.claimPendingApproval();
@@ -3230,9 +3239,10 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           activateAt: '',
           approvalCode: approvalCode,
           autoPoll: true,
-          showNotMe: false,
+          showNotMe: true,
+          notMeLabel: 'Վերադառնալ մուտք',
           onRecheck: _claimPendingApproval,
-          onNotMe: () {},
+          onNotMe: _leaveApprovalFlow,
           onDone: _afterLogin,
         );
       case 'identityCheck':
