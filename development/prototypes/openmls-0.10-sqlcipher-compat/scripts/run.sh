@@ -13,7 +13,8 @@ cargo run --manifest-path "$ROOT/legacy-writer/Cargo.toml" -- "$DB"
   cargo update -p crypto-bigint --precise 0.7.11
   cargo tree -i crypto-bigint
   cargo tree -i libsqlite3-sys
-  cargo audit
 )
 
 INONE_COMPAT_DB="$DB" cargo test --manifest-path "$ROOT/current-reader/Cargo.toml" -- --nocapture
+
+(cd "$ROOT/current-reader" && cargo audit)
