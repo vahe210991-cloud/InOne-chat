@@ -14,7 +14,7 @@
 import { parseKeyPackages, parseCommitRequest, parseApplicationRequest, MLS_UNUSED_MAX } from './mls-rules.js';
 import { readPrivateMessageHeader } from './mls-wire.js';
 import { normalizeRoomName } from './room-names.js';
-import { hashPassword, checkPassword, MIN_PASSWORD_LENGTH, newUserId } from './account-rules.js';
+import { hashPassword, checkPassword, MIN_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH, newUserId } from './account-rules.js';
 import { ALLOWED_CONTENT_TYPES, MAX_STICKERS_PER_GROUP, assetMatchesVisibility, assetVisibleTo, createAssetId, validateAppearance, validateAssetUpload } from './group-appearance.js';
 import QRCode from 'qrcode';
 import { createInviteId, createInviteToken, hashInviteToken, inviteUsable, validateInviteOptions } from './room-rules.js';
@@ -1123,7 +1123,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         const reg = await checkRate('registrationsPerAddress', clientIp(req));
         if (!reg.allowed) return send(res, 429, { error: 'too many registrations from this address', retryAt: new Date(reg.retryAt).toISOString() });
         if (!isEmail(email) || token === '') return send(res, 400, { error: 'email and registrationToken required' });
-        if (typeof body.password !== 'string' || body.password.length < MIN_PASSWORD_LENGTH) {
+        if (typeof body.password !== 'string' || Array.from(body.password).length < MIN_PASSWORD_LENGTH || Array.from(body.password).length > MAX_PASSWORD_LENGTH) {
           return send(res, 400, { error: `password required (min ${MIN_PASSWORD_LENGTH} chars)` });
         }
         const nickError = validateNickname(body.nickname);
@@ -3290,7 +3290,7 @@ if (req.method === 'POST' && p === '/login') {
           const r = await verifyPin(userId, pin);
           if (!r.ok) return pinError(res, r);
         }
-        if (typeof newPassword !== 'string' || newPassword.length < MIN_PASSWORD_LENGTH) {
+        if (typeof newPassword !== 'string' || Array.from(newPassword).length < MIN_PASSWORD_LENGTH || Array.from(newPassword).length > MAX_PASSWORD_LENGTH) {
           return send(res, 400, { error: `newPassword required (min ${MIN_PASSWORD_LENGTH} chars)` });
         }
         // Пароль, окно восстановления, код отмены и письмо фиксируются одной транзакцией.
