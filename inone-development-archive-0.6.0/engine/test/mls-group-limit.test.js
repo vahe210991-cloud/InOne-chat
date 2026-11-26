@@ -52,7 +52,7 @@ test('замена участника в пределах лимита прох�
   const s = await start();
   try {
     const r = await s.alice.raw('POST', COMMITS, {
-      epoch: 0, commit: b64('COMMIT-SWAP'), changes: { adds: [DAVE], removes: [BOB] },
+      epoch: 1, commit: b64('COMMIT-SWAP'), changes: { adds: [DAVE], removes: [BOB] },
       welcomes: [{ userId: DAVE, deviceId: 'D_PHONE', welcome: b64('WELCOME-DAVE') }],
     });
     assert.equal(r.epoch, 1, 'коммит принят');
