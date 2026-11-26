@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../../../lib/ui_dart_source/theme/inone_theme.dart';
 import 'package:inone_mobile/ui_dart_source/screens/auth/sc11_login_waiting_screen.dart';
 import 'package:inone_mobile/ui_dart_source/state/inone_state.dart';
 
@@ -10,6 +12,7 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        theme: InOneTheme.light(),
         home: InOneLoginWaitingScreen(
           activateAt: '',
           approvalCode: '482913',
