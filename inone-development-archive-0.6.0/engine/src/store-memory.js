@@ -442,6 +442,10 @@ export function createMemoryStore({ pinPepper }) {
       if ([...rooms.values()].some((room) => room.orgId === orgId && room.owner === target)) {
         return { ok: false, reason: 'owns_rooms' };
       }
+      const mlsRooms = [...rooms.values()]
+        .filter((room) => room.orgId === orgId && room.members.has(target) && (mlsGroups.get(room.roomId) ?? 0) > 0)
+        .map((room) => room.roomId).sort();
+      if (mlsRooms.length) return { ok: false, reason: 'mls_removal_required', rooms: mlsRooms };
       for (const room of rooms.values()) if (room.orgId === orgId) { room.members.delete(target); room.admins.delete(target); }
       members.delete(target);
       adminActions.push({ orgId, actor, action, target, detail: targetRole, at });
@@ -458,8 +462,13 @@ export function createMemoryStore({ pinPepper }) {
       return n;
     },
     removeOrgMember(orgId, userId) {
+      const mlsRooms = [...rooms.values()]
+        .filter((room) => room.orgId === orgId && room.members.has(userId) && (mlsGroups.get(room.roomId) ?? 0) > 0)
+        .map((room) => room.roomId).sort();
+      if (mlsRooms.length) return { ok: false, reason: 'mls_removal_required', rooms: mlsRooms };
       for (const r of rooms.values()) if (r.orgId === orgId) { r.members.delete(userId); r.admins.delete(userId); }
       orgMembers.get(orgId)?.delete(userId);
+      return { ok: true };
     },
     purgeRejectedOrgRequests(cutoffMs) {
       const keys = [];
@@ -544,21 +553,36 @@ export function createMemoryStore({ pinPepper }) {
     },
     removeCrossOrgMemberships(orgX, orgY) {
       const inOrg = (org, u) => orgMembers.get(org)?.has(u) ?? false;
+      const mlsRooms = [...rooms.values()].filter((room) => {
+        if (room.orgId !== orgX && room.orgId !== orgY) return false;
+        const other = room.orgId === orgX ? orgY : orgX;
+        return (mlsGroups.get(room.roomId) ?? 0) > 0
+          && [...room.members].some((userId) => inOrg(other, userId) && !inOrg(room.orgId, userId));
+      }).map((room) => room.roomId).sort();
+      if (mlsRooms.length) return { ok: false, reason: 'mls_removal_required', rooms: mlsRooms };
       for (const r of rooms.values()) {
         if (r.orgId !== orgX && r.orgId !== orgY) continue;
         const other = r.orgId === orgX ? orgY : orgX;
         for (const u of [...r.members]) if (inOrg(other, u) && !inOrg(r.orgId, u)) { r.members.delete(u); r.admins.delete(u); }
       }
+      return { ok: true };
     },
     revokeOrgLink({ linkId, fromStatus, actor, at }) {
       const link = orgLinks.get(linkId);
       if (!link || link.status !== fromStatus) return false;
-      link.status = 'revoked';
-      link.decidedBy = actor;
-      link.decidedAt = at;
       const orgA = link.orgA;
       const orgB = link.orgB;
       const inOrg = (org, userId) => orgMembers.get(org)?.has(userId) ?? false;
+      const mlsRooms = [...rooms.values()].filter((room) => {
+        if (room.orgId !== orgA && room.orgId !== orgB) return false;
+        if ((mlsGroups.get(room.roomId) ?? 0) <= 0) return false;
+        const other = room.orgId === orgA ? orgB : orgA;
+        return [...room.members].some((userId) => inOrg(other, userId) && !inOrg(room.orgId, userId));
+      }).map((room) => room.roomId).sort();
+      if (mlsRooms.length) return { ok: false, reason: 'mls_removal_required', rooms: mlsRooms };
+      link.status = 'revoked';
+      link.decidedBy = actor;
+      link.decidedAt = at;
       for (const room of rooms.values()) {
         if (room.orgId !== orgA && room.orgId !== orgB) continue;
         const other = room.orgId === orgA ? orgB : orgA;
@@ -576,7 +600,7 @@ export function createMemoryStore({ pinPepper }) {
         { orgId: orgA, actor, action: 'link_revoke', target: orgB, detail: linkId, at },
         { orgId: orgB, actor, action: 'link_revoke', target: orgA, detail: linkId, at },
       );
-      return true;
+      return { ok: true };
     },
     logAdminAction({ orgId, actor, action, target, detail, at }) {
       adminActions.push({ orgId: orgId ?? null, actor, action, target: target ?? null, detail: detail ?? null, at });
@@ -1064,12 +1088,15 @@ export function createMemoryStore({ pinPepper }) {
     },
     removeRoomMember(roomId, userId) {
       const r = rooms.get(roomId);
-      if (!r) return;
+      if (!r) return { ok: false, reason: 'not_found' };
+      const epoch = mlsGroups.get(roomId) ?? 0;
+      if (epoch > 0) return { ok: false, reason: 'mls_commit_required', epoch };
       r.members.delete(userId);
       r.admins.delete(userId);
       r.joinedSeq.delete(userId); // при повторном добавлении история начинается заново
       r.capabilities.delete(userId);
       r.readUpTo.delete(userId);
+      return { ok: true };
     },
     setRoomAppearance(roomId, patch) {
       const r = rooms.get(roomId);
