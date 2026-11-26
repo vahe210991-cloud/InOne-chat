@@ -975,7 +975,7 @@ export function createMemoryStore({ pinPepper }) {
       const userB = requester < target ? target : requester;
       const pairKey = JSON.stringify([userA, userB]);
       const existing = directConversations.get(pairKey);
-      if (existing) return { ...structuredClone(existing), isCreator: existing.createdBy === requester };
+      if (existing) return { ...structuredClone(existing), isCreator: existing.createdBy === requester, created: false };
       if (rooms.has(roomId)) return { status: 'room_id_conflict' };
       if (!accounts.has(requester) || !accounts.has(target)) return { status: 'unknown_user' };
       const conversation = { roomId, userA, userB, createdBy: requester, status: 'pending', createdAt };
