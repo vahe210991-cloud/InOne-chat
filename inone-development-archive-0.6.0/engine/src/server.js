@@ -2226,8 +2226,8 @@ if (req.method === 'POST' && p === '/login') {
         const existingRoom = await storage.getRoom(roomId);
         if (existingRoom) {
           const directConversation = await storage.directConversation(roomId);
-          if (directConversation?.status === 'pending' && directConversation.createdBy === d.userId) {
-            return send(res, 200, { roomId, kind: 'direct', status: 'pending', resumed: true });
+          if (directConversation?.status === 'provisioning' && directConversation.createdBy === d.userId) {
+            return send(res, 200, { roomId, kind: 'direct', status: 'provisioning', resumed: true });
           }
           return send(res, 409, { error: 'room exists' });
         }
@@ -2671,7 +2671,7 @@ if (req.method === 'POST' && p === '/login') {
                 if (!isOwner && !hasCapability(r, d.userId, 'invite_members')) return send(res, 403, { error: 'missing capability: invite_members' });
                 if (!(await storage.hasAccount(u))) return send(res, 400, { error: `unknown account: ${u}` });
                 if (roomKind === 'direct') {
-                  if (!directConversation || directConversation.status !== 'pending'
+                  if (!directConversation || directConversation.status !== 'provisioning'
                     || directConversation.createdBy !== d.userId || adds.length !== 1 || u !== directCounterpart
                     || !checked.value.keyPackageClaimId) {
                     return send(res, 403, { error: 'only the paired recipient can be added through a claimed MLS Welcome', code: 'direct_pair_only' });
@@ -2891,7 +2891,7 @@ if (req.method === 'POST' && p === '/login') {
           const counterpart = conversation?.userA === d.userId
             ? conversation.userB
             : conversation?.userB === d.userId ? conversation.userA : null;
-          if (!conversation || conversation.status !== 'pending' || conversation.createdBy !== d.userId
+          if (!conversation || conversation.status !== 'provisioning' || conversation.createdBy !== d.userId
             || room.owner !== d.userId || counterpart !== targetUserId) {
             return send(res, 403, { error: 'only the pending direct-chat creator may claim the paired recipient', code: 'direct_pair_only' });
           }
