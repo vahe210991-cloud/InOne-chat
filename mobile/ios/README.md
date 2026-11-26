@@ -11,3 +11,7 @@ The native generator also creates Runner.entitlements, wires CODE_SIGN_ENTITLEME
 For delivery, upload the APNs authentication key (.p8) to Firebase Console for project inone-messenger with the matching Key ID and Apple Team ID. Keep the .p8, signing certificate and provisioning profile outside Git. The generated project configuration does not prove APNs delivery: a correctly signed physical iPhone and a real FCM send are still required.
 
 Do not register a different Bundle ID in Firebase. See [platform identifiers](../PLATFORM-IDENTIFIERS.md).
+
+## App icon
+
+The platform generator derives `Runner/Assets.xcassets/AppIcon.appiconset` from the repository-root editable master at `branding/app-icon/inone-app-icon.svg`. It creates the iPhone/iPad icon variants and the required 1024×1024 App Store marketing icon. iOS applies its system corner mask; the source image itself remains a square with straight edges. The rasterizer dependencies are pinned in `../tool/requirements-app-icons.txt` and are installed only when missing.

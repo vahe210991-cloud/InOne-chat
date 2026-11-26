@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">InOne app icon</title>
+  <desc id="desc">A full-bleed lime-green square with bold, raised charcoal InOne lettering.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="0.9" y2="1">
+      <stop offset="0" stop-color="#D0FF00"/>
+      <stop offset="0.52" stop-color="#A9F000"/>
+      <stop offset="1" stop-color="#8FDE00"/>
+    </linearGradient>
+    <linearGradient id="letter-face" x1="0" y1="0" x2="0.85" y2="1">
+      <stop offset="0" stop-color="#292B2D"/>
+      <stop offset="0.52" stop-color="#111315"/>
+      <stop offset="1" stop-color="#242629"/>
+    </linearGradient>
+    <filter id="letter-shadow" x="-25%" y="-30%" width="150%" height="175%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="11" result="blur"/>
+      <feOffset in="blur" dx="2" dy="17" result="offset"/>
+      <feComponentTransfer in="offset" result="shadow">
+        <feFuncA type="linear" slope="0.43"/>
+      </feComponentTransfer>
+      <feMerge>
+        <feMergeNode in="shadow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="surface-grain" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.72" numOctaves="2" seed="11" result="noise"/>
+      <feColorMatrix in="noise" type="saturate" values="0" result="mono"/>
+      <feComponentTransfer in="mono" result="grain">
+        <feFuncA type="table" tableValues="0 0.045"/>
+      </feComponentTransfer>
+      <feBlend in="SourceGraphic" in2="grain" mode="soft-light"/>
+    </filter>
+  </defs>
+
+  <!-- Full-bleed square: straight outer edges, no frame, no corner rounding. -->
+  <rect width="1024" height="1024" fill="url(#background)"/>
+  <rect width="1024" height="1024" fill="url(#background)" filter="url(#surface-grain)" opacity="0.9"/>
+
+  <!-- Editable wordmark. Separate copies create the subtle raised/extruded effect. -->
+  <g font-family="Arial, Helvetica, sans-serif" font-size="244" font-weight="900"
+     letter-spacing="-12" text-anchor="middle">
+    <text x="512" y="612" fill="#080909" opacity="0.24">InOne</text>
+    <text x="512" y="600" fill="#111315" stroke="#090A0B" stroke-width="8"
+          stroke-linejoin="round" paint-order="stroke fill">InOne</text>
+    <text x="512" y="590" fill="url(#letter-face)" stroke="#414548" stroke-width="2.5"
+          stroke-linejoin="round" paint-order="stroke fill" filter="url(#letter-shadow)">InOne</text>
+    <text x="512" y="590" fill="none" stroke="#777C7F" stroke-width="1.4"
+          opacity="0.5" stroke-linejoin="round">InOne</text>
+  </g>
+</svg>
