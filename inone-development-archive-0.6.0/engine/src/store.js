@@ -2219,10 +2219,10 @@ async mlsPendingRemovalsFor(userId) {
       });
     },
 
-    async roomEventRows(roomId, sinceSeq) {
+    async roomEventRows(roomId, sinceSeq, limit = 200) {
       const { rows } = await pool.query(
-        'SELECT seq, room_id, sender, origin_ts, type, content FROM room_events WHERE room_id = $1 AND seq > $2 ORDER BY seq',
-        [roomId, sinceSeq],
+        'SELECT seq, room_id, sender, origin_ts, type, content FROM room_events WHERE room_id = $1 AND seq > $2 ORDER BY seq LIMIT $3',
+        [roomId, sinceSeq, limit],
       );
       return rows.map((r) => ({
         event_id: `$${r.seq}`, seq: Number(r.seq), room_id: r.room_id, sender: r.sender,
