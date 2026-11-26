@@ -8,6 +8,11 @@ DB="$WORK/openmls-081-fixture.db"
 
 cargo run --manifest-path "$ROOT/legacy-writer/Cargo.toml" -- "$DB"
 
+# The candidate reader is an independent Cargo project. Generate its lockfile
+# explicitly before inspecting it or running RustSec; cargo run on the legacy
+# writer does not create a lockfile for the reader.
+cargo generate-lockfile --manifest-path "$ROOT/current-reader/Cargo.toml"
+
 LOCKFILE="$ROOT/current-reader/Cargo.lock"
 python3 - "$LOCKFILE" <<'PY'
 import sys, tomllib
