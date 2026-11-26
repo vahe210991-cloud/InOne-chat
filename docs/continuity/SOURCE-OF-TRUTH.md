@@ -236,3 +236,6 @@ The product split does not automatically imply separate or shared identity servi
 - Confirmed P0 cross-module issue: org member removal deletes room_members without MLS Remove Commit/epoch transition; cross-reference CHAT-P0-01.
 - Two guest-profile P1 findings remain conditional on explicit privacy/scope approval. WBS v1.1 and privacy variant В unchanged.
 - No product source/API/migration/config/UI changes. Tests and runtime acceptance NOT RUN. Documentation PR is not merged.
+
+
+- Documentation PR #170: [Account & Organization Profiles Beta 1.0 audit](https://github.com/vahe210991-cloud/InOne-chat/pull/170), Draft, not merged. No product source changes; tests NOT RUN.
