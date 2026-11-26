@@ -3126,10 +3126,33 @@ if (req.method === 'POST' && p === '/login') {
         const roomId = decodeURIComponent(roomRoute[1]);
         const r = await storage.getRoom(roomId);
         if (!r || !r.members.includes(d.userId)) return send(res, 403, { error: 'not a member' });
-        // Только события после вступления участника (C-07). Внутренний номер наружу не отдаём.
-        const since = r.joinedSeq[d.userId] ?? 0;
-        const rows = await storage.roomEventRows(roomId, since);
-        return send(res, 200, { events: rows.map(({ seq, ...rest }) => rest) });
+
+        const joinedSeq = Number(r.joinedSeq[d.userId] ?? 0);
+        const sinceRaw = url.searchParams.get('since');
+        if (sinceRaw !== null && !/^\d+$/.test(sinceRaw)) {
+          return send(res, 400, { error: 'since must be a non-negative integer' });
+        }
+        const requestedSince = sinceRaw === null ? joinedSeq : Number(sinceRaw);
+        if (!Number.isSafeInteger(requestedSince) || requestedSince < 0) {
+          return send(res, 400, { error: 'since must be a non-negative safe integer' });
+        }
+        // C-07: even a caller-supplied cursor cannot read events from before membership.
+        const since = Math.max(joinedSeq, requestedSince);
+        const limitRaw = url.searchParams.get('limit');
+        const limit = limitRaw === null ? 200 : Number(limitRaw);
+        if (!Number.isInteger(limit) || limit < 1 || limit > 500) {
+          return send(res, 400, { error: 'limit must be an integer from 1 to 500' });
+        }
+
+        const fetched = await storage.roomEventRows(roomId, since, limit + 1);
+        const hasMore = fetched.length > limit;
+        const rows = hasMore ? fetched.slice(0, limit) : fetched;
+        const nextSince = rows.length ? Number(rows[rows.length - 1].seq) : since;
+        return send(res, 200, {
+          events: rows.map(({ seq, ...rest }) => rest),
+          nextSince,
+          hasMore,
+        });
       }
 
       // ---------- восстановление после кражи ----------
