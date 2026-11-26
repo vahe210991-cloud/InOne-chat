@@ -215,7 +215,7 @@ class InOneRepositories {
     return InOnePublicRoomSearch.fromJson(response).rooms;
   }
 
-  /// Joins an open public room or creates a join request for approval-only rooms.
+  /// Creates a join request. An authorized current member must approve it with an MLS Add Commit and per-device Welcome.
   Future<String> joinPublicRoom(String roomId) async {
     final response = await session.request(
       'POST', '/rooms/${Uri.encodeComponent(roomId)}/join',
