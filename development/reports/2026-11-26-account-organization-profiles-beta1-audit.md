@@ -91,3 +91,14 @@ No tasks were closed or crossed out. No WBS percentage was recalculated.
 
 
 - PR #170 currently has seven GitHub Actions check runs queued on its exact head; no completed result is claimed. They include general repository workflows and are not a substitute for the profile-specific acceptance matrix.
+
+
+## Remediation handoff — 2026-11-26
+
+- PROFILE-SEC-001 implementation is in progress in [Draft PR #173](https://github.com/vahe210991-cloud/InOne-chat/pull/173).
+- PR #173 blocks direct room-member deletion after an MLS epoch, organization member removal/leave while MLS-protected memberships remain, and organization-link revocation while inherited MLS memberships remain.
+- The backend returns 409 with affected room IDs; valid MLS Remove Commits must be applied before retrying organization removal/link revocation.
+- Regression tests were added for the three public paths.
+- Current exact implementation head at handoff: b841e4f0a51d04dcdd2bf0cf80681055e04d394c.
+- 11 GitHub Actions checks were queued on that exact SHA. Results are pending; tests are not reported as passed.
+- This is a fail-closed backend safety patch, not yet a complete multi-room removal UX. PR remains Draft and unmerged.
