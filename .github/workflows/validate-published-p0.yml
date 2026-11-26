@@ -245,8 +245,13 @@ jobs:
           record_graph() {
             local name="$1"
             local manifest="$2"
+            local toolchain="${3:-}"
             local output="$RUNNER_TEMP/rustsec/${name}-default-feature-tree.txt"
-            cargo tree --locked --manifest-path "$manifest" --all-targets --edges all --prefix none > "$output"
+            if [[ -n "$toolchain" ]]; then
+              cargo "+$toolchain" tree --locked --manifest-path "$manifest" --all-targets --edges all --prefix none > "$output"
+            else
+              cargo tree --locked --manifest-path "$manifest" --all-targets --edges all --prefix none > "$output"
+            fi
             echo "Resolved default-feature graph: $name"
             grep -E '(^|[[:space:]])(libcrux-[^ ]+|openmls_libcrux_crypto|crypto-bigint|libsqlite3-sys|url) v' "$output" || true
           }
@@ -256,7 +261,10 @@ jobs:
           record_graph legacy-engine-a-client inone-engine-poc-0.6.0/mobile-mls/mls-client/Cargo.toml
           record_graph legacy-engine-a-bridge inone-engine-poc-0.6.0/mobile-mls/mls-bridge/Cargo.toml
           if [[ -f development/prototypes/openmls-0.10-sqlcipher-compat/current-reader/Cargo.toml ]]; then
-            record_graph openmls-010-sqlcipher-prototype development/prototypes/openmls-0.10-sqlcipher-compat/current-reader/Cargo.toml
+            # This isolated prerelease prototype explicitly requires Rust 1.94;
+            # keep the production MLS graphs on the repository's Rust 1.91 toolchain.
+            rustup toolchain install 1.94.0 --profile minimal --no-self-update
+            record_graph openmls-010-sqlcipher-prototype development/prototypes/openmls-0.10-sqlcipher-compat/current-reader/Cargo.toml 1.94.0
           fi
       - name: Audit all committed Rust lockfiles without changing dependencies
         shell: bash
