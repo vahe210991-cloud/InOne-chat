@@ -751,7 +751,6 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         if (!mounted || !_session.isAuthenticated) break;
         final id = approval['id'] as String;
         if (!_shownDeviceApprovalIds.add(id)) continue;
-
         final codeController = TextEditingController();
         final label = (approval['label'] as String?)?.trim();
         final platform = (approval['platform'] as String?)?.trim();
@@ -798,10 +797,10 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
               ],
             ),
           );
-        } finally {
-          // The controller is disposed after the dialog result is consumed below.
+        } catch (_) {
+          codeController.dispose();
+          rethrow;
         }
-
         if (!mounted) {
           codeController.dispose();
           return;
@@ -814,7 +813,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         try {
           if (decision) {
             final code = codeController.text.trim();
-            if (!RegExp(r'^\\d{6}
+            if (!RegExp(r'^[0-9]{6}
     if (value is! int || value < 0) {
       throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false);
     }
@@ -3543,7 +3542,6 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       _deviceApprovalDialogInFlight = false;
     }
   }
-
   String _formatAdminRequestDate(Object? value) {
     if (value is! int || value < 0) {
       throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false);
