@@ -1698,8 +1698,14 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
     // Комнаты, где пользователь участник (G1, этап 0.7.3): без чужих комнат.
   async roomsOfUser(userId) {
     const { rows } = await pool.query(
-      `SELECT r.room_id, r.kind, r.name, r.owner, m.is_admin
-         FROM room_members m JOIN rooms r ON r.room_id = m.room_id
+      `SELECT r.room_id, r.kind,
+              COALESCE(r.name, NULLIF(peer.nickname, ''), peer.user_id) AS name,
+              r.owner, m.is_admin
+         FROM room_members m
+         JOIN rooms r ON r.room_id = m.room_id
+         LEFT JOIN direct_conversations dc ON dc.room_id = r.room_id
+         LEFT JOIN profiles peer
+           ON peer.user_id = CASE WHEN dc.user_a = $1 THEN dc.user_b ELSE dc.user_a END
         WHERE m.user_id = $1 ORDER BY r.room_id`,
       [userId],
     );
