@@ -29,7 +29,7 @@ async function start() {
   return { base, db, store, stop: async () => { await new Promise((resolve) => srv.server.close(resolve)); await db?.close(); } };
 }
 
-test('direct chats are canonical per unordered pair and activate only through claimed multi-device MLS Welcome', async () => {
+test('direct chats require no recipient approval and activate automatically through claimed multi-device MLS Welcome', async () => {
   const s = await start();
   try {
     const alice = await ChatClient.create(s.base, ALICE, 'A_PHONE', PW);
@@ -38,25 +38,25 @@ test('direct chats are canonical per unordered pair and activate only through cl
     const carol = await ChatClient.create(s.base, CAROL, 'C_PHONE', PW);
 
     const opened = await alice.raw('POST', '/direct-chats/open', { userId: BOB });
-    assert.equal(opened.status, 'pending');
+    assert.equal(opened.status, 'provisioning');
     assert.equal(opened.created, true);
     assert.equal(opened.isCreator, true);
     assert.ok(opened.roomId.startsWith('!dm_'));
 
     const reverseOpen = await bob.raw('POST', '/direct-chats/open', { userId: ALICE });
     assert.equal(reverseOpen.roomId, opened.roomId, 'A→B and B→A resolve to one canonical pair');
-    assert.equal(reverseOpen.status, 'pending');
+    assert.equal(reverseOpen.status, 'provisioning');
     assert.equal(reverseOpen.created, false);
     assert.equal(reverseOpen.isCreator, false);
 
     await assert.rejects(
       bob.raw('GET', `/rooms/${enc(opened.roomId)}/members`),
       (error) => error.status === 403,
-      'the peer is not a server room member before MLS Welcome',
+      'membership is provisioned automatically, without recipient approval, by the MLS Welcome',
     );
 
     const resumed = await alice.raw('POST', '/rooms', { roomId: opened.roomId, members: [ALICE] });
-    assert.equal(resumed.status, 'pending');
+    assert.equal(resumed.status, 'provisioning');
     assert.equal(resumed.resumed, true, 'native MLS group initialization can resume the reserved direct room');
 
     await bob.raw('POST', '/mls/key-packages', { packages: [keyPackage('B_PHONE')] });
@@ -157,8 +157,8 @@ test('concurrent opens from opposite sides reserve exactly one direct room', asy
     assert.equal(fromAlice.roomId, fromBob.roomId);
     assert.equal([fromAlice.created, fromBob.created].filter(Boolean).length, 1);
     assert.equal([fromAlice.isCreator, fromBob.isCreator].filter(Boolean).length, 1);
-    assert.equal(fromAlice.status, 'pending');
-    assert.equal(fromBob.status, 'pending');
+    assert.equal(fromAlice.status, 'provisioning');
+    assert.equal(fromBob.status, 'provisioning');
   } finally {
     await s.stop();
   }
