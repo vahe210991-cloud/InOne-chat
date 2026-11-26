@@ -11,10 +11,11 @@ const enc = encodeURIComponent;
 const testClientsByUser = new Map();
 
 function registerTestClient(client) {
-  let devices = testClientsByUser.get(client.userId);
+  const key = `${client.baseUrl}|${client.userId}`;
+  let devices = testClientsByUser.get(key);
   if (!devices) {
     devices = new Map();
-    testClientsByUser.set(client.userId, devices);
+    testClientsByUser.set(key, devices);
   }
   devices.set(client.deviceId, client);
 }
@@ -246,7 +247,7 @@ export class ChatClient {
 
   /** Владелец добавляет участника. Текущий ключ отправителя получает новичок, историю — нет. */
   async addMember(roomId, userId) {
-    const targetDevices = [...(testClientsByUser.get(userId)?.values() ?? [])];
+    const targetDevices = [...(testClientsByUser.get(`${this.baseUrl}|${userId}`)?.values() ?? [])];
     if (targetDevices.length === 0) throw new Error(`no active test device registered for ${userId}`);
     const epoch = (await this.raw('GET', `/mls/groups/${enc(roomId)}/epoch`)).epoch;
     await this.raw('POST', `/mls/groups/${enc(roomId)}/commits`, {
