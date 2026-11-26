@@ -1605,7 +1605,7 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
         );
         if (roomInsert.rowCount !== 1) return { status: 'room_id_conflict' };
         const directInsert = await c.query(
-          "INSERT INTO direct_conversations (room_id, user_a, user_b, created_by, status, created_at) VALUES ($1, $2, $3, $4, 'pending', $5) ON CONFLICT (user_a, user_b) DO NOTHING RETURNING room_id",
+          "INSERT INTO direct_conversations (room_id, user_a, user_b, created_by, status, created_at) VALUES ($1, $2, $3, $4, 'provisioning', $5) ON CONFLICT (user_a, user_b) DO NOTHING RETURNING room_id",
           [roomId, userA, userB, requester, createdAt],
         );
         if (directInsert.rowCount !== 1) {
@@ -1632,7 +1632,7 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
           'INSERT INTO room_members (room_id, user_id, is_admin, joined_seq, capabilities) VALUES ($1, $2, FALSE, $3, $4::text[])',
           [roomId, requester, Number(counterRows[0].value), [...DEFAULT_MEMBER_CAPABILITIES]],
         );
-        return { status: 'pending', roomId, userA, userB, createdBy: requester, createdAt, isCreator: true, created: true };
+        return { status: 'provisioning', roomId, userA, userB, createdBy: requester, createdAt, isCreator: true, created: true };
       });
     },
 
@@ -1939,7 +1939,7 @@ async mlsPendingRemovalsFor(userId) {
             const counterpart = conversation?.user_a === requesterUserId
               ? conversation.user_b
               : conversation?.user_b === requesterUserId ? conversation.user_a : null;
-            if (!conversation || conversation.status !== 'pending'
+            if (!conversation || conversation.status !== 'provisioning'
               || conversation.created_by !== requesterUserId || roomLookup[0].owner !== requesterUserId
               || counterpart !== targetUserId) {
               return { ok: false, reason: 'not_authorized' };
@@ -2338,7 +2338,7 @@ async mlsPendingRemovalsFor(userId) {
             const counterpart = directConversation?.user_a === senderId
               ? directConversation.user_b
               : directConversation?.user_b === senderId ? directConversation.user_a : null;
-            if (!directConversation || directConversation.status !== 'pending'
+            if (!directConversation || directConversation.status !== 'provisioning'
               || directConversation.created_by !== senderId
               || changes.adds.length !== 1 || changes.adds[0] !== counterpart
               || !keyPackageClaimId || joinRequestUserId) {
@@ -2499,7 +2499,7 @@ async mlsPendingRemovalsFor(userId) {
         }
         if (directConversation) {
           const activated = await client.query(
-            "UPDATE direct_conversations SET status = 'active' WHERE room_id = $1 AND status = 'pending'",
+            "UPDATE direct_conversations SET status = 'active' WHERE room_id = $1 AND status = 'provisioning'",
             [roomId],
           );
           if (activated.rowCount !== 1) {
