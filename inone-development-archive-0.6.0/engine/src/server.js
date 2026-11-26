@@ -1099,7 +1099,6 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
       if (req.method === 'POST' && p === '/register/email/confirm' && registrationMode === 'verified') {
         const email = normalizeEmail(body.email);
         if (!isEmail(email)) return send(res, 400, { error: 'email must be a valid address' });
-        if (await storage.userIdByEmail(email)) return send(res, 409, { error: 'email already registered' });
         const code = typeof body.code === 'string' ? body.code : '';
         const token = randomBytes(24).toString('base64url');
         const outcome = await storage.emailCodeUpdate(email, (e) => {
