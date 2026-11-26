@@ -22,6 +22,7 @@ List<InOneChatPreview> mapInOneRoomsToChatPreviews(InOneRoomList roomList) {
       lastMessage: null,
       time: '',
       kind: mapInOneRoomKind(room.kind),
+      unread: room.unreadCount,
     );
   }));
 }
