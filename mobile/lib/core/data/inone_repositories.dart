@@ -203,6 +203,20 @@ class InOneRepositories {
   /// Returns the validated room-list DTO for the authenticated account.
   Future<InOneRoomList> myRooms() async =>
       InOneRoomList.fromJson(await session.request('GET', '/rooms/mine'));
+
+  /// Reserves or opens the one canonical private conversation for this account pair.
+  /// If the result is pending and this device is the creator, initialize the local
+  /// Engine B group and send the counterpart's per-device MLS Welcome before use.
+  Future<InOneDirectConversation> openDirectConversation(String userId) async {
+    final peer = userId.trim();
+    if (peer.isEmpty) throw ArgumentError.value(userId, 'userId');
+    return InOneDirectConversation.fromJson(await session.request(
+      'POST',
+      '/direct-chats/open',
+      body: {'userId': peer},
+    ));
+  }
+
   /// Searches only public rooms; the backend enforces the 2–50 character range.
   Future<List<InOnePublicRoom>> searchPublicRooms(String query) async {
     final normalized = query.trim();
