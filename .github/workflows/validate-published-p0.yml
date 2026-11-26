@@ -291,8 +291,34 @@ jobs:
             fi
           done
 
+          required_lockfiles=(
+            mobile/rust/Cargo.lock
+            inone-development-archive-0.6.0/engine/mobile-mls/mls-client/Cargo.lock
+            inone-development-archive-0.6.0/engine/mobile-mls/mls-bridge/Cargo.lock
+            inone-engine-poc-0.6.0/mobile-mls/mls-client/Cargo.lock
+            inone-engine-poc-0.6.0/mobile-mls/mls-bridge/Cargo.lock
+          )
+          for lockfile in "${required_lockfiles[@]}"; do
+            if [[ ! -f "$lockfile" ]]; then
+              echo "::error::Missing required committed Cargo.lock: $lockfile"
+              status=1
+            fi
+          done
+
           echo "Discovering every tracked Cargo.lock in the checked-out PR tree:"
-          git ls-files | grep -E '(^|/)Cargo\.lock          exit "$status"
+          found_lockfiles=0
+          while IFS= read -r lockfile; do
+            if [[ "$lockfile" == "Cargo.lock" || "$lockfile" == */Cargo.lock ]]; then
+              found_lockfiles=1
+              name="$(printf '%s' "$lockfile" | sed 's#/#-#g; s#\.lock$##')"
+              audit_lockfile "$name" "$lockfile"
+            fi
+          done < <(git ls-files)
+          if [[ "$found_lockfiles" -eq 0 ]]; then
+            echo "::error::No tracked Cargo.lock files found"
+            status=1
+          fi
+          exit "$status"
       - name: Upload RustSec machine-readable reports
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
