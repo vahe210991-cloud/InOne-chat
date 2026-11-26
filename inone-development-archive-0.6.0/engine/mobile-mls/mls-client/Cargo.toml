@@ -21,4 +21,4 @@ aes = { version = "0.8", features = ["zeroize"] }
 ghash = { version = "0.5", features = ["zeroize"] }
 sha2 = "0.10.9"
 zeroize = "1.9.1"
-url = "2"
+url = "2.5.9"
