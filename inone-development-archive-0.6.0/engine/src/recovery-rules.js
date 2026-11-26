@@ -119,6 +119,14 @@ export function issueIdentity(r, {
   const attempts = r.identityLockedUntil > 0 && nowMs >= r.identityLockedUntil
     ? 0
     : r.identityAttempts;
+  if (attempts >= rules.maxIdentityAttempts) {
+    const next = {
+      ...clearIdentityChallenge(r),
+      identityAttempts: attempts,
+      identityLockedUntil: nowMs + rules.identityLockMs,
+    };
+    return { next, outcome: 'locked', challengeId: null, expiresAt: 0, resendAfter: next.identityLockedUntil };
+  }
   const hasActiveCode = !!r.identityCodeHash && r.identityCodeExpiresAt > nowMs;
   const cooldownUntil = r.identityLastSentAt + rules.identityResendCooldownMs;
 
