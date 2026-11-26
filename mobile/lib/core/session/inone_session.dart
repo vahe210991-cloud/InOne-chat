@@ -368,6 +368,29 @@ class InOneSession extends ChangeNotifier {
     );
   }
 
+  /// Cancels a pending 48-hour admission for a new device.
+  /// This is deliberately separate from recovery cancellation.
+  Future<Map<String, dynamic>> cancelAdmissionByCode({
+    required String email,
+    required String code,
+  }) async {
+    await initialize();
+    final normalizedEmail = email.trim();
+    final normalizedCode = code.trim();
+    if (normalizedEmail.isEmpty || normalizedCode.isEmpty) {
+      throw const ApiException(
+        code: 'admission_cancellation_input_required',
+        statusCode: 400,
+        retryable: false,
+      );
+    }
+    return _client.post(
+      '/admission/cancel',
+      authenticated: false,
+      body: {'email': normalizedEmail, 'code': normalizedCode},
+    );
+  }
+
   Future<Map<String, dynamic>> completeRecovery({
     String email = '',
     String? userId,
