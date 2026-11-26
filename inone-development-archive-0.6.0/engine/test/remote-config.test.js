@@ -117,7 +117,6 @@ test('размер группы ограничен флагом', async () => {
   const s = await start();
   try {
     await s.alice.createRoom(ROOM, [ALICE, BOB]);
-    await s.alice.raw('POST', `/mls/groups/${enc(ROOM)}/commits`, { epoch: 0, commit: b64('FIRST'), changes: { adds: [], removes: [] } });
     await s.flag('groups.maxMembers', 3);
     const add = (epoch, user, device) => http(s.base, 'POST', `/mls/groups/${enc(ROOM)}/commits`, {
       token: s.alice.token,
