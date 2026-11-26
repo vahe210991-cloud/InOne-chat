@@ -26,6 +26,9 @@ void main() {
       readMlsUserId: () async => null,
       writeMlsUserId: (_) async {},
       deleteMlsUserId: () async {},
+      readRefreshToken: () async => null,
+      writeRefreshToken: (_) async {},
+      deleteRefreshToken: () async {},
     );
 
     final result = await session.confirmRecoveryLink(
@@ -63,6 +66,9 @@ void main() {
       readMlsUserId: () async => null,
       writeMlsUserId: (_) async {},
       deleteMlsUserId: () async {},
+      readRefreshToken: () async => null,
+      writeRefreshToken: (_) async {},
+      deleteRefreshToken: () async {},
       readLocale: () async => 'hy',
       writeLocale: (_) async {},
       readLocaleSyncPending: () async => null,
@@ -105,6 +111,9 @@ void main() {
       readMlsUserId: () async => null,
       writeMlsUserId: (_) async {},
       deleteMlsUserId: () async {},
+      readRefreshToken: () async => null,
+      writeRefreshToken: (_) async {},
+      deleteRefreshToken: () async {},
       readLocale: () async => 'hy',
       writeLocale: (_) async {},
       readLocaleSyncPending: () async => null,
@@ -136,6 +145,9 @@ void main() {
       readMlsUserId: () async => null,
       writeMlsUserId: (_) async {},
       deleteMlsUserId: () async {},
+      readRefreshToken: () async => null,
+      writeRefreshToken: (_) async {},
+      deleteRefreshToken: () async {},
     );
 
     await expectLater(
