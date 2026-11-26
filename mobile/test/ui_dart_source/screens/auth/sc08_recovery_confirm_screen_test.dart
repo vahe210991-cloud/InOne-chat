@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../../../lib/ui_dart_source/theme/inone_theme.dart';
 import 'package:inone_mobile/ui_dart_source/screens/auth/sc08_recovery_confirm_screen.dart';
 
 void main() {
@@ -10,6 +12,7 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        theme: InOneTheme.light(),
         home: InOneRecoveryConfirmScreen(
           onConfirm: () async {
             confirmations++;
