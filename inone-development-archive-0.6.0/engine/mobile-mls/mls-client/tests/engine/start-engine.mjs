@@ -76,8 +76,8 @@ store.mlsCommitsSince = (roomId, since, limit) => {
     : rows;
 };
 const origRows = store.roomEventRows.bind(store);
-store.roomEventRows = async (roomId, since) => {
-  const rows = (await origRows(roomId, since)).filter((e) => !hidden.has(e.seq));
+store.roomEventRows = async (roomId, since, limit) => {
+  const rows = (await origRows(roomId, since, limit)).filter((e) => !hidden.has(e.seq));
   const mode = badEventIds.get(roomId);
   if (!mode) return rows;
   return rows.map((event) => {
