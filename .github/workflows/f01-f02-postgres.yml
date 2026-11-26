@@ -1,0 +1,93 @@
+name: F-01 F-02 PostgreSQL verification
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "inone-engine-poc-0.6.0/src/server.js"
+      - "inone-engine-poc-0.6.0/src/store.js"
+      - "inone-engine-poc-0.6.0/src/store-memory.js"
+      - "inone-engine-poc-0.6.0/test/org-links.test.js"
+      - ".github/workflows/f01-f02-postgres.yml"
+  push:
+    branches:
+      - security/f01-f02-pg-verify-2026-11-10
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: f01-f02-postgres-${{ github.event.pull_request.number || github.ref }}-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  postgres-org-links:
+    name: PostgreSQL 16 org-links regression
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: inone_test
+          POSTGRES_USER: inone
+          POSTGRES_PASSWORD: inone
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U inone -d inone_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://inone:inone@localhost:5432/inone_test
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: inone-engine-poc-0.6.0/package-lock.json
+      - name: Install dependencies
+        working-directory: inone-engine-poc-0.6.0
+        run: npm ci
+      - name: Verify PostgreSQL connection
+        run: |
+          node --input-type=module -e "import pg from 'pg'; const p = new pg.Pool({connectionString: process.env.DATABASE_URL}); const r = await p.query('select version()'); console.log(r.rows[0].version); await p.end();"
+      - name: Run org-links suite against PostgreSQL
+        working-directory: inone-engine-poc-0.6.0
+        run: node --test test/org-links.test.js
+
+  memory-regression:
+    name: Full memory regression and syntax
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: inone-engine-poc-0.6.0/package-lock.json
+      - name: Install dependencies
+        working-directory: inone-engine-poc-0.6.0
+        run: npm ci
+      - name: Run full memory suite
+        working-directory: inone-engine-poc-0.6.0
+        run: env -u DATABASE_URL npm test
+      - name: Check changed JavaScript syntax
+        working-directory: inone-engine-poc-0.6.0
+        run: |
+          node --check src/server.js
+          node --check src/store.js
+          node --check src/store-memory.js
+          node --check test/org-links.test.js
