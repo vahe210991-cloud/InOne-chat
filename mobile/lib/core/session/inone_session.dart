@@ -1365,7 +1365,15 @@ class InOneSession extends ChangeNotifier {
           deviceId: deviceId,
         );
       } else if (isAuthenticated) {
-        await _client.post('/logout');
+        try {
+          await _client.post('/logout');
+        } on ApiException catch (error) {
+          if (error.statusCode != 401 || _refreshToken == null) rethrow;
+          // Access tokens can expire while the rotating refresh token is still valid.
+          // Rotate once and retry logout so the server revokes the active device session.
+          await _refreshOnce();
+          await _client.post('/logout');
+        }
       }
     } finally {
       _mlsBridge = null;
