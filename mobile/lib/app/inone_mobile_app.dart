@@ -1257,6 +1257,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       final chats = <InOneChatPreview>[];
       for (final row in rows) {
         String? lastMessage;
+        var previewTime = _formatRoomTime(row.lastEventAt);
         if (_session.hasNativeMlsSession) {
           final messages = await _session.loadMlsRoomHistory(row.roomId);
           final pendingOutgoing = await _session.pendingMlsOutbox(row.roomId);
@@ -1269,6 +1270,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           }
           if (pendingOutgoing.isNotEmpty) {
             lastMessage = pendingOutgoing.last.text ?? '📎 Вложение в очереди';
+            previewTime = _formatRoomTime(DateTime.now().millisecondsSinceEpoch);
           }
         }
         final kind = mapInOneRoomKind(row.kind);
@@ -1276,7 +1278,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           id: row.roomId,
           name: row.displayName,
           lastMessage: lastMessage,
-          time: _formatRoomTime(row.lastEventAt),
+          time: previewTime,
           kind: kind,
           unread: row.unreadCount,
         ));
