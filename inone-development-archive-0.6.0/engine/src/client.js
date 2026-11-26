@@ -227,7 +227,9 @@ export class ChatClient {
     await this.shareRoomKey(roomId, members);
   }
 
-  /** Создаёт беседу. Создатель становится владельцем. */
+  /** Test fixture only: create the room, then add fixture users through the server MLS Commit path.
+   * Synthetic opaque commit bytes here exercise backend state transitions, not production cryptography.
+   */
   async createRoom(roomId, members = [], options = {}) {
     const created = await this.raw('POST', '/rooms', { roomId, ...options });
     this.roomMembers.set(roomId, [this.userId]);
@@ -266,6 +268,7 @@ export class ChatClient {
   }
 
   /** Владелец добавляет участника. Текущий ключ отправителя получает новичок, историю — нет. */
+  // Test fixture only. Production Flutter clients use the persistent OpenMLS bridge.
   async addMember(roomId, userId) {
     const targetDevices = [...(testClientsByUser.get(`${this.baseUrl}|${userId}`)?.values() ?? [])];
     if (targetDevices.length === 0) throw new Error(`no active test device registered for ${userId}`);
@@ -284,7 +287,7 @@ export class ChatClient {
     await this.applyMembership(roomId);
   }
 
-  /** Удаление и self-leave моделируются только через MLS Remove Commit. */
+  /** Test fixture only: model removal/self-leave through the backend MLS Remove Commit path. */
   async removeMember(roomId, userId) {
     const epoch = (await this.raw('GET', `/mls/groups/${enc(roomId)}/epoch`)).epoch;
     await this.raw('POST', `/mls/groups/${enc(roomId)}/commits`, {
