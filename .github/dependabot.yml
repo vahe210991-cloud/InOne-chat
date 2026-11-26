@@ -1,0 +1,91 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: UTC
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: docker
+    directory: /inone-development-archive-0.6.0/engine
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: UTC
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: docker
+    directory: /inone-engine-poc-0.6.0
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: UTC
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: docker
+    directory: /.devcontainer
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: UTC
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: npm
+    directory: /inone-development-archive-0.6.0/engine
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: UTC
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: cargo
+    directory: /mobile/rust
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: UTC
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: cargo
+    directory: /inone-development-archive-0.6.0/engine/mobile-mls/mls-client
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: UTC
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: cargo
+    directory: /inone-development-archive-0.6.0/engine/mobile-mls/mls-bridge
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: UTC
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: cargo
+    directory: /inone-engine-poc-0.6.0/mobile-mls/mls-client
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: UTC
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: cargo
+    directory: /inone-engine-poc-0.6.0/mobile-mls/mls-bridge
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: UTC
+    open-pull-requests-limit: 10
