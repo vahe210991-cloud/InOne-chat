@@ -21,7 +21,7 @@ async function start() {
   return { alice, bob, stop: async () => { await new Promise((r) => srv.server.close(r)); await db?.close(); } };
 }
 
-const room = (c, roomId, kind, name) => c.raw('POST', '/rooms', { roomId, members: [BOB], ...(kind ? { kind } : {}), ...(name !== undefined ? { name } : {}) });
+const room = (c, roomId, kind, name) => c.raw('POST', '/rooms', { roomId, ...(kind ? { kind } : {}), ...(name !== undefined ? { name } : {}) });
 const rename = (c, roomId, name) => c.raw('PUT', `/rooms/${enc(roomId)}/name`, { name });
 
 test('два канала с одинаковым названием не создаются; регистр и лишние пробелы не важны', async () => {
