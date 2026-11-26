@@ -696,7 +696,7 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
           if (owners[0].n <= 1) return { ok: false, reason: 'last_owner' };
         }
         const { rows: ownedRooms } = await client.query(
-          'SELECT room_id FROM rooms WHERE org_id = $1 AND owner = $2 ORDER BY room_id FOR UPDATE',
+          `SELECT r.room_id FROM rooms r WHERE r.owner = $2 AND (r.org_id = $1 OR (EXISTS (SELECT 1 FROM org_links l WHERE l.status = 'active' AND ((l.org_a = $1 AND l.org_b = r.org_id) OR (l.org_b = $1 AND l.org_a = r.org_id))) AND NOT EXISTS (SELECT 1 FROM org_members own WHERE own.org_id = r.org_id AND own.user_id = $2))) ORDER BY r.room_id`,
           [orgId, target],
         );
         if (ownedRooms.length) return { ok: false, reason: 'owns_rooms' };
@@ -728,6 +728,11 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
     async removeOrgMember(orgId, userId) {
       return inTransaction(async (c) => {
         await c.query('SELECT user_id FROM org_members WHERE org_id = $1 AND user_id = $2 FOR UPDATE', [orgId, userId]);
+        const { rows: ownedRooms } = await c.query(
+          `SELECT r.room_id FROM rooms r WHERE r.owner = $2 AND (r.org_id = $1 OR (EXISTS (SELECT 1 FROM org_links l WHERE l.status = 'active' AND ((l.org_a = $1 AND l.org_b = r.org_id) OR (l.org_b = $1 AND l.org_a = r.org_id))) AND NOT EXISTS (SELECT 1 FROM org_members own WHERE own.org_id = r.org_id AND own.user_id = $2))) ORDER BY r.room_id`,
+          [orgId, userId],
+        );
+        if (ownedRooms.length) return { ok: false, reason: 'owns_rooms' };
         const { rows } = await c.query(
           `SELECT rm.room_id FROM room_members rm JOIN rooms r ON r.room_id = rm.room_id WHERE rm.user_id = $2 AND (r.org_id = $1 OR (EXISTS (SELECT 1 FROM org_links l WHERE l.status = 'active' AND ((l.org_a = $1 AND l.org_b = r.org_id) OR (l.org_b = $1 AND l.org_a = r.org_id))) AND NOT EXISTS (SELECT 1 FROM org_members own WHERE own.org_id = r.org_id AND own.user_id = rm.user_id))) ORDER BY rm.room_id FOR UPDATE OF rm`,
           [orgId, userId],
