@@ -14,6 +14,7 @@ class InOneLoginWaitingScreen extends StatefulWidget {
     required this.onNotMe,
     this.approvalCode,
     this.showNotMe = true,
+    this.notMeLabel = 'Սա ես չեմ',
     this.autoPoll = false,
     this.onDone,
   });
@@ -30,6 +31,7 @@ class InOneLoginWaitingScreen extends StatefulWidget {
   /// «Это не я» → SC-10. Для approval flow действие скрывается.
   final VoidCallback onNotMe;
   final bool showNotMe;
+  final String notMeLabel;
   final bool autoPoll;
   final VoidCallback? onDone;
 
@@ -97,7 +99,7 @@ class _InOneLoginWaitingScreenState extends State<InOneLoginWaitingScreen>
         if (widget.showNotMe) ...[
           const SizedBox(height: 12),
           InOneButton(
-            label: 'Սա ես չեմ',
+            label: widget.notMeLabel,
             kind: InOneButtonKind.outline,
             onPressed: widget.onNotMe,
           ),
