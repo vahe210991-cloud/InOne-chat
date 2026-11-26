@@ -3323,6 +3323,10 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           onSubmit: _startRecovery,
           onBack: () => setState(() => _screen = 'login'),
           onEnterCode: () => setState(() => _screen = 'recoveryPassword'),
+          onCancelRecovery: () => setState(() {
+            _cancelingAdmission = false;
+            _screen = 'notYou';
+          }),
         );
       case 'recoveryPassword':
         return InOneNewPasswordScreen(
