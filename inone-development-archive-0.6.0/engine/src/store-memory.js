@@ -957,7 +957,6 @@ export function createMemoryStore({ pinPepper }) {
       const org = organizations.get(orgId);
       if (!org || org.status !== 'approved') return { status: 'org_not_approved' };
       const members = [...new Set(memberIds)];
-      if (members.some((userId) => userId !== owner)) return { status: 'mls_commit_required' };
       for (const userId of [...members].sort()) {
         const direct = orgMembers.get(orgId)?.has(userId) ?? false;
         const linked = !direct && [...orgLinks.values()].some((link) => {
@@ -981,8 +980,9 @@ export function createMemoryStore({ pinPepper }) {
       return true;
     },
     createOrOpenDirectConversation({ requester, target, roomId, createdAt }) {
-      const userA = requester < target ? requester : target;
-      const userB = requester < target ? target : requester;
+      const requesterFirst = Buffer.compare(Buffer.from(requester, 'utf8'), Buffer.from(target, 'utf8')) < 0;
+      const userA = requesterFirst ? requester : target;
+      const userB = requesterFirst ? target : requester;
       const pairKey = JSON.stringify([userA, userB]);
       const existing = directConversations.get(pairKey);
       if (existing) return { ...structuredClone(existing), isCreator: existing.createdBy === requester, created: false };
