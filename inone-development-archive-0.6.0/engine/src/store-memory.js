@@ -939,6 +939,7 @@ export function createMemoryStore({ pinPepper }) {
 
     // ---- беседы ----
     createRoom(roomId, owner, memberIds, opts = {}) {
+      if ([...new Set(memberIds)].some((userId) => userId !== owner)) return { status: 'mls_commit_required' };
       if (rooms.has(roomId)) return false;
       const orgId = opts.orgId ?? DEFAULT_ORG_ID;
       const org = organizations.get(orgId);
