@@ -149,6 +149,16 @@ class InOneChatPreview {
   final InOneChatKind kind;
   final int unread;
   final String? initials;
+
+  InOneChatPreview copyWith({int? unread}) => InOneChatPreview(
+        id: id,
+        name: name,
+        lastMessage: lastMessage,
+        time: time,
+        kind: kind,
+        unread: unread ?? this.unread,
+        initials: initials,
+      );
 }
 
 enum InOneNotificationKind { task, deadline, message, crm, calendar }
