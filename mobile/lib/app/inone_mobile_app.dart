@@ -629,7 +629,8 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         if (mounted) setState(() => _screen = 'loginApproval');
         return null;
       }
-      if (result['status'] == 'identity_check_required') {
+      if (result['status'] == 'identity_check_required' && result['challengeId'] is String) {
+        _pendingIdentityChallengeId = result['challengeId'] as String;
         if (mounted) setState(() => _screen = 'identityCheck');
         return null;
       }
