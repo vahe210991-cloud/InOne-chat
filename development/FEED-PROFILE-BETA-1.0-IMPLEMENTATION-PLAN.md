@@ -828,4 +828,4 @@ For a closed task preserve ID, original description, acceptance criteria, PR lin
 - Intended path: `development/FEED-PROFILE-BETA-1.0-IMPLEMENTATION-PLAN.md`
 - Change scope: one documentation file only.
 
-Владелец запросил публикацию этого документа в `main`. Публикация выполняется отдельным документационным коммитом, без изменения product source, API, схемы, миграций, конфигурации или Flutter UI. Рабочий Draft PR #167 будет закрыт как superseded только после проверки файла в `main`. После публикации файл повторно читается из GitHub; точный commit SHA и blob SHA фиксируются в hand-back отчёте.
+Владелец запросил публикацию этого документа в `main`. Документ опубликован отдельным документационным коммитом `8260beb7070d959dce17ee423e2768dbea4399c9`, без изменения product source, API, схемы, миграций, конфигурации или Flutter UI. После повторного чтения файла из `main` черновой PR [#167](https://github.com/vahe210991-cloud/InOne-chat/pull/167) закрыт как superseded; его task branch сохранена. Blob SHA опубликованного файла: `7365dfa59e6feec057c232cd9c7454b84e11deba`.
