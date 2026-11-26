@@ -64,8 +64,11 @@ fn load_group(
     let mut connection = open_sqlcipher(path, TEST_KEY_HEX)?;
     let cipher_version: String =
         connection.query_row("PRAGMA cipher_version", [], |row| row.get(0))?;
-    if cipher_version.trim().is_empty() {
-        return Err("candidate connection is not using SQLCipher".into());
+    if !cipher_version.trim().starts_with("4.20.0") {
+        return Err(format!(
+            "candidate connection must use SQLCipher 4.20.0, found {cipher_version}"
+        )
+        .into());
     }
 
     {
