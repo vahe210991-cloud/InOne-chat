@@ -65,6 +65,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   String _recoveryUserId = '';
   String _pendingLoginEmail = '';
   String _pendingLoginPassword = '';
+  String? _pendingIdentityChallengeId;
   String _waitingActivateAt = '';
   InOneProfile? _profile;
   List<InOneOrganization> _organizations = const [];
@@ -363,8 +364,16 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         return null;
       }
       if (status == 'identity_check_required') {
+        final challengeId = response['challengeId'];
+        if (challengeId is! String || challengeId.isEmpty) {
+          return const InOneFailure(
+            InOneScreenState.error,
+            message: 'Сервер не вернул идентификатор проверки. Повторите вход.',
+          );
+        }
         _pendingLoginEmail = email.trim();
         _pendingLoginPassword = password;
+        _pendingIdentityChallengeId = challengeId;
         if (mounted) setState(() => _screen = 'identityCheck');
         return null;
       }
@@ -389,12 +398,20 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         email: _pendingLoginEmail,
         password: _pendingLoginPassword,
         identityCode: code,
+        identityChallengeId: _pendingIdentityChallengeId,
       );
       if (_session.isAuthenticated) return null;
       final status = response['status'];
       if (status == 'approval_required') {
         if (mounted) setState(() => _screen = 'loginApproval');
         return null;
+      }
+      if (status == 'identity_check_required' && response['challengeId'] is String) {
+        _pendingIdentityChallengeId = response['challengeId'] as String;
+        return const InOneFailure(
+          InOneScreenState.error,
+          message: 'Код обновлён. Введите последний код из письма.',
+        );
       }
       if (status == 'waiting_period' && response['activateAt'] is String) {
         _waitingActivateAt = _formatActivationTime(response['activateAt'] as String);
@@ -417,6 +434,38 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       _pendingLoginPassword = '';
       _screen = 'login';
     });
+  }
+
+  Future<InOneFailure?> _resendIdentityCode() async {
+    if (_pendingLoginEmail.isEmpty || _pendingLoginPassword.isEmpty) {
+      return const InOneFailure(
+        InOneScreenState.error,
+        message: 'Срок проверки истёк. Начните вход заново.',
+      );
+    }
+    try {
+      final response = await _session.login(
+        email: _pendingLoginEmail,
+        password: _pendingLoginPassword,
+      );
+      if (_session.isAuthenticated) {
+        _afterLogin();
+        return null;
+      }
+      if (response['status'] != 'identity_check_required' || response['challengeId'] is! String) {
+        return const InOneFailure(
+          InOneScreenState.error,
+          message: 'Не удалось обновить проверку входа.',
+        );
+      }
+      _pendingIdentityChallengeId = response['challengeId'] as String;
+      _notice(response['codeSent'] == true
+          ? 'Новый код отправлен на подтверждённый адрес.'
+          : 'Предыдущий код ещё действует. Проверьте письмо и используйте последний код.');
+      return null;
+    } catch (error) {
+      return _toFailure(error);
+    }
   }
 
   Future<InOneFailure?> _claimPendingApproval() async {
@@ -458,6 +507,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     if (!_session.isAuthenticated) return;
     _pendingLoginEmail = '';
     _pendingLoginPassword = '';
+    _pendingIdentityChallengeId = null;
     _waitingActivateAt = '';
     unawaited(_loadAuthenticatedData());
   }
@@ -3249,15 +3299,14 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         return InOneEmailCodeScreen(
           title: 'Մուտքի հաստատում',
           codeLabel: 'Կոդը նամակից',
-          showResend: false,
+          showResend: true,
+          resendLabel: 'Կրկին ուղարկել կոդը',
           onConfirm: _submitIdentityCode,
-          onResend: () async => const InOneFailure(
-            InOneScreenState.error,
-            message: 'Повторная отправка кода пока недоступна.',
-          ),
+          onResend: _resendIdentityCode,
           onBack: () => setState(() {
             _pendingLoginEmail = '';
             _pendingLoginPassword = '';
+            _pendingIdentityChallengeId = null;
             _screen = 'login';
           }),
           onDone: _afterLogin,
