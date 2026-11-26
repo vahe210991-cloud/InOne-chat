@@ -1766,9 +1766,10 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       final details = await _repositories.roomDetails(roomId);
       if (!mounted) return;
       final currentUserId = _session.userId;
-      final canRename = currentUserId != null &&
+      final isDirect = details.kind == 'direct';
+      final canRename = !isDirect && currentUserId != null &&
           (details.capabilities[currentUserId]?.contains('edit_group_name') ?? false);
-      final canEditSettings = currentUserId != null &&
+      final canEditSettings = !isDirect && currentUserId != null &&
           (details.capabilities[currentUserId]?.contains('edit_group_settings') ?? false);
       var visibility = details.visibility;
       var joinPolicy = details.joinPolicy;
@@ -1780,7 +1781,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           context: context,
           builder: (dialogContext) => StatefulBuilder(
             builder: (context, setDialogState) => AlertDialog(
-              title: const Text('Параметры группы'),
+              title: Text(isDirect ? 'Личный диалог' : 'Параметры группы'),
               content: SizedBox(
                 width: 420,
                 child: Column(
@@ -1810,6 +1811,8 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
                           if (value != null) setDialogState(() => joinPolicy = value);
                         },
                       ),
+                    ] else if (isDirect) ...[
+                      const Text('Личный диалог защищён сквозным шифрованием MLS. Участники определяются криптографическим составом диалога.'),
                     ] else ...[
                       Text('Видимость: ${details.visibility == 'public' ? 'публичная' : 'приватная'}'),
                       Text('Вступление: ${details.joinPolicy == 'open' ? 'свободное' : 'по заявке'}'),
@@ -1833,7 +1836,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
                                         ? 'Администратор'
                                         : 'Участник'} · ${details.readUpTo[memberId] == null ? 'Нет отметки прочтения' : 'Прочитано до ${details.readUpTo[memberId]}'}',
                               ),
-                              trailing: currentUserId != null &&
+                              trailing: !isDirect && currentUserId != null &&
                                       memberId != details.owner &&
                                       memberId != currentUserId &&
                                       (currentUserId == details.owner ||
