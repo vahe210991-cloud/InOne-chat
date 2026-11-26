@@ -51,10 +51,29 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
     // the link first and then the affected rooms/memberships. This function follows
     // the same order to avoid a room->link / link->room deadlock.
     const { rows: roomLookup } = await client.query(
-      'SELECT org_id FROM rooms WHERE room_id = $1',
+      'SELECT org_id, kind FROM rooms WHERE room_id = $1',
       [roomId],
     );
     if (!roomLookup[0]) return 'room_not_found';
+    if (roomLookup[0].kind === 'direct') {
+      const { rows: conversations } = await client.query(
+        'SELECT user_a, user_b, status FROM direct_conversations WHERE room_id = $1 FOR SHARE',
+        [roomId],
+      );
+      const conversation = conversations[0];
+      if (!conversation || conversation.status !== 'active') return 'direct_not_active';
+      if (conversation.user_a !== userId && conversation.user_b !== userId) return 'not_member';
+      const { rows: lockedDirectRoom } = await client.query(
+        'SELECT kind FROM rooms WHERE room_id = $1 FOR SHARE',
+        [roomId],
+      );
+      if (!lockedDirectRoom[0] || lockedDirectRoom[0].kind !== 'direct') return 'room_changed';
+      const { rows: directMembership } = await client.query(
+        'SELECT 1 FROM room_members WHERE room_id = $1 AND user_id = $2 FOR SHARE',
+        [roomId, userId],
+      );
+      return directMembership.length ? null : 'not_member';
+    }
     const orgId = roomLookup[0].org_id;
     const { rows: orgRows } = await client.query(
       'SELECT status FROM organizations WHERE org_id = $1 FOR SHARE',
