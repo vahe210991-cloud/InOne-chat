@@ -162,3 +162,34 @@ test('выход из организации снимает доступ к её
     await s.stop();
   }
 });
+
+
+test('organization member removal fails closed until every MLS room has a Remove Commit', async () => {
+  const s = await start();
+  const room = '!org-member-mls-revoke:inone.test';
+  try {
+    const created = await call(s.base, 'POST', '/rooms', s.anna.token, { roomId: room, orgId: ORG, members: [CAROL] });
+    assert.equal(created.status, 200);
+    await s.anna.raw('POST', \`/mls/groups/\${enc(room)}/commits\`, {
+      epoch: 0, commit: Buffer.from('INITIAL-MLS').toString('base64'),
+      changes: { adds: [], removes: [] },
+    });
+
+    const blocked = await call(s.base, 'DELETE', \`/orgs/\${ORG}/members/\${enc(CAROL)}\`, s.anna.token);
+    assert.equal(blocked.status, 409);
+    assert.equal(blocked.json.code, 'mls_removal_required');
+    assert.deepEqual(blocked.json.rooms, [room]);
+    assert.equal(await s.store.orgRoleOf(ORG, CAROL), 'member', 'organization membership is not partially removed');
+    assert.ok((await s.store.getRoom(room)).members.includes(CAROL), 'room membership is not deleted outside MLS');
+
+    await s.anna.raw('POST', \`/mls/groups/\${enc(room)}/commits\`, {
+      epoch: 1, commit: Buffer.from('REMOVE-CAROL').toString('base64'),
+      changes: { adds: [], removes: [CAROL] },
+    });
+    const removed = await call(s.base, 'DELETE', \`/orgs/\${ORG}/members/\${enc(CAROL)}\`, s.anna.token);
+    assert.equal(removed.status, 200);
+    assert.equal(await s.store.orgRoleOf(ORG, CAROL), null);
+  } finally {
+    await s.stop();
+  }
+});
