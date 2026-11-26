@@ -1573,6 +1573,26 @@ mlsPendingRemovalsFor(userId) {
       return 'ok';
     },
 
+    createVerifiedAccountWithEmailToken({ email, changeEmailCode, userId, passwordHash, nickname, nowMs, joinDefaultOrg = false }) {
+      const current = emailCodes.get(email) ?? freshEmailCode();
+      const { next, result } = changeEmailCode(structuredClone(current));
+      const locale = result.locale ?? current.locale ?? 'hy';
+      if (result.outcome !== 'ok') {
+        emailCodes.set(email, structuredClone(next));
+        return { outcome: result.outcome, created: null, locale };
+      }
+      if (accounts.has(userId)) return { outcome: 'ok', created: 'account', locale };
+      for (const profile of profiles.values()) {
+        if (profile.emailVerified && profile.email === email) return { outcome: 'ok', created: 'email', locale };
+        if (profile.nickname.toLowerCase() === nickname.toLowerCase()) return { outcome: 'ok', created: 'nickname', locale };
+      }
+      // Commit the consumed ticket and account state together after every uniqueness check.
+      emailCodes.set(email, structuredClone(next));
+      accounts.set(userId, passwordHash);
+      if (joinDefaultOrg) addOrgMembership(DEFAULT_ORG_ID, userId, 'member', nowMs);
+      profiles.set(userId, { email, emailVerified: true, nickname, createdAt: nowMs, locale });
+      return { outcome: 'ok', created: 'ok', locale };
+    },
     // ---- код подтверждения почты при регистрации ----
     emailCodeUpdate(email, change) {
       const cur = emailCodes.get(email);
