@@ -102,7 +102,7 @@ test('канал создаётся только при включённом ф�
   const s = await start();
   try {
     await s.flag('channels.enabled', false);
-    const body = JSON.stringify({ roomId: '!chan-config:inone.test', members: [BOB], kind: 'channel', name: 'Новости' });
+    const body = JSON.stringify({ roomId: '!chan-config:inone.test', kind: 'channel', name: 'Новости' });
     const off = await http(s.base, 'POST', '/rooms', { token: s.alice.token, body, headers: JSON_HEADERS });
     assert.equal(off.status, 403);
     assert.equal(off.json.code, 'feature_disabled');
