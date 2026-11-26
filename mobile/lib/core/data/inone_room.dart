@@ -14,7 +14,14 @@ class InOneRoom {
   final String? name;
   final String role;
 
-  String get displayName => name?.trim().isNotEmpty == true ? name!.trim() : roomId;
+  String get displayName {
+    final value = name?.trim();
+    if (value != null && value.isNotEmpty) return value;
+    if (const {'direct', 'dm', 'person'}.contains(kind.toLowerCase())) {
+      return 'Личный диалог';
+    }
+    return roomId;
+  }
 
   factory InOneRoom.fromJson(Map<String, dynamic> json) {
     final roomId = json['roomId'];
