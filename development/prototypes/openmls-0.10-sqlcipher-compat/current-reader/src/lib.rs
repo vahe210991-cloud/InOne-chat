@@ -58,7 +58,9 @@ fn open_sqlcipher(path: &Path, key_hex: &str) -> Result<Connection, Box<dyn std:
     Ok(connection)
 }
 
-fn load_group(path: &Path) -> Result<(MlsGroup, CandidateProvider, String), Box<dyn std::error::Error>> {
+fn load_group(
+    path: &Path,
+) -> Result<(MlsGroup, CandidateProvider, String), Box<dyn std::error::Error>> {
     let mut connection = open_sqlcipher(path, TEST_KEY_HEX)?;
     let cipher_version: String =
         connection.query_row("PRAGMA cipher_version", [], |row| row.get(0))?;
@@ -110,7 +112,8 @@ mod tests {
         let public_key = std::fs::read(path.with_extension("signer.pub"))
             .expect("read legacy signer public-key sidecar");
 
-        let (mut group, provider, cipher_version) = load_group(path).expect("load legacy group with candidate");
+        let (mut group, provider, cipher_version) =
+            load_group(path).expect("load legacy group with candidate");
         assert_eq!(group.group_id().as_slice(), GROUP_ID);
         assert_eq!(group.epoch().as_u64(), 0);
         assert_eq!(group.members().count(), 1);
@@ -132,7 +135,8 @@ mod tests {
         drop(group);
 
         // A second independent open proves both group state and signer persistence survive reopen.
-        let (mut reopened, reopened_provider, reopened_cipher) = load_group(path).expect("reopen and reload legacy group");
+        let (mut reopened, reopened_provider, reopened_cipher) =
+            load_group(path).expect("reopen and reload legacy group");
         assert_eq!(reopened.group_id().as_slice(), GROUP_ID);
         assert_eq!(reopened.epoch().as_u64(), 0);
         assert_eq!(reopened.members().count(), 1);
