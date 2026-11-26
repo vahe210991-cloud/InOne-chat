@@ -268,7 +268,7 @@
 | AUTH-09 | BLOCKED | Безопасное восстановление сессии после перезапуска требует принятого Rust/platform secure-session runtime. Refresh token нельзя переносить в обычные Dart preferences или plaintext storage. Текущий native runtime остаётся opt-in до прохождения security/runtime gate. |
 | AUTH-10 | IN PROGRESS | Серверная политика унифицирована: 8–128 Unicode code points; oversized password не передаётся в scrypt. UI ограничен до 128 символов; добавлен account-rules test. Проверки NOT RUN. |
 | AUTH-11 | IN PROGRESS | Добавлены/обновлены widget, session API, backend recovery, email-code, migration и PostgreSQL transaction tests. Ни один тест в этой сессии не объявляется PASS: всё NOT RUN до общего запуска на final SHA. |
-| AUTH-12 | IN PROGRESS | Обновлён `mobile/API-CONTRACTS-BETA-1.md`; требуется итоговый dated audit report и handoff/continuity updates после завершения реализации. |
+| AUTH-12 | IN PROGRESS | Обновлены API contract, dated audit report и continuity docs. SC-09 encryption-key-reset warning остаётся D8 placeholder и требует owner-approved user-facing copy до release. |
 
 ### Инженерные параметры identity challenge
 
@@ -282,6 +282,6 @@
 
 ### Обязательные решения владельца
 
-До закрытия AUTH-03 и AUTH-08 требуется согласовать телефонную и recovery-политику. AUTH-04 нельзя считать полностью готовой для устройств с biometric-protected signing key до появления platform biometric-grant bridge. AUTH-09 остаётся заблокированной до безопасного принятия Rust-owned session persistence. Google/Apple provider sign-in остаётся явно заблокированным до интеграции native SDK и platform client configuration.
+До закрытия AUTH-03 и AUTH-08 требуется согласовать телефонную и recovery-политику. AUTH-04 нельзя считать полностью готовой для устройств с biometric-protected signing key до появления platform biometric-grant bridge. AUTH-09 остаётся заблокированной до безопасного принятия Rust-owned session persistence. Google/Apple provider sign-in остаётся явно заблокированным до интеграции native SDK и platform client configuration. Текст предупреждения о сбросе ключей на SC-09 также требует утверждения владельца (D8).
 
 **Запрет на преждевременное закрытие:** все задачи остаются незачёркнутыми до выполнения общего регламента `development/UNIFIED-TASK-COMPLETION-RULES.md`.
