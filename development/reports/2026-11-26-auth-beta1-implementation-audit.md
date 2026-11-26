@@ -91,6 +91,8 @@ All are **NOT RUN** in this session:
 
 - `mobile/test/core/session/device_approval_api_test.dart`
 - `mobile/test/core/session/recovery_api_test.dart`
+- `mobile/test/ui_dart_source/screens/auth/auth_screen_contract_test.dart` (SC-01/02/03/04/07/09/10/12)
+- `mobile/test/ui_dart_source/screens/auth/sc07_recovery_start_screen_test.dart`
 - `mobile/test/ui_dart_source/screens/auth/sc08_recovery_confirm_screen_test.dart`
 - `mobile/test/ui_dart_source/screens/auth/sc11_login_waiting_screen_test.dart`
 - `inone-development-archive-0.6.0/engine/test/account-rules.test.js`
