@@ -97,7 +97,7 @@ test('ссылка скачивания привязана к активному
     const currentDeviceUrl = new URL(currentDeviceLink.downloadUrl);
     assert.equal((await http(currentDeviceUrl.origin, 'GET', currentDeviceUrl.pathname + currentDeviceUrl.search, { token: s.bob.token })).status, 200);
 
-    await s.alice.raw('DELETE', `/rooms/${enc(ROOM)}/members/${enc(BOB)}`);
+    await s.alice.removeMember(ROOM, BOB);
     assert.equal((await http(currentDeviceUrl.origin, 'GET', currentDeviceUrl.pathname + currentDeviceUrl.search, { token: s.bob.token })).status, 403,
       'removing a room member immediately invalidates an already-issued URL');
   } finally {
@@ -367,17 +367,17 @@ test('upload and completion fail closed after room membership is revoked', async
   try {
     const beforePut = randomBytes(64);
     const first = (await announce(s, s.bob.token, beforePut)).json;
-    await s.alice.raw('DELETE', `/rooms/${enc(ROOM)}/members/${enc(BOB)}`);
+    await s.alice.removeMember(ROOM, BOB);
     assert.equal((await putTo(first.uploadUrl, beforePut)).status, 403,
       'membership revoked after announce is revalidated after the stream');
     assert.equal((await completeFile(s, s.bob.token, first.fileId)).status, 404,
       'a rejected upload cannot be completed');
 
-    await s.alice.raw('POST', `/rooms/${enc(ROOM)}/members`, { userId: BOB });
+    await s.alice.addMember(ROOM, BOB);
     const secondBytes = randomBytes(72);
     const second = (await announce(s, s.bob.token, secondBytes)).json;
     assert.equal((await putTo(second.uploadUrl, secondBytes)).status, 200);
-    await s.alice.raw('DELETE', `/rooms/${enc(ROOM)}/members/${enc(BOB)}`);
+    await s.alice.removeMember(ROOM, BOB);
     assert.equal((await completeFile(s, s.bob.token, second.fileId)).status, 403,
       'membership revoked between PUT and complete blocks ready transition');
   } finally {
