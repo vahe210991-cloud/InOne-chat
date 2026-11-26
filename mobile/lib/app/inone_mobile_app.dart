@@ -506,6 +506,18 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         message: 'Подтверждение не выдало сессию. Повторите вход.',
       );
     } catch (error) {
+      if (error is ApiException &&
+          (error.statusCode == 403 || error.statusCode == 404 || error.statusCode == 410)) {
+        _session.discardPendingApproval();
+        if (mounted) {
+          setState(() {
+            _pendingLoginEmail = '';
+            _pendingLoginPassword = '';
+            _screen = 'login';
+          });
+          _notice('Запрос подтверждения недействителен или истёк. Начните вход заново.');
+        }
+      }
       return _toFailure(error);
     }
   }
