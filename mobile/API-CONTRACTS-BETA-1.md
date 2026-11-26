@@ -7,6 +7,62 @@
 **Mobile host:** `mobile/lib/main.dart`, `mobile/lib/app/inone_mobile_app.dart`, `mobile/lib/core/network/api_client.dart`, `mobile/lib/core/mls/`  
 **Production screens:** `mobile/lib/ui_dart_source/`; approved HTML package is a visual reference only.
 
+## AUTH implementation status — 2026-11-26
+
+**Working branch:** `feat/auth-senior-backend-implementation-2026-11-26`  
+**State:** `IN PROGRESS`; not merged to `main`. Automated checks have not yet been run on the final branch SHA. This section records implementation intent and current integration boundaries, not a release acceptance claim.
+
+### Connected Flutter auth flows
+
+| Screen / flow | Current connection |
+|---|---|
+| SC-01 Login | Normal password login; routes `waiting_period`, `approval_required`, and `identity_check_required` into their corresponding host-controlled flows. |
+| SC-02 Email registration | `POST /register/email`; neutral response retained. |
+| SC-03 Email code | Registration confirmation and post-recovery identity verification share the code-entry component; identity mode sends `identityCode` plus `identityChallengeId`. |
+| SC-04 Create account | `POST /register`; registration ticket consumption is moved into the account-creation transaction. Password input is bounded to 128 characters. |
+| SC-05 / SC-06 Provider login | Explicitly blocked. Native Google/Apple proof acquisition and platform configuration are not connected; no fake provider success is allowed. |
+| SC-07 Recovery start | `POST /recovery/start`; also exposes a separate entry into recovery-cancellation code handling. |
+| SC-08 Recovery link confirmation | Opening the deep link stages the token in host memory only. The mutating `POST /recovery/confirm` occurs only after the user taps Continue. Back navigation discards the staged token. |
+| SC-09 New password | `POST /recovery/complete`; accepts the email recovery code and new password. The encryption-key-reset warning still contains the D8 placeholder and needs owner-approved copy. |
+| SC-10 “Not me” | Dispatches to `POST /admission/cancel` for a pending new-device admission, or `POST /recovery/cancel-by-code` for recovery cancellation. These paths are distinct. |
+| SC-11 Waiting / approval | 48-hour waiting state remains separate from device approval. Approval mode displays the short code and polls claim status every 5 seconds, capped at 120 attempts. Trusted devices query pending approvals every 30 seconds while the app is foregrounded and can approve or deny. |
+| SC-12 Logout | Existing logout path; transient approval, identity-challenge, registration-ticket, and recovery-link secrets are cleared from memory. |
+
+### Backend contract updates in this branch
+
+- `POST /login` accepts `identityCode` and `identityChallengeId`. Identity challenges are bound to the requesting device and challenge ID, expire after 1 hour, have a 60-second resend cooldown, allow at most 5 wrong attempts, and lock for 1 hour after the limit. Re-requesting during cooldown reuses the active challenge without sending duplicate mail.
+- `POST /login` may return `approval_required`. The poll secret and approval ID remain inside the host session object; only the short display code is exposed to the waiting screen. Server approval requests expire after 10 minutes.
+- `POST /approvals/:id/claim` exchanges the in-memory poll secret for a session only after approval. `GET /approvals`, `POST /approvals/:id/approve`, and `POST /approvals/:id/deny` support the trusted-device side. Leaving the new-device screen drops the local poll secret; the server-side pending request expires by its 10-minute TTL.
+- `POST /admission/cancel` is the unauthenticated email/code cancellation contract for pending device admission. It must not call recovery cancellation.
+- `POST /register/email/confirm` no longer returns a distinct “email already registered” response before checking the one-time code. `POST /register` also avoids an early existing-email response before ticket validation.
+- Registration ticket consumption and account creation share one storage transaction. If the account insert rolls back, the ticket remains usable for a safe retry.
+- Password length is enforced consistently at 8–128 Unicode code points before hashing; oversized login values fail without invoking scrypt.
+- Recovery finalization keeps the recovery-window marker active until all pre-window device cleanup operations complete. Device cleanup is retried idempotently after partial failure.
+
+### Added / updated automated coverage (NOT RUN yet)
+
+- `mobile/test/core/session/device_approval_api_test.dart`
+- `mobile/test/core/session/recovery_api_test.dart`
+- `mobile/test/ui_dart_source/screens/auth/auth_screen_contract_test.dart`
+- `mobile/test/ui_dart_source/screens/auth/sc07_recovery_start_screen_test.dart`
+- `mobile/test/ui_dart_source/screens/auth/sc08_recovery_confirm_screen_test.dart`
+- `mobile/test/ui_dart_source/screens/auth/sc11_login_waiting_screen_test.dart`
+- `inone-development-archive-0.6.0/engine/test/account-rules.test.js`
+- `inone-development-archive-0.6.0/engine/test/dev-email-code.test.js`
+- `inone-development-archive-0.6.0/engine/test/recovery.test.js`
+- `inone-development-archive-0.6.0/engine/test/registration-email-delivery-db.test.js`
+- `inone-development-archive-0.6.0/engine/test/migrate.test.js`
+
+### Remaining acceptance gates / blockers
+
+1. **AUTH-03:** phone presence and verified-phone policy remain a product decision. The registration UI currently collects a phone, but the complete SMS verification step is not connected.
+2. **AUTH-04:** trusted-device approval with a configured signing key still requires a platform biometric grant. The mobile biometric-grant bridge is not present; this path must fail closed and must not bypass the server check.
+3. **AUTH-08:** email-only recovery for accounts without a verified phone remains subject to explicit owner policy approval.
+4. **AUTH-09:** refresh-token restoration across process restart is not implemented while the native Rust session runtime remains opt-in. Do not persist refresh tokens in ordinary Dart preferences or plaintext files.
+5. **Provider auth:** Google/Apple native SDK proof acquisition and platform client configuration are absent; provider buttons remain explicitly blocked.
+6. **SC-09 copy:** the encryption-key-reset warning must be replaced with owner-approved user-facing text before release.
+7. **Acceptance:** all listed tests remain `NOT RUN` until implementation review is complete and CI is executed on one exact final SHA.
+
 ## 1. Contract rules
 
 1. Flutter/Dart owns HTTP and production navigation. Approved HTML/WebView screens are references only; no production WebView receives access/refresh tokens, MLS secrets or arbitrary network access.
