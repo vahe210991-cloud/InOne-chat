@@ -777,6 +777,8 @@ class InOneSession extends ChangeNotifier {
       // Rust now owns refresh-token rotation. Clear the Dart copy immediately
       // after open succeeds, before requesting the access-token snapshot.
       _mlsBridge = target;
+      // Rust has accepted ownership; remove the temporary Dart secure-storage copy.
+      await _deleteRefreshToken();
       _refreshToken = null;
       final snapshot = await target.accessTokenSnapshot();
       if (snapshot.isEmpty) {
