@@ -1619,6 +1619,7 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
             createdBy: row.created_by,
             createdAt: Number(row.created_at),
             isCreator: row.created_by === requester,
+            created: false,
           };
         }
         const { rows: counterRows } = await c.query("SELECT value FROM counters WHERE name = 'event_seq' FOR UPDATE");
