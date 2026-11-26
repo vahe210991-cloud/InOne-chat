@@ -9,7 +9,7 @@ This is an active, unmerged Beta 1.0 implementation branch, not a main/release a
 - Base `main`: `7d34b99fcc026a828b838e211d039c575aeace1d`; branch comparison: 80 ahead, 0 behind. The branch preserves parallel migration-runner/schema test changes; it was forked to avoid further concurrent writes to the original AUTH branch.
 - Implemented in source but not yet accepted: registration email-enumeration protections; atomic registration ticket/account transaction; retry-safe recovery finalization; expiring/device-bound identity challenges; bounded password policy; host-controlled device approval and recovery screen wiring.
 - Verification: **NOT RUN**. No test, build, CI or device result is PASS until executed on one exact final SHA.
-- Blockers: phone verification policy (AUTH-03), email-only recovery policy (AUTH-08), Rust/platform persistent session restoration (AUTH-09), biometric grant for protected signing-key approvals (AUTH-04), and native Google/Apple proof acquisition.
+- Blockers: phone verification policy/SMS UI (AUTH-03); recovery-channel approval (AUTH-08, current backend: email code for unverified-phone accounts, SMS code plus email-link for verified-phone accounts); Rust/platform persistent session restoration (AUTH-09); biometric grant for protected signing-key approvals (AUTH-04); native Google/Apple proof acquisition; SC-09 D8 warning copy.
 - All AUTH task checkboxes remain open. No product source has been merged to main.
 
 ---
