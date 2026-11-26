@@ -12,6 +12,9 @@ void main() {
           'kind': 'group',
           'name': 'Project team',
           'role': 'owner',
+          'lastEventSeq': 57,
+          'lastEventAt': 1795720000000,
+          'unreadCount': 4,
         },
         {
           'roomId': 'channel-1',
@@ -46,6 +49,7 @@ void main() {
     expect(chats[0].id, 'group-1');
     expect(chats[0].name, 'Project team');
     expect(chats[0].kind, InOneChatKind.group);
+    expect(chats[0].unread, 4);
     expect(chats[1].id, 'channel-1');
     expect(chats[1].kind, InOneChatKind.channel);
     expect(chats[2].id, 'direct-1');
