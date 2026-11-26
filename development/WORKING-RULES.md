@@ -157,3 +157,18 @@ This owner instruction is mandatory for every future ChatGPT session and contrib
 5. A test file, proposed command, or workflow that failed before steps is never PASS.
 6. Every substantial task creates a dated report and updates SESSION-LOG, CURRENT-STATE and NEXT-SESSION with exact SHAs, run IDs, outcomes, scope and blockers.
 7. Use PASS / FAIL / BLOCKED / NOT RUN / IN PROGRESS precisely. Historical PASS applies only to its recorded SHA and scope.
+
+
+## 12. Mandatory unified task completion and evidence rule
+
+**Owner instruction — effective 2026-11-26.** Every AI agent, AI developer, automation, reviewer, and human contributor must follow `development/UNIFIED-TASK-COMPLETION-RULES.md`. It applies immediately to AUTH, CHATS, GROUPS, FEED, PROFILE, and every future InOne functional block.
+
+1. The canonical plan in `development/` for each functional block is the single shared task/status/history record. Read it before starting or continuing work; do not maintain a competing private checklist.
+2. No contributor may declare a task, stage, or functional block complete merely because code was written or local checks passed.
+3. A task remains an unchecked, uncrossed item until implementation, required automated tests, applicable checks on the exact SHA, independent review, PR merge, and evidence recording are all complete.
+4. Only then may it be marked `- [x] ~~TASK-ID. Title~~` in the canonical plan. Record PR, merge commit SHA, date, check results/run links, implementer, and independent reviewer directly below it.
+5. Never delete completed tasks or their evidence. If a defect/regression is found, remove the strike-through, reopen the checkbox, record the reason, and preserve the prior completion evidence.
+6. Every session hand-back must identify task IDs, exact SHAs, PRs, tests and outcomes, review/merge state, updated plan paths, and remaining blockers. Unsupported claims of completion are not accepted.
+7. All active agents must use the same current GitHub instructions and plans. Coordinate overlapping paths and use separate task branches; never overwrite another agent's work.
+
+This rule is mandatory and cannot be waived by an individual agent. If evidence is incomplete or contradictory, the task stays open.
