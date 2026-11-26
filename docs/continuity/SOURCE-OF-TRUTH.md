@@ -1,3 +1,17 @@
+# AUTH source-of-truth addendum — 2026-11-26
+
+- Canonical task/status/history file: [AUTH-REGISTRATION-LOGIN-RECOVERY-BETA-1.0-PLAN.md](../../development/AUTH-REGISTRATION-LOGIN-RECOVERY-BETA-1.0-PLAN.md). All tasks remain open.
+- Implementation/audit record: [2026-11-26 AUTH implementation audit](../../development/reports/2026-11-26-auth-beta1-implementation-audit.md).
+- Screen/backend contract: [mobile/API-CONTRACTS-BETA-1.md](../../mobile/API-CONTRACTS-BETA-1.md).
+- Mandatory completion/strike-through rule: [UNIFIED-TASK-COMPLETION-RULES.md](../../development/UNIFIED-TASK-COMPLETION-RULES.md).
+- Active implementation branch: `feat/auth-senior-backend-implementation-2026-11-26`; base `main` SHA `7d34b99fcc026a828b838e211d039c575aeace1d`; 80 commits ahead / 0 behind at the recorded compare.
+- The canonical Beta 1.0 backend changed here is `inone-development-archive-0.6.0/engine`. The separate `inone-engine-poc-0.6.0` tree was not changed by this AUTH implementation.
+- New schema version: `0036-recovery-identity-challenges`; migration adds identity-code expiry, device/challenge binding, lockout and resend timestamps. Fresh and legacy migration coverage was added.
+- No code has been merged to main. Tests, builds, CI and device acceptance are **NOT RUN** on the final implementation SHA.
+- Outstanding gates: AUTH-03 phone verification policy, AUTH-08 email-only recovery policy, AUTH-09 Rust/platform-owned persistent session restoration, biometric grant for protected device approvals, and native provider sign-in.
+
+---
+
 # Latest source-of-truth addendum — 2026-11-26
 
 Fetch the live `main` branch before any further work. The dated header below (2026-11-23) is historical and is superseded for current FEED/PROFILE status by this addendum and [CURRENT-STATE.md](CURRENT-STATE.md).
