@@ -635,6 +635,7 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
         if (roomMemberships.length) {
           return { ok: false, reason: 'mls_removal_required', roomIds: roomMemberships.map((row) => row.room_id) };
         }
+        await client.query('DELETE FROM join_requests WHERE user_id = $2 AND room_id IN (SELECT room_id FROM rooms WHERE org_id = $1)', [orgId, target]);
         await client.query('DELETE FROM org_members WHERE org_id = $1 AND user_id = $2', [orgId, target]);
         testHooks.beforeAdminActionInsert?.({ orgId, actor, action, target });
         await client.query(
@@ -660,6 +661,7 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
           [orgId, userId],
         );
         if (rows.length) return { ok: false, reason: 'mls_removal_required', roomIds: rows.map((row) => row.room_id) };
+        await c.query('DELETE FROM join_requests WHERE user_id = $2 AND room_id IN (SELECT room_id FROM rooms WHERE org_id = $1)', [orgId, userId]);
         await c.query('DELETE FROM org_members WHERE org_id = $1 AND user_id = $2', [orgId, userId]);
         return { ok: true };
       });
