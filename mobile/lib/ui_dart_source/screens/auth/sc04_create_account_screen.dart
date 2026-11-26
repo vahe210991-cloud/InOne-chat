@@ -68,6 +68,7 @@ class _InOneCreateAccountScreenState extends State<InOneCreateAccountScreen>
                 name: 'password',
                 label: 'Գաղտնաբառ',
                 obscure: true,
+                maxLength: 128,
                 autofillHints: const [AutofillHints.newPassword],
                 textInputAction: TextInputAction.next,
               ),
