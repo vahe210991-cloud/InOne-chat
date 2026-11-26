@@ -3297,6 +3297,10 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           ),
           onRegister: () => setState(() => _screen = 'registerEmail'),
           onForgotPassword: () => setState(() => _screen = 'recoveryStart'),
+          onCancelRecovery: () => setState(() {
+            _cancelingAdmission = false;
+            _screen = 'notYou';
+          }),
           onSuccess: _afterLogin,
         );
       case 'loginWaiting':
@@ -3353,10 +3357,6 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           onSubmit: _startRecovery,
           onBack: () => setState(() => _screen = 'login'),
           onEnterCode: () => setState(() => _screen = 'recoveryPassword'),
-          onCancelRecovery: () => setState(() {
-            _cancelingAdmission = false;
-            _screen = 'notYou';
-          }),
         );
       case 'recoveryPassword':
         return InOneNewPasswordScreen(
