@@ -68,7 +68,7 @@ test('existing and unknown emails have the same registration-confirmation respon
         email: 'owner@example.test',
         registrationToken: ticket.registrationToken,
         password: 'correct-horse-battery',
-        nickname: 'owner-account',
+        nickname: 'owneracct',
       }),
     });
     assert.equal(created.status, 200);
@@ -88,6 +88,32 @@ test('existing and unknown emails have the same registration-confirmation respon
     assert.equal(existing.status, 404);
     assert.equal(unknown.status, 404);
     assert.deepEqual(await existing.json(), await unknown.json());
+
+    const [existingSubmit, unknownSubmit] = await Promise.all([
+      fetch(`${base}/register`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          email: 'owner@example.test',
+          registrationToken: 'invalid-ticket',
+          password: 'correct-horse-battery',
+          nickname: 'existingattempt',
+        }),
+      }),
+      fetch(`${base}/register`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          email: 'nobody@example.test',
+          registrationToken: 'invalid-ticket',
+          password: 'correct-horse-battery',
+          nickname: 'unknownattempt',
+        }),
+      }),
+    ]);
+    assert.equal(existingSubmit.status, 403);
+    assert.equal(unknownSubmit.status, 403);
+    assert.deepEqual(await existingSubmit.json(), await unknownSubmit.json());
   } finally {
     await stop();
   }
