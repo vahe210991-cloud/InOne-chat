@@ -2302,77 +2302,101 @@ async mlsPendingRemovalsFor(userId) {
           await client.query('ROLLBACK');
           return { ok: false, reason: 'epoch_outdated', epoch: current };
         }
+        const { rows: roomKindRows } = await client.query(
+          'SELECT kind, org_id FROM rooms WHERE room_id = $1',
+          [roomId],
+        );
+        if (!roomKindRows[0]) {
+          await client.query('ROLLBACK');
+          return { ok: false, reason: 'room_not_found', epoch: current };
+        }
+        const roomKind = roomKindRows[0].kind;
+        let directConversation = null;
+        if (roomKind === 'direct' && (changes.removes?.length ?? 0) > 0) {
+          await client.query('ROLLBACK');
+          return { ok: false, reason: 'direct_membership_fixed', epoch: current };
+        }
         if ((changes.adds ?? []).length > 0) {
-          // Lock order is intentional: active organization links are locked before
-          // room/member rows. revokeOrgLink takes FOR UPDATE on the same link before
-          // inspecting room_members. Acquiring the link here first prevents the
-          // add-commit/revoke deadlock and gives the race one clear linearization point.
-          const { rows: roomOrgRows } = await client.query(
-            'SELECT org_id FROM rooms WHERE room_id = $1',
-            [roomId],
-          );
-          if (!roomOrgRows[0]) {
-            await client.query('ROLLBACK');
-            return { ok: false, reason: 'room_not_found', epoch: current };
-          }
-          const roomOrgId = roomOrgRows[0].org_id;
-          const { rows: roomStatusRows } = await client.query(
-            'SELECT status FROM organizations WHERE org_id = $1 FOR SHARE',
-            [roomOrgId],
-          );
-          if (!roomStatusRows[0] || roomStatusRows[0].status !== 'approved') {
-            await client.query('ROLLBACK');
-            return { ok: false, reason: 'org_not_approved', epoch: current };
-          }
-
-          for (const targetUserId of [...changes.adds].sort()) {
-            const { rows: directMembership } = await client.query(
-              'SELECT 1 FROM org_members WHERE org_id = $1 AND user_id = $2 FOR SHARE',
-              [roomOrgId, targetUserId],
+          if (roomKind === 'direct') {
+            const { rows: conversations } = await client.query(
+              'SELECT user_a, user_b, created_by, status FROM direct_conversations WHERE room_id = $1 FOR UPDATE',
+              [roomId],
             );
-            if (directMembership.length) continue;
-
-            // Discover candidate organizations without taking row locks, then acquire
-            // the active link lock first. The membership/org rows are locked only after
-            // the link, matching revokeOrgLink's lock order.
-            const { rows: candidates } = await client.query(
-              `SELECT member.org_id
-                 FROM org_members member
-                 JOIN organizations member_org ON member_org.org_id = member.org_id
-                WHERE member.user_id = $1
-                  AND member.org_id <> $2
-                  AND member_org.status = 'approved'
-                ORDER BY member.org_id`,
-              [targetUserId, roomOrgId],
+            directConversation = conversations[0] ?? null;
+            const counterpart = directConversation?.user_a === senderId
+              ? directConversation.user_b
+              : directConversation?.user_b === senderId ? directConversation.user_a : null;
+            if (!directConversation || directConversation.status !== 'pending'
+              || directConversation.created_by !== senderId
+              || changes.adds.length !== 1 || changes.adds[0] !== counterpart
+              || !keyPackageClaimId || joinRequestUserId) {
+              await client.query('ROLLBACK');
+              return { ok: false, reason: 'direct_add_not_authorized', epoch: current };
+            }
+          } else {
+            // Lock order is intentional: active organization links are locked before
+            // room/member rows. revokeOrgLink takes FOR UPDATE on the same link before
+            // inspecting room_members. Acquiring the link here first prevents the
+            // add-commit/revoke deadlock and gives the race one clear linearization point.
+            const roomOrgId = roomKindRows[0].org_id;
+            const { rows: roomStatusRows } = await client.query(
+              'SELECT status FROM organizations WHERE org_id = $1 FOR SHARE',
+              [roomOrgId],
             );
-            let authorized = false;
-            for (const candidate of candidates) {
-              const orgA = candidate.org_id < roomOrgId ? candidate.org_id : roomOrgId;
-              const orgB = candidate.org_id < roomOrgId ? roomOrgId : candidate.org_id;
-              const { rows: links } = await client.query(
-                `SELECT link_id FROM org_links
-                  WHERE org_a = $1 AND org_b = $2 AND status = 'active'
-                  FOR SHARE`,
-                [orgA, orgB],
+            if (!roomStatusRows[0] || roomStatusRows[0].status !== 'approved') {
+              await client.query('ROLLBACK');
+              return { ok: false, reason: 'org_not_approved', epoch: current };
+            }
+
+            for (const targetUserId of [...changes.adds].sort()) {
+              const { rows: directMembership } = await client.query(
+                'SELECT 1 FROM org_members WHERE org_id = $1 AND user_id = $2 FOR SHARE',
+                [roomOrgId, targetUserId],
               );
-              if (!links.length) continue;
-              const { rows: memberRows } = await client.query(
-                `SELECT 1
+              if (directMembership.length) continue;
+
+              // Discover candidate organizations without taking row locks, then acquire
+              // the active link lock first. The membership/org rows are locked only after
+              // the link, matching revokeOrgLink's lock order.
+              const { rows: candidates } = await client.query(
+                `SELECT member.org_id
                    FROM org_members member
                    JOIN organizations member_org ON member_org.org_id = member.org_id
-                  WHERE member.org_id = $1 AND member.user_id = $2
+                  WHERE member.user_id = $1
+                    AND member.org_id <> $2
                     AND member_org.status = 'approved'
-                  FOR SHARE OF member, member_org`,
-                [candidate.org_id, targetUserId],
+                  ORDER BY member.org_id`,
+                [targetUserId, roomOrgId],
               );
-              if (memberRows.length) {
-                authorized = true;
-                break;
+              let authorized = false;
+              for (const candidate of candidates) {
+                const orgA = candidate.org_id < roomOrgId ? candidate.org_id : roomOrgId;
+                const orgB = candidate.org_id < roomOrgId ? roomOrgId : candidate.org_id;
+                const { rows: links } = await client.query(
+                  `SELECT link_id FROM org_links
+                    WHERE org_a = $1 AND org_b = $2 AND status = 'active'
+                    FOR SHARE`,
+                  [orgA, orgB],
+                );
+                if (!links.length) continue;
+                const { rows: memberRows } = await client.query(
+                  `SELECT 1
+                     FROM org_members member
+                     JOIN organizations member_org ON member_org.org_id = member.org_id
+                    WHERE member.org_id = $1 AND member.user_id = $2
+                      AND member_org.status = 'approved'
+                    FOR SHARE OF member, member_org`,
+                  [candidate.org_id, targetUserId],
+                );
+                if (memberRows.length) {
+                  authorized = true;
+                  break;
+                }
               }
-            }
-            if (!authorized) {
-              await client.query('ROLLBACK');
-              return { ok: false, reason: 'org_not_member', epoch: current };
+              if (!authorized) {
+                await client.query('ROLLBACK');
+                return { ok: false, reason: 'org_not_member', epoch: current };
+              }
             }
           }
         }
@@ -2459,6 +2483,16 @@ async mlsPendingRemovalsFor(userId) {
           if (ins.rowCount === 0) {
             await client.query('ROLLBACK');
             return { ok: false, reason: 'already-member', epoch: current };
+          }
+        }
+        if (directConversation) {
+          const activated = await client.query(
+            "UPDATE direct_conversations SET status = 'active' WHERE room_id = $1 AND status = 'pending'",
+            [roomId],
+          );
+          if (activated.rowCount !== 1) {
+            await client.query('ROLLBACK');
+            return { ok: false, reason: 'direct_state_changed', epoch: current };
           }
         }
         const next = current + 1;
