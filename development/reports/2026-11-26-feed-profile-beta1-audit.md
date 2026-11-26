@@ -4,7 +4,8 @@
 **Repository:** `vahe210991-cloud/InOne-chat`  
 **Source snapshot:** `main` at `216c6d9ea4e825182d3fc94b7aa6d9841e0ad250`  
 **Revalidated main:** `920e2a2ecef244c925061348eb68c8b09fe63922`  
-**Plan publication commit:** `8260beb7070d959dce17ee423e2768dbea4399c9`  
+**Plan initial publication commit:** `8260beb7070d959dce17ee423e2768dbea4399c9`  
+**Plan follow-up documentation commit:** `9166a82448d2e06847e7212982aeecaf0acb9f19`  
 **Plan:** [FEED-PROFILE-BETA-1.0-IMPLEMENTATION-PLAN.md](../FEED-PROFILE-BETA-1.0-IMPLEMENTATION-PLAN.md)  
 **Status:** SOURCE REVIEW COMPLETE / RUNTIME AND RELEASE ACCEPTANCE NOT RUN
 
@@ -70,7 +71,8 @@ No implementation was repeated and no old HTML/WebView screen was restored.
 ## 7. Publication and hand-back
 
 - Plan path: `development/FEED-PROFILE-BETA-1.0-IMPLEMENTATION-PLAN.md`.
-- Plan publication commit: `8260beb7070d959dce17ee423e2768dbea4399c9`.
-- Plan blob SHA: `7365dfa59e6feec057c232cd9c7454b84e11deba`.
+- Plan initial publication commit: `8260beb7070d959dce17ee423e2768dbea4399c9`.
+- Plan follow-up documentation commit: `9166a82448d2e06847e7212982aeecaf0acb9f19`.
+- Current plan blob SHA: `08b1f984a3ded0543d5c20670c9b4e1d5d6e07ab`.
 - Draft PR #167 was closed as superseded after the direct documentation-only publication; its task branch was retained.
 - No test/build/CI PASS is claimed for this audit. No WBS percentage was changed.
