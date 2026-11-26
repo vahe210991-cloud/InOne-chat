@@ -179,7 +179,7 @@ jobs:
             fi
             if [[ "$attempt" -lt 3 ]]; then
               echo "Android build failed; refreshing Gradle dependency metadata before retry."
-              find "$HOME/.gradle/caches" -type f -name '*.lock' -delete 2>/dev/null || true
+              rm -rf "$HOME/.gradle/caches/modules-2/metadata-"* 2>/dev/null || true
               sleep $((attempt * 10))
             fi
           done
