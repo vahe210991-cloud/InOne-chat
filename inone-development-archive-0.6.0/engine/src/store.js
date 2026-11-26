@@ -799,7 +799,7 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
                    AND EXISTS (SELECT 1 FROM org_members om WHERE om.org_id = $1 AND om.user_id = rm.user_id)
                    AND NOT EXISTS (SELECT 1 FROM org_members own WHERE own.org_id = $2 AND own.user_id = rm.user_id))
             ORDER BY r.room_id, rm.user_id
-            FOR UPDATE OF rm, r`,
+            FOR UPDATE OF rm`,
           [orgA, orgB],
         );
         if (memberships.length) {
