@@ -1136,21 +1136,30 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         const phoneV = hasPhoneV ? normalizePhone(body.phone, { blockedCountries: phoneBlockedCountries, allowedCountries: phoneAllowedCountries }) : null;
         if (phoneV?.error) return send(res, 400, { error: phoneV.error });
         if (phoneV && (await storage.phoneOwner(phoneV.value.e164))) return send(res, 409, { error: 'phone already used by another account' });
-// Токен одноразовый: гасится до создания аккаунта, чтобы им нельзя было воспользоваться дважды.
-        const used = await storage.emailCodeUpdate(email, (e) => {
-          const out = useEmailToken(e, { nowMs: now(), tokenOk: !!e.tokenHash && sameHex(emailTokenHash(email, token), e.tokenHash) });
-          return { next: out.next, result: { outcome: out.outcome, locale: e.locale ?? 'hy' } };
-        });
-        if (used.outcome === 'expired') return send(res, 410, { error: 'registration token expired' });
-        if (used.outcome !== 'ok') return send(res, 403, { error: 'registration token invalid' });
+        // Ticket consumption and account creation share one storage transaction.
         const userId = newUserId();
-        const created = await storage.createVerifiedAccount({
-          userId, passwordHash: hashPassword(body.password), email, nickname: body.nickname, nowMs: now(), joinDefaultOrg: defaultOrgAutoJoin, locale: used.locale,
+        const created = await storage.createVerifiedAccountWithEmailToken({
+          email,
+          changeEmailCode: (e) => {
+            const out = useEmailToken(e, {
+              nowMs: now(),
+              tokenOk: !!e.tokenHash && sameHex(emailTokenHash(email, token), e.tokenHash),
+            });
+            return { next: out.next, result: { outcome: out.outcome, locale: e.locale ?? 'hy' } };
+          },
+          userId,
+          passwordHash: hashPassword(body.password),
+          nickname: body.nickname,
+          nowMs: now(),
+          joinDefaultOrg: defaultOrgAutoJoin,
         });
-        if (created !== 'ok') {
-          const error = created === 'nickname' ? 'nickname taken' : created === 'email' ? 'email already registered' : 'account exists';
+        if (created.outcome === 'expired') return send(res, 410, { error: 'registration token expired' });
+        if (created.outcome !== 'ok') return send(res, 403, { error: 'registration token invalid' });
+        if (created.created !== 'ok') {
+          const error = created.created === 'nickname' ? 'nickname taken' : created.created === 'email' ? 'email already registered' : 'account exists';
           return send(res, 409, { error });
         }
+        const locale = created.locale ?? 'hy';
         if (phoneV) {
       const e164 = phoneV.value.e164;
       try {
