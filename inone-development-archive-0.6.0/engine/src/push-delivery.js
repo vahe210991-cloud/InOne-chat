@@ -1,4 +1,4 @@
-import { randomBytes, randomInt } from 'node:crypto';
+import { createHmac, randomBytes, randomInt } from 'node:crypto';
 import {
   decryptPushFid, decryptPushPayload, encryptPushFid, encryptPushPayload, encryptPushRegistrationId, parsePushEncryptionKey, pushIdempotencyHash,
 } from './push-crypto.js';
@@ -36,6 +36,13 @@ export function createPushDelivery({
 
   function encryptRegistrationId(fid, deviceKey) {
     return encryptPushFid(fid, deviceKey, masterKey);
+  }
+
+  function registrationGeneration(tokenCiphertext) {
+    return createHmac('sha256', masterKey)
+      .update('inone-push-registration-generation|')
+      .update(tokenCiphertext)
+      .digest('hex');
   }
 
   async function backfillLegacyRegistrations() {
@@ -76,7 +83,7 @@ export function createPushDelivery({
     if (stopping) throw new Error('push delivery is stopping');
     if (!client || typeof client.query !== 'function') throw new Error('push outbox requires the event transaction client');
     const { rows } = await client.query(
-      `SELECT p.device_key
+      `SELECT p.device_key, p.token_ciphertext
        FROM push_tokens p
        JOIN devices d ON d.device_key = p.device_key
        JOIN room_members m ON m.user_id = d.user_id
@@ -92,10 +99,10 @@ export function createPushDelivery({
       const encrypted = encryptPushPayload({ type: 'message', event_id: eventId, path }, idempotencyKey, masterKey);
       const result = await client.query(
         `INSERT INTO push_deliveries
-           (idempotency_key, device_key, payload_ciphertext, payload_iv, payload_tag, expires_at)
-         VALUES ($1, $2, $3, $4, $5, now() + ($6::double precision * interval '1 millisecond'))
+           (idempotency_key, device_key, payload_ciphertext, payload_iv, payload_tag, expires_at, registration_generation)
+         VALUES ($1, $2, $3, $4, $5, now() + ($6::double precision * interval '1 millisecond'), $7)
          ON CONFLICT (idempotency_key) DO NOTHING`,
-        [idempotencyKey, target.device_key, encrypted.payloadCiphertext, encrypted.payloadIv, encrypted.payloadTag, DELIVERY_TTL_MS],
+        [idempotencyKey, target.device_key, encrypted.payloadCiphertext, encrypted.payloadIv, encrypted.payloadTag, DELIVERY_TTL_MS, registrationGeneration(target.token_ciphertext)],
       );
       queued += result.rowCount;
     }
@@ -121,7 +128,7 @@ export function createPushDelivery({
              locked_at = now(), locked_by = $3, updated_at = now()
          FROM candidates
          WHERE p.id = candidates.id
-         RETURNING p.id, p.idempotency_key, p.device_key, p.payload_ciphertext, p.payload_iv, p.payload_tag, p.attempts, p.expires_at`,
+         RETURNING p.id, p.idempotency_key, p.device_key, p.payload_ciphertext, p.payload_iv, p.payload_tag, p.registration_generation, p.attempts, p.expires_at`,
         [batchSize, leaseMs, workerId, SEND_GUARD_MS],
       );
       await client.query('COMMIT');
@@ -182,6 +189,34 @@ export function createPushDelivery({
     return rows[0] ?? null;
   }
 
+  async function invalidateRegistration(row, registration) {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const deleted = await client.query(
+        'DELETE FROM push_tokens WHERE device_key = $1 AND provider = \'fcm\' AND identifier_kind = \'fid\' AND token_ciphertext = $2 RETURNING device_key',
+        [row.device_key, registration.token_ciphertext],
+      );
+      if (deleted.rowCount === 1) {
+        await client.query(
+          `UPDATE push_deliveries
+           SET status = 'cancelled', locked_at = NULL, locked_by = NULL,
+               last_error_code = 'invalid_target', updated_at = now()
+           WHERE device_key = $1 AND registration_generation = $2
+             AND status IN ('queued', 'failed')`,
+          [row.device_key, registrationGeneration(registration.token_ciphertext)],
+        );
+      }
+      await client.query('COMMIT');
+      return deleted.rowCount === 1;
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   async function processRow(row) {
     if (!(await renewClaim(row))) {
       logger?.warn('push delivery lease lost before send', { deliveryId: row.id });
@@ -204,6 +239,11 @@ export function createPushDelivery({
     const registration = await currentRegistration(row.device_key);
     if (!registration) {
       await finish(row, 'cancelled', { errorCode: 'registration_missing' });
+      return;
+    }
+    const currentGeneration = registrationGeneration(registration.token_ciphertext);
+    if (row.registration_generation && row.registration_generation.trim() !== currentGeneration) {
+      await finish(row, 'cancelled', { errorCode: 'registration_rotated' });
       return;
     }
 
@@ -235,18 +275,10 @@ export function createPushDelivery({
       if (leaseLost) return;
       const code = typeof error?.code === 'string' && /^[a-z0-9_]{1,48}$/.test(error.code) ? error.code : 'provider_unknown';
       if (code === 'invalid_target') {
-        await pool.query(
-          'DELETE FROM push_tokens WHERE device_key = $1 AND token_ciphertext = $2',
-          [row.device_key, registration.token_ciphertext],
-        );
-        await pool.query(
-          `UPDATE push_deliveries SET status = 'cancelled', locked_at = NULL, locked_by = NULL,
-           last_error_code = 'invalid_target', updated_at = now()
-           WHERE device_key = $1 AND status IN ('queued', 'failed')`,
-          [row.device_key],
-        );
-        await finish(row, 'cancelled', { errorCode: 'invalid_target' });
-        logger?.warn('invalid FCM installation removed', { deliveryId: row.id });
+        const removed = await invalidateRegistration(row, registration);
+        await finish(row, 'cancelled', { errorCode: removed ? 'invalid_target' : 'registration_rotated' });
+        if (removed) logger?.warn('invalid FCM installation removed', { deliveryId: row.id });
+        else logger?.info('stale FCM failure ignored after registration rotation', { deliveryId: row.id });
       } else if (code === 'provider_configuration') {
         // Keep the outbox recoverable while an operator repairs ADC/service-account configuration.
         await finish(row, 'failed', { errorCode: code, delayMs: MAX_RETRY_MS });

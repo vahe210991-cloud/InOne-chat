@@ -155,3 +155,103 @@ test('PostgreSQL push outbox is atomic, encrypted, idempotent, retryable and lea
     await db.close();
   }
 });
+
+
+test('late invalid-target from old FCM registration cannot cancel a new registration or its deliveries', async () => {
+  const db = await testDatabase();
+  const encryptionKey = randomBytes(32);
+  const NEW_FID = 'ZyXwVu9876543210_-ZyXw';
+  let releaseSend;
+  let signalSendStarted;
+  const sendGate = new Promise((resolve) => { releaseSend = resolve; });
+  const sendStarted = new Promise((resolve) => { signalSendStarted = resolve; });
+  let mode = 'blocked_invalid';
+  const sent = [];
+  const sender = {
+    async send(message) {
+      sent.push(message);
+      if (mode === 'blocked_invalid') {
+        signalSendStarted();
+        await sendGate;
+        throw new FcmPushError('invalid_target', false);
+      }
+      return { messageId: `projects/test/messages/${sent.length}` };
+    },
+  };
+  const worker = createPushDelivery({ pool: db.pool, sender, encryptionKey, batchSize: 10 });
+  await worker.backfillLegacyRegistrations();
+  const store = createStore({ pool: db.pool, pinPepper: PEPPER });
+  const app = createServer({
+    defaultOrgAutoJoin: true, registrationMode: 'open', requirePhone: false,
+    pinPepper: PEPPER, store, pushDelivery: worker,
+  });
+  await new Promise((resolve) => app.server.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${app.server.address().port}`;
+  try {
+    const alice = await ChatClient.create(base, `${ALICE}-race`, 'A_RACE', PW);
+    const bob = await ChatClient.create(base, `${BOB}-race`, 'B_RACE', PW);
+    const deviceKey = `${BOB}-race|B_RACE`;
+    assert.equal((await put(base, bob, { provider: 'fcm', token: FID })).status, 200);
+    const oldRegistration = (await db.pool.query(
+      'SELECT token_ciphertext FROM push_tokens WHERE device_key = $1', [deviceKey],
+    )).rows[0];
+
+    const room = '!push-generation-race:inone.test';
+    await alice.createRoom(room, [alice.userId, bob.userId]);
+    await alice.raw('POST', `/mls/groups/${enc(room)}/commits`, {
+      epoch: 0, commit: b64('GENERATION-RACE'), changes: { adds: [], removes: [] },
+    });
+    const first = await alice.raw('POST', `/mls/groups/${enc(room)}/messages`, {
+      message: mlsMessageAt(room, 1, 'old registration event'),
+      kind: 'text', forwarded: false,
+    });
+
+    const inFlight = worker.tick();
+    await sendStarted;
+    assert.equal((await put(base, bob, { provider: 'fcm', token: NEW_FID })).status, 200);
+    const newRegistration = (await db.pool.query(
+      'SELECT token_ciphertext FROM push_tokens WHERE device_key = $1', [deviceKey],
+    )).rows[0];
+    assert.notEqual(newRegistration.token_ciphertext.toString('hex'), oldRegistration.token_ciphertext.toString('hex'));
+
+    const second = await alice.raw('POST', `/mls/groups/${enc(room)}/messages`, {
+      message: mlsMessageAt(room, 1, 'new registration event'),
+      kind: 'text', forwarded: false,
+    });
+    const beforeRelease = (await db.pool.query(
+      'SELECT id, status, registration_generation FROM push_deliveries ORDER BY id',
+    )).rows;
+    assert.equal(beforeRelease.length, 2);
+    assert.notEqual(beforeRelease[0].registration_generation, beforeRelease[1].registration_generation);
+
+    releaseSend();
+    await inFlight;
+    const current = (await db.pool.query(
+      'SELECT token_ciphertext FROM push_tokens WHERE device_key = $1', [deviceKey],
+    )).rows[0];
+    assert.equal(current.token_ciphertext.toString('hex'), newRegistration.token_ciphertext.toString('hex'),
+      'late invalid-target did not delete the replacement registration');
+    const afterInvalid = (await db.pool.query(
+      'SELECT id, status, last_error_code FROM push_deliveries ORDER BY id',
+    )).rows;
+    assert.equal(afterInvalid[0].status, 'cancelled');
+    assert.equal(afterInvalid[0].last_error_code, 'registration_rotated');
+    assert.equal(afterInvalid[1].status, 'queued', 'delivery created for the new generation remains queued');
+
+    mode = 'success';
+    await worker.tick();
+    assert.equal(sent.length, 2);
+    assert.equal(sent[1].fid, NEW_FID);
+    assert.equal(sent[1].payload.event_id, second.event_id);
+    const accepted = (await db.pool.query(
+      'SELECT status FROM push_deliveries WHERE id = $1', [afterInvalid[1].id],
+    )).rows[0];
+    assert.equal(accepted.status, 'provider_accepted');
+    assert.equal(sent[0].payload.event_id, first.event_id);
+  } finally {
+    releaseSend();
+    await new Promise((resolve) => app.server.close(resolve));
+    await worker.stop().catch(() => {});
+    await db.close();
+  }
+});

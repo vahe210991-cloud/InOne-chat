@@ -271,7 +271,25 @@ export function createMemoryStore({ pinPepper }) {
       for (const [k, t] of authTokens) if (t.expiresAt < nowMs) { authTokens.delete(k); authRemoved += 1; }
       let cancelRemoved = 0;
       for (const [u, c] of recoveryCancels) if (c.expiresAt <= nowMs) { recoveryCancels.delete(u); cancelRemoved += 1; }
-      return { inbox: inboxRemoved, tokens: tokensRemoved, refreshTokens: refreshRemoved, authTokens: authRemoved, recoveryCancelCodes: cancelRemoved };
+      let rateLimitsRemoved = 0;
+      for (const [key, value] of rates) {
+        if (value.windowStart <= nowMs - 24 * 60 * 60_000) {
+          rates.delete(key);
+          rateLimitsRemoved += 1;
+        }
+      }
+      let loginThrottleRemoved = 0;
+      for (const [key, value] of throttle) {
+        if (value.windowStart <= nowMs - 15 * 60_000 && value.blockedUntil <= nowMs) {
+          throttle.delete(key);
+          loginThrottleRemoved += 1;
+        }
+      }
+      return {
+        inbox: inboxRemoved, tokens: tokensRemoved, refreshTokens: refreshRemoved,
+        authTokens: authRemoved, recoveryCancelCodes: cancelRemoved,
+        rateLimits: rateLimitsRemoved, loginThrottle: loginThrottleRemoved,
+      };
     },
     clearExpiredCodes(nowMs) {
       let phoneCodes = 0;
@@ -381,6 +399,54 @@ export function createMemoryStore({ pinPepper }) {
       const m = orgMembers.get(orgId)?.get(userId);
       if (m) m.role = role;
     },
+    addOrgMemberAtomic({ orgId, actor, target, role, at }) {
+      const org = organizations.get(orgId);
+      if (!org) return { ok: false, reason: 'not_found' };
+      if (org.status !== 'approved') return { ok: false, reason: 'org_not_approved' };
+      const actorRole = orgMembers.get(orgId)?.get(actor)?.role;
+      if (actorRole !== 'owner' && actorRole !== 'admin') return { ok: false, reason: 'forbidden' };
+      if (actorRole === 'admin' && role !== 'member') return { ok: false, reason: 'forbidden' };
+      if (!accounts.has(target)) return { ok: false, reason: 'unknown_user' };
+      if (!addOrgMembership(orgId, target, role, at)) return { ok: false, reason: 'already_member' };
+      adminActions.push({ orgId, actor, action: 'member_add', target, detail: role, at });
+      return { ok: true };
+    },
+    changeOrgMemberRoleAtomic({ orgId, actor, target, role, at }) {
+      const members = orgMembers.get(orgId);
+      if (!organizations.has(orgId)) return { ok: false, reason: 'not_found' };
+      const actorRole = members?.get(actor)?.role;
+      const current = members?.get(target)?.role;
+      if (actorRole !== 'owner') return { ok: false, reason: 'forbidden' };
+      if (!current) return { ok: false, reason: 'not_found' };
+      if (current === 'owner' && role !== 'owner' && [...members.values()].filter((m) => m.role === 'owner').length <= 1) {
+        return { ok: false, reason: 'last_owner' };
+      }
+      members.get(target).role = role;
+      adminActions.push({ orgId, actor, action: 'role_change', target, detail: current + '->' + role, at });
+      return { ok: true, current };
+    },
+    removeOrgMemberAtomic({ orgId, actor, target, action, at }) {
+      const members = orgMembers.get(orgId);
+      if (!organizations.has(orgId)) return { ok: false, reason: 'not_found' };
+      const actorRole = members?.get(actor)?.role;
+      const targetRole = members?.get(target)?.role;
+      if (!targetRole) return { ok: false, reason: 'not_found' };
+      if (action === 'member_leave') {
+        if (actor !== target || !actorRole) return { ok: false, reason: 'not_found' };
+      } else if (actorRole !== 'owner' && !(actorRole === 'admin' && targetRole === 'member')) {
+        return { ok: false, reason: 'forbidden' };
+      }
+      if (targetRole === 'owner' && [...members.values()].filter((m) => m.role === 'owner').length <= 1) {
+        return { ok: false, reason: 'last_owner' };
+      }
+      if ([...rooms.values()].some((room) => room.orgId === orgId && room.owner === target)) {
+        return { ok: false, reason: 'owns_rooms' };
+      }
+      for (const room of rooms.values()) if (room.orgId === orgId) { room.members.delete(target); room.admins.delete(target); }
+      members.delete(target);
+      adminActions.push({ orgId, actor, action, target, detail: targetRole, at });
+      return { ok: true, role: targetRole };
+    },
     countOrgOwners(orgId) {
       let n = 0;
       for (const m of (orgMembers.get(orgId) ?? new Map()).values()) if (m.role === 'owner') n += 1;
@@ -416,6 +482,20 @@ export function createMemoryStore({ pinPepper }) {
       cur[field] = value;
       orgSettingsMap.set(orgId, cur);
       orgSettingsLog.push({ orgId, actor, field, old, new: value, at });
+    },
+    setOrgSettingAtomic({ orgId, field, value, actor, at }) {
+      const org = organizations.get(orgId);
+      if (!org) return { ok: false, reason: 'not_found' };
+      if (org.status !== 'approved') return { ok: false, reason: 'org_not_approved' };
+      const role = orgMembers.get(orgId)?.get(actor)?.role;
+      if (role !== 'owner' && role !== 'admin') return { ok: false, reason: 'forbidden' };
+      const cur = { maxGroupMembers: null, channelsEnabled: true, fileQuotaBytes: null, ...(orgSettingsMap.get(orgId) ?? {}) };
+      const old = cur[field];
+      cur[field] = value;
+      orgSettingsMap.set(orgId, cur);
+      orgSettingsLog.push({ orgId, actor, field, old, new: value, at });
+      adminActions.push({ orgId, actor, action: 'setting_change', target: field, detail: JSON.stringify(value), at });
+      return { ok: true };
     },
     listOrgSettingsLog(orgId) {
       return orgSettingsLog.filter((e) => e.orgId === orgId).map((e) => ({ actor: e.actor, field: e.field, old: e.old, new: e.new, at: e.at }));
@@ -879,11 +959,12 @@ export function createMemoryStore({ pinPepper }) {
     },
     transferRoomOwner(roomId, newOwner) {
       const r = rooms.get(roomId);
-      if (!r) return;
+      if (!r || !r.members.has(newOwner)) return false;
       const previous = r.owner;
       r.owner = newOwner;
       r.admins.delete(newOwner);
       r.admins.delete(previous);
+      return true;
     },
     channelNameTaken(name, exceptRoomId) {
       const key = channelNameKey(name);

@@ -44,6 +44,129 @@ test('истёкшие токены и очередь удаляются; дей
   }
 });
 
+
+
+test('PostgreSQL cleanup prunes only stale rate-limit and login-throttle rows in bounded batches', async (t) => {
+  const db = await storeForTest(PEPPER);
+  if (!db?.pool || !db?.store) {
+    t.skip('PostgreSQL test database is not configured');
+    return;
+  }
+  const suffix = randomBytes(8).toString('hex');
+  const now = Date.now();
+  const staleRate = `stage4-rate-stale-${suffix}`;
+  const activeRate = `stage4-rate-active-${suffix}`;
+  const staleLogin = `stage4-login-stale-${suffix}`;
+  const activeLogin = `stage4-login-active-${suffix}`;
+  try {
+    await db.pool.query('INSERT INTO rate_limits (key, window_start, hits) VALUES ($1, $2, 1), ($3, $4, 1)',
+      [staleRate, now - 25 * HOUR, activeRate, now - HOUR]);
+    await db.pool.query('INSERT INTO login_throttle (key, failed, window_start, blocked_until) VALUES ($1, 3, $2, $3), ($4, 3, $5, $6)',
+      [staleLogin, now - 20 * MIN, now - 1, activeLogin, now - MIN, now + 10 * MIN]);
+
+    const result = await db.store.purgeExpired(now);
+    assert.equal(result.rateLimits, 1);
+    assert.equal(result.loginThrottle, 1);
+    const remaining = await db.pool.query(
+      'SELECT key FROM rate_limits WHERE key = ANY($1::text[]) UNION ALL SELECT key FROM login_throttle WHERE key = ANY($1::text[])',
+      [[staleRate, activeRate, staleLogin, activeLogin]],
+    );
+    const keys = new Set(remaining.rows.map((row) => row.key));
+    assert.equal(keys.has(staleRate), false);
+    assert.equal(keys.has(staleLogin), false);
+    assert.equal(keys.has(activeRate), true);
+    assert.equal(keys.has(activeLogin), true);
+    const repeated = await db.store.purgeExpired(now);
+    assert.equal(repeated.rateLimits, 0);
+    assert.equal(repeated.loginThrottle, 0);
+  } finally {
+    await db.pool.query('DELETE FROM rate_limits WHERE key = ANY($1::text[])', [[staleRate, activeRate]]);
+    await db.pool.query('DELETE FROM login_throttle WHERE key = ANY($1::text[])', [[staleLogin, activeLogin]]);
+    await db.close();
+  }
+});
+
+test('PostgreSQL cleanup enforces the 500-row cap independently for each security-state table', async (t) => {
+  const db = await storeForTest(PEPPER);
+  if (!db?.pool || !db?.store) {
+    t.skip('PostgreSQL test database is not configured');
+    return;
+  }
+  const suffix = randomBytes(8).toString('hex');
+  const now = Date.now();
+  const ratePrefix = `stage4-rate-batch-${suffix}-`;
+  const loginPrefix = `stage4-login-batch-${suffix}-`;
+  try {
+    await db.pool.query(
+      'INSERT INTO rate_limits (key, window_start, hits) SELECT $1 || n::text, $2, 1 FROM generate_series(1, 501) AS n',
+      [ratePrefix, now - 25 * HOUR],
+    );
+    const firstRateSweep = await db.store.purgeExpired(now);
+    assert.equal(firstRateSweep.rateLimits, 500, 'one sweep removes at most 500 rate-limit rows');
+    let remaining = await db.pool.query('SELECT count(*)::int AS n FROM rate_limits WHERE key LIKE $1', [`${ratePrefix}%`]);
+    assert.equal(remaining.rows[0].n, 1, 'the 501st rate-limit row remains for the next sweep');
+    const secondRateSweep = await db.store.purgeExpired(now);
+    assert.equal(secondRateSweep.rateLimits, 1);
+    remaining = await db.pool.query('SELECT count(*)::int AS n FROM rate_limits WHERE key LIKE $1', [`${ratePrefix}%`]);
+    assert.equal(remaining.rows[0].n, 0);
+
+    await db.pool.query(
+      'INSERT INTO login_throttle (key, failed, window_start, blocked_until) SELECT $1 || n::text, 3, $2, $3 FROM generate_series(1, 501) AS n',
+      [loginPrefix, now - 20 * MIN, now - 1],
+    );
+    const firstLoginSweep = await db.store.purgeExpired(now);
+    assert.equal(firstLoginSweep.loginThrottle, 500, 'one sweep removes at most 500 login-throttle rows');
+    remaining = await db.pool.query('SELECT count(*)::int AS n FROM login_throttle WHERE key LIKE $1', [`${loginPrefix}%`]);
+    assert.equal(remaining.rows[0].n, 1, 'the 501st login-throttle row remains for the next sweep');
+    const secondLoginSweep = await db.store.purgeExpired(now);
+    assert.equal(secondLoginSweep.loginThrottle, 1);
+    remaining = await db.pool.query('SELECT count(*)::int AS n FROM login_throttle WHERE key LIKE $1', [`${loginPrefix}%`]);
+    assert.equal(remaining.rows[0].n, 0);
+  } finally {
+    await db.pool.query('DELETE FROM rate_limits WHERE key LIKE $1', [`${ratePrefix}%`]);
+    await db.pool.query('DELETE FROM login_throttle WHERE key LIKE $1', [`${loginPrefix}%`]);
+    await db.close();
+  }
+});
+
+test('устаревшие rate-limit и login-throttle счётчики очищаются, активные окна и блокировки сохраняются', () => {
+  const store = createMemoryStore({ pinPepper: PEPPER });
+  const DAY = 24 * 60 * 60_000;
+  const start = 1;
+  const now = DAY + 1;
+
+  store.rateHit('rate:stale', start, DAY, 10);
+  store.rateHit('rate:active', now - 60 * 60_000, DAY, 10);
+
+  const policy = {
+    freeFailures: 0, baseDelayMs: 15 * 60_000, maxDelayMs: 15 * 60_000,
+    sourceLimit: 30, sourceWindowMs: 10 * 60_000, sourceBlockMs: 10 * 60_000,
+    notifyAfter: 5, notifyWindowMs: 15 * 60_000,
+  };
+  store.throttledLogin({
+    pairKey: 'pair:stale', sourceKey: 'source:stale', loginKey: 'login:stale',
+    now: start, verify: () => false, policy, notify: false,
+  });
+  store.throttledLogin({
+    pairKey: 'pair:active', sourceKey: 'source:active', loginKey: 'login:active',
+    now: now - 60_000, verify: () => false, policy, notify: false,
+  });
+
+  const removed = store.purgeExpired(now);
+  assert.equal(removed.rateLimits, 1, 'устаревшее rate-limit окно удалено');
+  assert.equal(removed.loginThrottle, 3, 'устаревшие pair/source/login записи удалены');
+  assert.deepEqual(store.rateHit('rate:active', now, DAY, 10), {
+    allowed: true, retryAt: now - 60 * 60_000 + DAY,
+  }, 'активное rate-limit окно продолжает действовать');
+  assert.equal(store.throttledLogin({
+    pairKey: 'pair:active', sourceKey: 'source:active', loginKey: 'login:active',
+    now, verify: () => false, policy, notify: false,
+  }).status, 'throttled', 'активная login-блокировка сохранена');
+  const repeated = store.purgeExpired(now);
+  assert.equal(repeated.rateLimits, 0);
+  assert.equal(repeated.loginThrottle, 0);
+});
+
 test('коды телефона, почты и восстановления очищаются по сроку; привязка телефона и состояние восстановления сохраняются', async () => {
   const store = createMemoryStore({ pinPepper: PEPPER });
   const srv = createServer({ defaultOrgAutoJoin: true, registrationMode: 'open', requirePhone: false, pinPepper: PEPPER, store });

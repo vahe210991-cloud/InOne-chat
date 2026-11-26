@@ -93,6 +93,9 @@ Stage 1 + Stage 2 remain on the existing remediation branch and PR #135. Later s
 
 **Purpose:** ensure security-sensitive multi-row state transitions are atomic and cleanup is complete.
 
+**Current status (2026-11-26):** implementation is committed in PR #154 on `security/beta1-stage4-db-integrity-2026-11-25`. B-07 includes PostgreSQL cleanup coverage for 501 stale rows per table, verifying the 500-row batch bound and follow-up sweep. B-12 includes organization-row serialization, transactional admin audit writes, and concurrent/fault-injection regressions. B-14 binds deliveries to an HMAC registration generation and includes a PostgreSQL stale-send/re-registration race regression. Exact-head acceptance remains pending after synchronization with current `main`.
+
+
 **Implementation packages:**
 1. **Retention of ephemeral security state (B-07):** review all expiring tables and their retention semantics; include missing rate-limit/login-throttle records in scheduled cleanup where appropriate. Use bounded batches/index-supported predicates and avoid deleting active state. Minimize or HMAC identifiers where required by the approved data model.
 2. **Organization owner invariant (B-12):** serialize owner-count validation and owner demotion/removal under a stable organization-row lock or equivalent transaction-level invariant. Persist membership mutation and audit event in the same transaction. Cover concurrent last-owner removal/demotion and audit insert failure rollback.
