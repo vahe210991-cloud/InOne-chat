@@ -76,7 +76,7 @@ test('direct chats are canonical per unordered pair and activate only through cl
     }));
     const committed = await alice.raw('POST', `/mls/groups/${enc(opened.roomId)}/commits`, {
       epoch,
-      clientOperationId: 'direct-add-bob-operation-0001',
+      clientOperationId: claimId,
       keyPackageClaimId: claimId,
       commit: b64('DIRECT-ADD-COMMIT'),
       changes: { adds: [BOB], removes: [] },
