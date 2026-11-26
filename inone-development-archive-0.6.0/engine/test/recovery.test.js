@@ -538,7 +538,7 @@ test('identity challenge expires and can be reissued after its resend cooldown',
 
     const first = await rawLogin(base, ALICE, NEW_PW, 'B_NEW');
     const firstChallengeId = first.body.challengeId;
-    srv.advance(HOUR + 1);
+    srv.advance(10 * 60_000 + 1);
     assert.equal((await rawLogin(base, ALICE, NEW_PW, 'B_NEW', identityCodeFrom(srv, ALICE))).status, 410);
 
     const renewed = await rawLogin(base, ALICE, NEW_PW, 'B_NEW');
