@@ -79,7 +79,7 @@ The canonical Beta 1.0 backend in this change set is `inone-development-archive-
 - SC-04 registration submits through the host session and the atomic registration backend path.
 - SC-07 starts recovery and exposes the separate recovery-cancellation code path.
 - SC-08 stages recovery deep-link data in memory and performs the mutating confirmation request only after explicit user action; Back discards the staged payload.
-- SC-09 completes recovery with the new password and existing recovery code.
+- SC-09 completes recovery with the new password and existing recovery code. The encryption-key-reset warning is still a D8 placeholder and needs owner-approved user-facing copy before release.
 - SC-10 distinguishes admission cancellation from recovery cancellation.
 - SC-11 handles the waiting period and device approval code/claim lifecycle.
 - SC-12 logout clears transient approval, identity-challenge, and recovery-link state.
@@ -110,6 +110,7 @@ No local test run or CI run is claimed. The final test suite must run only after
 3. **AUTH-08 recovery policy:** decide whether email-only recovery is permitted for accounts without a verified phone and define the permitted restrictions.
 4. **AUTH-09 session restore:** persistent refresh-token restoration must remain Rust/platform-owned. The native session runtime is still opt-in; do not introduce Dart preferences/plaintext token persistence.
 5. **Provider sign-in:** Google/Apple native SDKs and client configuration are absent; screens remain blocked rather than pretending to authenticate.
+6. **SC-09 warning copy:** the encryption-key-reset warning still displays a D8 placeholder; owner-approved copy is required before release.
 
 ## 6. Acceptance and next actions
 
