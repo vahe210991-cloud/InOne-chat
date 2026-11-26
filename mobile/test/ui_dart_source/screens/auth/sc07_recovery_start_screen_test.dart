@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../../../lib/ui_dart_source/theme/inone_theme.dart';
+
 import '../../../../lib/ui_dart_source/screens/auth/sc07_recovery_start_screen.dart';
 
 void main() {
@@ -8,6 +10,7 @@ void main() {
     var cancellationOpened = false;
     await tester.pumpWidget(
       MaterialApp(
+        theme: InOneTheme.light(),
         home: InOneRecoveryStartScreen(
           onSubmit: (_) async => null,
           onBack: () {},
