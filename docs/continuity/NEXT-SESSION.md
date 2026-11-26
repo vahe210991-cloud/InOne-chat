@@ -1,3 +1,37 @@
+# Next execution addendum — AUTH Beta 1.0 (2026-11-26)
+
+**Continue from:** `feat/auth-senior-backend-implementation-2026-11-26`. Fetch live refs and exact branch SHA before editing. Do not return to the parallel branch `feat/auth-screen-backend-wiring-beta1-2026-11-26`; this branch was forked from its latest observed head to avoid concurrent writes and preserves its migration/schema-test changes.
+
+## Required reading
+
+1. [AUTH canonical task plan](../../development/AUTH-REGISTRATION-LOGIN-RECOVERY-BETA-1.0-PLAN.md).
+2. [AUTH implementation audit report](../../development/reports/2026-11-26-auth-beta1-implementation-audit.md).
+3. [Mobile API contract and screen matrix](../../mobile/API-CONTRACTS-BETA-1.md).
+4. [Unified task-completion rules](../../development/UNIFIED-TASK-COMPLETION-RULES.md) and [WORKING-RULES.md](../../development/WORKING-RULES.md).
+5. Current [SOURCE-OF-TRUTH](SOURCE-OF-TRUTH.md) and [CURRENT-STATE](CURRENT-STATE.md).
+
+## Immediate order
+
+1. Perform a full static review of all changed backend, store, migration, mobile session, screen and test files. Pay special attention to SQL transaction rollback, recovery state serialization, identity challenge expiry/lockout, approval terminal handling, and registration phone block formatting.
+2. Verify the branch is still based on latest main and has no new conflicting edits. Keep this task isolated; coordinate any shared-path changes with other agents.
+3. Resolve or explicitly record owner decisions for AUTH-03 (verified phone policy) and AUTH-08 (email-only recovery policy). Do not guess product/security policy.
+4. Keep AUTH-04 fail-closed for biometric-protected signing keys until a platform biometric-grant bridge is implemented and tested. Do not bypass server `bioGrant` checks.
+5. Keep AUTH-09 blocked until Rust/platform-owned persistent refresh-token restoration is accepted and the native runtime gate is satisfied. Never persist refresh tokens in ordinary Dart preferences or plaintext files.
+6. Confirm Google/Apple provider login remains explicitly blocked until native SDK proof acquisition and client configuration exist.
+7. Only after the implementation is ready, run focused Node tests, PostgreSQL migration/transaction tests, Flutter analyze/widget/session tests, then applicable full Beta 1.0 CI on one exact immutable SHA. Record exact run IDs and results; tests listed in source are NOT RUN until executed.
+8. Fix every failure and repeat only justified deltas plus the exact-SHA release gate. Obtain independent review, open/update a PR, and do not merge without owner approval and all required evidence.
+9. Update the AUTH plan, report, SESSION-LOG and continuity docs. Do not cross out any task until the unified completion rule is fully met.
+
+## Current acceptance status
+
+- Implementation is in progress and unmerged.
+- No tests/builds/CI/device checks have been run on the final branch SHA.
+- AUTH-01, AUTH-02, AUTH-04, AUTH-05, AUTH-06, AUTH-07, AUTH-10, AUTH-11 and AUTH-12 have implementation work recorded, but remain open.
+- AUTH-03, AUTH-08 and AUTH-09 remain blocked by owner/platform decisions; biometric approval and provider sign-in also remain incomplete.
+- All task checkboxes remain unchecked and uncrossed.
+
+---
+
 # Next execution addendum — FEED / PROFILE (2026-11-26)
 
 This addendum supersedes the older historical starting-SHA instructions below for FEED/PROFILE work. **Always fetch the live `main` ref first**; the latest source baseline and exact publication commits are recorded in [CURRENT-STATE.md](CURRENT-STATE.md).
