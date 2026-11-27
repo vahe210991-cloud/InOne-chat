@@ -2202,7 +2202,7 @@ if (req.method === 'POST' && p === '/login') {
           });
           if (result.status !== 'room_id_conflict') break;
         }
-        if (result?.status === 'blocked') return send(res, 403, { error: 'this user is blocked', code: 'user_blocked' });
+        if (result?.status === 'blocked') return send(res, 403, { error: 'direct conversation is unavailable', code: 'direct_unavailable' });
         if (!result || result.status === 'room_id_conflict' || result.status === 'retry') {
           return send(res, 503, { error: 'direct conversation reservation is temporarily unavailable' });
         }
@@ -2468,7 +2468,7 @@ if (req.method === 'POST' && p === '/login') {
         if (contactAction[2] === 'accept') {
           const result = await storage.acceptContactRequest(d.userId, targetUserId, now());
           if (result.status === 'not_found') return send(res, 404, { error: 'contact request not found', code: 'contact_request_not_found' });
-          if (result.status === 'blocked') return send(res, 409, { error: 'blocked users cannot be accepted', code: 'user_blocked' });
+          if (result.status === 'blocked') return send(res, 409, { error: 'contact request is unavailable', code: 'contact_request_unavailable' });
           return send(res, 200, { accepted: true, userId: targetUserId });
         }
         const result = await storage.blockUser(d.userId, targetUserId, now());
@@ -2762,7 +2762,7 @@ if (req.method === 'POST' && p === '/login') {
                 return send(res, 409, { error: 'a Welcome target device is no longer active', code: 'welcome_device_revoked' });
               }
               if (!result.ok && result.reason === 'user_blocked') {
-                return send(res, 403, { error: 'this user is blocked', code: 'user_blocked' });
+                return send(res, 403, { error: 'direct conversation is unavailable', code: 'direct_unavailable' });
               }
               if (result.ok && !result.replayed && (adds.length > 0 || removes.length > 0)) {
                 await markRoomChanged(roomId, [...new Set([...r.members, ...adds])]);
@@ -2828,7 +2828,7 @@ if (req.method === 'POST' && p === '/login') {
                 if (result.state === 'direct_not_active') {
                   return send(res, 409, { error: 'direct conversation is not ready for message delivery', code: result.state });
                 }
-                if (result.state === 'user_blocked') return send(res, 403, { error: 'this user is blocked', code: result.state });
+                if (result.state === 'user_blocked') return send(res, 403, { error: 'direct conversation is unavailable', code: 'direct_unavailable' });
                 if (['not_member', 'org_not_member', 'org_not_approved'].includes(result.state)) {
                   return send(res, 403, { error: 'current room organization access is required', code: result.state });
                 }
@@ -2839,7 +2839,7 @@ if (req.method === 'POST' && p === '/login') {
                 if (seq && typeof seq === 'object' && seq.state === 'direct_not_active') {
                   return send(res, 409, { error: 'direct conversation is not ready for message delivery', code: seq.state });
                 }
-                if (seq && typeof seq === 'object' && seq.state === 'user_blocked') return send(res, 403, { error: 'this user is blocked', code: seq.state });
+                if (seq && typeof seq === 'object' && seq.state === 'user_blocked') return send(res, 403, { error: 'direct conversation is unavailable', code: 'direct_unavailable' });
                 if (seq && typeof seq === 'object' && ['not_member', 'org_not_member', 'org_not_approved'].includes(seq.state)) {
                   return send(res, 403, { error: 'current room organization access is required', code: seq.state });
                 }
@@ -2957,7 +2957,7 @@ if (req.method === 'POST' && p === '/login') {
         const claimed = await storage.mlsClaimKeyPackages(targetUserId, d.userId, d.deviceId, claimId, roomId, now());
         if (!claimed.ok) {
           if (claimed.reason === 'room_not_found') return send(res, 404, { error: 'group not found' });
-          if (claimed.reason === 'user_blocked') return send(res, 403, { error: 'this user is blocked', code: 'user_blocked' });
+          if (claimed.reason === 'user_blocked') return send(res, 403, { error: 'direct conversation is unavailable', code: 'direct_unavailable' });
           if (['not_authorized', 'invite_capability_required', 'org_not_approved'].includes(claimed.reason)) {
             return send(res, 403, { error: 'current room organization authorization is required', code: claimed.reason });
           }
