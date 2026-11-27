@@ -56,8 +56,9 @@ async function approveJoinRequestViaMls(owner, requester, targetUserId, claimId)
     deviceId: item.deviceId,
     welcome: b64(`WELCOME-${claimId}-${item.deviceId}`),
   }));
+  const epoch = (await owner.raw('GET', `/mls/groups/${enc(ROOM)}/epoch`)).epoch;
   return owner.raw('POST', `/mls/groups/${enc(ROOM)}/commits`, {
-    epoch: 0,
+    epoch,
     commit: b64(`COMMIT-${claimId}`),
     changes: { adds: [targetUserId], removes: [] },
     welcomes,
@@ -89,13 +90,15 @@ test('создать ссылку может только тот, у кого е
   }
 });
 
-test('вступление по ссылке: участник входит сразу и читает только то, что написано после вступления', async () => {
+test('обычная ссылка создаёт MLS-заявку; после Add Commit участник читает только новые события', async () => {
   const { base, stop } = await start();
   try {
     const c = await clubWith(base);
     const invite = await post(c.alice, '/invites', {});
     await c.alice.sendText(ROOM, 'до вступления');
-    assert.equal((await joinByToken(c.dave, tokenOf(invite))).status, 'joined');
+    assert.equal((await joinByToken(c.dave, tokenOf(invite))).status, 'requested');
+    assert.ok(!(await membersOf(c.alice)).members.includes(DAVE));
+    await approveJoinRequestViaMls(c.alice, c.dave, DAVE, 'join-approval-standard-invite-0006');
     await c.alice.sync();
     await c.dave.sync();
     await c.alice.sendText(ROOM, 'после вступления');
@@ -121,7 +124,7 @@ test('ссылка с заявкой: вступление создаёт зая
       'legacy approval without MLS Add Commit is blocked',
     );
     const approval = await approveJoinRequestViaMls(c.alice, c.dave, DAVE, 'join-approval-invite-dave-0004');
-    assert.equal(approval.epoch, 1);
+    assert.equal(approval.epoch, 2);
     assert.ok((await membersOf(c.alice)).members.includes(DAVE));
   } finally {
     await stop();
@@ -133,7 +136,8 @@ test('ссылка с лимитом вступлений: после исчер
   try {
     const c = await clubWith(base);
     const invite = await post(c.alice, '/invites', { maxUses: 1 });
-    assert.equal((await joinByToken(c.dave, tokenOf(invite))).status, 'joined');
+    assert.equal((await joinByToken(c.dave, tokenOf(invite))).status, 'requested');
+    assert.ok(!(await membersOf(c.alice)).members.includes(DAVE));
     await assert.rejects(joinByToken(c.eve, tokenOf(invite)), (e) => e.status === 404);
   } finally {
     await stop();
@@ -146,7 +150,7 @@ test('ссылка истекает: по умолчанию через 7 дне
     const c = await clubWith(base);
     const invite = await post(c.alice, '/invites', {});
     srv.advance(6 * DAY);
-    assert.equal((await joinByToken(c.dave, tokenOf(invite))).status, 'joined');
+    assert.equal((await joinByToken(c.dave, tokenOf(invite))).status, 'requested');
     srv.advance(2 * DAY);
     await assert.rejects(joinByToken(c.eve, tokenOf(invite)), (e) => e.status === 404);
   } finally {
@@ -181,13 +185,14 @@ test('неверная ссылка и уже исчерпанная выгля�
   }
 });
 
-test('приватная группа открывается только по ссылке', async () => {
+test('ссылка на приватную группу создаёт MLS-заявку, но не добавляет участника сама', async () => {
   const { base, stop } = await start();
   try {
     const c = await clubWith(base);
     await assert.rejects(post(c.dave, '/join', {}), (e) => e.status === 404);
     const invite = await post(c.alice, '/invites', {});
-    assert.equal((await joinByToken(c.dave, tokenOf(invite))).status, 'joined');
+    assert.equal((await joinByToken(c.dave, tokenOf(invite))).status, 'requested');
+    assert.ok(!(await membersOf(c.alice)).members.includes(DAVE));
   } finally {
     await stop();
   }
@@ -260,8 +265,11 @@ test('параллельные вступления по ссылке с лим�
     );
     const results = await Promise.all(racers.map(attempt));
     assert.equal(results.filter((r) => r.ok).length, 1);
-    const members = (await membersOf(c.alice)).members;
-    assert.equal(ids.filter((id) => members.includes(id)).length, 1);
+    const requests = (await c.alice.raw('GET', `/rooms/${enc(ROOM)}/requests`)).requests;
+    assert.equal(requests.length, 1);
+    assert.ok(ids.includes(requests[0].userId));
+    const currentMembers = (await membersOf(c.alice)).members;
+    assert.equal(ids.filter((id) => currentMembers.includes(id)).length, 0);
   } finally {
     await stop();
   }

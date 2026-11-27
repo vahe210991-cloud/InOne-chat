@@ -36,20 +36,47 @@ async function group() {
 }
 
 const members = async (c) => (await c.raw('GET', `/rooms/${enc(ROOM)}/members`)).members;
+const currentEpoch = async (c) => (await c.raw('GET', `/mls/groups/${enc(ROOM)}/epoch`)).epoch;
 const commit = (c, body) => c.raw('POST', `/mls/groups/${enc(ROOM)}/commits`, body);
+
+test('legacy REST member add and remove fail closed without changing the MLS roster', async () => {
+  const g = await group();
+  try {
+    const beforeMembers = await members(g.alice);
+    const beforeEpoch = await currentEpoch(g.alice);
+
+    await assert.rejects(
+      g.alice.raw('POST', `/rooms/${enc(ROOM)}/members`, { userId: DAVE }),
+      (error) => error.status === 409,
+      'legacy REST addition must require an MLS Add Commit and Welcome',
+    );
+    await assert.rejects(
+      g.alice.raw('DELETE', `/rooms/${enc(ROOM)}/members/${enc(CAROL)}`),
+      (error) => error.status === 409,
+      'legacy REST removal must require an MLS Remove Commit',
+    );
+
+    assert.deepEqual(await members(g.alice), beforeMembers, 'neither legacy route mutates the room roster');
+    assert.equal(await currentEpoch(g.alice), beforeEpoch, 'neither legacy route changes the MLS epoch');
+  } finally {
+    await g.stop();
+  }
+});
+
 
 test('владелец добавляет участника коммитом: новый участник в группе, читает коммиты и получает приветствие', async () => {
   const g = await group();
   try {
+    const beforeEpoch = await currentEpoch(g.alice);
     const r = await commit(g.alice, {
-      epoch: 0, commit: b64('COMMIT-ADD-DAVE'), changes: { adds: [DAVE], removes: [] },
+      epoch: beforeEpoch, commit: b64('COMMIT-ADD-DAVE'), changes: { adds: [DAVE], removes: [] },
       welcomes: [{ userId: DAVE, deviceId: 'D_PHONE', welcome: b64('WELCOME-DAVE') }],
     });
-    assert.equal(r.epoch, 1);
+    assert.equal(r.epoch, beforeEpoch + 1);
     assert.ok((await members(g.alice)).includes(DAVE), 'Дэйв стал участником комнаты');
     const history = await g.alice.raw('GET', `/mls/groups/${enc(ROOM)}/commits?since=0`);
-    assert.deepEqual(history.commits[0].changes, { adds: [DAVE], removes: [], removeDevices: [] });
-    assert.deepEqual(history.commits[0].welcomeRecipients, [{ userId: DAVE, deviceId: 'D_PHONE' }]);
+    assert.deepEqual(history.commits.at(-1).changes, { adds: [DAVE], removes: [], removeDevices: [] });
+    assert.deepEqual(history.commits.at(-1).welcomeRecipients, [{ userId: DAVE, deviceId: 'D_PHONE' }]);
     assert.equal((await g.dave.raw('GET', `/mls/groups/${enc(ROOM)}/commits?since=0`)).commits.length, 1, 'новый участник читает коммиты');
     assert.equal((await g.dave.raw('GET', '/mls/welcomes')).welcomes.length, 1, 'новый участник получил приветствие');
   } finally {
@@ -61,7 +88,7 @@ test('добавлять участников может только тот, у
   const g = await group();
   try {
     await assert.rejects(commit(g.bob, {
-      epoch: 0, commit: b64('X'), changes: { adds: [EVE], removes: [] },
+      epoch: await currentEpoch(g.bob), commit: b64('X'), changes: { adds: [EVE], removes: [] },
       welcomes: [{ userId: EVE, deviceId: 'E_PHONE', welcome: b64('W') }],
     }), (e) => e.status === 403, 'без права Боб не добавляет');
     assert.ok(!(await members(g.alice)).includes(EVE), 'Ева не добавлена');
@@ -73,12 +100,13 @@ test('добавлять участников может только тот, у
 test('приглашённый без приветствия не добавляется, приветствие не участнику отклоняется', async () => {
   const g = await group();
   try {
-    await assert.rejects(commit(g.alice, { epoch: 0, commit: b64('X'), changes: { adds: [EVE], removes: [] }, welcomes: [] }), (e) => e.status === 400, 'без приветствия');
+    const epoch = await currentEpoch(g.alice);
+    await assert.rejects(commit(g.alice, { epoch, commit: b64('X'), changes: { adds: [EVE], removes: [] }, welcomes: [] }), (e) => e.status === 400, 'без приветствия');
     await assert.rejects(commit(g.alice, {
-      epoch: 0, commit: b64('X'), changes: { adds: [], removes: [] },
+      epoch, commit: b64('X'), changes: { adds: [], removes: [] },
       welcomes: [{ userId: EVE, deviceId: 'E_PHONE', welcome: b64('W') }],
     }), (e) => e.status === 400, 'приветствие не участнику');
-    assert.equal((await g.alice.raw('GET', `/mls/groups/${enc(ROOM)}/epoch`)).epoch, 0, 'эпоха не сдвинулась');
+    assert.equal(await currentEpoch(g.alice), epoch, 'эпоха не сдвинулась');
   } finally {
     await g.stop();
   }
@@ -87,11 +115,12 @@ test('приглашённый без приветствия не добавля
 test('удалять участников может владелец или администратор с правом; владелец не выходит', async () => {
   const g = await group();
   try {
-    await assert.rejects(commit(g.bob, { epoch: 0, commit: b64('X'), changes: { adds: [], removes: [CAROL] } }), (e) => e.status === 403, 'Боб без права не удаляет Кэрол');
-    await assert.rejects(commit(g.alice, { epoch: 0, commit: b64('X'), changes: { adds: [], removes: [ALICE] } }), (e) => e.status === 409, 'владелец не выходит');
-    assert.equal((await commit(g.alice, { epoch: 0, commit: b64('REMOVE-CAROL'), changes: { adds: [], removes: [CAROL] } })).epoch, 1);
+    const beforeEpoch = await currentEpoch(g.alice);
+    await assert.rejects(commit(g.bob, { epoch: beforeEpoch, commit: b64('X'), changes: { adds: [], removes: [CAROL] } }), (e) => e.status === 403, 'Боб без права не удаляет Кэрол');
+    await assert.rejects(commit(g.alice, { epoch: beforeEpoch, commit: b64('X'), changes: { adds: [], removes: [ALICE] } }), (e) => e.status === 409, 'владелец не выходит');
+    assert.equal((await commit(g.alice, { epoch: beforeEpoch, commit: b64('REMOVE-CAROL'), changes: { adds: [], removes: [CAROL] } })).epoch, beforeEpoch + 1);
     const history = await g.alice.raw('GET', `/mls/groups/${enc(ROOM)}/commits?since=0`);
-    assert.deepEqual(history.commits[0].changes, { adds: [], removes: [CAROL], removeDevices: [] });
+    assert.deepEqual(history.commits.at(-1).changes, { adds: [], removes: [CAROL], removeDevices: [] });
     assert.ok(!(await members(g.alice)).includes(CAROL), 'Кэрол удалена из комнаты');
     await assert.rejects(g.carol.raw('GET', `/mls/groups/${enc(ROOM)}/commits?since=0`), (e) => e.status === 403, 'удалённая не читает коммиты');
   } finally {
@@ -102,12 +131,48 @@ test('удалять участников может владелец или а�
 test('участник выходит сам коммитом с собственным удалением', async () => {
   const g = await group();
   try {
+    const beforeAddEpoch = await currentEpoch(g.alice);
     await commit(g.alice, {
-      epoch: 0, commit: b64('COMMIT-ADD-DAVE'), changes: { adds: [DAVE], removes: [] },
+      epoch: beforeAddEpoch, commit: b64('COMMIT-ADD-DAVE'), changes: { adds: [DAVE], removes: [] },
       welcomes: [{ userId: DAVE, deviceId: 'D_PHONE', welcome: b64('WELCOME-DAVE') }],
     });
-    assert.equal((await commit(g.dave, { epoch: 1, commit: b64('LEAVE-DAVE'), changes: { adds: [], removes: [DAVE] } })).epoch, 2);
+    const beforeLeaveEpoch = await currentEpoch(g.dave);
+    assert.equal((await commit(g.dave, { epoch: beforeLeaveEpoch, commit: b64('LEAVE-DAVE'), changes: { adds: [], removes: [DAVE] } })).epoch, beforeLeaveEpoch + 1);
     assert.ok(!(await members(g.alice)).includes(DAVE), 'Дэйв вышел');
+  } finally {
+    await g.stop();
+  }
+});
+
+
+test('legacy REST membership mutations fail closed without changing the MLS roster or epoch', async () => {
+  const g = await group();
+  try {
+    const beforeMembers = [...await members(g.alice)].sort();
+    const beforeEpoch = await currentEpoch(g.alice);
+    await assert.rejects(
+      g.alice.raw('POST', `/rooms/${enc(ROOM)}/members`, { userId: DAVE }),
+      (e) => e.status === 409 && e.message.includes('mls_commit_required'),
+    );
+    await assert.rejects(
+      g.alice.raw('DELETE', `/rooms/${enc(ROOM)}/members/${enc(BOB)}`),
+      (e) => e.status === 409 && e.message.includes('mls_commit_required'),
+    );
+    assert.deepEqual([...(await members(g.alice))].sort(), beforeMembers);
+    assert.equal(await currentEpoch(g.alice), beforeEpoch);
+  } finally {
+    await g.stop();
+  }
+});
+
+test('room creation cannot insert initial members without an MLS Add Commit', async () => {
+  const g = await group();
+  try {
+    await assert.rejects(
+      g.alice.raw('POST', '/rooms', { roomId: '!legacy-initial-members:inone.test', members: [ALICE, BOB] }),
+      (e) => e.status === 409 && e.message.includes('mls_commit_required'),
+    );
+    assert.equal((await g.alice.raw('GET', '/rooms/mine')).rooms.some((room) => room.roomId === '!legacy-initial-members:inone.test'), false);
   } finally {
     await g.stop();
   }

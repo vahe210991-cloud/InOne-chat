@@ -43,7 +43,10 @@ Existing Beta 1.0 routes are maintained in the canonical engine. Account locale 
 
 | Method | Route | Use |
 |---|---|---|
-| GET | `/rooms/mine` | Current user's room list |
+| GET | `/rooms/mine` | Current user's room list, encrypted last-activity cursor/time, unread count, direct peer ID, contact membership, incoming contact prompt and the current user's own block state; a blocked peer is not told who initiated the block; message plaintext is never included |
+| GET | `/contacts` | Current user's accepted contacts and pending incoming contact prompts |
+| POST | `/contacts/:userId/accept` | Add the sender to the current user's contacts; this does not gate or delay message delivery |
+| POST | `/contacts/:userId/block` | Block a user, remove contact/pending-request state and prevent future direct-message delivery |
 | GET | `/rooms/search?q=...` | Search public rooms |
 | GET | `/rooms/:id` | Room details |
 | GET | `/rooms/:id/members` | Room members |
@@ -105,4 +108,12 @@ The repository has Docker Compose acceptance and PostgreSQL-backed backup/restor
 
 The complete screen-to-route matrix, authentication boundaries, request-flow notes and current CH-02 MLS sequence are maintained in [API-CONTRACTS-BETA-1.md](API-CONTRACTS-BETA-1.md). That contract matrix supersedes older screen-level route notes in this file when they differ.
 
-Important: `GET /rooms/:id/events` is implemented for reading ciphertext history. It is not a message-send endpoint. All new group messages must use `POST /mls/groups/:id/messages`; the legacy `POST /rooms/:id/events` returns 409. Native MLS ownership and secure local persistence are now integrated through canonical Engine B, but remain opt-in and not physically accepted. The Flutter/Dart production UI must not expose MLS secrets or arbitrary routes.
+Important: `GET /rooms/:id/events` is implemented for reading ciphertext history. It is not a message-send endpoint. All new messages must use `POST /mls/groups/:id/messages`; the legacy `POST /rooms/:id/events` returns 409. Native MLS ownership and secure local persistence are now integrated through canonical Engine B, but remain opt-in and not physically accepted. The Flutter/Dart production UI must not expose MLS secrets or arbitrary routes.
+
+## Private direct conversations
+
+`POST /direct-chats/open` accepts `{ userId }` and returns the single canonical conversation for the unordered account pair. The server generates an opaque room ID and reserves a private, non-organization-scoped room with only the creator in its server roster. The creator resumes local Engine B initialization through `POST /rooms`, then automatically uses the existing MLS KeyPackage-claim and Add Commit flow to deliver a Welcome to every active device of the paired recipient. The recipient does not accept or reject the chat and never has to approve MLS membership. `provisioning` is only an internal state while MLS membership is being established; after the Add Commit is accepted, messages are delivered through the normal encrypted message route.
+
+When the first message arrives from a sender who is not in the recipient's contacts, the message is still delivered immediately. The chat row displays **Принять** and **Заблокировать** beside the sender's name. **Принять** adds that sender to the recipient's contacts and removes the prompt; it does not unlock or trigger delivery of the message because delivery has already happened. **Заблокировать** blocks the pair, removes reciprocal contact entries and pending contact prompts, prevents future direct messages in both directions and reopening the conversation; previously delivered history remains available. If the sender is already in the recipient's contacts, no prompt is shown. The prompt is a contact-list decision, not a message request or an MLS membership gate.
+
+Reopening from either side returns the same room; a conversation provisioned by the other side becomes available on this device when its Welcome is synchronized. Direct rooms cannot be made public or use group invite/join controls.

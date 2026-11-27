@@ -729,7 +729,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
       return r.members.length >= (await effectiveMaxMembers(roomId));
     };
 
-    
+
   const server = http.createServer(async (req, res) => {
     const startedAt = Date.now();
     const pathOnly = String(req.url || '/').split('?')[0];
@@ -1628,6 +1628,7 @@ if (req.method === 'DELETE' && orgMemberRoute) {
     if (removed.reason === 'forbidden') return send(res, 403, { error: 'org role required to remove this member', code: 'org_role_required' });
     if (removed.reason === 'last_owner') return send(res, 409, { error: 'the last owner cannot be removed', code: 'last_owner' });
     if (removed.reason === 'owns_rooms') return send(res, 409, { error: 'transfer ownership of the rooms first', code: 'owns_rooms' });
+    if (removed.reason === 'mls_removal_required') return send(res, 409, { error: 'remove the member from every MLS room before removing organization access', code: 'mls_removal_required', roomIds: removed.roomIds });
     throw new Error('organization member removal failed');
   }
   return send(res, 200, { removed: true });
@@ -1641,6 +1642,7 @@ if (req.method === 'POST' && orgLeaveRoute) {
     if (left.reason === 'not_found') return send(res, 404, { error: 'not found' });
     if (left.reason === 'last_owner') return send(res, 409, { error: 'the last owner cannot leave', code: 'last_owner' });
     if (left.reason === 'owns_rooms') return send(res, 409, { error: 'transfer ownership of the rooms first', code: 'owns_rooms' });
+    if (left.reason === 'mls_removal_required') return send(res, 409, { error: 'leave every MLS room before leaving the organization', code: 'mls_removal_required', roomIds: left.roomIds });
     throw new Error('organization leave failed');
   }
   return send(res, 200, { left: true });
@@ -1739,7 +1741,15 @@ if (req.method === 'POST' && orgLinkActRoute) {
   }
   if (link.status === 'revoked') return send(res, 409, { error: 'link is already revoked' });
   const revoked = await storage.revokeOrgLink({ linkId, fromStatus: link.status, actor: d.userId, at: now() });
-  if (!revoked) return send(res, 409, { error: 'link state changed; reload and retry' });
+  if (!revoked.ok && revoked.reason === 'mls_removal_required') {
+    return send(res, 409, {
+      error: 'transfer ownership of affected rooms first, then remove cross-organization members through MLS before revoking the link',
+      code: 'mls_removal_required',
+      memberships: revoked.memberships,
+      ownerRoomIds: revoked.memberships.filter((membership) => membership.owner).map((membership) => membership.roomId),
+    });
+  }
+  if (!revoked.ok) return send(res, 409, { error: 'link state changed; reload and retry' });
   return send(res, 200, { status: 'revoked' });
 }
 // Журнал действий администраторов (шаг 5.7): читают владелец и администратор организации. Содержимое комнат сюда не попадает.
@@ -2169,15 +2179,68 @@ if (req.method === 'POST' && p === '/login') {
         });
       }
 
+      // ---------- личные диалоги ----------
+      if (req.method === 'POST' && p === '/direct-chats/open') {
+        const d = await authed(req);
+        if (!d) return send(res, 401, { error: 'unauthorized' });
+        const perAccount = await checkRate('directChatOpenPerAccount', d.userId);
+        const perAddress = await checkRate('directChatOpenPerAddress', clientIp(req));
+        if (!perAccount.allowed || !perAddress.allowed) return send(res, 429, { error: 'too many direct-chat requests, try later' });
+        const targetUserId = typeof body.userId === 'string' ? body.userId.trim() : '';
+        if (!targetUserId || targetUserId.length > 255 || targetUserId === d.userId) {
+          return send(res, 400, { error: 'a different valid userId is required' });
+        }
+        if (!(await storage.hasAccount(targetUserId))) return send(res, 404, { error: 'user not found' });
+        let result = null;
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          const roomId = `!dm_${randomBytes(24).toString('hex')}:inone.test`;
+          result = await storage.createOrOpenDirectConversation({
+            requester: d.userId,
+            target: targetUserId,
+            roomId,
+            createdAt: now(),
+          });
+          if (result.status !== 'room_id_conflict') break;
+        }
+        if (result?.status === 'blocked') return send(res, 403, { error: 'direct conversation is unavailable', code: 'direct_unavailable' });
+        if (!result || result.status === 'room_id_conflict' || result.status === 'retry') {
+          return send(res, 503, { error: 'direct conversation reservation is temporarily unavailable' });
+        }
+        if (result.status === 'unknown_user') return send(res, 404, { error: 'user not found' });
+        const peerUserId = result.userA === d.userId ? result.userB : result.userA;
+        return send(res, 200, {
+          roomId: result.roomId,
+          status: result.status,
+          created: result.created === true,
+          isCreator: result.isCreator === true,
+          peerUserId,
+          mlsInitializationRequired: result.created === true,
+        });
+      }
+
       // ---------- беседы и участники ----------
       if (req.method === 'POST' && p === '/rooms') {
         const d = await authed(req);
         if (!d) return send(res, 401, { error: 'unauthorized' });
         const roomId = String(body.roomId ?? '');
         if (!roomId) return send(res, 400, { error: 'roomId required' });
-        if (await storage.getRoom(roomId)) return send(res, 409, { error: 'room exists' });
+        const existingRoom = await storage.getRoom(roomId);
+        if (existingRoom) {
+          const directConversation = await storage.directConversation(roomId);
+          if (directConversation?.status === 'provisioning' && directConversation.createdBy === d.userId) {
+            return send(res, 200, { roomId, kind: 'direct', status: 'provisioning', resumed: true });
+          }
+          return send(res, 409, { error: 'room exists' });
+        }
         const kindParam = body.kind ?? 'group';
         if (!['group', 'channel'].includes(kindParam)) return send(res, 400, { error: 'kind must be group or channel' });
+        if (body.members !== undefined && !Array.isArray(body.members)) return send(res, 400, { error: 'members must be an array' });
+        if ((body.members ?? []).some((member) => member !== d.userId)) {
+          return send(res, 409, {
+            error: 'initial room membership requires an MLS Add Commit and per-device Welcome',
+            code: 'mls_commit_required',
+          });
+        }
         let roomName = null;
         if (body.name !== undefined && body.name !== null) {
           const checkedName = normalizeRoomName(body.name);
@@ -2208,6 +2271,7 @@ if (req.method === 'POST' && p === '/login') {
           if (e.code === '23505') return send(res, 409, { error: 'channel name is taken' });
           throw e;
         }
+        if (created?.status === 'mls_commit_required') return send(res, 409, { error: 'initial room membership requires MLS Add Commit and per-device Welcome', code: 'mls_commit_required' });
         if (created?.status === 'org_not_approved') return send(res, 403, { error: 'organization is not approved', code: 'org_not_approved' });
         if (created?.status === 'org_not_member') return send(res, 403, { error: 'initial room member is not eligible for this organization', code: 'org_not_member' });
         if (!created) return send(res, 409, { error: 'room exists' });
@@ -2223,6 +2287,7 @@ if (req.method === 'POST' && p === '/login') {
         const roomId = decodeURIComponent(nameRoute[1]);
         const r = await storage.getRoom(roomId);
         if (!r) return send(res, 404, { error: 'room not found' });
+        if ((await storage.roomKind(roomId)) === 'direct') return send(res, 404, { error: 'not found' });
         if (d.userId !== r.owner) return send(res, 403, { error: 'only the owner can rename the room' });
         const checkedName = normalizeRoomName(body.name);
         if (checkedName.error) return send(res, 400, { error: checkedName.error });
@@ -2255,7 +2320,7 @@ if (req.method === 'POST' && p === '/login') {
           if (asset && !assetMatchesVisibility(asset, r)) pending.push(r[key]);
         }
         const appearance = { description: r.description, backgroundColor: r.backgroundColor, avatarAssetId: r.avatarAssetId, coverAssetId: r.coverAssetId, backgroundAssetId: r.backgroundAssetId, pending };
-        return send(res, 200, { owner: r.owner, admins: r.admins, members: r.members, capabilities, name: r.name, visibility: r.visibility, join_policy: r.joinPolicy, read_upto: readUpTo, appearance });
+        return send(res, 200, { owner: r.owner, admins: r.admins, members: r.members, capabilities, name: r.name, kind: await storage.roomKind(roomId), visibility: r.visibility, join_policy: r.joinPolicy, read_upto: readUpTo, appearance });
       }
       if (memberRoute && req.method === 'POST') {
         const d = await authed(req);
@@ -2266,17 +2331,11 @@ if (req.method === 'POST' && p === '/login') {
           return send(res, 403, { error: 'missing capability: invite_members' });
         }
         const userId = String(body.userId ?? '');
-        if (!(await storage.hasAccount(userId))) return send(res, 404, { error: 'unknown user' });
-        // Новый участник видит только то, что придёт после его добавления (C-07).
-        if (await groupFull(roomId)) return send(res, 409, { error: 'group is full' });
-        const memberOrgId = await storage.roomOrg(roomId);
-        const memberGate = await orgGate(userId, memberOrgId);
-        if (memberGate) return send(res, memberGate.status, { error: memberGate.error, code: memberGate.code });
-        const added = await storage.addRoomMember(roomId, userId);
-        if (added?.status === 'org_not_approved') return send(res, 403, { error: 'organization is not approved', code: 'org_not_approved' });
-        if (added?.status === 'org_not_member') return send(res, 403, { error: 'not an organization member', code: 'org_not_member' });
-        await markRoomChanged(roomId, (await storage.getRoom(roomId)).members);
-        return send(res, 200, { ok: true });
+        if (!userId) return send(res, 400, { error: 'userId required' });
+        return send(res, 409, {
+          error: 'member addition requires an MLS Add Commit and per-device Welcome',
+          code: 'mls_commit_required',
+        });
       }
 
       const roleRoute = p.match(/^\/rooms\/([^/]+)\/roles$/);
@@ -2285,6 +2344,7 @@ if (req.method === 'POST' && p === '/login') {
         if (!d) return send(res, 401, { error: 'unauthorized' });
         const roomId = decodeURIComponent(roleRoute[1]);
         const r = await storage.getRoom(roomId);
+        if ((await storage.roomKind(roomId)) === 'direct') return send(res, 404, { error: 'not found' });
         // Роли назначает только владелец.
         if (!r || r.owner !== d.userId) return send(res, 403, { error: 'only the owner can change roles' });
         const target = String(body.userId ?? '');
@@ -2301,6 +2361,7 @@ if (req.method === 'POST' && p === '/login') {
         if (!d) return send(res, 401, { error: 'unauthorized' });
         const roomId = decodeURIComponent(capsRoute[1]);
         const r = await storage.getRoom(roomId);
+        if ((await storage.roomKind(roomId)) === 'direct') return send(res, 404, { error: 'not found' });
         // Права выдаёт и отбирает только владелец.
         if (!r || r.owner !== d.userId) return send(res, 403, { error: 'only the owner can change capabilities' });
         const target = String(body.userId ?? '');
@@ -2320,6 +2381,7 @@ if (req.method === 'POST' && p === '/login') {
         if (!d) return send(res, 401, { error: 'unauthorized' });
         const roomId = decodeURIComponent(ownerRoute[1]);
         const r = await storage.getRoom(roomId);
+        if ((await storage.roomKind(roomId)) === 'direct') return send(res, 404, { error: 'not found' });
         if (!r) return send(res, 404, { error: 'group not found' });
         if (d.userId !== r.owner) return send(res, 403, { error: 'only the owner can transfer ownership' });
         const target = typeof body?.userId === 'string' ? body.userId : '';
@@ -2344,9 +2406,10 @@ if (req.method === 'POST' && p === '/login') {
           if (!hasCapability(r, d.userId, 'remove_members')) return send(res, 403, { error: 'missing capability: remove_members' });
           if (r.admins.includes(target)) return send(res, 403, { error: 'an admin cannot remove another admin' });
         }
-        await storage.removeRoomMember(roomId, target); // при повторном добавлении история начинается заново
-        await markRoomChanged(roomId, r.members);       // прежние участники, включая удалённого, узнают об изменении
-        return send(res, 200, { ok: true });
+        return send(res, 409, {
+          error: 'member removal requires an MLS Remove Commit and epoch transition',
+          code: 'mls_commit_required',
+        });
       }
 
       // Правка и удаление сообщения. Автор правит своё сообщение; удаляет своё или чужое по праву.
@@ -2358,6 +2421,7 @@ if (req.method === 'POST' && p === '/login') {
         const roomId = decodeURIComponent(settingsRoute[1]);
         const r = await storage.getRoom(roomId);
         if (!r || !r.members.includes(d.userId)) return send(res, 403, { error: 'not a member' });
+        if ((await storage.roomKind(roomId)) === 'direct') return send(res, 404, { error: 'not found' });
         const checked = validateRoomSettings(body);
         if (checked.error) return send(res, 400, { error: checked.error });
         if (checked.value.name !== undefined && !hasCapability(r, d.userId, 'edit_group_name')) {
@@ -2388,6 +2452,31 @@ if (req.method === 'POST' && p === '/login') {
         return send(res, 200, { ok: true });
       }
 
+      // Контакты: принятие добавляет отправителя в адресную книгу, но не является условием доставки сообщений.
+      if (req.method === 'GET' && p === '/contacts') {
+        const d = await authed(req);
+        if (!d) return send(res, 401, { error: 'unauthorized' });
+        return send(res, 200, await storage.listContacts(d.userId));
+      }
+      const contactAction = p.match(/^\/contacts\/([^/]+)\/(accept|block)$/);
+      if (contactAction && req.method === 'POST') {
+        const d = await authed(req);
+        if (!d) return send(res, 401, { error: 'unauthorized' });
+        const targetUserId = decodeURIComponent(contactAction[1]);
+        if (!targetUserId || targetUserId === d.userId) return send(res, 400, { error: 'a different userId is required' });
+        if (!(await storage.hasAccount(targetUserId))) return send(res, 404, { error: 'user not found' });
+        if (contactAction[2] === 'accept') {
+          const result = await storage.acceptContactRequest(d.userId, targetUserId, now());
+          if (result.status === 'not_found') return send(res, 404, { error: 'contact request not found', code: 'contact_request_not_found' });
+          if (result.status === 'blocked') return send(res, 409, { error: 'contact request is unavailable', code: 'contact_request_unavailable' });
+          return send(res, 200, { accepted: true, userId: targetUserId });
+        }
+        const result = await storage.blockUser(d.userId, targetUserId, now());
+        if (result.status === 'unknown_user') return send(res, 404, { error: 'user not found' });
+        if (result.status === 'invalid_pair') return send(res, 400, { error: 'cannot block yourself' });
+        return send(res, 200, { blocked: true, userId: targetUserId });
+      }
+
       // Поиск публичных групп: только публичные, только по названию, без списка участников.
       // Комнаты текущего пользователя (G1, этап 0.7.3): для списка чатов. Только свои членства.
       if (req.method === 'GET' && p === '/rooms/mine') {
@@ -2400,6 +2489,13 @@ if (req.method === 'POST' && p === '/login') {
             kind: r.kind ?? 'group',
             name: r.name ?? null,
             role: r.owner === d.userId ? 'owner' : r.isAdmin ? 'admin' : 'member',
+            lastEventSeq: r.lastEventSeq ?? null,
+            lastEventAt: r.lastEventAt ?? null,
+            unreadCount: r.unreadCount ?? 0,
+            peerUserId: r.peerUserId ?? null,
+            isPeerContact: r.isPeerContact === true,
+            incomingContactRequest: r.incomingContactRequest === true,
+            isBlocked: r.isBlocked === true,
           })),
         });
       }
@@ -2411,7 +2507,8 @@ if (req.method === 'POST' && p === '/login') {
         return send(res, 200, { rooms: await storage.searchPublicRooms(q, 20) });
       }
 
-      // Вступление в публичную группу: свободно или по заявке, как настроено в группе.
+      // Вступление в публичную группу всегда начинается с заявки. Фактическое членство
+      // создаётся только после MLS Add Commit и Welcome от текущего участника.
       const joinRoute = p.match(/^\/rooms\/([^/]+)\/join$/);
       if (joinRoute && req.method === 'POST') {
         const d = await authed(req);
@@ -2421,26 +2518,14 @@ if (req.method === 'POST' && p === '/login') {
         // Приватная группа для постороннего не существует: тот же ответ, что и для несуществующей.
         if (!r || r.visibility !== 'public') return send(res, 404, { error: 'room not found' });
         if (r.members.includes(d.userId)) return send(res, 409, { error: 'already a member' });
-        if (r.joinPolicy === 'open') {
-          const joined = await storage.joinPublicRoomOpen({
-            roomId,
-            userId: d.userId,
-            maxMembers: await effectiveMaxMembers(roomId),
-          });
-          if (joined.status === 'not_found' || joined.status === 'not_public') {
-            return send(res, 404, { error: 'room not found' });
-          }
-          if (joined.status === 'not_open') return send(res, 409, { error: 'room is no longer open for joining' });
-          if (joined.status === 'already_member') return send(res, 409, { error: 'already a member' });
-          if (joined.status === 'org_not_approved') return send(res, 403, { error: 'organization is not approved', code: 'org_not_approved' });
-          if (joined.status === 'org_not_member') return send(res, 403, { error: 'not an organization member', code: 'org_not_member' });
-          if (joined.status === 'full') return send(res, 409, { error: 'group is full' });
-          if (joined.status !== 'joined') throw new Error(`unexpected open-join result: ${joined.status}`);
-          await markRoomChanged(roomId, joined.members);
-          return send(res, 200, { status: 'joined' });
+        const joinOrgId = await storage.roomOrg(roomId);
+        const joinGate = await orgGate(d.userId, joinOrgId);
+        if (joinGate) return send(res, joinGate.status, { error: joinGate.error, code: joinGate.code });
+        if (await groupFull(roomId)) return send(res, 409, { error: 'group is full' });
+        if (!(await storage.hasJoinRequest(roomId, d.userId))) {
+          await storage.createJoinRequest(roomId, d.userId, now());
         }
-        await storage.createJoinRequest(roomId, d.userId, now());
-        return send(res, 200, { status: 'requested' });
+        return send(res, 200, { status: 'requested', code: 'mls_approval_required' });
       }
 
       // Заявки на вступление: видят и решают те, у кого есть право приглашать.
@@ -2451,6 +2536,7 @@ if (req.method === 'POST' && p === '/login') {
         const roomId = decodeURIComponent(requestsRoute[1]);
         const r = await storage.getRoom(roomId);
         if (!r || !hasCapability(r, d.userId, 'invite_members')) return send(res, 403, { error: 'missing capability: invite_members' });
+        if ((await storage.roomKind(roomId)) === 'direct') return send(res, 404, { error: 'not found' });
         return send(res, 200, { requests: await storage.listJoinRequests(roomId) });
       }
 
@@ -2462,6 +2548,7 @@ if (req.method === 'POST' && p === '/login') {
         const target = decodeURIComponent(decideRoute[2]);
         const r = await storage.getRoom(roomId);
         if (!r || !hasCapability(r, d.userId, 'invite_members')) return send(res, 403, { error: 'missing capability: invite_members' });
+        if ((await storage.roomKind(roomId)) === 'direct') return send(res, 404, { error: 'not found' });
         if (decideRoute[3] === 'approve') {
           return send(res, 409, {
             error: 'approval requires an MLS Add Commit and per-device Welcome',
@@ -2480,6 +2567,7 @@ if (req.method === 'POST' && p === '/login') {
         const roomId = decodeURIComponent(invitesRoute[1]);
         const r = await storage.getRoom(roomId);
         if (!r || !hasCapability(r, d.userId, 'invite_members')) return send(res, 403, { error: 'missing capability: invite_members' });
+        if ((await storage.roomKind(roomId)) === 'direct') return send(res, 404, { error: 'not found' });
         const checked = validateInviteOptions(body);
         if (checked.error) return send(res, 400, { error: checked.error });
         const token = createInviteToken();
@@ -2499,6 +2587,7 @@ if (req.method === 'POST' && p === '/login') {
         const roomId = decodeURIComponent(invitesRoute[1]);
         const r = await storage.getRoom(roomId);
         if (!r || !hasCapability(r, d.userId, 'invite_members')) return send(res, 403, { error: 'missing capability: invite_members' });
+        if ((await storage.roomKind(roomId)) === 'direct') return send(res, 404, { error: 'not found' });
         // Сами ссылки здесь не показываются: токен известен только в момент создания.
         return send(res, 200, { invites: await storage.listInvites(roomId) });
       }
@@ -2529,17 +2618,17 @@ if (req.method === 'POST' && p === '/login') {
         const inviteOrgId = await storage.roomOrg(invite.roomId);
         const inviteGate = await orgGate(d.userId, inviteOrgId);
         if (inviteGate) return send(res, inviteGate.status, { error: inviteGate.error, code: inviteGate.code });
-        if (invite.requiresApproval) {
-          if (await storage.hasJoinRequest(invite.roomId, d.userId)) return send(res, 200, { status: 'requested' });
-          if (!(await storage.useInvite(invite.inviteId, now()))) return send(res, 404, { error: 'invite is not valid' });
-          await storage.createJoinRequest(invite.roomId, d.userId, now());
-          return send(res, 200, { status: 'requested' });
+        if (await storage.hasJoinRequest(invite.roomId, d.userId)) {
+          return send(res, 200, { status: 'requested', code: 'mls_approval_required', roomId: invite.roomId });
         }
-        if (!(await storage.useInvite(invite.inviteId, now()))) return send(res, 404, { error: 'invite is not valid' });
         if (await groupFull(invite.roomId)) return send(res, 409, { error: 'group is full' });
-        await storage.addRoomMember(invite.roomId, d.userId);
-        await markRoomChanged(invite.roomId, (await storage.getRoom(invite.roomId)).members);
-        return send(res, 200, { status: 'joined', roomId: invite.roomId });
+        if (!(await storage.useInvite(invite.inviteId, now()))) return send(res, 404, { error: 'invite is not valid' });
+        await storage.createJoinRequest(invite.roomId, d.userId, now());
+        return send(res, 200, {
+          status: 'requested',
+          code: 'mls_approval_required',
+          roomId: invite.roomId,
+        });
       }
 
             // Группы MLS: эпоха группы, коммиты и приветственные сообщения. Коммит принимается только от актуальной эпохи.
@@ -2581,7 +2670,10 @@ if (req.method === 'POST' && p === '/login') {
                   return send(res, 200, { epoch: replay.epoch, replayed: true });
                 }
               }
+              const roomKind = await storage.roomKind(roomId);
+              const directConversation = roomKind === 'direct' ? await storage.directConversation(roomId) : null;
               if (joinRequestUserId !== null) {
+                if (roomKind === 'direct') return send(res, 400, { error: 'direct conversations do not use group join requests' });
                 if (!(await storage.hasJoinRequest(roomId, joinRequestUserId))) {
                   return send(res, 409, { error: 'join request is no longer pending', code: 'join_request_not_pending' });
                 }
@@ -2594,8 +2686,10 @@ if (req.method === 'POST' && p === '/login') {
               // Do not reject here: a concurrent exact retry may have been accepted while this request waited.
 
               const { adds, removes } = checked.value.changes;
-              const commitOrgId = await storage.roomOrg(roomId);
               const isOwner = d.userId === r.owner;
+              if (roomKind === 'direct' && removes.length > 0) {
+                return send(res, 409, { error: 'direct conversation membership changes require a separate lifecycle operation', code: 'direct_membership_fixed' });
+              }
               for (const t of removes) {
                 if (!r.members.includes(t)) return send(res, 400, { error: `not a member: ${t}` });
                 if (t === r.owner) return send(res, 409, { error: 'owner cannot be removed' });
@@ -2604,12 +2698,24 @@ if (req.method === 'POST' && p === '/login') {
                   if (r.admins.includes(t)) return send(res, 403, { error: 'an admin cannot remove another admin' });
                 }
               }
+              const commitOrgId = roomKind === 'direct' ? null : await storage.roomOrg(roomId);
+              const directCounterpart = directConversation?.userA === d.userId
+                ? directConversation.userB
+                : directConversation?.userB === d.userId ? directConversation.userA : null;
               for (const u of adds) {
                 if (r.members.includes(u)) return send(res, 409, { error: `already a member: ${u}` });
                 if (!isOwner && !hasCapability(r, d.userId, 'invite_members')) return send(res, 403, { error: 'missing capability: invite_members' });
                 if (!(await storage.hasAccount(u))) return send(res, 400, { error: `unknown account: ${u}` });
-                const addGate = await orgGate(u, commitOrgId);
-                if (addGate) return send(res, 403, { error: 'target user is not eligible for this room', code: 'target_not_authorized' });
+                if (roomKind === 'direct') {
+                  if (!directConversation || directConversation.status !== 'provisioning'
+                    || directConversation.createdBy !== d.userId || adds.length !== 1 || u !== directCounterpart
+                    || !checked.value.keyPackageClaimId) {
+                    return send(res, 403, { error: 'only the paired recipient can be added through a claimed MLS Welcome', code: 'direct_pair_only' });
+                  }
+                } else {
+                  const addGate = await orgGate(u, commitOrgId);
+                  if (addGate) return send(res, 403, { error: 'target user is not eligible for this room', code: 'target_not_authorized' });
+                }
                 if (!checked.value.welcomes.some((w) => w.userId === u)) return send(res, 400, { error: `added member needs a welcome: ${u}` });
               }
               const pendingDevices = await storage.mlsPendingRemovalDevices(roomId);
@@ -2617,7 +2723,7 @@ if (req.method === 'POST' && p === '/login') {
                 if (!pendingDevices.includes(device)) return send(res, 400, { error: `device is not waiting for removal in this group: ${device}` });
               }
               const afterMembers = new Set([...r.members.filter((m) => !removes.includes(m)), ...adds]);
-              const maxMembers = await effectiveMaxMembers(roomId);
+              const maxMembers = roomKind === 'direct' ? 2 : await effectiveMaxMembers(roomId);
               if (afterMembers.size > maxMembers) return send(res, 409, { error: 'group is full', limit: maxMembers });
               for (const w of checked.value.welcomes) {
                 if (!afterMembers.has(w.userId)) return send(res, 400, { error: 'welcome recipient is not a member' });
@@ -2654,6 +2760,9 @@ if (req.method === 'POST' && p === '/login') {
               }
               if (!result.ok && result.reason === 'welcome_device_revoked') {
                 return send(res, 409, { error: 'a Welcome target device is no longer active', code: 'welcome_device_revoked' });
+              }
+              if (!result.ok && result.reason === 'user_blocked') {
+                return send(res, 403, { error: 'direct conversation is unavailable', code: 'direct_unavailable' });
               }
               if (result.ok && !result.replayed && (adds.length > 0 || removes.length > 0)) {
                 await markRoomChanged(roomId, [...new Set([...r.members, ...adds])]);
@@ -2716,6 +2825,10 @@ if (req.method === 'POST' && p === '/login') {
                 if (result.state === 'done') return send(res, 200, { event_id: `$${result.seq}` });
                 if (result.state === 'pending') return send(res, 409, { error: 'a legacy pending message requires reconciliation' });
                 if (result.state === 'room_not_found') return send(res, 404, { error: 'group not found' });
+                if (result.state === 'direct_not_active') {
+                  return send(res, 409, { error: 'direct conversation is not ready for message delivery', code: result.state });
+                }
+                if (result.state === 'user_blocked') return send(res, 403, { error: 'direct conversation is unavailable', code: 'direct_unavailable' });
                 if (['not_member', 'org_not_member', 'org_not_approved'].includes(result.state)) {
                   return send(res, 403, { error: 'current room organization access is required', code: result.state });
                 }
@@ -2723,6 +2836,10 @@ if (req.method === 'POST' && p === '/login') {
               } else {
                 seq = await storage.appendRoomEvent(roomId, d.userId, 'm.room.encrypted', eventContent, now(), enqueuePush);
                 if (seq && typeof seq === 'object' && seq.state === 'room_not_found') return send(res, 404, { error: 'group not found' });
+                if (seq && typeof seq === 'object' && seq.state === 'direct_not_active') {
+                  return send(res, 409, { error: 'direct conversation is not ready for message delivery', code: seq.state });
+                }
+                if (seq && typeof seq === 'object' && seq.state === 'user_blocked') return send(res, 403, { error: 'direct conversation is unavailable', code: 'direct_unavailable' });
                 if (seq && typeof seq === 'object' && ['not_member', 'org_not_member', 'org_not_approved'].includes(seq.state)) {
                   return send(res, 403, { error: 'current room organization access is required', code: seq.state });
                 }
@@ -2813,21 +2930,34 @@ if (req.method === 'POST' && p === '/login') {
         }
         const room = await storage.getRoom(roomId);
         if (!room || !room.members.includes(d.userId)) return send(res, 403, { error: 'not a room member' });
-        const roomOrgId = await storage.roomOrg(roomId);
-        const targetAccess = roomOrgId ? await orgGate(targetUserId, roomOrgId) : { status: 403 };
-        if (targetAccess) {
-          return send(res, 403, { error: 'target user is not eligible for this room', code: 'target_not_authorized' });
-        }
+        const roomKind = await storage.roomKind(roomId);
         if (room.members.includes(targetUserId)) return send(res, 409, { error: 'already a member', code: 'already_member' });
-        if (d.userId !== room.owner && !hasCapability(room, d.userId, 'invite_members')) {
-          return send(res, 403, { error: 'missing capability: invite_members' });
-        }
         if (!(await storage.hasAccount(targetUserId))) return send(res, 400, { error: 'unknown account' });
+        if (roomKind === 'direct') {
+          const conversation = await storage.directConversation(roomId);
+          const counterpart = conversation?.userA === d.userId
+            ? conversation.userB
+            : conversation?.userB === d.userId ? conversation.userA : null;
+          if (!conversation || conversation.status !== 'provisioning' || conversation.createdBy !== d.userId
+            || room.owner !== d.userId || counterpart !== targetUserId) {
+            return send(res, 403, { error: 'only the creator of a provisioning direct chat may claim the paired recipient', code: 'direct_pair_only' });
+          }
+        } else {
+          const roomOrgId = await storage.roomOrg(roomId);
+          const targetAccess = roomOrgId ? await orgGate(targetUserId, roomOrgId) : { status: 403 };
+          if (targetAccess) {
+            return send(res, 403, { error: 'target user is not eligible for this room', code: 'target_not_authorized' });
+          }
+          if (d.userId !== room.owner && !hasCapability(room, d.userId, 'invite_members')) {
+            return send(res, 403, { error: 'missing capability: invite_members' });
+          }
+        }
         const rate = await checkRate('mlsClaimPerAccount', d.userId);
         if (!rate.allowed) return send(res, 429, { error: 'too many key requests, try later' });
         const claimed = await storage.mlsClaimKeyPackages(targetUserId, d.userId, d.deviceId, claimId, roomId, now());
         if (!claimed.ok) {
           if (claimed.reason === 'room_not_found') return send(res, 404, { error: 'group not found' });
+          if (claimed.reason === 'user_blocked') return send(res, 403, { error: 'direct conversation is unavailable', code: 'direct_unavailable' });
           if (['not_authorized', 'invite_capability_required', 'org_not_approved'].includes(claimed.reason)) {
             return send(res, 403, { error: 'current room organization authorization is required', code: claimed.reason });
           }
@@ -2877,6 +3007,7 @@ if (req.method === 'POST' && p === '/login') {
         if (!d) return send(res, 401, { error: 'unauthorized' });
         const roomId = decodeURIComponent(appearanceRoute[1]);
         const r = await storage.getRoom(roomId);
+        if ((await storage.roomKind(roomId)) === 'direct') return send(res, 404, { error: 'not found' });
         if (!r || !r.members.includes(d.userId)) return send(res, 403, { error: 'not a member' });
         if (!hasCapability(r, d.userId, 'edit_group_appearance')) return send(res, 403, { error: 'missing capability: edit_group_appearance' });
         const checked = validateAppearance(body);
@@ -2900,6 +3031,7 @@ if (req.method === 'POST' && p === '/login') {
         if (!d) return send(res, 401, { error: 'unauthorized' });
         const roomId = decodeURIComponent(assetsRoute[1]);
         const r = await storage.getRoom(roomId);
+        if ((await storage.roomKind(roomId)) === 'direct') return send(res, 404, { error: 'not found' });
         if (!r || !r.members.includes(d.userId)) return send(res, 403, { error: 'not a member' });
         if (!hasCapability(r, d.userId, 'edit_group_appearance')) return send(res, 403, { error: 'missing capability: edit_group_appearance' });
         const checked = validateAssetUpload(body, r);
@@ -2922,6 +3054,7 @@ if (req.method === 'POST' && p === '/login') {
         if (!d) return send(res, 401, { error: 'unauthorized' });
         const roomId = decodeURIComponent(pendingRoute[1]);
         const r = await storage.getRoom(roomId);
+        if ((await storage.roomKind(roomId)) === 'direct') return send(res, 404, { error: 'not found' });
         if (!r || !hasCapability(r, d.userId, 'edit_group_appearance')) return send(res, 403, { error: 'missing capability: edit_group_appearance' });
         const assets = (await storage.listRoomAssets(roomId)).filter((a) => !assetMatchesVisibility(a, r));
         return send(res, 200, { assets: assets.map(({ assetId, kind, encrypted, shortcode }) => ({ assetId, kind, encrypted, shortcode })) });
@@ -2935,6 +3068,7 @@ if (req.method === 'POST' && p === '/login') {
         if (!d) return send(res, 401, { error: 'unauthorized' });
         const roomId = decodeURIComponent(assetRoute[1]);
         const r = await storage.getRoom(roomId);
+        if ((await storage.roomKind(roomId)) === 'direct') return send(res, 404, { error: 'asset not found' });
         if (!r || !assetVisibleTo(r, d.userId)) return send(res, 404, { error: 'asset not found' });
         const asset = await storage.getRoomAsset(roomId, decodeURIComponent(assetRoute[2]));
         if (!asset) return send(res, 404, { error: 'asset not found' });
@@ -2948,6 +3082,7 @@ if (req.method === 'POST' && p === '/login') {
         const roomId = decodeURIComponent(assetRoute[1]);
         const assetId = decodeURIComponent(assetRoute[2]);
         const r = await storage.getRoom(roomId);
+        if ((await storage.roomKind(roomId)) === 'direct') return send(res, 404, { error: 'not found' });
         if (!r || !hasCapability(r, d.userId, 'edit_group_appearance')) return send(res, 403, { error: 'missing capability: edit_group_appearance' });
         const current = await storage.getRoomAsset(roomId, assetId);
         if (!current) return send(res, 404, { error: 'asset not found' });
@@ -2962,6 +3097,7 @@ if (req.method === 'POST' && p === '/login') {
         if (!d) return send(res, 401, { error: 'unauthorized' });
         const roomId = decodeURIComponent(assetRoute[1]);
         const r = await storage.getRoom(roomId);
+        if ((await storage.roomKind(roomId)) === 'direct') return send(res, 404, { error: 'not found' });
         if (!r || !hasCapability(r, d.userId, 'edit_group_appearance')) return send(res, 403, { error: 'missing capability: edit_group_appearance' });
         if (!(await storage.deleteRoomAsset(roomId, decodeURIComponent(assetRoute[2])))) return send(res, 404, { error: 'asset not found' });
         return send(res, 200, { ok: true });
@@ -2974,6 +3110,7 @@ if (req.method === 'POST' && p === '/login') {
         if (!d) return send(res, 401, { error: 'unauthorized' });
         const roomId = decodeURIComponent(stickersRoute[1]);
         const r = await storage.getRoom(roomId);
+        if ((await storage.roomKind(roomId)) === 'direct') return send(res, 404, { error: 'not found' });
         if (!r || !r.members.includes(d.userId)) return send(res, 403, { error: 'not a member' });
         return send(res, 200, { stickers: (await storage.listRoomStickers(roomId)).filter((s) => assetMatchesVisibility(s, r)) });
       }
@@ -3044,10 +3181,33 @@ if (req.method === 'POST' && p === '/login') {
         const roomId = decodeURIComponent(roomRoute[1]);
         const r = await storage.getRoom(roomId);
         if (!r || !r.members.includes(d.userId)) return send(res, 403, { error: 'not a member' });
-        // Только события после вступления участника (C-07). Внутренний номер наружу не отдаём.
-        const since = r.joinedSeq[d.userId] ?? 0;
-        const rows = await storage.roomEventRows(roomId, since);
-        return send(res, 200, { events: rows.map(({ seq, ...rest }) => rest) });
+
+        const joinedSeq = Number(r.joinedSeq[d.userId] ?? 0);
+        const sinceRaw = url.searchParams.get('since');
+        if (sinceRaw !== null && !/^\d+$/.test(sinceRaw)) {
+          return send(res, 400, { error: 'since must be a non-negative integer' });
+        }
+        const requestedSince = sinceRaw === null ? joinedSeq : Number(sinceRaw);
+        if (!Number.isSafeInteger(requestedSince) || requestedSince < 0) {
+          return send(res, 400, { error: 'since must be a non-negative safe integer' });
+        }
+        // C-07: even a caller-supplied cursor cannot read events from before membership.
+        const since = Math.max(joinedSeq, requestedSince);
+        const limitRaw = url.searchParams.get('limit');
+        const limit = limitRaw === null ? 200 : Number(limitRaw);
+        if (!Number.isInteger(limit) || limit < 1 || limit > 500) {
+          return send(res, 400, { error: 'limit must be an integer from 1 to 500' });
+        }
+
+        const fetched = await storage.roomEventRows(roomId, since, limit + 1);
+        const hasMore = fetched.length > limit;
+        const rows = hasMore ? fetched.slice(0, limit) : fetched;
+        const nextSince = rows.length ? Number(rows[rows.length - 1].seq) : since;
+        return send(res, 200, {
+          events: rows.map(({ seq, ...rest }) => rest),
+          nextSince,
+          hasMore,
+        });
       }
 
       // ---------- восстановление после кражи ----------

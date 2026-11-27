@@ -3,7 +3,7 @@
 use std::io::{BufRead, BufReader};
 use std::process::{Child, ChildStdin, Command, Stdio};
 
-use mls_client::{connect, Client, Incoming, MemoryKeyStore};
+use mls_client::{connect, connect_with_approval, Client, Incoming, MemoryKeyStore};
 
 const PW: &str = "пароль-проверки-1";
 const ROOM: &str = "!room-offline:inone.test";
@@ -71,6 +71,60 @@ fn unreadable(items: &[Incoming]) -> usize {
 
 fn login(engine: &Engine, keys: &MemoryKeyStore, user: &str, device: &str, file: &str) -> Client {
     connect(&engine.base, user, PW, device, file, keys).expect("вход")
+}
+
+fn open_direct_room(engine: &Engine, creator: &Client, peer_user_id: &str) -> String {
+    let token = creator.access_token_snapshot().expect("access token snapshot");
+    let response = ureq::post(&format!("{}/direct-chats/open", engine.base))
+        .set("Authorization", &format!("Bearer {token}"))
+        .send_json(serde_json::json!({ "userId": peer_user_id }))
+        .expect("create or open direct conversation");
+    let payload: serde_json::Value = response.into_json().expect("direct conversation response");
+    assert_eq!(payload["status"], "provisioning");
+    assert_eq!(payload["created"], true);
+    assert_eq!(payload["isCreator"], true);
+    payload["roomId"].as_str().expect("opaque room ID").to_string()
+}
+
+#[test]
+fn direct_messages_are_delivered_without_recipient_approval() {
+    let engine = start_engine();
+    let keys = MemoryKeyStore::default();
+    let (alice_db, bob_db, bob_tablet_db) = (
+        db("alice-direct"),
+        db("bob-direct"),
+        db("bob-direct-tablet"),
+    );
+    let mut alice = login(&engine, &keys, "@alice:inone.test", "A_DIRECT", &alice_db);
+    let mut bob = login(&engine, &keys, "@bob:inone.test", "B_DIRECT", &bob_db);
+    let mut bob_tablet = connect_with_approval(
+        &engine.base,
+        "@bob:inone.test",
+        PW,
+        "B_DIRECT_TABLET",
+        &bob_tablet_db,
+        &keys,
+        &bob,
+    )
+    .expect("второе устройство получателя");
+
+    // Each active recipient device publishes KeyPackages as part of device readiness.
+    // No request is presented to Bob and there is no accept/reject operation.
+    bob.ensure_key_packages(10).unwrap();
+    bob_tablet.ensure_key_packages(10).unwrap();
+    let room = open_direct_room(&engine, &alice, "@bob:inone.test");
+    alice.create_room(&room).unwrap();
+    alice.invite(&room, "@bob:inone.test").unwrap();
+
+    // Bob stays offline while Alice sends the first message. On the next sync,
+    // each device processes its MLS Welcome and then reads the queued ciphertext.
+    // No recipient approval action exists or is needed.
+    alice.send_text(&room, "первое личное сообщение").unwrap();
+    assert_eq!(texts(&bob.sync().unwrap()), vec!["первое личное сообщение"]);
+    assert_eq!(texts(&bob_tablet.sync().unwrap()), vec!["первое личное сообщение"]);
+
+    bob.send_text(&room, "ответ без подтверждения запроса").unwrap();
+    assert_eq!(texts(&alice.sync().unwrap()), vec!["ответ без подтверждения запроса"]);
 }
 
 #[test]

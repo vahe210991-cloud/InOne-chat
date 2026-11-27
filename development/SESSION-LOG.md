@@ -9,6 +9,22 @@
 - No product source, schema/migration, workflow, config or UI changed. WBS v1.1, baseline percentages, privacy policy and release scope remain unchanged. Feed Beta 1.0 vs Beta 2.0 remains an owner decision.
 - Draft PR #167 was closed as superseded after direct documentation-only publication; task branch retained. No implementation task was marked complete.
 
+## 2026-11-26 — Direct chats: no recipient approval; automatic MLS provisioning
+
+- Owner clarified that personal messages are delivered without recipient acceptance. A recipient must never be shown an accept/reject request for the chat or message. If the sender is not in the recipient's contacts, a separate contact prompt appears only after the first message has already been delivered.
+- Direct-chat `provisioning` is an internal cryptographic state only. The sender initializes Engine B, claims KeyPackages for all active recipient devices, and submits the MLS Add Commit with per-device Welcome. The recipient is added automatically after server acceptance of that commit.
+- Added canonical direct conversation pair storage, migration `0036-direct-conversations.sql`, authenticated create-or-open API, pair-only KeyPackage claim/Add Commit authorization, and message-delivery regression coverage.
+- Updated Flutter direct conversation DTO and UI wording to remove recipient-approval semantics. Added per-device KeyPackage reserve maintenance after authenticated app loading and app resume.
+- Added migration schema assertions, Flutter DTO/repository/preview tests, and registered direct-chat regressions in both backend test suites. Added a Rust/OpenMLS scenario that sends while both recipient devices are offline and verifies delivery to both devices on sync without any accept/reject action.
+- Added server-side encrypted last-activity/unread projections, memory-store parity, Flutter unread badges/filter and read-marker badge clearing. Backend and Flutter regression tests were authored and registered; tests/builds have not been run. Do not claim acceptance until GitHub Actions verifies one exact SHA.
+- MLS native feature flag remains disabled by default. No merge without explicit owner approval.
+- Detailed plan: `development/CHAT-GROUPS-BETA-1.0-IMPLEMENTATION-PLAN.md`; progress report: `development/reports/2026-11-26-chat-groups-beta1-implementation-progress.md`.
+
+---
+
+
+- Added migration `0037-contacts-and-blocks.sql`, authenticated contacts/accept/block APIs, room-list contact-state projection, and Flutter **Принять**/**Заблокировать** actions. Accept adds the sender to the recipient's contacts; block prevents future direct messages in both directions and reopening the conversation while preserving delivered history.
+- Added backend, PostgreSQL migration, repository, room DTO, mapper and Flutter chat-row regressions. Tests/builds have not been run; exact-SHA GitHub Actions acceptance remains pending.
 ## 2026-11-24 — CTO Beta 1.0 security remediation roadmap recorded
 
 - Added authoritative staged plan: `development/roadmaps/2026-11-24-beta1-cto-security-remediation-roadmap.md`.

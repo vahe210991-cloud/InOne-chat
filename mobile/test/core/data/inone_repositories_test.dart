@@ -56,6 +56,101 @@ void main() {
     session.dispose();
   });
 
+  test('room list returns unread counts and encrypted activity cursors', () async {
+    final session = _ProfileSession({
+      'rooms': [
+        {
+          'roomId': 'room-1',
+          'kind': 'group',
+          'name': 'Project room',
+          'role': 'member',
+          'lastEventSeq': 57,
+          'lastEventAt': 1795720000000,
+          'unreadCount': 4,
+        },
+      ],
+    });
+
+    final rooms = await InOneRepositories(session).myRooms();
+
+    expect(rooms.unreadCountsAvailable, isTrue);
+    expect(rooms.rooms.single.lastEventSeq, 57);
+    expect(rooms.rooms.single.lastEventAt, 1795720000000);
+    expect(rooms.rooms.single.unreadCount, 4);
+    session.dispose();
+  });
+
+  test('opens the canonical direct conversation through the authenticated API', () async {
+    final session = _ProfileSession({
+      'roomId': '!dm_0123456789abcdef',
+      'peerUserId': 'peer-1',
+      'status': 'provisioning',
+      'created': true,
+      'isCreator': true,
+      'mlsInitializationRequired': true,
+    });
+
+    final conversation =
+        await InOneRepositories(session).openDirectConversation(' peer-1 ');
+
+    expect(session.method, 'POST');
+    expect(session.path, '/direct-chats/open');
+    expect(session.authenticated, isTrue);
+    expect(session.body, {'userId': 'peer-1'});
+    expect(conversation.roomId, '!dm_0123456789abcdef');
+    expect(conversation.status, 'provisioning');
+    expect(conversation.requiresCreatorSetup, isTrue);
+    expect(conversation.mlsInitializationRequired, isTrue);
+    session.dispose();
+  });
+
+  test('accepts a first-message contact request independently from message delivery', () async {
+    final session = _ProfileSession({
+      'accepted': true,
+      'userId': '@sender:inone.test',
+    });
+
+    await InOneRepositories(session).acceptContactRequest('@sender:inone.test');
+
+    expect(session.method, 'POST');
+    expect(session.path, '/contacts/%40sender%3Ainone.test/accept');
+    expect(session.authenticated, isTrue);
+    expect(session.body, isNull);
+    session.dispose();
+  });
+
+  test('blocks a non-contact through the authenticated contact action', () async {
+    final session = _ProfileSession({
+      'blocked': true,
+      'userId': '@sender:inone.test',
+    });
+
+    await InOneRepositories(session).blockContact('@sender:inone.test');
+
+    expect(session.method, 'POST');
+    expect(session.path, '/contacts/%40sender%3Ainone.test/block');
+    expect(session.authenticated, isTrue);
+    expect(session.body, isNull);
+    session.dispose();
+  });
+
+  test('rejects malformed direct conversation responses', () async {
+    final session = _ProfileSession({
+      'roomId': '',
+      'peerUserId': 'peer-1',
+      'status': 'provisioning',
+      'created': true,
+      'isCreator': true,
+      'mlsInitializationRequired': true,
+    });
+
+    await expectLater(
+      InOneRepositories(session).openDirectConversation('peer-1'),
+      throwsA(isA<ApiException>()),
+    );
+    session.dispose();
+  });
+
   test('rejects a malformed rooms response instead of showing fake chats', () async {
     final session = _ProfileSession({'rooms': [{'roomId': ''}]});
 

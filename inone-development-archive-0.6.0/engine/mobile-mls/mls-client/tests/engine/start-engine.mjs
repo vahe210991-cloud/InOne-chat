@@ -76,8 +76,8 @@ store.mlsCommitsSince = (roomId, since, limit) => {
     : rows;
 };
 const origRows = store.roomEventRows.bind(store);
-store.roomEventRows = async (roomId, since) => {
-  const rows = (await origRows(roomId, since)).filter((e) => !hidden.has(e.seq));
+store.roomEventRows = async (roomId, since, limit) => {
+  const rows = (await origRows(roomId, since, limit)).filter((e) => !hidden.has(e.seq));
   const mode = badEventIds.get(roomId);
   if (!mode) return rows;
   return rows.map((event) => {
@@ -175,8 +175,11 @@ rl.on('line', async (line) => {
   }
   if (parts[0] === 'ADD_MEMBER' || parts[0] === 'REMOVE_MEMBER') {
     try {
-      if (parts[0] === 'ADD_MEMBER') await store.addRoomMember(parts[1], parts[2]);
-      else await store.removeRoomMember(parts[1], parts[2]);
+      // Deliberate test-only corruption: simulate an out-of-band DB membership change
+      // so the native client can prove it detects server/MLS divergence. No API route
+      // or production store operation can invoke this fixture.
+      const result = store.__testOnlyForceRoomMembership(parts[1], parts[2], parts[0] === 'ADD_MEMBER');
+      if (result && typeof result === 'object' && result.status) throw new Error(result.status);
       console.log('OK');
     } catch (error) {
       console.log(`ERR ${error.message}`);

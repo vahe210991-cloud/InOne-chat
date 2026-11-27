@@ -37,7 +37,7 @@ test('коммит, который поднимает состав сверх л
   const s = await start();
   try {
     await assert.rejects(s.alice.raw('POST', COMMITS, {
-      epoch: 0, commit: b64('COMMIT-ADD-DAVE'), changes: { adds: [DAVE], removes: [] },
+      epoch: 1, commit: b64('COMMIT-ADD-DAVE'), changes: { adds: [DAVE], removes: [] },
       welcomes: [{ userId: DAVE, deviceId: 'D_PHONE', welcome: b64('WELCOME-DAVE') }],
     }), (e) => e.status === 409, 'четвёртый участник не добавляется');
     const members = (await s.alice.raw('GET', `/rooms/${enc(ROOM)}/members`)).members;
@@ -52,10 +52,10 @@ test('замена участника в пределах лимита прох�
   const s = await start();
   try {
     const r = await s.alice.raw('POST', COMMITS, {
-      epoch: 0, commit: b64('COMMIT-SWAP'), changes: { adds: [DAVE], removes: [BOB] },
+      epoch: 1, commit: b64('COMMIT-SWAP'), changes: { adds: [DAVE], removes: [BOB] },
       welcomes: [{ userId: DAVE, deviceId: 'D_PHONE', welcome: b64('WELCOME-DAVE') }],
     });
-    assert.equal(r.epoch, 1, 'коммит принят');
+    assert.equal(r.epoch, 2, 'коммит принят после начального Add Commit');
     const members = (await s.alice.raw('GET', `/rooms/${enc(ROOM)}/members`)).members;
     assert.equal(members.length, 3, 'в группе по-прежнему три участника');
     assert.ok(members.includes(DAVE) && !members.includes(BOB), 'замена прошла');
