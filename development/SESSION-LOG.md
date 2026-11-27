@@ -829,3 +829,15 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Added Feed keyring provider primitive: strict bounded JSON keyring parsing, 32-byte hex/canonical-Base64 validation, active key selection, previous-key lookup for rotation, copied key material on reads and explicit zeroization on dispose. Added provider tests and wired them into the existing backend test entry. No production config/environment wiring yet; test cases remain unexecuted.
 
 - Security review of the encrypted object framing identified and fixed a truncation risk: the format now includes an authenticated final record binding chunk count and total plaintext bytes, so an attacker cannot truncate at a valid chunk boundary and append an unauthenticated end marker. A forged boundary-truncation regression case was added; tests remain NOT RUN.
+
+## 2026-11-27 — Feed media runtime and cryptographic review
+
+- Re-fetched PR #174 and confirmed it remains open, Draft, mergeable and unmerged. Work remains on `feat/feed-domain-foundation-beta1-main-7d34b99-20261127`; no main changes.
+- Inspected the exact branch sources for the encrypted object store, key provider, domain rules, object-store adapters, engine package manifest, Dockerfile, config and server startup.
+- Confirmed the production container is `node:22-alpine` with `npm ci --omit=dev`; the declared production dependencies do not include an image decoder/encoder, metadata sanitizer, video probe/transcoder or thumbnail processor. No FFmpeg/system media tooling is installed. Media processing cannot be safely wired until a runtime strategy is selected and validated.
+- Confirmed Feed keyring configuration and encrypted object-store construction are not yet wired into config/main. Existing filesystem storage is streaming but plaintext at rest; memory storage buffers full objects and remains test-only.
+- Static review found that the encrypted adapter copied provider-returned KEK bytes, leaving the provider's temporary copy outside the adapter's zeroization path. Fixed this on the PR branch by adopting caller-owned ephemeral Buffer values (and clearing Uint8Array inputs) so the existing finally blocks clear the key bytes. Added a regression test for both encryption and decryption key-buffer cleanup. The provider contract must return a fresh caller-owned ephemeral buffer, never shared retained key storage.
+- Rechecked AES-GCM nonce/counter allocation, AAD binding, wrapped-DEK authentication, final-record truncation protection and key rotation. No cryptographic acceptance is claimed. Production parser/adapter chunk bounds remain an explicit review item; production must use streaming APIs, not the whole-object convenience getter.
+- Updated `development/reports/2026-11-27-feed-domain-foundation.md` with the runtime findings and media-processing decision gate. No guessed media library, format, codec or numeric limit was introduced.
+- Tests remain NOT RUN and no Actions were manually dispatched/rerun, honoring the #169 gate. No shared server/store/schema/config/main files, MLS/chat files or Flutter UI were changed. No PR merged; WBS weights and progress unchanged.
+
