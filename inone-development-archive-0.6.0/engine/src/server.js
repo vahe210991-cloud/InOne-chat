@@ -849,6 +849,14 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         if (!locale) return send(res, 400, { error: 'locale must be hy, ru or en' });
         const nickError = validateNickname(body.nickname);
         if (nickError) return send(res, 400, { error: nickError });
+        const pin = typeof body.pin === 'string' ? body.pin : '';
+        const pinConfirmation = typeof body.pinConfirmation === 'string' ? body.pinConfirmation : '';
+        const pinErrorText = weakPinReason(pin);
+        if (pinErrorText) return send(res, 400, { error: pinErrorText });
+        if (!validatePin(pinConfirmation) || pin !== pinConfirmation) {
+          return send(res, 400, { error: 'PIN confirmation does not match' });
+        }
+        const pinHash = await hashPin(pinPepper, pin);
         if (await storage.searchNickname(body.nickname)) return send(res, 409, { error: 'nickname taken' });
         const ticket = typeof body.ticket === 'string' ? body.ticket : '';
         const spent = ticket === '' ? null : await storage.consumeAuthToken('provider-ticket', authTokenHash('provider-ticket', ticket), now());
@@ -862,6 +870,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
           joinDefaultOrg: defaultOrgAutoJoin,
           // У аккаунта провайдера пароля нет: случайный непоказываемый хэш, вход только через провайдера.
           passwordHash: hashPassword(randomBytes(32).toString('hex')),
+          pinHash,
           email: identity.email,
           nickname: body.nickname,
           nowMs: now(),
