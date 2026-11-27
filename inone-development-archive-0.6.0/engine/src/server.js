@@ -866,6 +866,15 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
           return send(res, 400, { error: 'PIN confirmation does not match' });
         }
         const pinHash = await hashPin(pinPepper, pin);
+        const hasPhone = body.phone !== undefined && body.phone !== null && body.phone !== '';
+        if (requirePhone && !hasPhone) return send(res, 400, { error: 'phone required' });
+        const phoneV = hasPhone
+          ? normalizePhone(body.phone, { blockedCountries: phoneBlockedCountries, allowedCountries: phoneAllowedCountries })
+          : null;
+        if (phoneV?.error) return send(res, 400, { error: phoneV.error });
+        if (phoneV && (await storage.phoneOwner(phoneV.value.e164))) {
+          return send(res, 409, { error: 'phone already used by another account' });
+        }
         if (await storage.searchNickname(body.nickname)) return send(res, 409, { error: 'nickname taken' });
         const ticket = typeof body.ticket === 'string' ? body.ticket : '';
         const spent = ticket === '' ? null : await storage.consumeAuthToken('provider-ticket', authTokenHash('provider-ticket', ticket), now());
@@ -880,6 +889,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
           // У аккаунта провайдера пароля нет: случайный непоказываемый хэш, вход только через провайдера.
           passwordHash: hashPassword(randomBytes(32).toString('hex')),
           pinHash,
+          phoneE164: phoneV?.value.e164 ?? null,
           email: identity.email,
           nickname: body.nickname,
           nowMs: now(),
@@ -887,8 +897,20 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
           locale,
         });
         if (created !== 'ok') {
-          const error = created === 'nickname' ? 'nickname taken' : created === 'email' ? sameEmailError : created === 'link' ? 'this provider account is already linked' : 'account exists';
+          const error = created === 'nickname' ? 'nickname taken'
+            : created === 'email' ? sameEmailError
+              : created === 'phone' ? 'phone already used by another account'
+                : created === 'link' ? 'this provider account is already linked' : 'account exists';
           return send(res, 409, { error });
+        }
+        if (phoneV && smsEnabled) {
+          try {
+            await sendPhoneCode(userId, phoneV.value.e164);
+          } catch (e) {
+            logger?.warn('optional phone verification SMS could not be sent', {
+              errorCode: typeof e?.code === 'string' ? e.code : 'SMS_UNAVAILABLE',
+            });
+          }
         }
         const proof = newAuthToken();
         await storage.issueAuthToken({ kind: 'provider-proof', tokenHash: authTokenHash('provider-proof', proof), userId, payload: null, expiresAt: now() + 2 * 60_000 });
@@ -1175,6 +1197,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
           userId,
           passwordHash: hashPassword(body.password),
           pinHash: await hashPin(pinPepper, pin),
+          phoneE164: phoneV?.value.e164 ?? null,
           nickname: body.nickname,
           nowMs: now(),
           joinDefaultOrg: defaultOrgAutoJoin,
@@ -1182,20 +1205,22 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         if (created.outcome === 'expired') return send(res, 410, { error: 'registration token expired' });
         if (created.outcome !== 'ok') return send(res, 403, { error: 'registration token invalid' });
         if (created.created !== 'ok') {
-          const error = created.created === 'nickname' ? 'nickname taken' : created.created === 'email' ? 'email already registered' : 'account exists';
+          const error = created.created === 'nickname' ? 'nickname taken'
+            : created.created === 'email' ? 'email already registered'
+              : created.created === 'phone' ? 'phone already used by another account' : 'account exists';
           return send(res, 409, { error });
         }
-        if (phoneV) {
-      const e164 = phoneV.value.e164;
-      try {
-        if (smsEnabled) await sendPhoneCode(userId, e164);
-        else await storage.phoneUpdate(userId, () => ({ next: { phone: e164, verified: false, codeHash: null, codeAttempts: 0, codeExpiresAt: 0, sends: [] }, result: 'saved' }));
-      } catch (e) {
-        if (e.code === '23505') return send(res, 409, { error: 'phone already used by another account' });
-        throw e;
-      }
-    }
-    return send(res, 200, { userId, nickname: body.nickname, verificationLevel: 1 });
+        if (phoneV && smsEnabled) {
+          try {
+            await sendPhoneCode(userId, phoneV.value.e164);
+          } catch (e) {
+            // Phone verification is optional; the required phone value was committed atomically with the account.
+            logger?.warn('optional phone verification SMS could not be sent', {
+              errorCode: typeof e?.code === 'string' ? e.code : 'SMS_UNAVAILABLE',
+            });
+          }
+        }
+        return send(res, 200, { userId, nickname: body.nickname, verificationLevel: 1 });
       }
 
       // ---------- поиск по нику и свой профиль (модель аккаунта, этап 1) ----------
