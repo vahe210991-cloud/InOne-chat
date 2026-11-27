@@ -714,3 +714,11 @@ The owner clarified the intended Beta 1.0 behavior:
 ### 13.4. Verification status
 
 No tests, builds, PostgreSQL migration runs, Rust checks, Flutter checks, or device acceptance runs have been executed for the current implementation head. The code and tests must first complete source review and static preflight. The final verification must run through GitHub Actions on one exact PR SHA and all failures must be resolved before release acceptance.
+
+
+### 13.5. 2026-11-27 static-review follow-up
+
+- Contact acceptance now locks both account rows in stable order before locking the contact request, matching the block transaction's account-first lock order. This closes the race in which an accept on another device could recreate contact rows after a concurrent block.
+- The direct-chat room-summary refresh now carries contact flags into the existing chat preview, so an incoming prompt is refreshed after active-thread MLS sync/resume rather than waiting for a full screen reload.
+- The chat preview model and backend regression suite now cover these cases. Backend Compose acceptance checks for the latest `0037-contacts-and-blocks` migration.
+- These are implementation and test-source changes only. No verification was run; do not mark the WBS complete until exact-SHA Actions pass and the owner accepts the release gates.
