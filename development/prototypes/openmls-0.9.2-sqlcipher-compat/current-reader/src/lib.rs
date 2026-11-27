@@ -941,7 +941,7 @@ mod tests {
                 ProcessedMessageContent::ApplicationMessage(message) => {
                     assert_eq!(
                         message.into_bytes(),
-                        format!("epoch-{after_remove_epoch}-after-reopen").as_bytes()
+                        format!("epoch-{after_remove_epoch}-after-reopen").into_bytes()
                     );
                 }
                 _ => panic!("expected synchronized application message"),
