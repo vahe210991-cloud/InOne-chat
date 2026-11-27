@@ -3357,6 +3357,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       final state = await _session.pinStatus();
       if (!mounted) return;
       if (state['verificationRequired'] == true) {
+        if (_screen == 'pinReset') return;
         setState(() {
           _screen = state['configured'] == true ? 'pinVerification' : 'pinReset';
           _pinResetReturnScreen = 'pinVerification';
@@ -3514,7 +3515,10 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         return InOnePinResetScreen(
           onStart: _startPinReset,
           onComplete: _completePinReset,
-          onBack: () => setState(() => _screen = _pinResetReturnScreen ?? 'profile'),
+          onBack: () {
+            setState(() => _screen = _pinResetReturnScreen ?? 'profile');
+            unawaited(_refreshPinReminder());
+          },
           onDone: () => unawaited(_loadAuthenticatedData()),
         );
       case 'logout':
