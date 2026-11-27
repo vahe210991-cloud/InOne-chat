@@ -1723,6 +1723,7 @@ mlsPendingRemovalsFor(userId) {
       return null;
     },
     createVerifiedAccount({ userId, passwordHash, pinHash, email, nickname, nowMs, provider = null, joinDefaultOrg = false, locale = 'hy' }) {
+      if (typeof pinHash !== 'string' || pinHash.length < 1) throw new TypeError('PIN hash is required');
       if (accounts.has(userId)) return 'account';
       for (const p of profiles.values()) {
         if (p.emailVerified && p.email === email) return 'email';
@@ -1742,6 +1743,7 @@ mlsPendingRemovalsFor(userId) {
     },
 
     createVerifiedAccountWithEmailToken({ email, changeEmailCode, userId, passwordHash, pinHash, nickname, nowMs, joinDefaultOrg = false }) {
+      if (typeof pinHash !== 'string' || pinHash.length < 1) throw new TypeError('PIN hash is required');
       const current = emailCodes.get(email) ?? freshEmailCode();
       const { next, result } = changeEmailCode(structuredClone(current));
       const locale = result.locale ?? current.locale ?? 'hy';
