@@ -43,7 +43,7 @@ Existing Beta 1.0 routes are maintained in the canonical engine. Account locale 
 
 | Method | Route | Use |
 |---|---|---|
-| GET | `/rooms/mine` | Current user's room list, encrypted last-activity cursor/time, unread count, direct peer ID, contact membership, incoming contact prompt and block state; message plaintext is never included |
+| GET | `/rooms/mine` | Current user's room list, encrypted last-activity cursor/time, unread count, direct peer ID, contact membership, incoming contact prompt and the current user's own block state; a blocked peer is not told who initiated the block; message plaintext is never included |
 | GET | `/contacts` | Current user's accepted contacts and pending incoming contact prompts |
 | POST | `/contacts/:userId/accept` | Add the sender to the current user's contacts; this does not gate or delay message delivery |
 | POST | `/contacts/:userId/block` | Block a user, remove contact/pending-request state and prevent future direct-message delivery |
