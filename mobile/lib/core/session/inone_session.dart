@@ -611,7 +611,7 @@ class InOneSession extends ChangeNotifier {
     String? userId,
     required String code,
     required String newPassword,
-    String? pin,
+    required String pin,
   }) async {
     await initialize();
     final normalizedEmail = email.trim();
@@ -634,7 +634,7 @@ class InOneSession extends ChangeNotifier {
           'email': normalizedEmail,
         'code': code.trim(),
         'newPassword': newPassword,
-        if (pin != null && pin.isNotEmpty) 'pin': pin,
+        'pin': pin,
         'locale': _locale,
       },
     );
