@@ -1171,6 +1171,8 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     String nickname,
     String password,
     String phone,
+    String pin,
+    String pinConfirmation,
   ) async {
     if (_registrationEmail.isEmpty) {
       return const InOneFailure(
@@ -1183,6 +1185,8 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           password: password,
           nickname: nickname,
           phone: phone,
+          pin: pin,
+          pinConfirmation: pinConfirmation,
         ));
   }
 
