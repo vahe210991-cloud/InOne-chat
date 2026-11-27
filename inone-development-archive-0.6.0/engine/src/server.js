@@ -2202,6 +2202,7 @@ if (req.method === 'POST' && p === '/login') {
           });
           if (result.status !== 'room_id_conflict') break;
         }
+        if (result?.status === 'blocked') return send(res, 403, { error: 'this user is blocked', code: 'user_blocked' });
         if (!result || result.status === 'room_id_conflict' || result.status === 'retry') {
           return send(res, 503, { error: 'direct conversation reservation is temporarily unavailable' });
         }
@@ -2451,6 +2452,31 @@ if (req.method === 'POST' && p === '/login') {
         return send(res, 200, { ok: true });
       }
 
+      // Контакты: принятие добавляет отправителя в адресную книгу, но не является условием доставки сообщений.
+      if (req.method === 'GET' && p === '/contacts') {
+        const d = await authed(req);
+        if (!d) return send(res, 401, { error: 'unauthorized' });
+        return send(res, 200, await storage.listContacts(d.userId));
+      }
+      const contactAction = p.match(/^\\/contacts\\/([^/]+)\\/(accept|block)$/);
+      if (contactAction && req.method === 'POST') {
+        const d = await authed(req);
+        if (!d) return send(res, 401, { error: 'unauthorized' });
+        const targetUserId = decodeURIComponent(contactAction[1]);
+        if (!targetUserId || targetUserId === d.userId) return send(res, 400, { error: 'a different userId is required' });
+        if (!(await storage.hasAccount(targetUserId))) return send(res, 404, { error: 'user not found' });
+        if (contactAction[2] === 'accept') {
+          const result = await storage.acceptContactRequest(d.userId, targetUserId, now());
+          if (result.status === 'not_found') return send(res, 404, { error: 'contact request not found', code: 'contact_request_not_found' });
+          if (result.status === 'blocked') return send(res, 409, { error: 'blocked users cannot be accepted', code: 'user_blocked' });
+          return send(res, 200, { accepted: true, userId: targetUserId });
+        }
+        const result = await storage.blockUser(d.userId, targetUserId, now());
+        if (result.status === 'unknown_user') return send(res, 404, { error: 'user not found' });
+        if (result.status === 'invalid_pair') return send(res, 400, { error: 'cannot block yourself' });
+        return send(res, 200, { blocked: true, userId: targetUserId });
+      }
+
       // Поиск публичных групп: только публичные, только по названию, без списка участников.
       // Комнаты текущего пользователя (G1, этап 0.7.3): для списка чатов. Только свои членства.
       if (req.method === 'GET' && p === '/rooms/mine') {
@@ -2466,6 +2492,10 @@ if (req.method === 'POST' && p === '/login') {
             lastEventSeq: r.lastEventSeq ?? null,
             lastEventAt: r.lastEventAt ?? null,
             unreadCount: r.unreadCount ?? 0,
+            peerUserId: r.peerUserId ?? null,
+            isPeerContact: r.isPeerContact === true,
+            incomingContactRequest: r.incomingContactRequest === true,
+            isBlocked: r.isBlocked === true,
           })),
         });
       }
@@ -2731,6 +2761,9 @@ if (req.method === 'POST' && p === '/login') {
               if (!result.ok && result.reason === 'welcome_device_revoked') {
                 return send(res, 409, { error: 'a Welcome target device is no longer active', code: 'welcome_device_revoked' });
               }
+              if (!result.ok && result.reason === 'user_blocked') {
+                return send(res, 403, { error: 'this user is blocked', code: 'user_blocked' });
+              }
               if (result.ok && !result.replayed && (adds.length > 0 || removes.length > 0)) {
                 await markRoomChanged(roomId, [...new Set([...r.members, ...adds])]);
               }
@@ -2795,6 +2828,7 @@ if (req.method === 'POST' && p === '/login') {
                 if (result.state === 'direct_not_active') {
                   return send(res, 409, { error: 'direct conversation is not ready for message delivery', code: result.state });
                 }
+                if (result.state === 'user_blocked') return send(res, 403, { error: 'this user is blocked', code: result.state });
                 if (['not_member', 'org_not_member', 'org_not_approved'].includes(result.state)) {
                   return send(res, 403, { error: 'current room organization access is required', code: result.state });
                 }
@@ -2805,6 +2839,7 @@ if (req.method === 'POST' && p === '/login') {
                 if (seq && typeof seq === 'object' && seq.state === 'direct_not_active') {
                   return send(res, 409, { error: 'direct conversation is not ready for message delivery', code: seq.state });
                 }
+                if (seq && typeof seq === 'object' && seq.state === 'user_blocked') return send(res, 403, { error: 'this user is blocked', code: seq.state });
                 if (seq && typeof seq === 'object' && ['not_member', 'org_not_member', 'org_not_approved'].includes(seq.state)) {
                   return send(res, 403, { error: 'current room organization access is required', code: seq.state });
                 }
@@ -2922,6 +2957,7 @@ if (req.method === 'POST' && p === '/login') {
         const claimed = await storage.mlsClaimKeyPackages(targetUserId, d.userId, d.deviceId, claimId, roomId, now());
         if (!claimed.ok) {
           if (claimed.reason === 'room_not_found') return send(res, 404, { error: 'group not found' });
+          if (claimed.reason === 'user_blocked') return send(res, 403, { error: 'this user is blocked', code: 'user_blocked' });
           if (['not_authorized', 'invite_capability_required', 'org_not_approved'].includes(claimed.reason)) {
             return send(res, 403, { error: 'current room organization authorization is required', code: claimed.reason });
           }
