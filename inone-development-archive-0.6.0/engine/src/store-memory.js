@@ -1116,7 +1116,7 @@ export function createMemoryStore({ pinPepper }) {
           name: r.name ?? (peerName?.trim() || null),
           peerUserId,
           isPeerContact: !!peerUserId && (contacts.get(userId)?.has(peerUserId) ?? false),
-          incomingContactRequest: incomingRequest?.status === 'pending',
+          incomingContactRequest: incomingRequest?.status === 'pending' && !(contacts.get(userId)?.has(peerUserId) ?? false),
           isBlocked: !!peerUserId && isBlockedPair(userId, peerUserId),
           owner: r.owner,
           isAdmin: [...r.admins].includes(userId),
