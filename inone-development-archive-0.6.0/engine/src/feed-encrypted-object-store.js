@@ -228,7 +228,8 @@ async function* decryptedRecords(source, objectKey, keyProvider, chunkBytes) {
 
 /**
  * Wraps an existing private object store with chunked AES-256-GCM encryption.
- * keyProvider contract: { activeKeyId, getKey(keyId) -> 32-byte Buffer/Uint8Array }.
+ * keyProvider contract: { activeKeyId, getKey(keyId) -> fresh caller-owned 32-byte Buffer/Uint8Array }.
+ * Returned key buffers are consumed and zeroized by this adapter; never return shared retained key storage.
  * The provider should be backed by the deployment secret manager or KMS adapter.
  */
 export function createEncryptedFeedObjectStore(innerStore, keyProvider, {
