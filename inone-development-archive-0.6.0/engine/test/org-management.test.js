@@ -1,6 +1,5 @@
 import { randomBytes } from 'node:crypto';
-// Управление организацией (шаг 5.4): владелец меняет роли; владелец и администратор добавляют и удаляют участников;
-// выход из организации снимает доступ к её комнатам; владелец с комнатами не выходит.
+// Управление организацией (шаг 5.4): роли и членство; выход/удаление блокируется, пока не завершены MLS Remove Commit во всех комнатах.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from '../src/server.js';
@@ -138,17 +137,55 @@ test('ошибка записи admin audit откатывает изменен�
   }
 });
 
+test('удаление участника организации блокируется, пока он состоит в MLS-комнате связанной организации', async () => {
+  const s = await start();
+  try {
+    const linkedOrg = 'org-management-linked';
+    await s.store.createOrganization({ orgId: linkedOrg, name: 'Связанная организация', status: 'approved', createdBy: DAVE, createdAt: 5 });
+    await s.store.addOrgMember(linkedOrg, DAVE, 'owner', 6);
+    await s.store.addOrgMember(linkedOrg, EVE, 'member', 7);
+
+    const room = '!org-member-cross-link:inone.test';
+    await s.anna.createRoom(room, [ANNA], { orgId: ORG });
+    const proposed = await call(s.base, 'POST', `/orgs/${ORG}/links`, s.anna.token, { targetOrgId: linkedOrg });
+    assert.equal(proposed.status, 200);
+    const linkId = proposed.json.linkId;
+    assert.equal((await call(s.base, 'POST', `/orgs/${linkedOrg}/links/${enc(linkId)}/accept`, s.dave.token, {})).status, 200);
+
+    await s.anna.addMember(room, EVE);
+    assert.equal((await s.anna.raw('POST', `/rooms/${enc(room)}/owner`, { userId: EVE })).owner, EVE);
+    const ownerBlocked = await call(s.base, 'POST', `/orgs/${linkedOrg}/members/${enc(EVE)}/remove`, s.dave.token, {});
+    assert.equal(ownerBlocked.status, 409);
+    assert.equal(ownerBlocked.json.code, 'owns_rooms', 'cross-org room ownership must be transferred first');
+    assert.equal((await s.eve.raw('POST', `/rooms/${enc(room)}/owner`, { userId: ANNA })).owner, ANNA);
+
+    const blocked = await call(s.base, 'POST', `/orgs/${linkedOrg}/members/${enc(EVE)}/remove`, s.dave.token, {});
+    assert.equal(blocked.status, 409);
+    assert.equal(blocked.json.code, 'mls_removal_required');
+    assert.deepEqual(blocked.json.roomIds, [room]);
+
+    await s.anna.removeMember(room, EVE);
+    const removed = await call(s.base, 'POST', `/orgs/${linkedOrg}/members/${enc(EVE)}/remove`, s.dave.token, {});
+    assert.equal(removed.status, 200);
+    await assert.rejects(s.anna.addMember(room, EVE), (error) => error.status === 403);
+  } finally {
+    await s.stop();
+  }
+});
+
 test('выход из организации снимает доступ к её комнатам; владелец с комнатами не выходит; администратор удаляет только обычных', async () => {
   const s = await start();
   try {
     const room = '!mgmt-room:inone.test';
-    const created = await call(s.base, 'POST', '/rooms', s.anna.token, { roomId: room, orgId: ORG, members: [CAROL] });
-    assert.equal(created.status, 200, 'владелец создаёт комнату организации с участником');
+    await s.anna.createRoom(room, [ANNA, CAROL], { orgId: ORG });
+    const blockedLeave = await call(s.base, 'POST', `/orgs/${ORG}/leave`, s.carol.token, {});
+    assert.equal(blockedLeave.status, 409, 'нельзя покинуть организацию до MLS Remove Commit из её комнат');
+    assert.equal(blockedLeave.json.code, 'mls_removal_required');
+    assert.deepEqual(blockedLeave.json.roomIds, [room]);
+    await s.anna.removeMember(room, CAROL);
     const left = await call(s.base, 'POST', `/orgs/${ORG}/leave`, s.carol.token, {});
-    assert.equal(left.status, 200, 'участник выходит из организации');
-    const back = await call(s.base, 'POST', `/rooms/${enc(room)}/members`, s.anna.token, { userId: CAROL });
-    assert.equal(back.status, 403, 'после выхода в комнату организации не вернуть');
-    assert.equal(back.json.code, 'org_not_member');
+    assert.equal(left.status, 200, 'после MLS Remove Commit участник выходит из организации');
+    await assert.rejects(s.anna.addMember(room, CAROL), (error) => error.status === 403, 'после выхода участника нельзя вернуть в комнату организации');
     assert.equal((await call(s.base, 'POST', `/orgs/${ORG}/members`, s.anna.token, { userId: EVE, role: 'owner' })).status, 200, 'владелец назначает второго владельца');
     const ownerLeaves = await call(s.base, 'POST', `/orgs/${ORG}/leave`, s.anna.token, {});
     assert.equal(ownerLeaves.status, 409, 'владелец с комнатами не выходит');
