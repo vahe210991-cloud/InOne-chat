@@ -2517,10 +2517,22 @@ async mlsPendingRemovalsFor(userId) {
         }
         if ((changes.adds ?? []).length > 0) {
           if (roomKind === 'direct') {
+            const { rows: pairLookup } = await client.query(
+              'SELECT user_a, user_b FROM direct_conversations WHERE room_id = $1',
+              [roomId],
+            );
+            if (!pairLookup[0]) {
+              await client.query('ROLLBACK');
+              return { ok: false, reason: 'direct_add_not_authorized', epoch: current };
+            }
             const { rows: pairAccounts } = await client.query(
               'SELECT user_id FROM accounts WHERE user_id = ANY($1::text[]) ORDER BY user_id FOR SHARE',
-              [[senderId, roomKindRows[0].org_id].filter(Boolean)],
+              [[pairLookup[0].user_a, pairLookup[0].user_b]],
             );
+            if (pairAccounts.length !== 2) {
+              await client.query('ROLLBACK');
+              return { ok: false, reason: 'direct_add_not_authorized', epoch: current };
+            }
             const { rows: conversations } = await client.query(
               'SELECT user_a, user_b, created_by, status FROM direct_conversations WHERE room_id = $1 FOR UPDATE',
               [roomId],
