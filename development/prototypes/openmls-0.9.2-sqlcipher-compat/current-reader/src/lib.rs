@@ -675,6 +675,8 @@ mod tests {
                 .is_err(),
             "Bob's epoch-1 state must not process Alice's epoch-2 message"
         );
+        assert_eq!(bob_group.epoch().as_u64(), 1);
+        assert!(bob_group.is_active());
 
         // Bob can still construct a message using his stale epoch-1 state, but Alice
         // has explicitly discarded past-epoch secrets and must reject it.
@@ -697,6 +699,8 @@ mod tests {
                 .is_err(),
             "Alice must reject Bob's old-epoch message with MaxEpochs(0)"
         );
+        assert_eq!(alice_group.epoch().as_u64(), 2);
+        assert!(alice_group.is_active());
 
         let group_id = alice_group.group_id().clone();
         drop(alice_group);
