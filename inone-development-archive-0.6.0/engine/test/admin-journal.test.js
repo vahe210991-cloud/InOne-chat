@@ -75,7 +75,7 @@ test('администратор организации не читает сод
   const s = await start();
   try {
     const room = '!journal-room:inone.test';
-    assert.equal((await call(s.base, 'POST', '/rooms', s.anna.token, { roomId: room, orgId: ORG_A, members: [CAROL] })).status, 200);
+    await s.anna.createRoom(room, [ANNA, CAROL], { orgId: ORG_A });
     const control = await call(s.base, 'GET', `/rooms/${enc(room)}/events`, s.carol.token);
     assert.equal(control.status, 200, 'контроль: участник комнаты читает её события');
     const adminRead = await call(s.base, 'GET', `/rooms/${enc(room)}/events`, s.boris.token);
