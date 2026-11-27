@@ -640,3 +640,14 @@ Latest documented checkpoint: code SHA `4824dfc3b3f4e3aab5d39b16c1adf934a108d660
 
 
 - Dart UI source re-audit across main, PR #171 head, G1 native Dart, Flutter migration, archive stage1, Feed/Profile audit and profile-workspace branches: bottom-nav Feed/Add affordances exist, but Feed route is a placeholder; no Feed/Create/Picker/Preview/PostGallery Dart source found in the inspected trees. Personal/org profile screens are real but have no publication gallery. Do not invent or replace approved UI. Obtain exact approved source branch/path before Flutter integration if one exists outside these inspected branches.
+
+## Feed runtime audit continuation — 2026-11-27
+
+1. PR #174 remains Draft/open/unmerged. Current implementation head is being advanced on `feat/feed-domain-foundation-beta1-main-7d34b99-20261127`; re-fetch exact PR/head SHA before any next write.
+2. Static review confirmed production Docker is Node 22 Alpine with production-only npm dependencies and no image/video decoder, metadata sanitizer, thumbnail generator, video probe/transcoder or FFmpeg. Select and document an Alpine-compatible, maintained processing strategy before adding dependencies or accepting media.
+3. Do not guess supported codecs, photo/video sizes, dimensions, duration, rendition profiles or processing budgets. Keep the API contract's configurable-limit gate open pending benchmarks and owner review.
+4. A key-buffer zeroization defect in the encrypted object-store adapter was corrected and a regression case authored. Tests remain NOT RUN; provider implementations must return fresh caller-owned ephemeral buffers. No cryptographic acceptance is claimed.
+5. Continue static review of bounded stream framing/backpressure and key lifecycle. Production must use `getStream()`, not the whole-object `get()` convenience method.
+6. Feed keyring env/config, Feed-only storage root, production adapter construction, routes and migrations remain unwired. Do not touch shared server/store/schema/config/main while #171/#173/#169 integration remains unresolved.
+7. Do not run tests or Actions manually before #169 is merged. No merge without explicit owner approval; no MLS/chat-file or Flutter UI changes.
+
