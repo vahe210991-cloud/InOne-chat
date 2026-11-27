@@ -75,6 +75,46 @@ The updated proposal therefore specifies an isolated Feed storage directory/name
 
 Production config/key-provider wiring and the dedicated Feed directory are not yet implemented.
  
+
+## Media runtime and cryptographic static review — next stage
+
+A source-level inspection was completed against the exact PR branch. No tests or workflows were run manually.
+
+### Confirmed runtime constraints
+
+- The canonical engine is built from `node:22-alpine`; the image runs `npm ci --omit=dev`.
+- The production dependency set contains the Matrix crypto WASM package, libphonenumber-js, Nodemailer, PostgreSQL, QRCode and Firebase Admin. No image decoder/encoder, image metadata sanitizer, video probe/transcoder or thumbnail-generation dependency is declared.
+- The Docker image installs no FFmpeg or other system media tooling. Therefore the current container cannot yet be treated as a validated image/video processing runtime.
+- The filesystem object store supports streaming and atomic temp-file publication. The memory object store buffers full objects and is test-only.
+- `config.js` and `main.js` do not yet read Feed encryption keyring settings or construct a Feed-specific encrypted object store. The keyring provider and encrypted adapter remain isolated primitives, not production protection.
+
+### Static cryptographic review
+
+- Rechecked AES-256-GCM chunk nonce allocation, object/key/chunk AAD binding, wrapped-DEK authentication, final-record authentication, counter bounds and key-ID rotation flow.
+- Found a key-lifecycle issue: the adapter copied the ephemeral KEK returned by the key provider, leaving the provider-returned copy outside the adapter's zeroization path. Corrected the adapter to adopt the caller-owned ephemeral buffer (and clear Uint8Array input buffers) so its existing `finally` path zeroizes that key material. Added a regression test that checks write/read key buffers are cleared.
+- The provider contract is now explicit in implementation intent: `getKey()` must return a fresh, caller-owned ephemeral byte buffer. A provider must not return a shared long-lived internal key buffer.
+- `getStream()` is the production read path. The convenience `get()` method intentionally accumulates the complete plaintext object and must not be used for large production media.
+- The current decrypt framing parser accumulates source stream chunks while satisfying each frame read. The production filesystem stream currently supplies bounded Node stream chunks, but any future storage adapter must preserve a bounded-chunk contract. This needs to become an explicit adapter invariant or a bounded parser before a non-filesystem adapter is accepted.
+- No claim of cryptographic acceptance is made until focused tests, tamper/fault cases and production adapter review run on the final exact SHA.
+
+### Media-processing decision gate
+
+Do not add a guessed package or arbitrary media limits. Before implementation, select and document a supported runtime strategy for:
+1. image format identification by file signatures and a real decoder (not MIME/extension trust);
+2. safe metadata stripping and deterministic thumbnail/display rendition generation;
+3. video container/codec probing and bounded transcoding or an explicit supported-codec passthrough policy;
+4. decompression-bomb, pixel-count, duration, resolution, memory, CPU and wall-clock limits;
+5. worker isolation, concurrency, temp-file permissions, cancellation and cleanup;
+6. Alpine compatibility, reproducible dependency versions and vulnerability maintenance.
+
+The current repository does not provide these capabilities. Keep uploads quarantined and unpublished until a selected processor has decoded and validated the complete input and produced the required derivatives. No media upload endpoint should accept bytes directly into the published namespace.
+
+### Changes in this stage
+
+- Hardened ephemeral Feed KEK buffer lifecycle in `feed-encrypted-object-store.js`.
+- Added a regression case to `feed-encrypted-object-store.test.js` for key-buffer zeroization.
+- Test remains NOT RUN, consistent with the #169 gate.
+
 ## Dart UI re-audit
 
 Reviewed the actual Dart source tree in the following branches: main, PR #171 head, feat/beta1-native-dart-ui-g1-2026-11-18, feat/flutter-ui-dart-migration-2026-11-14, feature/ui-dart-archive-stage1-2026-11-25, audit/feed-profile-beta1-main-216c6d9-20261126 and the profile-workspace branches.
