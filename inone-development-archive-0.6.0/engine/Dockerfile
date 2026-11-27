@@ -1,5 +1,5 @@
 # Production-capable Node.js image; runtime validation is performed by backend-compose-acceptance.yml.
-FROM node:22-alpine
+FROM node:24-alpine
 WORKDIR /app
 ENV NODE_ENV=production
 COPY package.json package-lock.json ./
