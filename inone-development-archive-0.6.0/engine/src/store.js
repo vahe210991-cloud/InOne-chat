@@ -1814,7 +1814,7 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
     async listContacts(userId) {
       const [contacts, requests] = await Promise.all([
         pool.query(
-          `SELECT c.contact_user_id AS user_id, NULLIF(p.nickname, '') AS display_name, c.created_at
+          `SELECT c.contact_user_id AS user_id, NULLIF(p.nickname, '') AS display_name
              FROM contacts c LEFT JOIN profiles p ON p.user_id = c.contact_user_id
             WHERE c.owner_id = $1 ORDER BY display_name, c.contact_user_id`,
           [userId],
@@ -1830,7 +1830,7 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
         ),
       ]);
       return {
-        contacts: contacts.rows.map((r) => ({ userId: r.user_id, displayName: r.display_name, createdAt: Number(r.created_at) })),
+        contacts: contacts.rows.map((r) => ({ userId: r.user_id, displayName: r.display_name })),
         incomingRequests: requests.rows.map((r) => ({ userId: r.user_id, displayName: r.display_name, roomId: r.room_id, createdAt: Number(r.created_at) })),
       };
     },
