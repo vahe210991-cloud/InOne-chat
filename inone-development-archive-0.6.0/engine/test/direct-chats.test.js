@@ -244,17 +244,19 @@ test('direct chats require no recipient approval and activate automatically thro
     const aliceBlockedSummary = (await alice.raw('GET', '/rooms/mine')).rooms.find((room) => room.roomId === opened.roomId);
     assert.equal(aliceBlockedSummary.isBlocked, true);
     assert.equal(aliceBlockedSummary.incomingContactRequest, false);
+    const bobBlockedSummary = (await bob.raw('GET', '/rooms/mine')).rooms.find((room) => room.roomId === opened.roomId);
+    assert.equal(bobBlockedSummary.isBlocked, false, 'the blocked user is not told who initiated the block');
     await assert.rejects(
       bob.raw('POST', `/mls/groups/${enc(opened.roomId)}/messages`, {
         message: replyWireMessage,
         kind: 'text',
       }),
-      (error) => error.status === 403 && error.message.includes('user_blocked'),
+      (error) => error.status === 403 && error.message.includes('direct_unavailable'),
       'blocking a peer prevents any further message delivery in the direct chat',
     );
     await assert.rejects(
       bob.raw('POST', '/direct-chats/open', { userId: ALICE }),
-      (error) => error.status === 403 && error.message.includes('user_blocked'),
+      (error) => error.status === 403 && error.message.includes('direct_unavailable'),
       'blocking also prevents reopening the direct chat',
     );
   } finally {
