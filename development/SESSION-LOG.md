@@ -827,3 +827,5 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 
 
 - Added Feed keyring provider primitive: strict bounded JSON keyring parsing, 32-byte hex/canonical-Base64 validation, active key selection, previous-key lookup for rotation, copied key material on reads and explicit zeroization on dispose. Added provider tests and wired them into the existing backend test entry. No production config/environment wiring yet; test cases remain unexecuted.
+
+- Security review of the encrypted object framing identified and fixed a truncation risk: the format now includes an authenticated final record binding chunk count and total plaintext bytes, so an attacker cannot truncate at a valid chunk boundary and append an unauthenticated end marker. A forged boundary-truncation regression case was added; tests remain NOT RUN.
