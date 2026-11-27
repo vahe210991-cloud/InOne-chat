@@ -119,7 +119,7 @@ export async function hashPin(pepper, pin) {
   const salt = randomBytes(16);
   const derived = Buffer.from(await derive(pin, salt, pepper));
   try {
-    return ['argon2id', `v=${ARGON2.version}`, `m=${ARGON2.memoryKiB},t=${ARGON2.iterations},p=${ARGON2.parallelism}`, salt.toString('base64url'), derived.toString('base64url')].join('
+    return ['argon2id', `v=${ARGON2.version}`, `m=${ARGON2.memoryKiB},t=${ARGON2.iterations},p=${ARGON2.parallelism}`, salt.toString('base64url'), derived.toString('base64url')].join(String.fromCharCode(36));
   } finally {
     derived.fill(0);
   }
