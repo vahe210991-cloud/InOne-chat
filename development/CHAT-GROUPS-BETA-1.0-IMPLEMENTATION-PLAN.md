@@ -735,5 +735,5 @@ No tests, builds, PostgreSQL migration runs, Rust checks, Flutter checks, or dev
 ### 13.7. Initial multi-device Welcome completeness — 2026-11-27
 
 - A direct-chat KeyPackage claim now fails closed if any currently active recipient device lacks an eligible regular or last-resort KeyPackage. PostgreSQL and memory implementations avoid consuming a partial package set and allow the same claim ID to retry when the missing device publishes a package.
-- The direct-chat regression source covers a two-device recipient with only one package initially, then a successful retry after the second package is uploaded.
+- The direct-chat regression source covers a two-device recipient with only one package initially, then a successful retry after the second package is uploaded. A still-reserved claim also refreshes its package reservation if the active device set changes before the client stages its commit.
 - This does not close post-claim device-add/revocation races; those remain explicitly in CHAT-D-02 and native MLS acceptance. No verification has been run.
