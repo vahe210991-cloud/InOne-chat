@@ -139,7 +139,7 @@ class InOneDirectConversation {
   final bool isCreator;
   final bool mlsInitializationRequired;
 
-  bool get requiresCreatorSetup => status == 'provisioning' && isCreator;
+  bool get requiresCreatorSetup => mlsInitializationRequired;
 
   factory InOneDirectConversation.fromJson(Map<String, dynamic> json) {
     final roomId = json['roomId'];
@@ -153,8 +153,8 @@ class InOneDirectConversation {
         status is! String || !const {'provisioning', 'active'}.contains(status) ||
         created is! bool || isCreator is! bool ||
         mlsInitializationRequired is! bool ||
-        created && (status != 'provisioning' || !isCreator || !mlsInitializationRequired) ||
-        status == 'active' && mlsInitializationRequired) {
+        mlsInitializationRequired != (status == 'provisioning' && isCreator) ||
+        created && (status != 'provisioning' || !isCreator)) {
       throw const ApiException(
         code: 'invalid_response',
         statusCode: 200,
