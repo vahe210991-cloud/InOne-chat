@@ -2686,7 +2686,7 @@ async mlsPendingRemovalsFor(userId) {
 
     /** Аккаунт с подтверждённой почтой и никнеймом одной транзакцией (и связью с провайдером, если задана).
      *  Возвращает ok | email | nickname | link | account. */
-    async createVerifiedAccount({ userId, passwordHash, pinHash, email, nickname, nowMs, provider = null, joinDefaultOrg = false, locale = 'hy' }) {
+    async createVerifiedAccount({ userId, passwordHash, pinHash, phoneE164 = null, email, nickname, nowMs, provider = null, joinDefaultOrg = false, locale = 'hy' }) {
       if (typeof pinHash !== 'string' || pinHash.length < 1) throw new TypeError('PIN hash is required');
       try {
         return await inTransaction(async (c) => {
@@ -2700,6 +2700,12 @@ async mlsPendingRemovalsFor(userId) {
             'INSERT INTO pins (user_id, pin_hash, failed, locked_until, last_verified_at, reminder_next_at) VALUES ($1, $2, 0, NULL, $3, $4)',
             [userId, pinHash, nowMs, nowMs + 7 * 24 * 60 * 60_000],
           );
+          if (phoneE164) {
+            await c.query(
+              'INSERT INTO phones (user_id, phone, verified, code_hash, code_attempts, code_expires_at) VALUES ($1, $2, FALSE, NULL, 0, 0)',
+              [userId, phoneE164],
+            );
+          }
           if (provider) {
             await c.query(
               'INSERT INTO provider_links (provider, sub, user_id, email, linked_at) VALUES ($1, $2, $3, $4, $5)',
@@ -2712,6 +2718,7 @@ async mlsPendingRemovalsFor(userId) {
         if (e.code !== '23505') throw e;
         if (e.constraint === 'profiles_email_verified') return 'email';
         if (e.constraint === 'profiles_nickname') return 'nickname';
+        if (e.constraint === 'phones_phone_unique') return 'phone';
         if (e.constraint === 'provider_links_pkey') return 'link';
         return 'account';
       }
@@ -2721,7 +2728,7 @@ async mlsPendingRemovalsFor(userId) {
      * Consumes a verified-email ticket and creates the account in one transaction.
      * A failed account insert rolls back ticket consumption so the user can retry safely.
      */
-    async createVerifiedAccountWithEmailToken({ email, changeEmailCode, userId, passwordHash, pinHash, nickname, nowMs, joinDefaultOrg = false }) {
+    async createVerifiedAccountWithEmailToken({ email, changeEmailCode, userId, passwordHash, pinHash, phoneE164 = null, nickname, nowMs, joinDefaultOrg = false }) {
       if (typeof pinHash !== 'string' || pinHash.length < 1) throw new TypeError('PIN hash is required');
       try {
         return await inTransaction(async (c) => {
@@ -2756,6 +2763,12 @@ async mlsPendingRemovalsFor(userId) {
             'INSERT INTO pins (user_id, pin_hash, failed, locked_until, last_verified_at, reminder_next_at) VALUES ($1, $2, 0, NULL, $3, $4)',
             [userId, pinHash, nowMs, nowMs + 7 * 24 * 60 * 60_000],
           );
+          if (phoneE164) {
+            await c.query(
+              'INSERT INTO phones (user_id, phone, verified, code_hash, code_attempts, code_expires_at) VALUES ($1, $2, FALSE, NULL, 0, 0)',
+              [userId, phoneE164],
+            );
+          }
           return { outcome: 'ok', created: 'ok', locale };
         });
       } catch (error) {
