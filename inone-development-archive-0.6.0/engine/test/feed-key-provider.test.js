@@ -34,7 +34,7 @@ test('Feed key provider rejects malformed key rings and missing active keys', ()
   }), /missing from the key ring/u);
   assert.throws(() => createFeedEncryptionKeyProvider({
     keyringJson: JSON.stringify({ active: 'short' }), activeKeyId: 'active',
-  }), /64 hex characters or canonical base64/u);
+  }), /exactly 32 bytes/u);
   assert.throws(() => createFeedEncryptionKeyProvider({
     keyringJson: JSON.stringify({ active: '00'.repeat(31) }), activeKeyId: 'active',
   }), /exactly 32 bytes/u);
