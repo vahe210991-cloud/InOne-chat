@@ -59,7 +59,6 @@ export const MAX_APPROVAL_CODE_ATTEMPTS = 3;
 export const MAX_PENDING_APPROVALS = 3;
 export const FREE_PIN_ATTEMPTS = PIN_FREE_ATTEMPTS;
 const PIN_RESET_CODE_TTL_MS = 60 * 60_000;
-const PIN_RESET_MAX_CODE_ATTEMPTS = 5;
 export { lockDurationMs, weakPinReason };
 export const TO_DEVICE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // недоставленная очередь хранится не дольше 30 дней (спецификация)
 const MAX_TO_DEVICE_RECIPIENTS = 100;
@@ -468,8 +467,9 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
     lockDuration: lockDurationMs,
     markVerified,
     check: async (candidate, stored) => {
+      const valid = await checkPin(pinPepper, candidate, stored);
       pinChecks += 1;
-      return checkPin(pinPepper, candidate, stored);
+      return valid;
     },
     upgrade: async (candidate, stored) =>
       pinHashNeedsUpgrade(stored) ? hashPin(pinPepper, candidate) : null,
@@ -528,6 +528,15 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
       if (req.method === 'GET' && !downloadSession) return send(res, 401, { error: 'unauthorized' });
       const file = await storage.getFile(fileId);
       if (!file) return send(res, 404, { error: 'not found' });
+      const protectedUserId = req.method === 'GET'
+        ? downloadSession?.userId
+        : (req.method === 'PUT' ? file.ownerId : null);
+      if (protectedUserId) {
+        const pinState = await storage.pinStatus(protectedUserId);
+        const verificationRequired = !pinState.configured || pinState.lastVerifiedAt === null
+          || now() - pinState.lastVerifiedAt >= PIN_VERIFICATION_INTERVAL_MS;
+        if (verificationRequired) return send(res, 403, { error: 'pin_verification_required', setupRequired: !pinState.configured });
+      }
       if (req.method === 'PUT') {
         if (!expires || !file.ownerDeviceId || !sameSig(sig, signFor('PUT', fileId, expires, file.size, file.sha256, file.ownerId, file.ownerDeviceId))) {
           return send(res, 403, { error: 'upload link is invalid' });
@@ -3397,7 +3406,6 @@ if (req.method === 'POST' && p === '/login') {
         const userId = typeof body.userId === 'string' && body.userId.length > 0
           ? body.userId
           : (email && isEmail(email) ? await storage.userIdByEmail(email) : null);
-        if (!validatePin(pin)) return send(res, 403, { error: 'recovery verification failed' });
         if (typeof newPassword !== 'string' || Array.from(newPassword).length < MIN_PASSWORD_LENGTH || Array.from(newPassword).length > MAX_PASSWORD_LENGTH) {
           return send(res, 400, { error: `newPassword must be ${MIN_PASSWORD_LENGTH}-${MAX_PASSWORD_LENGTH} characters` });
         }
@@ -3423,6 +3431,7 @@ if (req.method === 'POST' && p === '/login') {
           },
           pin,
           pinCheck: async (candidate, stored) => {
+            if (!validatePin(candidate)) return { ok: false, upgradedHash: null };
             const ok = await checkPin(pinPepper, candidate, stored);
             pinChecks += 1;
             return {
@@ -3480,6 +3489,7 @@ if (req.method === 'POST' && p === '/login') {
         if (!res.destroyed) res.destroy();
         return;
       }
+      if (e.code === 'PIN_KDF_BUSY') return send(res, 503, { error: 'security operation is temporarily unavailable', code: 'pin_kdf_busy' });
       if (e.code === 'MAIL_UNAVAILABLE' || e.code === 'EMAIL_QUEUE_UNAVAILABLE') return send(res, 503, { error: 'email delivery is temporarily unavailable, try later' });
       logger?.error('request failed', { errorCode });
       return send(res, 500, { error: 'internal server error' });
