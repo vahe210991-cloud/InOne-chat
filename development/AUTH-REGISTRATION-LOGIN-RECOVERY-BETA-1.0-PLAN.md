@@ -6,6 +6,8 @@
 >
 > **Важно:** этот план не переносит запуск InOne Identity в первый этап Beta 1.0. Реализация Identity не является условием закрытия данного плана, если отдельная задача прямо не утверждена.
 
+> **PIN security architecture:** implementation contract is maintained in [AUTH-PIN-SECURITY-ARCHITECTURE-BETA-1.0.md](./AUTH-PIN-SECURITY-ARCHITECTURE-BETA-1.0.md). Registration, recovery, monthly gate, weekly reminders and protected PIN reset must conform to that document. AUTH-08 remains open until code, contracts, tests and independent security review are complete.
+
 ## 1. Обязательное правило ведения документа
 
 Этот файл является общим рабочим реестром для всех AI-агентов, разработчиков и аудиторов проекта.
