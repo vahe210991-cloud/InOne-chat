@@ -49,7 +49,7 @@ async function call(base, method, p, token, body) {
 async function withRoom(fn) {
   const s = await start();
   try {
-    assert.equal((await call(s.base, 'POST', '/rooms', s.anna.token, { roomId: ROOM, orgId: ORG_A, members: [BORIS] })).status, 200, 'комната организации A создана');
+    await s.anna.createRoom(ROOM, [ANNA, BORIS], { orgId: ORG_A });
     await fn(s);
   } finally {
     await s.stop();
@@ -77,8 +77,7 @@ test('файлы: посторонняя организация не загру�
 
 test('состав: посторонний не добавляет себя в комнату организации', async () => {
   await withRoom(async (s) => {
-    const add = await call(s.base, 'POST', `/rooms/${enc(ROOM)}/members`, s.carol.token, { userId: CAROL });
-    assert.equal(add.status, 403, 'посторонний не добавляется в чужую комнату');
+    await assert.rejects(s.anna.addMember(ROOM, CAROL), (error) => error.status === 403, 'участник другой организации не добавляется без активной связи через MLS');
   });
 });
 
