@@ -23,6 +23,10 @@ List<InOneChatPreview> mapInOneRoomsToChatPreviews(InOneRoomList roomList) {
       time: '',
       kind: mapInOneRoomKind(room.kind),
       unread: room.unreadCount,
+      peerUserId: room.peerUserId,
+      incomingContactRequest: room.incomingContactRequest,
+      isPeerContact: room.isPeerContact,
+      isBlocked: room.isBlocked,
     );
   }));
 }
