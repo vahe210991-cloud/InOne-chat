@@ -865,7 +865,6 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         if (!validatePin(pinConfirmation) || pin !== pinConfirmation) {
           return send(res, 400, { error: 'PIN confirmation does not match' });
         }
-        const pinHash = await hashPin(pinPepper, pin);
         const hasPhone = body.phone !== undefined && body.phone !== null && body.phone !== '';
         if (requirePhone && !hasPhone) return send(res, 400, { error: 'phone required' });
         const phoneV = hasPhone
@@ -876,6 +875,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
           return send(res, 409, { error: 'phone already used by another account' });
         }
         if (await storage.searchNickname(body.nickname)) return send(res, 409, { error: 'nickname taken' });
+        const pinHash = await hashPin(pinPepper, pin);
         const ticket = typeof body.ticket === 'string' ? body.ticket : '';
         const spent = ticket === '' ? null : await storage.consumeAuthToken('provider-ticket', authTokenHash('provider-ticket', ticket), now());
         if (!spent) return send(res, 403, { error: 'registration ticket invalid or expired' });
