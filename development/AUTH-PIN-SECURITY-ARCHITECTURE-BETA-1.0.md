@@ -101,7 +101,7 @@ The API returns a generic PIN failure and a retry time only when the caller is a
 - A reminder becomes due at most once per seven-day interval. The server persists the next reminder/acknowledgement time.
 - «Помню» records acknowledgement and schedules the next reminder no earlier than seven days later. It does not update the monthly verification timestamp and cannot satisfy the monthly gate.
 - «Не помню, заменить» starts the protected reset flow described above. The reminder remains pending until reset succeeds or the user explicitly acknowledges it.
-- The email templates are localized in Armenian, Russian and English. Mobile reminder/verification copy is currently authored in Russian; wiring it to the account locale remains a release task. It must not contain or request the PIN itself.
+- Email templates and mobile reminder/verification copy are localized in Armenian, Russian and English using the active app locale. They must not contain or request the PIN itself.
 
 ## 9. API surface
 
