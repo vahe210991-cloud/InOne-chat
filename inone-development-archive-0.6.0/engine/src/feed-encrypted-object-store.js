@@ -25,7 +25,10 @@ async function loadKey(keyProvider, keyId) {
     throw new TypeError('Feed encryption key provider is required');
   }
   const value = await keyProvider.getKey(keyId);
-  const key = Buffer.from(value ?? []);
+  if (!Buffer.isBuffer(value) && !(value instanceof Uint8Array)) {
+    throw new Error('Feed encryption key provider must return 32 key bytes');
+  }
+  const key = Buffer.from(value);
   if (key.length !== 32) {
     key.fill(0);
     throw new Error('Feed encryption keys must be exactly 32 bytes');
