@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import './feed-rules.test.js';
 import './feed-encrypted-object-store.test.js';
+import './feed-key-provider.test.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
