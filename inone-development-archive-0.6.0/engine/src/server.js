@@ -3286,68 +3286,36 @@ if (req.method === 'POST' && p === '/login') {
       if (req.method === 'POST' && p === '/recovery/start') {
         const requestedLocale = body.locale === undefined ? null : resolveEmailLocale(body.locale);
         if (body.locale !== undefined && !requestedLocale) return send(res, 400, { error: 'locale must be hy, ru or en' });
-        // Один и тот же ответ, есть такой аккаунт или нет: не раскрываем, кто зарегистрирован.
+        // Privacy-preserving response: never disclose whether an account exists or which recovery factor is configured.
         const startEmail = normalizeEmail(body.email);
-        const userId = body.userId ?? (startEmail ? await storage.userIdByEmail(startEmail) : null);
-        // Лимит на запросы восстановления с одного адреса, в том числе по несуществующим аккаунтам: SMS и письма стоят денег (D5).
+        const userId = typeof body.userId === 'string' && body.userId.length > 0
+          ? body.userId
+          : (startEmail && isEmail(startEmail) ? await storage.userIdByEmail(startEmail) : null);
         const perAddress = await checkRate('recoveryPerAddress', clientIp(req));
-        if (!perAddress.allowed) return send(res, 429, { error: 'too many recovery requests from this address', retryAt: new Date(perAddress.retryAt).toISOString() });
-        if (await storage.hasAccount(userId)) {
-          const phone = await storage.phoneGet(userId);
-          // Аккаунт без подтверждённого телефона: восстановление по почте (решение владельца). Одна почта и окно 48 часов.
-          // Аккаунт с привязкой Google или Apple восстанавливается входом через провайдера: кода здесь нет.
-          if (!phone.verified && (await storage.providerLinksOf(userId)).length === 0) {
+        if (!perAddress.allowed) {
+          return send(res, 429, { error: 'too many recovery requests from this address', retryAt: new Date(perAddress.retryAt).toISOString() });
+        }
+        if (await storage.hasAccount(userId) && (await storage.providerLinksOf(userId)).length === 0) {
+          const profile = await storage.profileGet(userId);
+          // Recovery codes go only to the verified primary email. Phone and backup-email visibility are not recovery factors.
+          if (profile?.emailVerified === true && profile.email) {
             const emailCode = String(randomInt(0, 1_000_000)).padStart(6, '0');
-            const profile = await storage.profileGet(userId);
-            const primaryEmail = profile?.email ?? userId;
-            const locale = requestedLocale ?? profile?.locale ?? 'hy';
+            const locale = requestedLocale ?? profile.locale ?? 'hy';
             const backup = await storage.backupEmailGet(userId);
-            const recoveryEmail = backup?.email ?? primaryEmail;
-            const notificationRecipients = [primaryEmail, backup?.email];
+            const notificationRecipients = [profile.email, backup?.email];
             const issued = await storage.recoveryUpdateWithOutbox(userId, (r) => {
-              const out = requestCode(r, { nowMs: now(), codeHash: recoveryCodeHash(userId, emailCode), linkHash: null });
-              const next = out.issued ? confirmLink(out.next, { nowMs: now(), linkOk: true }).next : out.next;
-              return { next, result: out.issued };
-            }, async (tx, wasIssued) => {
-              if (!wasIssued) return;
-              await mailTo(recoveryEmail, '', '', null, 'recovery_code', { code: emailCode }, locale, tx);
-              await mailToRecipients(notificationRecipients, '', '', 'recovery_requested', {}, tx, locale);
-            });
-            if (issued) await alertDevices(userId, { kind: 'recovery_started' });
-          }
-          // Восстановление возможно только при подтверждённом телефоне (D5).
-          // SMS на номер не чаще заданного за сутки: лишние запросы не шлют SMS.
-          if (phone.verified && (await checkRate('smsPerPhone', phone.phone)).allowed) {
-            const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
-            const token = randomBytes(24).toString('base64url');
-            const profile = await storage.profileGet(userId);
-            const primaryEmail = profile?.email ?? userId;
-            const locale = requestedLocale ?? profile?.locale ?? 'hy';
-            const backup = await storage.backupEmailGet(userId);
-            const notificationRecipients = [primaryEmail, backup?.email];
-            const issued = await storage.recoveryUpdateWithOutbox(userId, (r) => {
-              const out = requestCode(r, { nowMs: now(), codeHash: recoveryCodeHash(userId, code), linkHash: recoveryLinkHash(userId, token) });
+              const out = requestCode(r, {
+                nowMs: now(),
+                codeHash: recoveryCodeHash(userId, emailCode),
+                linkHash: null,
+              });
               return { next: out.next, result: out.issued };
             }, async (tx, wasIssued) => {
               if (!wasIssued) return;
-              const webLink = new URL('/recovery/confirm', `${publicUrl.replace(/\/+$/, '')}/`);
-              webLink.searchParams.set('user', userId);
-              webLink.searchParams.set('token', token);
-              webLink.searchParams.set('locale', locale);
-              const appLink = new URL('inone://recovery/confirm');
-              appLink.searchParams.set('user', userId);
-              appLink.searchParams.set('token', token);
-              appLink.searchParams.set('locale', locale);
-              await mailToRecipients(notificationRecipients, '', '', 'recovery_confirmation_link', {
-                url: webLink.toString(),
-                appUrl: appLink.toString(),
-              }, tx, locale);
+              await mailTo(profile.email, '', '', null, 'recovery_code', { code: emailCode }, locale, tx);
+              await mailToRecipients(notificationRecipients, '', '', 'recovery_requested', {}, tx, locale);
             });
-            if (issued) {
-              // D5: SMS-код и email-link — независимые каналы одного recovery event.
-              await smsSender.send(phone.phone, `Код: ${code}. Код восстановления InOne действует час. Если это не вы — не вводите его.`);
-              await alertDevices(userId, { kind: 'recovery_started' });
-            }
+            if (issued) await alertDevices(userId, { kind: 'recovery_started' });
           }
         }
         return send(res, 202, { ok: true });
