@@ -442,11 +442,20 @@ export function createMemoryStore({ pinPepper }) {
       if ([...rooms.values()].some((room) => room.orgId === orgId && room.owner === target)) {
         return { ok: false, reason: 'owns_rooms' };
       }
+      const linkedOrgIds = [...orgLinks.values()]
+        .filter((link) => link.status === 'active' && (link.orgA === orgId || link.orgB === orgId))
+        .map((link) => link.orgA === orgId ? link.orgB : link.orgA);
       const mlsRooms = [...rooms.values()]
-        .filter((room) => room.orgId === orgId && room.members.has(target) && (mlsGroups.get(room.roomId) ?? 0) > 0)
+        .filter((room) => room.members.has(target)
+          && (room.orgId === orgId || (linkedOrgIds.includes(room.orgId) && !orgMembers.get(room.orgId)?.has(target)))
+          && (mlsGroups.get(room.roomId) ?? 0) > 0)
         .map((room) => room.roomId).sort();
       if (mlsRooms.length) return { ok: false, reason: 'mls_removal_required', rooms: mlsRooms };
-      for (const room of rooms.values()) if (room.orgId === orgId) { room.members.delete(target); room.admins.delete(target); }
+      for (const room of rooms.values()) {
+        if (room.orgId === orgId || (linkedOrgIds.includes(room.orgId) && !orgMembers.get(room.orgId)?.has(target))) {
+          room.members.delete(target); room.admins.delete(target);
+        }
+      }
       members.delete(target);
       adminActions.push({ orgId, actor, action, target, detail: targetRole, at });
       return { ok: true, role: targetRole };
@@ -462,11 +471,20 @@ export function createMemoryStore({ pinPepper }) {
       return n;
     },
     removeOrgMember(orgId, userId) {
+      const linkedOrgIds = [...orgLinks.values()]
+        .filter((link) => link.status === 'active' && (link.orgA === orgId || link.orgB === orgId))
+        .map((link) => link.orgA === orgId ? link.orgB : link.orgA);
       const mlsRooms = [...rooms.values()]
-        .filter((room) => room.orgId === orgId && room.members.has(userId) && (mlsGroups.get(room.roomId) ?? 0) > 0)
+        .filter((room) => room.members.has(userId)
+          && (room.orgId === orgId || (linkedOrgIds.includes(room.orgId) && !orgMembers.get(room.orgId)?.has(userId)))
+          && (mlsGroups.get(room.roomId) ?? 0) > 0)
         .map((room) => room.roomId).sort();
       if (mlsRooms.length) return { ok: false, reason: 'mls_removal_required', rooms: mlsRooms };
-      for (const r of rooms.values()) if (r.orgId === orgId) { r.members.delete(userId); r.admins.delete(userId); }
+      for (const room of rooms.values()) {
+        if (room.orgId === orgId || (linkedOrgIds.includes(room.orgId) && !orgMembers.get(room.orgId)?.has(userId))) {
+          room.members.delete(userId); room.admins.delete(userId);
+        }
+      }
       orgMembers.get(orgId)?.delete(userId);
       return { ok: true };
     },
