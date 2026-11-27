@@ -16,7 +16,22 @@ import { freshEmailCode } from './email-code-rules.js';
 export function createMemoryStore({ pinPepper }) {
   const keyed = (label, value) => createHmac('sha256', pinPepper).update(`${label}|${value}`).digest('hex');
   const accounts = new Map(); // пользователь -> хэш пароля
-  const pins = new Map();     // пользователь -> { hash, failed, lockedUntil }
+  const pins = new Map();     // пользователь -> durable PIN state mirror
+  const pinLocks = new Map();
+  const withPinLock = async (userId, work) => {
+    const previous = pinLocks.get(userId) ?? Promise.resolve();
+    let release;
+    const current = new Promise((resolve) => { release = resolve; });
+    const tail = previous.then(() => current);
+    pinLocks.set(userId, tail);
+    await previous;
+    try {
+      return await work();
+    } finally {
+      release();
+      if (pinLocks.get(userId) === tail) pinLocks.delete(userId);
+    }
+  };
   const devices = new Map();  // ключ устройства -> { userId, deviceId, label, revoked }
   const tokens = new Map();   // ключевой хэш токена доступа -> { deviceKey, expiresAt }
   const refreshes = new Map();
@@ -89,32 +104,54 @@ export function createMemoryStore({ pinPepper }) {
 
     hasPin: (userId) => pins.has(userId),
     pinHash: (userId) => pins.get(userId)?.hash ?? null,
-    setPin(userId, pinHash) {
-      pins.set(userId, { hash: pinHash, failed: 0, lockedUntil: null });
+    setPin(userId, pinHash, nowMs = Date.now()) {
+      pins.set(userId, {
+        hash: pinHash, failed: 0, lockedUntil: null,
+        lastVerifiedAt: nowMs, reminderNextAt: nowMs + 7 * 24 * 60 * 60_000,
+      });
+    },
+    pinStatus(userId) {
+      const rec = pins.get(userId);
+      return rec ? {
+        configured: true,
+        lastVerifiedAt: rec.lastVerifiedAt ?? null,
+        reminderNextAt: rec.reminderNextAt ?? null,
+        lockedUntil: rec.lockedUntil ?? null,
+      } : { configured: false, lastVerifiedAt: null, reminderNextAt: null, lockedUntil: null };
+    },
+    acknowledgePinReminder(userId, nextAt) {
+      const rec = pins.get(userId);
+      if (!rec) return false;
+      rec.reminderNextAt = nextAt;
+      return true;
     },
     removePin(userId) {
       pins.delete(userId);
     },
 
-    verifyPin(userId, pin, { now, free, lockDuration, check }) {
-      const rec = pins.get(userId);
-      if (!rec) return { ok: false, reason: 'no-pin' };
-      if (rec.lockedUntil && now < rec.lockedUntil) return { ok: false, reason: 'locked', retryAt: rec.lockedUntil };
-      const expiredLockCleared = !!rec.lockedUntil && now >= rec.lockedUntil;
-      if (expiredLockCleared) rec.lockedUntil = null;
-      rec.failed += 1;
-      const attempt = rec.failed;
-      if (attempt > free && !expiredLockCleared) {
-        rec.lockedUntil = now + lockDuration(attempt);
-        return { ok: false, reason: 'locked', retryAt: rec.lockedUntil };
-      }
-      if (check(pin, rec.hash)) {
-        rec.failed = 0;
-        rec.lockedUntil = null;
-        return { ok: true };
-      }
-      if (attempt >= free) rec.lockedUntil = now + lockDuration(attempt);
-      return { ok: false, reason: 'wrong' };
+    async verifyPin(userId, pin, { now, free, lockDuration, check, upgrade = null, markVerified = false }) {
+      return withPinLock(userId, async () => {
+        const rec = pins.get(userId);
+        if (!rec) return { ok: false, reason: 'no-pin' };
+        if (rec.lockedUntil && now < rec.lockedUntil) return { ok: false, reason: 'locked', retryAt: rec.lockedUntil };
+        const expiredLockCleared = !!rec.lockedUntil && now >= rec.lockedUntil;
+        if (expiredLockCleared) rec.lockedUntil = null;
+        rec.failed += 1;
+        const attempt = rec.failed;
+        if (attempt > free && !expiredLockCleared) {
+          rec.lockedUntil = now + lockDuration(attempt);
+          return { ok: false, reason: 'locked', retryAt: rec.lockedUntil };
+        }
+        if (await check(pin, rec.hash)) {
+          if (upgrade) rec.hash = (await upgrade(pin, rec.hash)) ?? rec.hash;
+          rec.failed = 0;
+          rec.lockedUntil = null;
+          if (markVerified) rec.lastVerifiedAt = now;
+          return { ok: true };
+        }
+        if (attempt >= free) rec.lockedUntil = now + lockDuration(attempt);
+        return { ok: false, reason: 'wrong' };
+      });
     },
 
     addDevice(userId, deviceId, label = null, createdAt = 0) {
@@ -1573,7 +1610,7 @@ mlsPendingRemovalsFor(userId) {
       return 'ok';
     },
 
-    createVerifiedAccountWithEmailToken({ email, changeEmailCode, userId, passwordHash, nickname, nowMs, joinDefaultOrg = false }) {
+    createVerifiedAccountWithEmailToken({ email, changeEmailCode, userId, passwordHash, pinHash, nickname, nowMs, joinDefaultOrg = false }) {
       const current = emailCodes.get(email) ?? freshEmailCode();
       const { next, result } = changeEmailCode(structuredClone(current));
       const locale = result.locale ?? current.locale ?? 'hy';
@@ -1591,6 +1628,10 @@ mlsPendingRemovalsFor(userId) {
       emailCodes.set(email, structuredClone(next));
       accounts.set(userId, passwordHash);
       profiles.set(userId, { email, emailVerified: true, nickname, createdAt: nowMs, locale });
+      pins.set(userId, {
+        hash: pinHash, failed: 0, lockedUntil: null,
+        lastVerifiedAt: nowMs, reminderNextAt: nowMs + 7 * 24 * 60 * 60_000,
+      });
       return { outcome: 'ok', created: 'ok', locale };
     },
     // ---- код подтверждения почты при регистрации ----
