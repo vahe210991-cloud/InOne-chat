@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../state/inone_state.dart';
 import '../../widgets/inone_widgets.dart';
 
-/// SC-04 · Հաշվի ստեղծում: никнейм, пароль, телефон.
+/// SC-04 · Հաշվի ստեղծում: никнейм, пароль, телефон և PIN վերականգնման համար.
 class InOneCreateAccountScreen extends StatefulWidget {
   const InOneCreateAccountScreen({
     super.key,
@@ -13,7 +13,7 @@ class InOneCreateAccountScreen extends StatefulWidget {
   });
 
   /// POST /register. `null` — успех.
-  final Future<InOneFailure?> Function(String nickname, String password, String phone) onSubmit;
+  final Future<InOneFailure?> Function(String nickname, String password, String phone, String pin, String pinConfirmation) onSubmit;
   final VoidCallback onBack;
   final VoidCallback? onDone;
 
@@ -24,7 +24,7 @@ class InOneCreateAccountScreen extends StatefulWidget {
 class _InOneCreateAccountScreenState extends State<InOneCreateAccountScreen>
     with InOneActionState<InOneCreateAccountScreen> {
   final InOneFormController _form =
-      InOneFormController(required: const ['nickname', 'password', 'phone']);
+      InOneFormController(required: const ['nickname', 'password', 'phone', 'pin', 'pinConfirmation']);
 
   @override
   void dispose() {
@@ -40,6 +40,8 @@ class _InOneCreateAccountScreenState extends State<InOneCreateAccountScreen>
         _form.value('nickname').trim(),
         _form.value('password'),
         _form.value('phone').trim(),
+        _form.value('pin'),
+        _form.value('pinConfirmation'),
       ),
       onSuccess: widget.onDone,
     );
@@ -70,6 +72,24 @@ class _InOneCreateAccountScreenState extends State<InOneCreateAccountScreen>
                 obscure: true,
                 maxLength: 128,
                 autofillHints: const [AutofillHints.newPassword],
+                textInputAction: TextInputAction.next,
+              ),
+              InOneField(
+                form: _form,
+                name: 'pin',
+                label: 'Վերականգնման PIN (8 թվանշան)',
+                obscure: true,
+                keyboardType: TextInputType.number,
+                maxLength: 8,
+                textInputAction: TextInputAction.next,
+              ),
+              InOneField(
+                form: _form,
+                name: 'pinConfirmation',
+                label: 'Կրկնեք վերականգնման PIN-ը',
+                obscure: true,
+                keyboardType: TextInputType.number,
+                maxLength: 8,
                 textInputAction: TextInputAction.next,
               ),
               InOneField(
