@@ -2388,8 +2388,11 @@ async mlsPendingRemovalsFor(userId) {
           if (existing.rows.length) return 'phone-taken';
         }
         await c.query(
-          `UPDATE phones SET phone = $2, verified = $3, code_hash = $4, code_attempts = $5, code_expires_at = $6, sends = $7
-           WHERE user_id = $1`,
+          `INSERT INTO phones (user_id, phone, verified, code_hash, code_attempts, code_expires_at, sends)
+           VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+           ON CONFLICT (user_id) DO UPDATE SET phone = EXCLUDED.phone, verified = EXCLUDED.verified,
+             code_hash = EXCLUDED.code_hash, code_attempts = EXCLUDED.code_attempts,
+             code_expires_at = EXCLUDED.code_expires_at, sends = EXCLUDED.sends`,
           [userId, next.phone, next.verified, next.codeHash, next.codeAttempts, next.codeExpiresAt, JSON.stringify(next.sends)],
         );
         return result;
