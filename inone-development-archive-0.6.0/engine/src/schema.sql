@@ -340,7 +340,7 @@ CREATE INDEX mls_welcomes_pending ON mls_welcomes (user_id, device_id) WHERE ack
 -- Типы комнат и уникальность названий каналов (см. migrations/0010-channels.sql).
 -- Название группы может повторяться: индекс только для каналов.
 ALTER TABLE rooms ADD COLUMN kind TEXT NOT NULL DEFAULT 'group' CHECK (kind IN ('group', 'channel', 'direct'));
-ALTER TABLE rooms ADD CONSTRAINT rooms_channel_has_name CHECK (kind = 'group' OR name IS NOT NULL);
+ALTER TABLE rooms ADD CONSTRAINT rooms_channel_has_name CHECK (kind <> 'channel' OR name IS NOT NULL);
 CREATE UNIQUE INDEX rooms_channel_name_unique ON rooms ((lower(regexp_replace(name, '\s+', ' ', 'g')))) WHERE kind = 'channel';
 
 
