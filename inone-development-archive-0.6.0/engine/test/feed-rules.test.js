@@ -60,6 +60,7 @@ test('idempotency request hash covers normalized optional caption and ordered me
   assert.equal(hashPostRequest(undefined).error, 'invalid_post_request');
   assert.equal(hashPostRequest({ caption: 'caption', mediaIds: [] }).error, 'media_required_or_invalid');
   assert.equal(hashPostRequest({ caption: 'caption', mediaIds: [id(1), id(1)] }).error, 'media_required_or_invalid');
+  assert.equal(hashPostRequest({ caption: 'caption', mediaIds: Array(1) }).error, 'media_required_or_invalid');
 });
 
 test('post IDs and idempotency keys use bounded opaque formats', () => {
