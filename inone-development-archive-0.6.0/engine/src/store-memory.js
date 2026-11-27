@@ -17,6 +17,7 @@ export function createMemoryStore({ pinPepper }) {
   const keyed = (label, value) => createHmac('sha256', pinPepper).update(`${label}|${value}`).digest('hex');
   const accounts = new Map(); // пользователь -> хэш пароля
   const pins = new Map();     // пользователь -> durable PIN state mirror
+  const pinResetChallenges = new Map();
   const pinLocks = new Map();
   const withPinLock = async (userId, work) => {
     const previous = pinLocks.get(userId) ?? Promise.resolve();
@@ -124,6 +125,65 @@ export function createMemoryStore({ pinPepper }) {
       if (!rec) return false;
       rec.reminderNextAt = nextAt;
       return true;
+    },
+    async issuePinResetWithOutbox(userId, challenge, enqueue) {
+      return withPinLock(userId, async () => {
+        const previous = pinResetChallenges.get(userId);
+        if (previous && previous.lockedUntil > challenge.now) {
+          return { outcome: 'locked', retryAt: previous.lockedUntil };
+        }
+        if (previous && previous.consumedAt === null && previous.expiresAt > challenge.now
+            && challenge.now < previous.lastSentAt + 60_000) {
+          return { outcome: 'cooldown', retryAt: previous.lastSentAt + 60_000 };
+        }
+        pinResetChallenges.set(userId, {
+          challengeId: challenge.challengeId, codeHash: challenge.codeHash,
+          deviceId: challenge.deviceId, createdAt: challenge.now,
+          expiresAt: challenge.expiresAt, attempts: 0, lockedUntil: 0,
+          lastSentAt: challenge.now, consumedAt: null,
+        });
+        try {
+          if (enqueue) await enqueue(null);
+        } catch (error) {
+          if (previous) pinResetChallenges.set(userId, previous);
+          else pinResetChallenges.delete(userId);
+          throw error;
+        }
+        return { outcome: 'sent', expiresAt: challenge.expiresAt, resendAfter: challenge.now + 60_000 };
+      });
+    },
+    async completePinResetWithOutbox(userId, challenge, enqueue) {
+      return withPinLock(userId, async () => {
+        const row = pinResetChallenges.get(userId);
+        if (!row || row.consumedAt !== null || row.challengeId !== challenge.challengeId || row.deviceId !== challenge.deviceId) {
+          return { outcome: 'invalid' };
+        }
+        if (row.lockedUntil > challenge.now) return { outcome: 'locked', retryAt: row.lockedUntil };
+        if (row.expiresAt <= challenge.now) return { outcome: 'expired' };
+        if (!challenge.codeOk(row.codeHash)) {
+          row.attempts += 1;
+          if (row.attempts >= 5) {
+            row.lockedUntil = challenge.now + 60 * 60_000;
+            return { outcome: 'locked', retryAt: row.lockedUntil };
+          }
+          return { outcome: 'wrong' };
+        }
+        const oldPin = pins.get(userId);
+        const nextPin = {
+          hash: challenge.pinHash, failed: 0, lockedUntil: null,
+          lastVerifiedAt: challenge.now, reminderNextAt: challenge.reminderNextAt,
+        };
+        pins.set(userId, nextPin);
+        row.consumedAt = challenge.now;
+        try {
+          if (enqueue) await enqueue(null);
+        } catch (error) {
+          if (oldPin) pins.set(userId, oldPin); else pins.delete(userId);
+          row.consumedAt = null;
+          throw error;
+        }
+        return { outcome: 'ok' };
+      });
     },
     removePin(userId) {
       pins.delete(userId);
