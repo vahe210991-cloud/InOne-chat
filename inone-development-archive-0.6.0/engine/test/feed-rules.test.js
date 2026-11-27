@@ -7,6 +7,7 @@ import {
   comparePostsNewestFirst,
   encodeFeedCursor,
   isValidPostId,
+  isFeedRowAfterCursor,
   isValidPostIdempotencyKey,
   normalizePostContent,
   paginateFeedRows,
@@ -71,6 +72,17 @@ test('feed pagination is deterministic for equal timestamps and produces a conti
     cursor: { createdAt: 100, postId: id(9) },
   });
   assert.deepEqual(paginateFeedRows(page.items, 2).items.map((row) => row.postId), [id(4), id(9)]);
+});
+
+test('keyset cursor includes only older rows and lower IDs at equal timestamps', () => {
+  const cursor = { createdAt: 100, postId: id(9) };
+  assert.equal(isFeedRowAfterCursor({ createdAt: 101, postId: id(1) }, cursor), false);
+  assert.equal(isFeedRowAfterCursor({ createdAt: 100, postId: id(10) }, cursor), false);
+  assert.equal(isFeedRowAfterCursor({ createdAt: 100, postId: id(9) }, cursor), false);
+  assert.equal(isFeedRowAfterCursor({ createdAt: 100, postId: id(8) }, cursor), true);
+  assert.equal(isFeedRowAfterCursor({ createdAt: 99, postId: id(1) }, cursor), true);
+  assert.equal(isFeedRowAfterCursor({ createdAt: 99, postId: id(1) }, null), true);
+  assert.throws(() => isFeedRowAfterCursor({ createdAt: 100, postId: 'bad' }, cursor), TypeError);
 });
 
 test('feed pagination returns no cursor for the final page and validates limits', () => {
