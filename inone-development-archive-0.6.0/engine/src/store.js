@@ -2690,6 +2690,15 @@ async mlsPendingRemovalsFor(userId) {
       if (typeof pinHash !== 'string' || pinHash.length < 1) throw new TypeError('PIN hash is required');
       try {
         return await inTransaction(async (c) => {
+          if (phoneE164) {
+            await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [phoneE164]);
+            const existingPhone = await c.query('SELECT user_id FROM phones WHERE phone = $1 LIMIT 1', [phoneE164]);
+            if (existingPhone.rows.length) {
+              const error = new Error('phone already used');
+              error.code = 'PHONE_TAKEN';
+              throw error;
+            }
+          }
           await c.query('INSERT INTO accounts (user_id, password_hash) VALUES ($1, $2)', [userId, passwordHash]);
           if (joinDefaultOrg) await c.query("INSERT INTO org_members (org_id, user_id, role, joined_at) VALUES ('org-default', $1, 'member', $2) ON CONFLICT DO NOTHING", [userId, Date.now()]);
           await c.query(
@@ -2715,10 +2724,10 @@ async mlsPendingRemovalsFor(userId) {
           return 'ok';
         });
       } catch (e) {
+        if (e.code === 'PHONE_TAKEN') return 'phone';
         if (e.code !== '23505') throw e;
         if (e.constraint === 'profiles_email_verified') return 'email';
         if (e.constraint === 'profiles_nickname') return 'nickname';
-        if (e.constraint === 'phones_phone_unique') return 'phone';
         if (e.constraint === 'provider_links_pkey') return 'link';
         return 'account';
       }
@@ -2735,6 +2744,15 @@ async mlsPendingRemovalsFor(userId) {
           await c.query('INSERT INTO email_codes (email) VALUES ($1) ON CONFLICT (email) DO NOTHING', [email]);
           const { rows } = await c.query('SELECT * FROM email_codes WHERE email = $1 FOR UPDATE', [email]);
           const row = rows[0];
+          if (phoneE164) {
+            await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [phoneE164]);
+            const existingPhone = await c.query('SELECT user_id FROM phones WHERE phone = $1 LIMIT 1', [phoneE164]);
+            if (existingPhone.rows.length) {
+              const error = new Error('phone already used');
+              error.code = 'PHONE_TAKEN';
+              throw error;
+            }
+          }
           const current = {
             codeHash: row.code_hash,
             codeAttempts: row.code_attempts,
@@ -2772,10 +2790,10 @@ async mlsPendingRemovalsFor(userId) {
           return { outcome: 'ok', created: 'ok', locale };
         });
       } catch (error) {
+        if (error.code === 'PHONE_TAKEN') return { outcome: 'ok', created: 'phone' };
         if (error.code !== '23505') throw error;
         if (error.constraint === 'profiles_email_verified') return { outcome: 'ok', created: 'email' };
         if (error.constraint === 'profiles_nickname') return { outcome: 'ok', created: 'nickname' };
-        if (error.constraint === 'phones_phone_unique') return { outcome: 'ok', created: 'phone' };
         return { outcome: 'ok', created: 'account' };
       }
     },
