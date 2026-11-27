@@ -1837,6 +1837,13 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
 
     async acceptContactRequest(recipientId, requesterId, nowMs) {
       return inTransaction(async (c) => {
+        // Match blockUser's account-first lock order. This serializes acceptance
+        // against a concurrent block before either transaction mutates contacts.
+        const { rows: lockedAccounts } = await c.query(
+          'SELECT user_id FROM accounts WHERE user_id = ANY($1::text[]) ORDER BY user_id FOR SHARE',
+          [[recipientId, requesterId]],
+        );
+        if (lockedAccounts.length !== 2) return { status: 'unknown_user' };
         const { rows: requestRows } = await c.query(
           'SELECT status FROM contact_requests WHERE requester_id = $1 AND recipient_id = $2 FOR UPDATE',
           [requesterId, recipientId],
