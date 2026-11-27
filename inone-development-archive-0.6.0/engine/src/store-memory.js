@@ -207,7 +207,10 @@ export function createMemoryStore({ pinPepper }) {
           if (upgrade) rec.hash = (await upgrade(pin, rec.hash)) ?? rec.hash;
           rec.failed = 0;
           rec.lockedUntil = null;
-          if (markVerified) rec.lastVerifiedAt = now;
+          if (markVerified) {
+            rec.lastVerifiedAt = now;
+            rec.reminderNextAt = now + 7 * 24 * 60 * 60_000;
+          }
           return { ok: true };
         }
         rec.failed = attempt;
@@ -927,6 +930,7 @@ export function createMemoryStore({ pinPepper }) {
         pinRecord.failed = 0;
         pinRecord.lockedUntil = null;
         pinRecord.lastVerifiedAt = now;
+        pinRecord.reminderNextAt = now + 7 * 24 * 60 * 60_000;
         const { next, result } = complete(current, oldPassword);
         accounts.set(userId, passwordHash);
         recovery.set(userId, structuredClone(next));
