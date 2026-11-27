@@ -53,6 +53,11 @@ const PIN_GATE_ALLOWED = new Set([
   'POST /logout',
   'POST /token/refresh',
   'PATCH /profile/locale',
+  'POST /recovery/start',
+  'POST /recovery/complete',
+  'POST /recovery/cancel-by-code',
+  'GET /recovery/confirm',
+  'POST /recovery/confirm',
 ]);
 export const APPROVAL_TTL_MS = 10 * 60 * 1000;
 export const MAX_APPROVAL_CODE_ATTEMPTS = 3;
