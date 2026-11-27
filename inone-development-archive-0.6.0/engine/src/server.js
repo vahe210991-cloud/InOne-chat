@@ -3308,19 +3308,28 @@ if (req.method === 'POST' && p === '/login') {
             const locale = requestedLocale ?? profile.locale ?? 'hy';
             const backup = await storage.backupEmailGet(userId);
             const notificationRecipients = [profile.email, backup?.email];
-            const issued = await storage.recoveryUpdateWithOutbox(userId, (r) => {
-              const out = requestCode(r, {
-                nowMs: now(),
-                codeHash: recoveryCodeHash(userId, emailCode),
-                linkHash: null,
+            try {
+              const issued = await storage.recoveryUpdateWithOutbox(userId, (r) => {
+                const out = requestCode(r, {
+                  nowMs: now(),
+                  codeHash: recoveryCodeHash(userId, emailCode),
+                  linkHash: null,
+                });
+                return { next: out.next, result: out.issued };
+              }, async (tx, wasIssued) => {
+                if (!wasIssued) return;
+                await mailTo(profile.email, '', '', null, 'recovery_code', { code: emailCode }, locale, tx);
+                await mailToRecipients(notificationRecipients, '', '', 'recovery_requested', {}, tx, locale);
               });
-              return { next: out.next, result: out.issued };
-            }, async (tx, wasIssued) => {
-              if (!wasIssued) return;
-              await mailTo(profile.email, '', '', null, 'recovery_code', { code: emailCode }, locale, tx);
-              await mailToRecipients(notificationRecipients, '', '', 'recovery_requested', {}, tx, locale);
-            });
-            if (issued) await alertDevices(userId, { kind: 'recovery_started' });
+              if (issued) {
+                try { await alertDevices(userId, { kind: 'recovery_started' }); } catch (_) {}
+              }
+            } catch (deliveryError) {
+              // Preserve non-enumeration when email delivery/outbox is temporarily unavailable.
+              logger?.warn('recovery email delivery unavailable', {
+                errorCode: typeof deliveryError?.code === 'string' ? deliveryError.code : 'RECOVERY_DELIVERY_UNAVAILABLE',
+              });
+            }
           }
         }
         return send(res, 202, { ok: true });
