@@ -2161,6 +2161,9 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
                   : chat.copyWith(
                       unread: room.unreadCount,
                       time: chat.id == preserveLocalTimeForRoomId ? chat.time : _formatRoomTime(room.lastEventAt),
+                      incomingContactRequest: room.incomingContactRequest,
+                      isPeerContact: room.isPeerContact,
+                      isBlocked: room.isBlocked,
                     );
             })
             .toList(growable: false);
