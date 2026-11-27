@@ -4,6 +4,8 @@
 ALTER TABLE rooms ALTER COLUMN org_id DROP NOT NULL;
 ALTER TABLE rooms DROP CONSTRAINT IF EXISTS rooms_kind_check;
 ALTER TABLE rooms ADD CONSTRAINT rooms_kind_check CHECK (kind IN ('group', 'channel', 'direct'));
+ALTER TABLE rooms DROP CONSTRAINT IF EXISTS rooms_channel_has_name;
+ALTER TABLE rooms ADD CONSTRAINT rooms_channel_has_name CHECK (kind <> 'channel' OR name IS NOT NULL);
 
 CREATE TABLE direct_conversations (
   room_id TEXT PRIMARY KEY REFERENCES rooms (room_id) ON DELETE CASCADE,
