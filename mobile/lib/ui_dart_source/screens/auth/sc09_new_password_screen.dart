@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../state/inone_state.dart';
 import '../../widgets/inone_widgets.dart';
 
-/// SC-09 · Նոր գաղտնաբառ: код из письма, новый пароль, PIN (если задан).
+/// SC-09 · Նոր գաղտնաբառ: հաստատված email կոդ, վերականգնման PIN, նոր գաղտնաբառ.
 ///
 /// Блок-предупреждение о сбросе ключей шифрования — ЗАГЛУШКА дизайна:
 /// текст ждёт утверждения владельца (D8). Показ обязателен: после
@@ -32,7 +32,7 @@ class InOneNewPasswordScreen extends StatefulWidget {
 
 class _InOneNewPasswordScreenState extends State<InOneNewPasswordScreen>
     with InOneActionState<InOneNewPasswordScreen> {
-  final InOneFormController _form = InOneFormController(required: const ['code', 'newPassword']);
+  final InOneFormController _form = InOneFormController(required: const ['code', 'pin', 'newPassword']);
 
   @override
   void dispose() {
@@ -77,8 +77,19 @@ class _InOneNewPasswordScreenState extends State<InOneNewPasswordScreen>
               InOneField(
                 form: _form,
                 name: 'code',
-                label: 'Կոդը նամակից',
+                label: 'Կոդը հաստատված էլ. փոստից',
+                keyboardType: TextInputType.number,
+                maxLength: 6,
                 autofillHints: const [AutofillHints.oneTimeCode],
+                textInputAction: TextInputAction.next,
+              ),
+              InOneField(
+                form: _form,
+                name: 'pin',
+                label: 'PIN-код восстановления · 8 цифр',
+                maxLength: 8,
+                obscure: true,
+                keyboardType: TextInputType.number,
                 textInputAction: TextInputAction.next,
               ),
               InOneField(
@@ -86,15 +97,8 @@ class _InOneNewPasswordScreenState extends State<InOneNewPasswordScreen>
                 name: 'newPassword',
                 label: 'Նոր գաղտնաբառ',
                 obscure: true,
+                maxLength: 128,
                 autofillHints: const [AutofillHints.newPassword],
-                textInputAction: TextInputAction.next,
-              ),
-              InOneField(
-                form: _form,
-                name: 'pin',
-                label: 'PIN (եթե սահմանված է)',
-                obscure: true,
-                keyboardType: TextInputType.number,
                 textInputAction: TextInputAction.done,
                 onSubmitted: _submit,
               ),

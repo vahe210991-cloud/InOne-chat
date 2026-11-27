@@ -1,6 +1,6 @@
 # InOne Beta 1.0 Backend — canonical source
 
-**Canonical Node.js backend:** this directory is the active backend source for InOne Beta 1.0. Its npm package is `inone-backend` (private, version `0.6.0`). The historical directory name `inone-development-archive-0.6.0` is retained for compatibility; it does not mean this code is archived or inactive.
+**Canonical Node.js backend:** this directory is the active backend source for InOne Beta 1.0. Runtime requirement: Node.js 24.7.0+ (native `crypto.argon2` is used for recovery PIN hashing). Its npm package is `inone-backend` (private, version `0.6.0`). The historical directory name `inone-development-archive-0.6.0` is retained for compatibility; it does not mean this code is archived or inactive.
 
 **Architecture source of truth:** [Backend source-of-truth map](../../docs/continuity/BACKEND-SOURCE-OF-TRUTH.md) and [ADR-004](../../development/architecture/ADR-004-CANONICAL-BACKEND-IDENTITY.md).
 

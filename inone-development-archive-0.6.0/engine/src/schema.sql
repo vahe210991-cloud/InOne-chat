@@ -24,8 +24,29 @@ CREATE TABLE pins (
   user_id TEXT PRIMARY KEY REFERENCES accounts (user_id),
   pin_hash TEXT NOT NULL,
   failed INTEGER NOT NULL DEFAULT 0,
-  locked_until BIGINT
+  locked_until BIGINT,
+  last_verified_at BIGINT,
+  reminder_next_at BIGINT NOT NULL DEFAULT 0
 );
+
+CREATE TABLE pin_reset_challenges (
+  user_id TEXT PRIMARY KEY REFERENCES accounts (user_id) ON DELETE CASCADE,
+  challenge_id TEXT NOT NULL UNIQUE,
+  code_hash TEXT NOT NULL,
+  device_id TEXT NOT NULL,
+  created_at BIGINT NOT NULL,
+  expires_at BIGINT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+  locked_until BIGINT NOT NULL DEFAULT 0,
+  last_sent_at BIGINT NOT NULL DEFAULT 0,
+  consumed_at BIGINT,
+  CHECK (expires_at >= created_at),
+  CHECK (consumed_at IS NULL OR consumed_at >= created_at)
+);
+
+CREATE INDEX pin_reset_challenges_expiry_idx
+  ON pin_reset_challenges (expires_at)
+  WHERE consumed_at IS NULL;
 
 CREATE TABLE recoveries (
   user_id TEXT PRIMARY KEY REFERENCES accounts (user_id),
@@ -104,6 +125,11 @@ CREATE TABLE recovery (
   identity_check BOOLEAN NOT NULL DEFAULT FALSE,
   identity_code_hash TEXT,
   identity_attempts INTEGER NOT NULL DEFAULT 0,
+  identity_code_expires_at BIGINT NOT NULL DEFAULT 0,
+  identity_device_id TEXT,
+  identity_challenge_id TEXT,
+  identity_locked_until BIGINT NOT NULL DEFAULT 0,
+  identity_last_sent_at BIGINT NOT NULL DEFAULT 0,
   locked_until BIGINT NOT NULL DEFAULT 0,
   starts JSONB NOT NULL DEFAULT '[]',
   req_link_hash TEXT,

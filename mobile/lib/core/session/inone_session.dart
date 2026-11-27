@@ -12,7 +12,8 @@ import '../network/api_client.dart';
 import '../network/api_exception.dart';
 
 /// Owns the authenticated app session. Before MLS adoption, Flutter owns the
-/// refresh pair in memory. After adoption, Rust is the only refresh-token owner.
+/// refresh pair and persists only the rotating refresh token in platform secure storage.
+/// After adoption, Rust is the only refresh-token owner.
 class InOneSession extends ChangeNotifier {
   InOneSession({
     required this.baseUrl,
@@ -23,6 +24,9 @@ class InOneSession extends ChangeNotifier {
     Future<String?> Function()? readMlsUserId,
     Future<void> Function(String)? writeMlsUserId,
     Future<void> Function()? deleteMlsUserId,
+    Future<String?> Function()? readRefreshToken,
+    Future<void> Function(String)? writeRefreshToken,
+    Future<void> Function()? deleteRefreshToken,
     Future<String?> Function()? readLocale,
     Future<void> Function(String)? writeLocale,
     Future<String?> Function()? readLocaleSyncPending,
@@ -37,6 +41,12 @@ class InOneSession extends ChangeNotifier {
             ((value) => _storage.write(key: _mlsUserIdKey, value: value)),
         _deleteMlsUserId = deleteMlsUserId ??
             (() => _storage.delete(key: _mlsUserIdKey)),
+        _readRefreshToken = readRefreshToken ??
+            (() => _storage.read(key: _refreshTokenKey)),
+        _writeRefreshToken = writeRefreshToken ??
+            ((value) => _storage.write(key: _refreshTokenKey, value: value)),
+        _deleteRefreshToken = deleteRefreshToken ??
+            (() => _storage.delete(key: _refreshTokenKey)),
         _readLocale = readLocale ?? (() => _storage.read(key: _localeKey)),
         _writeLocale = writeLocale ??
             ((value) => _storage.write(key: _localeKey, value: value)),
@@ -47,6 +57,7 @@ class InOneSession extends ChangeNotifier {
 
   static const _deviceIdKey = 'inone.device_id';
   static const _mlsUserIdKey = 'inone.mls_user_id';
+  static const _refreshTokenKey = 'inone.refresh_token';
   static const _localeKey = 'inone.app_locale';
   static const _localePendingKey = 'inone.app_locale_pending';
   static const _storage = FlutterSecureStorage();
@@ -60,6 +71,9 @@ class InOneSession extends ChangeNotifier {
   final Future<String?> Function() _readMlsUserId;
   final Future<void> Function(String) _writeMlsUserId;
   final Future<void> Function() _deleteMlsUserId;
+  final Future<String?> Function() _readRefreshToken;
+  final Future<void> Function(String) _writeRefreshToken;
+  final Future<void> Function() _deleteRefreshToken;
   final Future<String?> Function() _readLocale;
   final Future<void> Function(String) _writeLocale;
   final Future<String?> Function() _readLocaleSyncPending;
@@ -71,6 +85,9 @@ class InOneSession extends ChangeNotifier {
   String? _userId;
   String? _savedMlsUserId;
   String? _registrationToken;
+  String? _pendingApprovalId;
+  String? _pendingApprovalPollSecret;
+  String? _pendingApprovalCode;
   String _locale = 'hy';
   bool _localeSyncPending = false;
   bool _localeSyncInFlight = false;
@@ -96,6 +113,8 @@ class InOneSession extends ChangeNotifier {
   bool get isAuthenticated => _accessToken != null && _accessToken!.isNotEmpty;
   bool get isConfigured => baseUrl.trim().isNotEmpty;
   bool get hasNativeMlsSession => _mlsBridge != null;
+  String? get pendingApprovalCode => _pendingApprovalCode;
+  bool get hasPendingApproval => _pendingApprovalId != null && _pendingApprovalPollSecret != null;
   String? _mlsError;
   String? get mlsError => _mlsError;
 
@@ -166,6 +185,25 @@ class InOneSession extends ChangeNotifier {
           }
         }
       }
+    } else {
+      final savedRefreshToken = await _readRefreshToken();
+      if (savedRefreshToken != null && savedRefreshToken.isNotEmpty) {
+        _refreshToken = savedRefreshToken;
+        try {
+          await _refreshOnce();
+          final bridge = _nativeMlsBridge;
+          if (bridge != null && isAuthenticated) {
+            await adoptMlsSession(bridge);
+          }
+          _mlsError = null;
+        } on ApiException catch (error) {
+          _mlsError = error.statusCode == 401 || error.statusCode == 403
+              ? null
+              : 'Saved session could not be restored: ' + error.code;
+        } catch (_) {
+          _mlsError = 'Saved session could not be restored';
+        }
+      }
     }
     notifyListeners();
     if (isAuthenticated) await _syncLocaleAfterAuthentication();
@@ -174,6 +212,8 @@ class InOneSession extends ChangeNotifier {
   Future<Map<String, dynamic>> login({
     required String email,
     required String password,
+    String? identityCode,
+    String? identityChallengeId,
   }) {
     if (_loggingOut) {
       return Future<Map<String, dynamic>>.error(const ApiException(
@@ -190,7 +230,7 @@ class InOneSession extends ChangeNotifier {
         retryable: false,
       ));
     }
-    final operation = _loginOnce(email: email, password: password);
+    final operation = _loginOnce(email: email, password: password, identityCode: identityCode, identityChallengeId: identityChallengeId);
     _loginInFlight = operation;
     return operation.whenComplete(() {
       if (identical(_loginInFlight, operation)) _loginInFlight = null;
@@ -200,6 +240,8 @@ class InOneSession extends ChangeNotifier {
   Future<Map<String, dynamic>> _loginOnce({
     required String email,
     required String password,
+    String? identityCode,
+    String? identityChallengeId,
   }) async {
     await initialize();
     final platform = Platform.isIOS
@@ -216,16 +258,38 @@ class InOneSession extends ChangeNotifier {
         'deviceId': _deviceId,
         'label': 'InOne Flutter test client',
         'platform': platform,
+        if (identityCode != null && identityCode.trim().isNotEmpty)
+          'identityCode': identityCode.trim(),
+        if (identityChallengeId != null && identityChallengeId.trim().isNotEmpty)
+          'identityChallengeId': identityChallengeId.trim(),
         if (_localeSyncPending) 'locale': _locale,
       },
     );
+    _clearPendingApproval();
+    if (result['status'] == 'approval_required') {
+      final approvalId = result['approvalId'];
+      final pollSecret = result['pollSecret'];
+      final code = result['code'];
+      if (approvalId is! String || approvalId.isEmpty ||
+          pollSecret is! String || pollSecret.isEmpty ||
+          code is! String || code.isEmpty) {
+        throw const ApiException(
+          code: 'invalid_device_approval_response',
+          statusCode: 502,
+          retryable: false,
+        );
+      }
+      _pendingApprovalId = approvalId;
+      _pendingApprovalPollSecret = pollSecret;
+      _pendingApprovalCode = code;
+    }
     final safeResult = Map<String, dynamic>.from(result)
       ..remove('token')
       ..remove('refreshToken')
       ..remove('code')
       ..remove('pollSecret')
       ..remove('approvalId');
-    _acceptSession(result);
+    await _acceptSession(result);
     // The login endpoint applies a pending local language choice before it can queue
     // identity-check or new-device security mail. Clear the pending marker only when
     // the server actually issued an authenticated session.
@@ -241,7 +305,7 @@ class InOneSession extends ChangeNotifier {
     result['pollSecret'] = null;
     result['approvalId'] = null;
     final native = _nativeMlsBridge;
-    if (native != null) {
+    if (native != null && isAuthenticated) {
       try {
         await adoptMlsSession(native);
       } catch (error) {
@@ -254,6 +318,157 @@ class InOneSession extends ChangeNotifier {
     }
     await _syncLocaleAfterAuthentication();
     return safeResult;
+  }
+
+  /// Drops the in-memory challenge when the user leaves the approval screen.
+  /// The server-side request remains pending until its short expiry or owner denial.
+  void discardPendingApproval() => _clearPendingApproval();
+
+  /// Claims the one-time approval result on the device that initiated login.
+  /// The poll secret never leaves this session object.
+  Future<Map<String, dynamic>> claimPendingApproval() async {
+    await initialize();
+    final id = _pendingApprovalId;
+    final pollSecret = _pendingApprovalPollSecret;
+    if (id == null || pollSecret == null) {
+      throw const ApiException(
+        code: 'device_approval_not_pending',
+        statusCode: 409,
+        retryable: false,
+      );
+    }
+    final result = await _client.post(
+      '/approvals/${Uri.encodeComponent(id)}/claim',
+      authenticated: false,
+      body: {'pollSecret': pollSecret},
+    );
+    try {
+      final status = result['status'];
+      if (status == 'pending') return const {'status': 'pending'};
+      if (status == 'denied' || status == 'expired') {
+        _clearPendingApproval();
+        return {'status': status as String};
+      }
+      if (status != 'approved') {
+        throw const ApiException(
+          code: 'invalid_device_approval_status',
+          statusCode: 502,
+          retryable: false,
+        );
+      }
+      _acceptSession(result);
+      _clearPendingApproval();
+      if (!isAuthenticated) {
+        throw const ApiException(
+          code: 'invalid_device_approval_session',
+          statusCode: 502,
+          retryable: false,
+        );
+      }
+      final native = _nativeMlsBridge;
+      if (native != null) {
+        try {
+          await adoptMlsSession(native);
+        } catch (error) {
+          _mlsError = 'MLS runtime could not be opened after device approval: $error';
+          notifyListeners();
+          rethrow;
+        }
+      }
+      await _syncLocaleAfterAuthentication();
+      return const {'status': 'approved'};
+    } finally {
+      result['token'] = null;
+      result['refreshToken'] = null;
+      result['pollSecret'] = null;
+      result['approvalId'] = null;
+    }
+  }
+
+  /// Pending requests visible to the currently authenticated trusted device.
+  Future<List<Map<String, dynamic>>> pendingDeviceApprovals() async {
+    final result = await request('GET', '/approvals');
+    final raw = result['approvals'];
+    if (raw is! List) {
+      throw const ApiException(
+        code: 'invalid_device_approvals_response',
+        statusCode: 502,
+        retryable: false,
+      );
+    }
+    final approvals = <Map<String, dynamic>>[];
+    for (final item in raw) {
+      if (item is! Map) {
+        throw const ApiException(
+          code: 'invalid_device_approval_item',
+          statusCode: 502,
+          retryable: false,
+        );
+      }
+      final id = item['id'];
+      final label = item['label'];
+      final platform = item['platform'];
+      final createdAt = item['createdAt'];
+      final expiresAt = item['expiresAt'];
+      if (id is! String || id.isEmpty ||
+          (label != null && label is! String) ||
+          (platform != null && platform is! String) ||
+          createdAt is! String || expiresAt is! String) {
+        throw const ApiException(
+          code: 'invalid_device_approval_item',
+          statusCode: 502,
+          retryable: false,
+        );
+      }
+      approvals.add({
+        'id': id,
+        'label': label,
+        'platform': platform,
+        'createdAt': createdAt,
+        'expiresAt': expiresAt,
+      });
+    }
+    return approvals;
+  }
+
+  Future<void> approvePendingDevice({
+    required String approvalId,
+    required String code,
+    String? bioGrant,
+  }) async {
+    final id = approvalId.trim();
+    final normalizedCode = code.trim();
+    if (id.isEmpty || normalizedCode.isEmpty) {
+      throw const ApiException(
+        code: 'device_approval_input_required',
+        statusCode: 400,
+        retryable: false,
+      );
+    }
+    await request(
+      'POST',
+      '/approvals/${Uri.encodeComponent(id)}/approve',
+      body: {
+        'code': normalizedCode,
+        if (bioGrant != null && bioGrant.isNotEmpty) 'bioGrant': bioGrant,
+      },
+    );
+  }
+
+  Future<void> denyPendingDevice({required String approvalId}) async {
+    final id = approvalId.trim();
+    if (id.isEmpty) {
+      throw const ApiException(
+        code: 'device_approval_id_required',
+        statusCode: 400,
+        retryable: false,
+      );
+    }
+    await request(
+      'POST',
+      '/approvals/${Uri.encodeComponent(id)}/deny',
+      body: const <String, dynamic>{},
+    );
   }
 
   Future<void> setLocale(String locale) async {
@@ -368,12 +583,35 @@ class InOneSession extends ChangeNotifier {
     );
   }
 
+  /// Cancels a pending 48-hour admission for a new device.
+  /// This is deliberately separate from recovery cancellation.
+  Future<Map<String, dynamic>> cancelAdmissionByCode({
+    required String email,
+    required String code,
+  }) async {
+    await initialize();
+    final normalizedEmail = email.trim();
+    final normalizedCode = code.trim();
+    if (normalizedEmail.isEmpty || normalizedCode.isEmpty) {
+      throw const ApiException(
+        code: 'admission_cancellation_input_required',
+        statusCode: 400,
+        retryable: false,
+      );
+    }
+    return _client.post(
+      '/admission/cancel',
+      authenticated: false,
+      body: {'email': normalizedEmail, 'code': normalizedCode},
+    );
+  }
+
   Future<Map<String, dynamic>> completeRecovery({
     String email = '',
     String? userId,
     required String code,
     required String newPassword,
-    String? pin,
+    required String pin,
   }) async {
     await initialize();
     final normalizedEmail = email.trim();
@@ -396,7 +634,7 @@ class InOneSession extends ChangeNotifier {
           'email': normalizedEmail,
         'code': code.trim(),
         'newPassword': newPassword,
-        if (pin != null && pin.isNotEmpty) 'pin': pin,
+        'pin': pin,
         'locale': _locale,
       },
     );
@@ -429,6 +667,8 @@ class InOneSession extends ChangeNotifier {
     required String email,
     required String password,
     required String nickname,
+    required String pin,
+    required String pinConfirmation,
     String? phone,
   }) async {
     final token = _registrationToken;
@@ -448,6 +688,8 @@ class InOneSession extends ChangeNotifier {
           'registrationToken': token,
           'password': password,
           'nickname': nickname.trim(),
+          'pin': pin,
+          'pinConfirmation': pinConfirmation,
           if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
         },
       );
@@ -468,6 +710,33 @@ class InOneSession extends ChangeNotifier {
       rethrow;
     }
   }
+
+  Future<Map<String, dynamic>> pinStatus() =>
+      request('GET', '/pin/status');
+
+  Future<Map<String, dynamic>> verifyRecoveryPin(String pin) =>
+      request('POST', '/pin/verify', body: {'pin': pin});
+
+  Future<Map<String, dynamic>> acknowledgePinReminder() =>
+      request('POST', '/pin/reminder/ack');
+
+  Future<Map<String, dynamic>> startPinReset({String password = ''}) =>
+      request('POST', '/pin/reset/start', body: {
+        if (password.isNotEmpty) 'password': password,
+      });
+
+  Future<Map<String, dynamic>> completePinReset({
+    required String challengeId,
+    required String code,
+    required String pin,
+    required String pinConfirmation,
+  }) =>
+      request('POST', '/pin/reset/complete', body: {
+        'challengeId': challengeId,
+        'code': code.trim(),
+        'pin': pin,
+        'pinConfirmation': pinConfirmation,
+      });
 
   /// Transfers the active session to the persistent OpenMLS client.
   ///
@@ -539,6 +808,8 @@ class InOneSession extends ChangeNotifier {
       // Rust now owns refresh-token rotation. Clear the Dart copy immediately
       // after open succeeds, before requesting the access-token snapshot.
       _mlsBridge = target;
+      // Rust has accepted ownership; remove the temporary Dart secure-storage copy.
+      await _deleteRefreshToken();
       _refreshToken = null;
       final snapshot = await target.accessTokenSnapshot();
       if (snapshot.isEmpty) {
@@ -584,7 +855,7 @@ class InOneSession extends ChangeNotifier {
       } catch (_) {
         // Never keep a resumable identity after an incomplete handoff.
       }
-      _clearSession();
+      await _clearSession();
       rethrow;
     } finally {
       _handoffGate = null;
@@ -732,7 +1003,7 @@ class InOneSession extends ChangeNotifier {
       } catch (_) {
         // Do not restore an identity that the server has rejected.
       }
-      _clearSession();
+      await _clearSession();
     }
   }
 
@@ -755,7 +1026,7 @@ class InOneSession extends ChangeNotifier {
   Future<void> _rotateRefreshToken() async {
     final current = _refreshToken;
     if (current == null || current.isEmpty) {
-      _clearSession();
+      await _clearSession();
       throw const ApiException(
         code: 'session_expired',
         statusCode: 401,
@@ -769,24 +1040,38 @@ class InOneSession extends ChangeNotifier {
         body: {'refreshToken': current},
       );
       try {
-        _acceptSession(result);
+        await _acceptSession(result);
+        if (!isAuthenticated || _refreshToken == null) {
+          throw const ApiException(
+            code: 'invalid_refresh_response',
+            statusCode: 502,
+            retryable: false,
+          );
+        }
+      } catch (_) {
+        await _clearSession();
+        rethrow;
       } finally {
         result['token'] = null;
         result['refreshToken'] = null;
       }
-    } on ApiException {
-      _clearSession();
+    } on ApiException catch (error) {
+      if (error.statusCode == 401 || error.statusCode == 403) {
+        await _clearSession();
+      }
       rethrow;
     }
   }
 
-  void _acceptSession(Map<String, dynamic> result) {
+  Future<void> _acceptSession(Map<String, dynamic> result) async {
     final access = result['token'];
     final refresh = result['refreshToken'];
     if (access is String &&
         access.isNotEmpty &&
         refresh is String &&
         refresh.isNotEmpty) {
+      // Persist the rotated refresh token before exposing the new access token.
+      await _writeRefreshToken(refresh);
       _accessToken = access;
       _refreshToken = refresh;
       notifyListeners();
@@ -1111,7 +1396,15 @@ class InOneSession extends ChangeNotifier {
           deviceId: deviceId,
         );
       } else if (isAuthenticated) {
-        await _client.post('/logout');
+        try {
+          await _client.post('/logout');
+        } on ApiException catch (error) {
+          if (error.statusCode != 401 || _refreshToken == null) rethrow;
+          // Access tokens can expire while the rotating refresh token is still valid.
+          // Rotate once and retry logout so the server revokes the active device session.
+          await _refreshOnce();
+          await _client.post('/logout');
+        }
       }
     } finally {
       _mlsBridge = null;
@@ -1134,18 +1427,29 @@ class InOneSession extends ChangeNotifier {
             // Locale preference remains local; logout must still clear credentials.
           }
           _localeSyncPending = false;
-          _clearSession();
+          await _clearSession();
         }
       }
     }
   }
 
-  void _clearSession() {
-    _mlsError = null;
-    _accessToken = null;
-    _refreshToken = null;
-    _userId = null;
-    notifyListeners();
+  void _clearPendingApproval() {
+    _pendingApprovalId = null;
+    _pendingApprovalPollSecret = null;
+    _pendingApprovalCode = null;
+  }
+
+  Future<void> _clearSession() async {
+    try {
+      await _deleteRefreshToken();
+    } finally {
+      _clearPendingApproval();
+      _mlsError = null;
+      _accessToken = null;
+      _refreshToken = null;
+      _userId = null;
+      notifyListeners();
+    }
   }
 
   @override

@@ -1,36 +1,48 @@
-// Общие помощники тестов восстановления и телефона (D5): код из SMS, ссылка из письма.
+// Shared helpers for the email-code + PIN recovery flow.
 import { ChatClient } from '../src/client.js';
+import { hashPassword } from '../src/account-rules.js';
+import { hashPin } from '../src/pin-security.js';
 
-/** Последний код из SMS на номер. */
-export const smsCodeFrom = (srv, phone) => srv.smsOutbox(phone).at(-1).text.match(/\b(\d{6})\b/)[1];
+export const TEST_PIN = '80421697';
 
-/** Токен из последнего письма со ссылкой восстановления. */
-export const linkTokenFrom = (srv, userId) => {
-  const mail = srv.mailbox(userId).filter((m) => m.text.includes('token=')).at(-1);
-  return mail.text.match(/token=([A-Za-z0-9_-]+)/)[1];
-};
-
-/** Подтверждение ссылки кнопкой на странице: POST с данными из письма. */
-export async function confirmLink(base, userId, token) {
-  const res = await fetch(`${base}/recovery/confirm`, {
-    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ user: userId, token }),
-  });
-  if (!res.ok) throw Object.assign(new Error(`confirm -> ${res.status}`), { status: res.status });
-  return res;
+export function emailForUserId(userId) {
+  const local = String(userId).replace(/^@/, '').split(':')[0].replace(/[^a-z0-9._-]/gi, '-');
+  return `${local}@example.test`;
 }
 
-/** Аккаунт с подтверждённым телефоном: регистрация с номером, код из SMS, подтверждение. */
+export const recoveryEmailCount = (srv, email) =>
+  srv.mailbox(email).filter((message) => message.templateId === 'recovery_code').length;
+
+/** Creates a verified-email account fixture with the current eight-digit PIN policy. */
 export async function createVerified(base, srv, userId, deviceId, password, phone) {
-  const client = await ChatClient.create(base, userId, deviceId, password, { phone });
-  await client.raw('POST', '/account/phone/confirm', { code: smsCodeFrom(srv, phone) });
-  return client;
+  const email = emailForUserId(userId);
+  const nickname = String(userId).replace(/^@/, '').split(':')[0].replace(/[^a-z0-9._-]/gi, '');
+  const created = await srv.testStore.createVerifiedAccount({
+    userId,
+    passwordHash: hashPassword(password),
+    pinHash: await hashPin(srv.testPinPepper, TEST_PIN),
+    phoneE164: phone,
+    email,
+    nickname: nickname.length >= 3 ? nickname : `User${nickname}`,
+    nowMs: Date.now(),
+    locale: 'ru',
+  });
+  if (created !== 'ok') throw new Error(`test account creation failed: ${created}`);
+  return ChatClient.login(base, userId, password, deviceId);
 }
 
-/** Начало восстановления: запрос, переход по ссылке из письма. Возвращает код из SMS. */
-export async function startRecovery(base, srv, userId, phone) {
-  await fetch(`${base}/recovery/start`, {
-    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ userId }),
+/** Starts recovery and returns the one-time code delivered to the verified primary email. */
+export async function startRecovery(base, srv, userId) {
+  const email = emailForUserId(userId);
+  const response = await fetch(`${base}/recovery/start`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email, locale: 'ru' }),
   });
-  await confirmLink(base, userId, linkTokenFrom(srv, userId));
-  return smsCodeFrom(srv, phone);
+  if (response.status !== 202) throw new Error(`recovery start failed: ${response.status}`);
+  const message = srv.mailbox(email).filter((item) => item.templateId === 'recovery_code').at(-1);
+  if (!message) throw new Error('recovery email code was not queued');
+  const match = message.text.match(/\b(\d{6})\b/);
+  if (!match) throw new Error('recovery email code missing');
+  return match[1];
 }

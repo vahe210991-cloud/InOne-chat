@@ -5,10 +5,16 @@ import '../../widgets/inone_widgets.dart';
 
 /// SC-08 · Հաստատում: подтверждение восстановления (переход по ссылке).
 class InOneRecoveryConfirmScreen extends StatefulWidget {
-  const InOneRecoveryConfirmScreen({super.key, required this.onConfirm, this.onDone});
+  const InOneRecoveryConfirmScreen({
+    super.key,
+    required this.onConfirm,
+    this.onBack,
+    this.onDone,
+  });
 
   /// POST /recovery/confirm. `null` — успех.
   final Future<InOneFailure?> Function() onConfirm;
+  final VoidCallback? onBack;
 
   /// Подтверждено → экран SC-09.
   final VoidCallback? onDone;
@@ -23,6 +29,7 @@ class _InOneRecoveryConfirmScreenState extends State<InOneRecoveryConfirmScreen>
   Widget build(BuildContext context) {
     return InOneScreen.auth(
       title: 'Հաստատում',
+      onBack: widget.onBack,
       banner: bannerText,
       dock: [
         InOneButton(

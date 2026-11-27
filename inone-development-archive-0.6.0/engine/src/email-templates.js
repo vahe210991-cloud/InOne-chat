@@ -26,6 +26,16 @@ const CATALOG = {
     ru: ['Подтверждение действия в InOne', ({ code, action }) => `Вы запросили действие: ${action}. Код подтверждения: ${code}. Он действует 10 минут. Если это сделали не вы, не используйте код и проверьте безопасность аккаунта.`],
     en: ['Confirm an action in InOne', ({ code, action }) => `You requested this action: ${action}. Your confirmation code is ${code}. It expires in 10 minutes. If this was not you, do not use the code and review your account security.`],
   },
+  pin_reset_code: {
+    hy: ['Վերականգնման PIN-ի փոփոխություն', ({ code }) => `Դուք սկսել եք InOne-ի վերականգնման PIN-ի փոփոխությունը։ Հաստատման կոդը՝ ${code}։ Այն վավեր է 60 րոպե։ Եթե դա դուք չեք արել, մի՛ օգտագործեք կոդը և ստուգեք ձեր հաշվի անվտանգությունը։`],
+    ru: ['Изменение PIN-кода восстановления', ({ code }) => `Вы начали изменение PIN-кода восстановления InOne. Код подтверждения: ${code}. Он действует 60 минут. Если это сделали не вы, не используйте код и проверьте безопасность аккаунта.`],
+    en: ['Change recovery PIN', ({ code }) => `You started changing your InOne recovery PIN. Your confirmation code is ${code}. It expires in 60 minutes. If this was not you, do not use the code and review your account security.`],
+  },
+  pin_changed: {
+    hy: ['Վերականգնման PIN-ը փոխվել է', () => 'Ձեր InOne հաշվի վերականգնման PIN-ը փոխվել է։ Եթե դա դուք չեք արել, անմիջապես ստուգեք ձեր հաշվի անվտանգությունը։'],
+    ru: ['PIN-код восстановления изменён', () => 'PIN-код восстановления вашего аккаунта InOne был изменён. Если это сделали не вы, немедленно проверьте безопасность аккаунта.'],
+    en: ['Recovery PIN changed', () => 'The recovery PIN for your InOne account has been changed. If this was not you, review your account security immediately.'],
+  },
   old_devices_revoked: {
     hy: ['Հին սարքերն անջատվել են', () => 'Հաշվի վերականգնումից հետո 48-ժամյա սպասման ժամկետն ավարտվել է։ Մինչև վերականգնումը միացված սարքերն այժմ անջատված են։'],
     ru: ['Старые устройства отключены', () => 'После восстановления аккаунта завершился период ожидания в 48 часов. Устройства, подключённые до восстановления, теперь отключены.'],
@@ -47,9 +57,9 @@ const CATALOG = {
     en: ['Your InOne account recovery code', ({ code }) => `Your account recovery code is ${code}. It expires in one hour. Sign-in will be available only 48 hours after the password change. If you did not request recovery, do not use this code.`],
   },
   recovery_requested: {
-    hy: ['Հարցում է ստացվել հաշիվը վերականգնելու համար', () => 'Ստացվել է ձեր InOne հաշվի հասանելիությունը վերականգնելու հարցում։ Կոդն ուղարկվել է պահուստային կամ հիմնական էլ․ փոստին։ Եթե հարցումը դուք չեք կատարել, մի՛ տրամադրեք որևէ կոդ և ստուգեք ձեր սարքերը։'],
-    ru: ['Запрошено восстановление аккаунта InOne', () => 'Получен запрос на восстановление доступа к вашему аккаунту InOne. Код отправлен на резервную или основную почту. Если это сделали не вы, никому не сообщайте коды и проверьте свои устройства.'],
-    en: ['An InOne account recovery was requested', () => 'A request to recover access to your InOne account was received. A code was sent to your backup or primary email. If this was not you, do not share any codes and review your devices.'],
+    hy: ['Հարցում է ստացվել հաշիվը վերականգնելու համար', () => 'Ստացվել է ձեր InOne հաշվի հասանելիությունը վերականգնելու հարցում։ Մեկանգամյա կոդն ուղարկվել է միայն ձեր հաստատված հիմնական էլ․ փոստին։ Պահուստային հասցեին կարող է ուղարկվել միայն անվտանգության ծանուցում։ Եթե հարցումը դուք չեք կատարել, մի՛ տրամադրեք որևէ կոդ և ստուգեք ձեր սարքերը։'],
+    ru: ['Запрошено восстановление аккаунта InOne', () => 'Получен запрос на восстановление доступа к вашему аккаунту InOne. Одноразовый код отправлен только на подтверждённую основную почту. На резервный адрес может прийти только уведомление безопасности. Если это сделали не вы, никому не сообщайте коды и проверьте свои устройства.'],
+    en: ['An InOne account recovery was requested', () => 'A request to recover access to your InOne account was received. The one-time code was sent only to your verified primary email. A backup address may receive a security notice only. If this was not you, do not share any codes and review your devices.'],
   },
   recovery_confirmation_link: {
     hy: ['Հաստատեք հաշվի վերականգնումը', ({ url, appUrl }) => `Բջջային հավելվածում հաստատելու համար բացեք InOne հղումը՝ ${appUrl}։ Վեբ տարբերակը՝ ${url}։ Հղումը վավեր է մեկ ժամ։ Եթե հարցումը դուք չեք կատարել, մի՛ բացեք հղումը։`],
@@ -74,6 +84,8 @@ const REQUIRED_VARIABLES = {
   backup_email_changed: ['action'],
   backup_email_removed: [],
   stepup_code: ['code', 'action'],
+  pin_reset_code: ['code'],
+  pin_changed: [],
   old_devices_revoked: [],
   recovery_login_code: ['code'],
   new_device_wait: ['activateAt', 'code'],
@@ -154,7 +166,7 @@ function escapeHtml(value) {
 
 function renderHtml({ subject, text, locale, templateId, variables }) {
   const copy = COPY[locale];
-  const code = ['registration_code', 'backup_email_verification', 'stepup_code', 'recovery_login_code', 'recovery_code'].includes(templateId)
+  const code = ['registration_code', 'backup_email_verification', 'stepup_code', 'pin_reset_code', 'recovery_login_code', 'recovery_code'].includes(templateId)
     ? variables.code
     : null;
   const paragraphs = text.split('\n').map((line) => `<p style="margin:0 0 16px;color:#4A5147;font-size:15px;line-height:1.7;word-break:break-word;">${escapeHtml(line)}</p>`).join('');
@@ -200,7 +212,7 @@ export function renderEmailTemplate(templateId, variables = {}, locale = 'hy') {
   const text = render(renderValues);
   const ttlMs = ['registration_code', 'backup_email_verification', 'stepup_code'].includes(templateId)
     ? 10 * 60_000
-    : ['recovery_login_code', 'recovery_code', 'recovery_confirmation_link'].includes(templateId)
+    : ['recovery_login_code', 'recovery_code', 'recovery_confirmation_link', 'pin_reset_code'].includes(templateId)
       ? 60 * 60_000
       : ['new_device_wait', 'recovery_completed'].includes(templateId) ? 48 * 60 * 60_000 : 7 * 24 * 60 * 60_000;
   const result = { subject, text, html: renderHtml({ subject, text, locale: resolvedLocale, templateId, variables: renderValues }), locale: resolvedLocale, templateId, templateVersion: 2, ttlMs };

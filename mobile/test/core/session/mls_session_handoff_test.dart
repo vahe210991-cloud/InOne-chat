@@ -96,6 +96,9 @@ void main() {
       readMlsUserId: () async => null,
       writeMlsUserId: (_) async {},
       deleteMlsUserId: () async {},
+      readRefreshToken: () async => null,
+      writeRefreshToken: (_) async {},
+      deleteRefreshToken: () async {},
     );
 
     await session.login(email: 'alice@example.test', password: 'not-used-in-test');
@@ -163,6 +166,9 @@ void main() {
       readMlsUserId: () async => null,
       writeMlsUserId: (_) async {},
       deleteMlsUserId: () async {},
+      readRefreshToken: () async => null,
+      writeRefreshToken: (_) async {},
+      deleteRefreshToken: () async {},
     );
 
     await session.login(email: 'alice@example.test', password: 'not-used-in-test');
@@ -191,6 +197,9 @@ void main() {
       readMlsUserId: () async => null,
       writeMlsUserId: (_) async {},
       deleteMlsUserId: () async {},
+      readRefreshToken: () async => null,
+      writeRefreshToken: (_) async {},
+      deleteRefreshToken: () async {},
     );
 
     final first = session.initialize();
@@ -226,6 +235,9 @@ void main() {
       readMlsUserId: () async => null,
       writeMlsUserId: (_) async {},
       deleteMlsUserId: () async {},
+      readRefreshToken: () async => null,
+      writeRefreshToken: (_) async {},
+      deleteRefreshToken: () async {},
     );
     final bridge = _FakeMlsSessionBridge()
       ..openStarted = Completer<void>()
@@ -273,6 +285,9 @@ void main() {
       deleteMlsUserId: () async {
         deletedUserId = true;
       },
+      readRefreshToken: () async => null,
+      writeRefreshToken: (_) async {},
+      deleteRefreshToken: () async {},
     );
 
     final login = session.login(
@@ -321,6 +336,9 @@ void main() {
       readMlsUserId: () async => null,
       writeMlsUserId: (_) async {},
       deleteMlsUserId: () async {},
+      readRefreshToken: () async => null,
+      writeRefreshToken: (_) async {},
+      deleteRefreshToken: () async {},
     );
 
     final loginResult = await session.login(email: 'alice@example.test', password: 'not-used-in-test');
@@ -360,6 +378,9 @@ void main() {
       readMlsUserId: () async => null,
       writeMlsUserId: (_) async {},
       deleteMlsUserId: () async {},
+      readRefreshToken: () async => null,
+      writeRefreshToken: (_) async {},
+      deleteRefreshToken: () async {},
     );
 
     await session.login(email: 'alice@example.test', password: 'not-used-in-test');
@@ -426,6 +447,9 @@ void main() {
       readMlsUserId: () async => null,
       writeMlsUserId: (_) async {},
       deleteMlsUserId: () async {},
+      readRefreshToken: () async => null,
+      writeRefreshToken: (_) async {},
+      deleteRefreshToken: () async {},
     );
 
     await expectLater(
@@ -453,6 +477,9 @@ void main() {
       readMlsUserId: () async => '@alice:inone.test',
       writeMlsUserId: (_) async {},
       deleteMlsUserId: () async { deletedUserId = true; },
+      readRefreshToken: () async => null,
+      writeRefreshToken: (_) async {},
+      deleteRefreshToken: () async {},
     );
 
     await session.initialize();
@@ -480,6 +507,9 @@ void main() {
       readMlsUserId: () async => '@alice:inone.test',
       writeMlsUserId: (_) async {},
       deleteMlsUserId: () async { deletedUserId = true; },
+      readRefreshToken: () async => null,
+      writeRefreshToken: (_) async {},
+      deleteRefreshToken: () async {},
     );
 
     await session.initialize();
@@ -533,6 +563,9 @@ void main() {
       readMlsUserId: () async => null,
       writeMlsUserId: (_) async {},
       deleteMlsUserId: () async {},
+      readRefreshToken: () async => null,
+      writeRefreshToken: (_) async {},
+      deleteRefreshToken: () async {},
     );
     final bridge = _FakeMlsSessionBridge();
 
@@ -599,6 +632,9 @@ void main() {
       readMlsUserId: () async => null,
       writeMlsUserId: (_) async {},
       deleteMlsUserId: () async {},
+      readRefreshToken: () async => null,
+      writeRefreshToken: (_) async {},
+      deleteRefreshToken: () async {},
     );
 
     await expectLater(
@@ -652,6 +688,9 @@ void main() {
         deleteIdentityCalls++;
         savedUserId = null;
       },
+      readRefreshToken: () async => null,
+      writeRefreshToken: (_) async {},
+      deleteRefreshToken: () async {},
     );
 
     await session.login(email: 'alice@example.test', password: 'not-used-in-test');

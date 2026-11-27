@@ -28,6 +28,9 @@ void main() {
         readMlsUserId: () async => null,
         writeMlsUserId: (_) async {},
         deleteMlsUserId: () async {},
+      readRefreshToken: () async => null,
+      writeRefreshToken: (_) async {},
+      deleteRefreshToken: () async {},
       );
 
       final result = await session.confirmRecoveryLink(
@@ -60,6 +63,9 @@ void main() {
         readMlsUserId: () async => null,
         writeMlsUserId: (_) async {},
         deleteMlsUserId: () async {},
+      readRefreshToken: () async => null,
+      writeRefreshToken: (_) async {},
+      deleteRefreshToken: () async {},
         readLocale: () async => 'ru',
         readLocaleSyncPending: () async => null,
         writeLocaleSyncPending: (_) async {},
@@ -85,6 +91,9 @@ void main() {
         readMlsUserId: () async => null,
         writeMlsUserId: (_) async {},
         deleteMlsUserId: () async {},
+      readRefreshToken: () async => null,
+      writeRefreshToken: (_) async {},
+      deleteRefreshToken: () async {},
         readLocale: () async => null,
         readLocaleSyncPending: () async => null,
         writeLocaleSyncPending: (_) async {},
@@ -106,5 +115,64 @@ void main() {
       await expectLater(session.setLocale('fr'), throwsArgumentError);
       session.dispose();
     });
+    test('cancels pending device admission through its own unauthenticated endpoint', () async {
+      final client = MockClient((request) async {
+        expect(request.method, 'POST');
+        expect(request.url.path, '/admission/cancel');
+        expect(request.headers['authorization'], isNull);
+        expect(jsonDecode(request.body), {
+          'email': 'person@example.test',
+          'code': '123456',
+        });
+        return http.Response(jsonEncode({'ok': true}), 200);
+      });
+      final session = InOneSession(
+        baseUrl: 'https://api.inone.test',
+        httpClient: client,
+        readDeviceId: () async => 'device-1',
+        writeDeviceId: (_) async {},
+        readMlsUserId: () async => null,
+        writeMlsUserId: (_) async {},
+        deleteMlsUserId: () async {},
+      readRefreshToken: () async => null,
+      writeRefreshToken: (_) async {},
+      deleteRefreshToken: () async {},
+      );
+
+      final result = await session.cancelAdmissionByCode(
+        email: ' person@example.test ',
+        code: ' 123456 ',
+      );
+
+      expect(result['ok'], isTrue);
+      session.dispose();
+    });
+
+    test('rejects empty admission cancellation values before network access', () async {
+      var calls = 0;
+      final session = InOneSession(
+        baseUrl: 'https://api.inone.test',
+        httpClient: MockClient((_) async {
+          calls++;
+          return http.Response('{"ok":true}', 200);
+        }),
+        readDeviceId: () async => 'device-1',
+        writeDeviceId: (_) async {},
+        readMlsUserId: () async => null,
+        writeMlsUserId: (_) async {},
+        deleteMlsUserId: () async {},
+      readRefreshToken: () async => null,
+      writeRefreshToken: (_) async {},
+      deleteRefreshToken: () async {},
+      );
+
+      await expectLater(
+        session.cancelAdmissionByCode(email: '', code: '123456'),
+        throwsA(isA<ApiException>()),
+      );
+      expect(calls, 0);
+      session.dispose();
+    });
+
   });
 }

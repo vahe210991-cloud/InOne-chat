@@ -10,7 +10,7 @@ import { storeForTest } from './helpers.js';
 const PEPPER = randomBytes(24).toString('hex');
 const FIXTURE_1 = randomBytes(16).toString('hex');
 const FIXTURE_2 = randomBytes(16).toString('hex');
-const OWNER = { email: 'owner@example.test', nickname: 'owner', password: FIXTURE_1, phone: '+37477000001', confirmOwnerEmail: true };
+const OWNER = { email: 'owner@example.test', nickname: 'owner', password: FIXTURE_1, phone: '+37477000001', pin: '80421697', pinConfirmation: '80421697', pinPepper: PEPPER, confirmOwnerEmail: true };
 
 async function makeStore() {
   if (process.env.DATABASE_URL) {
@@ -55,9 +55,9 @@ test('второй аккаунт с той же почтой или тем же
   const { store, close } = await makeStore();
   try {
     await bootstrapOwnerAccount({ store, ...OWNER });
-    await assert.rejects(bootstrapOwnerAccount({ store, ...OWNER, nickname: 'other', phone: '' }), /already registered/);
-    await assert.rejects(bootstrapOwnerAccount({ store, ...OWNER, nickname: 'other' }), /phone already used/);
-    await assert.rejects(bootstrapOwnerAccount({ store, ...OWNER, email: 'second@example.test', phone: '' }), /nickname taken/);
+    await assert.rejects(bootstrapOwnerAccount({ store, ...OWNER, nickname: 'other', phone: '+37477000002' }), /already registered/);
+    await assert.rejects(bootstrapOwnerAccount({ store, ...OWNER, nickname: 'other', email: 'second@example.test' }), /phone already used/);
+    await assert.rejects(bootstrapOwnerAccount({ store, ...OWNER, email: 'second@example.test', nickname: 'owner', phone: '+37477000003' }), /nickname taken/);
   } finally {
     await close();
   }
@@ -68,6 +68,8 @@ test('короткий пароль и неверный никнейм откл�
   try {
     await assert.rejects(bootstrapOwnerAccount({ store, ...OWNER, password: 'abc' }), /at least 8 characters/);
     await assert.rejects(bootstrapOwnerAccount({ store, ...OWNER, nickname: 'x' }));
+    await assert.rejects(bootstrapOwnerAccount({ store, ...OWNER, pin: '12345678', pinConfirmation: '87654321' }), /PIN confirmation/);
+    await assert.rejects(bootstrapOwnerAccount({ store, ...OWNER, pin: '1234567', pinConfirmation: '1234567' }), /eight digits/);
   } finally {
     await close();
   }
@@ -83,9 +85,9 @@ test('в режиме проверки почты номер обязателе�
     const email = 'phone@example.test';
     await post('/register/email', { email });
     const token = (await (await post('/register/email/confirm', { email, code: '000000' })).json()).registrationToken;
-    const noPhone = await post('/register', { email, registrationToken: token, password: FIXTURE_1, nickname: 'phoneuser' });
+    const noPhone = await post('/register', { email, registrationToken: token, password: FIXTURE_1, nickname: 'phoneuser', pin: '80421697', pinConfirmation: '80421697' });
     assert.equal(noPhone.status, 400, 'без номера регистрация не проходит');
-    const withPhone = await post('/register', { email, registrationToken: token, password: FIXTURE_1, nickname: 'phoneuser', phone: '+37477000002' });
+    const withPhone = await post('/register', { email, registrationToken: token, password: FIXTURE_1, nickname: 'phoneuser', phone: '+37477000002', pin: '80421697', pinConfirmation: '80421697' });
     assert.equal(withPhone.status, 200);
     const userId = (await withPhone.json()).userId;
     assert.equal(await store.phoneOwner('+37477000002'), userId);

@@ -90,6 +90,9 @@ void main() {
             deleteCalls++;
             savedUserId = null;
           },
+          readRefreshToken: () async => null,
+          writeRefreshToken: (_) async {},
+          deleteRefreshToken: () async {},
         );
 
     final session = createSession();
@@ -139,6 +142,9 @@ void main() {
               deleteCalls++;
               savedUserId = null;
             },
+            readRefreshToken: () async => null,
+            writeRefreshToken: (_) async {},
+            deleteRefreshToken: () async {},
           );
 
       final session = createSession();

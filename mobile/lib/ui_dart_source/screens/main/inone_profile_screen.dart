@@ -16,6 +16,9 @@ class InOneProfileScreen extends StatelessWidget {
     required this.onEditAvatar,
     required this.onTab,
     this.onAdd,
+    this.pinReminderDue = false,
+    this.onPinRemember,
+    this.onPinReplace,
   });
 
   final InOneUserProfile profile;
@@ -24,6 +27,9 @@ class InOneProfileScreen extends StatelessWidget {
   final VoidCallback? onEditAvatar;
   final ValueChanged<InOneTab> onTab;
   final VoidCallback? onAdd;
+  final bool pinReminderDue;
+  final VoidCallback? onPinRemember;
+  final VoidCallback? onPinReplace;
 
   @override
   Widget build(BuildContext context) {
@@ -123,6 +129,46 @@ class InOneProfileScreen extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 20),
+            if (pinReminderDue) ...[
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: c.soft,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: c.line),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      inOnePinCopy(context, 'reminderTitle'),
+                      style: InOneText.style(14, FontWeight.w700, c.text),
+                    ),
+                    const SizedBox(height: 7),
+                    Text(
+                      inOnePinCopy(context, 'reminderBody'),
+                      style: InOneText.style(12.5, FontWeight.w400, c.muted),
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        OutlinedButton(
+                          onPressed: onPinRemember,
+                          child: Text(inOnePinCopy(context, 'remember')),
+                        ),
+                        FilledButton(
+                          onPressed: onPinReplace,
+                          child: Text(inOnePinCopy(context, 'replace')),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 18),
+            ],
             for (var i = 0; i < menu.length; i++) _MenuRow(item: menu[i], last: i == menu.length - 1),
           ],
         ),

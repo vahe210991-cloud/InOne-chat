@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../state/inone_state.dart';
 import '../../widgets/inone_widgets.dart';
 
-/// SC-10 · Սա դուք չե՞ք: отмена чужой попытки восстановления по коду из письма.
+/// SC-10 · Սա դուք չե՞ք: отмена чужого входа или восстановления по коду из письма.
 class InOneNotYouScreen extends StatefulWidget {
   const InOneNotYouScreen({
     super.key,
@@ -12,7 +12,7 @@ class InOneNotYouScreen extends StatefulWidget {
     this.onDone,
   });
 
-  /// POST /recovery/cancel-by-code. `null` — успех.
+  /// POST /admission/cancel or /recovery/cancel-by-code. `null` — успех.
   final Future<InOneFailure?> Function(String email, String code) onSubmit;
   final VoidCallback onBack;
 
@@ -64,6 +64,7 @@ class _InOneNotYouScreenState extends State<InOneNotYouScreen> with InOneActionS
                 form: _form,
                 name: 'code',
                 label: 'Կոդը նամակից',
+                maxLength: 6,
                 autofillHints: const [AutofillHints.oneTimeCode],
                 textInputAction: TextInputAction.done,
                 onSubmitted: _submit,

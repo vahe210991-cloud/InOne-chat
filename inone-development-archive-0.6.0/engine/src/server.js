@@ -14,7 +14,7 @@
 import { parseKeyPackages, parseCommitRequest, parseApplicationRequest, MLS_UNUSED_MAX } from './mls-rules.js';
 import { readPrivateMessageHeader } from './mls-wire.js';
 import { normalizeRoomName } from './room-names.js';
-import { hashPassword, checkPassword, MIN_PASSWORD_LENGTH, newUserId } from './account-rules.js';
+import { hashPassword, checkPassword, MIN_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH, newUserId } from './account-rules.js';
 import { ALLOWED_CONTENT_TYPES, MAX_STICKERS_PER_GROUP, assetMatchesVisibility, assetVisibleTo, createAssetId, validateAppearance, validateAssetUpload } from './group-appearance.js';
 import QRCode from 'qrcode';
 import { createInviteId, createInviteToken, hashInviteToken, inviteUsable, validateInviteOptions } from './room-rules.js';
@@ -27,9 +27,10 @@ import { isIP } from 'node:net';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { readFileSync } from 'node:fs';
-import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, randomInt, randomUUID, scryptSync, timingSafeEqual, createPublicKey, createVerify } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, randomInt, randomUUID, timingSafeEqual, createPublicKey, createVerify } from 'node:crypto';
 import { createMemoryStore } from './store-memory.js';
 import { LOGIN_POLICY } from './login-throttle.js';
+import { PIN_FREE_ATTEMPTS, PIN_REMINDER_INTERVAL_MS, PIN_VERIFICATION_INTERVAL_MS, checkPin, hashPin, lockDurationMs, pinHashNeedsUpgrade, validateLegacyPin, validatePin, weakPinReason } from './pin-security.js';
 import { windowOpen, requestCode, confirmLink, checkCode, completeRecovery, cancelWindow, issueIdentity, checkIdentity, closeWindowIfDue } from './recovery-rules.js';
 import { createMemorySms } from './sms.js';
 import { isPhone, requestPhoneCode, checkPhoneCode } from './phone-rules.js';
@@ -43,10 +44,27 @@ import { renderEmailTemplate } from './email-templates.js';
 export const RECOVERY_DELAY_MS = 48 * 60 * 60 * 1000;
 // POST, разрешённые в окне восстановления: чтение чужих ключей и отмена (право отмены проверяет маршрут, D8).
 const WINDOW_POST_OK = new Set(['/keys/query', '/recovery/cancel']);
+const PIN_GATE_ALLOWED = new Set([
+  'GET /pin/status',
+  'POST /pin/verify',
+  'POST /pin/reminder/ack',
+  'POST /pin/reset/start',
+  'POST /pin/reset/complete',
+  'POST /logout',
+  'POST /token/refresh',
+  'PATCH /profile/locale',
+  'POST /recovery/start',
+  'POST /recovery/complete',
+  'POST /recovery/cancel-by-code',
+  'GET /recovery/confirm',
+  'POST /recovery/confirm',
+]);
 export const APPROVAL_TTL_MS = 10 * 60 * 1000;
 export const MAX_APPROVAL_CODE_ATTEMPTS = 3;
 export const MAX_PENDING_APPROVALS = 3;
-export const FREE_PIN_ATTEMPTS = 5;
+export const FREE_PIN_ATTEMPTS = PIN_FREE_ATTEMPTS;
+const PIN_RESET_CODE_TTL_MS = 60 * 60_000;
+export { lockDurationMs, weakPinReason };
 export const TO_DEVICE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // недоставленная очередь хранится не дольше 30 дней (спецификация)
 const MAX_TO_DEVICE_RECIPIENTS = 100;
 const MAX_TO_DEVICE_MESSAGES = 200;
@@ -54,7 +72,6 @@ const MAX_TO_DEVICE_ITEM_BYTES = 256 * 1024;
 const MAX_TO_DEVICE_TOTAL_BYTES = 1024 * 1024;
 const MAX_TO_DEVICE_QUEUE = 500;
 const SEND_DEDUP_MS = 7 * 24 * 60 * 60 * 1000;             // повтор отправки с тем же номером считается дублем 7 дней
-const MAX_LOCK_MS = 24 * 60 * 60 * 1000;
 const EMAIL_LOCALES = new Set(['hy', 'ru', 'en']);
 const resolveEmailLocale = (value) => value === undefined ? 'hy' : EMAIL_LOCALES.has(value) ? value : null;
 
@@ -130,29 +147,7 @@ function contentDispositionAttachment(filename) {
   return "attachment; filename=\"" + fallback + "\"; filename*=UTF-8''" + encoded;
 }
 
-/** Длительность блокировки PIN: 1, 2, 4… минуты, не больше суток. */
-export function lockDurationMs(attempt) {
-  const steps = Math.max(0, attempt - FREE_PIN_ATTEMPTS);
-  return Math.min(MAX_LOCK_MS, 60_000 * 2 ** Math.min(steps, 20));
-}
 
-/** Слабый PIN не принимается. Логика та же, что в основном проекте (pin-lock.service.ts). */
-export function weakPinReason(pin) {
-  if (!/^\d+$/.test(pin)) return 'PIN must contain digits only';
-  if (pin.length < 6 || pin.length > 12) return 'PIN must be 6-12 digits';
-  if (/^(\d)\1+$/.test(pin)) return 'PIN is too simple (one repeated digit)';
-  const d = [...pin].map(Number);
-  const step = d[1] - d[0];
-  if ((step === 1 || step === -1) && d.every((x, i) => i === 0 || x - d[i - 1] === step)) {
-    return 'PIN is too simple (a straight run of digits)';
-  }
-  for (let size = 2; size <= pin.length / 2; size++) {
-    if (pin.length % size === 0 && pin === pin.slice(0, size).repeat(pin.length / size)) {
-      return 'PIN is too simple (a repeating pattern)';
-    }
-  }
-  return null;
-}
 
 
 
@@ -161,19 +156,7 @@ export function weakPinReason(pin) {
 // Фиктивный хэш для неизвестных логинов: проверка занимает то же время, что и для настоящих (C-04).
 const DUMMY_PASSWORD_HASH = hashPassword(randomBytes(16).toString('hex'));
 
-// PIN: сначала HMAC с секретным перцем (он лежит в окружении, не в базе), потом scrypt.
-// Так утёкшая база сама по себе не позволяет перебрать PIN.
-const pepperedPin = (pepper, pin) => createHmac('sha256', pepper).update(pin).digest();
-function hashPin(pepper, pin) {
-  const salt = randomBytes(16);
-  return `${salt.toString('base64')}$${scryptSync(pepperedPin(pepper, pin), salt, 32).toString('base64')}`;
-}
-function checkPin(pepper, pin, stored) {
-  const [saltB64, hashB64] = stored.split('$');
-  const expected = Buffer.from(hashB64, 'base64');
-  const actual = scryptSync(pepperedPin(pepper, pin), Buffer.from(saltB64, 'base64'), 32);
-  return expected.length === actual.length && timingSafeEqual(expected, actual);
-}
+
 
 // Страница подтверждения восстановления: открытие ссылки ничего не меняет, подтверждает только кнопка (POST).
 const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -224,7 +207,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
     for (let i = chain.length - 1; i >= 0 && trustedProxySet.has(candidate); i -= 1) candidate = chain[i];
     return candidate;
   };
-  if (!pinPepper || pinPepper.length < 32) {
+  if (!pinPepper || Buffer.byteLength(pinPepper, 'utf8') < 32) {
     // Без перца сервер не запускается: иначе PIN легко перебрать после утечки базы.
     throw new Error('PIN_PEPPER обязателен и не короче 32 символов');
   }
@@ -312,6 +295,8 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
   };
   // Код восстановления хранится только как ключевой хэш; сам код есть лишь в письме (C-08).
   const recoveryCodeHash = (userId, code) => keyedHash(pinPepper, `recovery:${userId}`, code);
+  const pinResetCodeHash = (userId, deviceId, challengeId, code) =>
+    keyedHash(pinPepper, `pin-reset:${userId}:${deviceId}:${challengeId}`, code);
   const phoneCodeHash = (userId, code) => keyedHash(pinPepper, `phone:${userId}`, code);
   const recoveryLinkHash = (userId, token) => keyedHash(pinPepper, `recovery-link:${userId}`, token);
   const recoveryCancelHash = (userId, code) => keyedHash(pinPepper, `recovery-cancel:${userId}`, code);
@@ -410,23 +395,32 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
     if (outcome === 'sent') await smsSender.send(phone, `Код: ${code}. Введите его в InOne, чтобы подтвердить номер.`);
     return outcome;
   };
-  const identityCodeHash = (userId, code) => keyedHash(pinPepper, `identity:${userId}`, code);
+  const identityCodeHash = (userId, deviceId, challengeId, code) => keyedHash(pinPepper, `identity:${userId}:${deviceId}:${challengeId}`, code);
   // Токены и устройства лежат в хранилище; токен там хранится как ключевой хэш (C-08).
   // Через 48 часов после восстановления старые устройства отключаются, если их не отменили (D5, D8).
   // Окно хранится в базе: переживает перезапуск сервера.
   const finalizeRecoveryIfDue = async (userId, localeOverride = null) => {
     const current = await storage.recoveryGet(userId);
     if (current.windowKeyResetAt === null || now() < current.windowKeyResetAt) return;
-    const dueSince = await storage.recoveryUpdate(userId, (r) => {
-      const out = closeWindowIfDue(r, now());
-      return { next: out.next, result: out.dueSince };
-    });
-    if (dueSince === null) return;
+    const dueSince = current.windowStartedAt;
+    if (dueSince === null) throw new Error('recovery finalization is missing its start timestamp');
+    // Keep the recovery window marker until every device cleanup step has succeeded.
+    // If any step fails, the next authenticated request retries all pre-window devices;
+    // revokeDevice and the associated cleanup operations are idempotent.
     for (const rec of await storage.devicesOfUser(userId)) {
-      if (!rec.revoked && rec.createdAt < dueSince) await revokeDevice(rec);
+      if (rec.createdAt < dueSince) await revokeDevice(rec);
     }
+    const finalized = await storage.recoveryUpdate(userId, (r) => {
+      if (r.windowStartedAt !== dueSince || r.windowKeyResetAt === null || now() < r.windowKeyResetAt) {
+        return { next: r, result: false };
+      }
+      const out = closeWindowIfDue(r, now());
+      return { next: out.next, result: out.dueSince !== null };
+    });
+    if (!finalized) return;
     await mail(userId, 'Старые устройства отключены', '', 'old_devices_revoked', {}, null, localeOverride);
   };
+
   const authed = async (req) => {
     const raw = (req.headers.authorization || '').replace('Bearer ', '');
     const dk = raw ? await storage.deviceKeyForToken(raw, now()) : null;
@@ -472,14 +466,18 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
    * Проверка PIN с блокировкой. Правила и защита от гонок — в хранилище: store.js (PostgreSQL)
    * или store-memory.js. Сервер подставляет время, лимит и функцию проверки хэша.
    */
-  const verifyPin = (userId, pin) => storage.verifyPin(userId, pin, {
+  const verifyPin = (userId, pin, { markVerified = false } = {}) => storage.verifyPin(userId, pin, {
     now: now(),
     free: FREE_PIN_ATTEMPTS,
     lockDuration: lockDurationMs,
-    check: (candidate, stored) => {
+    markVerified,
+    check: async (candidate, stored) => {
+      const valid = await checkPin(pinPepper, candidate, stored);
       pinChecks += 1;
-      return checkPin(pinPepper, candidate, stored);
+      return valid;
     },
+    upgrade: async (candidate, stored) =>
+      pinHashNeedsUpgrade(stored) && validatePin(candidate) ? hashPin(pinPepper, candidate) : null,
   });
 
   const pinError = (res, r) => {
@@ -535,6 +533,15 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
       if (req.method === 'GET' && !downloadSession) return send(res, 401, { error: 'unauthorized' });
       const file = await storage.getFile(fileId);
       if (!file) return send(res, 404, { error: 'not found' });
+      const protectedUserId = req.method === 'GET'
+        ? downloadSession?.userId
+        : (req.method === 'PUT' ? file.ownerId : null);
+      if (protectedUserId) {
+        const pinState = await storage.pinStatus(protectedUserId);
+        const verificationRequired = !pinState.configured || pinState.lastVerifiedAt === null
+          || now() - pinState.lastVerifiedAt >= PIN_VERIFICATION_INTERVAL_MS;
+        if (verificationRequired) return send(res, 403, { error: 'pin_verification_required', setupRequired: !pinState.configured });
+      }
       if (req.method === 'PUT') {
         if (!expires || !file.ownerDeviceId || !sameSig(sig, signFor('PUT', fileId, expires, file.size, file.sha256, file.ownerId, file.ownerDeviceId))) {
           return send(res, 403, { error: 'upload link is invalid' });
@@ -789,6 +796,23 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         const raw = String(req.headers.authorization).replace('Bearer ', '');
         if ((await storage.accessTokenState(raw, now())) === 'expired') return send(res, 401, { error: 'token expired', code: 'token_expired' });
       }
+      // Monthly PIN verification is a server-side access gate, not a client-side reminder.
+      if (req.headers.authorization && !PIN_GATE_ALLOWED.has(`${req.method} ${p}`)) {
+        const raw = String(req.headers.authorization).replace('Bearer ', '');
+        const deviceKey = await storage.deviceKeyForToken(raw, now());
+        const device = deviceKey ? await storage.deviceRecord(deviceKey) : null;
+        if (device && !device.revoked) {
+          const pinState = await storage.pinStatus(device.userId);
+          const verificationRequired = !pinState.configured || pinState.lastVerifiedAt === null
+            || now() - pinState.lastVerifiedAt >= PIN_VERIFICATION_INTERVAL_MS;
+          if (verificationRequired) {
+            return send(res, 403, {
+              error: 'pin_verification_required',
+              setupRequired: !pinState.configured,
+            });
+          }
+        }
+      }
       // Окно восстановления: устройства только читают. Исключения: чтение чужих ключей и отмена (её право проверяет маршрут, D8).
       if (req.method !== 'GET' && !WINDOW_POST_OK.has(p) && (await inRecoveryWindow(req))) {
         return send(res, 403, { error: 'device is restricted during the recovery window' });
@@ -835,11 +859,28 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         const reg = await checkRate('registrationsPerAddress', clientIp(req));
         if (!reg.allowed) return send(res, 429, { error: 'too many registrations from this address', retryAt: new Date(reg.retryAt).toISOString() });
         // Ник и язык проверяем до погашения билета: ошибка ввода не должна сжигать одноразовый ticket.
-        const locale = resolveEmailLocale(body.locale);
+        const locale = body.locale === undefined ? 'hy' : resolveEmailLocale(body.locale);
         if (!locale) return send(res, 400, { error: 'locale must be hy, ru or en' });
         const nickError = validateNickname(body.nickname);
         if (nickError) return send(res, 400, { error: nickError });
+        const pin = typeof body.pin === 'string' ? body.pin : '';
+        const pinConfirmation = typeof body.pinConfirmation === 'string' ? body.pinConfirmation : '';
+        const pinErrorText = weakPinReason(pin);
+        if (pinErrorText) return send(res, 400, { error: pinErrorText });
+        if (!validatePin(pinConfirmation) || pin !== pinConfirmation) {
+          return send(res, 400, { error: 'PIN confirmation does not match' });
+        }
+        const hasPhone = body.phone !== undefined && body.phone !== null && body.phone !== '';
+        if (requirePhone && !hasPhone) return send(res, 400, { error: 'phone required' });
+        const phoneV = hasPhone
+          ? normalizePhone(body.phone, { blockedCountries: phoneBlockedCountries, allowedCountries: phoneAllowedCountries })
+          : null;
+        if (phoneV?.error) return send(res, 400, { error: phoneV.error });
+        if (phoneV && (await storage.phoneOwner(phoneV.value.e164))) {
+          return send(res, 409, { error: 'phone already used by another account' });
+        }
         if (await storage.searchNickname(body.nickname)) return send(res, 409, { error: 'nickname taken' });
+        const pinHash = await hashPin(pinPepper, pin);
         const ticket = typeof body.ticket === 'string' ? body.ticket : '';
         const spent = ticket === '' ? null : await storage.consumeAuthToken('provider-ticket', authTokenHash('provider-ticket', ticket), now());
         if (!spent) return send(res, 403, { error: 'registration ticket invalid or expired' });
@@ -852,6 +893,8 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
           joinDefaultOrg: defaultOrgAutoJoin,
           // У аккаунта провайдера пароля нет: случайный непоказываемый хэш, вход только через провайдера.
           passwordHash: hashPassword(randomBytes(32).toString('hex')),
+          pinHash,
+          phoneE164: phoneV?.value.e164 ?? null,
           email: identity.email,
           nickname: body.nickname,
           nowMs: now(),
@@ -859,8 +902,20 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
           locale,
         });
         if (created !== 'ok') {
-          const error = created === 'nickname' ? 'nickname taken' : created === 'email' ? sameEmailError : created === 'link' ? 'this provider account is already linked' : 'account exists';
+          const error = created === 'nickname' ? 'nickname taken'
+            : created === 'email' ? sameEmailError
+              : created === 'phone' ? 'phone already used by another account'
+                : created === 'link' ? 'this provider account is already linked' : 'account exists';
           return send(res, 409, { error });
+        }
+        if (phoneV && smsEnabled) {
+          try {
+            await sendPhoneCode(userId, phoneV.value.e164);
+          } catch (e) {
+            logger?.warn('optional phone verification SMS could not be sent', {
+              errorCode: typeof e?.code === 'string' ? e.code : 'SMS_UNAVAILABLE',
+            });
+          }
         }
         const proof = newAuthToken();
         await storage.issueAuthToken({ kind: 'provider-proof', tokenHash: authTokenHash('provider-proof', proof), userId, payload: null, expiresAt: now() + 2 * 60_000 });
@@ -1090,7 +1145,6 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
       if (req.method === 'POST' && p === '/register/email/confirm' && registrationMode === 'verified') {
         const email = normalizeEmail(body.email);
         if (!isEmail(email)) return send(res, 400, { error: 'email must be a valid address' });
-        if (await storage.userIdByEmail(email)) return send(res, 409, { error: 'email already registered' });
         const code = typeof body.code === 'string' ? body.code : '';
         const token = randomBytes(24).toString('base64url');
         const outcome = await storage.emailCodeUpdate(email, (e) => {
@@ -1115,8 +1169,15 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         const reg = await checkRate('registrationsPerAddress', clientIp(req));
         if (!reg.allowed) return send(res, 429, { error: 'too many registrations from this address', retryAt: new Date(reg.retryAt).toISOString() });
         if (!isEmail(email) || token === '') return send(res, 400, { error: 'email and registrationToken required' });
-        if (typeof body.password !== 'string' || body.password.length < MIN_PASSWORD_LENGTH) {
-          return send(res, 400, { error: `password required (min ${MIN_PASSWORD_LENGTH} chars)` });
+        const pin = typeof body.pin === 'string' ? body.pin : '';
+        const pinConfirmation = typeof body.pinConfirmation === 'string' ? body.pinConfirmation : '';
+        const pinErrorText = weakPinReason(pin);
+        if (pinErrorText) return send(res, 400, { error: pinErrorText });
+        if (!validatePin(pinConfirmation) || pin !== pinConfirmation) {
+          return send(res, 400, { error: 'PIN confirmation does not match' });
+        }
+        if (typeof body.password !== 'string' || Array.from(body.password).length < MIN_PASSWORD_LENGTH || Array.from(body.password).length > MAX_PASSWORD_LENGTH) {
+          return send(res, 400, { error: `password must be ${MIN_PASSWORD_LENGTH}-${MAX_PASSWORD_LENGTH} characters` });
         }
         const nickError = validateNickname(body.nickname);
         if (nickError) return send(res, 400, { error: nickError });
@@ -1127,32 +1188,44 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         const phoneV = hasPhoneV ? normalizePhone(body.phone, { blockedCountries: phoneBlockedCountries, allowedCountries: phoneAllowedCountries }) : null;
         if (phoneV?.error) return send(res, 400, { error: phoneV.error });
         if (phoneV && (await storage.phoneOwner(phoneV.value.e164))) return send(res, 409, { error: 'phone already used by another account' });
-// Токен одноразовый: гасится до создания аккаунта, чтобы им нельзя было воспользоваться дважды.
-        const used = await storage.emailCodeUpdate(email, (e) => {
-          const out = useEmailToken(e, { nowMs: now(), tokenOk: !!e.tokenHash && sameHex(emailTokenHash(email, token), e.tokenHash) });
-          return { next: out.next, result: { outcome: out.outcome, locale: e.locale ?? 'hy' } };
-        });
-        if (used.outcome === 'expired') return send(res, 410, { error: 'registration token expired' });
-        if (used.outcome !== 'ok') return send(res, 403, { error: 'registration token invalid' });
+        // Ticket consumption and account creation share one storage transaction.
         const userId = newUserId();
-        const created = await storage.createVerifiedAccount({
-          userId, passwordHash: hashPassword(body.password), email, nickname: body.nickname, nowMs: now(), joinDefaultOrg: defaultOrgAutoJoin, locale: used.locale,
+        const created = await storage.createVerifiedAccountWithEmailToken({
+          email,
+          changeEmailCode: (e) => {
+            const out = useEmailToken(e, {
+              nowMs: now(),
+              tokenOk: !!e.tokenHash && sameHex(emailTokenHash(email, token), e.tokenHash),
+            });
+            return { next: out.next, result: { outcome: out.outcome, locale: e.locale ?? 'hy' } };
+          },
+          userId,
+          passwordHash: hashPassword(body.password),
+          makePinHash: () => hashPin(pinPepper, pin),
+          phoneE164: phoneV?.value.e164 ?? null,
+          nickname: body.nickname,
+          nowMs: now(),
+          joinDefaultOrg: defaultOrgAutoJoin,
         });
-        if (created !== 'ok') {
-          const error = created === 'nickname' ? 'nickname taken' : created === 'email' ? 'email already registered' : 'account exists';
+        if (created.outcome === 'expired') return send(res, 410, { error: 'registration token expired' });
+        if (created.outcome !== 'ok') return send(res, 403, { error: 'registration token invalid' });
+        if (created.created !== 'ok') {
+          const error = created.created === 'nickname' ? 'nickname taken'
+            : created.created === 'email' ? 'email already registered'
+              : created.created === 'phone' ? 'phone already used by another account' : 'account exists';
           return send(res, 409, { error });
         }
-        if (phoneV) {
-      const e164 = phoneV.value.e164;
-      try {
-        if (smsEnabled) await sendPhoneCode(userId, e164);
-        else await storage.phoneUpdate(userId, () => ({ next: { phone: e164, verified: false, codeHash: null, codeAttempts: 0, codeExpiresAt: 0, sends: [] }, result: 'saved' }));
-      } catch (e) {
-        if (e.code === '23505') return send(res, 409, { error: 'phone already used by another account' });
-        throw e;
-      }
-    }
-    return send(res, 200, { userId, nickname: body.nickname, verificationLevel: 1 });
+        if (phoneV && smsEnabled) {
+          try {
+            await sendPhoneCode(userId, phoneV.value.e164);
+          } catch (e) {
+            // Phone verification is optional; the required phone value was committed atomically with the account.
+            logger?.warn('optional phone verification SMS could not be sent', {
+              errorCode: typeof e?.code === 'string' ? e.code : 'SMS_UNAVAILABLE',
+            });
+          }
+        }
+        return send(res, 200, { userId, nickname: body.nickname, verificationLevel: 1 });
       }
 
       // ---------- поиск по нику и свой профиль (модель аккаунта, этап 1) ----------
@@ -1203,20 +1276,26 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
 
       if (req.method === 'POST' && p === '/register' && registrationMode === 'open') {
         const { userId, password, phone } = body;
-        // Лимит на регистрации с одного адреса: накрутка аккаунтов и SMS стоит денег (D5).
         const reg = await checkRate('registrationsPerAddress', clientIp(req));
         if (!reg.allowed) return send(res, 429, { error: 'too many registrations from this address', retryAt: new Date(reg.retryAt).toISOString() });
-        if (!userId || typeof password !== 'string' || password.length < MIN_PASSWORD_LENGTH) {
-          return send(res, 400, { error: 'userId and password (min 8 chars) required' });
+        if (typeof userId !== 'string' || userId.length < 3 || userId.length > 128
+            || typeof password !== 'string' || Array.from(password).length < MIN_PASSWORD_LENGTH
+            || Array.from(password).length > MAX_PASSWORD_LENGTH) {
+          return send(res, 400, { error: 'userId and password are invalid' });
         }
-        const hasPhone = phone !== undefined && phone !== null;
+        const pin = typeof body.pin === 'string' ? body.pin : '';
+        const pinConfirmation = typeof body.pinConfirmation === 'string' ? body.pinConfirmation : '';
+        const pinErrorText = weakPinReason(pin);
+        if (pinErrorText) return send(res, 400, { error: pinErrorText });
+        if (!validatePin(pinConfirmation) || pin !== pinConfirmation) {
+          return send(res, 400, { error: 'PIN confirmation does not match' });
+        }
+        const hasPhone = phone !== undefined && phone !== null && phone !== '';
         if (requirePhone && !hasPhone) return send(res, 400, { error: 'phone required' });
         const phoneNorm = hasPhone ? normalizePhone(phone, { blockedCountries: phoneBlockedCountries, allowedCountries: phoneAllowedCountries }) : null;
         if (phoneNorm?.error) return send(res, 400, { error: phoneNorm.error });
         if (phoneNorm) {
-          // На один номер SMS приходят не чаще заданного за сутки, с любого адреса и с любого аккаунта.
           const perPhone = await checkRate('phoneRegistrationPerPhone', phoneNorm.value.e164);
-          // Когда SMS подключены, регистрация с номером тратит тот же суточный лимит SMS на номер.
           if (smsEnabled) {
             const smsCount = await checkRate('smsPerPhone', phoneNorm.value.e164);
             if (!smsCount.allowed) return send(res, 429, { error: 'too many codes for this phone, try tomorrow', retryAt: new Date(smsCount.retryAt).toISOString() });
@@ -1224,17 +1303,23 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
           if (!perPhone.allowed) return send(res, 429, { error: 'too many codes for this phone, try tomorrow', retryAt: new Date(perPhone.retryAt).toISOString() });
         }
         if (phoneNorm && (await storage.phoneOwner(phoneNorm.value.e164))) return send(res, 409, { error: 'phone already used by another account' });
-        if (!(await storage.addAccount(userId, hashPassword(password), { joinDefaultOrg: defaultOrgAutoJoin }))) return send(res, 409, { error: 'account exists' });
-        // Номер подтверждается кодом из SMS: до подтверждения он не даёт права на восстановление (D5).
-        if (phoneNorm) {
-          const e164 = phoneNorm.value.e164;
-          // SMS пока не подключён: номер закрепляется за аккаунтом в ожидании подтверждения, код не отправляется.
+        const pinHash = await hashPin(pinPepper, pin);
+        const created = await storage.createOpenAccount({
+          userId,
+          passwordHash: hashPassword(password),
+          pinHash,
+          phoneE164: phoneNorm?.value.e164 ?? null,
+          nowMs: now(),
+          joinDefaultOrg: defaultOrgAutoJoin,
+        });
+        if (created !== 'ok') return send(res, 409, { error: created === 'phone' ? 'phone already used by another account' : 'account exists' });
+        if (phoneNorm && smsEnabled) {
           try {
-            if (smsEnabled) await sendPhoneCode(userId, e164);
-            else await storage.phoneUpdate(userId, () => ({ next: { phone: e164, verified: false, codeHash: null, codeAttempts: 0, codeExpiresAt: 0, sends: [] }, result: 'saved' }));
+            await sendPhoneCode(userId, phoneNorm.value.e164);
           } catch (e) {
-            if (e.code === '23505') return send(res, 409, { error: 'phone already used by another account' });
-            throw e;
+            logger?.warn('optional phone verification SMS could not be sent', {
+              errorCode: typeof e?.code === 'string' ? e.code : 'SMS_UNAVAILABLE',
+            });
           }
         }
         return send(res, 200, { ok: true });
@@ -1261,6 +1346,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
           throw e;
         }
         if (outcome === 'limit') return send(res, 429, { error: 'too many codes, try later' });
+        if (outcome === 'phone-taken') return send(res, 409, { error: 'phone already used by another account' });
         return send(res, 202, { ok: true });
       }
 
@@ -1762,7 +1848,7 @@ if (req.method === 'POST' && p === '/login') {
         // Вход по почте (подтверждённый аккаунт) или по внутреннему идентификатору (режим open и старые аккаунты).
         const loginEmail = normalizeEmail(body.email);
         const userId = body.userId ?? ((loginEmail && (await storage.userIdByEmail(loginEmail))) || loginEmail);
-        const { password, deviceId, label, platform, identityCode, proof: providerProof } = body;
+        const { password, deviceId, label, platform, identityCode, identityChallengeId, proof: providerProof } = body;
         const requestedLocale = body.locale === undefined ? null : resolveEmailLocale(body.locale);
         if (body.locale !== undefined && !requestedLocale) return send(res, 400, { error: 'locale must be hy, ru or en' });
         const stored = await storage.accountHash(userId);
@@ -1815,22 +1901,65 @@ if (req.method === 'POST' && p === '/login') {
         if (!existing && rec.identityCheck) {
           if (identityCode === undefined) {
             const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
+            const challengeId = randomBytes(24).toString('base64url');
             const profile = await storage.profileGet(userId);
             const primaryEmail = profile?.email ?? userId;
             const locale = profile?.locale ?? requestedLocale ?? 'hy';
             const backup = await storage.backupEmailGet(userId);
-            await storage.recoveryUpdateWithOutbox(userId,
-              (r) => ({ next: issueIdentity(r, { codeHash: identityCodeHash(userId, code) }), result: null }),
-              (tx) => mailToRecipients([primaryEmail, backup?.email], '', '', 'recovery_login_code', { code }, tx, locale));
-            return send(res, 202, { status: 'identity_check_required' });
+            const challenge = await storage.recoveryUpdateWithOutbox(userId, (r) => {
+              const issued = issueIdentity(r, {
+                codeHash: identityCodeHash(userId, deviceId, challengeId, code),
+                deviceId,
+                challengeId,
+                nowMs: now(),
+              });
+              return {
+                next: issued.next,
+                result: {
+                  outcome: issued.outcome,
+                  challengeId: issued.challengeId,
+                  expiresAt: issued.expiresAt,
+                  resendAfter: issued.resendAfter,
+                  shouldSend: issued.outcome === 'sent',
+                },
+              };
+            }, (tx, result) => result.shouldSend
+              ? mailToRecipients([primaryEmail, backup?.email], '', '', 'recovery_login_code', { code }, tx, locale)
+              : null);
+            if (challenge.outcome === 'locked') {
+              return send(res, 429, { error: 'identity verification temporarily locked' });
+            }
+            if (challenge.outcome === 'device_mismatch') {
+              return send(res, 409, { error: 'identity challenge is active on another device; retry after cooldown' });
+            }
+            if (challenge.outcome === 'cooldown') {
+              return send(res, 429, {
+                error: 'identity code resend cooldown active',
+                retryAt: new Date(challenge.resendAfter).toISOString(),
+              });
+            }
+            return send(res, 202, {
+              status: 'identity_check_required',
+              challengeId: challenge.challengeId,
+              expiresAt: new Date(challenge.expiresAt).toISOString(),
+              resendAfter: new Date(challenge.resendAfter).toISOString(),
+              codeSent: challenge.outcome === 'sent',
+            });
           }
           const outcome = await storage.recoveryUpdate(userId, (r) => {
             const out = checkIdentity(r, {
-              codeOk: typeof identityCode === 'string' && !!r.identityCodeHash && sameHex(identityCodeHash(userId, identityCode), r.identityCodeHash),
+              nowMs: now(),
+              deviceId,
+              challengeId: typeof identityChallengeId === 'string' ? identityChallengeId : '',
+              codeOk: typeof identityCode === 'string' && typeof identityChallengeId === 'string' &&
+                !!r.identityCodeHash &&
+                sameHex(identityCodeHash(userId, deviceId, identityChallengeId, identityCode), r.identityCodeHash),
             });
             return { next: out.next, result: out.outcome };
           });
-          if (outcome !== 'ok') return send(res, 403, { error: 'wrong identity code' });
+          if (outcome === 'expired') return send(res, 410, { error: 'identity code expired; request a new code' });
+          if (outcome === 'locked') return send(res, 429, { error: 'too many wrong identity codes; try later' });
+          if (outcome !== 'ok') return send(res, 403, { error: 'identity verification failed' });
           identityPassed = true;
         }
         // В окне восстановления новые устройства не добавляются, кроме первого входа по коду (D8).
@@ -1945,30 +2074,147 @@ if (req.method === 'POST' && p === '/login') {
         return send(res, 200, { ok: true });
       }
 
-      // ---------- PIN ----------
-      if (req.method === 'POST' && p === '/pin/set') {
+      // ---------- PIN security, weekly reminder and monthly verification ----------
+      if (req.method === 'GET' && p === '/pin/status') {
         const d = await authed(req);
         if (!d) return send(res, 401, { error: 'unauthorized' });
-        const pin = String(body.pin ?? '');
-        const weak = weakPinReason(pin);
-        if (weak) return send(res, 400, { error: weak });
-        if (await storage.hasPin(d.userId)) {
-          const r = await verifyPin(d.userId, String(body.currentPin ?? ''));
-          if (!r.ok) return pinError(res, r);
+        const state = await storage.pinStatus(d.userId);
+        return send(res, 200, {
+          configured: state.configured,
+          legacy: state.legacy === true,
+          verificationRequired: !state.configured || state.legacy === true || state.lastVerifiedAt === null
+            || now() - state.lastVerifiedAt >= PIN_VERIFICATION_INTERVAL_MS,
+          reminderDue: state.configured && state.reminderNextAt !== null && now() >= state.reminderNextAt,
+          nextReminderAt: state.reminderNextAt === null ? null : new Date(state.reminderNextAt).toISOString(),
+          lockedUntil: state.lockedUntil && state.lockedUntil > now() ? new Date(state.lockedUntil).toISOString() : null,
+        });
+      }
+
+      if (req.method === 'POST' && p === '/pin/verify') {
+        const d = await authed(req);
+        if (!d) return send(res, 401, { error: 'unauthorized' });
+        const state = await storage.pinStatus(d.userId);
+        const legacyPin = state.legacy === true;
+        const validFormat = legacyPin ? validateLegacyPin(body.pin) : validatePin(body.pin);
+        if (!validFormat) {
+          return send(res, 400, {
+            error: legacyPin ? 'legacy PIN must contain 6 to 12 digits' : 'PIN must contain exactly eight digits',
+          });
         }
-        await storage.setPin(d.userId, hashPin(pinPepper, pin));
-        await alertDevices(d.userId, { kind: 'pin_changed' });
+        const resetRequired = legacyPin && !validatePin(body.pin);
+        const verdict = await verifyPin(d.userId, body.pin, { markVerified: !resetRequired });
+        if (!verdict.ok) return pinError(res, verdict);
+        if (resetRequired) return send(res, 200, { ok: true, resetRequired: true });
+        return send(res, 200, { ok: true, resetRequired: false, verifiedAt: new Date(now()).toISOString() });
+      }
+
+      if (req.method === 'POST' && p === '/pin/reminder/ack') {
+        const d = await authed(req);
+        if (!d) return send(res, 401, { error: 'unauthorized' });
+        const state = await storage.pinStatus(d.userId);
+        if (!state.configured) return send(res, 409, { error: 'PIN setup required' });
+        const nextAt = now() + PIN_REMINDER_INTERVAL_MS;
+        if (!(await storage.acknowledgePinReminder(d.userId, nextAt))) return send(res, 409, { error: 'PIN reminder unavailable' });
+        return send(res, 200, { ok: true, nextReminderAt: new Date(nextAt).toISOString() });
+      }
+
+      if (req.method === 'POST' && p === '/pin/reset/start') {
+        const d = await authed(req);
+        if (!d) return send(res, 401, { error: 'unauthorized' });
+        const perAccount = await checkRate('pinResetStartPerAccount', d.userId);
+        const perAddress = await checkRate('pinResetStartPerAddress', clientIp(req));
+        if (!perAccount.allowed || !perAddress.allowed) {
+          const retryAt = Math.max(perAccount.retryAt ?? 0, perAddress.retryAt ?? 0);
+          return send(res, 429, { error: 'too many PIN reset requests', retryAt: new Date(retryAt).toISOString() });
+        }
+        if (await passwordSignInAllowed(d.userId)) {
+          const stored = await storage.accountHash(d.userId);
+          if (typeof body.password !== 'string' || !checkPassword(body.password, stored)) {
+            return send(res, 403, { error: 'recent password confirmation required' });
+          }
+        }
+        const profile = await storage.profileGet(d.userId);
+        if (!profile?.emailVerified || !profile.email) return send(res, 403, { error: 'verified email required' });
+        const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
+        const challengeId = randomBytes(24).toString('base64url');
+        const createdAt = now();
+        const issued = await storage.issuePinResetWithOutbox(d.userId, {
+          challengeId,
+          codeHash: pinResetCodeHash(d.userId, d.deviceId, challengeId, code),
+          deviceId: d.deviceId,
+          now: createdAt,
+          expiresAt: createdAt + PIN_RESET_CODE_TTL_MS,
+        }, (tx) => mailTo(profile.email, '', '', null, 'pin_reset_code', { code }, profile.locale ?? 'hy', tx));
+        if (issued.outcome === 'locked' || issued.outcome === 'cooldown') {
+          return send(res, 429, {
+            error: 'PIN reset temporarily unavailable',
+            retryAt: new Date(issued.retryAt).toISOString(),
+          });
+        }
+        return send(res, 202, {
+          challengeId,
+          expiresAt: new Date(issued.expiresAt).toISOString(),
+          resendAfter: new Date(issued.resendAfter).toISOString(),
+        });
+      }
+
+      if (req.method === 'POST' && p === '/pin/reset/complete') {
+        const d = await authed(req);
+        if (!d) return send(res, 401, { error: 'unauthorized' });
+        const perAccount = await checkRate('pinResetCompletePerAccount', d.userId);
+        const perAddress = await checkRate('pinResetCompletePerAddress', clientIp(req));
+        if (!perAccount.allowed || !perAddress.allowed) {
+          const retryAt = Math.max(perAccount.retryAt ?? 0, perAddress.retryAt ?? 0);
+          return send(res, 429, { error: 'too many PIN reset attempts', retryAt: new Date(retryAt).toISOString() });
+        }
+        const challengeId = typeof body.challengeId === 'string' ? body.challengeId : '';
+        const code = typeof body.code === 'string' ? body.code : '';
+        const pin = typeof body.pin === 'string' ? body.pin : '';
+        const pinConfirmation = typeof body.pinConfirmation === 'string' ? body.pinConfirmation : '';
+        if (!/^[A-Za-z0-9_-]{32}$/.test(challengeId) || !/^\d{6}$/.test(code)) {
+          return send(res, 400, { error: 'PIN reset challenge is invalid' });
+        }
+        const pinErrorText = weakPinReason(pin);
+        if (pinErrorText) return send(res, 400, { error: pinErrorText });
+        if (!validatePin(pinConfirmation) || pin !== pinConfirmation) {
+          return send(res, 400, { error: 'PIN confirmation does not match' });
+        }
+        const profile = await storage.profileGet(d.userId);
+        const backup = await storage.backupEmailGet(d.userId);
+        const locale = profile?.locale ?? 'hy';
+        const completed = await storage.completePinResetWithOutbox(d.userId, {
+          challengeId,
+          deviceId: d.deviceId,
+          makePinHash: () => hashPin(pinPepper, pin),
+          now: now(),
+          reminderNextAt: now() + PIN_REMINDER_INTERVAL_MS,
+          codeOk: (storedHash) => sameHex(
+            pinResetCodeHash(d.userId, d.deviceId, challengeId, code),
+            storedHash,
+          ),
+        }, (tx) => mailToRecipients(
+          [profile?.email, backup?.email],
+          '',
+          '',
+          'pin_changed',
+          {},
+          tx,
+          locale,
+        ));
+        if (completed.outcome === 'expired') return send(res, 410, { error: 'PIN reset code expired' });
+        if (completed.outcome === 'locked') return send(res, 429, { error: 'PIN reset locked', retryAt: completed.retryAt ? new Date(completed.retryAt).toISOString() : null });
+        if (completed.outcome !== 'ok') return send(res, 403, { error: 'PIN reset verification failed' });
+        try { await alertDevices(d.userId, { kind: 'pin_changed' }); } catch (_) {}
         return send(res, 200, { ok: true });
       }
 
+      // ---------- PIN ----------
+      if (req.method === 'POST' && p === '/pin/set') {
+        return send(res, 410, { error: 'use the protected PIN reset flow' });
+      }
+
       if (req.method === 'POST' && p === '/pin/remove') {
-        const d = await authed(req);
-        if (!d) return send(res, 401, { error: 'unauthorized' });
-        const r = await verifyPin(d.userId, String(body.currentPin ?? ''));
-        if (!r.ok) return pinError(res, r);
-        await storage.removePin(d.userId);
-        await alertDevices(d.userId, { kind: 'pin_removed' });
-        return send(res, 200, { ok: true });
+        return send(res, 410, { error: 'recovery PIN cannot be removed' });
       }
 
       // ---------- устройства ----------
@@ -3054,67 +3300,44 @@ if (req.method === 'POST' && p === '/login') {
       if (req.method === 'POST' && p === '/recovery/start') {
         const requestedLocale = body.locale === undefined ? null : resolveEmailLocale(body.locale);
         if (body.locale !== undefined && !requestedLocale) return send(res, 400, { error: 'locale must be hy, ru or en' });
-        // Один и тот же ответ, есть такой аккаунт или нет: не раскрываем, кто зарегистрирован.
+        // Privacy-preserving response: never disclose whether an account exists or which recovery factor is configured.
         const startEmail = normalizeEmail(body.email);
-        const userId = body.userId ?? (startEmail ? await storage.userIdByEmail(startEmail) : null);
-        // Лимит на запросы восстановления с одного адреса, в том числе по несуществующим аккаунтам: SMS и письма стоят денег (D5).
+        const userId = typeof body.userId === 'string' && body.userId.length > 0
+          ? body.userId
+          : (startEmail && isEmail(startEmail) ? await storage.userIdByEmail(startEmail) : null);
         const perAddress = await checkRate('recoveryPerAddress', clientIp(req));
-        if (!perAddress.allowed) return send(res, 429, { error: 'too many recovery requests from this address', retryAt: new Date(perAddress.retryAt).toISOString() });
-        if (await storage.hasAccount(userId)) {
-          const phone = await storage.phoneGet(userId);
-          // Аккаунт без подтверждённого телефона: восстановление по почте (решение владельца). Одна почта и окно 48 часов.
-          // Аккаунт с привязкой Google или Apple восстанавливается входом через провайдера: кода здесь нет.
-          if (!phone.verified && (await storage.providerLinksOf(userId)).length === 0) {
+        if (!perAddress.allowed) {
+          return send(res, 429, { error: 'too many recovery requests from this address', retryAt: new Date(perAddress.retryAt).toISOString() });
+        }
+        if (await storage.hasAccount(userId) && (await storage.providerLinksOf(userId)).length === 0) {
+          const profile = await storage.profileGet(userId);
+          // Recovery codes go only to the verified primary email. Phone and backup-email visibility are not recovery factors.
+          if (profile?.emailVerified === true && profile.email) {
             const emailCode = String(randomInt(0, 1_000_000)).padStart(6, '0');
-            const profile = await storage.profileGet(userId);
-            const primaryEmail = profile?.email ?? userId;
-            const locale = requestedLocale ?? profile?.locale ?? 'hy';
+            const locale = requestedLocale ?? profile.locale ?? 'hy';
             const backup = await storage.backupEmailGet(userId);
-            const recoveryEmail = backup?.email ?? primaryEmail;
-            const notificationRecipients = [primaryEmail, backup?.email];
-            const issued = await storage.recoveryUpdateWithOutbox(userId, (r) => {
-              const out = requestCode(r, { nowMs: now(), codeHash: recoveryCodeHash(userId, emailCode), linkHash: null });
-              const next = out.issued ? confirmLink(out.next, { nowMs: now(), linkOk: true }).next : out.next;
-              return { next, result: out.issued };
-            }, async (tx, wasIssued) => {
-              if (!wasIssued) return;
-              await mailTo(recoveryEmail, '', '', null, 'recovery_code', { code: emailCode }, locale, tx);
-              await mailToRecipients(notificationRecipients, '', '', 'recovery_requested', {}, tx, locale);
-            });
-            if (issued) await alertDevices(userId, { kind: 'recovery_started' });
-          }
-          // Восстановление возможно только при подтверждённом телефоне (D5).
-          // SMS на номер не чаще заданного за сутки: лишние запросы не шлют SMS.
-          if (phone.verified && (await checkRate('smsPerPhone', phone.phone)).allowed) {
-            const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
-            const token = randomBytes(24).toString('base64url');
-            const profile = await storage.profileGet(userId);
-            const primaryEmail = profile?.email ?? userId;
-            const locale = requestedLocale ?? profile?.locale ?? 'hy';
-            const backup = await storage.backupEmailGet(userId);
-            const notificationRecipients = [primaryEmail, backup?.email];
-            const issued = await storage.recoveryUpdateWithOutbox(userId, (r) => {
-              const out = requestCode(r, { nowMs: now(), codeHash: recoveryCodeHash(userId, code), linkHash: recoveryLinkHash(userId, token) });
-              return { next: out.next, result: out.issued };
-            }, async (tx, wasIssued) => {
-              if (!wasIssued) return;
-              const webLink = new URL('/recovery/confirm', `${publicUrl.replace(/\/+$/, '')}/`);
-              webLink.searchParams.set('user', userId);
-              webLink.searchParams.set('token', token);
-              webLink.searchParams.set('locale', locale);
-              const appLink = new URL('inone://recovery/confirm');
-              appLink.searchParams.set('user', userId);
-              appLink.searchParams.set('token', token);
-              appLink.searchParams.set('locale', locale);
-              await mailToRecipients(notificationRecipients, '', '', 'recovery_confirmation_link', {
-                url: webLink.toString(),
-                appUrl: appLink.toString(),
-              }, tx, locale);
-            });
-            if (issued) {
-              // D5: SMS-код и email-link — независимые каналы одного recovery event.
-              await smsSender.send(phone.phone, `Код: ${code}. Код восстановления InOne действует час. Если это не вы — не вводите его.`);
-              await alertDevices(userId, { kind: 'recovery_started' });
+            const notificationRecipients = [profile.email, backup?.email];
+            try {
+              const issued = await storage.recoveryUpdateWithOutbox(userId, (r) => {
+                const out = requestCode(r, {
+                  nowMs: now(),
+                  codeHash: recoveryCodeHash(userId, emailCode),
+                  linkHash: null,
+                });
+                return { next: out.next, result: out.issued };
+              }, async (tx, wasIssued) => {
+                if (!wasIssued) return;
+                await mailTo(profile.email, '', '', null, 'recovery_code', { code: emailCode }, locale, tx);
+                await mailToRecipients(notificationRecipients, '', '', 'recovery_requested', {}, tx, locale);
+              });
+              if (issued) {
+                try { await alertDevices(userId, { kind: 'recovery_started' }); } catch (_) {}
+              }
+            } catch (deliveryError) {
+              // Preserve non-enumeration when email delivery/outbox is temporarily unavailable.
+              logger?.warn('recovery email delivery unavailable', {
+                errorCode: typeof deliveryError?.code === 'string' ? deliveryError.code : 'RECOVERY_DELIVERY_UNAVAILABLE',
+              });
             }
           }
         }
@@ -3208,51 +3431,90 @@ if (req.method === 'POST' && p === '/login') {
         const requestedLocale = body.locale === undefined ? null : resolveEmailLocale(body.locale);
         if (body.locale !== undefined && !requestedLocale) return send(res, 400, { error: 'locale must be hy, ru or en' });
         const { code, pin, newPassword } = body;
-        // Восстановление по почте: адрес вместо идентификатора (без входа идентификатора не знают).
-        const userId = body.userId ?? (typeof body.email === 'string' ? await storage.userIdByEmail(normalizeEmail(body.email)) : null);
-        if ((await storage.providerLinksOf(userId)).length > 0) return send(res, 409, { error: 'password recovery is disabled for accounts linked to Google or Apple' });
-        const check = await storage.recoveryUpdate(userId, (r) => {
-          const out = checkCode(r, {
-            nowMs: now(),
-            codeOk: typeof code === 'string' && !!r.reqCodeHash && sameHex(recoveryCodeHash(userId, code), r.reqCodeHash),
-          });
-          return { next: out.next, result: out.outcome };
-        });
-        if (check === 'none') return send(res, 404, { error: 'no active recovery' });
-        if (check === 'expired') return send(res, 410, { error: 'recovery expired' });
-        if (check === 'unconfirmed') return send(res, 403, { error: 'confirm the link from the email first' });
-        if (check === 'wrong' || check === 'locked') {
-          if (check === 'locked') await alertDevices(userId, { kind: 'recovery_locked' });
-          return send(res, 403, { error: 'wrong code' });
+        const email = typeof body.email === 'string' ? normalizeEmail(body.email) : null;
+        const userId = typeof body.userId === 'string' && body.userId.length > 0
+          ? body.userId
+          : (email && isEmail(email) ? await storage.userIdByEmail(email) : null);
+        if (typeof newPassword !== 'string' || Array.from(newPassword).length < MIN_PASSWORD_LENGTH || Array.from(newPassword).length > MAX_PASSWORD_LENGTH) {
+          return send(res, 400, { error: `newPassword must be ${MIN_PASSWORD_LENGTH}-${MAX_PASSWORD_LENGTH} characters` });
         }
-        if (await storage.hasPin(userId)) {
-          // PIN не снимается восстановлением (D1): без него восстановление не проходит.
-          if (typeof pin !== 'string' || pin === '') return send(res, 403, { error: 'PIN required' });
-          const r = await verifyPin(userId, pin);
-          if (!r.ok) return pinError(res, r);
+        if ((await storage.providerLinksOf(userId)).length > 0) {
+          return send(res, 403, { error: 'recovery verification failed' });
         }
-        if (typeof newPassword !== 'string' || newPassword.length < MIN_PASSWORD_LENGTH) {
-          return send(res, 400, { error: `newPassword required (min ${MIN_PASSWORD_LENGTH} chars)` });
-        }
-        // Пароль, окно восстановления, код отмены и письмо фиксируются одной транзакцией.
-        const previousHash = await storage.accountHash(userId);
         const newPasswordHash = hashPassword(newPassword);
         const cancelCode = String(randomInt(0, 1_000_000)).padStart(6, '0');
         const profile = await storage.profileGet(userId);
-        const primaryEmail = profile?.email ?? userId;
+        const primaryEmail = profile?.email ?? email ?? userId;
         const backup = await storage.backupEmailGet(userId);
         const locale = requestedLocale ?? profile?.locale ?? 'hy';
-        const keyResetAt = await storage.recoveryCompleteWithOutbox(
-          userId, newPasswordHash,
-          (r) => {
-            const next = completeRecovery(r, { nowMs: now(), previousHash });
+        const completedAt = now();
+        const completed = await storage.recoveryCompleteWithPin(userId, {
+          now: completedAt,
+          codeCheck: (current) => {
+            const result = checkCode(current, {
+              nowMs: completedAt,
+              codeOk: typeof code === 'string' && !!current.reqCodeHash
+                && sameHex(recoveryCodeHash(userId, code), current.reqCodeHash),
+            });
+            return { next: result.next, outcome: result.outcome };
+          },
+          pin,
+          pinCheck: async (candidate, stored) => {
+            const legacyPin = pinHashNeedsUpgrade(stored);
+            if (!(legacyPin ? validateLegacyPin(candidate) : validatePin(candidate))) {
+              return { ok: false, upgradedHash: null };
+            }
+            const ok = await checkPin(pinPepper, candidate, stored);
+            pinChecks += 1;
+            return {
+              ok,
+              upgradedHash: ok && legacyPin && validatePin(candidate)
+                ? await hashPin(pinPepper, candidate)
+                : null,
+            };
+          },
+          free: FREE_PIN_ATTEMPTS,
+          lockDuration: lockDurationMs,
+          passwordHash: newPasswordHash,
+          complete: (current, previousHash) => {
+            const next = completeRecovery(current, { nowMs: completedAt, previousHash });
             return { next, result: next.windowKeyResetAt };
           },
-          recoveryCancelHash(userId, cancelCode),
-          (tx) => mailToRecipients([primaryEmail, backup?.email], '', '', 'recovery_completed', { cancelCode }, tx, locale),
-        );
-        await alertDevices(userId, { kind: 'recovery_completed', keyResetAt: new Date(keyResetAt).toISOString() });
-        return send(res, 200, { ok: true, keyResetAt: new Date(keyResetAt).toISOString() });
+          cancelCodeHash: recoveryCancelHash(userId, cancelCode),
+          enqueue: (tx) => mailToRecipients(
+            [primaryEmail, backup?.email],
+            '',
+            '',
+            'recovery_completed',
+            { cancelCode },
+            tx,
+            locale,
+          ),
+        });
+        if (completed.factor === 'email') {
+          if (completed.outcome === 'none') return send(res, 403, { error: 'recovery verification failed' });
+          if (completed.outcome === 'expired') return send(res, 410, { error: 'recovery expired' });
+          if (completed.outcome === 'unconfirmed') return send(res, 403, { error: 'confirm the link from the email first' });
+          if (completed.outcome === 'locked') {
+            try { await alertDevices(userId, { kind: 'recovery_locked' }); } catch (_) {}
+          }
+          return send(res, 403, { error: 'recovery verification failed' });
+        }
+        if (completed.factor === 'pin') {
+          if (completed.outcome === 'no-pin') return send(res, 403, { error: 'recovery verification failed' });
+          return pinError(res, {
+            reason: completed.outcome === 'locked' ? 'locked' : 'wrong',
+            retryAt: completed.retryAt,
+          });
+        }
+        if (completed.outcome !== 'ok') return send(res, 403, { error: 'recovery verification failed' });
+        try {
+          await alertDevices(userId, {
+            kind: 'recovery_completed',
+            keyResetAt: new Date(completed.keyResetAt).toISOString(),
+          });
+        } catch (_) {}
+        return send(res, 200, { ok: true, keyResetAt: new Date(completed.keyResetAt).toISOString() });
       }
 
       return send(res, 404, { error: 'not found' });
@@ -3263,6 +3525,7 @@ if (req.method === 'POST' && p === '/login') {
         if (!res.destroyed) res.destroy();
         return;
       }
+      if (e.code === 'PIN_KDF_BUSY') return send(res, 503, { error: 'security operation is temporarily unavailable', code: 'pin_kdf_busy' });
       if (e.code === 'MAIL_UNAVAILABLE' || e.code === 'EMAIL_QUEUE_UNAVAILABLE') return send(res, 503, { error: 'email delivery is temporarily unavailable, try later' });
       logger?.error('request failed', { errorCode });
       return send(res, 500, { error: 'internal server error' });

@@ -10,17 +10,25 @@ class InOneEmailCodeScreen extends StatefulWidget {
     required this.onConfirm,
     required this.onResend,
     required this.onBack,
+    this.title = 'Կոդ նամակից',
+    this.codeLabel = 'Նամակի կոդը',
+    this.resendLabel = 'Կրկին ուղարկել կոդը',
+    this.showResend = true,
     this.onDone,
   });
 
-  /// POST /register/email/confirm. `null` — успех.
+  /// POST /register/email/confirm or login identity-code verification.
   final Future<InOneFailure?> Function(String code) onConfirm;
 
-  /// POST /register/email (повторная отправка). `null` — успех.
+  /// POST /register/email (registration only).
   final Future<InOneFailure?> Function() onResend;
   final VoidCallback onBack;
+  final String title;
+  final String codeLabel;
+  final String resendLabel;
+  final bool showResend;
 
-  /// Код подтверждён → экран SC-04.
+  /// Код подтверждён → следующий экран соответствующего auth flow.
   final VoidCallback? onDone;
 
   @override
@@ -45,14 +53,15 @@ class _InOneEmailCodeScreenState extends State<InOneEmailCodeScreen>
   @override
   Widget build(BuildContext context) {
     return InOneScreen.auth(
-      title: 'Կոդ նամակից',
+      title: widget.title,
       onBack: widget.onBack,
       banner: bannerText,
       dock: [
         InOneField(
           form: _form,
           name: 'code',
-          label: 'Նամակի կոդը',
+          label: widget.codeLabel,
+          maxLength: 6,
           keyboardType: TextInputType.text,
           autofillHints: const [AutofillHints.oneTimeCode],
           textInputAction: TextInputAction.done,
@@ -64,13 +73,15 @@ class _InOneEmailCodeScreenState extends State<InOneEmailCodeScreen>
           loading: isBusy('confirm'),
           onPressed: blocked ? null : _confirm,
         ),
-        const SizedBox(height: 12),
-        InOneButton(
-          label: 'Կրկին ուղարկել կոդը',
-          kind: InOneButtonKind.outline,
-          loading: isBusy('resend'),
-          onPressed: blocked ? null : () => run('resend', widget.onResend),
-        ),
+        if (widget.showResend) ...[
+          const SizedBox(height: 12),
+          InOneButton(
+            label: widget.resendLabel,
+            kind: InOneButtonKind.outline,
+            loading: isBusy('resend'),
+            onPressed: blocked ? null : () => run('resend', widget.onResend),
+          ),
+        ],
       ],
     );
   }

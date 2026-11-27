@@ -4,6 +4,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { createEmailDelivery, parseEmailEncryptionKey } from '../src/email-delivery.js';
 import { testDatabase } from './helpers.js';
 import { createStore } from '../src/store.js';
+import { hashPin } from '../src/pin-security.js';
 
 async function waitFor(fn, timeoutMs = 5000) {
   const started = Date.now();
@@ -162,6 +163,37 @@ test('recovery state and new-device wait are committed with their email outbox r
     }));
     assert.equal(recoveryIssued, true);
     assert.equal((await store.recoveryGet('@recovery-outbox')).reqCodeHash, 'recovery-code-hash');
+
+    const identityExpiry = Date.now() + 60 * 60_000;
+    const identitySentAt = Date.now();
+    await store.recoveryUpdateWithOutbox('@recovery-outbox', (current) => ({
+      next: {
+        ...current,
+        identityCheck: true,
+        identityCodeHash: 'device-bound-identity-code-hash',
+        identityAttempts: 2,
+        identityCodeExpiresAt: identityExpiry,
+        identityDeviceId: 'new-device',
+        identityChallengeId: 'challenge-identity-001',
+        identityLockedUntil: 0,
+        identityLastSentAt: identitySentAt,
+      },
+      result: true,
+    }), (tx) => queue.sendInTransaction(tx, {
+      to: 'recovery@example.test',
+      templateId: 'recovery_login_code',
+      variables: { code: '123456' },
+      locale: 'hy',
+      idempotencyKey: 'identity-challenge-transaction-001',
+    }));
+    const persistedIdentity = await store.recoveryGet('@recovery-outbox');
+    assert.equal(persistedIdentity.identityCodeHash, 'device-bound-identity-code-hash');
+    assert.equal(persistedIdentity.identityAttempts, 2);
+    assert.equal(persistedIdentity.identityCodeExpiresAt, identityExpiry);
+    assert.equal(persistedIdentity.identityDeviceId, 'new-device');
+    assert.equal(persistedIdentity.identityChallengeId, 'challenge-identity-001');
+    assert.equal(persistedIdentity.identityLockedUntil, 0);
+    assert.equal(persistedIdentity.identityLastSentAt, identitySentAt);
 
     const wait = await store.deviceWaitCreateWithOutbox({
       userId: '@recovery-outbox', deviceId: 'new-device', label: 'New device', platform: 'test',
@@ -388,7 +420,9 @@ test('profile locale and pending registration locale persist in PostgreSQL', asy
   const store = createStore({ pool: db.pool, pinPepper: 'email-locale-store-test-pepper-0123456789' });
   try {
     const created = await store.createVerifiedAccount({
-      userId: '@email-locale-db', passwordHash: 'password-hash', email: 'locale-db@example.test',
+      userId: '@email-locale-db', passwordHash: 'password-hash',
+      pinHash: await hashPin('email-locale-store-test-pepper-0123456789', '80421697'),
+      phoneE164: '+37477000019', email: 'locale-db@example.test',
       nickname: 'LocaleDb', nowMs: Date.now(), locale: 'ru',
     });
     assert.equal(created, 'ok');

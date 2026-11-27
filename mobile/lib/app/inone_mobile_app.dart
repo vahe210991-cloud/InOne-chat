@@ -65,7 +65,13 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   String _recoveryUserId = '';
   String _pendingLoginEmail = '';
   String _pendingLoginPassword = '';
+  String? _pendingIdentityChallengeId;
   String _waitingActivateAt = '';
+  bool _pinReminderDue = false;
+  bool _pinLegacyFormat = false;
+  bool _pinResetRequired = false;
+  String? _pinResetReturnScreen;
+  String _logoutReturnScreen = 'profile';
   InOneProfile? _profile;
   List<InOneOrganization> _organizations = const [];
   InOneOrganization? _selectedOrganization;
@@ -85,6 +91,13 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   bool _initializing = true;
   final Completer<void> _initializationComplete = Completer<void>();
   bool _recoveryLinkInFlight = false;
+  RecoveryDeepLinkPayload? _pendingRecoveryLinkPayload;
+  int? _pendingRecoveryLinkFingerprint;
+  String _recoveryLinkLocale = 'hy';
+  bool _cancelingAdmission = false;
+  bool _deviceApprovalDialogInFlight = false;
+  Timer? _deviceApprovalPollTimer;
+  final Set<String> _shownDeviceApprovalIds = <String>{};
   final Set<int> _handledRecoveryLinkFingerprints = <int>{};
 
   @override
@@ -134,7 +147,10 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       }
       if (!mounted) return;
       setState(() => _initializing = false);
-      if (_session.isAuthenticated) await _loadAuthenticatedData();
+      if (_session.isAuthenticated) {
+        _startDeviceApprovalPolling();
+        await _loadAuthenticatedData();
+      }
     } finally {
       if (!_initializationComplete.isCompleted) {
         _initializationComplete.complete();
@@ -149,6 +165,10 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       unawaited(_clearDocumentPreviewCache().catchError((Object _) {}));
     }
     if (state != AppLifecycleState.resumed) return;
+    if (_session.isAuthenticated) {
+      unawaited(_refreshPinReminder());
+      unawaited(_checkPendingDeviceApprovals());
+    }
     final pushLifecycle = _pushLifecycle;
     if (pushLifecycle != null) {
       unawaited(pushLifecycle.refreshRegistration().catchError((Object _) {}));
@@ -167,6 +187,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _stopDeviceApprovalPolling();
     _session.removeListener(_handleSessionStateChanged);
     unawaited(_clearDocumentPreviewCache().catchError((Object _) {}));
     _pushLifecycle?.dispose();
@@ -202,6 +223,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   }
 
   Future<void> _handleUnauthorizedSessionOnce(String? requestedOwnerUserId) async {
+    _stopDeviceApprovalPolling();
     final ownerUserId = requestedOwnerUserId ?? _documentOwnerId ?? _profile?.userId ?? _session.userId;
     if (ownerUserId != null) {
       try {
@@ -350,16 +372,24 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         return null;
       }
       if (status == 'approval_required') {
-        return const InOneFailure(
-          InOneScreenState.error,
-          message: 'Вход ожидает подтверждения на другом устройстве. Сценарий подтверждения устройства ещё не подключён.',
-        );
+        _pendingLoginEmail = email.trim();
+        _pendingLoginPassword = password;
+        if (mounted) setState(() => _screen = 'loginApproval');
+        return null;
       }
       if (status == 'identity_check_required') {
-        return const InOneFailure(
-          InOneScreenState.error,
-          message: 'Для этого входа требуется дополнительное подтверждение. Текущий мобильный контракт его не поддерживает; вход не выполнен.',
-        );
+        final challengeId = response['challengeId'];
+        if (challengeId is! String || challengeId.isEmpty) {
+          return const InOneFailure(
+            InOneScreenState.error,
+            message: 'Сервер не вернул идентификатор проверки. Повторите вход.',
+          );
+        }
+        _pendingLoginEmail = email.trim();
+        _pendingLoginPassword = password;
+        _pendingIdentityChallengeId = challengeId;
+        if (mounted) setState(() => _screen = 'identityCheck');
+        return null;
       }
       return const InOneFailure(
         InOneScreenState.error,
@@ -370,8 +400,135 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     }
   }
 
+  Future<InOneFailure?> _submitIdentityCode(String code) async {
+    if (_pendingLoginEmail.isEmpty || _pendingLoginPassword.isEmpty) {
+      return const InOneFailure(
+        InOneScreenState.error,
+        message: 'Срок проверки истёк. Начните вход заново.',
+      );
+    }
+    try {
+      final response = await _session.login(
+        email: _pendingLoginEmail,
+        password: _pendingLoginPassword,
+        identityCode: code,
+        identityChallengeId: _pendingIdentityChallengeId,
+      );
+      if (_session.isAuthenticated) return null;
+      final status = response['status'];
+      if (status == 'approval_required') {
+        if (mounted) setState(() => _screen = 'loginApproval');
+        return null;
+      }
+      if (status == 'identity_check_required' && response['challengeId'] is String) {
+        _pendingIdentityChallengeId = response['challengeId'] as String;
+        return const InOneFailure(
+          InOneScreenState.error,
+          message: 'Код обновлён. Введите последний код из письма.',
+        );
+      }
+      if (status == 'waiting_period' && response['activateAt'] is String) {
+        _waitingActivateAt = _formatActivationTime(response['activateAt'] as String);
+        if (mounted) setState(() => _screen = 'loginWaiting');
+        return null;
+      }
+      return const InOneFailure(
+        InOneScreenState.error,
+        message: 'Дополнительная проверка не завершена. Проверьте код и попробуйте снова.',
+      );
+    } catch (error) {
+      return _toFailure(error);
+    }
+  }
+
+  void _leaveApprovalFlow() {
+    _session.discardPendingApproval();
+    setState(() {
+      _pendingLoginEmail = '';
+      _pendingLoginPassword = '';
+      _pendingIdentityChallengeId = null;
+      _screen = 'login';
+    });
+  }
+
+  Future<InOneFailure?> _resendIdentityCode() async {
+    if (_pendingLoginEmail.isEmpty || _pendingLoginPassword.isEmpty) {
+      return const InOneFailure(
+        InOneScreenState.error,
+        message: 'Срок проверки истёк. Начните вход заново.',
+      );
+    }
+    try {
+      final response = await _session.login(
+        email: _pendingLoginEmail,
+        password: _pendingLoginPassword,
+      );
+      if (_session.isAuthenticated) {
+        _afterLogin();
+        return null;
+      }
+      if (response['status'] != 'identity_check_required' || response['challengeId'] is! String) {
+        return const InOneFailure(
+          InOneScreenState.error,
+          message: 'Не удалось обновить проверку входа.',
+        );
+      }
+      _pendingIdentityChallengeId = response['challengeId'] as String;
+      _notice(response['codeSent'] == true
+          ? 'Новый код отправлен на подтверждённый адрес.'
+          : 'Предыдущий код ещё действует. Проверьте письмо и используйте последний код.');
+      return null;
+    } catch (error) {
+      return _toFailure(error);
+    }
+  }
+
+  Future<InOneFailure?> _claimPendingApproval() async {
+    try {
+      final result = await _session.claimPendingApproval();
+      final status = result['status'];
+      if (status == 'pending') {
+        return const InOneFailure(
+          InOneScreenState.error,
+          message: 'Ожидаем подтверждения на доверенном устройстве.',
+        );
+      }
+      if (status == 'denied' || status == 'expired') {
+        if (mounted) {
+          setState(() {
+            _pendingLoginEmail = '';
+            _pendingLoginPassword = '';
+            _screen = 'login';
+          });
+        }
+        return InOneFailure(
+          InOneScreenState.error,
+          message: status == 'denied'
+              ? 'Запрос входа отклонён. Начните вход заново, если это были вы.'
+              : 'Время подтверждения истекло. Начните вход заново.',
+        );
+      }
+      if (_session.isAuthenticated) return null;
+      return const InOneFailure(
+        InOneScreenState.error,
+        message: 'Подтверждение не выдало сессию. Повторите вход.',
+      );
+    } catch (error) {
+      return _toFailure(error);
+    }
+  }
+
   void _afterLogin() {
-    if (_session.isAuthenticated) unawaited(_loadAuthenticatedData());
+    if (!_session.isAuthenticated) return;
+    _startDeviceApprovalPolling();
+    _pendingLoginEmail = '';
+    _pendingLoginPassword = '';
+    _pendingIdentityChallengeId = null;
+    _waitingActivateAt = '';
+    _pinReminderDue = false;
+    _pinLegacyFormat = false;
+    _pinResetRequired = false;
+    unawaited(_loadAuthenticatedData());
   }
 
   void _showForegroundPush(InOnePushRoute route) {
@@ -487,6 +644,15 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         if (mounted) setState(() {});
         return null;
       }
+      if (result['status'] == 'approval_required') {
+        if (mounted) setState(() => _screen = 'loginApproval');
+        return null;
+      }
+      if (result['status'] == 'identity_check_required' && result['challengeId'] is String) {
+        _pendingIdentityChallengeId = result['challengeId'] as String;
+        if (mounted) setState(() => _screen = 'identityCheck');
+        return null;
+      }
       return const InOneFailure(InOneScreenState.error, message: 'Вход пока не подтверждён.');
     } catch (error) {
       return _toFailure(error);
@@ -528,6 +694,69 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     }
   }
 
+  Future<InOneFailure?> _cancelAdmissionByCode(String email, String code) async {
+    try {
+      await _session.cancelAdmissionByCode(email: email, code: code);
+      return null;
+    } catch (error) {
+      return _toFailure(error);
+    }
+  }
+
+  Future<InOneFailure?> _confirmRecoveryLink() async {
+    final payload = _pendingRecoveryLinkPayload;
+    final fingerprint = _pendingRecoveryLinkFingerprint;
+    if (payload == null || fingerprint == null) {
+      return const InOneFailure(
+        InOneScreenState.error,
+        message: 'Ссылка восстановления не найдена. Откройте письмо и перейдите по ссылке ещё раз.',
+      );
+    }
+    if (_recoveryLinkInFlight) {
+      return const InOneFailure(
+        InOneScreenState.error,
+        message: 'Подтверждение уже выполняется. Подождите.',
+      );
+    }
+    _recoveryLinkInFlight = true;
+    try {
+      await _session.confirmRecoveryLink(
+        userId: payload.userId,
+        token: payload.token,
+      );
+      if (!mounted) return null;
+      _handledRecoveryLinkFingerprints.add(fingerprint);
+      _pendingRecoveryLinkPayload = null;
+      _pendingRecoveryLinkFingerprint = null;
+      _recoveryUserId = payload.userId;
+      _recoveryEmail = '';
+      return null;
+    } catch (error) {
+      return _toFailure(error);
+    } finally {
+      _recoveryLinkInFlight = false;
+    }
+  }
+
+  void _finishRecoveryLinkConfirmation() {
+    setState(() => _screen = 'recoveryPassword');
+    final message = switch (_recoveryLinkLocale) {
+      'ru' => 'Ссылка подтверждена. Введите код восстановления и новый пароль.',
+      'en' => 'The link is confirmed. Enter your recovery code and new password.',
+      _ => 'Հղումը հաստատված է։ Մուտքագրեք վերականգնման կոդը և նոր գաղտնաբառը։',
+    };
+    _notice(message);
+  }
+
+  void _cancelPendingRecoveryLink() {
+    setState(() {
+      _pendingRecoveryLinkPayload = null;
+      _pendingRecoveryLinkFingerprint = null;
+      _recoveryUserId = '';
+      _screen = 'login';
+    });
+  }
+
   void _finishRecovery() {
     setState(() {
       _recoveryEmail = '';
@@ -538,12 +767,20 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   }
 
   void _finishRecoveryCancellation() {
+    final wasAdmissionCancellation = _cancelingAdmission;
     setState(() {
       _recoveryEmail = '';
       _recoveryUserId = '';
+      _pendingLoginEmail = '';
+      _pendingLoginPassword = '';
+      _pendingIdentityChallengeId = null;
+      _waitingActivateAt = '';
+      _cancelingAdmission = false;
       _screen = 'login';
     });
-    _notice('Восстановление отменено. Прежний пароль восстановлен.');
+    _notice(wasAdmissionCancellation
+        ? 'Запрос входа с нового устройства отменён.'
+        : 'Восстановление отменено. Прежний пароль восстановлен.');
   }
 
 
@@ -554,6 +791,17 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     }
     setState(() => _screen = 'loading');
     try {
+      final pinState = await _session.pinStatus();
+      if (pinState['verificationRequired'] == true) {
+        if (!mounted) return;
+        setState(() {
+          _pinReminderDue = false;
+          _pinLegacyFormat = pinState['legacy'] == true;
+          _screen = _pinResetRequired || pinState['configured'] != true ? 'pinReset' : 'pinVerification';
+          _pinResetReturnScreen = 'pinVerification';
+        });
+        return;
+      }
       final profile = await _repositories.profile();
       final organizationResponse = await _repositories.myOrganizations();
       final organizations = InOneOrganizationList.fromJson(organizationResponse).orgs;
@@ -564,6 +812,9 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         _wasAuthenticated = true;
         _organizations = organizations;
         _selectedOrganization = organizations.isEmpty ? null : organizations.first;
+        _pinReminderDue = pinState['reminderDue'] == true;
+        _pinLegacyFormat = false;
+        _pinResetRequired = false;
         _organizationMemberCount = null;
         _organizationMembers = const [];
         _screen = 'messages';
@@ -572,6 +823,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         unawaited(_refreshOrganizationMemberCount(organizations.first));
       }
       await _loadMlsRooms();
+      unawaited(_checkPendingDeviceApprovals());
       if (_pendingPushRoutes.next != null) {
         unawaited(_processPendingPushRoute());
       }
@@ -581,6 +833,129 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         return;
       }
       if (mounted) setState(() => _screen = 'loadError');
+    }
+  }
+
+  void _startDeviceApprovalPolling() {
+    if (_deviceApprovalPollTimer != null) return;
+    _deviceApprovalPollTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
+      if (!mounted || !_session.isAuthenticated) {
+        timer.cancel();
+        _deviceApprovalPollTimer = null;
+        return;
+      }
+      if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
+        unawaited(_checkPendingDeviceApprovals());
+      }
+    });
+  }
+
+  void _stopDeviceApprovalPolling() {
+    _deviceApprovalPollTimer?.cancel();
+    _deviceApprovalPollTimer = null;
+  }
+
+  Future<void> _checkPendingDeviceApprovals() async {
+    if (!mounted || !_session.isAuthenticated || _deviceApprovalDialogInFlight) return;
+    _deviceApprovalDialogInFlight = true;
+    try {
+      final approvals = await _session.pendingDeviceApprovals();
+      for (final approval in approvals) {
+        if (!mounted || !_session.isAuthenticated) break;
+        final id = approval['id'] as String;
+        if (!_shownDeviceApprovalIds.add(id)) continue;
+        final codeController = TextEditingController();
+        final label = (approval['label'] as String?)?.trim();
+        final platform = (approval['platform'] as String?)?.trim();
+        final deviceDescription = [
+          if (label != null && label.isNotEmpty) label,
+          if (platform != null && platform.isNotEmpty) platform.toUpperCase(),
+        ].join(' · ');
+        bool? decision;
+        try {
+          decision = await showDialog<bool>(
+            context: context,
+            barrierDismissible: true,
+            builder: (dialogContext) => AlertDialog(
+              title: const Text('Подтверждение входа'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    deviceDescription.isEmpty
+                        ? 'Новое устройство запрашивает доступ к вашему аккаунту.'
+                        : 'Запрос с устройства: $deviceDescription',
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: codeController,
+                    keyboardType: TextInputType.number,
+                    maxLength: 6,
+                    decoration: const InputDecoration(
+                      labelText: 'Код, показанный на новом устройстве',
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(false),
+                  child: const Text('Отклонить'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(true),
+                  child: const Text('Подтвердить'),
+                ),
+              ],
+            ),
+          );
+        } catch (_) {
+          codeController.dispose();
+          rethrow;
+        }
+        if (!mounted) {
+          codeController.dispose();
+          return;
+        }
+        if (decision == null) {
+          _shownDeviceApprovalIds.remove(id);
+          codeController.dispose();
+          continue;
+        }
+        try {
+          if (decision) {
+            final code = codeController.text.trim();
+            if (!RegExp(r'^[0-9]{6}$').hasMatch(code)) {
+              _shownDeviceApprovalIds.remove(id);
+              _notice('Введите шестизначный код с нового устройства.');
+              continue;
+            }
+            await _session.approvePendingDevice(approvalId: id, code: code);
+            _notice('Вход с нового устройства подтверждён.');
+          } else {
+            await _session.denyPendingDevice(approvalId: id);
+            _notice('Запрос входа с нового устройства отклонён.');
+          }
+        } catch (error) {
+          _shownDeviceApprovalIds.remove(id);
+          final failure = _toFailure(error);
+          if (mounted) {
+            _notice(failure.message ??
+                'Не удалось обработать запрос подтверждения. Повторите попытку.');
+          }
+        } finally {
+          codeController.clear();
+          codeController.dispose();
+        }
+      }
+    } catch (error) {
+      if (mounted) {
+        final failure = _toFailure(error);
+        _notice(failure.message ?? 'Не удалось проверить запросы входа.');
+      }
+    } finally {
+      _deviceApprovalDialogInFlight = false;
     }
   }
 
@@ -821,6 +1196,8 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     String nickname,
     String password,
     String phone,
+    String pin,
+    String pinConfirmation,
   ) async {
     if (_registrationEmail.isEmpty) {
       return const InOneFailure(
@@ -833,10 +1210,82 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           password: password,
           nickname: nickname,
           phone: phone,
+          pin: pin,
+          pinConfirmation: pinConfirmation,
         ));
   }
 
+  Future<InOneFailure?> _verifyRecoveryPin(String pin) async {
+    try {
+      final result = await _session.verifyRecoveryPin(pin);
+      if (result['resetRequired'] == true) {
+        _pinResetRequired = true;
+        _pinResetReturnScreen = 'pinVerification';
+      }
+      return null;
+    } catch (error) {
+      return _toFailure(error);
+    }
+  }
+
+  Future<InOneFailure?> _startPinReset(
+    String password,
+    ValueChanged<String> onChallenge,
+  ) async {
+    try {
+      final result = await _session.startPinReset(password: password);
+      final challengeId = result['challengeId'];
+      if (challengeId is! String || challengeId.isEmpty) {
+        return const InOneFailure(
+          InOneScreenState.error,
+          message: 'Не удалось создать запрос на замену PIN.',
+        );
+      }
+      onChallenge(challengeId);
+      _notice('Одноразовый код отправлен на подтверждённую электронную почту.');
+      return null;
+    } catch (error) {
+      return _toFailure(error);
+    }
+  }
+
+  Future<InOneFailure?> _completePinReset(
+    String challengeId,
+    String code,
+    String pin,
+    String pinConfirmation,
+  ) async {
+    try {
+      await _session.completePinReset(
+        challengeId: challengeId,
+        code: code,
+        pin: pin,
+        pinConfirmation: pinConfirmation,
+      );
+      _pinResetReturnScreen = null;
+      _pinResetRequired = false;
+      return null;
+    } catch (error) {
+      return _toFailure(error);
+    }
+  }
+
+  Future<void> _acknowledgePinReminder() async {
+    try {
+      await _session.acknowledgePinReminder();
+      if (mounted) setState(() => _pinReminderDue = false);
+    } catch (error) {
+      _notice(_toFailure(error).message);
+    }
+  }
+
+  void _openPinReset() {
+    _pinResetReturnScreen = _screen == 'profile' ? 'profile' : 'pinVerification';
+    setState(() => _screen = 'pinReset');
+  }
+
   Future<InOneFailure?> _logout() async {
+    _stopDeviceApprovalPolling();
     final ownerUserId = _documentOwnerId ?? _profile?.userId ?? _session.userId;
     InOneFailure? failure;
     _manualLogoutInProgress = true;
@@ -870,6 +1319,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   }
 
   void _finishLogout() {
+    _stopDeviceApprovalPolling();
     setState(() {
       _profile = null;
       _documentOwnerId = null;
@@ -882,6 +1332,11 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       _organizationMemberCount = null;
       _organizationMembers = const [];
       _systemStatus = null;
+      _pinReminderDue = false;
+      _pinLegacyFormat = false;
+      _pinResetRequired = false;
+      _pinResetReturnScreen = null;
+      _logoutReturnScreen = 'profile';
       _registrationEmail = '';
       _pendingPushRoutes.clear();
       _activeMlsRoomId = null;
@@ -2915,6 +3370,31 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     }
   }
 
+  Future<void> _refreshPinReminder() async {
+    if (!_session.isAuthenticated) return;
+    try {
+      final state = await _session.pinStatus();
+      if (!mounted) return;
+      if (state['verificationRequired'] == true) {
+        if (_screen == 'pinReset') return;
+        setState(() {
+          _pinLegacyFormat = state['legacy'] == true;
+          _screen = _pinResetRequired || state['configured'] != true ? 'pinReset' : 'pinVerification';
+          _pinResetReturnScreen = 'pinVerification';
+          _pinReminderDue = false;
+        });
+        return;
+      }
+      setState(() {
+        _pinReminderDue = state['reminderDue'] == true;
+        _pinLegacyFormat = false;
+        _pinResetRequired = false;
+      });
+    } catch (_) {
+      // The backend remains authoritative and blocks protected APIs if verification is due.
+    }
+  }
+
   void _selectTab(InOneTab tab) {
     switch (tab) {
       case InOneTab.messages:
@@ -2922,6 +3402,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         return;
       case InOneTab.profile:
         setState(() => _screen = 'profile');
+        unawaited(_refreshPinReminder());
         return;
       case InOneTab.feed:
       case InOneTab.calls:
@@ -2945,14 +3426,60 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           ),
           onRegister: () => setState(() => _screen = 'registerEmail'),
           onForgotPassword: () => setState(() => _screen = 'recoveryStart'),
+          onCancelRecovery: () => setState(() {
+            _cancelingAdmission = false;
+            _screen = 'notYou';
+          }),
           onSuccess: _afterLogin,
         );
       case 'loginWaiting':
         return InOneLoginWaitingScreen(
           activateAt: _waitingActivateAt,
           onRecheck: _recheckWaitingLogin,
-          onNotMe: () => setState(() => _screen = 'notYou'),
+          onNotMe: () => setState(() {
+            _cancelingAdmission = true;
+            _screen = 'notYou';
+          }),
           onDone: _afterLogin,
+        );
+      case 'loginApproval':
+        final approvalCode = _session.pendingApprovalCode;
+        if (approvalCode == null) {
+          return InOneLoadingErrorScreen(
+            onRetry: () => unawaited(_login(_pendingLoginEmail, _pendingLoginPassword)),
+          );
+        }
+        return InOneLoginWaitingScreen(
+          activateAt: '',
+          approvalCode: approvalCode,
+          autoPoll: true,
+          showNotMe: true,
+          notMeLabel: 'Վերադառնալ մուտք',
+          onRecheck: _claimPendingApproval,
+          onNotMe: _leaveApprovalFlow,
+          onDone: _afterLogin,
+        );
+      case 'identityCheck':
+        return InOneEmailCodeScreen(
+          title: 'Մուտքի հաստատում',
+          codeLabel: 'Կոդը նամակից',
+          showResend: true,
+          resendLabel: 'Կրկին ուղարկել կոդը',
+          onConfirm: _submitIdentityCode,
+          onResend: _resendIdentityCode,
+          onBack: () => setState(() {
+            _pendingLoginEmail = '';
+            _pendingLoginPassword = '';
+            _pendingIdentityChallengeId = null;
+            _screen = 'login';
+          }),
+          onDone: _afterLogin,
+        );
+      case 'recoveryConfirm':
+        return InOneRecoveryConfirmScreen(
+          onConfirm: _confirmRecoveryLink,
+          onBack: _cancelPendingRecoveryLink,
+          onDone: _finishRecoveryLinkConfirmation,
         );
       case 'recoveryStart':
         return InOneRecoveryStartScreen(
@@ -2967,8 +3494,14 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         );
       case 'notYou':
         return InOneNotYouScreen(
-          onSubmit: _cancelRecoveryByCode,
-          onBack: () => setState(() => _screen = 'login'),
+          onSubmit: _cancelingAdmission ? _cancelAdmissionByCode : _cancelRecoveryByCode,
+          onBack: () => setState(() {
+            _cancelingAdmission = false;
+            _pendingLoginEmail = '';
+            _pendingLoginPassword = '';
+            _waitingActivateAt = '';
+            _screen = 'login';
+          }),
           onDone: _finishRecoveryCancellation,
         );
       case 'registerEmail':
@@ -2995,10 +3528,36 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
             _afterLogin();
           },
         );
+      case 'pinVerification':
+        return InOnePinVerificationScreen(
+          onSubmit: _verifyRecoveryPin,
+          onForgotPin: _openPinReset,
+          onLogout: () {
+            _logoutReturnScreen = 'pinVerification';
+            setState(() => _screen = 'logout');
+          },
+          onDone: () => unawaited(_loadAuthenticatedData()),
+          legacyPin: _pinLegacyFormat,
+        );
+      case 'pinReset':
+        return InOnePinResetScreen(
+          onStart: _startPinReset,
+          onComplete: _completePinReset,
+          onBack: () {
+            if (_pinResetRequired) {
+              _logoutReturnScreen = 'pinReset';
+              setState(() => _screen = 'logout');
+              return;
+            }
+            setState(() => _screen = _pinResetReturnScreen ?? 'profile');
+            unawaited(_refreshPinReminder());
+          },
+          onDone: () => unawaited(_loadAuthenticatedData()),
+        );
       case 'logout':
         return InOneLogoutScreen(
           onLogout: _logout,
-          onCancel: () => setState(() => _screen = 'profile'),
+          onCancel: () => setState(() => _screen = _logoutReturnScreen),
           onDone: _finishLogout,
         );
       case 'adminRequestsLoading':
@@ -3174,6 +3733,9 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           onEditAvatar: null,
           onTab: _selectTab,
           onAdd: null,
+          pinReminderDue: _pinReminderDue,
+          onPinRemember: _acknowledgePinReminder,
+          onPinReplace: _openPinReset,
         );
       default:
         return InOneLoginScreen(
@@ -3202,52 +3764,18 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
 
     final fingerprint = Object.hash(payload.userId, payload.token);
     if (_handledRecoveryLinkFingerprints.contains(fingerprint)) return true;
-    if (_recoveryLinkInFlight) return true;
-
-    _recoveryLinkInFlight = true;
-    try {
-      await _session.confirmRecoveryLink(
-        userId: payload.userId,
-        token: payload.token,
-      );
-      if (!mounted) return true;
-      _handledRecoveryLinkFingerprints.add(fingerprint);
-      _recoveryEmail = '';
-      _recoveryUserId = payload.userId;
-      setState(() => _screen = 'recoveryPassword');
-      final message = switch (payload.locale) {
-        'ru' => 'Ссылка подтверждена. Введите код восстановления и новый пароль.',
-        'en' => 'The link is confirmed. Enter your recovery code and new password.',
-        _ => 'Հղումը հաստատված է։ Մուտքագրեք վերականգնման կոդը և նոր գաղտնաբառը։',
-      };
-      _notice(message);
-    } on ApiException catch (error) {
-      if (!mounted) return true;
-      if (!error.retryable) _handledRecoveryLinkFingerprints.add(fingerprint);
-      final message = switch (payload.locale) {
-        'ru' => error.code == 'recovery expired'
-            ? 'Ссылка восстановления истекла. Запросите новую.'
-            : 'Не удалось подтвердить ссылку восстановления. Проверьте ссылку и повторите попытку.',
-        'en' => error.code == 'recovery_expired'
-            ? 'The recovery link expired. Request a new one.'
-            : 'Could not confirm the recovery link. Check it and try again.',
-        _ => error.code == 'recovery_expired'
-            ? 'Վերականգնման հղումը ժամկետանց է։ Խնդրեք նորը։'
-            : 'Չհաջողվեց հաստատել վերականգնման հղումը։ Ստուգեք այն և կրկին փորձեք։',
-      };
-      _notice(message);
-    } catch (_) {
-      if (mounted) {
-        final message = switch (payload.locale) {
-          'ru' => 'Нет соединения. Не удалось подтвердить восстановление.',
-          'en' => 'Connection unavailable. Recovery could not be confirmed.',
-          _ => 'Կապ չկա։ Չհաջողվեց հաստատել վերականգնումը։',
-        };
-        _notice(message);
-      }
-    } finally {
-      _recoveryLinkInFlight = false;
+    if (_recoveryLinkInFlight || _pendingRecoveryLinkFingerprint == fingerprint) {
+      return true;
     }
+
+    // Opening a recovery URL only stages the secret in host memory. The
+    // one-time POST is performed only after the user taps Continue on SC-08.
+    _pendingRecoveryLinkPayload = payload;
+    _pendingRecoveryLinkFingerprint = fingerprint;
+    _recoveryLinkLocale = payload.locale;
+    _recoveryEmail = '';
+    _recoveryUserId = payload.userId;
+    setState(() => _screen = 'recoveryConfirm');
     return true;
   }
 

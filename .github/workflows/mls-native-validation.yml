@@ -54,7 +54,7 @@ jobs:
           cargo fmt --manifest-path mobile/rust/Cargo.toml -- --check
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "24.7.0"
           cache: npm
           cache-dependency-path: inone-development-archive-0.6.0/engine/package-lock.json
       - name: Install canonical engine dependencies for real-server MLS tests
@@ -101,7 +101,7 @@ jobs:
           echo "Validated source SHA: $actual"
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "24.7.0"
           cache: npm
           cache-dependency-path: inone-development-archive-0.6.0/engine/package-lock.json
       - uses: dtolnay/rust-toolchain@master
@@ -138,7 +138,7 @@ jobs:
           echo "Validated canonical B source SHA: $actual"
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "24.7.0"
           cache: npm
           cache-dependency-path: inone-development-archive-0.6.0/engine/package-lock.json
       - uses: dtolnay/rust-toolchain@master

@@ -65,7 +65,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "24.7.0"
           cache: npm
           cache-dependency-path: inone-development-archive-0.6.0/engine/package-lock.json
       - run: npm ci
@@ -103,7 +103,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "24.7.0"
           cache: npm
           cache-dependency-path: inone-development-archive-0.6.0/engine/package-lock.json
       - run: npm ci
@@ -152,7 +152,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "24.7.0"
           cache: npm
           cache-dependency-path: inone-development-archive-0.6.0/engine/package-lock.json
       - name: Install PostgreSQL 16 client
@@ -193,7 +193,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "24.7.0"
           cache: npm
           cache-dependency-path: inone-development-archive-0.6.0/engine/package-lock.json
       - uses: dtolnay/rust-toolchain@master

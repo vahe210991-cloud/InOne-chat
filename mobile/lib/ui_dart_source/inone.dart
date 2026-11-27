@@ -14,6 +14,8 @@ export 'screens/auth/sc01_login_screen.dart';
 export 'screens/auth/sc02_register_email_screen.dart';
 export 'screens/auth/sc03_email_code_screen.dart';
 export 'screens/auth/sc04_create_account_screen.dart';
+export 'screens/auth/inone_pin_reset_screen.dart';
+export 'screens/auth/inone_pin_verification_screen.dart';
 export 'screens/auth/sc06_provider_nickname_screen.dart';
 export 'screens/auth/sc07_recovery_start_screen.dart';
 export 'screens/auth/sc08_recovery_confirm_screen.dart';
