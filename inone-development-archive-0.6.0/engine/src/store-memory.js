@@ -921,9 +921,11 @@ export function createMemoryStore({ pinPepper }) {
         const oldPinHash = pinRecord.hash;
         const oldPinFailed = pinRecord.failed;
         const oldPinLockedUntil = pinRecord.lockedUntil;
+        const oldPinLastVerifiedAt = pinRecord.lastVerifiedAt;
         pinRecord.hash = pinResult.upgradedHash ?? pinRecord.hash;
         pinRecord.failed = 0;
         pinRecord.lockedUntil = null;
+        pinRecord.lastVerifiedAt = now;
         const { next, result } = complete(current, oldPassword);
         accounts.set(userId, passwordHash);
         recovery.set(userId, structuredClone(next));
@@ -937,6 +939,7 @@ export function createMemoryStore({ pinPepper }) {
           pinRecord.hash = oldPinHash;
           pinRecord.failed = oldPinFailed;
           pinRecord.lockedUntil = oldPinLockedUntil;
+          pinRecord.lastVerifiedAt = oldPinLastVerifiedAt;
           throw error;
         }
         return { factor: 'complete', outcome: 'ok', keyResetAt: result };
