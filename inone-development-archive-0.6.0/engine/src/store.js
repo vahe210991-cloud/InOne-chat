@@ -185,6 +185,71 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
       );
       return rowCount === 1;
     },
+    async issuePinResetWithOutbox(userId, { challengeId, codeHash, deviceId, now, expiresAt }, enqueue) {
+      return inTransaction(async (c) => {
+        const { rows } = await c.query(
+          'SELECT * FROM pin_reset_challenges WHERE user_id = $1 FOR UPDATE',
+          [userId],
+        );
+        const current = rows[0];
+        if (current && current.locked_until > now) {
+          return { outcome: 'locked', retryAt: Number(current.locked_until) };
+        }
+        if (current && current.consumed_at === null && Number(current.expires_at) > now
+            && now < Number(current.last_sent_at) + 60_000) {
+          return { outcome: 'cooldown', retryAt: Number(current.last_sent_at) + 60_000 };
+        }
+        await c.query(
+          `INSERT INTO pin_reset_challenges
+             (user_id, challenge_id, code_hash, device_id, created_at, expires_at, attempts, locked_until, last_sent_at, consumed_at)
+           VALUES ($1, $2, $3, $4, $5, $6, 0, 0, $5, NULL)
+           ON CONFLICT (user_id) DO UPDATE SET challenge_id = EXCLUDED.challenge_id,
+             code_hash = EXCLUDED.code_hash, device_id = EXCLUDED.device_id,
+             created_at = EXCLUDED.created_at, expires_at = EXCLUDED.expires_at,
+             attempts = 0, locked_until = 0, last_sent_at = EXCLUDED.last_sent_at, consumed_at = NULL`,
+          [userId, challengeId, codeHash, deviceId, now, expiresAt],
+        );
+        if (enqueue) await enqueue(c);
+        return { outcome: 'sent', expiresAt, resendAfter: now + 60_000 };
+      });
+    },
+    async completePinResetWithOutbox(userId, { challengeId, codeOk, deviceId, pinHash, now, reminderNextAt }, enqueue) {
+      return inTransaction(async (c) => {
+        const { rows } = await c.query(
+          'SELECT * FROM pin_reset_challenges WHERE user_id = $1 FOR UPDATE',
+          [userId],
+        );
+        const row = rows[0];
+        if (!row || row.consumed_at !== null || row.challenge_id !== challengeId || row.device_id !== deviceId) {
+          return { outcome: 'invalid' };
+        }
+        if (Number(row.locked_until) > now) return { outcome: 'locked', retryAt: Number(row.locked_until) };
+        if (Number(row.expires_at) <= now) return { outcome: 'expired' };
+        if (!codeOk(row.code_hash)) {
+          const attempts = Number(row.attempts) + 1;
+          const lockedUntil = attempts >= 5 ? now + 60 * 60_000 : 0;
+          await c.query(
+            'UPDATE pin_reset_challenges SET attempts = $2, locked_until = $3 WHERE user_id = $1',
+            [userId, attempts, lockedUntil],
+          );
+          return { outcome: attempts >= 5 ? 'locked' : 'wrong', retryAt: lockedUntil || null };
+        }
+        await c.query(
+          `INSERT INTO pins (user_id, pin_hash, failed, locked_until, last_verified_at, reminder_next_at)
+           VALUES ($1, $2, 0, NULL, $3, $4)
+           ON CONFLICT (user_id) DO UPDATE SET pin_hash = EXCLUDED.pin_hash, failed = 0,
+             locked_until = NULL, last_verified_at = EXCLUDED.last_verified_at,
+             reminder_next_at = EXCLUDED.reminder_next_at`,
+          [userId, pinHash, now, reminderNextAt],
+        );
+        await c.query(
+          'UPDATE pin_reset_challenges SET consumed_at = $2 WHERE user_id = $1',
+          [userId, now],
+        );
+        if (enqueue) await enqueue(c);
+        return { outcome: 'ok' };
+      });
+    },
 
     /**
      * Проверка PIN с блокировкой (правила те же, что в server.js: verifyPin).
