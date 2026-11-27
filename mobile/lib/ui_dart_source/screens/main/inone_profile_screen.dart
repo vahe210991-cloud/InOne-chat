@@ -141,12 +141,12 @@ class InOneProfileScreen extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Помните ли вы свой PIN-код восстановления?',
+                      inOnePinCopy(context, 'reminderTitle'),
                       style: InOneText.style(14, FontWeight.w700, c.text),
                     ),
                     const SizedBox(height: 7),
                     Text(
-                      'Он поможет защитить аккаунт при восстановлении доступа. PIN не является паролем для входа.',
+                      inOnePinCopy(context, 'reminderBody'),
                       style: InOneText.style(12.5, FontWeight.w400, c.muted),
                     ),
                     const SizedBox(height: 12),
@@ -156,11 +156,11 @@ class InOneProfileScreen extends StatelessWidget {
                       children: [
                         OutlinedButton(
                           onPressed: onPinRemember,
-                          child: const Text('Помню'),
+                          child: Text(inOnePinCopy(context, 'remember')),
                         ),
                         FilledButton(
                           onPressed: onPinReplace,
-                          child: const Text('Не помню, заменить'),
+                          child: Text(inOnePinCopy(context, 'replace')),
                         ),
                       ],
                     ),
