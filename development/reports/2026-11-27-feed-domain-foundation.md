@@ -42,20 +42,36 @@ The revised proposal defines:
 - explicit integration boundary around existing /files and MLS pipeline;
 - security acceptance matrix and implementation gates.
 
-## Existing domain work: retain, adapt, do not misrepresent
+## Domain and encrypted storage primitives
 
-The existing pure domain helpers remain useful for opaque IDs, idempotency-key validation, Unicode validation, deterministic ordering, keyset boundary handling and page bounds.
+The text-first mandatory-content helper and unsigned cursor encoder were removed from the Feed domain module. The current pure domain slice now contains:
+- optional caption normalization (NFC, newline normalization, blank → null, malformed Unicode/NUL rejection);
+- mandatory non-empty, unique, ready, Feed-scoped media validation bound to the authenticated author record;
+- canonical SHA-256 request hash over normalized caption and ordered media IDs for idempotency comparison;
+- HMAC-SHA-256 cursor encoding/verification with key IDs, global/own query-scope binding, canonical base64url checks and constant-time signature comparison;
+- keyset ordering/boundary helpers; pagination emits signed cursors only.
 
-Required adaptation before production use:
-- text content must become optional caption;
-- publication validation must require at least one ready media association;
-- existing unsigned cursor serialization is only a parsing/format helper and is not a tamper-proof production cursor. Production cursor must use a server-secret HMAC and constant-time verification;
-- old text-only create semantics and tests must not be used as production post contract.
+Added an isolated streaming encrypted object-store wrapper:
+- random 256-bit DEK per object;
+- AES-256-GCM chunk records with independent authentication tags;
+- DEK wrapped with a dedicated 256-bit KEK from an injected key-provider interface;
+- AAD binds object key, key ID, chunk counter and plaintext length;
+- key ID in the object header supports key-ring rotation;
+- streaming read/write adapter wraps the existing object-store interface without changing chat storage.
 
-Added pure helpers for optional caption normalization, canonical idempotency hashing over the normalized caption plus ordered media IDs, mandatory non-empty unique ready Feed media validation bound to the author, and HMAC-SHA-256 cursor signing/verification with key IDs, scope binding, canonical encoding checks and constant-time signature comparison. Pagination helper now emits signed cursors. Added a separate chunked AES-256-GCM encrypted object-store adapter with per-object random DEK, KEK-wrapped DEK, object/key/chunk-bound AAD, streaming reads/writes, and key-ID-based rotation support. Added domain and encrypted-store test cases to the existing backend test entry. These are isolated primitives only; they are not wired into HTTP routes, production config, key management or persistence.
+New domain and encrypted-store tests were added and wired into the existing backend test entry. They have NOT been executed.
 
-No backend routes, SQL migrations, Post/PostMedia persistence, media validation/processing worker, production key-provider/configuration, encrypted Feed storage wiring, authenticated media delivery or Flutter integration have been implemented in this stage.
+## Storage audit finding
 
+The canonical backend currently exposes:
+- filesystem object store with streaming writes, restrictive file/directory permissions and atomic temp-file publication, but no application-level encryption at rest;
+- in-memory object store that buffers complete objects and is suitable only for tests;
+- no S3/MinIO or KMS/HSM adapter in the reviewed production path.
+
+The updated proposal therefore specifies an isolated Feed storage directory/namespace, encrypted before bytes reach the underlying filesystem store, and a key-provider backed by deployment secret management. KMS/HSM can implement the provider later; it is not an existing capability. The existing chat object store and /files authorization must remain unchanged.
+
+Production config/key-provider wiring and the dedicated Feed directory are not yet implemented.
+ 
 ## Existing backend boundary
 
 Current chat file flow remains owner/device-bound or room-member-bound. It includes active-device checks, upload reservation/completion, signed download authorization and object storage. It is not suitable to be made cross-account-readable for Feed by changing its existing policy.
@@ -74,13 +90,14 @@ The existing shared server/store/schema/config/main files were not changed. No P
 
 ## Next engineering sequence
 
-1. Finish independent static review of the media-first helpers and test source. The tests remain NOT RUN; run them only after the implementation batch is ready and then report the exact tested SHA.
-2. Inspect the existing object-store abstraction and deployment/runtime capabilities for an isolated Feed bucket/namespace, encryption key provider and worker execution model.
-3. Propose evidence-based numeric limits for photo count, bytes, codecs, video duration/resolution, rendition profiles and processing resource budgets. Do not hard-code arbitrary values.
-5. Reconcile #171/#173/#169 integration order and capture a fresh exact main SHA before touching server/store/schema.
-5. Implement Feed media reservation/quarantine/processing/storage/delivery in isolated modules, then transactional Post/PostMedia persistence and routes.
-7. Verify exact Dart UI sources in all relevant branches before connecting the approved screens.
-8. Add dynamic security and regression tests, then run applicable Actions on the exact final SHA.
+1. Complete independent static review of the domain and encrypted-store code/test sources. Tests remain NOT RUN.
+2. Implement the Feed key-provider/configuration and isolated filesystem namespace without changing chat storage; verify key version retention/rotation design.
+3. Produce evidence-based configurable limits for photo count, byte sizes, codecs, video duration/resolution, rendition profiles and processing resource budgets.
+4. Reconcile #171/#173/#169 integration order and capture a fresh exact main SHA before touching shared server/store/schema/config files.
+5. Implement Feed media reservation, streaming upload, quarantine, validation/processing, encrypted storage and authenticated delivery.
+6. Implement transactional Post/PostMedia persistence, feed/profile queries and cleanup outbox.
+7. Verify exact Dart UI sources in all relevant branches before connecting approved screens.
+8. Add dynamic security/regression tests and run applicable Actions on the exact final SHA.
 
 ## Acceptance status
 
