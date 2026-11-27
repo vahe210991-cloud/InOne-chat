@@ -1775,8 +1775,8 @@ mlsPendingRemovalsFor(userId) {
       return 'ok';
     },
 
-    createVerifiedAccountWithEmailToken({ email, changeEmailCode, userId, passwordHash, pinHash, phoneE164 = null, nickname, nowMs, joinDefaultOrg = false }) {
-      if (typeof pinHash !== 'string' || pinHash.length < 1) throw new TypeError('PIN hash is required');
+    async createVerifiedAccountWithEmailToken({ email, changeEmailCode, userId, passwordHash, makePinHash, phoneE164 = null, nickname, nowMs, joinDefaultOrg = false }) {
+      if (typeof makePinHash !== 'function') throw new TypeError('PIN hash derivation is required');
       const current = emailCodes.get(email) ?? freshEmailCode();
       const { next, result } = changeEmailCode(structuredClone(current));
       const locale = result.locale ?? current.locale ?? 'hy';
@@ -1790,6 +1790,7 @@ mlsPendingRemovalsFor(userId) {
         if (profile.nickname.toLowerCase() === nickname.toLowerCase()) return { outcome: 'ok', created: 'nickname', locale };
       }
       if (phoneE164 && [...phones.values()].some((entry) => entry.phone === phoneE164)) return { outcome: 'ok', created: 'phone', locale };
+      const pinHash = await makePinHash();
       // Commit the consumed ticket and account state together after every uniqueness check.
       if (joinDefaultOrg) addOrgMembership(DEFAULT_ORG_ID, userId, 'member', nowMs);
       emailCodes.set(email, structuredClone(next));
