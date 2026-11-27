@@ -9,6 +9,7 @@ const PEPPER = randomBytes(24).toString('hex');
 const PW = 'длинный-пароль-1';
 const PIN = '80421697';
 const PHONE = '+37477000031';
+const EMAIL_PHONE = '+37477000033';
 const PROVIDERS = {
   google: { clientIds: ['g-client.apps.googleusercontent.com'] },
   apple: { clientIds: ['ai.inone.app'] },
@@ -68,7 +69,7 @@ async function registerByEmail(base, srv, email, nickname) {
   await call(base, 'POST', '/register/email', { body: { email, locale: 'ru' } });
   const code = srv.mailbox(email).filter((m) => m.templateId === 'registration_code').at(-1).text.match(/\b(\d{6})\b/)[1];
   const confirmed = await call(base, 'POST', '/register/email/confirm', { body: { email, code } });
-  return call(base, 'POST', '/register', { body: { email, registrationToken: confirmed.body.registrationToken, password: PW, nickname, phone: PHONE, pin: PIN, pinConfirmation: PIN } });
+  return call(base, 'POST', '/register', { body: { email, registrationToken: confirmed.body.registrationToken, password: PW, nickname, phone: EMAIL_PHONE, pin: PIN, pinConfirmation: PIN } });
 }
 
 const loginByEmail = async (base, email, deviceId) =>
@@ -86,7 +87,7 @@ async function emailStepUp(base, srv, email, token, action) {
 /** Новый аккаунт через Google: вход, билет, регистрация с ником. */
 async function newGoogleAccount(base, nickname = 'Anna.G') {
   const v = await providerSignIn(base, 'google', (n) => googleClaims(n));
-  return (await call(base, 'POST', '/register/provider', { body: { ticket: v.body.ticket, nickname, phone: PHONE, pin: PIN, pinConfirmation: PIN } })).body;
+  return (await call(base, 'POST', '/register/provider', { body: { ticket: v.body.ticket, nickname, phone: EMAIL_PHONE, pin: PIN, pinConfirmation: PIN } })).body;
 }
 
 test('P1: вход через Google для нового пользователя — билет, ник, уровень 2, вход без пароля', async () => {
