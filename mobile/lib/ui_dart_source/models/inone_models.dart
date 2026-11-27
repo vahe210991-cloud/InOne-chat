@@ -174,9 +174,9 @@ class InOneChatPreview {
         unread: unread ?? this.unread,
         initials: initials,
         peerUserId: peerUserId,
-        incomingContactRequest: incomingContactRequest,
-        isPeerContact: isPeerContact,
-        isBlocked: isBlocked,
+        incomingContactRequest: incomingContactRequest ?? this.incomingContactRequest,
+        isPeerContact: isPeerContact ?? this.isPeerContact,
+        isBlocked: isBlocked ?? this.isBlocked,
       );
 }
 
