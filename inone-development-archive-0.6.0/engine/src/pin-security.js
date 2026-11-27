@@ -1,8 +1,8 @@
-import { randomBytes, scrypt, timingSafeEqual, createHmac } from 'node:crypto';
+import { randomBytes, scrypt, argon2, timingSafeEqual, createHmac } from 'node:crypto';
 import { promisify } from 'node:util';
-import { argon2idAsync } from '@noble/hashes/argon2.js';
 
 const scryptAsync = promisify(scrypt);
+const argon2Async = promisify(argon2);
 export const PIN_LENGTH = 8;
 export const PIN_FREE_ATTEMPTS = 2;
 export const PIN_LOCK_BASE_MS = 30 * 60_000;
@@ -16,7 +16,6 @@ const ARGON2 = Object.freeze({
   iterations: 3,
   parallelism: 1,
   outputBytes: 32,
-  maxmem: 96 * 1024 * 1024,
 });
 const MAX_ACTIVE_KDFS = 2;
 const MAX_QUEUED_KDFS = 16;
@@ -89,18 +88,22 @@ function parseArgonHash(stored) {
 }
 
 async function derive(pin, salt, pepper) {
-  return withKdfSlot(() => argon2idAsync(
-    pin,
-    salt,
-    {
-      t: ARGON2.iterations,
-      m: ARGON2.memoryKiB,
-      p: ARGON2.parallelism,
-      dkLen: ARGON2.outputBytes,
-      maxmem: ARGON2.maxmem,
-      key: pepper,
-    },
-  ));
+  const message = Buffer.from(pin, 'utf8');
+  const secret = Buffer.from(pepper, 'utf8');
+  try {
+    return await withKdfSlot(() => argon2Async('argon2id', {
+      message,
+      nonce: salt,
+      parallelism: ARGON2.parallelism,
+      tagLength: ARGON2.outputBytes,
+      memory: ARGON2.memoryKiB,
+      passes: ARGON2.iterations,
+      secret,
+    }));
+  } finally {
+    message.fill(0);
+    secret.fill(0);
+  }
 }
 
 export async function hashPin(pepper, pin) {
