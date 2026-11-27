@@ -1225,7 +1225,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Заблокировать пользователя?'),
-        content: const Text('Новые сообщения и взаимодействия с этим пользователем будут запрещены. Уже доставленная история останется в чате.'),
+        content: const Text('Новые личные сообщения в обе стороны будут запрещены. Уже доставленная история останется в чате.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
