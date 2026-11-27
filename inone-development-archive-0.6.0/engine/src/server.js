@@ -44,10 +44,22 @@ import { renderEmailTemplate } from './email-templates.js';
 export const RECOVERY_DELAY_MS = 48 * 60 * 60 * 1000;
 // POST, разрешённые в окне восстановления: чтение чужих ключей и отмена (право отмены проверяет маршрут, D8).
 const WINDOW_POST_OK = new Set(['/keys/query', '/recovery/cancel']);
+const PIN_GATE_ALLOWED = new Set([
+  'GET /pin/status',
+  'POST /pin/verify',
+  'POST /pin/reminder/ack',
+  'POST /pin/reset/start',
+  'POST /pin/reset/complete',
+  'POST /logout',
+  'POST /token/refresh',
+  'PATCH /profile/locale',
+]);
 export const APPROVAL_TTL_MS = 10 * 60 * 1000;
 export const MAX_APPROVAL_CODE_ATTEMPTS = 3;
 export const MAX_PENDING_APPROVALS = 3;
 export const FREE_PIN_ATTEMPTS = PIN_FREE_ATTEMPTS;
+const PIN_RESET_CODE_TTL_MS = 60 * 60_000;
+const PIN_RESET_MAX_CODE_ATTEMPTS = 5;
 export { lockDurationMs, weakPinReason };
 export const TO_DEVICE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // недоставленная очередь хранится не дольше 30 дней (спецификация)
 const MAX_TO_DEVICE_RECIPIENTS = 100;
@@ -279,6 +291,8 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
   };
   // Код восстановления хранится только как ключевой хэш; сам код есть лишь в письме (C-08).
   const recoveryCodeHash = (userId, code) => keyedHash(pinPepper, `recovery:${userId}`, code);
+  const pinResetCodeHash = (userId, deviceId, challengeId, code) =>
+    keyedHash(pinPepper, `pin-reset:${userId}:${deviceId}:${challengeId}`, code);
   const phoneCodeHash = (userId, code) => keyedHash(pinPepper, `phone:${userId}`, code);
   const recoveryLinkHash = (userId, token) => keyedHash(pinPepper, `recovery-link:${userId}`, token);
   const recoveryCancelHash = (userId, code) => keyedHash(pinPepper, `recovery-cancel:${userId}`, code);
@@ -448,10 +462,11 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
    * Проверка PIN с блокировкой. Правила и защита от гонок — в хранилище: store.js (PostgreSQL)
    * или store-memory.js. Сервер подставляет время, лимит и функцию проверки хэша.
    */
-  const verifyPin = (userId, pin) => storage.verifyPin(userId, pin, {
+  const verifyPin = (userId, pin, { markVerified = false } = {}) => storage.verifyPin(userId, pin, {
     now: now(),
     free: FREE_PIN_ATTEMPTS,
     lockDuration: lockDurationMs,
+    markVerified,
     check: async (candidate, stored) => {
       pinChecks += 1;
       return checkPin(pinPepper, candidate, stored);
@@ -766,6 +781,23 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
       if (!PUBLIC_PATHS.includes(p) && req.headers.authorization) {
         const raw = String(req.headers.authorization).replace('Bearer ', '');
         if ((await storage.accessTokenState(raw, now())) === 'expired') return send(res, 401, { error: 'token expired', code: 'token_expired' });
+      }
+      // Monthly PIN verification is a server-side access gate, not a client-side reminder.
+      if (req.headers.authorization && !PIN_GATE_ALLOWED.has(`${req.method} ${p}`)) {
+        const raw = String(req.headers.authorization).replace('Bearer ', '');
+        const deviceKey = await storage.deviceKeyForToken(raw, now());
+        const device = deviceKey ? await storage.deviceRecord(deviceKey) : null;
+        if (device && !device.revoked) {
+          const pinState = await storage.pinStatus(device.userId);
+          const verificationRequired = !pinState.configured || pinState.lastVerifiedAt === null
+            || now() - pinState.lastVerifiedAt >= PIN_VERIFICATION_INTERVAL_MS;
+          if (verificationRequired) {
+            return send(res, 403, {
+              error: 'pin_verification_required',
+              setupRequired: !pinState.configured,
+            });
+          }
+        }
       }
       // Окно восстановления: устройства только читают. Исключения: чтение чужих ключей и отмена (её право проверяет маршрут, D8).
       if (req.method !== 'GET' && !WINDOW_POST_OK.has(p) && (await inRecoveryWindow(req))) {
@@ -1981,21 +2013,134 @@ if (req.method === 'POST' && p === '/login') {
         return send(res, 200, { ok: true });
       }
 
-      // ---------- PIN ----------
-      if (req.method === 'POST' && p === '/pin/set') {
+      // ---------- PIN security, weekly reminder and monthly verification ----------
+      if (req.method === 'GET' && p === '/pin/status') {
         const d = await authed(req);
         if (!d) return send(res, 401, { error: 'unauthorized' });
-        const pin = typeof body.pin === 'string' ? body.pin : '';
-        const weak = weakPinReason(pin);
-        if (weak) return send(res, 400, { error: weak });
-        if (!(await storage.hasPin(d.userId))) {
-          return send(res, 403, { error: 'PIN setup requires verified-email confirmation' });
+        const state = await storage.pinStatus(d.userId);
+        return send(res, 200, {
+          configured: state.configured,
+          verificationRequired: !state.configured || state.lastVerifiedAt === null
+            || now() - state.lastVerifiedAt >= PIN_VERIFICATION_INTERVAL_MS,
+          reminderDue: state.configured && state.reminderNextAt !== null && now() >= state.reminderNextAt,
+          nextReminderAt: state.reminderNextAt === null ? null : new Date(state.reminderNextAt).toISOString(),
+          lockedUntil: state.lockedUntil && state.lockedUntil > now() ? new Date(state.lockedUntil).toISOString() : null,
+        });
+      }
+
+      if (req.method === 'POST' && p === '/pin/verify') {
+        const d = await authed(req);
+        if (!d) return send(res, 401, { error: 'unauthorized' });
+        if (!validatePin(body.pin)) return send(res, 400, { error: 'PIN must contain exactly eight digits' });
+        const verdict = await verifyPin(d.userId, body.pin, { markVerified: true });
+        if (!verdict.ok) return pinError(res, verdict);
+        return send(res, 200, { ok: true, verifiedAt: new Date(now()).toISOString() });
+      }
+
+      if (req.method === 'POST' && p === '/pin/reminder/ack') {
+        const d = await authed(req);
+        if (!d) return send(res, 401, { error: 'unauthorized' });
+        const state = await storage.pinStatus(d.userId);
+        if (!state.configured) return send(res, 409, { error: 'PIN setup required' });
+        const nextAt = now() + PIN_REMINDER_INTERVAL_MS;
+        if (!(await storage.acknowledgePinReminder(d.userId, nextAt))) return send(res, 409, { error: 'PIN reminder unavailable' });
+        return send(res, 200, { ok: true, nextReminderAt: new Date(nextAt).toISOString() });
+      }
+
+      if (req.method === 'POST' && p === '/pin/reset/start') {
+        const d = await authed(req);
+        if (!d) return send(res, 401, { error: 'unauthorized' });
+        if (await passwordSignInAllowed(d.userId)) {
+          const stored = await storage.accountHash(d.userId);
+          if (typeof body.password !== 'string' || !checkPassword(body.password, stored)) {
+            return send(res, 403, { error: 'recent password confirmation required' });
+          }
         }
-        const r = await verifyPin(d.userId, typeof body.currentPin === 'string' ? body.currentPin : '');
-        if (!r.ok) return pinError(res, r);
-        await storage.setPin(d.userId, await hashPin(pinPepper, pin), now());
+        const profile = await storage.profileGet(d.userId);
+        if (!profile?.emailVerified || !profile.email) return send(res, 403, { error: 'verified email required' });
+        const perAccount = await checkRate('stepupPerAccount', d.userId);
+        const perAddress = await checkRate('recoveryPerAddress', clientIp(req));
+        if (!perAccount.allowed || !perAddress.allowed) {
+          const retryAt = Math.max(perAccount.retryAt ?? 0, perAddress.retryAt ?? 0);
+          return send(res, 429, { error: 'too many PIN reset requests', retryAt: new Date(retryAt).toISOString() });
+        }
+        const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
+        const challengeId = randomBytes(24).toString('base64url');
+        const createdAt = now();
+        const issued = await storage.issuePinResetWithOutbox(d.userId, {
+          challengeId,
+          codeHash: pinResetCodeHash(d.userId, d.deviceId, challengeId, code),
+          deviceId: d.deviceId,
+          now: createdAt,
+          expiresAt: createdAt + PIN_RESET_CODE_TTL_MS,
+        }, (tx) => mailTo(profile.email, '', '', null, 'pin_reset_code', { code }, profile.locale ?? 'hy', tx));
+        if (issued.outcome === 'locked' || issued.outcome === 'cooldown') {
+          return send(res, 429, {
+            error: 'PIN reset temporarily unavailable',
+            retryAt: new Date(issued.retryAt).toISOString(),
+          });
+        }
+        return send(res, 202, {
+          challengeId,
+          expiresAt: new Date(issued.expiresAt).toISOString(),
+          resendAfter: new Date(issued.resendAfter).toISOString(),
+        });
+      }
+
+      if (req.method === 'POST' && p === '/pin/reset/complete') {
+        const d = await authed(req);
+        if (!d) return send(res, 401, { error: 'unauthorized' });
+        const challengeId = typeof body.challengeId === 'string' ? body.challengeId : '';
+        const code = typeof body.code === 'string' ? body.code : '';
+        const pin = typeof body.pin === 'string' ? body.pin : '';
+        const pinConfirmation = typeof body.pinConfirmation === 'string' ? body.pinConfirmation : '';
+        if (!/^[A-Za-z0-9_-]{32}$/.test(challengeId) || !/^\d{6}$/.test(code)) {
+          return send(res, 400, { error: 'PIN reset challenge is invalid' });
+        }
+        const pinErrorText = weakPinReason(pin);
+        if (pinErrorText) return send(res, 400, { error: pinErrorText });
+        if (!validatePin(pinConfirmation) || pin !== pinConfirmation) {
+          return send(res, 400, { error: 'PIN confirmation does not match' });
+        }
+        const perAccount = await checkRate('stepupPerAccount', d.userId);
+        const perAddress = await checkRate('recoveryPerAddress', clientIp(req));
+        if (!perAccount.allowed || !perAddress.allowed) {
+          const retryAt = Math.max(perAccount.retryAt ?? 0, perAddress.retryAt ?? 0);
+          return send(res, 429, { error: 'too many PIN reset attempts', retryAt: new Date(retryAt).toISOString() });
+        }
+        const pinHash = await hashPin(pinPepper, pin);
+        const profile = await storage.profileGet(d.userId);
+        const backup = await storage.backupEmailGet(d.userId);
+        const locale = profile?.locale ?? 'hy';
+        const completed = await storage.completePinResetWithOutbox(d.userId, {
+          challengeId,
+          deviceId: d.deviceId,
+          pinHash,
+          now: now(),
+          reminderNextAt: now() + PIN_REMINDER_INTERVAL_MS,
+          codeOk: (storedHash) => sameHex(
+            pinResetCodeHash(d.userId, d.deviceId, challengeId, code),
+            storedHash,
+          ),
+        }, (tx) => mailToRecipients(
+          [profile?.email, backup?.email],
+          '',
+          '',
+          'pin_changed',
+          {},
+          tx,
+          locale,
+        ));
+        if (completed.outcome === 'expired') return send(res, 410, { error: 'PIN reset code expired' });
+        if (completed.outcome === 'locked') return send(res, 429, { error: 'PIN reset locked', retryAt: completed.retryAt ? new Date(completed.retryAt).toISOString() : null });
+        if (completed.outcome !== 'ok') return send(res, 403, { error: 'PIN reset verification failed' });
         await alertDevices(d.userId, { kind: 'pin_changed' });
         return send(res, 200, { ok: true });
+      }
+
+      // ---------- PIN ----------
+      if (req.method === 'POST' && p === '/pin/set') {
+        return send(res, 410, { error: 'use the protected PIN reset flow' });
       }
 
       if (req.method === 'POST' && p === '/pin/remove') {
