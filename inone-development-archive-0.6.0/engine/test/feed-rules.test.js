@@ -28,7 +28,7 @@ test('post content rejects missing, blank, NUL, excessive code points and excess
   assert.equal(normalizePostContent(null).error, 'content_required');
   assert.equal(normalizePostContent(' \n\t ').error, 'content_required');
   assert.equal(normalizePostContent('bad\0content').error, 'content_required');
-  assert.equal(normalizePostContent('\\ud800').error, 'invalid_unicode');
+  assert.equal(normalizePostContent('\ud800').error, 'invalid_unicode');
   assert.equal(normalizePostContent('x'.repeat(POST_CONTENT_MAX_CODE_POINTS + 1)).error, 'content_too_long');
   const bytesLimited = normalizePostContent('😀'.repeat(Math.floor(POST_CONTENT_MAX_UTF8_BYTES / 4) + 1));
   assert.equal(bytesLimited.error, 'content_too_large');
