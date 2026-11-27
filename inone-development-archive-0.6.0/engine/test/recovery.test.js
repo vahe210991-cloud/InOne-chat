@@ -141,11 +141,11 @@ test('через 48 часов после восстановления устр�
   try {
     const phone = await createVerified(base, srv, ALICE, 'A_PHONE', PW, PHONE_A);
     const code = await startRecovery(base, srv, ALICE, PHONE_A);
-    await post(base, '/recovery/complete', { userId: ALICE, code, newPassword: NEW_PW });
+    await post(base, '/recovery/complete', { userId: ALICE, code, pin: TEST_PIN, newPassword: NEW_PW });
     await phone.sync();
     srv.advance(RECOVERY_DELAY_MS + 1000);
     await assert.rejects(phone.sync(), (e) => e.status === 401);
-    assert.ok(srv.mailbox(ALICE).some((m) => m.templateId === 'old_devices_revoked'));
+    assert.ok(srv.mailbox(emailForUserId(ALICE)).some((m) => m.templateId === 'old_devices_revoked'));
   } finally {
     await stop();
   }
@@ -156,7 +156,7 @@ test('устройство, появившееся после запроса в�
   try {
     const phone = await createVerified(base, srv, ALICE, 'A_PHONE', PW, PHONE_A);
     const code = await startRecovery(base, srv, ALICE, PHONE_A);
-    await post(base, '/recovery/complete', { userId: ALICE, code, newPassword: NEW_PW });
+    await post(base, '/recovery/complete', { userId: ALICE, code, pin: TEST_PIN, newPassword: NEW_PW });
     await rawLogin(base, ALICE, NEW_PW, 'B_NEW');
     const entered = await rawLogin(base, ALICE, NEW_PW, 'B_NEW', identityCodeFrom(srv, ALICE));
     const denied = await fetch(`${base}/recovery/cancel`, { method: 'POST', headers: { authorization: `Bearer ${entered.body.token}` } });
@@ -218,7 +218,7 @@ test('после пяти неверных кодов восстановлени
     await createVerified(base, srv, ALICE, 'A_PHONE', PW, PHONE_A);
     await startRecovery(base, srv, ALICE, PHONE_A);
     for (let i = 0; i < 5; i++) {
-      await assert.rejects(post(base, '/recovery/complete', { userId: ALICE, code: '000000', newPassword: NEW_PW }), (e) => e.status === 403);
+      await assert.rejects(post(base, '/recovery/complete', { userId: ALICE, code: '000000', pin: TEST_PIN, newPassword: NEW_PW }), (e) => e.status === 403);
     }
     await post(base, '/recovery/start', { email: emailForUserId(ALICE), locale: 'ru' });
     assert.equal(recoveryCodeCount(srv, ALICE), 1, 'во время блокировки новый email-код не выдаётся');
@@ -236,7 +236,7 @@ test('не больше трёх кодов восстановления в ча
     await createVerified(base, srv, ALICE, 'A_PHONE', PW, PHONE_A);
     for (let i = 0; i < 3; i++) {
       const code = await startRecovery(base, srv, ALICE, PHONE_A);
-      await post(base, '/recovery/complete', { userId: ALICE, code, newPassword: `пароль-${i}-2026` });
+      await post(base, '/recovery/complete', { userId: ALICE, code, pin: TEST_PIN, newPassword: `пароль-${i}-2026` });
     }
     assert.equal(recoveryCodeCount(srv, ALICE), 3);
     await post(base, '/recovery/start', { userId: ALICE, locale: 'ru' });
@@ -251,7 +251,7 @@ test('в окне восстановления старое устройство
   try {
     const phone = await createVerified(base, srv, ALICE, 'A_PHONE', PW, PHONE_A);
     const code = await startRecovery(base, srv, ALICE, PHONE_A);
-    await post(base, '/recovery/complete', { userId: ALICE, code, newPassword: NEW_PW });
+    await post(base, '/recovery/complete', { userId: ALICE, code, pin: TEST_PIN, newPassword: NEW_PW });
     await phone.sync(); // читать можно
     await assert.rejects(phone.raw('POST', '/pin/reset/start', { password: PW }), (e) => e.status === 403, 'старое устройство в окне не меняет PIN');
     await assert.rejects(phone.raw('POST', '/keys/upload', {}), (e) => e.status === 403, 'старое устройство в окне не меняет ключи');
@@ -274,7 +274,7 @@ test('устройство, добавленное во время окна, ч�
   try {
     const phone = await createVerified(base, srv, ALICE, 'A_PHONE', PW, PHONE_A);
     const code = await startRecovery(base, srv, ALICE, PHONE_A);
-    await post(base, '/recovery/complete', { userId: ALICE, code, newPassword: NEW_PW });
+    await post(base, '/recovery/complete', { userId: ALICE, code, pin: TEST_PIN, newPassword: NEW_PW });
     await rawLogin(base, ALICE, NEW_PW, 'B_NEW');
     const frozen = await ChatClient.login(base, ALICE, NEW_PW, 'B_NEW', { identityCode: identityCodeFrom(srv, ALICE), identityChallengeId: identityChallenges.get(`${ALICE}|B_NEW`) });
 
@@ -298,7 +298,7 @@ test('после окна устройство, добавленное в окн
   try {
     const phone = await createVerified(base, srv, ALICE, 'A_PHONE', PW, PHONE_A);
     const code = await startRecovery(base, srv, ALICE, PHONE_A);
-    await post(base, '/recovery/complete', { userId: ALICE, code, newPassword: NEW_PW });
+    await post(base, '/recovery/complete', { userId: ALICE, code, pin: TEST_PIN, newPassword: NEW_PW });
     await rawLogin(base, ALICE, NEW_PW, 'B_NEW');
     const frozen = await ChatClient.login(base, ALICE, NEW_PW, 'B_NEW', { identityCode: identityCodeFrom(srv, ALICE), identityChallengeId: identityChallenges.get(`${ALICE}|B_NEW`) });
     srv.advance(RECOVERY_DELAY_MS + 1000);
@@ -314,7 +314,7 @@ test('второе восстановление внутри окна не сд�
   try {
     const phone = await createVerified(base, srv, ALICE, 'A_PHONE', PW, PHONE_A);
     const code1 = await startRecovery(base, srv, ALICE, PHONE_A);
-    await post(base, '/recovery/complete', { userId: ALICE, code: code1, newPassword: NEW_PW });
+    await post(base, '/recovery/complete', { userId: ALICE, code: code1, pin: TEST_PIN, newPassword: NEW_PW });
     await rawLogin(base, ALICE, NEW_PW, 'C_NEW');
     const added = await ChatClient.login(base, ALICE, NEW_PW, 'C_NEW', { identityCode: identityCodeFrom(srv, ALICE), identityChallengeId: identityChallenges.get(`${ALICE}|C_NEW`) });
 
@@ -346,116 +346,49 @@ test('регистрация без телефона отклоняется, е�
   }
 });
 
-test('телефон подтверждается кодом из SMS; неверный код не подтверждает; подтверждённый телефон получает код восстановления', async () => {
+test('новое восстановление использует только OTP подтверждённой почты и PIN, без SMS и email-ссылки', async () => {
+  const { srv, base, stop } = await start();
+  try {
+    await createVerified(base, srv, ALICE, 'A_PHONE', PW, PHONE_A);
+    assert.equal(srv.smsOutbox(PHONE_A).length, 0, 'подтверждение телефона не требуется');
+    const code = await startRecovery(base, srv, ALICE);
+    assert.equal(recoveryCodeCount(srv, ALICE), 1, 'код доставлен на основную почту');
+    await assert.rejects(
+      post(base, '/recovery/complete', { userId: ALICE, code, pin: '00000000', newPassword: NEW_PW }),
+      (error) => error.status === 403,
+      'одного email-кода недостаточно без PIN',
+    );
+    await post(base, '/recovery/complete', { userId: ALICE, code, pin: TEST_PIN, newPassword: NEW_PW });
+  } finally {
+    await stop();
+  }
+});
+
+test('аккаунт без подтверждённой основной почты не получает recovery OTP; телефон не заменяет email', async () => {
+  const { srv, base, stop } = await start();
+  try {
+    await ChatClient.create(base, ALICE, 'A_PHONE', PW, { phone: PHONE_A });
+    const response = await post(base, '/recovery/start', { email: emailForUserId(ALICE), locale: 'ru' });
+    assert.equal(response.status, 202);
+    assert.equal(recoveryCodeCount(srv, ALICE), 0);
+    assert.equal(srv.smsOutbox(PHONE_A).length, 0);
+  } finally {
+    await stop();
+  }
+});
+
+test('один телефон не может принадлежать двум аккаунтам и не является recovery-фактором', async () => {
   const { srv, base, stop } = await start();
   try {
     const alice = await ChatClient.create(base, ALICE, 'A_PHONE', PW, { phone: PHONE_A });
-    await assert.rejects(alice.raw('POST', '/account/phone/confirm', { code: '000000' }), (e) => e.status === 403);
-    await alice.raw('POST', '/account/phone/confirm', { code: smsCodeFrom(srv, PHONE_A) });
-    await post(base, '/recovery/start', { userId: ALICE, locale: 'ru' });
-    assert.equal(recoverySmsCount(srv, PHONE_A), 1, 'подтверждённый телефон получает код восстановления');
-  } finally {
-    await stop();
-  }
-});
-
-test('без подтверждения по ссылке из письма восстановление не проходит, даже с кодом из SMS', async () => {
-  const { srv, base, stop } = await start();
-  try {
-    await createVerified(base, srv, ALICE, 'A_PHONE', PW, PHONE_A);
-    await post(base, '/recovery/start', { userId: ALICE, locale: 'ru' });
-    const code = smsCodeFrom(srv, PHONE_A);
-    await assert.rejects(post(base, '/recovery/complete', { userId: ALICE, code, newPassword: NEW_PW }), (e) => e.status === 403, 'без ссылки не проходит');
-    const wrong = await fetch(`${base}/recovery/confirm`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ user: ALICE, token: FIXTURE_1 }) });
-    assert.equal(wrong.status, 403, 'чужая ссылка не подтверждает');
-    await confirmLink(base, ALICE, linkTokenFrom(srv, ALICE));
-    await post(base, '/recovery/complete', { userId: ALICE, code, newPassword: NEW_PW });
-  } finally {
-    await stop();
-  }
-});
-
-test('восстановление для аккаунта без подтверждённого телефона ничего не отправляет', async () => {
-  const { srv, base, stop } = await start();
-  try {
-    await ChatClient.create(base, ALICE, 'A_PHONE', PW);
-    await post(base, '/recovery/start', { userId: ALICE, locale: 'ru' });
-    assert.equal(srv.mailbox(ALICE).filter((m) => m.text.includes('token=')).length, 0, 'ссылка не отправлена');
-    assert.equal(srv.smsOutbox(PHONE_A).length, 0, 'SMS не отправлено');
-  } finally {
-    await stop();
-  }
-});
-
-test('один подтверждённый телефон не может принадлежать двум аккаунтам', async () => {
-  const { srv, base, stop } = await start();
-  try {
-    await createVerified(base, srv, ALICE, 'A_PHONE', PW, PHONE_A);
-    const reg = await fetch(`${base}/register`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ userId: BOB, password: PW, phone: PHONE_A }) });
-    assert.equal(reg.status, 409, 'регистрация с занятым номером отклоняется');
-    const bob = await ChatClient.create(base, BOB, 'B_PHONE', PW);
-    await assert.rejects(bob.raw('POST', '/account/phone', { password: PW, phone: PHONE_A }), (e) => e.status === 409, 'занятый номер не принимается даже для SMS');
-  } finally {
-    await stop();
-  }
-});
-test('код подтверждения телефона приходит не чаще трёх раз в час', async () => {
-  const { srv, base, stop } = await start();
-  try {
-    const alice = await ChatClient.create(base, ALICE, 'A_PHONE', PW, { phone: PHONE_A }); // первый код
-    await alice.raw('POST', '/account/phone', { phone: PHONE_A, password: PW }); // второй
-    await alice.raw('POST', '/account/phone', { phone: PHONE_A, password: PW }); // третий
-    await assert.rejects(alice.raw('POST', '/account/phone', { phone: PHONE_A, password: PW }), (e) => e.status === 429);
-    assert.equal(srv.smsOutbox(PHONE_A).length, 3);
-  } finally {
-    await stop();
-  }
-});
-
-test('смена номера требует пароль: устройство без пароля номер не меняет', async () => {
-  const { srv, base, stop } = await start();
-  try {
-    const alice = await createVerified(base, srv, ALICE, 'A_PHONE', PW, PHONE_A);
-    await assert.rejects(alice.raw('POST', '/account/phone', { phone: '+37477000003' }), (e) => e.status === 403, 'без пароля не меняется');
-    await assert.rejects(alice.raw('POST', '/account/phone', { phone: '+37477000003', password: FIXTURE_2 }), (e) => e.status === 403, 'с чужим паролем не меняется');
-    await alice.raw('POST', '/account/phone', { phone: '+37477000003', password: PW });
-    assert.equal(srv.smsOutbox('+37477000003').length, 1, 'с паролем код уходит на новый номер');
-  } finally {
-    await stop();
-  }
-});
-
-test('открытие ссылки из письма не подтверждает восстановление: нужна кнопка на странице', async () => {
-  const { srv, base, stop } = await start();
-  try {
-    await createVerified(base, srv, ALICE, 'A_PHONE', PW, PHONE_A);
-    await post(base, '/recovery/start', { userId: ALICE, locale: 'ru' });
-    const token = linkTokenFrom(srv, ALICE);
-    const page = await fetch(`${base}/recovery/confirm?user=${encodeURIComponent(ALICE)}&token=${token}`);
-    assert.equal(page.status, 200);
-    assert.match(await page.text(), /<form[^>]*method="post"/, 'страница с кнопкой подтверждения');
-    const code = smsCodeFrom(srv, PHONE_A);
-    await assert.rejects(post(base, '/recovery/complete', { userId: ALICE, code, newPassword: NEW_PW }), (e) => e.status === 403, 'после открытия ссылки без кнопки восстановление не проходит');
-    await post(base, '/recovery/confirm', { user: ALICE, token });
-    await post(base, '/recovery/complete', { userId: ALICE, code, newPassword: NEW_PW });
-  } finally {
-    await stop();
-  }
-});
-
-test('кнопка на странице подтверждения отправляет форму и показывает результат', async () => {
-  const { srv, base, stop } = await start();
-  try {
-    await createVerified(base, srv, ALICE, 'A_PHONE', PW, PHONE_A);
-    await post(base, '/recovery/start', { userId: ALICE, locale: 'ru' });
-    const token = linkTokenFrom(srv, ALICE);
-    const form = { 'content-type': 'application/x-www-form-urlencoded' };
-    const ok = await fetch(`${base}/recovery/confirm`, { method: 'POST', headers: form, body: new URLSearchParams({ user: ALICE, token }).toString() });
-    assert.equal(ok.status, 200);
-    assert.match(await ok.text(), /Подтверждено/);
-    const wrong = await fetch(`${base}/recovery/confirm`, { method: 'POST', headers: form, body: new URLSearchParams({ user: ALICE, token: FIXTURE_3 }).toString() });
-    assert.equal(wrong.status, 403);
-    assert.match(await wrong.text(), /неверная/);
+    const duplicate = await fetch(`${base}/register`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ userId: BOB, password: PW, phone: PHONE_A, pin: TEST_PIN, pinConfirmation: TEST_PIN }),
+    });
+    assert.equal(duplicate.status, 409, 'регистрация с занятым номером отклоняется');
+    await assert.rejects(alice.raw('POST', '/account/phone', { password: PW, phone: PHONE_A }), (error) => error.status === 409);
+    assert.equal(srv.smsOutbox(PHONE_A).length, 0, 'номер не требует SMS-подтверждения');
   } finally {
     await stop();
   }
@@ -479,7 +412,7 @@ test('повторяет очистку устройств после части
   try {
     const phone = await createVerified(base, srv, ALICE, 'A_PHONE', PW, PHONE_A);
     const code = await startRecovery(base, srv, ALICE, PHONE_A);
-    await post(base, '/recovery/complete', { userId: ALICE, code, newPassword: NEW_PW });
+    await post(base, '/recovery/complete', { userId: ALICE, code, pin: TEST_PIN, newPassword: NEW_PW });
     srv.advance(RECOVERY_DELAY_MS + 1000);
 
     await assert.rejects(phone.sync(), (error) => error.status === 500);
@@ -494,7 +427,7 @@ test('повторяет очистку устройств после части
     assert.equal(retry.body.status, 'identity_check_required');
     const completed = await store.recoveryGet(ALICE);
     assert.equal(completed.windowKeyResetAt, null);
-    assert.ok(srv.mailbox(ALICE).some((mail) => mail.templateId === 'old_devices_revoked'));
+    assert.ok(srv.mailbox(emailForUserId(ALICE)).some((mail) => mail.templateId === 'old_devices_revoked'));
   } finally {
     await stop();
   }
@@ -505,7 +438,7 @@ test('identity challenge is bound to the requesting device and resend is rate li
   try {
     await createVerified(base, srv, ALICE, 'A_PHONE', PW, PHONE_A);
     const recoveryCode = await startRecovery(base, srv, ALICE, PHONE_A);
-    await post(base, '/recovery/complete', { userId: ALICE, code: recoveryCode, newPassword: NEW_PW });
+    await post(base, '/recovery/complete', { userId: ALICE, code: recoveryCode, pin: TEST_PIN, newPassword: NEW_PW });
 
     const first = await rawLogin(base, ALICE, NEW_PW, 'B_NEW');
     assert.equal(first.status, 202);
@@ -513,14 +446,14 @@ test('identity challenge is bound to the requesting device and resend is rate li
     assert.equal(typeof first.body.challengeId, 'string');
     assert.equal(first.body.codeSent, true);
     const firstChallengeId = first.body.challengeId;
-    const sentBefore = srv.mailbox(ALICE).filter((mail) => mail.templateId === 'recovery_login_code').length;
+    const sentBefore = srv.mailbox(emailForUserId(ALICE)).filter((mail) => mail.templateId === 'recovery_login_code').length;
 
     const repeated = await rawLogin(base, ALICE, NEW_PW, 'B_NEW');
     assert.equal(repeated.status, 202);
     assert.equal(repeated.body.challengeId, firstChallengeId);
     assert.equal(repeated.body.codeSent, false);
     assert.equal(
-      srv.mailbox(ALICE).filter((mail) => mail.templateId === 'recovery_login_code').length,
+      srv.mailbox(emailForUserId(ALICE)).filter((mail) => mail.templateId === 'recovery_login_code').length,
       sentBefore,
       'active challenge does not send duplicate email inside the cooldown',
     );
@@ -538,7 +471,7 @@ test('identity challenge expires and can be reissued after its resend cooldown',
   try {
     await createVerified(base, srv, ALICE, 'A_PHONE', PW, PHONE_A);
     const recoveryCode = await startRecovery(base, srv, ALICE, PHONE_A);
-    await post(base, '/recovery/complete', { userId: ALICE, code: recoveryCode, newPassword: NEW_PW });
+    await post(base, '/recovery/complete', { userId: ALICE, code: recoveryCode, pin: TEST_PIN, newPassword: NEW_PW });
 
     const first = await rawLogin(base, ALICE, NEW_PW, 'B_NEW');
     const firstChallengeId = first.body.challengeId;
@@ -560,7 +493,7 @@ test('identity code attempts remain bounded across resend and lock the challenge
   try {
     await createVerified(base, srv, ALICE, 'A_PHONE', PW, PHONE_A);
     const recoveryCode = await startRecovery(base, srv, ALICE, PHONE_A);
-    await post(base, '/recovery/complete', { userId: ALICE, code: recoveryCode, newPassword: NEW_PW });
+    await post(base, '/recovery/complete', { userId: ALICE, code: recoveryCode, pin: TEST_PIN, newPassword: NEW_PW });
 
     const first = await rawLogin(base, ALICE, NEW_PW, 'B_NEW');
     const actualCode = identityCodeFrom(srv, ALICE);
