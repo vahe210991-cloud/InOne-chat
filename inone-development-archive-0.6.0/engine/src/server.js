@@ -2076,8 +2076,8 @@ if (req.method === 'POST' && p === '/login') {
         }
         const profile = await storage.profileGet(d.userId);
         if (!profile?.emailVerified || !profile.email) return send(res, 403, { error: 'verified email required' });
-        const perAccount = await checkRate('stepupPerAccount', d.userId);
-        const perAddress = await checkRate('recoveryPerAddress', clientIp(req));
+        const perAccount = await checkRate('pinResetPerAccount', d.userId);
+        const perAddress = await checkRate('pinResetPerAddress', clientIp(req));
         if (!perAccount.allowed || !perAddress.allowed) {
           const retryAt = Math.max(perAccount.retryAt ?? 0, perAddress.retryAt ?? 0);
           return send(res, 429, { error: 'too many PIN reset requests', retryAt: new Date(retryAt).toISOString() });
