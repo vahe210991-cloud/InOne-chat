@@ -816,3 +816,6 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Updated development/reports/2026-11-27-feed-domain-foundation.md. Production routes, schema/migrations, storage worker, object encryption, media delivery and Flutter integration remain NOT STARTED.
 - No shared server/store/schema files changed. No changes to chat/MLS files. PR #174 remains Draft and unmerged; PR #171/#172/#173 remain separate and unmerged. PR #173 remains on owner-directed HOLD pending #169.
 - Current work remains isolated on feat/feed-domain-foundation-beta1-main-7d34b99-20261127. No WBS weights/progress percentages changed and no task closed.
+
+
+- Follow-up domain hardening: removed the text-first mandatory-content helper from the Feed domain module; added canonical request hashing over optional normalized caption plus ordered media IDs; changed pagination helper to emit only HMAC-signed scope-bound cursors; rejected inherited keyring properties and non-canonical signature encodings. Rewrote domain tests to match the media-first contract. These tests remain unexecuted.
