@@ -8,6 +8,17 @@ import { TemporaryMatrixEngine, RequestType } from './crypto-engine.js';
 // Пароль, которым тесты создают аккаунты. В приложении пароль выбирает пользователь.
 export const DEFAULT_PASSWORD = randomBytes(24).toString('hex'); // случайный пароль на запуск, в коде секретов нет
 const enc = encodeURIComponent;
+const testClientsByUser = new Map();
+
+function registerTestClient(client) {
+  const key = `${client.baseUrl}|${client.userId}`;
+  let devices = testClientsByUser.get(key);
+  if (!devices) {
+    devices = new Map();
+    testClientsByUser.set(key, devices);
+  }
+  devices.set(client.deviceId, client);
+}
 
 export class ChatClient {
   constructor(baseUrl, userId, deviceId, engine) {
@@ -39,6 +50,7 @@ export class ChatClient {
     client.token = session.token;
     client.refreshToken = session.refreshToken;
     client.password = password;
+    registerTestClient(client);
     return client;
   }
 
@@ -50,6 +62,7 @@ export class ChatClient {
     client.token = session.token;
     client.refreshToken = session.refreshToken;
     client.password = password;
+    registerTestClient(client);
     return client;
   }
 
@@ -65,6 +78,7 @@ export class ChatClient {
       client.token = res.token;
       client.refreshToken = res.refreshToken;
       client.password = password;
+      registerTestClient(client);
       return client;
     }
     await approver.approveDevice(res.approvalId, res.code);
@@ -74,6 +88,7 @@ export class ChatClient {
         client.token = claim.token;
         client.refreshToken = claim.refreshToken;
         client.password = password;
+        registerTestClient(client);
         return client;
       }
       if (claim.status !== 'pending') throw new Error(`вход отклонён: ${claim.status}`);
@@ -212,9 +227,34 @@ export class ChatClient {
     await this.shareRoomKey(roomId, members);
   }
 
-  /** Создаёт беседу. Создатель становится владельцем. */
-  async createRoom(roomId, members) {
-    return this.raw('POST', '/rooms', { roomId, members });
+  /** Test fixture only: create the room, then add fixture users through the server MLS Commit path.
+   * Synthetic opaque commit bytes here exercise backend state transitions, not production cryptography.
+   */
+  async createRoom(roomId, members = [], options = {}) {
+    const created = await this.raw('POST', '/rooms', { roomId, ...options });
+    this.roomMembers.set(roomId, [this.userId]);
+    const targets = [...new Set(members)].filter((id) => id !== this.userId);
+    if (targets.length > 0) {
+      const welcomes = targets.flatMap((userId) => {
+        const devices = [...(testClientsByUser.get(`${this.baseUrl}|${userId}`)?.values() ?? [])];
+        if (devices.length === 0) throw new Error(`no active test device registered for ${userId}`);
+        return devices.map((device) => ({
+          userId,
+          deviceId: device.deviceId,
+          welcome: randomBytes(32).toString('base64'),
+        }));
+      });
+      const epoch = (await this.raw('GET', `/mls/groups/${enc(roomId)}/epoch`)).epoch;
+      await this.raw('POST', `/mls/groups/${enc(roomId)}/commits`, {
+        epoch,
+        clientOperationId: `test-create-${randomBytes(16).toString('hex')}`,
+        commit: randomBytes(32).toString('base64'),
+        changes: { adds: targets, removes: [] },
+        welcomes,
+      });
+      await this.applyMembership(roomId);
+    }
+    return created;
   }
 
   /** Владелец назначает роль: 'admin' или 'member'. Состав беседы при этом не меняется. */
@@ -228,14 +268,34 @@ export class ChatClient {
   }
 
   /** Владелец добавляет участника. Текущий ключ отправителя получает новичок, историю — нет. */
+  // Test fixture only. Production Flutter clients use the persistent OpenMLS bridge.
   async addMember(roomId, userId) {
-    await this.raw('POST', `/rooms/${enc(roomId)}/members`, { userId });
+    const targetDevices = [...(testClientsByUser.get(`${this.baseUrl}|${userId}`)?.values() ?? [])];
+    if (targetDevices.length === 0) throw new Error(`no active test device registered for ${userId}`);
+    const epoch = (await this.raw('GET', `/mls/groups/${enc(roomId)}/epoch`)).epoch;
+    await this.raw('POST', `/mls/groups/${enc(roomId)}/commits`, {
+      epoch,
+      clientOperationId: `test-add-${randomBytes(16).toString('hex')}`,
+      commit: randomBytes(32).toString('base64'),
+      changes: { adds: [userId], removes: [] },
+      welcomes: targetDevices.map((device) => ({
+        userId,
+        deviceId: device.deviceId,
+        welcome: randomBytes(32).toString('base64'),
+      })),
+    });
     await this.applyMembership(roomId);
   }
 
-  /** Удаляет участника (владелец) или выходит сам (участник). После удаления ключи меняются. */
+  /** Test fixture only: model removal/self-leave through the backend MLS Remove Commit path. */
   async removeMember(roomId, userId) {
-    await this.raw('DELETE', `/rooms/${enc(roomId)}/members/${enc(userId)}`);
+    const epoch = (await this.raw('GET', `/mls/groups/${enc(roomId)}/epoch`)).epoch;
+    await this.raw('POST', `/mls/groups/${enc(roomId)}/commits`, {
+      epoch,
+      clientOperationId: `test-remove-${randomBytes(16).toString('hex')}`,
+      commit: randomBytes(32).toString('base64'),
+      changes: { adds: [], removes: [userId] },
+    });
     await this.applyMembership(roomId);
   }
 
@@ -344,7 +404,17 @@ export class ChatClient {
 
   /** Читает беседу и расшифровывает. Нерасшифрованные события помечаются, а не пропускаются. */
   async readText(roomId) {
-    const { events } = await this.raw('GET', `/rooms/${enc(roomId)}/events`);
+    const events = [];
+    let since = 0;
+    let hasMore = true;
+    while (hasMore) {
+      const page = await this.raw('GET', `/rooms/${enc(roomId)}/events?since=${since}&limit=200`);
+      events.push(...(page.events ?? []));
+      const nextSince = Number(page.nextSince ?? since);
+      hasMore = page.hasMore === true;
+      if (hasMore && nextSince <= since) throw new Error('room event pagination cursor did not advance');
+      since = nextSince;
+    }
     const out = [];
     for (const ev of events) {
       try {
