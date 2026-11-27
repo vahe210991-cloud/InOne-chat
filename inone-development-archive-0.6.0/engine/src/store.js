@@ -283,7 +283,8 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
           const upgradedHash = upgrade ? await upgrade(pin, rows[0].pin_hash) : null;
           await c.query(
             `UPDATE pins SET pin_hash = COALESCE($2, pin_hash), failed = 0, locked_until = NULL,
-               last_verified_at = CASE WHEN $3 THEN $4 ELSE last_verified_at END
+               last_verified_at = CASE WHEN $3 THEN $4 ELSE last_verified_at END,
+               reminder_next_at = CASE WHEN $3 THEN $4 + 604800000 ELSE reminder_next_at END
              WHERE user_id = $1`,
             [userId, upgradedHash, markVerified, now],
           );
@@ -1548,7 +1549,7 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
         }
 
         await client.query(
-          'UPDATE pins SET pin_hash = COALESCE($2, pin_hash), failed = 0, locked_until = NULL, last_verified_at = $3 WHERE user_id = $1',
+          'UPDATE pins SET pin_hash = COALESCE($2, pin_hash), failed = 0, locked_until = NULL, last_verified_at = $3, reminder_next_at = $3 + 604800000 WHERE user_id = $1',
           [userId, pinOk.upgradedHash ?? null, now],
         );
         const { next, result } = complete(current, accountsFound[0].password_hash);
