@@ -70,3 +70,6 @@ No test/build result is claimed until Actions reports it for the exact implement
 - PostgreSQL and memory stores now enforce the same all-active-device condition. Added a direct-chat regression that first publishes a package for only one of two active recipient devices, verifies the claim fails with `device_key_package_unavailable`, then publishes the second device's package and retries the same claim ID successfully with both devices.
 - This closes partial initial multi-device Welcome delivery. Device addition/revocation races after a claim has already been staged remain part of the separate device-revocation/rejoin acceptance gate; they are not declared complete here.
 - No tests or builds have been run.
+
+
+- Additional claim-replay hardening: if a still-`reserved` claim is retried before its client has staged a commit and the active device set changed, both stores restore the old regular package reservations and rebuild the claim for the current active-device set. This avoids a stale claim permanently omitting a device that became active before the retry.
