@@ -187,6 +187,8 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
     },
     async issuePinResetWithOutbox(userId, { challengeId, codeHash, deviceId, now, expiresAt }, enqueue) {
       return inTransaction(async (c) => {
+        const account = await c.query('SELECT 1 FROM accounts WHERE user_id = $1 FOR UPDATE', [userId]);
+        if (!account.rows.length) return { outcome: 'invalid' };
         const { rows } = await c.query(
           'SELECT * FROM pin_reset_challenges WHERE user_id = $1 FOR UPDATE',
           [userId],
