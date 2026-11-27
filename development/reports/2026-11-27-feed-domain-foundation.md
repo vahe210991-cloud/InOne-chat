@@ -110,6 +110,7 @@ The existing shared server/store/schema/config/main files were not changed. No P
 | Media-first API proposal | DRAFT, awaiting owner review |
 | Pure domain rules adapted to media-first | AUTHORED, NOT EXECUTED |
 | Feed encrypted object-store primitive | AUTHORED, NOT EXECUTED |
+| Feed keyring provider primitive | AUTHORED, NOT EXECUTED |
 | Feed media upload/processing/storage integration | NOT STARTED |
 | Post/PostMedia persistence and routes | NOT STARTED |
 | Authenticated Feed and profile gallery | NOT STARTED |
