@@ -677,11 +677,14 @@ This section records implementation work on branch `work/chat-groups-beta1-imple
 
 The owner clarified the intended Beta 1.0 behavior:
 
-- A recipient does not accept or reject a request when another account sends a personal message.
-- Direct messages are delivered without recipient approval.
+- A recipient does not accept or reject the chat or the first message. Direct messages are delivered without recipient approval.
 - MLS KeyPackage claims, Add Commit and per-device Welcome are automatic cryptographic provisioning, not a user-facing invitation or consent workflow.
 - `provisioning` is an internal backend state only. It means the MLS group has not yet completed its first membership commit. It must never be shown as a request awaiting recipient approval.
 - Once the Add Commit is accepted, both paired accounts can exchange messages through the MLS-only message route.
+- If the sender is not in the recipient's contact list, the first delivered message creates a separate contact prompt beside the sender's name with **Принять** and **Заблокировать**. This prompt does not delay or gate delivery.
+- **Принять** adds the sender to the recipient's contacts and removes the prompt. If the sender is already in contacts, no prompt appears.
+- **Заблокировать** blocks the pair, removes reciprocal contact entries and pending prompts, and prevents future direct messages/interactions. Previously delivered history remains available.
+- The contact prompt is an address-book decision, not an MLS membership or message-approval decision.
 
 ### 13.2. Implemented on the working branch, not yet accepted
 
