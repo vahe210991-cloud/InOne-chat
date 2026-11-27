@@ -52,9 +52,9 @@ Required adaptation before production use:
 - existing unsigned cursor serialization is only a parsing/format helper and is not a tamper-proof production cursor. Production cursor must use a server-secret HMAC and constant-time verification;
 - old text-only create semantics and tests must not be used as production post contract.
 
-Added pure helpers for optional caption normalization, canonical idempotency hashing over the normalized caption plus ordered media IDs, mandatory non-empty unique ready Feed media validation bound to the author, and HMAC-SHA-256 cursor signing/verification with key IDs, scope binding, canonical encoding checks and constant-time signature comparison. Pagination helper now emits signed cursors. Added corresponding tests to the existing feed-rules test file. These are domain primitives only; they are not wired into HTTP routes or persistence.
+Added pure helpers for optional caption normalization, canonical idempotency hashing over the normalized caption plus ordered media IDs, mandatory non-empty unique ready Feed media validation bound to the author, and HMAC-SHA-256 cursor signing/verification with key IDs, scope binding, canonical encoding checks and constant-time signature comparison. Pagination helper now emits signed cursors. Added a separate chunked AES-256-GCM encrypted object-store adapter with per-object random DEK, KEK-wrapped DEK, object/key/chunk-bound AAD, streaming reads/writes, and key-ID-based rotation support. Added domain and encrypted-store test cases to the existing backend test entry. These are isolated primitives only; they are not wired into HTTP routes, production config, key management or persistence.
 
-No backend routes, SQL migrations, Post/PostMedia persistence, media worker, object encryption, media delivery or Flutter integration have been implemented in this stage.
+No backend routes, SQL migrations, Post/PostMedia persistence, media validation/processing worker, production key-provider/configuration, encrypted Feed storage wiring, authenticated media delivery or Flutter integration have been implemented in this stage.
 
 ## Existing backend boundary
 
@@ -70,17 +70,17 @@ Feed requires a dedicated media domain adapter and isolated namespace. Existing 
 - #174 Feed domain foundation: open Draft; revised proposal is still unapproved until owner reviews it.
 - Main remains at 7d34b99fcc026a828b838e211d039c575aeace1d at the time of this report.
 
-No shared backend files were changed. No PR was merged. No tests were run in this stage and no PASS is claimed.
+The existing shared server/store/schema/config/main files were not changed. No PR was merged. New domain and encrypted-store tests were authored but not executed in this stage; no PASS is claimed.
 
 ## Next engineering sequence
 
 1. Finish independent static review of the media-first helpers and test source. The tests remain NOT RUN; run them only after the implementation batch is ready and then report the exact tested SHA.
 2. Inspect the existing object-store abstraction and deployment/runtime capabilities for an isolated Feed bucket/namespace, encryption key provider and worker execution model.
 3. Propose evidence-based numeric limits for photo count, bytes, codecs, video duration/resolution, rendition profiles and processing resource budgets. Do not hard-code arbitrary values.
-4. Reconcile #171/#173/#169 integration order and capture a fresh exact main SHA before touching server/store/schema.
+5. Reconcile #171/#173/#169 integration order and capture a fresh exact main SHA before touching server/store/schema.
 5. Implement Feed media reservation/quarantine/processing/storage/delivery in isolated modules, then transactional Post/PostMedia persistence and routes.
-6. Verify exact Dart UI sources in all relevant branches before connecting the approved screens.
-7. Add dynamic security and regression tests, then run applicable Actions on the exact final SHA.
+7. Verify exact Dart UI sources in all relevant branches before connecting the approved screens.
+8. Add dynamic security and regression tests, then run applicable Actions on the exact final SHA.
 
 ## Acceptance status
 
@@ -89,7 +89,8 @@ No shared backend files were changed. No PR was merged. No tests were run in thi
 | Owner-approved media encryption direction | APPROVED |
 | Media-first API proposal | DRAFT, awaiting owner review |
 | Pure domain rules adapted to media-first | AUTHORED, NOT EXECUTED |
-| Feed media upload/processing/storage | NOT STARTED |
+| Feed encrypted object-store primitive | AUTHORED, NOT EXECUTED |
+| Feed media upload/processing/storage integration | NOT STARTED |
 | Post/PostMedia persistence and routes | NOT STARTED |
 | Authenticated Feed and profile gallery | NOT STARTED |
 | Flutter integration | NOT STARTED |
