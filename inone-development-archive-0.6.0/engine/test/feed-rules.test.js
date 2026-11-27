@@ -6,6 +6,10 @@ import {
   POST_CONTENT_MAX_UTF8_BYTES,
   comparePostsNewestFirst,
   encodeFeedCursor,
+  encodeSignedFeedCursor,
+  parseSignedFeedCursor,
+  normalizePostCaption,
+  validatePublishableMedia,
   isValidPostId,
   isFeedRowAfterCursor,
   isValidPostIdempotencyKey,
@@ -91,4 +95,51 @@ test('feed pagination returns no cursor for the final page and validates limits'
   assert.throws(() => paginateFeedRows([], 0), RangeError);
   assert.throws(() => paginateFeedRows([], 51), RangeError);
   assert.throws(() => comparePostsNewestFirst({ postId: 'bad', createdAt: 1 }, { postId: id(1), createdAt: 1 }), TypeError);
+});
+
+
+test('caption is optional, normalized and rejects malformed values', () => {
+  assert.deepEqual(normalizePostCaption(undefined), {
+    ok: true, caption: null, codePoints: 0, utf8Bytes: 0,
+  });
+  assert.equal(normalizePostCaption('  \\r\\n  ').caption, null);
+  const caption = normalizePostCaption('  Cafe\\u0301\\r\\nPhoto  ');
+  assert.equal(caption.ok, true);
+  assert.equal(caption.caption, 'Café\\nPhoto');
+  assert.equal(caption.codePoints, [...caption.caption].length);
+  assert.equal(normalizePostCaption(42).error, 'invalid_caption');
+  assert.equal(normalizePostCaption('bad\\0caption').error, 'invalid_caption');
+  assert.equal(normalizePostCaption('\\ud800').error, 'invalid_unicode');
+});
+
+test('publication requires at least one unique ready Feed media item owned by the author', () => {
+  const authorId = 'account-internal-1';
+  const media = {
+    mediaId: id(10), kind: 'image', status: 'ready',
+    scope: 'feed', ownerId: authorId,
+  };
+  assert.equal(validatePublishableMedia([], authorId).error, 'media_required');
+  assert.equal(validatePublishableMedia([media], authorId).ok, true);
+  assert.equal(validatePublishableMedia([media, media], authorId).error, 'media_not_publishable');
+  assert.equal(validatePublishableMedia([{ ...media, status: 'processing' }], authorId).error, 'media_not_publishable');
+  assert.equal(validatePublishableMedia([{ ...media, scope: 'chat' }], authorId).error, 'media_not_publishable');
+  assert.equal(validatePublishableMedia([{ ...media, ownerId: 'other-account' }], authorId).error, 'media_not_publishable');
+  assert.equal(validatePublishableMedia([{ ...media, kind: 'document' }], authorId).error, 'media_not_publishable');
+  assert.equal(validatePublishableMedia([media], '').error, 'invalid_author');
+});
+
+test('signed feed cursor is scope-bound, key-versioned and rejects tampering', () => {
+  const key = { keyId: 'k1', secret: 'x'.repeat(32) };
+  const boundary = { createdAt: 1_795_000_000_123, postId: id(42), scope: 'global' };
+  const token = encodeSignedFeedCursor(boundary, key);
+  assert.deepEqual(parseSignedFeedCursor(token, { k1: key.secret }), {
+    ok: true, cursor: boundary,
+  });
+  assert.equal(parseSignedFeedCursor(token, { k1: 'y'.repeat(32) }).error, 'invalid_cursor');
+  assert.equal(parseSignedFeedCursor(token, { k1: key.secret }, 'own').error, 'invalid_cursor');
+  const [payload, signature] = token.split('.');
+  const altered = `${payload.slice(0, -1)}A.${signature}`;
+  assert.equal(parseSignedFeedCursor(altered, { k1: key.secret }).error, 'invalid_cursor');
+  assert.equal(parseSignedFeedCursor(token, {}).error, 'invalid_cursor');
+  assert.throws(() => encodeSignedFeedCursor(boundary, { keyId: 'k1', secret: 'short' }), TypeError);
 });
