@@ -102,3 +102,15 @@ No tasks were closed or crossed out. No WBS percentage was recalculated.
 - Current exact implementation head at handoff: 1d36d809d111b6d7da73bdbaa98115e0e3f85c6b.
 - 11 GitHub Actions checks were queued on that exact SHA. Results are pending; tests are not reported as passed.
 - This is a fail-closed backend safety patch, not yet a complete multi-room removal UX. PR remains Draft and unmerged.
+
+
+## Remediation execution update — 2026-11-27
+
+- PR #173 remains Draft/open/unmerged. Exact base: `7d34b99fcc026a828b838e211d039c575aeace1d`.
+- Implementation head advanced to `4ea0cd4df246778ea1ee171e768f50f48910a4bb`.
+- First CI on prior head `1d36d809d111b6d7da73bdbaa98115e0e3f85c6b` completed with failures in backend Node, PostgreSQL integration, Native MLS and the exact-SHA gate. Review identified stale legacy-DELETE test paths, an escaped template-literal syntax error, a PostgreSQL link/room lock-order inversion, and Rust consistency assertions that expected legacy server mutation to reconcile MLS state.
+- Corrective commits updated tests to use MLS Remove Commits, repaired the self-leave test syntax, changed link revocation to acquire the link row lock before room locks (matching open-join), and updated consistency assertions to preserve room-scoped recovery when only server membership metadata is changed.
+- The cross-organization MLS regression now explicitly asserts that the linked user is a room member and that the room epoch is active before checking revocation behavior.
+- Current-head GitHub Actions runs are queued/in progress, including Backend Node/PostgreSQL, Native MLS, P0 source validation, Compose runtime, Dev Container and exact-SHA acceptance. No PASS is claimed until all required jobs complete successfully on the exact head.
+- The remediation is still a backend fail-closed guard. Multi-room Flutter orchestration remains a follow-up; do not mark PROFILE-SEC-001 complete or strike it through.
+- No database migration, release flag, product policy or WBS change has been made.
