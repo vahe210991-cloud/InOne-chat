@@ -2686,7 +2686,7 @@ async mlsPendingRemovalsFor(userId) {
 
     /** Аккаунт с подтверждённой почтой и никнеймом одной транзакцией (и связью с провайдером, если задана).
      *  Возвращает ok | email | nickname | link | account. */
-    async createVerifiedAccount({ userId, passwordHash, email, nickname, nowMs, provider = null, joinDefaultOrg = false, locale = 'hy' }) {
+    async createVerifiedAccount({ userId, passwordHash, pinHash, email, nickname, nowMs, provider = null, joinDefaultOrg = false, locale = 'hy' }) {
       try {
         return await inTransaction(async (c) => {
           await c.query('INSERT INTO accounts (user_id, password_hash) VALUES ($1, $2)', [userId, passwordHash]);
@@ -2694,6 +2694,10 @@ async mlsPendingRemovalsFor(userId) {
           await c.query(
             'INSERT INTO profiles (user_id, email, email_verified, nickname, created_at, locale) VALUES ($1, $2, TRUE, $3, $4, $5)',
             [userId, email, nickname, nowMs, locale],
+          );
+          await c.query(
+            'INSERT INTO pins (user_id, pin_hash, failed, locked_until, last_verified_at, reminder_next_at) VALUES ($1, $2, 0, NULL, $3, $4)',
+            [userId, pinHash, nowMs, nowMs + 7 * 24 * 60 * 60_000],
           );
           if (provider) {
             await c.query(
