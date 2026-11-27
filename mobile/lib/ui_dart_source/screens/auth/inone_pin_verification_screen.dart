@@ -9,11 +9,13 @@ class InOnePinVerificationScreen extends StatefulWidget {
     required this.onSubmit,
     required this.onForgotPin,
     required this.onLogout,
+    required this.onDone,
   });
 
   final Future<InOneFailure?> Function(String pin) onSubmit;
   final VoidCallback onForgotPin;
   final VoidCallback onLogout;
+  final VoidCallback onDone;
 
   @override
   State<InOnePinVerificationScreen> createState() => _InOnePinVerificationScreenState();
@@ -31,7 +33,7 @@ class _InOnePinVerificationScreenState extends State<InOnePinVerificationScreen>
 
   void _submit() {
     if (!_form.validate()) return;
-    run('verify', () => widget.onSubmit(_form.value('pin')));
+    run('verify', () => widget.onSubmit(_form.value('pin')), onSuccess: widget.onDone);
   }
 
   @override
