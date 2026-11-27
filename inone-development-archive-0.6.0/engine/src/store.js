@@ -2511,28 +2511,47 @@ async mlsPendingRemovalsFor(userId) {
         }
         const roomKind = roomKindRows[0].kind;
         let directConversation = null;
+        if (roomKind === 'direct') {
+          const { rows: pairLookup } = await client.query(
+            'SELECT user_a, user_b FROM direct_conversations WHERE room_id = $1',
+            [roomId],
+          );
+          if (!pairLookup[0]) {
+            await client.query('ROLLBACK');
+            return { ok: false, reason: 'direct_add_not_authorized', epoch: current };
+          }
+          const { rows: pairAccounts } = await client.query(
+            'SELECT user_id FROM accounts WHERE user_id = ANY($1::text[]) ORDER BY user_id FOR SHARE',
+            [[pairLookup[0].user_a, pairLookup[0].user_b]],
+          );
+          if (pairAccounts.length !== 2) {
+            await client.query('ROLLBACK');
+            return { ok: false, reason: 'direct_add_not_authorized', epoch: current };
+          }
+          const { rows: conversations } = await client.query(
+            'SELECT user_a, user_b, created_by, status FROM direct_conversations WHERE room_id = $1 FOR SHARE',
+            [roomId],
+          );
+          directConversation = conversations[0] ?? null;
+          if (!directConversation) {
+            await client.query('ROLLBACK');
+            return { ok: false, reason: 'direct_add_not_authorized', epoch: current };
+          }
+          const { rows: blocked } = await client.query(
+            'SELECT 1 FROM user_blocks WHERE (blocker_id = $1 AND blocked_id = $2) OR (blocker_id = $2 AND blocked_id = $1) FOR SHARE',
+            [directConversation.user_a, directConversation.user_b],
+          );
+          if (blocked.length) {
+            await client.query('ROLLBACK');
+            return { ok: false, reason: 'user_blocked', epoch: current };
+          }
+        }
         if (roomKind === 'direct' && (changes.removes?.length ?? 0) > 0) {
           await client.query('ROLLBACK');
           return { ok: false, reason: 'direct_membership_fixed', epoch: current };
         }
         if ((changes.adds ?? []).length > 0) {
           if (roomKind === 'direct') {
-            const { rows: pairLookup } = await client.query(
-              'SELECT user_a, user_b FROM direct_conversations WHERE room_id = $1',
-              [roomId],
-            );
-            if (!pairLookup[0]) {
-              await client.query('ROLLBACK');
-              return { ok: false, reason: 'direct_add_not_authorized', epoch: current };
-            }
-            const { rows: pairAccounts } = await client.query(
-              'SELECT user_id FROM accounts WHERE user_id = ANY($1::text[]) ORDER BY user_id FOR SHARE',
-              [[pairLookup[0].user_a, pairLookup[0].user_b]],
-            );
-            if (pairAccounts.length !== 2) {
-              await client.query('ROLLBACK');
-              return { ok: false, reason: 'direct_add_not_authorized', epoch: current };
-            }
             const { rows: conversations } = await client.query(
               'SELECT user_a, user_b, created_by, status FROM direct_conversations WHERE room_id = $1 FOR UPDATE',
               [roomId],
@@ -2547,14 +2566,6 @@ async mlsPendingRemovalsFor(userId) {
               || !keyPackageClaimId || joinRequestUserId) {
               await client.query('ROLLBACK');
               return { ok: false, reason: 'direct_add_not_authorized', epoch: current };
-            }
-            const { rows: blocked } = await client.query(
-              'SELECT 1 FROM user_blocks WHERE (blocker_id = $1 AND blocked_id = $2) OR (blocker_id = $2 AND blocked_id = $1) FOR SHARE',
-              [senderId, counterpart],
-            );
-            if (blocked.length) {
-              await client.query('ROLLBACK');
-              return { ok: false, reason: 'user_blocked', epoch: current };
             }
           } else {
             // Lock order is intentional: active organization links are locked before
