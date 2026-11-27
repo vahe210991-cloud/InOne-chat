@@ -179,3 +179,12 @@ The existing shared server/store/schema/config/main files were not changed. No P
 | Beta 1.0 Feed | NOT ACCEPTED |
 
 No WBS weights or progress percentages were changed. No task was closed or struck through.
+
+### Worker and deployment topology finding
+
+- The repository's Compose file is explicitly a development-only PostgreSQL + backend stack. The deployment guide documents direct Node startup behind an HTTPS proxy; no production Compose/Kubernetes/orchestrator manifest or independently deployed media-worker service was found in the reviewed paths.
+- The existing in-process email and push workers do not establish a safe media-processing isolation boundary. CPU/memory-heavy or malformed media must not execute inside the public HTTP request process.
+- Recommended implementation boundary (not yet wired): a distinct Feed media-worker process/service with bounded concurrency and resource limits, consuming durable processing jobs; the public API only reserves/uploads/quarantines and publishes after the worker reports validated derivatives. It may share a pinned application image only if the chosen media runtime and deployment platform support a separately constrained worker command. Otherwise use a dedicated worker image.
+- Quarantine and final encrypted Feed objects must remain in separate namespaces. Worker temp files must be private, bounded, cleaned on success/failure/cancellation, and never served directly. The deployment platform, durable queue, and shared private storage mechanism must be selected before wiring this topology.
+- This remains a design recommendation, not an implementation or production-readiness claim.
+
