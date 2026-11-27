@@ -2687,6 +2687,7 @@ async mlsPendingRemovalsFor(userId) {
     /** Аккаунт с подтверждённой почтой и никнеймом одной транзакцией (и связью с провайдером, если задана).
      *  Возвращает ok | email | nickname | link | account. */
     async createVerifiedAccount({ userId, passwordHash, pinHash, email, nickname, nowMs, provider = null, joinDefaultOrg = false, locale = 'hy' }) {
+      if (typeof pinHash !== 'string' || pinHash.length < 1) throw new TypeError('PIN hash is required');
       try {
         return await inTransaction(async (c) => {
           await c.query('INSERT INTO accounts (user_id, password_hash) VALUES ($1, $2)', [userId, passwordHash]);
@@ -2721,6 +2722,7 @@ async mlsPendingRemovalsFor(userId) {
      * A failed account insert rolls back ticket consumption so the user can retry safely.
      */
     async createVerifiedAccountWithEmailToken({ email, changeEmailCode, userId, passwordHash, pinHash, nickname, nowMs, joinDefaultOrg = false }) {
+      if (typeof pinHash !== 'string' || pinHash.length < 1) throw new TypeError('PIN hash is required');
       try {
         return await inTransaction(async (c) => {
           await c.query('INSERT INTO email_codes (email) VALUES ($1) ON CONFLICT (email) DO NOTHING', [email]);
