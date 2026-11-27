@@ -147,6 +147,7 @@ test('direct chats require no recipient approval and activate automatically thro
       'recipient can reply without accepting a chat request');
     const aliceSummary = (await alice.raw('GET', '/rooms/mine')).rooms.find((room) => room.roomId === opened.roomId);
     assert.equal(aliceSummary.unreadCount, 1, 'sender sees the recipient reply as unread');
+    assert.equal(aliceSummary.incomingContactRequest, true, 'the reverse direction gets its own contact prompt if the peer is not in contacts');
     const thirdPartyWrite = await s.store.appendRoomEvent(
       opened.roomId, CAROL, 'm.room.encrypted', { ciphertext: 'third-party' }, Date.now(),
     );
