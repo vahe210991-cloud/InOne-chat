@@ -8,7 +8,7 @@
 
 ## Owner clarification: direct-message delivery
 
-A recipient does not accept or reject the chat or the first message. Direct messages are delivered without recipient approval. MLS KeyPackage claim, Add Commit and per-device Welcome are automatic cryptographic provisioning, not a consent flow. The backend's `provisioning` state is internal only and must not be displayed as a request awaiting acceptance. If the sender is not in the recipient's contacts, the first delivered message displays **Принять** and **Заблокировать** beside the sender name. Accept adds the sender to the recipient's contacts; block prevents future direct messages in both directions and clears pending prompts. Neither action gates delivery of the already-received message.
+A recipient does not accept or reject the chat or the first message. Direct messages are delivered without recipient approval. MLS KeyPackage claim, Add Commit and per-device Welcome are automatic cryptographic provisioning, not a consent flow. The backend's `provisioning` state is internal only and must not be displayed as a request awaiting acceptance. If the sender is not in the recipient's contacts, the first delivered message displays **Принять** and **Заблокировать** beside the sender name. Accept adds the sender to the recipient's contacts; block prevents future direct messages in both directions, clears pending prompts and does not disclose the block initiator to the blocked peer. Neither action gates delivery of the already-received message.
 
 ## Code changes present on the branch
 
