@@ -6,11 +6,15 @@ import assert from 'node:assert/strict';
 import { createServer } from '../src/server.js';
 import { createMemoryStore } from '../src/store-memory.js';
 import { hashPassword } from '../src/account-rules.js';
+import { hashPin } from '../src/pin-security.js';
 import { freshEmailCode, requestEmailCode, checkEmailCode, useEmailToken } from '../src/email-code-rules.js';
 
 const PEPPER = randomBytes(24).toString('hex');
 const HOUR = 3600_000;
 const PW = 'длинный-пароль-1';
+const TEST_PIN = '80421697';
+let phoneSequence = 1;
+const testPhone = () => `+3747700${String(phoneSequence++).padStart(4, '0')}`;
 
 async function start(extra = {}) {
   const srv = createServer({ defaultOrgAutoJoin: true, pinPepper: PEPPER, ...extra });
@@ -40,7 +44,7 @@ async function registerByEmail(base, srv, email, nickname, password = PW) {
   await call(base, 'POST', '/register/email', { body: { email, locale: 'ru' } });
   const confirmed = await call(base, 'POST', '/register/email/confirm', { body: { email, code: codeFor(srv, email) } });
   return call(base, 'POST', '/register', {
-    body: { email, registrationToken: confirmed.body.registrationToken, password, nickname },
+    body: { email, registrationToken: confirmed.body.registrationToken, password, nickname, phone: testPhone(), pin: TEST_PIN, pinConfirmation: TEST_PIN },
   });
 }
 
@@ -56,9 +60,9 @@ test('I1: регистрация по почте — код на почту, н�
     });
     assert.equal(confirmed.status, 200);
     const reg = await call(base, 'POST', '/register', {
-      body: { email: 'anna@example.test', registrationToken: confirmed.body.registrationToken, password: PW, nickname: 'Anna.K' },
+      body: { email: 'anna@example.test', registrationToken: confirmed.body.registrationToken, password: PW, nickname: 'Anna.K', phone: testPhone(), pin: TEST_PIN, pinConfirmation: TEST_PIN },
     });
-    assert.equal(reg.status, 200, 'регистрация без телефона');
+    assert.equal(reg.status, 200, 'регистрация с обязательными телефоном и PIN');
     assert.equal(reg.body.verificationLevel, 1);
     const login = await call(base, 'POST', '/login', { body: { email: 'anna@example.test', password: PW, deviceId: 'ANNA_PHONE' } });
     assert.equal(login.status, 200, 'вход по почте и паролю');
@@ -81,7 +85,7 @@ test('I2: код истекает через 10 минут, токен реги�
     assert.equal(confirmed.status, 200);
     srv.advance(31 * 60_000);
     const late = await call(base, 'POST', '/register', {
-      body: { email: 'anna@example.test', registrationToken: confirmed.body.registrationToken, password: PW, nickname: 'Anna.K' },
+      body: { email: 'anna@example.test', registrationToken: confirmed.body.registrationToken, password: PW, nickname: 'Anna.K', phone: testPhone(), pin: TEST_PIN, pinConfirmation: TEST_PIN },
     });
     assert.equal(late.status, 410, 'токен старше 30 минут не принимается');
   } finally {
@@ -115,11 +119,11 @@ test('I4: ник — правила формата, зарезервирован
     const confirmed = await call(base, 'POST', '/register/email/confirm', { body: { email: 'anna@example.test', code: codeFor(srv, 'anna@example.test') } });
     const token = confirmed.body.registrationToken;
     for (const bad of ['ab', 'a'.repeat(21), '1abc', 'ann..a', 'ann_', 'admin', 'Аня']) {
-      const r = await call(base, 'POST', '/register', { body: { email: 'anna@example.test', registrationToken: token, password: PW, nickname: bad } });
+      const r = await call(base, 'POST', '/register', { body: { email: 'anna@example.test', registrationToken: token, password: PW, nickname: bad, phone: testPhone(), pin: TEST_PIN, pinConfirmation: TEST_PIN } });
       assert.equal(r.status, 400, `ник «${bad}» отклоняется`);
     }
     // Отклонённый ник не сжигает токен: тот же токен принимает правильный ник.
-    assert.equal((await call(base, 'POST', '/register', { body: { email: 'anna@example.test', registrationToken: token, password: PW, nickname: 'Anna.K' } })).status, 200);
+    assert.equal((await call(base, 'POST', '/register', { body: { email: 'anna@example.test', registrationToken: token, password: PW, nickname: 'Anna.K', phone: testPhone(), pin: TEST_PIN, pinConfirmation: TEST_PIN } })).status, 200);
     assert.equal((await registerByEmail(base, srv, 'boris@example.test', 'anna.k')).status, 409, 'ник занят без учёта регистра');
   } finally {
     await stop();
@@ -193,7 +197,7 @@ test('I9: registration and security emails follow the persisted in-app language'
       const confirmed = await call(base, 'POST', '/register/email/confirm', { body: { email, code } });
       assert.equal(confirmed.status, 200);
       const registered = await call(base, 'POST', '/register', {
-        body: { email, registrationToken: confirmed.body.registrationToken, password: PW, nickname: `Locale${locale.toUpperCase()}` },
+        body: { email, registrationToken: confirmed.body.registrationToken, password: PW, nickname: `Locale${locale.toUpperCase()}`, phone: testPhone(), pin: TEST_PIN, pinConfirmation: TEST_PIN },
       });
       assert.equal(registered.status, 200);
       const login = await call(base, 'POST', '/login', { body: { email, password: PW, deviceId: `LOCALE_${locale}` } });
@@ -223,8 +227,9 @@ test('I9: registration and security emails follow the persisted in-app language'
 
 test('I10: login locale is persisted before identity-check security email is queued', async () => {
   const store = createMemoryStore({ pinPepper: PEPPER });
-  store.createVerifiedAccount({
-    userId: '@login-locale', passwordHash: hashPassword(PW), email: 'login-locale@example.test',
+  await store.createVerifiedAccount({
+    userId: '@login-locale', passwordHash: hashPassword(PW), pinHash: await hashPin(PEPPER, TEST_PIN),
+    phoneE164: testPhone(), email: 'login-locale@example.test',
     nickname: 'LoginLocale', nowMs: Date.now(), locale: 'hy',
   });
   store.recoveryUpdate('@login-locale', (current) => ({
@@ -254,8 +259,9 @@ test('I10: login locale is persisted before identity-check security email is que
 
 test('I11: unauthenticated recovery emails follow the active UI locale without changing profile preference', async () => {
   const store = createMemoryStore({ pinPepper: PEPPER });
-  store.createVerifiedAccount({
-    userId: '@recovery-locale', passwordHash: hashPassword(PW), email: 'recovery-locale@example.test',
+  await store.createVerifiedAccount({
+    userId: '@recovery-locale', passwordHash: hashPassword(PW), pinHash: await hashPin(PEPPER, TEST_PIN),
+    phoneE164: testPhone(), email: 'recovery-locale@example.test',
     nickname: 'RecoveryLocale', nowMs: Date.now(), locale: 'hy',
   });
   const { srv, base, stop } = await start({ store });
@@ -275,6 +281,7 @@ test('I11: unauthenticated recovery emails follow the active UI locale without c
       body: {
         email: 'recovery-locale@example.test',
         code: recoveryCode,
+        pin: TEST_PIN,
         newPassword: 'новый-длинный-пароль-2',
         locale: 'en',
       },
