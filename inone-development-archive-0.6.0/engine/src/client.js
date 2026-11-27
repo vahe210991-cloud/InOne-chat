@@ -18,6 +18,7 @@ export class ChatClient {
     this.token = null;
     this.refreshToken = null;
     this.password = null;
+    this.recoveryPin = null;
     this.syncSince = 0;             // номер последнего обработанного события доставки (подтверждаем серверу, C-05)
     this.failedEvents = [];         // события доставки, которые движок не смог обработать (видны пользователю)
     this.signalSince = 0;           // номер последнего обработанного сигнала (подтверждаем серверу, C-20)
@@ -30,8 +31,13 @@ export class ChatClient {
   static async create(baseUrl, userId, deviceId, password = DEFAULT_PASSWORD, extra = {}) {
     const engine = await TemporaryMatrixEngine.create(userId, deviceId);
     const client = new ChatClient(baseUrl, userId, deviceId, engine);
+    const pin = extra.pin ?? '80421697';
+    const pinConfirmation = extra.pinConfirmation ?? pin;
+    const phone = extra.phone ?? `+37477${randomBytes(4).readUInt32BE(0).toString().padStart(8, '0')}`;
     try {
-      await client.raw('POST', '/register', { userId, password, ...extra });
+      await client.raw('POST', '/register', {
+        userId, password, phone, pin, pinConfirmation, ...extra,
+      });
     } catch (e) {
       if (e.status !== 409) throw e;
     }
@@ -39,6 +45,7 @@ export class ChatClient {
     client.token = session.token;
     client.refreshToken = session.refreshToken;
     client.password = password;
+    client.recoveryPin = pin;
     return client;
   }
 
