@@ -805,3 +805,14 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - No API route, DB schema/migration, PostgreSQL/in-memory persistence, media path, Flutter repository/screen, or navigation was changed. No implementation task was closed.
 - Exact-head GitHub Actions were queued/in progress at report creation; no PASS is claimed until the final PR SHA's jobs complete.
 - WBS weights and historical percentages remain unchanged. Feed scope/visibility owner decisions are documented separately in Draft PR #172.
+
+
+## 2026-11-27 — Feed media-first architecture and domain revision
+
+- Owner explicitly approved Feed media variant A: separate server-side media processing, TLS in transit, encrypted object storage at rest, mandatory authenticated access and fresh authorization at media delivery. Chat MLS and the existing chat file pipeline are out of scope.
+- Replaced the text-first draft in development/architecture/FEED-BETA1-API-CONTRACT-PROPOSAL.md with a media-first Post/PostMedia and upload/quarantine/processing/delivery/deletion contract. Text-only posts are rejected; caption is nullable; nickname is required in the author DTO; internal IDs are excluded.
+- Added pure domain helpers for optional caption normalization, mandatory non-empty unique ready Feed media validation bound to the author, and HMAC-SHA-256 cursor signing/verification with key IDs, query-scope binding and constant-time comparison.
+- Added unit test cases for the new domain rules. Tests have NOT been executed in this stage; no PASS is claimed.
+- Updated development/reports/2026-11-27-feed-domain-foundation.md. Production routes, schema/migrations, storage worker, object encryption, media delivery and Flutter integration remain NOT STARTED.
+- No shared server/store/schema files changed. No changes to chat/MLS files. PR #174 remains Draft and unmerged; PR #171/#172/#173 remain separate and unmerged. PR #173 remains on owner-directed HOLD pending #169.
+- Current work remains isolated on feat/feed-domain-foundation-beta1-main-7d34b99-20261127. No WBS weights/progress percentages changed and no task closed.
