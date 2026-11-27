@@ -1271,20 +1271,26 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
 
       if (req.method === 'POST' && p === '/register' && registrationMode === 'open') {
         const { userId, password, phone } = body;
-        // Лимит на регистрации с одного адреса: накрутка аккаунтов и SMS стоит денег (D5).
         const reg = await checkRate('registrationsPerAddress', clientIp(req));
         if (!reg.allowed) return send(res, 429, { error: 'too many registrations from this address', retryAt: new Date(reg.retryAt).toISOString() });
-        if (!userId || typeof password !== 'string' || password.length < MIN_PASSWORD_LENGTH) {
-          return send(res, 400, { error: 'userId and password (min 8 chars) required' });
+        if (typeof userId !== 'string' || userId.length < 3 || userId.length > 128
+            || typeof password !== 'string' || Array.from(password).length < MIN_PASSWORD_LENGTH
+            || Array.from(password).length > MAX_PASSWORD_LENGTH) {
+          return send(res, 400, { error: 'userId and password are invalid' });
         }
-        const hasPhone = phone !== undefined && phone !== null;
+        const pin = typeof body.pin === 'string' ? body.pin : '';
+        const pinConfirmation = typeof body.pinConfirmation === 'string' ? body.pinConfirmation : '';
+        const pinErrorText = weakPinReason(pin);
+        if (pinErrorText) return send(res, 400, { error: pinErrorText });
+        if (!validatePin(pinConfirmation) || pin !== pinConfirmation) {
+          return send(res, 400, { error: 'PIN confirmation does not match' });
+        }
+        const hasPhone = phone !== undefined && phone !== null && phone !== '';
         if (requirePhone && !hasPhone) return send(res, 400, { error: 'phone required' });
         const phoneNorm = hasPhone ? normalizePhone(phone, { blockedCountries: phoneBlockedCountries, allowedCountries: phoneAllowedCountries }) : null;
         if (phoneNorm?.error) return send(res, 400, { error: phoneNorm.error });
         if (phoneNorm) {
-          // На один номер SMS приходят не чаще заданного за сутки, с любого адреса и с любого аккаунта.
           const perPhone = await checkRate('phoneRegistrationPerPhone', phoneNorm.value.e164);
-          // Когда SMS подключены, регистрация с номером тратит тот же суточный лимит SMS на номер.
           if (smsEnabled) {
             const smsCount = await checkRate('smsPerPhone', phoneNorm.value.e164);
             if (!smsCount.allowed) return send(res, 429, { error: 'too many codes for this phone, try tomorrow', retryAt: new Date(smsCount.retryAt).toISOString() });
@@ -1292,17 +1298,23 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
           if (!perPhone.allowed) return send(res, 429, { error: 'too many codes for this phone, try tomorrow', retryAt: new Date(perPhone.retryAt).toISOString() });
         }
         if (phoneNorm && (await storage.phoneOwner(phoneNorm.value.e164))) return send(res, 409, { error: 'phone already used by another account' });
-        if (!(await storage.addAccount(userId, hashPassword(password), { joinDefaultOrg: defaultOrgAutoJoin }))) return send(res, 409, { error: 'account exists' });
-        // Номер подтверждается кодом из SMS: до подтверждения он не даёт права на восстановление (D5).
-        if (phoneNorm) {
-          const e164 = phoneNorm.value.e164;
-          // SMS пока не подключён: номер закрепляется за аккаунтом в ожидании подтверждения, код не отправляется.
+        const pinHash = await hashPin(pinPepper, pin);
+        const created = await storage.createOpenAccount({
+          userId,
+          passwordHash: hashPassword(password),
+          pinHash,
+          phoneE164: phoneNorm?.value.e164 ?? null,
+          nowMs: now(),
+          joinDefaultOrg: defaultOrgAutoJoin,
+        });
+        if (created !== 'ok') return send(res, 409, { error: created === 'phone' ? 'phone already used by another account' : 'account exists' });
+        if (phoneNorm && smsEnabled) {
           try {
-            if (smsEnabled) await sendPhoneCode(userId, e164);
-            else await storage.phoneUpdate(userId, () => ({ next: { phone: e164, verified: false, codeHash: null, codeAttempts: 0, codeExpiresAt: 0, sends: [] }, result: 'saved' }));
+            await sendPhoneCode(userId, phoneNorm.value.e164);
           } catch (e) {
-            if (e.code === '23505') return send(res, 409, { error: 'phone already used by another account' });
-            throw e;
+            logger?.warn('optional phone verification SMS could not be sent', {
+              errorCode: typeof e?.code === 'string' ? e.code : 'SMS_UNAVAILABLE',
+            });
           }
         }
         return send(res, 200, { ok: true });
