@@ -124,6 +124,16 @@ test('direct chats require no recipient approval and activate automatically thro
       'recipient receives the sent message without accepting a chat request');
     const bobSummary = (await bob.raw('GET', '/rooms/mine')).rooms.find((room) => room.roomId === opened.roomId);
     assert.equal(bobSummary.unreadCount, 1, 'direct room summary marks the incoming message unread');
+    assert.equal(bobSummary.incomingContactRequest, true, 'first message from a non-contact shows the contact actions');
+    assert.equal(bobSummary.isPeerContact, false);
+    const bobContacts = await bob.raw('GET', '/contacts');
+    assert.ok(bobContacts.incomingRequests.some((request) => request.userId === ALICE && request.roomId === opened.roomId));
+    const accepted = await bob.raw('POST', `/contacts/${enc(ALICE)}/accept`);
+    assert.equal(accepted.accepted, true, 'accept adds the sender to the recipient contact list without gating message delivery');
+    const bobSummaryAfterAccept = (await bob.raw('GET', '/rooms/mine')).rooms.find((room) => room.roomId === opened.roomId);
+    assert.equal(bobSummaryAfterAccept.incomingContactRequest, false);
+    assert.equal(bobSummaryAfterAccept.isPeerContact, true);
+    assert.ok((await bob.raw('GET', '/contacts')).contacts.some((contact) => contact.userId === ALICE));
     const replyWireMessage = Buffer.concat([
       buildPrivateMessageHeader(opened.roomId, committed.epoch),
       Buffer.from('opaque-mls-reply-ciphertext'),
