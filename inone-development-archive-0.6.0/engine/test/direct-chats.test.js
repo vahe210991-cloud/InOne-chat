@@ -118,6 +118,13 @@ test('direct chats require no recipient approval and activate automatically thro
     assert.equal(bobDirectRoom.name, null, 'the backend does not expose an opaque peer account ID as a display name when no nickname exists');
     assert.equal((await bob.raw('GET', '/mls/welcomes')).welcomes.length, 1);
     assert.equal((await bobTablet.raw('GET', '/mls/welcomes')).welcomes.length, 1);
+    const contactsBeforeFirstMessage = await bob.raw('GET', '/contacts');
+    assert.equal(
+      contactsBeforeFirstMessage.incomingRequests.some((request) => request.userId === ALICE),
+      false,
+      'opening or provisioning a direct chat alone must not create a contact prompt',
+    );
+
     const wireMessage = Buffer.concat([
       buildPrivateMessageHeader(opened.roomId, committed.epoch),
       Buffer.from('opaque-mls-ciphertext'),
