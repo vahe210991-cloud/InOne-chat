@@ -23,6 +23,7 @@ libcrux-ml-dsa = { version = "0.0.12", optional = true }
 libcrux-sha3 = { version = "0.0.12", optional = true }
 openmls_traits = "=0.6.0"
 openmls_memory_storage = "=0.6.0"
+zeroize = "=1.9.1"
 rand = "0.10"
 tls_codec = { version = "0.5", features = ["derive", "serde", "mls"] }
 hpke-rs = { version = "=0.8.0", features = ["hazmat", "serialization"] }

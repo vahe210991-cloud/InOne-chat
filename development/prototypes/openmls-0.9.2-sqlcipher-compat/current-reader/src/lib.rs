@@ -50,6 +50,24 @@ where
     }
 }
 
+fn assert_candidate_sqlite_runtime(connection: &Connection) {
+    let sqlite_version: String = connection
+        .query_row("SELECT sqlite_version()", [], |row| row.get(0))
+        .expect("read SQLite runtime version");
+    assert_eq!(
+        sqlite_version, "3.54.1",
+        "candidate must use the reviewed SQLite 3.54.1 runtime"
+    );
+
+    let cipher_version: String = connection
+        .query_row("PRAGMA cipher_version", [], |row| row.get(0))
+        .expect("read SQLCipher runtime version");
+    assert!(
+        cipher_version.trim().starts_with("4.20.0"),
+        "candidate must use SQLCipher 4.20.0, found {cipher_version}"
+    );
+}
+
 fn load_group<C>(
     path: &Path,
     crypto: C,
@@ -59,23 +77,17 @@ where
 {
     let mut connection = Connection::open(path)?;
     connection.pragma_update(None, "key", format!("x'{TEST_KEY_HEX}'"))?;
+    assert_candidate_sqlite_runtime(&connection);
     connection.query_row("SELECT count(*) FROM sqlite_master", [], |row| {
         row.get::<_, i64>(0)
     })?;
-    let cipher_version: String =
-        connection.query_row("PRAGMA cipher_version", [], |row| row.get(0))?;
-    if !cipher_version.trim().starts_with("4.20.0") {
-        return Err(format!(
-            "candidate connection must use SQLCipher 4.20.0, found {cipher_version}"
-        )
-        .into());
-    }
-
     {
         let mut migrations = SqliteStorageProvider::<JsonCodec, _>::new(&mut connection);
         migrations.run_migrations()?;
     }
 
+    let cipher_version: String =
+        connection.query_row("PRAGMA cipher_version", [], |row| row.get(0))?;
     let connection = Arc::new(connection);
     let provider = CandidateProvider {
         crypto,
@@ -98,9 +110,46 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::borrow::Borrow;
+
     use openmls::prelude::tls_codec::{Deserialize, Serialize};
     use openmls_basic_credential::SignatureKeyPair;
     use openmls_libcrux_crypto::CryptoProvider as LibcruxCrypto;
+
+    struct TransactionConnection<'a, 'conn>(&'a rusqlite::Transaction<'conn>);
+
+    impl Borrow<Connection> for TransactionConnection<'_, '_> {
+        fn borrow(&self) -> &Connection {
+            self.0
+        }
+    }
+
+    struct TransactionCandidateProvider<'a, 'conn, C> {
+        crypto: C,
+        storage: SqliteStorageProvider<JsonCodec, TransactionConnection<'a, 'conn>>,
+    }
+
+    impl<'a, 'conn, C> OpenMlsProvider for TransactionCandidateProvider<'a, 'conn, C>
+    where
+        C: OpenMlsCrypto + OpenMlsRand,
+    {
+        type CryptoProvider = C;
+        type RandProvider = C;
+        type StorageProvider =
+            SqliteStorageProvider<JsonCodec, TransactionConnection<'a, 'conn>>;
+
+        fn storage(&self) -> &Self::StorageProvider {
+            &self.storage
+        }
+
+        fn crypto(&self) -> &Self::CryptoProvider {
+            &self.crypto
+        }
+
+        fn rand(&self) -> &Self::RandProvider {
+            &self.crypto
+        }
+    }
 
     #[test]
     fn opens_and_reloads_existing_openmls_081_group_with_sqlcipher_and_libcrux() {
@@ -123,8 +172,17 @@ mod tests {
         )
         .expect("load legacy group with candidate");
         assert_eq!(group.group_id().as_slice(), GROUP_ID);
-        assert_eq!(group.epoch().as_u64(), 0);
-        assert_eq!(group.members().count(), 1);
+        assert_eq!(group.epoch().as_u64(), 3);
+        assert_eq!(group.members().count(), 2);
+        assert!(group.members().any(|member| {
+            member.credential.serialized_content() == b"inone-legacy-fixture-member"
+        }));
+        assert!(group.members().any(|member| {
+            member.credential.serialized_content() == b"inone-legacy-fixture-bob"
+        }));
+        assert!(!group.members().any(|member| {
+            member.credential.serialized_content() == b"inone-legacy-fixture-transient"
+        }));
         assert!(!cipher_version.trim().is_empty());
 
         // The private signing key remains inside SQLCipher storage. Read it with the
@@ -150,9 +208,46 @@ mod tests {
         )
         .expect("reopen and reload legacy group");
         assert_eq!(reopened.group_id().as_slice(), GROUP_ID);
-        assert_eq!(reopened.epoch().as_u64(), 0);
-        assert_eq!(reopened.members().count(), 1);
+        assert_eq!(reopened.epoch().as_u64(), 3);
+        assert_eq!(reopened.members().count(), 2);
+        assert!(reopened.members().any(|member| {
+            member.credential.serialized_content() == b"inone-legacy-fixture-member"
+        }));
+        assert!(reopened.members().any(|member| {
+            member.credential.serialized_content() == b"inone-legacy-fixture-bob"
+        }));
         assert_eq!(reopened_cipher, cipher_version);
+
+        // The old epoch-1 secret must still be available after a candidate reopen.
+        let legacy_epoch1_wire = std::fs::read(path.with_extension("epoch1.msg"))
+            .expect("read legacy epoch-1 application message");
+        let legacy_epoch1_protocol =
+            MlsMessageIn::tls_deserialize_exact(&legacy_epoch1_wire)
+                .expect("deserialize legacy epoch-1 application message")
+                .try_into_protocol_message()
+                .expect("legacy epoch-1 message is a protocol message");
+        let legacy_epoch1_received = reopened
+            .process_message(&reopened_provider, legacy_epoch1_protocol)
+            .expect("Libcrux decrypts retained epoch-1 message after candidate reopen");
+        match legacy_epoch1_received.into_content() {
+            ProcessedMessageContent::ApplicationMessage(message) => {
+                assert_eq!(
+                    message.into_bytes().as_slice(),
+                    b"legacy-openmls-081-epoch-1-message"
+                );
+            }
+            _ => panic!("expected legacy epoch-1 application message"),
+        }
+        let replayed_protocol = MlsMessageIn::tls_deserialize_exact(&legacy_epoch1_wire)
+            .expect("deserialize replayed legacy epoch-1 message")
+            .try_into_protocol_message()
+            .expect("replayed legacy epoch-1 message is a protocol message");
+        assert!(
+            reopened
+                .process_message(&reopened_provider, replayed_protocol)
+                .is_err(),
+            "replayed legacy epoch-1 message must be rejected after reopen"
+        );
 
         let reopened_key_pair = SignatureKeyPair::read(
             reopened_provider.storage(),
@@ -183,9 +278,37 @@ mod tests {
             load_group(path, openmls_rust_crypto::RustCrypto::default())
                 .expect("load legacy group with RustCrypto provider");
         assert_eq!(group.group_id().as_slice(), GROUP_ID);
-        assert_eq!(group.epoch().as_u64(), 0);
-        assert_eq!(group.members().count(), 1);
+        assert_eq!(group.epoch().as_u64(), 3);
+        assert_eq!(group.members().count(), 2);
+        assert!(group.members().any(|member| {
+            member.credential.serialized_content() == b"inone-legacy-fixture-member"
+        }));
+        assert!(group.members().any(|member| {
+            member.credential.serialized_content() == b"inone-legacy-fixture-bob"
+        }));
         assert!(cipher_version.trim().starts_with("4.20.0"));
+
+        // The 0.8.1 writer preserved a valid epoch-1 message. Decrypting it
+        // after loading epoch 3 proves retained past secrets survive migration.
+        let legacy_epoch1_wire = std::fs::read(path.with_extension("epoch1.msg"))
+            .expect("read legacy epoch-1 application message");
+        let legacy_epoch1_protocol =
+            MlsMessageIn::tls_deserialize_exact(&legacy_epoch1_wire)
+                .expect("deserialize legacy epoch-1 application message")
+                .try_into_protocol_message()
+                .expect("legacy epoch-1 message is a protocol message");
+        let legacy_epoch1_received = group
+            .process_message(&provider, legacy_epoch1_protocol)
+            .expect("RustCrypto decrypts the legacy epoch-1 message after migration");
+        match legacy_epoch1_received.into_content() {
+            ProcessedMessageContent::ApplicationMessage(message) => {
+                assert_eq!(
+                    message.into_bytes().as_slice(),
+                    b"legacy-openmls-081-epoch-1-message"
+                );
+            }
+            _ => panic!("expected legacy epoch-1 application message"),
+        }
 
         let key_pair = SignatureKeyPair::read(
             provider.storage(),
@@ -204,32 +327,225 @@ mod tests {
         drop(message);
     }
 
-    fn in_memory_provider() -> CandidateProvider<openmls_rust_crypto::RustCrypto> {
+    fn in_memory_connection() -> Arc<Connection> {
         let mut connection =
             Connection::open(":memory:").expect("open in-memory SQLCipher database");
         connection
             .pragma_update(None, "key", format!("x'{TEST_KEY_HEX}'"))
             .expect("apply SQLCipher key");
+        assert_candidate_sqlite_runtime(&connection);
         {
             let mut migrations = SqliteStorageProvider::<JsonCodec, _>::new(&mut connection);
             migrations
                 .run_migrations()
                 .expect("migrate in-memory MLS storage");
         }
-        let connection = Arc::new(connection);
+        Arc::new(connection)
+    }
+
+    fn in_memory_provider() -> CandidateProvider<openmls_rust_crypto::RustCrypto> {
         CandidateProvider {
             crypto: openmls_rust_crypto::RustCrypto::default(),
-            storage: SqliteStorageProvider::new(connection),
+            storage: SqliteStorageProvider::new(in_memory_connection()),
+        }
+    }
+
+    fn in_memory_libcrux_provider() -> CandidateProvider<LibcruxCrypto> {
+        CandidateProvider {
+            crypto: LibcruxCrypto::new().expect("initialize Libcrux provider"),
+            storage: SqliteStorageProvider::new(in_memory_connection()),
         }
     }
 
     #[test]
-    fn stable_candidate_supports_welcome_epoch_and_bidirectional_application_messages() {
-        let alice_provider = in_memory_provider();
+    fn storage_migrations_are_idempotent_and_apply_all_six_versions() {
+        let mut connection =
+            Connection::open(":memory:").expect("open in-memory SQLCipher database");
+        connection
+            .pragma_update(None, "key", format!("x'{TEST_KEY_HEX}'"))
+            .expect("apply SQLCipher key");
+        assert_candidate_sqlite_runtime(&connection);
+
+        {
+            let mut migrations = SqliteStorageProvider::<JsonCodec, _>::new(&mut connection);
+            migrations
+                .run_migrations()
+                .expect("apply initial storage migrations");
+            migrations
+                .run_migrations()
+                .expect("re-running storage migrations must be idempotent");
+        }
+
+        let migration_count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM openmls_sqlite_storage_migrations",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read applied migration count");
+        assert_eq!(migration_count, 6);
+
+        let group_data_schema: String = connection
+            .query_row(
+                "SELECT sql FROM sqlite_master
+                 WHERE type = 'table' AND name = 'openmls_group_data'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read migrated group-data schema");
+        assert!(group_data_schema.contains("application_export_tree"));
+
+        let auxiliary_tables: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master
+                 WHERE type = 'table' AND name IN (
+                    'vc_emulation_group_secrets',
+                    'vc_emulation_bindings',
+                    'vc_operation_trees',
+                    'vc_retained_key_package_material',
+                    'registered_vc_emulation_epochs'
+                 )",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count virtual-client storage tables");
+        assert_eq!(auxiliary_tables, 5);
+    }
+
+    #[test]
+    fn membership_epoch_transition_rolls_back_with_outer_sqlite_transaction() {
+        let alice_connection = in_memory_connection();
+        let alice_provider = CandidateProvider {
+            crypto: openmls_rust_crypto::RustCrypto::default(),
+            storage: SqliteStorageProvider::new(Arc::clone(&alice_connection)),
+        };
         let bob_provider = in_memory_provider();
 
-        let alice_signer =
-            SignatureKeyPair::new(CIPHERSUITE.signature_algorithm()).expect("create Alice signer");
+        let alice_signer = SignatureKeyPair::generate(
+            alice_provider.crypto(),
+            CIPHERSUITE.signature_algorithm(),
+        )
+        .expect("generate Alice signer");
+        alice_signer
+            .store(alice_provider.storage())
+            .expect("persist Alice signer");
+        let alice_public_key = alice_signer.to_public_vec();
+        let alice_credential = CredentialWithKey {
+            credential: BasicCredential::new(b"inone-transaction-alice".to_vec()).into(),
+            signature_key: alice_public_key.clone().into(),
+        };
+        let config = MlsGroupCreateConfig::builder()
+            .ciphersuite(CIPHERSUITE)
+            .use_ratchet_tree_extension(true)
+            .max_past_epochs(16)
+            .build();
+        let mut alice_group = MlsGroup::new(
+            &alice_provider,
+            &alice_signer.signer(alice_provider.crypto()),
+            &config,
+            alice_credential,
+        )
+        .expect("create Alice group");
+
+        let bob_signer = SignatureKeyPair::generate(
+            bob_provider.crypto(),
+            CIPHERSUITE.signature_algorithm(),
+        )
+        .expect("generate Bob signer");
+        let bob_credential = CredentialWithKey {
+            credential: BasicCredential::new(b"inone-transaction-bob".to_vec()).into(),
+            signature_key: bob_signer.to_public_vec().into(),
+        };
+        let bob_key_package = KeyPackage::builder()
+            .build(
+                CIPHERSUITE,
+                &bob_provider,
+                &bob_signer.signer(bob_provider.crypto()),
+                bob_credential,
+            )
+            .expect("build Bob key package");
+        let (_commit, _welcome, _) = alice_group
+            .add_members(
+                &alice_provider,
+                &alice_signer.signer(alice_provider.crypto()),
+                &[bob_key_package.key_package().clone()],
+            )
+            .expect("add Bob to Alice group");
+        alice_group
+            .merge_pending_commit(&alice_provider)
+            .expect("merge initial add-member Commit");
+        let group_id = alice_group.group_id().clone();
+        assert_eq!(alice_group.epoch().as_u64(), 1);
+        assert_eq!(alice_group.members().count(), 2);
+        drop(alice_group);
+
+        // OpenMLS storage accepts a borrowed transaction connection. All writes
+        // performed by remove_members + merge_pending_commit must roll back together.
+        let tx = alice_connection
+            .unchecked_transaction()
+            .expect("begin outer MLS transaction");
+        let tx_provider = TransactionCandidateProvider {
+            crypto: openmls_rust_crypto::RustCrypto::default(),
+            storage: SqliteStorageProvider::new(TransactionConnection(&tx)),
+        };
+        let mut tx_group = MlsGroup::load(tx_provider.storage(), &group_id)
+            .expect("load Alice group inside transaction")
+            .expect("Alice group exists inside transaction");
+        let tx_signer = SignatureKeyPair::read(
+            tx_provider.storage(),
+            &alice_public_key,
+            CIPHERSUITE.signature_algorithm(),
+        )
+        .expect("load Alice signer inside transaction");
+        let bob_index = tx_group
+            .members()
+            .find(|member| member.credential.serialized_content() == b"inone-transaction-bob")
+            .map(|member| member.index)
+            .expect("find Bob before removal");
+        let (_remove_commit, welcome, _) = tx_group
+            .remove_members(
+                &tx_provider,
+                &tx_signer.signer(tx_provider.crypto()),
+                &[bob_index],
+            )
+            .expect("stage Bob removal inside transaction");
+        assert!(welcome.is_none());
+        tx_group
+            .merge_pending_commit(&tx_provider)
+            .expect("merge Bob removal inside transaction");
+        assert_eq!(tx_group.epoch().as_u64(), 2);
+        assert_eq!(tx_group.members().count(), 1);
+
+        drop(tx_signer);
+        drop(tx_group);
+        drop(tx_provider);
+        tx.rollback().expect("roll back entire MLS epoch transition");
+
+        let restored = MlsGroup::load(alice_provider.storage(), &group_id)
+            .expect("reload Alice group after rollback")
+            .expect("Alice group remains present after rollback");
+        assert_eq!(restored.epoch().as_u64(), 1);
+        assert_eq!(restored.members().count(), 2);
+        assert!(
+            restored.members().any(|member| {
+                member.credential.serialized_content() == b"inone-transaction-bob"
+            }),
+            "Bob must remain a member when the epoch transition transaction rolls back"
+        );
+    }
+
+    #[test]
+    fn stable_candidate_supports_welcome_epoch_and_bidirectional_application_messages() {
+        // Exercise Libcrux -> RustCrypto interoperability, including provider-backed
+        // key generation.
+        let alice_provider = in_memory_libcrux_provider();
+        let bob_provider = in_memory_provider();
+
+        let alice_signer = SignatureKeyPair::generate(
+            alice_provider.crypto(),
+            CIPHERSUITE.signature_algorithm(),
+        )
+        .expect("generate Alice signer through Libcrux");
         alice_signer
             .store(alice_provider.storage())
             .expect("persist Alice signer");
@@ -242,12 +558,19 @@ mod tests {
             .use_ratchet_tree_extension(true)
             .max_past_epochs(16)
             .build();
-        let mut alice_group =
-            MlsGroup::new(&alice_provider, &alice_signer, &config, alice_credential)
-                .expect("create Alice group");
+        let mut alice_group = MlsGroup::new(
+            &alice_provider,
+            &alice_signer.signer(alice_provider.crypto()),
+            &config,
+            alice_credential,
+        )
+        .expect("create Alice group with Libcrux signer");
 
-        let bob_signer =
-            SignatureKeyPair::new(CIPHERSUITE.signature_algorithm()).expect("create Bob signer");
+        let bob_signer = SignatureKeyPair::generate(
+            bob_provider.crypto(),
+            CIPHERSUITE.signature_algorithm(),
+        )
+        .expect("generate Bob signer through RustCrypto");
         bob_signer
             .store(bob_provider.storage())
             .expect("persist Bob signer");
@@ -256,13 +579,18 @@ mod tests {
             signature_key: bob_signer.to_public_vec().into(),
         };
         let bob_key_package = KeyPackage::builder()
-            .build(CIPHERSUITE, &bob_provider, &bob_signer, bob_credential)
+            .build(
+                CIPHERSUITE,
+                &bob_provider,
+                &bob_signer.signer(bob_provider.crypto()),
+                bob_credential,
+            )
             .expect("build Bob key package");
 
         let (_commit, welcome, _group_info) = alice_group
             .add_members(
                 &alice_provider,
-                &alice_signer,
+                &alice_signer.signer(alice_provider.crypto()),
                 &[bob_key_package.key_package().clone()],
             )
             .expect("add Bob and create Welcome");
@@ -309,10 +637,12 @@ mod tests {
                     .expect("Alice message is a protocol message"),
             )
             .expect("Bob decrypts Alice application message");
-        assert!(matches!(
-            bob_received.into_content(),
-            ProcessedMessageContent::ApplicationMessage(_)
-        ));
+        match bob_received.into_content() {
+            ProcessedMessageContent::ApplicationMessage(message) => {
+                assert_eq!(message.into_bytes().as_slice(), b"alice-to-bob");
+            }
+            _ => panic!("expected Alice application message"),
+        }
 
         let bob_message = bob_group
             .create_message(
@@ -330,13 +660,146 @@ mod tests {
                     .expect("Bob message is a protocol message"),
             )
             .expect("Alice decrypts Bob application message");
-        assert!(matches!(
-            alice_received.into_content(),
-            ProcessedMessageContent::ApplicationMessage(_)
-        ));
+        match alice_received.into_content() {
+            ProcessedMessageContent::ApplicationMessage(message) => {
+                assert_eq!(message.into_bytes().as_slice(), b"bob-to-alice");
+            }
+            _ => panic!("expected Bob application message"),
+        }
 
-        // Adding Bob already advanced the group from epoch 0 to epoch 1.
-        assert_eq!(alice_group.epoch().as_u64(), 1);
+        // Reverse the Welcome direction: RustCrypto creates Charlie's Welcome,
+        // Libcrux accepts it, and both peers exchange application messages.
+        let charlie_provider = in_memory_libcrux_provider();
+        let charlie_signer = SignatureKeyPair::generate(
+            charlie_provider.crypto(),
+            CIPHERSUITE.signature_algorithm(),
+        )
+        .expect("generate Charlie signer through Libcrux");
+        charlie_signer
+            .store(charlie_provider.storage())
+            .expect("persist Charlie signer");
+        let charlie_credential = CredentialWithKey {
+            credential: BasicCredential::new(b"inone-candidate-charlie".to_vec()).into(),
+            signature_key: charlie_signer.to_public_vec().into(),
+        };
+        let charlie_key_package = KeyPackage::builder()
+            .build(
+                CIPHERSUITE,
+                &charlie_provider,
+                &charlie_signer.signer(charlie_provider.crypto()),
+                charlie_credential,
+            )
+            .expect("build Charlie key package through Libcrux");
+
+        let (bob_commit, charlie_welcome, _) = bob_group
+            .add_members(
+                &bob_provider,
+                &bob_signer.signer(bob_provider.crypto()),
+                &[charlie_key_package.key_package().clone()],
+            )
+            .expect("RustCrypto adds Charlie and creates Welcome");
+        bob_group
+            .merge_pending_commit(&bob_provider)
+            .expect("Bob merges Charlie add-member Commit");
+
+        let bob_commit: MlsMessageIn = bob_commit.into();
+        let alice_processed = alice_group
+            .process_message(
+                &alice_provider,
+                bob_commit
+                    .try_into_protocol_message()
+                    .expect("Bob Commit is a protocol message"),
+            )
+            .expect("Alice processes Bob's RustCrypto Commit");
+        match alice_processed.into_content() {
+            ProcessedMessageContent::StagedCommitMessage(staged_commit) => {
+                alice_group
+                    .merge_staged_commit(&alice_provider, *staged_commit)
+                    .expect("Alice merges Bob's RustCrypto Commit");
+            }
+            _ => panic!("expected Bob's staged Commit"),
+        }
+
+        let charlie_welcome_wire = charlie_welcome
+            .tls_serialize_detached()
+            .expect("serialize Charlie Welcome");
+        let charlie_welcome = match MlsMessageIn::tls_deserialize_exact(&charlie_welcome_wire)
+            .expect("deserialize Charlie Welcome")
+            .extract()
+        {
+            MlsMessageBodyIn::Welcome(welcome) => welcome,
+            _ => panic!("expected Charlie Welcome"),
+        };
+        let charlie_join_config = MlsGroupJoinConfig::builder()
+            .use_ratchet_tree_extension(true)
+            .max_past_epochs(16)
+            .build();
+        let charlie_staged = StagedWelcome::new_from_welcome(
+            &charlie_provider,
+            &charlie_join_config,
+            charlie_welcome,
+            None,
+        )
+        .expect("Libcrux stages RustCrypto Welcome");
+        let mut charlie_group = charlie_staged
+            .into_group(&charlie_provider)
+            .expect("Charlie joins through RustCrypto Welcome");
+
+        assert_eq!(alice_group.epoch().as_u64(), 2);
+        assert_eq!(bob_group.epoch().as_u64(), 2);
+        assert_eq!(charlie_group.epoch().as_u64(), 2);
+        assert_eq!(alice_group.members().count(), 3);
+        assert_eq!(bob_group.members().count(), 3);
+        assert_eq!(charlie_group.members().count(), 3);
+
+        let bob_to_charlie = bob_group
+            .create_message(
+                &bob_provider,
+                &bob_signer.signer(bob_provider.crypto()),
+                b"rustcrypto-to-libcrux",
+            )
+            .expect("Bob encrypts for Charlie");
+        let bob_to_charlie: MlsMessageIn = bob_to_charlie.into();
+        let charlie_received = charlie_group
+            .process_message(
+                &charlie_provider,
+                bob_to_charlie
+                    .try_into_protocol_message()
+                    .expect("Bob application message is a protocol message"),
+            )
+            .expect("Libcrux decrypts RustCrypto application message");
+        match charlie_received.into_content() {
+            ProcessedMessageContent::ApplicationMessage(message) => {
+                assert_eq!(message.into_bytes().as_slice(), b"rustcrypto-to-libcrux");
+            }
+            _ => panic!("expected RustCrypto application message"),
+        }
+
+        let charlie_to_bob = charlie_group
+            .create_message(
+                &charlie_provider,
+                &charlie_signer.signer(charlie_provider.crypto()),
+                b"libcrux-to-rustcrypto",
+            )
+            .expect("Charlie encrypts for Bob");
+        let charlie_to_bob: MlsMessageIn = charlie_to_bob.into();
+        let bob_received = bob_group
+            .process_message(
+                &bob_provider,
+                charlie_to_bob
+                    .try_into_protocol_message()
+                    .expect("Charlie application message is a protocol message"),
+            )
+            .expect("RustCrypto decrypts Libcrux application message");
+        match bob_received.into_content() {
+            ProcessedMessageContent::ApplicationMessage(message) => {
+                assert_eq!(message.into_bytes().as_slice(), b"libcrux-to-rustcrypto");
+            }
+            _ => panic!("expected Libcrux application message"),
+        }
+
+        // The two Welcome directions and both application-message directions are covered.
+        assert_eq!(alice_group.epoch().as_u64(), 2);
     }
 
     fn file_provider(path: &Path) -> CandidateProvider<openmls_rust_crypto::RustCrypto> {
@@ -344,6 +807,7 @@ mod tests {
         connection
             .pragma_update(None, "key", format!("x'{TEST_KEY_HEX}'"))
             .expect("apply persistent SQLCipher key");
+        assert_candidate_sqlite_runtime(&connection);
         {
             let mut migrations = SqliteStorageProvider::<JsonCodec, _>::new(&mut connection);
             migrations
@@ -582,7 +1046,7 @@ mod tests {
         let config = MlsGroupCreateConfig::builder()
             .ciphersuite(CIPHERSUITE)
             .use_ratchet_tree_extension(true)
-            .max_past_epochs(0)
+            .max_past_epochs(16)
             .build();
         let mut alice_group =
             MlsGroup::new(&alice_provider, &alice_signer, &config, alice_credential)
@@ -614,7 +1078,7 @@ mod tests {
         };
         let join_config = MlsGroupJoinConfig::builder()
             .use_ratchet_tree_extension(true)
-            .max_past_epochs(0)
+            .max_past_epochs(16)
             .build();
         let staged = StagedWelcome::new_from_welcome(&bob_provider, &join_config, welcome, None)
             .expect("stage Bob Welcome");
@@ -629,9 +1093,7 @@ mod tests {
 
         let bob_index = alice_group
             .members()
-            .find(|member| {
-                member.credential.serialized_content() == b"inone-candidate-bob"
-            })
+            .find(|member| member.credential.serialized_content() == b"inone-candidate-bob")
             .map(|member| member.index)
             .expect("find Bob's current leaf index");
 
@@ -678,13 +1140,14 @@ mod tests {
         assert_eq!(bob_group.epoch().as_u64(), 1);
         assert!(bob_group.is_active());
 
-        // Bob can still construct a message using his stale epoch-1 state, but Alice
-        // has explicitly discarded past-epoch secrets and must reject it.
+        // MaxPastEpochs(16) intentionally retains epoch-1 secrets. A valid
+        // message created before Bob learns about removal may still be decrypted;
+        // this does not grant access to epoch 2 or later.
         let bob_stale_wire = bob_group
             .create_message(
                 &bob_provider,
                 &bob_signer.signer(bob_provider.crypto()),
-                b"message-from-removed-bob",
+                b"message-from-removed-bob-in-retained-epoch",
             )
             .expect("stale Bob state can construct an epoch-1 message")
             .tls_serialize_detached()
@@ -693,11 +1156,27 @@ mod tests {
             .expect("deserialize stale Bob message")
             .try_into_protocol_message()
             .expect("stale Bob message is a protocol message");
+        let retained_message = alice_group
+            .process_message(&alice_provider, bob_stale_protocol)
+            .expect("Alice may decrypt an authentic message from retained epoch 1");
+        match retained_message.into_content() {
+            ProcessedMessageContent::ApplicationMessage(message) => {
+                assert_eq!(
+                    message.into_bytes(),
+                    b"message-from-removed-bob-in-retained-epoch"
+                );
+            }
+            _ => panic!("expected retained-epoch application message"),
+        }
+        let replayed_protocol = MlsMessageIn::tls_deserialize_exact(&bob_stale_wire)
+            .expect("deserialize replayed stale Bob message")
+            .try_into_protocol_message()
+            .expect("replayed stale Bob message is a protocol message");
         assert!(
             alice_group
-                .process_message(&alice_provider, bob_stale_protocol)
+                .process_message(&alice_provider, replayed_protocol)
                 .is_err(),
-            "Alice must reject Bob's old-epoch message with MaxEpochs(0)"
+            "a retained-epoch application message must not be accepted twice"
         );
         assert_eq!(alice_group.epoch().as_u64(), 2);
         assert!(alice_group.is_active());
@@ -716,9 +1195,9 @@ mod tests {
         assert_eq!(reopened_group.members().count(), 1);
         assert!(reopened_group.is_active());
         assert!(
-            !reopened_group.members().any(|member| {
-                member.credential.serialized_content() == b"inone-candidate-bob"
-            }),
+            !reopened_group
+                .members()
+                .any(|member| { member.credential.serialized_content() == b"inone-candidate-bob" }),
             "removed Bob must not reappear after SQLCipher reopen"
         );
 
@@ -736,7 +1215,10 @@ mod tests {
                 b"alice-after-removal-reopen",
             )
             .expect("Alice can create a message after removal and reopen");
-        assert!(!post_reopen_message.tls_serialize_detached().unwrap().is_empty());
+        assert!(!post_reopen_message
+            .tls_serialize_detached()
+            .unwrap()
+            .is_empty());
 
         drop(reopened_signer);
         drop(reopened_group);
@@ -813,11 +1295,15 @@ mod tests {
         let create_config = MlsGroupCreateConfig::builder()
             .ciphersuite(CIPHERSUITE)
             .use_ratchet_tree_extension(true)
-            .max_past_epochs(0)
+            .max_past_epochs(16)
             .build();
-        let mut alice_group =
-            MlsGroup::new(&alice_provider, &alice_signer, &create_config, alice_credential)
-                .expect("create persistent Alice group");
+        let mut alice_group = MlsGroup::new(
+            &alice_provider,
+            &alice_signer,
+            &create_config,
+            alice_credential,
+        )
+        .expect("create persistent Alice group");
 
         let bob_key_package = KeyPackage::builder()
             .build(CIPHERSUITE, &bob_provider, &bob_signer, bob_credential)
@@ -845,7 +1331,7 @@ mod tests {
         };
         let join_config = MlsGroupJoinConfig::builder()
             .use_ratchet_tree_extension(true)
-            .max_past_epochs(0)
+            .max_past_epochs(16)
             .build();
         let staged = StagedWelcome::new_from_welcome(&bob_provider, &join_config, welcome, None)
             .expect("stage initial Bob Welcome");
@@ -857,15 +1343,26 @@ mod tests {
         assert_eq!(alice_group.epoch().as_u64(), 1);
         assert_eq!(bob_group.epoch().as_u64(), 1);
 
-        // Three add/remove cycles exercise six sequential epoch transitions.
+        // Keep an epoch-1 message to verify it expires after more than 16
+        // subsequent epoch transitions.
+        let stale_epoch_wire = bob_group
+            .create_message(
+                &bob_provider,
+                &bob_signer.signer(bob_provider.crypto()),
+                b"message-from-expired-epoch-1",
+            )
+            .expect("Bob creates epoch-1 message for retention-expiry check")
+            .tls_serialize_detached()
+            .expect("serialize epoch-1 message");
+
+        // Nine add/remove cycles exercise eighteen sequential epoch transitions.
         // Bob receives and merges every Commit; both databases are reopened after
         // each cycle before the next transition is attempted.
-        for round in 0..3_u64 {
+        for round in 0..9_u64 {
             let transient_id = format!("inone-epochs-transient-{round}");
             let transient_provider = in_memory_provider();
-            let transient_signer =
-                SignatureKeyPair::new(CIPHERSUITE.signature_algorithm())
-                    .expect("create transient member signer");
+            let transient_signer = SignatureKeyPair::new(CIPHERSUITE.signature_algorithm())
+                .expect("create transient member signer");
             transient_signer
                 .store(transient_provider.storage())
                 .expect("persist transient member signer");
@@ -903,9 +1400,7 @@ mod tests {
 
             let transient_index = alice_group
                 .members()
-                .find(|member| {
-                    member.credential.serialized_content() == transient_id.as_bytes()
-                })
+                .find(|member| member.credential.serialized_content() == transient_id.as_bytes())
                 .map(|member| member.index)
                 .expect("find transient member leaf index");
 
@@ -987,8 +1482,19 @@ mod tests {
             .expect("reload Bob signing key after epoch cycle");
         }
 
-        assert_eq!(alice_group.epoch().as_u64(), 7);
-        assert_eq!(bob_group.epoch().as_u64(), 7);
+        assert_eq!(alice_group.epoch().as_u64(), 19);
+        assert_eq!(bob_group.epoch().as_u64(), 19);
+
+        let expired_protocol = MlsMessageIn::tls_deserialize_exact(&stale_epoch_wire)
+            .expect("deserialize expired epoch-1 message")
+            .try_into_protocol_message()
+            .expect("expired epoch-1 message is a protocol message");
+        assert!(
+            alice_group
+                .process_message(&alice_provider, expired_protocol)
+                .is_err(),
+            "epoch-1 secrets must expire after the 16-epoch retention window"
+        );
         assert_eq!(
             alice_group.epoch_authenticator().as_slice(),
             bob_group.epoch_authenticator().as_slice()
@@ -1006,5 +1512,4 @@ mod tests {
             let _ = std::fs::remove_file(path.with_extension("db-shm"));
         }
     }
-
 }
