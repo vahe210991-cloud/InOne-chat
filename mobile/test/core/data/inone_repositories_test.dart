@@ -104,6 +104,36 @@ void main() {
     session.dispose();
   });
 
+  test('accepts a first-message contact request independently from message delivery', () async {
+    final session = _ProfileSession({
+      'accepted': true,
+      'userId': '@sender:inone.test',
+    });
+
+    await InOneRepositories(session).acceptContactRequest('@sender:inone.test');
+
+    expect(session.method, 'POST');
+    expect(session.path, '/contacts/%40sender%3Ainone.test/accept');
+    expect(session.authenticated, isTrue);
+    expect(session.body, isNull);
+    session.dispose();
+  });
+
+  test('blocks a non-contact through the authenticated contact action', () async {
+    final session = _ProfileSession({
+      'blocked': true,
+      'userId': '@sender:inone.test',
+    });
+
+    await InOneRepositories(session).blockContact('@sender:inone.test');
+
+    expect(session.method, 'POST');
+    expect(session.path, '/contacts/%40sender%3Ainone.test/block');
+    expect(session.authenticated, isTrue);
+    expect(session.body, isNull);
+    session.dispose();
+  });
+
   test('rejects malformed direct conversation responses', () async {
     final session = _ProfileSession({
       'roomId': '',
