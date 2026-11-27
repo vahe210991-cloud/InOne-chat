@@ -2775,6 +2775,7 @@ async mlsPendingRemovalsFor(userId) {
         if (error.code !== '23505') throw error;
         if (error.constraint === 'profiles_email_verified') return { outcome: 'ok', created: 'email' };
         if (error.constraint === 'profiles_nickname') return { outcome: 'ok', created: 'nickname' };
+        if (error.constraint === 'phones_phone_unique') return { outcome: 'ok', created: 'phone' };
         return { outcome: 'ok', created: 'account' };
       }
     },
