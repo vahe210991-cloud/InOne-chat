@@ -42,7 +42,6 @@ async function start() {
   const bob = await ChatClient.create(base, BOB, 'B_PHONE', PW);
   const carol = await ChatClient.create(base, CAROL, 'C_PHONE', PW);
   await alice.createRoom(ROOM, [ALICE, BOB]);
-  await alice.raw('POST', `/mls/groups/${enc(ROOM)}/commits`, { epoch: 0, commit: b64('FIRST'), changes: { adds: [], removes: [] } });
   const sent = await http(base, 'POST', `/mls/groups/${enc(ROOM)}/messages`, { token: alice.token, body: JSON.stringify({ message: mlsMessageAt(ROOM, 1, 'тайна'), kind: 'text', forwarded: false }), headers: JSON_HEADERS });
   assert.equal(sent.status, 200, 'подготовка: участник отправил сообщение');
   return { srv, base, alice, bob, carol, eventId: sent.json.event_id, stop: async () => { await new Promise((r) => srv.server.close(r)); await db?.close(); } };
