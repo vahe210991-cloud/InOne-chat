@@ -622,3 +622,14 @@ Latest documented checkpoint: code SHA `4824dfc3b3f4e3aab5d39b16c1adf934a108d660
 6. Implement media association/download as a separate reviewed slice. Never publish unauthenticated object URLs; re-authorize the parent post and active device on each download.
 7. Add typed Flutter/Dart repository and a new native Feed/composer screen only after the API contract and backend routes are verified. Do not restore HTML/WebView.
 8. Keep every PR Draft until all applicable exact-head Actions are green and review is complete. Never merge without explicit owner approval. Do not close or strike through implementation tasks before accepted evidence.
+
+
+## Feed continuation update — 2026-11-27
+
+1. Owner-approved media variant A is binding: separate Feed processing/storage pipeline, TLS, encrypted objects at rest, fresh active-session authorization on every media delivery; no MLS/chat-file changes.
+2. Review the updated media-first API proposal and the new caption/media/signed-cursor domain helpers on PR #174. Do not claim test PASS; current new tests were not run.
+3. Before shared backend files are touched, re-fetch main and PR #169/#171/#172/#173/#174 exact SHAs and establish the safe integration order. PR #173 remains on HOLD until #169 is merged.
+4. Inspect object-store adapters and deployment support for isolated Feed namespace, KMS/envelope encryption, worker execution, streaming upload and cleanup. Do not create public object URLs.
+5. Produce evidence-based configurable limits for photo count, byte sizes, codecs, video duration/resolution and worker budgets; numeric values remain unapproved until justified.
+6. Implement Feed media lifecycle in isolated modules first, then Post/PostMedia persistence/routes. Do not modify MLS/chat file code.
+7. Re-audit exact Dart screen source paths across approved branches before Flutter integration. Keep UI design unchanged.
