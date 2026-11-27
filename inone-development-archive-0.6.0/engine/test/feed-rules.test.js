@@ -21,7 +21,7 @@ test('post content is normalized as bounded plain text and hashed deterministica
   assert.equal(result.content, 'Café\nSecond line 😀');
   assert.equal(result.codePoints, [...result.content].length);
   assert.match(result.contentHash, /^[0-9a-f]{64}$/u);
-  assert.equal(normalizePostContent('Café').contentHash, result.contentHash === '' ? '' : normalizePostContent('Café').contentHash);
+  assert.equal(normalizePostContent('Café').contentHash, normalizePostContent('Cafe\u0301').contentHash);
 });
 
 test('post content rejects missing, blank, NUL, excessive code points and excessive UTF-8 bytes', () => {
