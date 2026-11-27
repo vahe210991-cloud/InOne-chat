@@ -57,7 +57,7 @@ void main() {
     expect(chats[1].id, 'channel-1');
     expect(chats[1].kind, InOneChatKind.channel);
     expect(chats[2].id, 'direct-1');
-    expect(chats[2].name, 'Личный диалог');
+    expect(chats[2].name, 'New contact');
     expect(chats[2].kind, InOneChatKind.person);
     expect(chats[2].peerUserId, '@sender:inone.test');
     expect(chats[2].incomingContactRequest, isTrue);
