@@ -2214,7 +2214,7 @@ if (req.method === 'POST' && p === '/login') {
           created: result.created === true,
           isCreator: result.isCreator === true,
           peerUserId,
-          mlsInitializationRequired: result.created === true,
+          mlsInitializationRequired: result.status === 'provisioning' && result.isCreator === true,
         });
       }
 
