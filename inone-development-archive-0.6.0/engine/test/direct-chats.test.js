@@ -269,6 +269,11 @@ test('direct chats require no recipient approval and activate automatically thro
       'blocking removes the block initiator from the peer contact list as well',
     );
     await assert.rejects(
+      alice.raw('POST', `/contacts/${enc(BOB)}/accept`),
+      (error) => error.status === 409 && error.message.includes('contact_request_unavailable'),
+      'a previously accepted contact request cannot override a later block',
+    );
+    await assert.rejects(
       bob.raw('POST', `/mls/groups/${enc(opened.roomId)}/messages`, {
         message: replyWireMessage,
         kind: 'text',
