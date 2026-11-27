@@ -77,6 +77,18 @@ test('direct conversations use a canonical pair and MLS-only activation', () => 
   assert.match(server, /direct_membership_fixed/u);
 });
 
+test('first-message contact prompts never gate MLS delivery and block future direct messages', () => {
+  assert.match(server, /req\.method === 'GET' && p === '\/contacts'/u);
+  assert.match(server, /const contactAction = p\.match/u);
+  assert.match(server, /storage\.acceptContactRequest/u);
+  assert.match(server, /storage\.blockUser/u);
+  assert.match(server, /incomingContactRequest/u);
+  assert.match(server, /createIncomingContactRequest/u);
+  assert.match(server, /user_blocked/u);
+  assert.match(nativeApp, /onAcceptContact: \(chat\)/u);
+  assert.match(nativeApp, /onBlockContact: \(chat\)/u);
+});
+
 test('production Flutter entry uses native Dart UI and keeps MLS disabled by default', () => {
   assert.ok(mobileHost.includes('Firebase.initializeApp()'));
   assert.ok(mobileHost.includes('Platform.isAndroid || Platform.isIOS'));
