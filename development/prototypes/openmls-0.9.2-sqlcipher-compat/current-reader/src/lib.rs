@@ -538,4 +538,210 @@ mod tests {
                 .get::<_, i64>(0))
             .is_err());
     }
+
+    #[test]
+    fn removing_member_revokes_future_epoch_access_and_survives_sqlcipher_reopen() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock after UNIX epoch")
+            .as_nanos();
+        let alice_path = std::env::temp_dir().join(format!(
+            "inone-openmls-092-remove-alice-{}-{nonce}.db",
+            std::process::id()
+        ));
+        let bob_path = std::env::temp_dir().join(format!(
+            "inone-openmls-092-remove-bob-{}-{nonce}.db",
+            std::process::id()
+        ));
+
+        let alice_provider = file_provider(&alice_path);
+        let bob_provider = file_provider(&bob_path);
+        let alice_signer =
+            SignatureKeyPair::new(CIPHERSUITE.signature_algorithm()).expect("create Alice signer");
+        let bob_signer =
+            SignatureKeyPair::new(CIPHERSUITE.signature_algorithm()).expect("create Bob signer");
+        alice_signer
+            .store(alice_provider.storage())
+            .expect("persist Alice signing key");
+        bob_signer
+            .store(bob_provider.storage())
+            .expect("persist Bob signing key");
+
+        let alice_public_key = alice_signer.to_public_vec();
+        let bob_public_key = bob_signer.to_public_vec();
+        let alice_credential = CredentialWithKey {
+            credential: BasicCredential::new(b"inone-removal-alice".to_vec()).into(),
+            signature_key: alice_public_key.clone().into(),
+        };
+        let bob_credential = CredentialWithKey {
+            credential: BasicCredential::new(b"inone-candidate-bob".to_vec()).into(),
+            signature_key: bob_public_key.clone().into(),
+        };
+        let config = MlsGroupCreateConfig::builder()
+            .ciphersuite(CIPHERSUITE)
+            .use_ratchet_tree_extension(true)
+            .max_past_epochs(0)
+            .build();
+        let mut alice_group =
+            MlsGroup::new(&alice_provider, &alice_signer, &config, alice_credential)
+                .expect("create Alice group");
+
+        let bob_key_package = KeyPackage::builder()
+            .build(CIPHERSUITE, &bob_provider, &bob_signer, bob_credential)
+            .expect("build Bob key package");
+        let (_add_commit, welcome, _) = alice_group
+            .add_members(
+                &alice_provider,
+                &alice_signer,
+                &[bob_key_package.key_package().clone()],
+            )
+            .expect("add Bob and create Welcome");
+        alice_group
+            .merge_pending_commit(&alice_provider)
+            .expect("merge add-member commit");
+
+        let welcome_wire = welcome
+            .tls_serialize_detached()
+            .expect("serialize Bob Welcome");
+        let welcome = match MlsMessageIn::tls_deserialize_exact(&welcome_wire)
+            .expect("deserialize Bob Welcome")
+            .extract()
+        {
+            MlsMessageBodyIn::Welcome(welcome) => welcome,
+            _ => panic!("expected Welcome message"),
+        };
+        let join_config = MlsGroupJoinConfig::builder()
+            .use_ratchet_tree_extension(true)
+            .max_past_epochs(0)
+            .build();
+        let staged = StagedWelcome::new_from_welcome(&bob_provider, &join_config, welcome, None)
+            .expect("stage Bob Welcome");
+        let mut bob_group = staged
+            .into_group(&bob_provider)
+            .expect("Bob joins through Welcome");
+
+        assert_eq!(alice_group.epoch().as_u64(), 1);
+        assert_eq!(bob_group.epoch().as_u64(), 1);
+        assert_eq!(alice_group.members().count(), 2);
+        assert_eq!(bob_group.members().count(), 2);
+
+        let bob_index = alice_group
+            .members()
+            .find(|member| {
+                member.credential.serialized_content() == b"inone-candidate-bob"
+            })
+            .map(|member| member.index)
+            .expect("find Bob's current leaf index");
+
+        let (_remove_commit, welcome, _group_info) = alice_group
+            .remove_members(
+                &alice_provider,
+                &alice_signer.signer(alice_provider.crypto()),
+                &[bob_index],
+            )
+            .expect("create commit removing Bob");
+        assert!(welcome.is_none(), "removal must not create a Welcome");
+        alice_group
+            .merge_pending_commit(&alice_provider)
+            .expect("merge Bob removal commit");
+
+        assert_eq!(alice_group.epoch().as_u64(), 2);
+        assert_eq!(alice_group.members().count(), 1);
+        assert!(alice_group.is_active());
+        assert_eq!(bob_group.epoch().as_u64(), 1);
+        assert_eq!(bob_group.members().count(), 2);
+        assert!(bob_group.is_active());
+
+        // Bob deliberately does not receive the removal Commit and remains in epoch 1.
+        // A message created by Alice in epoch 2 must not be processable by that stale state.
+        let alice_future_wire = alice_group
+            .create_message(
+                &alice_provider,
+                &alice_signer.signer(alice_provider.crypto()),
+                b"message-after-bob-removal",
+            )
+            .expect("Alice creates epoch-2 application message")
+            .tls_serialize_detached()
+            .expect("serialize epoch-2 application message");
+        let alice_future_protocol = MlsMessageIn::tls_deserialize_exact(&alice_future_wire)
+            .expect("deserialize epoch-2 application message")
+            .try_into_protocol_message()
+            .expect("epoch-2 message is a protocol message");
+        assert!(
+            bob_group
+                .process_message(&bob_provider, alice_future_protocol)
+                .is_err(),
+            "Bob's epoch-1 state must not process Alice's epoch-2 message"
+        );
+
+        // Bob can still construct a message using his stale epoch-1 state, but Alice
+        // has explicitly discarded past-epoch secrets and must reject it.
+        let bob_stale_wire = bob_group
+            .create_message(
+                &bob_provider,
+                &bob_signer.signer(bob_provider.crypto()),
+                b"message-from-removed-bob",
+            )
+            .expect("stale Bob state can construct an epoch-1 message")
+            .tls_serialize_detached()
+            .expect("serialize stale Bob message");
+        let bob_stale_protocol = MlsMessageIn::tls_deserialize_exact(&bob_stale_wire)
+            .expect("deserialize stale Bob message")
+            .try_into_protocol_message()
+            .expect("stale Bob message is a protocol message");
+        assert!(
+            alice_group
+                .process_message(&alice_provider, bob_stale_protocol)
+                .is_err(),
+            "Alice must reject Bob's old-epoch message with MaxEpochs(0)"
+        );
+
+        let group_id = alice_group.group_id().clone();
+        drop(alice_group);
+        drop(bob_group);
+        drop(alice_provider);
+        drop(bob_provider);
+
+        let reopened_provider = file_provider(&alice_path);
+        let mut reopened_group = MlsGroup::load(reopened_provider.storage(), &group_id)
+            .expect("load Alice group after removal and reopen")
+            .expect("Alice group remains stored after removal");
+        assert_eq!(reopened_group.epoch().as_u64(), 2);
+        assert_eq!(reopened_group.members().count(), 1);
+        assert!(reopened_group.is_active());
+        assert!(
+            !reopened_group.members().any(|member| {
+                member.credential.serialized_content() == b"inone-candidate-bob"
+            }),
+            "removed Bob must not reappear after SQLCipher reopen"
+        );
+
+        let reopened_key = SignatureKeyPair::read(
+            reopened_provider.storage(),
+            &alice_public_key,
+            CIPHERSUITE.signature_algorithm(),
+        )
+        .expect("reload Alice signing key after removal");
+        let reopened_signer = reopened_key.signer(reopened_provider.crypto());
+        let post_reopen_message = reopened_group
+            .create_message(
+                &reopened_provider,
+                &reopened_signer,
+                b"alice-after-removal-reopen",
+            )
+            .expect("Alice can create a message after removal and reopen");
+        assert!(!post_reopen_message.tls_serialize_detached().unwrap().is_empty());
+
+        drop(reopened_signer);
+        drop(reopened_group);
+        drop(reopened_provider);
+        for path in [&alice_path, &bob_path] {
+            let _ = std::fs::remove_file(path);
+            let _ = std::fs::remove_file(path.with_extension("db-wal"));
+            let _ = std::fs::remove_file(path.with_extension("db-shm"));
+        }
+    }
+
 }
