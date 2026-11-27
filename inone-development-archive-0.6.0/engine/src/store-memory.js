@@ -76,6 +76,9 @@ export function createMemoryStore({ pinPepper }) {
   const rooms = new Map();
   const directConversations = new Map(); // unordered pair key -> direct conversation
   const directConversationsByRoom = new Map();
+  const contacts = new Map(); // owner user -> Set(contact user)
+  const contactRequests = new Map(); // requester|recipient -> request state
+  const userBlocks = new Set(); // canonical unordered pair key
   const mlsPackages = [];
   const mlsPackageClaims = new Map();
   const mlsGroups = new Map();
@@ -87,6 +90,26 @@ export function createMemoryStore({ pinPepper }) {
   const counters = { eventSeq: 0, inboxSeq: 0 };
   const approvals = new Map();     // идентификатор -> запрос подтверждения входа
   const copy = (d) => ({ userId: d.userId, deviceId: d.deviceId, label: d.label, revoked: d.revoked, createdAt: d.createdAt });
+  const pairKey = (a, b) => JSON.stringify(a < b ? [a, b] : [b, a]);
+  const requestKey = (requester, recipient) => JSON.stringify([requester, recipient]);
+  const isBlockedPair = (a, b) => userBlocks.has(pairKey(a, b));
+  function addContact(ownerId, contactUserId) {
+    let set = contacts.get(ownerId);
+    if (!set) { set = new Set(); contacts.set(ownerId, set); }
+    set.add(contactUserId);
+  }
+  function recordIncomingContactRequest(roomId, senderId, createdAt) {
+    const conversation = directConversationsByRoom.get(roomId);
+    if (!conversation) return;
+    const recipientId = conversation.userA === senderId
+      ? conversation.userB
+      : conversation.userB === senderId ? conversation.userA : null;
+    if (!recipientId || isBlockedPair(senderId, recipientId) || contacts.get(recipientId)?.has(senderId)) return;
+    const key = requestKey(senderId, recipientId);
+    if (!contactRequests.has(key)) {
+      contactRequests.set(key, { requesterId: senderId, recipientId, roomId, status: 'pending', createdAt, decidedAt: null });
+    }
+  }
 
   return {
     hasAccount: (userId) => accounts.has(userId),
@@ -986,6 +1009,7 @@ export function createMemoryStore({ pinPepper }) {
       const pairKey = JSON.stringify([userA, userB]);
       const existing = directConversations.get(pairKey);
       if (existing) return { ...structuredClone(existing), isCreator: existing.createdBy === requester, created: false };
+      if (isBlockedPair(userA, userB)) return { status: 'blocked' };
       if (rooms.has(roomId)) return { status: 'room_id_conflict' };
       if (!accounts.has(requester) || !accounts.has(target)) return { status: 'unknown_user' };
       const conversation = { roomId, userA, userB, createdBy: requester, status: 'provisioning', createdAt };
@@ -1004,6 +1028,50 @@ export function createMemoryStore({ pinPepper }) {
     directConversation(roomId) {
       const conversation = directConversationsByRoom.get(roomId);
       return conversation ? structuredClone(conversation) : null;
+    },
+    listContacts(userId) {
+      const contactIds = [...(contacts.get(userId) ?? [])];
+      const incomingRequests = [...contactRequests.values()]
+        .filter((request) => request.recipientId === userId && request.status === 'pending')
+        .map((request) => ({
+          userId: request.requesterId,
+          displayName: profiles.get(request.requesterId)?.nickname?.trim() || request.requesterId,
+          roomId: request.roomId,
+          createdAt: request.createdAt,
+        }));
+      return {
+        contacts: contactIds.map((contactUserId) => ({
+          userId: contactUserId,
+          displayName: profiles.get(contactUserId)?.nickname?.trim() || contactUserId,
+        })),
+        incomingRequests,
+      };
+    },
+    acceptContactRequest(recipientId, requesterId, nowMs) {
+      const request = contactRequests.get(requestKey(requesterId, recipientId));
+      if (!request) return { status: 'not_found' };
+      if (request.status === 'blocked' || isBlockedPair(recipientId, requesterId)) return { status: 'blocked' };
+      if (request.status === 'accepted') return { status: 'accepted' };
+      addContact(recipientId, requesterId);
+      request.status = 'accepted';
+      request.decidedAt = nowMs;
+      return { status: 'accepted' };
+    },
+    blockUser(blockerId, blockedId, nowMs) {
+      if (!accounts.has(blockerId) || !accounts.has(blockedId)) return { status: 'unknown_user' };
+      if (blockerId === blockedId) return { status: 'invalid_pair' };
+      userBlocks.add(pairKey(blockerId, blockedId));
+      contacts.get(blockerId)?.delete(blockedId);
+      contacts.get(blockedId)?.delete(blockerId);
+      for (const request of contactRequests.values()) {
+        if (((request.requesterId === blockerId && request.recipientId === blockedId)
+          || (request.requesterId === blockedId && request.recipientId === blockerId))
+          && request.status === 'pending') {
+          request.status = 'blocked';
+          request.decidedAt = nowMs;
+        }
+      }
+      return { status: 'blocked' };
     },
     getRoom(roomId) {
       const r = rooms.get(roomId);
@@ -1036,6 +1104,7 @@ export function createMemoryStore({ pinPepper }) {
           ? (conversation.userA === userId ? conversation.userB : conversation.userA)
           : null;
         const peerName = peerUserId ? profiles.get(peerUserId)?.nickname : null;
+        const incomingRequest = peerUserId ? contactRequests.get(requestKey(peerUserId, userId)) : null;
         const joinedSeq = r.joinedSeq.get(userId) ?? 0;
         const readSeq = r.readUpTo.get(userId) ?? 0;
         const messages = r.events.filter((event) => event.seq > joinedSeq && event.type === 'm.room.encrypted');
@@ -1045,6 +1114,10 @@ export function createMemoryStore({ pinPepper }) {
           roomId,
           kind: r.kind,
           name: r.name ?? (peerName?.trim() || null),
+          peerUserId,
+          isPeerContact: !!peerUserId && (contacts.get(userId)?.has(peerUserId) ?? false),
+          incomingContactRequest: incomingRequest?.status === 'pending',
+          isBlocked: !!peerUserId && isBlockedPair(userId, peerUserId),
           owner: r.owner,
           isAdmin: [...r.admins].includes(userId),
           lastEventSeq: lastMessage?.seq ?? null,
@@ -1372,6 +1445,7 @@ export function createMemoryStore({ pinPepper }) {
         const conversation = directConversationsByRoom.get(roomId);
         if (!conversation || conversation.status !== 'active') return { state: 'direct_not_active' };
         if (![conversation.userA, conversation.userB].includes(sender)) return { state: 'not_member' };
+        if (isBlockedPair(conversation.userA, conversation.userB)) return { state: 'user_blocked' };
       } else {
         const roomOrg = organizations.get(r.orgId);
         if (!roomOrg || roomOrg.status !== 'approved') return { state: 'org_not_approved' };
@@ -1387,8 +1461,9 @@ export function createMemoryStore({ pinPepper }) {
       }
       if (!r.members.has(sender)) return { state: 'not_member' };
       const seq = ++counters.eventSeq;
-      r.events.push({ event_id: `$${seq}`, seq, room_id: roomId, sender, origin_server_ts: nowMs, type, content: structuredClone(content ?? null) });
-      if (afterAppend) return Promise.resolve(afterAppend(null, { seq, roomId, eventId: `$${seq}` })).then(() => seq);
+      r.events.push({ event_id: `${seq}`, seq, room_id: roomId, sender, origin_server_ts: nowMs, type, content: structuredClone(content ?? null) });
+      if (type === 'm.room.encrypted') recordIncomingContactRequest(roomId, sender, nowMs);
+      if (afterAppend) return Promise.resolve(afterAppend(null, { seq, roomId, eventId: `${seq}` })).then(() => seq);
       return seq;
     },
     roomEventRows(roomId, sinceSeq, limit = 200) {
@@ -1452,6 +1527,10 @@ export function createMemoryStore({ pinPepper }) {
       if (room.kind === 'direct' && (changes.removes?.length ?? 0) > 0) {
         return { ok: false, reason: 'direct_membership_fixed', epoch: current };
       }
+      if (room.kind === 'direct' && isBlockedPair(
+        directConversationsByRoom.get(roomId)?.userA,
+        directConversationsByRoom.get(roomId)?.userB,
+      )) return { ok: false, reason: 'user_blocked', epoch: current };
       if ((changes.adds ?? []).length > 0) {
         if (room.kind === 'direct') {
           const conversation = directConversationsByRoom.get(roomId);
