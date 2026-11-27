@@ -86,6 +86,9 @@ test('Feed object store rejects invalid object keys, key providers and chunk bou
   const rawStore = createMemoryObjectStore();
   assert.throws(() => createEncryptedFeedObjectStore(rawStore, null), TypeError);
   assert.throws(() => createEncryptedFeedObjectStore(rawStore, { activeKeyId: 'k1' }), TypeError);
+  assert.throws(() => createEncryptedFeedObjectStore(rawStore, {
+    activeKeyId: 'k1', getKey: () => 'x'.repeat(32),
+  }).put(OBJECT_A, Buffer.from('x')), /32 key bytes/u);
   assert.throws(() => createEncryptedFeedObjectStore(rawStore, provider(), { chunkBytes: 1024 }), RangeError);
   const encrypted = createEncryptedFeedObjectStore(rawStore, provider());
   await assert.rejects(() => encrypted.put('../escape', Buffer.from('x')), TypeError);
