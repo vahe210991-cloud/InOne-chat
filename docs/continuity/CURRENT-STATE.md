@@ -733,3 +733,11 @@ Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone
 - No Feed API routes, posts table/migration, post persistence, cross-account read enforcement, media flow, Flutter repository/screen, or navigation activation exists from this stage. Feed is NOT ACCEPTED.
 - PR #172 contains the separate scope/owner-decision documentation and remains Draft/unmerged. PR #171 and #173 remain independent Draft branches; do not wholesale merge or copy their histories.
 - Report: `development/reports/2026-11-27-feed-domain-foundation.md`. API proposal: `development/architecture/FEED-BETA1-API-CONTRACT-PROPOSAL.md`.
+
+
+## 2026-11-27 — Feed media-first owner decision and implementation update
+
+- Owner approved Feed variant A: separate server-side media processing; TLS in transit; encryption at rest; mandatory active-session authorization and re-authorization for each media delivery. This does not change chat MLS or the existing chat file pipeline.
+- PR #174 now contains a media-first API proposal and pure domain helpers for optional caption, required ready Feed media and signed HMAC cursors. The proposal remains DRAFT; helpers/tests have not been executed in this stage.
+- Production Feed routes, migrations, persistence, worker, storage encryption configuration, delivery, Flutter integration and dynamic security tests remain NOT STARTED.
+- Do not reuse existing /files authorization by broadening it. Implement Feed in a separate storage namespace/adapter. Keep PR #171/#172/#173 independent; #173 remains HOLD pending #169.
