@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../state/inone_state.dart';
 import '../../widgets/inone_widgets.dart';
+import 'inone_pin_copy.dart';
 
 class InOnePinVerificationScreen extends StatefulWidget {
   const InOnePinVerificationScreen({
@@ -39,14 +40,13 @@ class _InOnePinVerificationScreenState extends State<InOnePinVerificationScreen>
   @override
   Widget build(BuildContext context) {
     return InOneScreen.auth(
-      title: 'Подтверждение безопасности',
-      banner: bannerText ??
-          'Просим прощения за временные неудобства. Мы хотим защитить вас и ваш аккаунт от злоумышленников. Пожалуйста, подтвердите PIN-код восстановления.',
+      title: inOnePinCopy(context, 'verifyTitle'),
+      banner: bannerText ?? inOnePinCopy(context, 'verifyBanner'),
       dock: [
         InOneField(
           form: _form,
           name: 'pin',
-          label: 'PIN-код восстановления · 8 цифр',
+          label: inOnePinCopy(context, 'pinLabel'),
           obscure: true,
           keyboardType: TextInputType.number,
           maxLength: 8,
@@ -55,17 +55,17 @@ class _InOnePinVerificationScreenState extends State<InOnePinVerificationScreen>
         ),
         const SizedBox(height: 10),
         InOneButton(
-          label: 'Подтвердить',
+          label: inOnePinCopy(context, 'confirm'),
           loading: isBusy('verify'),
           onPressed: blocked ? null : _submit,
         ),
         TextButton(
           onPressed: blocked ? null : widget.onForgotPin,
-          child: const Text('Не помню PIN-код'),
+          child: Text(inOnePinCopy(context, 'forgot')),
         ),
         TextButton(
           onPressed: blocked ? null : widget.onLogout,
-          child: const Text('Выйти из аккаунта'),
+          child: Text(inOnePinCopy(context, 'logout')),
         ),
       ],
     );
