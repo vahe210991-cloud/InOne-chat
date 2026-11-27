@@ -744,4 +744,260 @@ mod tests {
         }
     }
 
+    fn apply_remote_commit(
+        group: &mut MlsGroup,
+        provider: &CandidateProvider<openmls_rust_crypto::RustCrypto>,
+        commit: MlsMessageOut,
+    ) {
+        let incoming: MlsMessageIn = commit.into();
+        let protocol = incoming
+            .try_into_protocol_message()
+            .expect("outgoing Commit is a protocol message");
+        let processed = group
+            .process_message(provider, protocol)
+            .expect("peer processes the epoch transition Commit");
+        match processed.into_content() {
+            ProcessedMessageContent::StagedCommitMessage(staged_commit) => {
+                group
+                    .merge_staged_commit(provider, *staged_commit)
+                    .expect("peer merges the staged epoch transition");
+            }
+            _ => panic!("expected a staged Commit message"),
+        }
+    }
+
+    #[test]
+    fn repeated_add_remove_epochs_survive_sqlcipher_reopen() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock after UNIX epoch")
+            .as_nanos();
+        let alice_path = std::env::temp_dir().join(format!(
+            "inone-openmls-092-epochs-alice-{}-{nonce}.db",
+            std::process::id()
+        ));
+        let bob_path = std::env::temp_dir().join(format!(
+            "inone-openmls-092-epochs-bob-{}-{nonce}.db",
+            std::process::id()
+        ));
+
+        let mut alice_provider = file_provider(&alice_path);
+        let mut bob_provider = file_provider(&bob_path);
+        let mut alice_signer =
+            SignatureKeyPair::new(CIPHERSUITE.signature_algorithm()).expect("create Alice signer");
+        let mut bob_signer =
+            SignatureKeyPair::new(CIPHERSUITE.signature_algorithm()).expect("create Bob signer");
+        alice_signer
+            .store(alice_provider.storage())
+            .expect("persist Alice signing key");
+        bob_signer
+            .store(bob_provider.storage())
+            .expect("persist Bob signing key");
+
+        let alice_public_key = alice_signer.to_public_vec();
+        let bob_public_key = bob_signer.to_public_vec();
+        let alice_credential = CredentialWithKey {
+            credential: BasicCredential::new(b"inone-epochs-alice".to_vec()).into(),
+            signature_key: alice_public_key.clone().into(),
+        };
+        let bob_credential = CredentialWithKey {
+            credential: BasicCredential::new(b"inone-epochs-bob".to_vec()).into(),
+            signature_key: bob_public_key.clone().into(),
+        };
+        let create_config = MlsGroupCreateConfig::builder()
+            .ciphersuite(CIPHERSUITE)
+            .use_ratchet_tree_extension(true)
+            .max_past_epochs(0)
+            .build();
+        let mut alice_group =
+            MlsGroup::new(&alice_provider, &alice_signer, &create_config, alice_credential)
+                .expect("create persistent Alice group");
+
+        let bob_key_package = KeyPackage::builder()
+            .build(CIPHERSUITE, &bob_provider, &bob_signer, bob_credential)
+            .expect("build persistent Bob key package");
+        let (_initial_commit, welcome, _) = alice_group
+            .add_members(
+                &alice_provider,
+                &alice_signer,
+                &[bob_key_package.key_package().clone()],
+            )
+            .expect("add Bob to persistent group");
+        alice_group
+            .merge_pending_commit(&alice_provider)
+            .expect("merge initial add-member commit");
+
+        let welcome_wire = welcome
+            .tls_serialize_detached()
+            .expect("serialize initial Bob Welcome");
+        let welcome = match MlsMessageIn::tls_deserialize_exact(&welcome_wire)
+            .expect("deserialize initial Bob Welcome")
+            .extract()
+        {
+            MlsMessageBodyIn::Welcome(welcome) => welcome,
+            _ => panic!("expected initial Welcome"),
+        };
+        let join_config = MlsGroupJoinConfig::builder()
+            .use_ratchet_tree_extension(true)
+            .max_past_epochs(0)
+            .build();
+        let staged = StagedWelcome::new_from_welcome(&bob_provider, &join_config, welcome, None)
+            .expect("stage initial Bob Welcome");
+        let mut bob_group = staged
+            .into_group(&bob_provider)
+            .expect("Bob joins persistent group");
+
+        let group_id = alice_group.group_id().clone();
+        assert_eq!(alice_group.epoch().as_u64(), 1);
+        assert_eq!(bob_group.epoch().as_u64(), 1);
+
+        // Three add/remove cycles exercise six sequential epoch transitions.
+        // Bob receives and merges every Commit; both databases are reopened after
+        // each cycle before the next transition is attempted.
+        for round in 0..3_u64 {
+            let transient_id = format!("inone-epochs-transient-{round}");
+            let transient_provider = in_memory_provider();
+            let transient_signer =
+                SignatureKeyPair::new(CIPHERSUITE.signature_algorithm())
+                    .expect("create transient member signer");
+            transient_signer
+                .store(transient_provider.storage())
+                .expect("persist transient member signer");
+            let transient_credential = CredentialWithKey {
+                credential: BasicCredential::new(transient_id.as_bytes().to_vec()).into(),
+                signature_key: transient_signer.to_public_vec().into(),
+            };
+            let transient_key_package = KeyPackage::builder()
+                .build(
+                    CIPHERSUITE,
+                    &transient_provider,
+                    &transient_signer,
+                    transient_credential,
+                )
+                .expect("build transient member KeyPackage");
+
+            let alice_signer_ref = alice_signer.signer(alice_provider.crypto());
+            let (add_commit, _welcome, _) = alice_group
+                .add_members(
+                    &alice_provider,
+                    &alice_signer_ref,
+                    &[transient_key_package.key_package().clone()],
+                )
+                .expect("add transient member");
+            alice_group
+                .merge_pending_commit(&alice_provider)
+                .expect("Alice merges add-member Commit");
+            apply_remote_commit(&mut bob_group, &bob_provider, add_commit);
+
+            let after_add_epoch = 2 + round * 2;
+            assert_eq!(alice_group.epoch().as_u64(), after_add_epoch);
+            assert_eq!(bob_group.epoch().as_u64(), after_add_epoch);
+            assert_eq!(alice_group.members().count(), 3);
+            assert_eq!(bob_group.members().count(), 3);
+
+            let transient_index = alice_group
+                .members()
+                .find(|member| {
+                    member.credential.serialized_content() == transient_id.as_bytes()
+                })
+                .map(|member| member.index)
+                .expect("find transient member leaf index");
+
+            let alice_signer_ref = alice_signer.signer(alice_provider.crypto());
+            let (remove_commit, welcome, _) = alice_group
+                .remove_members(&alice_provider, &alice_signer_ref, &[transient_index])
+                .expect("remove transient member");
+            assert!(welcome.is_none());
+            alice_group
+                .merge_pending_commit(&alice_provider)
+                .expect("Alice merges removal Commit");
+            apply_remote_commit(&mut bob_group, &bob_provider, remove_commit);
+
+            let after_remove_epoch = 3 + round * 2;
+            assert_eq!(alice_group.epoch().as_u64(), after_remove_epoch);
+            assert_eq!(bob_group.epoch().as_u64(), after_remove_epoch);
+            assert_eq!(alice_group.members().count(), 2);
+            assert_eq!(bob_group.members().count(), 2);
+
+            let message_wire = alice_group
+                .create_message(
+                    &alice_provider,
+                    &alice_signer.signer(alice_provider.crypto()),
+                    format!("epoch-{after_remove_epoch}-after-reopen").as_bytes(),
+                )
+                .expect("Alice creates synchronized application message")
+                .tls_serialize_detached()
+                .expect("serialize synchronized application message");
+            let message_protocol = MlsMessageIn::tls_deserialize_exact(&message_wire)
+                .expect("deserialize synchronized application message")
+                .try_into_protocol_message()
+                .expect("application message is a protocol message");
+            let received = bob_group
+                .process_message(&bob_provider, message_protocol)
+                .expect("Bob processes synchronized application message");
+            match received.into_content() {
+                ProcessedMessageContent::ApplicationMessage(message) => {
+                    assert_eq!(
+                        message.into_bytes(),
+                        format!("epoch-{after_remove_epoch}-after-reopen").as_bytes()
+                    );
+                }
+                _ => panic!("expected synchronized application message"),
+            }
+
+            drop(transient_signer);
+            drop(transient_provider);
+            drop(alice_group);
+            drop(bob_group);
+            drop(alice_signer);
+            drop(bob_signer);
+            drop(alice_provider);
+            drop(bob_provider);
+
+            alice_provider = file_provider(&alice_path);
+            bob_provider = file_provider(&bob_path);
+            alice_group = MlsGroup::load(alice_provider.storage(), &group_id)
+                .expect("load Alice after epoch cycle")
+                .expect("Alice group exists after epoch cycle");
+            bob_group = MlsGroup::load(bob_provider.storage(), &group_id)
+                .expect("load Bob after epoch cycle")
+                .expect("Bob group exists after epoch cycle");
+            assert_eq!(alice_group.epoch().as_u64(), after_remove_epoch);
+            assert_eq!(bob_group.epoch().as_u64(), after_remove_epoch);
+            assert_eq!(alice_group.members().count(), 2);
+            assert_eq!(bob_group.members().count(), 2);
+
+            alice_signer = SignatureKeyPair::read(
+                alice_provider.storage(),
+                &alice_public_key,
+                CIPHERSUITE.signature_algorithm(),
+            )
+            .expect("reload Alice signing key after epoch cycle");
+            bob_signer = SignatureKeyPair::read(
+                bob_provider.storage(),
+                &bob_public_key,
+                CIPHERSUITE.signature_algorithm(),
+            )
+            .expect("reload Bob signing key after epoch cycle");
+        }
+
+        assert_eq!(alice_group.epoch().as_u64(), 7);
+        assert_eq!(bob_group.epoch().as_u64(), 7);
+        assert_eq!(alice_group.epoch_authenticator(), bob_group.epoch_authenticator());
+
+        drop(alice_group);
+        drop(bob_group);
+        drop(alice_signer);
+        drop(bob_signer);
+        drop(alice_provider);
+        drop(bob_provider);
+        for path in [&alice_path, &bob_path] {
+            let _ = std::fs::remove_file(path);
+            let _ = std::fs::remove_file(path.with_extension("db-wal"));
+            let _ = std::fs::remove_file(path.with_extension("db-shm"));
+        }
+    }
+
 }
