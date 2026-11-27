@@ -1,3 +1,12 @@
+## 2026-11-27 — Repository-wide AI-agent operating and test-execution policy
+
+- Added architecture/AI-AGENT-OPERATING-AND-TEST-EXECUTION-POLICY.md defining mandatory task intake, exact-SHA work discipline, layered test selection, GitHub Actions launch and queue handling, concurrency guidance, safe test operation, failure triage, evidence vocabulary, and handoff requirements.
+- Updated root AGENTS.md to make the architecture policy mandatory for all repository agents.
+- Added development/reports/2026-11-27-ai-agent-operating-and-test-execution-policy.md.
+- Work is isolated on docs/architecture-ai-agent-checks-policy-2026-11-27, based on main SHA 7d34b99fcc026a828b838e211d039c575aeace1d. Policy file commit 44477b418ed3482ed35e53f55d3b39f356d7264c; AGENTS link commit bac26ec8ef3fdf21fd7f7c5d6bc284cf60c4ef55; report commit 9bb2ec97b5a4d22453e4ef9448c037278bc722b9.
+- No product code, tests, workflows, secrets, repository settings, release gates, WBS weights, or PRs were changed. Automated Markdown validation and product test suites were NOT RUN; no test result is claimed.
+- Draft review PR is pending. No merge or CI-policy implementation is authorized by this documentation change.
+
 ## 2026-11-26 — FEED / PROFILE Beta 1.0 audit and plan published
 
 - Audited publications/news feed and personal profile against source snapshot `216c6d9ea4e825182d3fc94b7aa6d9841e0ad250`; revalidated against main `920e2a2ecef244c925061348eb68c8b09fe63922`. The two intervening main commits changed only development rules, not FEED/PROFILE source, contracts, schema or Flutter files.
