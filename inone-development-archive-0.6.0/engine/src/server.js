@@ -105,7 +105,7 @@ function normalizeDocumentMetadata(filename, mimeType, bytes) {
 const normalizeProxyIp = (value) => String(value).trim().toLowerCase().replace(/^::ffff:/, '');
 const SAFE_REQUEST_LOG_ROOTS = new Set([
   'account', 'admin', 'appearance', 'assets', 'auth', 'backup', 'biometric',
-  'config', 'devices', 'email', 'flags', 'groups', 'healthz', 'invites',
+  'config', 'contacts', 'devices', 'direct-chats', 'email', 'flags', 'groups', 'healthz', 'invites',
   'keys', 'login', 'logout', 'mls', 'objects', 'operator', 'org-requests',
   'orgs', 'phone', 'profile', 'push', 'readyz', 'recovery', 'register',
   'rooms', 'search', 'sendToDevice', 'stickers', 'sync', 'token', 'users',
