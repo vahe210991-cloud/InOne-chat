@@ -667,6 +667,8 @@ class InOneSession extends ChangeNotifier {
     required String email,
     required String password,
     required String nickname,
+    required String pin,
+    required String pinConfirmation,
     String? phone,
   }) async {
     final token = _registrationToken;
@@ -686,6 +688,8 @@ class InOneSession extends ChangeNotifier {
           'registrationToken': token,
           'password': password,
           'nickname': nickname.trim(),
+          'pin': pin,
+          'pinConfirmation': pinConfirmation,
           if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
         },
       );
@@ -706,6 +710,33 @@ class InOneSession extends ChangeNotifier {
       rethrow;
     }
   }
+
+  Future<Map<String, dynamic>> pinStatus() =>
+      request('GET', '/pin/status');
+
+  Future<Map<String, dynamic>> verifyRecoveryPin(String pin) =>
+      request('POST', '/pin/verify', body: {'pin': pin});
+
+  Future<Map<String, dynamic>> acknowledgePinReminder() =>
+      request('POST', '/pin/reminder/ack');
+
+  Future<Map<String, dynamic>> startPinReset({String password = ''}) =>
+      request('POST', '/pin/reset/start', body: {
+        if (password.isNotEmpty) 'password': password,
+      });
+
+  Future<Map<String, dynamic>> completePinReset({
+    required String challengeId,
+    required String code,
+    required String pin,
+    required String pinConfirmation,
+  }) =>
+      request('POST', '/pin/reset/complete', body: {
+        'challengeId': challengeId,
+        'code': code.trim(),
+        'pin': pin,
+        'pinConfirmation': pinConfirmation,
+      });
 
   /// Transfers the active session to the persistent OpenMLS client.
   ///
