@@ -1772,7 +1772,7 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
             AND peer_contact.contact_user_id = CASE WHEN dc.user_a = $1 THEN dc.user_b ELSE dc.user_a END
            LEFT JOIN contact_requests incoming
              ON incoming.requester_id = CASE WHEN dc.user_a = $1 THEN dc.user_b ELSE dc.user_a END
-            AND incoming.recipient_id = $1 AND incoming.status = 'pending'
+            AND incoming.recipient_id = $1 AND incoming.status = 'pending' AND peer_contact.owner_id IS NULL
 
            LEFT JOIN LATERAL (
              SELECT e.seq, e.origin_ts
