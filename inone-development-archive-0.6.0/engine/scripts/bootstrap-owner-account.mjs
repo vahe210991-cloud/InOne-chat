@@ -1,5 +1,5 @@
 // Первичный аккаунт владельца в базе сервера. Запускает оператор один раз. Пароль — через переменную окружения, не в аргументах.
-// INONE_OWNER_PASSWORD='...' DATABASE_URL=... INONE_PIN_PEPPER=... node scripts/bootstrap-owner-account.mjs <почта> <никнейм> [телефон] --i-confirm-email-is-mine
+// INONE_OWNER_PASSWORD='...' INONE_OWNER_PIN='12345678' INONE_OWNER_PIN_CONFIRM='12345678' DATABASE_URL=... INONE_PIN_PEPPER=... node scripts/bootstrap-owner-account.mjs <почта> <никнейм> <телефон> --i-confirm-email-is-mine
 import pg from 'pg';
 import { pathToFileURL } from 'node:url';
 import { createStore } from '../src/store.js';
@@ -16,8 +16,10 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   const databaseUrl = process.env.DATABASE_URL ?? '';
   const pepper = process.env.INONE_PIN_PEPPER ?? '';
   const password = process.env.INONE_OWNER_PASSWORD ?? '';
-  if (!databaseUrl || !pepper || !password || !email || !nickname || !confirm) {
-    process.stderr.write("usage: INONE_OWNER_PASSWORD='...' DATABASE_URL=... INONE_PIN_PEPPER=... node scripts/bootstrap-owner-account.mjs <почта> <никнейм> [телефон] --i-confirm-email-is-mine\n");
+  const pin = process.env.INONE_OWNER_PIN ?? '';
+  const pinConfirmation = process.env.INONE_OWNER_PIN_CONFIRM ?? '';
+  if (!databaseUrl || !pepper || !password || !pin || !pinConfirmation || !email || !nickname || !phone || !confirm) {
+    process.stderr.write("usage: INONE_OWNER_PASSWORD='...' INONE_OWNER_PIN='12345678' INONE_OWNER_PIN_CONFIRM='12345678' DATABASE_URL=... INONE_PIN_PEPPER=... node scripts/bootstrap-owner-account.mjs <почта> <никнейм> <телефон> --i-confirm-email-is-mine\n");
     process.exit(1);
   }
   const pool = new pg.Pool({ connectionString: databaseUrl, max: 2 });
@@ -25,7 +27,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   try {
     const store = createStore({ pool, pinPepper: pepper });
     const result = await bootstrapOwnerAccount({
-      store, email, nickname, password, phone, confirmOwnerEmail: confirm,
+      store, email, nickname, password, phone, pin, pinConfirmation, pinPepper: pepper, confirmOwnerEmail: confirm,
       allowedCountries: list(process.env.INONE_PHONE_ALLOWED_COUNTRIES ?? DEFAULT_PHONE_COUNTRIES.join(',')),
       blockedCountries: list(process.env.INONE_PHONE_BLOCKED_COUNTRIES),
       log: (entry) => logger.info(entry.event, entry),
