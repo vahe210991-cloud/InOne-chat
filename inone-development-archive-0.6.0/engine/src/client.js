@@ -33,7 +33,7 @@ export class ChatClient {
     const client = new ChatClient(baseUrl, userId, deviceId, engine);
     const pin = extra.pin ?? '80421697';
     const pinConfirmation = extra.pinConfirmation ?? pin;
-    const phone = extra.phone ?? `+37477${randomBytes(4).readUInt32BE(0).toString().padStart(8, '0')}`;
+    const phone = extra.phone ?? `+37477${String(randomBytes(3).readUIntBE(0, 3) % 1_000_000).padStart(6, '0')}`;
     try {
       await client.raw('POST', '/register', {
         userId, password, phone, pin, pinConfirmation, ...extra,
