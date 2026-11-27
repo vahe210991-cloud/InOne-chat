@@ -80,7 +80,7 @@ void main() {
     expect(rooms, hasLength(2));
     expect(rooms.first.displayName, 'Project team');
     expect(rooms.first.role, 'owner');
-    expect(rooms.last.displayName, 'room-2');
+    expect(rooms.last.displayName, 'Личный диалог');
     expect(rooms.last.kind, 'direct');
   });
 
@@ -165,6 +165,37 @@ void main() {
       ],
     });
     expect(legacy.unreadCountsAvailable, isFalse);
+  });
+
+  test('parses incoming contact request state without treating it as message approval', () {
+    final room = InOneRoom.fromJson({
+      'roomId': '!dm_opaque:inone.test',
+      'kind': 'direct',
+      'name': 'New contact',
+      'role': 'member',
+      'peerUserId': '@sender:inone.test',
+      'isPeerContact': false,
+      'incomingContactRequest': true,
+      'isBlocked': false,
+    });
+
+    expect(room.peerUserId, '@sender:inone.test');
+    expect(room.incomingContactRequest, isTrue);
+    expect(room.isPeerContact, isFalse);
+    expect(room.isBlocked, isFalse);
+  });
+
+  test('rejects malformed contact request state', () {
+    expect(
+      () => InOneRoom.fromJson({
+        'roomId': '!dm_opaque:inone.test',
+        'kind': 'direct',
+        'name': null,
+        'role': 'member',
+        'incomingContactRequest': 'yes',
+      }),
+      throwsA(isA<ApiException>()),
+    );
   });
 
   test('rejects malformed unread summary metadata', () {
