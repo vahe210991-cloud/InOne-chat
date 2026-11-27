@@ -2686,6 +2686,40 @@ async mlsPendingRemovalsFor(userId) {
 
     /** Аккаунт с подтверждённой почтой и никнеймом одной транзакцией (и связью с провайдером, если задана).
      *  Возвращает ok | email | nickname | link | account. */
+    async createOpenAccount({ userId, passwordHash, pinHash, phoneE164 = null, nowMs, joinDefaultOrg = false }) {
+      if (typeof pinHash !== 'string' || pinHash.length < 1) throw new TypeError('PIN hash is required');
+      try {
+        return await inTransaction(async (c) => {
+          if (phoneE164) {
+            await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [phoneE164]);
+            const existingPhone = await c.query('SELECT user_id FROM phones WHERE phone = $1 LIMIT 1', [phoneE164]);
+            if (existingPhone.rows.length) {
+              const error = new Error('phone already used');
+              error.code = 'PHONE_TAKEN';
+              throw error;
+            }
+          }
+          await c.query('INSERT INTO accounts (user_id, password_hash) VALUES ($1, $2)', [userId, passwordHash]);
+          if (joinDefaultOrg) await c.query("INSERT INTO org_members (org_id, user_id, role, joined_at) VALUES ('org-default', $1, 'member', $2) ON CONFLICT DO NOTHING", [userId, nowMs]);
+          await c.query(
+            'INSERT INTO pins (user_id, pin_hash, failed, locked_until, last_verified_at, reminder_next_at) VALUES ($1, $2, 0, NULL, $3, $4)',
+            [userId, pinHash, nowMs, nowMs + 7 * 24 * 60 * 60_000],
+          );
+          if (phoneE164) {
+            await c.query(
+              'INSERT INTO phones (user_id, phone, verified, code_hash, code_attempts, code_expires_at) VALUES ($1, $2, FALSE, NULL, 0, 0)',
+              [userId, phoneE164],
+            );
+          }
+          return 'ok';
+        });
+      } catch (error) {
+        if (error.code === 'PHONE_TAKEN') return 'phone';
+        if (error.code === '23505') return 'account';
+        throw error;
+      }
+    },
+
     async createVerifiedAccount({ userId, passwordHash, pinHash, phoneE164 = null, email, nickname, nowMs, provider = null, joinDefaultOrg = false, locale = 'hy' }) {
       if (typeof pinHash !== 'string' || pinHash.length < 1) throw new TypeError('PIN hash is required');
       try {
