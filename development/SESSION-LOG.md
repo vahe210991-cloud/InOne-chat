@@ -811,3 +811,13 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Confirmed current `main` already contains device-bound signed file downloads (same class of work as PR #86); do not duplicate. PR #42 is only a PostgreSQL workflow against old `inone-engine-poc-0.6.0` paths, not a current-engine transaction fix. PR #65 only hardens one error catch, not the global request boundary.
 - Reviewed mobile code-search results for legacy KeyPackage/to-device endpoint usage; no direct mobile references surfaced in the searched source paths. This is not yet a complete API compatibility proof; inspect Rust/Flutter transport adapters and runtime traces before retiring legacy API.
 - Expanded the Stage 0 report with the updated matrix and exact PR dispositions. No source changes, test runs, issue closures, merges, secret edits or repo setting changes.
+
+
+## 2026-11-27 — Direct-chat contact prompt review and race hardening
+
+- Reconfirmed owner behavior: first message delivery is independent of contact acceptance. If the sender is not already in the recipient's contacts, show **Принять** and **Заблокировать** beneath the sender name in the chat list. Accept only updates the recipient's address book; block prevents future direct messages in both directions and does not reveal the blocker to the blocked peer.
+- Verified the production Flutter app host passes both contact actions to `InOneMessagesScreen` and calls authenticated `InOneRepositories.acceptContactRequest` / `blockContact`. The chat-row visibility predicate excludes existing contacts and blocked peers.
+- Fixed a PostgreSQL accept/block race by making acceptance acquire both account locks in the same stable account-first order as block operations before locking the contact-request row. Added a concurrent accept/block regression and assertions that blocking removes both contact edges.
+- Fixed active-thread room-summary refresh to update contact prompt flags, not only unread/time metadata. Added model copy/update regression coverage.
+- Updated backend Compose CI's migration assertion to require `0037-contacts-and-blocks`.
+- Source review and code edits only. **No tests, builds, PostgreSQL migrations, Flutter/Rust checks, or GitHub Actions have been run yet.** Continue static review, then create the final PR and run the complete exact-SHA GitHub Actions gate. Native MLS remains disabled by default; do not merge without owner approval.
