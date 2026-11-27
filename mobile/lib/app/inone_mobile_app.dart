@@ -3539,6 +3539,10 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           onStart: _startPinReset,
           onComplete: _completePinReset,
           onBack: () {
+            if (_pinResetRequired) {
+              setState(() => _screen = 'logout');
+              return;
+            }
             setState(() => _screen = _pinResetReturnScreen ?? 'profile');
             unawaited(_refreshPinReminder());
           },
