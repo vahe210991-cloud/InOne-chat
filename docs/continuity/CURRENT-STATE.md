@@ -725,3 +725,18 @@ Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone
 - Expanded source review confirms B-12 and B-13 defects; B-14 is already implemented at source level (invalid FID cleanup, non-retryable classification, queue cancellation, plaintext-free allowlisted push payload), pending DB-backed test execution; B-15 readiness is partial.
 - Current `main` already has device-bound signed downloads; avoid duplicating PR #86. PR #42 workflow targets old engine paths and does not implement atomic revocation. PR #65 is narrow and does not fix the global request boundary.
 - Updated Stage 0 report addendum in `development/reports/2026-11-24-cto-backend-security-remediation-stage0.md`.
+
+
+## Account & Organization Profiles audit addendum — 2026-11-26
+
+- Audited main SHA: 7d34b99fcc026a828b838e211d039c575aeace1d. Prior source baseline 920e2a2ecef244c925061348eb68c8b09fe63922; intervening 12 commits were documentation-only.
+- Plan: development/ACCOUNT-ORGANIZATION-PROFILES-BETA-1.0-IMPLEMENTATION-PLAN.md.
+- Report: development/reports/2026-11-26-account-organization-profiles-beta1-audit.md.
+- Own-profile read and locale exist; general edit, guest profile and profile media binding were not found.
+- Organization owner/admin/member management is implemented in backend; public guest profile and profile identity/media fields were not found.
+- P0 cross-module finding: organization membership removal clears room_members without an MLS Remove Commit/epoch transition; coordinate with CHAT-P0-01 and PR #166.
+- P1 guest-profile gaps remain conditional on owner-approved privacy/scope. Owner privacy variant В and WBS v1.1 unchanged.
+- No product source/schema/API/config/UI changes. Tests, builds, dynamic security and device checks NOT RUN. No task closed or merge performed.
+
+
+- Documentation PR: [#170](https://github.com/vahe210991-cloud/InOne-chat/pull/170), Draft and not merged. It contains only the account/organization profile audit plan, report and continuity/index updates.

@@ -224,3 +224,18 @@ The owner has approved a two-application product structure:
 This is an authoritative product-boundary decision. Requirements, screen inventories, navigation, UX, and release scopes must identify which application owns each capability. Do not design the two products as one combined app/navigation.
 
 The product split does not automatically imply separate or shared identity services, databases, backends, repositories, infrastructure, or UI foundations. Those remain governed by existing approved decisions or require separate ADRs. Existing InOne Beta 1.0 screens and implementation must be audited and classified before any migration or code change. See [owner decisions](DECISIONS.md#7-product-split-inone-and-inone-business--2026-11-13).
+
+
+## 2026-11-26 — Account & Organization Profiles audit artifacts
+
+- Audited main: 7d34b99fcc026a828b838e211d039c575aeace1d.
+- Plan: development/ACCOUNT-ORGANIZATION-PROFILES-BETA-1.0-IMPLEMENTATION-PLAN.md.
+- Report: development/reports/2026-11-26-account-organization-profiles-beta1-audit.md.
+- Isolated task branch: audit/account-organization-profiles-beta1-main-7d34b99-20261126.
+- Source review found own-profile GET/locale but no general profile edit/guest profile/media binding; organization member/role/settings APIs exist but no public organization profile/media identity model.
+- Confirmed P0 cross-module issue: org member removal deletes room_members without MLS Remove Commit/epoch transition; cross-reference CHAT-P0-01.
+- Two guest-profile P1 findings remain conditional on explicit privacy/scope approval. WBS v1.1 and privacy variant В unchanged.
+- No product source/API/migration/config/UI changes. Tests and runtime acceptance NOT RUN. Documentation PR is not merged.
+
+
+- Documentation PR #170: [Account & Organization Profiles Beta 1.0 audit](https://github.com/vahe210991-cloud/InOne-chat/pull/170), Draft, not merged. No product source changes; tests NOT RUN.

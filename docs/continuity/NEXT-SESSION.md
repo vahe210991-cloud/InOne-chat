@@ -611,3 +611,29 @@ Latest documented checkpoint: code SHA `4824dfc3b3f4e3aab5d39b16c1adf934a108d660
 - Do not reimplement B-14 FCM invalid-registration cleanup without evidence; add/execute PostgreSQL regression for re-registration racing with old failed delivery.
 - B-15: define exact dependency contract for readiness; keep liveness independent of PostgreSQL and avoid exposing dependency/configuration details.
 - Before deprecating legacy MLS endpoint, finish mobile transport/API call-site audit (Flutter, Rust bridge, generated bindings, integration tests); code-search hits did not show direct Flutter call sites but are not a complete proof.
+
+
+# Next execution addendum — Account & Organization Profiles (2026-11-26)
+
+Start from the latest live main, not the audit branch. Read:
+1. development/ACCOUNT-ORGANIZATION-PROFILES-BETA-1.0-IMPLEMENTATION-PLAN.md
+2. development/reports/2026-11-26-account-organization-profiles-beta1-audit.md
+3. development/FEED-PROFILE-BETA-1.0-IMPLEMENTATION-PLAN.md and its audit report
+4. development/CHAT-GROUPS-BETA-1.0-IMPLEMENTATION-PLAN.md / PR #166 when available in main
+5. WBS v1.1, owner decisions, working rules and Git integration policy.
+
+Execution order:
+1. Fix PROFILE-SEC-001 together with CHAT-P0-01: organization removal must reconcile MLS membership/epoch for every affected room.
+2. Add/execute backend profile route, search allowlist, locale persistence and revoked-device regression tests.
+3. Execute PostgreSQL organization role/last-owner/audit rollback tests on one exact SHA.
+4. Obtain owner decisions for guest profile fields, public organization fields, editable fields, media and ownership transfer.
+5. Implement only approved minimum Beta 1.0 scope; keep guest APIs fail-closed until approved.
+6. Add profile/org media only with explicit ownership, image validation, retention and access policy.
+7. Add Flutter widget/integration tests for owner/admin/member/guest modes and all UI states.
+8. Run exact-SHA CI and platform acceptance; do not use historical CI results as current proof.
+9. Keep tasks open until PR merge, review and all acceptance evidence are complete. Do not change WBS v1.1 or privacy variant В without owner approval.
+
+Current audit status: source review complete; implementation not started; tests/builds/dynamic security/production/device checks NOT RUN; no merge authorized.
+
+
+Review PR #170 (Draft) and its final head SHA before further work. Do not merge without explicit owner approval. All source findings remain source-review evidence only; runtime tests have not run.

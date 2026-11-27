@@ -795,3 +795,20 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Confirmed current `main` already contains device-bound signed file downloads (same class of work as PR #86); do not duplicate. PR #42 is only a PostgreSQL workflow against old `inone-engine-poc-0.6.0` paths, not a current-engine transaction fix. PR #65 only hardens one error catch, not the global request boundary.
 - Reviewed mobile code-search results for legacy KeyPackage/to-device endpoint usage; no direct mobile references surfaced in the searched source paths. This is not yet a complete API compatibility proof; inspect Rust/Flutter transport adapters and runtime traces before retiring legacy API.
 - Expanded the Stage 0 report with the updated matrix and exact PR dispositions. No source changes, test runs, issue closures, merges, secret edits or repo setting changes.
+
+
+## 2026-11-26 — Account & Organization Profiles Beta 1.0 audit
+
+- Re-fetched live main and audited exact SHA 7d34b99fcc026a828b838e211d039c575aeace1d. Compared with source baseline 920e2a2ecef244c925061348eb68c8b09fe63922: 12 documentation-only commits; no intervening product source/API/migration/Flutter changes.
+- Created isolated branch audit/account-organization-profiles-beta1-main-7d34b99-20261126 from that exact main SHA.
+- Added development/ACCOUNT-ORGANIZATION-PROFILES-BETA-1.0-IMPLEMENTATION-PLAN.md and development/reports/2026-11-26-account-organization-profiles-beta1-audit.md.
+- Confirmed own-profile GET and locale update; no general profile edit, guest profile or profile media binding. User search remains relationship-gated and returns limited fields.
+- Confirmed organization owner/admin/member routes and transaction-backed member/role/settings mutations; no public organization profile or organization profile identity/media fields.
+- Confirmed cross-module P0: organization member removal deletes room_members without a corresponding MLS Remove Commit/epoch transition. Cross-reference CHAT-P0-01 / open Draft PR #166; no claim that removed users can fetch new ciphertext through server API.
+- Related open PRs #166, #161, #127, #87, #89, #86, #42 and #159 inspected; none merged or modified.
+- No source, API, migration, configuration, workflow or Flutter UI changes. No tests/builds/dynamic security/production/device checks run. Exact main commit status had no registered statuses.
+- WBS v1.1 (42%/31% Beta 1.0; 2%/0% Beta 2.0) and owner-approved privacy variant В unchanged. No implementation tasks closed.
+- Acceptance: source review COMPLETE; implementation NOT STARTED; runtime verification NOT RUN. Documentation PR remains subject to owner review; no merge performed.
+
+
+- Documentation PR #170 created as Draft from exact main SHA 7d34b99fcc026a828b838e211d039c575aeace1d. Initial PR head was b87ccb24fb6d200362974ab0f0f897add9f0903e; subsequent documentation-only commits update the branch. No merge authorized.
