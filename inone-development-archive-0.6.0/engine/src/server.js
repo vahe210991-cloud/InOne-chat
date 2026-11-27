@@ -2194,7 +2194,7 @@ if (req.method === 'POST' && p === '/login') {
         if (completed.outcome === 'expired') return send(res, 410, { error: 'PIN reset code expired' });
         if (completed.outcome === 'locked') return send(res, 429, { error: 'PIN reset locked', retryAt: completed.retryAt ? new Date(completed.retryAt).toISOString() : null });
         if (completed.outcome !== 'ok') return send(res, 403, { error: 'PIN reset verification failed' });
-        await alertDevices(d.userId, { kind: 'pin_changed' });
+        try { await alertDevices(d.userId, { kind: 'pin_changed' }); } catch (_) {}
         return send(res, 200, { ok: true });
       }
 
@@ -3482,7 +3482,9 @@ if (req.method === 'POST' && p === '/login') {
           if (completed.outcome === 'none') return send(res, 403, { error: 'recovery verification failed' });
           if (completed.outcome === 'expired') return send(res, 410, { error: 'recovery expired' });
           if (completed.outcome === 'unconfirmed') return send(res, 403, { error: 'confirm the link from the email first' });
-          if (completed.outcome === 'locked') await alertDevices(userId, { kind: 'recovery_locked' });
+          if (completed.outcome === 'locked') {
+            try { await alertDevices(userId, { kind: 'recovery_locked' }); } catch (_) {}
+          }
           return send(res, 403, { error: 'recovery verification failed' });
         }
         if (completed.factor === 'pin') {
@@ -3493,10 +3495,12 @@ if (req.method === 'POST' && p === '/login') {
           });
         }
         if (completed.outcome !== 'ok') return send(res, 403, { error: 'recovery verification failed' });
-        await alertDevices(userId, {
-          kind: 'recovery_completed',
-          keyResetAt: new Date(completed.keyResetAt).toISOString(),
-        });
+        try {
+          await alertDevices(userId, {
+            kind: 'recovery_completed',
+            keyResetAt: new Date(completed.keyResetAt).toISOString(),
+          });
+        } catch (_) {}
         return send(res, 200, { ok: true, keyResetAt: new Date(completed.keyResetAt).toISOString() });
       }
 
