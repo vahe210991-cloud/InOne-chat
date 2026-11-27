@@ -2377,7 +2377,13 @@ async mlsPendingRemovalsFor(userId) {
         if (acc.rows.length === 0) return change(freshPhone()).result;
         await c.query('INSERT INTO phones (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING', [userId]);
         const { rows } = await c.query('SELECT * FROM phones WHERE user_id = $1 FOR UPDATE', [userId]);
-        const { next, result } = change(fromPhoneRow(rows[0]));
+        const current = fromPhoneRow(rows[0]);
+        const { next, result } = change(current);
+        if (next.phone && next.phone !== current.phone) {
+          await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [next.phone]);
+          const existing = await c.query('SELECT user_id FROM phones WHERE phone = $1 AND user_id <> $2 LIMIT 1', [next.phone, userId]);
+          if (existing.rows.length) return 'phone-taken';
+        }
         await c.query(
           `UPDATE phones SET phone = $2, verified = $3, code_hash = $4, code_attempts = $5, code_expires_at = $6, sends = $7
            WHERE user_id = $1`,
