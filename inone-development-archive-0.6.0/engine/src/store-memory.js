@@ -196,12 +196,12 @@ export function createMemoryStore({ pinPepper }) {
         if (rec.lockedUntil && now < rec.lockedUntil) return { ok: false, reason: 'locked', retryAt: rec.lockedUntil };
         const expiredLockCleared = !!rec.lockedUntil && now >= rec.lockedUntil;
         if (expiredLockCleared) rec.lockedUntil = null;
-        rec.failed += 1;
-        const attempt = rec.failed;
-        if (attempt > free && !expiredLockCleared) {
-          rec.lockedUntil = now + lockDuration(attempt);
+        const previousFailed = rec.failed;
+        if (previousFailed > free && !expiredLockCleared) {
+          rec.lockedUntil = now + lockDuration(previousFailed + 1);
           return { ok: false, reason: 'locked', retryAt: rec.lockedUntil };
         }
+        const attempt = previousFailed + 1;
         if (await check(pin, rec.hash)) {
           if (upgrade) rec.hash = (await upgrade(pin, rec.hash)) ?? rec.hash;
           rec.failed = 0;
@@ -209,7 +209,11 @@ export function createMemoryStore({ pinPepper }) {
           if (markVerified) rec.lastVerifiedAt = now;
           return { ok: true };
         }
-        if (attempt >= free) rec.lockedUntil = now + lockDuration(attempt);
+        rec.failed = attempt;
+        if (attempt > free) {
+          rec.lockedUntil = now + lockDuration(attempt);
+          return { ok: false, reason: 'locked', retryAt: rec.lockedUntil };
+        }
         return { ok: false, reason: 'wrong' };
       });
     },
@@ -887,16 +891,16 @@ export function createMemoryStore({ pinPepper }) {
         }
         const expiredLockCleared = !!pinRecord.lockedUntil && now >= pinRecord.lockedUntil;
         pinRecord.lockedUntil = expiredLockCleared ? null : pinRecord.lockedUntil;
-        const failed = pinRecord.failed + 1;
-        if (failed > free && !expiredLockCleared) {
-          pinRecord.failed = failed;
-          pinRecord.lockedUntil = now + lockDuration(failed);
+        const previousFailed = pinRecord.failed;
+        if (previousFailed > free && !expiredLockCleared) {
+          pinRecord.lockedUntil = now + lockDuration(previousFailed + 1);
           return { factor: 'pin', outcome: 'locked', retryAt: pinRecord.lockedUntil };
         }
+        const failed = previousFailed + 1;
         const pinResult = await pinCheck(pin, pinRecord.hash);
         if (!pinResult.ok) {
           pinRecord.failed = failed;
-          pinRecord.lockedUntil = failed >= free ? now + lockDuration(failed) : null;
+          pinRecord.lockedUntil = failed > free ? now + lockDuration(failed) : null;
           return {
             factor: 'pin',
             outcome: pinRecord.lockedUntil ? 'locked' : 'wrong',
