@@ -698,6 +698,7 @@ The owner clarified the intended Beta 1.0 behavior:
 | MLS provisioning | Only the paired recipient can be claimed and added; direct membership activates only with the claimed Add Commit/Welcome | Code present; end-to-end test pending |
 | Recipient experience | Flutter treats provisioning as internal and never gates message delivery; first message from a non-contact shows **Принять**/**Заблокировать** beside the sender name | Backend contact-request state, Flutter actions and tests authored; verification pending |
 | Device KeyPackages | Native Flutter app maintains a per-device KeyPackage reserve after authentication and on app resume | Code present; native runtime tests pending |
+| Contact requests and blocks | First delivered message from a non-contact creates a recipient-side prompt; accept adds the sender to contacts; block prevents future direct-message delivery and clears pending prompts | PostgreSQL/memory storage, routes, room-list projection and Flutter buttons added; backend/Flutter tests authored, not run |
 | Message delivery | Backend regression covers MLS message route, pre-activation fail-closed behavior and recipient retrieval; Rust/OpenMLS scenario sends while both recipient devices are offline and verifies delivery after sync without an acceptance action | Tests authored; not run |
 
 ### 13.3. Security and release constraints
