@@ -42,6 +42,7 @@ test('direct chats require no recipient approval and activate automatically thro
     assert.equal(opened.status, 'provisioning');
     assert.equal(opened.created, true);
     assert.equal(opened.isCreator, true);
+    assert.equal(opened.mlsInitializationRequired, true);
     assert.ok(opened.roomId.startsWith('!dm_'));
 
     const reverseOpen = await bob.raw('POST', '/direct-chats/open', { userId: ALICE });
