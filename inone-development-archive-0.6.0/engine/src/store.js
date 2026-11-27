@@ -823,16 +823,17 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
         );
         if (!linkSnapshot[0] || linkSnapshot[0].status !== fromStatus) return false;
         const { org_a: orgA, org_b: orgB } = linkSnapshot[0];
-        // Match room -> link lock order used by membership-add and MLS commit transactions.
-        await c.query(
-          'SELECT room_id FROM rooms WHERE org_id = ANY($1::text[]) ORDER BY room_id FOR UPDATE',
-          [[orgA, orgB]],
-        );
+        // Match open-join's link -> room lock order: join holds FOR SHARE on this row
+        // before it locks a room. Locking rooms first here would create a lock-order inversion.
         const { rows: linkRows } = await c.query(
           'SELECT org_a, org_b, status FROM org_links WHERE link_id = $1 FOR UPDATE',
           [linkId],
         );
         if (!linkRows[0] || linkRows[0].status !== fromStatus) return false;
+        await c.query(
+          'SELECT room_id FROM rooms WHERE org_id = ANY($1::text[]) ORDER BY room_id FOR UPDATE',
+          [[orgA, orgB]],
+        );
         const { rows: mlsRooms } = await c.query(
           `SELECT DISTINCT r.room_id
              FROM room_members rm
