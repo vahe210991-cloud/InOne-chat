@@ -229,6 +229,24 @@ test('direct chats require no recipient approval and activate automatically thro
       (error) => error.status === 403,
       'the direct pair cannot claim a Welcome for a third account',
     );
+    const blocked = await alice.raw('POST', `/contacts/${enc(BOB)}/block`);
+    assert.equal(blocked.blocked, true);
+    const aliceBlockedSummary = (await alice.raw('GET', '/rooms/mine')).rooms.find((room) => room.roomId === opened.roomId);
+    assert.equal(aliceBlockedSummary.isBlocked, true);
+    assert.equal(aliceBlockedSummary.incomingContactRequest, false);
+    await assert.rejects(
+      bob.raw('POST', `/mls/groups/${enc(opened.roomId)}/messages`, {
+        message: replyWireMessage,
+        kind: 'text',
+      }),
+      (error) => error.status === 403 && error.message.includes('user_blocked'),
+      'blocking a peer prevents any further message delivery in the direct chat',
+    );
+    await assert.rejects(
+      bob.raw('POST', '/direct-chats/open', { userId: ALICE }),
+      (error) => error.status === 403 && error.message.includes('user_blocked'),
+      'blocking also prevents reopening the direct chat',
+    );
   } finally {
     await s.stop();
   }
