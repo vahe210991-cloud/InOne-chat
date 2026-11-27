@@ -49,6 +49,13 @@ test('direct chats require no recipient approval and activate automatically thro
     assert.equal(reverseOpen.status, 'provisioning');
     assert.equal(reverseOpen.created, false);
     assert.equal(reverseOpen.isCreator, false);
+    assert.equal(reverseOpen.mlsInitializationRequired, false);
+
+    const creatorRetry = await alice.raw('POST', '/direct-chats/open', { userId: BOB });
+    assert.equal(creatorRetry.created, false);
+    assert.equal(creatorRetry.status, 'provisioning');
+    assert.equal(creatorRetry.isCreator, true);
+    assert.equal(creatorRetry.mlsInitializationRequired, true, 'creator retries must retain the MLS setup requirement');
 
     await assert.rejects(
       bob.raw('GET', `/rooms/${enc(opened.roomId)}/members`),
