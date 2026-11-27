@@ -1824,6 +1824,7 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
                   r.room_id, r.created_at
              FROM contact_requests r LEFT JOIN profiles p ON p.user_id = r.requester_id
             WHERE r.recipient_id = $1 AND r.status = 'pending'
+              AND NOT EXISTS (SELECT 1 FROM contacts c WHERE c.owner_id = $1 AND c.contact_user_id = r.requester_id)
             ORDER BY r.created_at, r.requester_id`,
           [userId],
         ),
