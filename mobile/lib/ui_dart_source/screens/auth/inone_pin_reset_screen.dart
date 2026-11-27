@@ -115,6 +115,10 @@ class _InOnePinResetScreenState extends State<InOnePinResetScreen>
             loading: isBusy('complete'),
             onPressed: blocked ? null : _complete,
           ),
+          TextButton(
+            onPressed: blocked ? null : _start,
+            child: const Text('Отправить код повторно'),
+          ),
         ],
       ],
     );
