@@ -82,4 +82,54 @@ void main() {
     expect(find.text('Announcements'), findsOneWidget);
     expect(find.text('Project team'), findsNothing);
   });
+
+  testWidgets('first message from a non-contact shows accept and block actions', (tester) async {
+    InOneChatPreview? accepted;
+    InOneChatPreview? blocked;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: InOneTheme.light(),
+        home: InOneMessagesScreen(
+          chats: const [
+            InOneChatPreview(
+              id: 'direct-incoming',
+              name: 'New contact',
+              lastMessage: 'Hello',
+              time: '10:30',
+              kind: InOneChatKind.person,
+              peerUserId: '@new:inone.test',
+              incomingContactRequest: true,
+            ),
+            InOneChatPreview(
+              id: 'direct-known',
+              name: 'Known contact',
+              lastMessage: 'Hi again',
+              time: '09:30',
+              kind: InOneChatKind.person,
+              peerUserId: '@known:inone.test',
+              isPeerContact: true,
+            ),
+          ],
+          onOpenChat: (_) {},
+          onAcceptContact: (chat) => accepted = chat,
+          onBlockContact: (chat) => blocked = chat,
+          onSearch: () {},
+          onTab: (_) {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Принять'), findsOneWidget);
+    expect(find.text('Заблокировать'), findsOneWidget);
+
+    await tester.tap(find.text('Принять'));
+    await tester.pump();
+    expect(accepted?.peerUserId, '@new:inone.test');
+
+    await tester.tap(find.text('Заблокировать'));
+    await tester.pump();
+    expect(blocked?.peerUserId, '@new:inone.test');
+  });
+
 }
