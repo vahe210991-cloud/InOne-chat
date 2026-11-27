@@ -215,7 +215,7 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
         return { outcome: 'sent', expiresAt, resendAfter: now + 60_000 };
       });
     },
-    async completePinResetWithOutbox(userId, { challengeId, codeOk, deviceId, pinHash, now, reminderNextAt }, enqueue) {
+    async completePinResetWithOutbox(userId, { challengeId, codeOk, deviceId, makePinHash, now, reminderNextAt }, enqueue) {
       return inTransaction(async (c) => {
         const { rows } = await c.query(
           'SELECT * FROM pin_reset_challenges WHERE user_id = $1 FOR UPDATE',
@@ -236,6 +236,7 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
           );
           return { outcome: attempts >= 5 ? 'locked' : 'wrong', retryAt: lockedUntil || null };
         }
+        const pinHash = await makePinHash();
         await c.query(
           `INSERT INTO pins (user_id, pin_hash, failed, locked_until, last_verified_at, reminder_next_at)
            VALUES ($1, $2, 0, NULL, $3, $4)
