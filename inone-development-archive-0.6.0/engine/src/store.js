@@ -56,6 +56,11 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
     );
     if (!roomLookup[0]) return 'room_not_found';
     if (roomLookup[0].kind === 'direct') {
+      const { rows: pairAccounts } = await client.query(
+        'SELECT user_id FROM accounts WHERE user_id IN (SELECT user_a FROM direct_conversations WHERE room_id = $1 UNION SELECT user_b FROM direct_conversations WHERE room_id = $1) ORDER BY user_id FOR SHARE',
+        [roomId],
+      );
+      if (pairAccounts.length !== 2) return 'not_member';
       const { rows: conversations } = await client.query(
         'SELECT user_a, user_b, status FROM direct_conversations WHERE room_id = $1 FOR SHARE',
         [roomId],
