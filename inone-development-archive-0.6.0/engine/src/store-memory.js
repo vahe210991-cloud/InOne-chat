@@ -1730,6 +1730,22 @@ mlsPendingRemovalsFor(userId) {
       }
       return null;
     },
+    createOpenAccount({ userId, passwordHash, pinHash, phoneE164 = null, nowMs, joinDefaultOrg = false }) {
+      if (typeof pinHash !== 'string' || pinHash.length < 1) throw new TypeError('PIN hash is required');
+      if (accounts.has(userId)) return 'account';
+      if (phoneE164 && [...phones.values()].some((entry) => entry.phone === phoneE164)) return 'phone';
+      accounts.set(userId, passwordHash);
+      if (joinDefaultOrg) addOrgMembership(DEFAULT_ORG_ID, userId, 'member', nowMs);
+      pins.set(userId, {
+        hash: pinHash, failed: 0, lockedUntil: null,
+        lastVerifiedAt: nowMs, reminderNextAt: nowMs + 7 * 24 * 60 * 60_000,
+      });
+      if (phoneE164) phones.set(userId, {
+        phone: phoneE164, verified: false, codeHash: null, codeAttempts: 0, codeExpiresAt: 0, sends: [],
+      });
+      return 'ok';
+    },
+
     createVerifiedAccount({ userId, passwordHash, pinHash, phoneE164 = null, email, nickname, nowMs, provider = null, joinDefaultOrg = false, locale = 'hy' }) {
       if (typeof pinHash !== 'string' || pinHash.length < 1) throw new TypeError('PIN hash is required');
       if (accounts.has(userId)) return 'account';
