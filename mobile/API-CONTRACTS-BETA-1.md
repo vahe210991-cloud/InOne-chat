@@ -91,6 +91,8 @@ All room, organization, profile, device, push, approvals, file, sync and MLS ope
 - A user cannot read another applicant's private documents.
 - A WebView event cannot select an arbitrary HTTP method/path.
 - No legacy/plaintext message POST may bypass MLS.
+- A first message from a non-contact is delivered before the recipient chooses **Принять** or **Заблокировать**; acceptance only adds a contact.
+- A blocked pair cannot reopen a direct conversation or deliver further messages; previously delivered history remains available.
 
 ## 4. CH-02 — authoritative message flow
 
