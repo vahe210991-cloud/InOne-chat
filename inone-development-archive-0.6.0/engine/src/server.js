@@ -27,9 +27,10 @@ import { isIP } from 'node:net';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { readFileSync } from 'node:fs';
-import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, randomInt, randomUUID, scryptSync, timingSafeEqual, createPublicKey, createVerify } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, randomInt, randomUUID, timingSafeEqual, createPublicKey, createVerify } from 'node:crypto';
 import { createMemoryStore } from './store-memory.js';
 import { LOGIN_POLICY } from './login-throttle.js';
+import { PIN_FREE_ATTEMPTS, PIN_REMINDER_INTERVAL_MS, PIN_VERIFICATION_INTERVAL_MS, checkPin, hashPin, lockDurationMs, pinHashNeedsUpgrade, validatePin, weakPinReason } from './pin-security.js';
 import { windowOpen, requestCode, confirmLink, checkCode, completeRecovery, cancelWindow, issueIdentity, checkIdentity, closeWindowIfDue } from './recovery-rules.js';
 import { createMemorySms } from './sms.js';
 import { isPhone, requestPhoneCode, checkPhoneCode } from './phone-rules.js';
@@ -46,7 +47,8 @@ const WINDOW_POST_OK = new Set(['/keys/query', '/recovery/cancel']);
 export const APPROVAL_TTL_MS = 10 * 60 * 1000;
 export const MAX_APPROVAL_CODE_ATTEMPTS = 3;
 export const MAX_PENDING_APPROVALS = 3;
-export const FREE_PIN_ATTEMPTS = 5;
+export const FREE_PIN_ATTEMPTS = PIN_FREE_ATTEMPTS;
+export { lockDurationMs, weakPinReason };
 export const TO_DEVICE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // недоставленная очередь хранится не дольше 30 дней (спецификация)
 const MAX_TO_DEVICE_RECIPIENTS = 100;
 const MAX_TO_DEVICE_MESSAGES = 200;
@@ -54,7 +56,6 @@ const MAX_TO_DEVICE_ITEM_BYTES = 256 * 1024;
 const MAX_TO_DEVICE_TOTAL_BYTES = 1024 * 1024;
 const MAX_TO_DEVICE_QUEUE = 500;
 const SEND_DEDUP_MS = 7 * 24 * 60 * 60 * 1000;             // повтор отправки с тем же номером считается дублем 7 дней
-const MAX_LOCK_MS = 24 * 60 * 60 * 1000;
 const EMAIL_LOCALES = new Set(['hy', 'ru', 'en']);
 const resolveEmailLocale = (value) => value === undefined ? 'hy' : EMAIL_LOCALES.has(value) ? value : null;
 
@@ -130,29 +131,7 @@ function contentDispositionAttachment(filename) {
   return "attachment; filename=\"" + fallback + "\"; filename*=UTF-8''" + encoded;
 }
 
-/** Длительность блокировки PIN: 1, 2, 4… минуты, не больше суток. */
-export function lockDurationMs(attempt) {
-  const steps = Math.max(0, attempt - FREE_PIN_ATTEMPTS);
-  return Math.min(MAX_LOCK_MS, 60_000 * 2 ** Math.min(steps, 20));
-}
 
-/** Слабый PIN не принимается. Логика та же, что в основном проекте (pin-lock.service.ts). */
-export function weakPinReason(pin) {
-  if (!/^\d+$/.test(pin)) return 'PIN must contain digits only';
-  if (pin.length < 6 || pin.length > 12) return 'PIN must be 6-12 digits';
-  if (/^(\d)\1+$/.test(pin)) return 'PIN is too simple (one repeated digit)';
-  const d = [...pin].map(Number);
-  const step = d[1] - d[0];
-  if ((step === 1 || step === -1) && d.every((x, i) => i === 0 || x - d[i - 1] === step)) {
-    return 'PIN is too simple (a straight run of digits)';
-  }
-  for (let size = 2; size <= pin.length / 2; size++) {
-    if (pin.length % size === 0 && pin === pin.slice(0, size).repeat(pin.length / size)) {
-      return 'PIN is too simple (a repeating pattern)';
-    }
-  }
-  return null;
-}
 
 
 
@@ -161,19 +140,7 @@ export function weakPinReason(pin) {
 // Фиктивный хэш для неизвестных логинов: проверка занимает то же время, что и для настоящих (C-04).
 const DUMMY_PASSWORD_HASH = hashPassword(randomBytes(16).toString('hex'));
 
-// PIN: сначала HMAC с секретным перцем (он лежит в окружении, не в базе), потом scrypt.
-// Так утёкшая база сама по себе не позволяет перебрать PIN.
-const pepperedPin = (pepper, pin) => createHmac('sha256', pepper).update(pin).digest();
-function hashPin(pepper, pin) {
-  const salt = randomBytes(16);
-  return `${salt.toString('base64')}$${scryptSync(pepperedPin(pepper, pin), salt, 32).toString('base64')}`;
-}
-function checkPin(pepper, pin, stored) {
-  const [saltB64, hashB64] = stored.split('$');
-  const expected = Buffer.from(hashB64, 'base64');
-  const actual = scryptSync(pepperedPin(pepper, pin), Buffer.from(saltB64, 'base64'), 32);
-  return expected.length === actual.length && timingSafeEqual(expected, actual);
-}
+
 
 // Страница подтверждения восстановления: открытие ссылки ничего не меняет, подтверждает только кнопка (POST).
 const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -224,7 +191,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
     for (let i = chain.length - 1; i >= 0 && trustedProxySet.has(candidate); i -= 1) candidate = chain[i];
     return candidate;
   };
-  if (!pinPepper || pinPepper.length < 32) {
+  if (!pinPepper || Buffer.byteLength(pinPepper, 'utf8') < 32) {
     // Без перца сервер не запускается: иначе PIN легко перебрать после утечки базы.
     throw new Error('PIN_PEPPER обязателен и не короче 32 символов');
   }
@@ -485,10 +452,12 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
     now: now(),
     free: FREE_PIN_ATTEMPTS,
     lockDuration: lockDurationMs,
-    check: (candidate, stored) => {
+    check: async (candidate, stored) => {
       pinChecks += 1;
       return checkPin(pinPepper, candidate, stored);
     },
+    upgrade: async (candidate, stored) =>
+      pinHashNeedsUpgrade(stored) ? hashPin(pinPepper, candidate) : null,
   });
 
   const pinError = (res, r) => {
@@ -1123,6 +1092,13 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
         const reg = await checkRate('registrationsPerAddress', clientIp(req));
         if (!reg.allowed) return send(res, 429, { error: 'too many registrations from this address', retryAt: new Date(reg.retryAt).toISOString() });
         if (!isEmail(email) || token === '') return send(res, 400, { error: 'email and registrationToken required' });
+        const pin = typeof body.pin === 'string' ? body.pin : '';
+        const pinConfirmation = typeof body.pinConfirmation === 'string' ? body.pinConfirmation : '';
+        const pinErrorText = weakPinReason(pin);
+        if (pinErrorText) return send(res, 400, { error: pinErrorText });
+        if (!validatePin(pinConfirmation) || pin !== pinConfirmation) {
+          return send(res, 400, { error: 'PIN confirmation does not match' });
+        }
         if (typeof body.password !== 'string' || Array.from(body.password).length < MIN_PASSWORD_LENGTH || Array.from(body.password).length > MAX_PASSWORD_LENGTH) {
           return send(res, 400, { error: `password must be ${MIN_PASSWORD_LENGTH}-${MAX_PASSWORD_LENGTH} characters` });
         }
@@ -1148,6 +1124,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
           },
           userId,
           passwordHash: hashPassword(body.password),
+          pinHash: await hashPin(pinPepper, pin),
           nickname: body.nickname,
           nowMs: now(),
           joinDefaultOrg: defaultOrgAutoJoin,
@@ -2008,26 +1985,21 @@ if (req.method === 'POST' && p === '/login') {
       if (req.method === 'POST' && p === '/pin/set') {
         const d = await authed(req);
         if (!d) return send(res, 401, { error: 'unauthorized' });
-        const pin = String(body.pin ?? '');
+        const pin = typeof body.pin === 'string' ? body.pin : '';
         const weak = weakPinReason(pin);
         if (weak) return send(res, 400, { error: weak });
-        if (await storage.hasPin(d.userId)) {
-          const r = await verifyPin(d.userId, String(body.currentPin ?? ''));
-          if (!r.ok) return pinError(res, r);
+        if (!(await storage.hasPin(d.userId))) {
+          return send(res, 403, { error: 'PIN setup requires verified-email confirmation' });
         }
-        await storage.setPin(d.userId, hashPin(pinPepper, pin));
+        const r = await verifyPin(d.userId, typeof body.currentPin === 'string' ? body.currentPin : '');
+        if (!r.ok) return pinError(res, r);
+        await storage.setPin(d.userId, await hashPin(pinPepper, pin), now());
         await alertDevices(d.userId, { kind: 'pin_changed' });
         return send(res, 200, { ok: true });
       }
 
       if (req.method === 'POST' && p === '/pin/remove') {
-        const d = await authed(req);
-        if (!d) return send(res, 401, { error: 'unauthorized' });
-        const r = await verifyPin(d.userId, String(body.currentPin ?? ''));
-        if (!r.ok) return pinError(res, r);
-        await storage.removePin(d.userId);
-        await alertDevices(d.userId, { kind: 'pin_removed' });
-        return send(res, 200, { ok: true });
+        return send(res, 410, { error: 'recovery PIN cannot be removed' });
       }
 
       // ---------- устройства ----------
@@ -3284,11 +3256,12 @@ if (req.method === 'POST' && p === '/login') {
           if (check === 'locked') await alertDevices(userId, { kind: 'recovery_locked' });
           return send(res, 403, { error: 'wrong code' });
         }
-        if (await storage.hasPin(userId)) {
-          // PIN не снимается восстановлением (D1): без него восстановление не проходит.
-          if (typeof pin !== 'string' || pin === '') return send(res, 403, { error: 'PIN required' });
-          const r = await verifyPin(userId, pin);
-          if (!r.ok) return pinError(res, r);
+        // PIN обязателен для каждого аккаунта. Отсутствующий legacy PIN никогда не включает email-only recovery.
+        if (!validatePin(pin)) return send(res, 403, { error: 'recovery verification failed' });
+        const pinVerdict = await verifyPin(userId, pin);
+        if (!pinVerdict.ok) {
+          if (pinVerdict.reason === 'no-pin') return send(res, 403, { error: 'recovery verification failed' });
+          return pinError(res, pinVerdict);
         }
         if (typeof newPassword !== 'string' || Array.from(newPassword).length < MIN_PASSWORD_LENGTH || Array.from(newPassword).length > MAX_PASSWORD_LENGTH) {
           return send(res, 400, { error: `newPassword must be ${MIN_PASSWORD_LENGTH}-${MAX_PASSWORD_LENGTH} characters` });
