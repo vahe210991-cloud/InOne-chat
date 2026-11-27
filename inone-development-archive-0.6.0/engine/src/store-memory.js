@@ -1042,7 +1042,7 @@ export function createMemoryStore({ pinPepper }) {
       return {
         contacts: contactIds.map((contactUserId) => ({
           userId: contactUserId,
-          displayName: profiles.get(contactUserId)?.nickname?.trim() || contactUserId,
+          displayName: profiles.get(contactUserId)?.nickname?.trim() || null,
         })),
         incomingRequests,
       };
