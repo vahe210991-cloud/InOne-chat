@@ -60,8 +60,8 @@ The API returns a generic PIN failure and a retry time only when the caller is a
 ## 5. Recovery flow
 
 1. Client submits email to POST /recovery/start. The public response remains privacy-preserving and identical for existing and unknown addresses.
-2. For an eligible account, the backend sends a one-time code only to its verified primary email. Recovery challenges have a short fixed TTL and strict resend/start limits.
-3. The user enters the email code first. The PIN is not checked before successful email-code validation.
+2. For an eligible account without a Google/Apple recovery path, the backend sends a one-time code only to its verified primary email. It does not use the phone number, SMS or backup email as a recovery factor. Recovery challenges have a one-hour TTL and strict resend/start limits.
+3. The user enters the email code first. No email confirmation link is required for new Beta 1.0 recovery requests; the old deep-link confirmation endpoint remains only for challenges created before this change. The PIN is not checked before successful email-code validation.
 4. The user then enters the eight-digit PIN. The server validates the email code and PIN against the same pending recovery request, using one account-bound challenge and server-side expiry.
 5. Only after both factors pass may the recovery completion transaction change the password and begin the existing 48-hour recovery window.
 6. The challenge is consumed atomically with password update and recovery-state transition. A concurrent/replayed completion must not change the password twice or create a second recovery window.
