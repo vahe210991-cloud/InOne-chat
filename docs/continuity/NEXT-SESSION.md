@@ -637,3 +637,6 @@ Latest documented checkpoint: code SHA `4824dfc3b3f4e3aab5d39b16c1adf934a108d660
 
 - New isolated primitive: feed-encrypted-object-store.js and feed-encrypted-object-store.test.js. Before wiring, statically review chunk framing, GCM tag verification, key-provider failures, stream cancellation/backpressure, and rotation behavior. Tests have not been run.
 - Current backend has filesystem and in-memory object stores only; filesystem is not encrypted at rest. Add a Feed-only storage root and dedicated secret-manager-backed key provider after shared-file integration is safe. Do not change the chat /files or MLS path.
+
+
+- Dart UI source re-audit across main, PR #171 head, G1 native Dart, Flutter migration, archive stage1, Feed/Profile audit and profile-workspace branches: bottom-nav Feed/Add affordances exist, but Feed route is a placeholder; no Feed/Create/Picker/Preview/PostGallery Dart source found in the inspected trees. Personal/org profile screens are real but have no publication gallery. Do not invent or replace approved UI. Obtain exact approved source branch/path before Flutter integration if one exists outside these inspected branches.
