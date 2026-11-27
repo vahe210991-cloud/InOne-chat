@@ -3,6 +3,7 @@ import { promisify } from 'node:util';
 
 const scryptAsync = promisify(scrypt);
 const argon2Async = promisify(argon2);
+
 export const PIN_LENGTH = 8;
 export const PIN_FREE_ATTEMPTS = 2;
 export const PIN_LOCK_BASE_MS = 30 * 60_000;
@@ -17,6 +18,7 @@ const ARGON2 = Object.freeze({
   parallelism: 1,
   outputBytes: 32,
 });
+
 const MAX_ACTIVE_KDFS = 2;
 const MAX_QUEUED_KDFS = 16;
 let activeKdfs = 0;
@@ -33,6 +35,7 @@ async function withKdfSlot(work) {
     }
     await new Promise((resolve) => kdfQueue.push(resolve));
   }
+
   try {
     return await work();
   } finally {
@@ -53,11 +56,14 @@ export function validateLegacyPin(pin) {
 export function weakPinReason(pin) {
   if (!validatePin(pin)) return 'PIN must contain exactly eight digits';
   if (/^(\d)\1{7}$/.test(pin)) return 'PIN is too simple';
+
   const digits = [...pin].map(Number);
   const step = digits[1] - digits[0];
-  if ((step === 1 || step === -1) && digits.every((digit, index) => index === 0 || digit - digits[index - 1] === step)) {
+  if ((step === 1 || step === -1)
+      && digits.every((digit, index) => index === 0 || digit - digits[index - 1] === step)) {
     return 'PIN is too simple';
   }
+
   if (/^(\d{2,4})\1+$/.test(pin)) return 'PIN is too simple';
   return null;
 }
@@ -75,6 +81,7 @@ function parseLegacyHash(stored) {
   if (typeof stored !== 'string') return null;
   const parts = stored.split('$');
   if (parts.length !== 2) return null;
+
   const salt = Buffer.from(parts[0], 'base64');
   const hash = Buffer.from(parts[1], 'base64');
   if (salt.length !== 16 || hash.length !== 32) return null;
@@ -85,6 +92,7 @@ function parseArgonHash(stored) {
   if (typeof stored !== 'string') return null;
   const match = /^argon2id\$v=19\$m=65536,t=3,p=1\$([A-Za-z0-9_-]{22})\$([A-Za-z0-9_-]{43})$/.exec(stored);
   if (!match) return null;
+
   const salt = Buffer.from(match[1], 'base64url');
   const hash = Buffer.from(match[2], 'base64url');
   if (salt.length !== 16 || hash.length !== ARGON2.outputBytes) return null;
@@ -94,6 +102,7 @@ function parseArgonHash(stored) {
 async function derive(pin, salt, pepper) {
   const message = Buffer.from(pin, 'utf8');
   const secret = Buffer.from(pepper, 'utf8');
+
   try {
     return await withKdfSlot(() => argon2Async('argon2id', {
       message,
@@ -116,10 +125,17 @@ export async function hashPin(pepper, pin) {
   if (typeof pepper !== 'string' || Buffer.byteLength(pepper, 'utf8') < 32) {
     throw new Error('PIN_PEPPER must contain at least 32 bytes');
   }
+
   const salt = randomBytes(16);
   const derived = Buffer.from(await derive(pin, salt, pepper));
   try {
-    return ['argon2id', `v=${ARGON2.version}`, `m=${ARGON2.memoryKiB},t=${ARGON2.iterations},p=${ARGON2.parallelism}`, salt.toString('base64url'), derived.toString('base64url')].join(String.fromCharCode(36));
+    return [
+      'argon2id',
+      'v=' + ARGON2.version,
+      'm=' + ARGON2.memoryKiB + ',t=' + ARGON2.iterations + ',p=' + ARGON2.parallelism,
+      salt.toString('base64url'),
+      derived.toString('base64url'),
+    ].join(String.fromCharCode(36));
   } finally {
     derived.fill(0);
   }
@@ -127,6 +143,7 @@ export async function hashPin(pepper, pin) {
 
 export async function checkPin(pepper, pin, stored) {
   if (typeof pepper !== 'string' || Buffer.byteLength(pepper, 'utf8') < 32) return false;
+
   const current = parseArgonHash(stored);
   if (current) {
     if (!validatePin(pin)) return false;
@@ -137,8 +154,10 @@ export async function checkPin(pepper, pin, stored) {
       actual.fill(0);
     }
   }
+
   const legacy = parseLegacyHash(stored);
   if (!legacy || !validateLegacyPin(pin)) return false;
+
   const secret = legacyPepperedPin(pepper, pin);
   let actual;
   try {
@@ -151,6 +170,7 @@ export async function checkPin(pepper, pin, stored) {
   } finally {
     secret.fill(0);
   }
+
   try {
     return actual.length === legacy.hash.length && timingSafeEqual(actual, legacy.hash);
   } finally {
@@ -159,47 +179,6 @@ export async function checkPin(pepper, pin, stored) {
 }
 
 export function pinHashNeedsUpgrade(stored) {
-  return typeof stored !== 'string' || !stored.startsWith('argon2id$');
-}
-);
-  } finally {
-    derived.fill(0);
-  }
-}
-
-export async function checkPin(pepper, pin, stored) {
-  if (typeof pepper !== 'string' || Buffer.byteLength(pepper, 'utf8') < 32) return false;
-  const current = parseArgonHash(stored);
-  if (current) {
-    if (!validatePin(pin)) return false;
-    const actual = Buffer.from(await derive(pin, current.salt, pepper));
-    try {
-      return actual.length === current.hash.length && timingSafeEqual(actual, current.hash);
-    } finally {
-      actual.fill(0);
-    }
-  }
-  const legacy = parseLegacyHash(stored);
-  if (!legacy || !validateLegacyPin(pin)) return false;
-  const secret = legacyPepperedPin(pepper, pin);
-  let actual;
-  try {
-    actual = await withKdfSlot(() => scryptAsync(secret, legacy.salt, 32, {
-      N: 16_384,
-      r: 8,
-      p: 1,
-      maxmem: 64 * 1024 * 1024,
-    }));
-  } finally {
-    secret.fill(0);
-  }
-  try {
-    return actual.length === legacy.hash.length && timingSafeEqual(actual, legacy.hash);
-  } finally {
-    actual.fill(0);
-  }
-}
-
-export function pinHashNeedsUpgrade(stored) {
-  return typeof stored !== 'string' || !stored.startsWith('argon2id$');
+  return typeof stored !== 'string'
+    || !stored.startsWith('argon2id' + String.fromCharCode(36));
 }
