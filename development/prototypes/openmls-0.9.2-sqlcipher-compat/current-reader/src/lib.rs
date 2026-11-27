@@ -1,8 +1,6 @@
 use std::{path::Path, sync::Arc};
 
 use openmls::prelude::*;
-use openmls_basic_credential::SignatureKeyPair;
-use openmls_libcrux_crypto::CryptoProvider as LibcruxCrypto;
 use openmls_sqlite_storage::{Codec, Connection, SqliteStorageProvider};
 use openmls_traits::{crypto::OpenMlsCrypto, random::OpenMlsRand};
 use serde::{de::DeserializeOwned, Serialize};
@@ -100,6 +98,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use openmls::prelude::tls_codec::{Deserialize, Serialize};
+    use openmls_basic_credential::SignatureKeyPair;
+    use openmls_libcrux_crypto::CryptoProvider as LibcruxCrypto;
 
     #[test]
     fn opens_and_reloads_existing_openmls_081_group_with_sqlcipher_and_libcrux() {
@@ -358,7 +359,6 @@ mod tests {
 
     #[test]
     fn two_party_group_and_signing_keys_survive_sqlcipher_reopen() {
-        use openmls::prelude::tls_codec::{Deserialize, Serialize};
         use std::time::{SystemTime, UNIX_EPOCH};
 
         let nonce = SystemTime::now()
