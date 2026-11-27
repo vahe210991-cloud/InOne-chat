@@ -75,6 +75,26 @@ The updated proposal therefore specifies an isolated Feed storage directory/name
 
 Production config/key-provider wiring and the dedicated Feed directory are not yet implemented.
  
+## Dart UI re-audit
+
+Reviewed the actual Dart source tree in the following branches: main, PR #171 head, feat/beta1-native-dart-ui-g1-2026-11-18, feat/flutter-ui-dart-migration-2026-11-14, feature/ui-dart-archive-stage1-2026-11-25, audit/feed-profile-beta1-main-216c6d9-20261126 and the profile-workspace branches.
+
+| UI element | Source | Verified state |
+|---|---|---|
+| Feed navigation tab | mobile/lib/ui_dart_source/widgets/inone_bottom_nav.dart | Exists; enum and visual navigation item |
+| Add publication action | mobile/lib/ui_dart_source/widgets/inone_bottom_nav.dart | Exists as a bottom-nav action label/button |
+| Feed route | mobile/lib/app/inone_mobile_app.dart | Not connected; selecting Feed shows “section not in connected Beta 1.0 scope” notice |
+| Feed screen | mobile/lib/ui_dart_source/screens/main | No Feed screen source found in the inspected branches |
+| Create publication / media picker / preview | mobile/lib/ui_dart_source/screens/main and widgets | No corresponding Dart source found in the inspected branches |
+| Personal profile | mobile/lib/ui_dart_source/screens/main/inone_profile_screen.dart | Real UI: avatar, nickname/name, handle, stats and menu; no publication gallery |
+| Organization profile | mobile/lib/ui_dart_source/screens/main/inone_org_profile_screen.dart | Real UI: cover, logo, description, stats and member list; no publication gallery |
+| Profile model | mobile/lib/ui_dart_source/models/inone_models.dart | InOneUserProfile has avatar and profile display fields; no post/media collection |
+| Profile repository | mobile/lib/core/data/inone_repositories.dart and inone_profile.dart | Own-profile API model/repository; no Feed/post/media methods |
+
+This is a source-level finding, not an inference from missing backend. The Feed navigation affordance exists, but its route is a placeholder. Profile and organization profile screens are real Dart screens, but they do not currently contain the requested visual publication gallery in the inspected branches. No approved design has been replaced or changed.
+
+The product instruction that accepted Feed/Create/Preview Dart screens must not be recreated without checking the owner-approved source remains binding. If a separate approved source branch exists outside the inspected branches, it must be identified before Flutter implementation. Backend and isolated media primitives can continue independently.
+
 ## Existing backend boundary
 
 Current chat file flow remains owner/device-bound or room-member-bound. It includes active-device checks, upload reservation/completion, signed download authorization and object storage. It is not suitable to be made cross-account-readable for Feed by changing its existing policy.
