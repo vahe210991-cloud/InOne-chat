@@ -745,3 +745,9 @@ Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone
 
 - Added isolated chunked AES-256-GCM Feed object-store wrapper and tests. It wraps existing streaming object-store methods, uses per-object DEKs wrapped by a key-provider KEK, binds object/key/chunk metadata as AAD, and supports key-ID rotation. It is not wired to production configuration or storage yet; tests are authored but NOT RUN.
 - Storage finding: current canonical production path is filesystem object storage (streaming, atomic, restrictive permissions but not encrypted at rest); in-memory storage buffers full objects and is test-only. No S3/MinIO/KMS adapter found. Feed must use its own directory/namespace and secret-manager-backed key provider; do not modify chat storage.
+
+
+## Dart Feed/Profile source re-audit
+
+- Reviewed main, PR #171 head, native Dart G1, Flutter migration, UI archive stage1, Feed/Profile audit and profile-workspace branches. In all inspected branches, the Feed tab and Add Publication button exist in InOneBottomNav, but InOneMobileApp._selectTab routes Feed to a “not connected to Beta 1.0” notice. No Feed screen, create-publication, media picker, preview or post-gallery Dart source was found in the inspected main screen trees.
+- Personal and organization profile Dart screens exist. The personal profile shows avatar/name/handle/stats/menu but no publication gallery; organization profile shows cover/logo/about/stats/members but no publication gallery. Do not replace these screens. If another approved Feed Dart branch exists, identify it before Flutter wiring. Backend work can continue independently.
