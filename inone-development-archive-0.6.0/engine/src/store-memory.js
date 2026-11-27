@@ -812,64 +812,72 @@ export function createMemoryStore({ pinPepper }) {
       const cur = recovery.get(userId);
       return cur ? structuredClone(cur) : freshRecovery();
     },
-    recoveryUpdate(userId, change) {
-      if (!accounts.has(userId)) return change(freshRecovery()).result;
-      const cur = recovery.get(userId);
-      const { next, result } = change(cur ? structuredClone(cur) : freshRecovery());
-      recovery.set(userId, structuredClone(next));
-      return result;
+    async recoveryUpdate(userId, change) {
+      return withPinLock(userId, async () => {
+        if (!accounts.has(userId)) return change(freshRecovery()).result;
+        const cur = recovery.get(userId);
+        const { next, result } = change(cur ? structuredClone(cur) : freshRecovery());
+        recovery.set(userId, structuredClone(next));
+        return result;
+      });
     },
 
     async recoveryUpdateWithOutbox(userId, change, enqueue) {
-      if (!accounts.has(userId)) return change(freshRecovery()).result;
-      const cur = recovery.get(userId);
-      const { next, result } = change(cur ? structuredClone(cur) : freshRecovery());
-      recovery.set(userId, structuredClone(next));
-      try {
-        if (enqueue) await enqueue(null, result);
-      } catch (error) {
-        if (cur) recovery.set(userId, cur); else recovery.delete(userId);
-        throw error;
-      }
-      return result;
+      return withPinLock(userId, async () => {
+        if (!accounts.has(userId)) return change(freshRecovery()).result;
+        const cur = recovery.get(userId);
+        const { next, result } = change(cur ? structuredClone(cur) : freshRecovery());
+        recovery.set(userId, structuredClone(next));
+        try {
+          if (enqueue) await enqueue(null, result);
+        } catch (error) {
+          if (cur) recovery.set(userId, cur); else recovery.delete(userId);
+          throw error;
+        }
+        return result;
+      });
     },
     async recoveryCancelWithOutbox(userId, passwordHash, change, enqueue) {
-      if (!accounts.has(userId)) return change(freshRecovery()).result;
-      const oldPassword = accounts.get(userId);
-      const oldRecovery = recovery.get(userId);
-      const oldCancel = recoveryCancels.get(userId);
-      const { next, result } = change(oldRecovery ? structuredClone(oldRecovery) : freshRecovery());
-      if (passwordHash) accounts.set(userId, passwordHash);
-      recovery.set(userId, structuredClone(next));
-      recoveryCancels.delete(userId);
-      try {
-        if (enqueue) await enqueue(null, result);
-      } catch (error) {
-        accounts.set(userId, oldPassword);
-        if (oldRecovery) recovery.set(userId, oldRecovery); else recovery.delete(userId);
-        if (oldCancel) recoveryCancels.set(userId, oldCancel);
-        throw error;
-      }
-      return result;
+      return withPinLock(userId, async () => {
+        if (!accounts.has(userId)) return change(freshRecovery()).result;
+        const oldPassword = accounts.get(userId);
+        const oldRecovery = recovery.get(userId);
+        const oldCancel = recoveryCancels.get(userId);
+        const { next, result } = change(oldRecovery ? structuredClone(oldRecovery) : freshRecovery());
+        if (passwordHash) accounts.set(userId, passwordHash);
+        recovery.set(userId, structuredClone(next));
+        recoveryCancels.delete(userId);
+        try {
+          if (enqueue) await enqueue(null, result);
+        } catch (error) {
+          accounts.set(userId, oldPassword);
+          if (oldRecovery) recovery.set(userId, oldRecovery); else recovery.delete(userId);
+          if (oldCancel) recoveryCancels.set(userId, oldCancel);
+          throw error;
+        }
+        return result;
+      });
     },
     async recoveryCompleteWithOutbox(userId, passwordHash, change, cancelCodeHash, enqueue) {
-      if (!accounts.has(userId)) throw new Error('recovery account not found');
-      const oldPassword = accounts.get(userId);
-      const oldRecovery = recovery.get(userId);
-      const oldCancel = recoveryCancels.get(userId);
-      const { next, result } = change(oldRecovery ? structuredClone(oldRecovery) : freshRecovery());
-      accounts.set(userId, passwordHash);
-      recovery.set(userId, structuredClone(next));
-      recoveryCancels.set(userId, { codeHash: cancelCodeHash, expiresAt: result });
-      try {
-        if (enqueue) await enqueue(null, result);
-      } catch (error) {
-        accounts.set(userId, oldPassword);
-        if (oldRecovery) recovery.set(userId, oldRecovery); else recovery.delete(userId);
-        if (oldCancel) recoveryCancels.set(userId, oldCancel); else recoveryCancels.delete(userId);
-        throw error;
-      }
-      return result;
+      return withPinLock(userId, async () => {
+        if (!accounts.has(userId)) throw new Error('recovery account not found');
+        const oldPassword = accounts.get(userId);
+        const oldRecovery = recovery.get(userId);
+        const oldCancel = recoveryCancels.get(userId);
+        const { next, result } = change(oldRecovery ? structuredClone(oldRecovery) : freshRecovery());
+        accounts.set(userId, passwordHash);
+        recovery.set(userId, structuredClone(next));
+        recoveryCancels.set(userId, { codeHash: cancelCodeHash, expiresAt: result });
+        try {
+          if (enqueue) await enqueue(null, result);
+        } catch (error) {
+          accounts.set(userId, oldPassword);
+          if (oldRecovery) recovery.set(userId, oldRecovery); else recovery.delete(userId);
+          if (oldCancel) recoveryCancels.set(userId, oldCancel); else recoveryCancels.delete(userId);
+          throw error;
+        }
+        return result;
+      });
     },
 
     async recoveryCompleteWithPin(userId, {
