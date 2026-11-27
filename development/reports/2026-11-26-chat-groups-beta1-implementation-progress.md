@@ -8,7 +8,7 @@
 
 ## Owner clarification: direct-message delivery
 
-A recipient does not accept or reject a request when another user sends a personal message. Direct messages are delivered without recipient approval. MLS KeyPackage claim, Add Commit and per-device Welcome are automatic cryptographic provisioning, not a consent flow. The backend's `provisioning` state is internal only and must not be displayed as a request awaiting acceptance.
+A recipient does not accept or reject the chat or the first message. Direct messages are delivered without recipient approval. MLS KeyPackage claim, Add Commit and per-device Welcome are automatic cryptographic provisioning, not a consent flow. The backend's `provisioning` state is internal only and must not be displayed as a request awaiting acceptance. If the sender is not in the recipient's contacts, the first delivered message displays **Принять** and **Заблокировать** beside the sender name. Accept adds the sender to the recipient's contacts; block prevents future direct messages/interactions and clears pending prompts. Neither action gates delivery of the already-received message.
 
 ## Code changes present on the branch
 
