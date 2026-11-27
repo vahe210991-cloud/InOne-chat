@@ -72,7 +72,13 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
         'SELECT 1 FROM room_members WHERE room_id = $1 AND user_id = $2 FOR SHARE',
         [roomId, userId],
       );
-      return directMembership.length ? null : 'not_member';
+      if (!directMembership.length) return 'not_member';
+      const peerUserId = conversation.user_a === userId ? conversation.user_b : conversation.user_a;
+      const { rows: blocked } = await client.query(
+        'SELECT 1 FROM user_blocks WHERE (blocker_id = $1 AND blocked_id = $2) OR (blocker_id = $2 AND blocked_id = $1) FOR SHARE',
+        [userId, peerUserId],
+      );
+      return blocked.length ? 'user_blocked' : null;
     }
     const orgId = roomLookup[0].org_id;
     const { rows: orgRows } = await client.query(
@@ -135,6 +141,33 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
       [roomId, userId],
     );
     return roomMembership.length ? null : 'not_member';
+  }
+
+  async function createIncomingContactRequest(client, roomId, senderId, createdAt) {
+    const { rows } = await client.query(
+      'SELECT user_a, user_b FROM direct_conversations WHERE room_id = $1 FOR SHARE',
+      [roomId],
+    );
+    const conversation = rows[0];
+    if (!conversation) return;
+    const recipientId = conversation.user_a === senderId
+      ? conversation.user_b
+      : conversation.user_b === senderId ? conversation.user_a : null;
+    if (!recipientId) return;
+    const { rows: blocked } = await client.query(
+      'SELECT 1 FROM user_blocks WHERE (blocker_id = $1 AND blocked_id = $2) OR (blocker_id = $2 AND blocked_id = $1) FOR SHARE',
+      [senderId, recipientId],
+    );
+    if (blocked.length) return;
+    const { rows: contact } = await client.query(
+      'SELECT 1 FROM contacts WHERE owner_id = $1 AND contact_user_id = $2',
+      [recipientId, senderId],
+    );
+    if (contact.length) return;
+    await client.query(
+      "INSERT INTO contact_requests (requester_id, recipient_id, room_id, status, created_at, decided_at) VALUES ($1, $2, $3, 'pending', $4, NULL) ON CONFLICT (requester_id, recipient_id) DO NOTHING",
+      [senderId, recipientId, roomId, createdAt],
+    );
   }
 
   async function lockUserOrgAccess(client, userId, orgId) {
@@ -1600,6 +1633,16 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
       const userA = requesterFirst ? requester : target;
       const userB = requesterFirst ? target : requester;
       return inTransaction(async (c) => {
+        const { rows: lockedAccounts } = await c.query(
+          'SELECT user_id FROM accounts WHERE user_id = ANY($1::text[]) ORDER BY user_id FOR SHARE',
+          [[userA, userB]],
+        );
+        if (lockedAccounts.length !== 2) return { status: 'unknown_user' };
+        const { rows: blocked } = await c.query(
+          'SELECT 1 FROM user_blocks WHERE (blocker_id = $1 AND blocked_id = $2) OR (blocker_id = $2 AND blocked_id = $1) FOR SHARE',
+          [userA, userB],
+        );
+        if (blocked.length) return { status: 'blocked' };
         const roomInsert = await c.query(
           "INSERT INTO rooms (room_id, owner, kind, name, org_id) VALUES ($1, $2, 'direct', NULL, NULL) ON CONFLICT (room_id) DO NOTHING",
           [roomId, requester],
@@ -1701,6 +1744,11 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
       const { rows } = await pool.query(
         `SELECT r.room_id, r.kind,
                 COALESCE(r.name, NULLIF(peer.nickname, '')) AS name,
+                CASE WHEN dc.room_id IS NULL THEN NULL
+                     WHEN dc.user_a = $1 THEN dc.user_b ELSE dc.user_a END AS peer_user_id,
+                (peer_contact.owner_id IS NOT NULL) AS is_peer_contact,
+                (incoming.status = 'pending') AS incoming_contact_request,
+                (blocked.blocker_id IS NOT NULL) AS is_blocked,
                 r.owner, m.is_admin,
                 last_message.seq AS last_event_seq,
                 last_message.origin_ts AS last_event_at,
@@ -1710,6 +1758,15 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
            LEFT JOIN direct_conversations dc ON dc.room_id = r.room_id
            LEFT JOIN profiles peer
              ON peer.user_id = CASE WHEN dc.user_a = $1 THEN dc.user_b ELSE dc.user_a END
+           LEFT JOIN contacts peer_contact
+             ON peer_contact.owner_id = $1
+            AND peer_contact.contact_user_id = CASE WHEN dc.user_a = $1 THEN dc.user_b ELSE dc.user_a END
+           LEFT JOIN contact_requests incoming
+             ON incoming.requester_id = CASE WHEN dc.user_a = $1 THEN dc.user_b ELSE dc.user_a END
+            AND incoming.recipient_id = $1 AND incoming.status = 'pending'
+           LEFT JOIN user_blocks blocked
+             ON (blocked.blocker_id = $1 AND blocked.blocked_id = CASE WHEN dc.user_a = $1 THEN dc.user_b ELSE dc.user_a END)
+             OR (blocked.blocker_id = CASE WHEN dc.user_a = $1 THEN dc.user_b ELSE dc.user_a END AND blocked.blocked_id = $1)
            LEFT JOIN LATERAL (
              SELECT e.seq, e.origin_ts
                FROM room_events e
@@ -1735,12 +1792,92 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
         roomId: r.room_id,
         kind: r.kind,
         name: r.name,
+        peerUserId: r.peer_user_id ?? null,
+        isPeerContact: !!r.is_peer_contact,
+        incomingContactRequest: !!r.incoming_contact_request,
+        isBlocked: !!r.is_blocked,
         owner: r.owner,
         isAdmin: r.is_admin,
         lastEventSeq: r.last_event_seq === null ? null : Number(r.last_event_seq),
         lastEventAt: r.last_event_at === null ? null : Number(r.last_event_at),
         unreadCount: Number(r.unread_count ?? 0),
       }));
+    },
+
+    async listContacts(userId) {
+      const [contacts, requests] = await Promise.all([
+        pool.query(
+          `SELECT c.contact_user_id AS user_id, COALESCE(NULLIF(p.nickname, ''), c.contact_user_id) AS display_name, c.created_at
+             FROM contacts c LEFT JOIN profiles p ON p.user_id = c.contact_user_id
+            WHERE c.owner_id = $1 ORDER BY display_name, c.contact_user_id`,
+          [userId],
+        ),
+        pool.query(
+          `SELECT r.requester_id AS user_id, COALESCE(NULLIF(p.nickname, ''), r.requester_id) AS display_name,
+                  r.room_id, r.created_at
+             FROM contact_requests r LEFT JOIN profiles p ON p.user_id = r.requester_id
+            WHERE r.recipient_id = $1 AND r.status = 'pending'
+            ORDER BY r.created_at, r.requester_id`,
+          [userId],
+        ),
+      ]);
+      return {
+        contacts: contacts.rows.map((r) => ({ userId: r.user_id, displayName: r.display_name, createdAt: Number(r.created_at) })),
+        incomingRequests: requests.rows.map((r) => ({ userId: r.user_id, displayName: r.display_name, roomId: r.room_id, createdAt: Number(r.created_at) })),
+      };
+    },
+
+    async acceptContactRequest(recipientId, requesterId, nowMs) {
+      return inTransaction(async (c) => {
+        const { rows: requestRows } = await c.query(
+          'SELECT status FROM contact_requests WHERE requester_id = $1 AND recipient_id = $2 FOR UPDATE',
+          [requesterId, recipientId],
+        );
+        if (!requestRows[0]) return { status: 'not_found' };
+        if (requestRows[0].status === 'blocked') return { status: 'blocked' };
+        if (requestRows[0].status === 'accepted') return { status: 'accepted' };
+        const { rows: blocks } = await c.query(
+          'SELECT 1 FROM user_blocks WHERE (blocker_id = $1 AND blocked_id = $2) OR (blocker_id = $2 AND blocked_id = $1) FOR SHARE',
+          [recipientId, requesterId],
+        );
+        if (blocks.length) return { status: 'blocked' };
+        await c.query(
+          'INSERT INTO contacts (owner_id, contact_user_id, created_at) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
+          [recipientId, requesterId, nowMs],
+        );
+        await c.query(
+          "UPDATE contact_requests SET status = 'accepted', decided_at = $3 WHERE requester_id = $1 AND recipient_id = $2 AND status = 'pending'",
+          [requesterId, recipientId, nowMs],
+        );
+        return { status: 'accepted' };
+      });
+    },
+
+    async blockUser(blockerId, blockedId, nowMs) {
+      return inTransaction(async (c) => {
+        const { rows: accounts } = await c.query(
+          'SELECT user_id FROM accounts WHERE user_id = ANY($1::text[]) ORDER BY user_id FOR UPDATE',
+          [[blockerId, blockedId]],
+        );
+        if (accounts.length !== 2) return { status: 'unknown_user' };
+        await c.query(
+          'SELECT room_id FROM direct_conversations WHERE (user_a = $1 AND user_b = $2) OR (user_a = $2 AND user_b = $1) ORDER BY room_id FOR UPDATE',
+          [blockerId, blockedId],
+        );
+        await c.query(
+          'INSERT INTO user_blocks (blocker_id, blocked_id, created_at) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
+          [blockerId, blockedId, nowMs],
+        );
+        await c.query(
+          'DELETE FROM contacts WHERE (owner_id = $1 AND contact_user_id = $2) OR (owner_id = $2 AND contact_user_id = $1)',
+          [blockerId, blockedId],
+        );
+        await c.query(
+          "UPDATE contact_requests SET status = 'blocked', decided_at = $3 WHERE ((requester_id = $1 AND recipient_id = $2) OR (requester_id = $2 AND recipient_id = $1)) AND status = 'pending'",
+          [blockerId, blockedId, nowMs],
+        );
+        return { status: 'blocked' };
+      });
     },
 
   async roomKind(roomId) {
@@ -1801,7 +1938,8 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
           'INSERT INTO room_events (seq, room_id, sender, origin_ts, type, content) VALUES ($1, $2, $3, $4, $5, $6::jsonb)',
           [seq, roomId, sender, nowMs, type, JSON.stringify(content ?? null)],
         );
-        if (afterAppend) await afterAppend(c, { seq, roomId, eventId: `$${seq}` });
+        if (afterAppend) await afterAppend(c, { seq, roomId, eventId: `${seq}` });
+        if (type === 'm.room.encrypted') await createIncomingContactRequest(c, roomId, sender, nowMs);
 
         // A deterministic fault-injection seam used only by PostgreSQL tests.
         // It runs before the idempotency row is completed, inside the transaction.
@@ -2245,7 +2383,8 @@ async mlsPendingRemovalsFor(userId) {
           'INSERT INTO room_events (seq, room_id, sender, origin_ts, type, content) VALUES ($1, $2, $3, $4, $5, $6::jsonb)',
           [seq, roomId, sender, nowMs, type, JSON.stringify(content ?? null)],
         );
-        if (afterAppend) await afterAppend(c, { seq, roomId, eventId: `$${seq}` });
+        if (afterAppend) await afterAppend(c, { seq, roomId, eventId: `${seq}` });
+        if (type === 'm.room.encrypted') await createIncomingContactRequest(c, roomId, sender, nowMs);
         return seq;
       });
     },
