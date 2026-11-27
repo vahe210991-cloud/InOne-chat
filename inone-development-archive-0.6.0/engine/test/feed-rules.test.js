@@ -102,14 +102,14 @@ test('caption is optional, normalized and rejects malformed values', () => {
   assert.deepEqual(normalizePostCaption(undefined), {
     ok: true, caption: null, codePoints: 0, utf8Bytes: 0,
   });
-  assert.equal(normalizePostCaption('  \\r\\n  ').caption, null);
-  const caption = normalizePostCaption('  Cafe\\u0301\\r\\nPhoto  ');
+  assert.equal(normalizePostCaption('  \r\n  ').caption, null);
+  const caption = normalizePostCaption('  Cafe\u0301\r\nPhoto  ');
   assert.equal(caption.ok, true);
-  assert.equal(caption.caption, 'Café\\nPhoto');
+  assert.equal(caption.caption, 'Café\nPhoto');
   assert.equal(caption.codePoints, [...caption.caption].length);
   assert.equal(normalizePostCaption(42).error, 'invalid_caption');
-  assert.equal(normalizePostCaption('bad\\0caption').error, 'invalid_caption');
-  assert.equal(normalizePostCaption('\\ud800').error, 'invalid_unicode');
+  assert.equal(normalizePostCaption('bad\0caption').error, 'invalid_caption');
+  assert.equal(normalizePostCaption('\ud800').error, 'invalid_unicode');
 });
 
 test('publication requires at least one unique ready Feed media item owned by the author', () => {
