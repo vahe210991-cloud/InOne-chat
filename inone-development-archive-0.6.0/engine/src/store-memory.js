@@ -1061,7 +1061,7 @@ export function createMemoryStore({ pinPepper }) {
     blockUser(blockerId, blockedId, nowMs) {
       if (!accounts.has(blockerId) || !accounts.has(blockedId)) return { status: 'unknown_user' };
       if (blockerId === blockedId) return { status: 'invalid_pair' };
-      userBlocks.add(pairKey(blockerId, blockedId));
+      userBlocks.add(blockKey(blockerId, blockedId));
       contacts.get(blockerId)?.delete(blockedId);
       contacts.get(blockedId)?.delete(blockerId);
       for (const request of contactRequests.values()) {
