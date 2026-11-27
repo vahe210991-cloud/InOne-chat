@@ -1946,7 +1946,7 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
           'INSERT INTO room_events (seq, room_id, sender, origin_ts, type, content) VALUES ($1, $2, $3, $4, $5, $6::jsonb)',
           [seq, roomId, sender, nowMs, type, JSON.stringify(content ?? null)],
         );
-        if (afterAppend) await afterAppend(c, { seq, roomId, eventId: `${seq}` });
+        if (afterAppend) await afterAppend(c, { seq, roomId, eventId: `$${seq}` });
         if (type === 'm.room.encrypted') await createIncomingContactRequest(c, roomId, sender, nowMs);
 
         // A deterministic fault-injection seam used only by PostgreSQL tests.
@@ -2401,7 +2401,7 @@ async mlsPendingRemovalsFor(userId) {
           'INSERT INTO room_events (seq, room_id, sender, origin_ts, type, content) VALUES ($1, $2, $3, $4, $5, $6::jsonb)',
           [seq, roomId, sender, nowMs, type, JSON.stringify(content ?? null)],
         );
-        if (afterAppend) await afterAppend(c, { seq, roomId, eventId: `${seq}` });
+        if (afterAppend) await afterAppend(c, { seq, roomId, eventId: `$${seq}` });
         if (type === 'm.room.encrypted') await createIncomingContactRequest(c, roomId, sender, nowMs);
         return seq;
       });
