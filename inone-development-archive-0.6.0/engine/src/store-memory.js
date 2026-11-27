@@ -47,6 +47,15 @@ export function createMemoryStore({ pinPepper }) {
     if (members.has(userId)) return false;
     members.set(userId, { role, joinedAt });
     return true;
+  }
+  function isOrgMemberRoom(orgId, roomOrgId, userId) {
+    if (roomOrgId === orgId) return true;
+    if (!roomOrgId || (orgMembers.get(roomOrgId)?.has(userId) ?? false)) return false;
+    return [...orgLinks.values()].some((link) => {
+      if (link.status !== 'active') return false;
+      const linkedOrg = link.orgA === orgId ? link.orgB : link.orgB === orgId ? link.orgA : null;
+      return linkedOrg === roomOrgId && organizations.get(linkedOrg)?.status === 'approved';
+    });
   } // ключевой хэш токена обновления -> { deviceKey, expiresAt, usedAt }
   const throttle = new Map();      // ключ счётчика входа -> { failed, windowStart, blockedUntil }
   const recovery = new Map();      // пользователь -> состояние восстановления (см. recovery-rules.js)
@@ -65,6 +74,11 @@ export function createMemoryStore({ pinPepper }) {
   const inbox = new Map();         // ключ устройства -> события очереди доставки
   const sends = new Map();         // (отправитель, тип, номер) -> время отправки
   const rooms = new Map();
+  const directConversations = new Map(); // unordered pair key -> direct conversation
+  const directConversationsByRoom = new Map();
+  const contacts = new Map(); // owner user -> Set(contact user)
+  const contactRequests = new Map(); // requester|recipient -> request state
+  const userBlocks = new Set(); // blocker|blocked direction
   const mlsPackages = [];
   const mlsPackageClaims = new Map();
   const mlsGroups = new Map();
@@ -76,6 +90,26 @@ export function createMemoryStore({ pinPepper }) {
   const counters = { eventSeq: 0, inboxSeq: 0 };
   const approvals = new Map();     // идентификатор -> запрос подтверждения входа
   const copy = (d) => ({ userId: d.userId, deviceId: d.deviceId, label: d.label, revoked: d.revoked, createdAt: d.createdAt });
+  const requestKey = (requester, recipient) => JSON.stringify([requester, recipient]);
+  const blockKey = (blocker, blocked) => JSON.stringify([blocker, blocked]);
+  const isBlockedPair = (a, b) => userBlocks.has(blockKey(a, b)) || userBlocks.has(blockKey(b, a));
+  function addContact(ownerId, contactUserId) {
+    let set = contacts.get(ownerId);
+    if (!set) { set = new Set(); contacts.set(ownerId, set); }
+    set.add(contactUserId);
+  }
+  function recordIncomingContactRequest(roomId, senderId, createdAt) {
+    const conversation = directConversationsByRoom.get(roomId);
+    if (!conversation) return;
+    const recipientId = conversation.userA === senderId
+      ? conversation.userB
+      : conversation.userB === senderId ? conversation.userA : null;
+    if (!recipientId || isBlockedPair(senderId, recipientId) || contacts.get(recipientId)?.has(senderId)) return;
+    const key = requestKey(senderId, recipientId);
+    if (!contactRequests.has(key)) {
+      contactRequests.set(key, { requesterId: senderId, recipientId, roomId, status: 'pending', createdAt, decidedAt: null });
+    }
+  }
 
   return {
     hasAccount: (userId) => accounts.has(userId),
@@ -439,10 +473,12 @@ export function createMemoryStore({ pinPepper }) {
       if (targetRole === 'owner' && [...members.values()].filter((m) => m.role === 'owner').length <= 1) {
         return { ok: false, reason: 'last_owner' };
       }
-      if ([...rooms.values()].some((room) => room.orgId === orgId && room.owner === target)) {
+      if ([...rooms.values()].some((room) => room.owner === target && isOrgMemberRoom(orgId, room.orgId, target))) {
         return { ok: false, reason: 'owns_rooms' };
       }
-      for (const room of rooms.values()) if (room.orgId === orgId) { room.members.delete(target); room.admins.delete(target); }
+      const roomIds = [...rooms.entries()].filter(([, room]) => room.members.has(target) && isOrgMemberRoom(orgId, room.orgId, target)).map(([roomId]) => roomId).sort();
+      if (roomIds.length) return { ok: false, reason: 'mls_removal_required', roomIds };
+      for (const room of rooms.values()) if (isOrgMemberRoom(orgId, room.orgId, target)) room.joinRequests.delete(target);
       members.delete(target);
       adminActions.push({ orgId, actor, action, target, detail: targetRole, at });
       return { ok: true, role: targetRole };
@@ -458,8 +494,12 @@ export function createMemoryStore({ pinPepper }) {
       return n;
     },
     removeOrgMember(orgId, userId) {
-      for (const r of rooms.values()) if (r.orgId === orgId) { r.members.delete(userId); r.admins.delete(userId); }
+      if ([...rooms.values()].some((room) => room.owner === userId && isOrgMemberRoom(orgId, room.orgId, userId))) return { ok: false, reason: 'owns_rooms' };
+      const roomIds = [...rooms.entries()].filter(([, room]) => room.members.has(userId) && isOrgMemberRoom(orgId, room.orgId, userId)).map(([roomId]) => roomId).sort();
+      if (roomIds.length) return { ok: false, reason: 'mls_removal_required', roomIds };
+      for (const room of rooms.values()) if (isOrgMemberRoom(orgId, room.orgId, userId)) room.joinRequests.delete(userId);
       orgMembers.get(orgId)?.delete(userId);
+      return { ok: true };
     },
     purgeRejectedOrgRequests(cutoffMs) {
       const keys = [];
@@ -543,31 +583,40 @@ export function createMemoryStore({ pinPepper }) {
       return [...orgLinks.values()].filter((l) => l.orgA === orgId || l.orgB === orgId).map((l) => ({ linkId: l.linkId, orgA: l.orgA, orgB: l.orgB, status: l.status, proposingOrg: l.proposingOrg }));
     },
     removeCrossOrgMemberships(orgX, orgY) {
-      const inOrg = (org, u) => orgMembers.get(org)?.has(u) ?? false;
-      for (const r of rooms.values()) {
-        if (r.orgId !== orgX && r.orgId !== orgY) continue;
-        const other = r.orgId === orgX ? orgY : orgX;
-        for (const u of [...r.members]) if (inOrg(other, u) && !inOrg(r.orgId, u)) { r.members.delete(u); r.admins.delete(u); }
+      const inOrg = (org, userId) => orgMembers.get(org)?.has(userId) ?? false;
+      const memberships = [];
+      for (const [roomId, room] of rooms) {
+        if (room.orgId !== orgX && room.orgId !== orgY) continue;
+        const other = room.orgId === orgX ? orgY : orgX;
+        for (const userId of room.members) {
+          if (inOrg(other, userId) && !inOrg(room.orgId, userId)) memberships.push({ roomId, userId, owner: room.owner === userId });
+        }
       }
+      return memberships.length
+        ? { ok: false, reason: 'mls_removal_required', memberships }
+        : { ok: true };
     },
     revokeOrgLink({ linkId, fromStatus, actor, at }) {
       const link = orgLinks.get(linkId);
-      if (!link || link.status !== fromStatus) return false;
-      link.status = 'revoked';
-      link.decidedBy = actor;
-      link.decidedAt = at;
+      if (!link || link.status !== fromStatus) return { ok: false, reason: 'state_changed' };
       const orgA = link.orgA;
       const orgB = link.orgB;
       const inOrg = (org, userId) => orgMembers.get(org)?.has(userId) ?? false;
+      const memberships = [];
+      for (const [roomId, room] of rooms) {
+        if (room.orgId !== orgA && room.orgId !== orgB) continue;
+        const other = room.orgId === orgA ? orgB : orgA;
+        for (const userId of room.members) {
+          if (inOrg(other, userId) && !inOrg(room.orgId, userId)) memberships.push({ roomId, userId, owner: room.owner === userId });
+        }
+      }
+      if (memberships.length) return { ok: false, reason: 'mls_removal_required', memberships };
+      link.status = 'revoked';
+      link.decidedBy = actor;
+      link.decidedAt = at;
       for (const room of rooms.values()) {
         if (room.orgId !== orgA && room.orgId !== orgB) continue;
         const other = room.orgId === orgA ? orgB : orgA;
-        for (const userId of [...room.members]) {
-          if (inOrg(other, userId) && !inOrg(room.orgId, userId)) {
-            room.members.delete(userId);
-            room.admins.delete(userId);
-          }
-        }
         for (const userId of [...room.joinRequests.keys()]) {
           if (inOrg(other, userId) && !inOrg(room.orgId, userId)) room.joinRequests.delete(userId);
         }
@@ -576,7 +625,7 @@ export function createMemoryStore({ pinPepper }) {
         { orgId: orgA, actor, action: 'link_revoke', target: orgB, detail: linkId, at },
         { orgId: orgB, actor, action: 'link_revoke', target: orgA, detail: linkId, at },
       );
-      return true;
+      return { ok: true };
     },
     logAdminAction({ orgId, actor, action, target, detail, at }) {
       adminActions.push({ orgId: orgId ?? null, actor, action, target: target ?? null, detail: detail ?? null, at });
@@ -925,6 +974,7 @@ export function createMemoryStore({ pinPepper }) {
 
     // ---- беседы ----
     createRoom(roomId, owner, memberIds, opts = {}) {
+      if ([...new Set(memberIds)].some((userId) => userId !== owner)) return { status: 'mls_commit_required' };
       if (rooms.has(roomId)) return false;
       const orgId = opts.orgId ?? DEFAULT_ORG_ID;
       const org = organizations.get(orgId);
@@ -952,6 +1002,77 @@ export function createMemoryStore({ pinPepper }) {
       });
       return true;
     },
+    createOrOpenDirectConversation({ requester, target, roomId, createdAt }) {
+      const requesterFirst = Buffer.compare(Buffer.from(requester, 'utf8'), Buffer.from(target, 'utf8')) < 0;
+      const userA = requesterFirst ? requester : target;
+      const userB = requesterFirst ? target : requester;
+      const pairKey = JSON.stringify([userA, userB]);
+      if (isBlockedPair(userA, userB)) return { status: 'blocked' };
+      const existing = directConversations.get(pairKey);
+      if (existing) return { ...structuredClone(existing), isCreator: existing.createdBy === requester, created: false };
+      if (rooms.has(roomId)) return { status: 'room_id_conflict' };
+      if (!accounts.has(requester) || !accounts.has(target)) return { status: 'unknown_user' };
+      const conversation = { roomId, userA, userB, createdBy: requester, status: 'provisioning', createdAt };
+      directConversations.set(pairKey, conversation);
+      directConversationsByRoom.set(roomId, conversation);
+      rooms.set(roomId, {
+        owner: requester, orgId: null, admins: new Set(), members: new Set([requester]),
+        joinedSeq: new Map([[requester, counters.eventSeq]]), events: [],
+        capabilities: new Map([[requester, [...DEFAULT_MEMBER_CAPABILITIES]]]),
+        name: null, kind: 'direct', visibility: 'private', readUpTo: new Map([[requester, 0]]),
+        joinPolicy: 'approval', joinRequests: new Map(), invites: new Map(),
+        description: '', backgroundColor: null, avatarAssetId: null, coverAssetId: null, backgroundAssetId: null, assets: new Map(),
+      });
+      return { ...structuredClone(conversation), isCreator: true, created: true };
+    },
+    directConversation(roomId) {
+      const conversation = directConversationsByRoom.get(roomId);
+      return conversation ? structuredClone(conversation) : null;
+    },
+    listContacts(userId) {
+      const contactIds = [...(contacts.get(userId) ?? [])];
+      const incomingRequests = [...contactRequests.values()]
+        .filter((request) => request.recipientId === userId && request.status === 'pending' && !(contacts.get(userId)?.has(request.requesterId) ?? false))
+        .map((request) => ({
+          userId: request.requesterId,
+          displayName: profiles.get(request.requesterId)?.nickname?.trim() || null,
+          roomId: request.roomId,
+          createdAt: request.createdAt,
+        }));
+      return {
+        contacts: contactIds.map((contactUserId) => ({
+          userId: contactUserId,
+          displayName: profiles.get(contactUserId)?.nickname?.trim() || null,
+        })),
+        incomingRequests,
+      };
+    },
+    acceptContactRequest(recipientId, requesterId, nowMs) {
+      const request = contactRequests.get(requestKey(requesterId, recipientId));
+      if (!request) return { status: 'not_found' };
+      if (request.status === 'blocked' || isBlockedPair(recipientId, requesterId)) return { status: 'blocked' };
+      if (request.status === 'accepted') return { status: 'accepted' };
+      addContact(recipientId, requesterId);
+      request.status = 'accepted';
+      request.decidedAt = nowMs;
+      return { status: 'accepted' };
+    },
+    blockUser(blockerId, blockedId, nowMs) {
+      if (!accounts.has(blockerId) || !accounts.has(blockedId)) return { status: 'unknown_user' };
+      if (blockerId === blockedId) return { status: 'invalid_pair' };
+      userBlocks.add(blockKey(blockerId, blockedId));
+      contacts.get(blockerId)?.delete(blockedId);
+      contacts.get(blockedId)?.delete(blockerId);
+      for (const request of contactRequests.values()) {
+        if (((request.requesterId === blockerId && request.recipientId === blockedId)
+          || (request.requesterId === blockedId && request.recipientId === blockerId))
+          && request.status === 'pending') {
+          request.status = 'blocked';
+          request.decidedAt = nowMs;
+        }
+      }
+      return { status: 'blocked' };
+    },
     getRoom(roomId) {
       const r = rooms.get(roomId);
       if (!r) return null;
@@ -977,10 +1098,34 @@ export function createMemoryStore({ pinPepper }) {
     roomsOfUser(userId) {
       const out = [];
       for (const [roomId, r] of rooms.entries()) {
-        if (![...r.members].includes(userId)) continue;
-        out.push({ roomId, kind: r.kind, name: r.name ?? null, owner: r.owner, isAdmin: [...r.admins].includes(userId) });
+        if (!r.members.has(userId)) continue;
+        const conversation = directConversationsByRoom.get(roomId);
+        const peerUserId = conversation
+          ? (conversation.userA === userId ? conversation.userB : conversation.userA)
+          : null;
+        const peerName = peerUserId ? profiles.get(peerUserId)?.nickname : null;
+        const incomingRequest = peerUserId ? contactRequests.get(requestKey(peerUserId, userId)) : null;
+        const joinedSeq = r.joinedSeq.get(userId) ?? 0;
+        const readSeq = r.readUpTo.get(userId) ?? 0;
+        const messages = r.events.filter((event) => event.seq > joinedSeq && event.type === 'm.room.encrypted');
+        const lastMessage = messages.at(-1) ?? null;
+        const unreadCount = messages.filter((event) => event.seq > Math.max(joinedSeq, readSeq) && event.sender !== userId).length;
+        out.push({
+          roomId,
+          kind: r.kind,
+          name: r.name ?? (peerName?.trim() || null),
+          peerUserId,
+          isPeerContact: !!peerUserId && (contacts.get(userId)?.has(peerUserId) ?? false),
+          incomingContactRequest: incomingRequest?.status === 'pending' && !(contacts.get(userId)?.has(peerUserId) ?? false),
+          isBlocked: !!peerUserId && userBlocks.has(blockKey(userId, peerUserId)),
+          owner: r.owner,
+          isAdmin: [...r.admins].includes(userId),
+          lastEventSeq: lastMessage?.seq ?? null,
+          lastEventAt: lastMessage?.origin_server_ts ?? null,
+          unreadCount,
+        });
       }
-      return out.sort((a, b) => (a.roomId < b.roomId ? -1 : a.roomId > b.roomId ? 1 : 0));
+      return out.sort((a, b) => (b.lastEventSeq ?? 0) - (a.lastEventSeq ?? 0) || (a.roomId < b.roomId ? -1 : a.roomId > b.roomId ? 1 : 0));
     },
     roomKind(roomId) {
       return rooms.get(roomId)?.kind ?? null;
@@ -992,58 +1137,35 @@ export function createMemoryStore({ pinPepper }) {
       return true;
     },
 
-    joinPublicRoomOpen({ roomId, userId, maxMembers }) {
-      const r = rooms.get(roomId);
-      if (!r) return { status: 'not_found' };
-      if (r.visibility !== 'public') return { status: 'not_public' };
-      if (r.joinPolicy !== 'open') return { status: 'not_open' };
-      if (r.members.has(userId)) return { status: 'already_member' };
-      const roomOrg = organizations.get(r.orgId);
-      if (!roomOrg || roomOrg.status !== 'approved') return { status: 'org_not_approved' };
-
-      let allowed = orgMembers.get(r.orgId)?.has(userId) ?? false;
-      if (!allowed) {
-        for (const [memberOrgId, members] of orgMembers) {
-          if (!members.has(userId) || organizations.get(memberOrgId)?.status !== 'approved') continue;
-          for (const link of orgLinks.values()) {
-            if (link.status === 'active'
-              && ((link.orgA === memberOrgId && link.orgB === r.orgId)
-                || (link.orgB === memberOrgId && link.orgA === r.orgId))) {
-              allowed = true;
-              break;
-            }
-          }
-          if (allowed) break;
-        }
+    // TEST ONLY: inject server/MLS membership divergence for native-client consistency tests.
+    // No HTTP route calls this helper; production membership changes must use mlsApplyCommit.
+    __testOnlyForceRoomMembership(roomId, userId, present) {
+      const room = rooms.get(roomId);
+      if (!room) return false;
+      if (present) {
+        if (room.members.has(userId)) return false;
+        const org = organizations.get(room.orgId);
+        if (!org || org.status !== 'approved') return { status: 'org_not_approved' };
+        const direct = orgMembers.get(room.orgId)?.has(userId) ?? false;
+        const linked = !direct && [...orgLinks.values()].some((link) => {
+          if (link.status !== 'active') return false;
+          const memberOrg = link.orgA === room.orgId ? link.orgB : link.orgB === room.orgId ? link.orgA : null;
+          return memberOrg !== null
+            && organizations.get(memberOrg)?.status === 'approved'
+            && (orgMembers.get(memberOrg)?.has(userId) ?? false);
+        });
+        if (!direct && !linked) return { status: 'org_not_member' };
+        room.members.add(userId);
+        room.joinedSeq.set(userId, counters.eventSeq);
+        room.capabilities.set(userId, [...DEFAULT_MEMBER_CAPABILITIES]);
+        room.readUpTo.set(userId, 0);
+        return true;
       }
-      if (!allowed) return { status: 'org_not_member' };
-      if (r.kind !== 'channel' && Number.isFinite(maxMembers) && r.members.size >= maxMembers) {
-        return { status: 'full' };
-      }
-      r.members.add(userId);
-      r.joinedSeq.set(userId, counters.eventSeq);
-      r.capabilities.set(userId, [...DEFAULT_MEMBER_CAPABILITIES]);
-      r.readUpTo.set(userId, 0);
-      return { status: 'joined', members: [...r.members] };
-    },
-    addRoomMember(roomId, userId) {
-      const r = rooms.get(roomId);
-      if (!r || r.members.has(userId)) return false;
-      const org = organizations.get(r.orgId);
-      if (!org || org.status !== 'approved') return { status: 'org_not_approved' };
-      const direct = orgMembers.get(r.orgId)?.has(userId) ?? false;
-      const linked = !direct && [...orgLinks.values()].some((link) => {
-        if (link.status !== 'active') return false;
-        const memberOrg = link.orgA === r.orgId ? link.orgB : link.orgB === r.orgId ? link.orgA : null;
-        return memberOrg !== null
-          && organizations.get(memberOrg)?.status === 'approved'
-          && (orgMembers.get(memberOrg)?.has(userId) ?? false);
-      });
-      if (!direct && !linked) return { status: 'org_not_member' };
-      r.members.add(userId);
-      r.joinedSeq.set(userId, counters.eventSeq);
-      r.capabilities.set(userId, [...DEFAULT_MEMBER_CAPABILITIES]);
-      r.readUpTo.set(userId, 0);
+      room.members.delete(userId);
+      room.admins.delete(userId);
+      room.joinedSeq.delete(userId);
+      room.capabilities.delete(userId);
+      room.readUpTo.delete(userId);
       return true;
     },
     setRoomAdmin(roomId, userId, isAdmin) {
@@ -1061,15 +1183,6 @@ export function createMemoryStore({ pinPepper }) {
       const r = rooms.get(roomId);
       if (!r) return;
       r.capabilities.set(userId, [...list]);
-    },
-    removeRoomMember(roomId, userId) {
-      const r = rooms.get(roomId);
-      if (!r) return;
-      r.members.delete(userId);
-      r.admins.delete(userId);
-      r.joinedSeq.delete(userId); // при повторном добавлении история начинается заново
-      r.capabilities.delete(userId);
-      r.readUpTo.delete(userId);
     },
     setRoomAppearance(roomId, patch) {
       const r = rooms.get(roomId);
@@ -1149,13 +1262,23 @@ export function createMemoryStore({ pinPepper }) {
       if (roomId) {
         const room = rooms.get(roomId);
         if (!room) return { ok: false, reason: 'room_not_found' };
-        if (organizations.get(room.orgId)?.status !== 'approved') return { ok: false, reason: 'org_not_approved' };
-        if (!hasOrgAccess(requesterUserId, room.orgId) || !hasOrgAccess(targetUserId, room.orgId)) {
-          return { ok: false, reason: 'not_authorized' };
-        }
-        if (!room.members.has(requesterUserId)
-          || (requesterUserId !== room.owner && !room.capabilities.get(requesterUserId)?.includes('invite_members'))) {
-          return { ok: false, reason: 'invite_capability_required' };
+        if (room.kind === 'direct') {
+          const conversation = directConversationsByRoom.get(roomId);
+          const counterpart = conversation?.userA === requesterUserId ? conversation.userB : conversation?.userB === requesterUserId ? conversation.userA : null;
+          if (!conversation || conversation.status !== 'provisioning' || conversation.createdBy !== requesterUserId
+            || counterpart !== targetUserId || !room.members.has(requesterUserId)) {
+            return { ok: false, reason: 'not_authorized' };
+          }
+          if (isBlockedPair(requesterUserId, targetUserId)) return { ok: false, reason: 'user_blocked' };
+        } else {
+          if (organizations.get(room.orgId)?.status !== 'approved') return { ok: false, reason: 'org_not_approved' };
+          if (!hasOrgAccess(requesterUserId, room.orgId) || !hasOrgAccess(targetUserId, room.orgId)) {
+            return { ok: false, reason: 'not_authorized' };
+          }
+          if (!room.members.has(requesterUserId)
+            || (requesterUserId !== room.owner && !room.capabilities.get(requesterUserId)?.includes('invite_members'))) {
+            return { ok: false, reason: 'invite_capability_required' };
+          }
         }
       } else if (requesterUserId !== targetUserId) {
         const requesterOrgs = [...orgMembers.entries()]
@@ -1319,26 +1442,34 @@ export function createMemoryStore({ pinPepper }) {
     appendRoomEvent(roomId, sender, type, content, nowMs, afterAppend = null) {
       const r = rooms.get(roomId);
       if (!r) return { state: 'room_not_found' };
-      const roomOrg = organizations.get(r.orgId);
-      if (!roomOrg || roomOrg.status !== 'approved') return { state: 'org_not_approved' };
-      const direct = orgMembers.get(r.orgId)?.has(sender) ?? false;
-      const linked = !direct && [...orgLinks.values()].some((link) => {
-        if (link.status !== 'active') return false;
-        const memberOrg = link.orgA === r.orgId ? link.orgB : link.orgB === r.orgId ? link.orgA : null;
-        return memberOrg !== null
-          && organizations.get(memberOrg)?.status === 'approved'
-          && (orgMembers.get(memberOrg)?.has(sender) ?? false);
-      });
-      if (!direct && !linked) return { state: 'org_not_member' };
+      if (r.kind === 'direct') {
+        const conversation = directConversationsByRoom.get(roomId);
+        if (!conversation || conversation.status !== 'active') return { state: 'direct_not_active' };
+        if (![conversation.userA, conversation.userB].includes(sender)) return { state: 'not_member' };
+        if (isBlockedPair(conversation.userA, conversation.userB)) return { state: 'user_blocked' };
+      } else {
+        const roomOrg = organizations.get(r.orgId);
+        if (!roomOrg || roomOrg.status !== 'approved') return { state: 'org_not_approved' };
+        const direct = orgMembers.get(r.orgId)?.has(sender) ?? false;
+        const linked = !direct && [...orgLinks.values()].some((link) => {
+          if (link.status !== 'active') return false;
+          const memberOrg = link.orgA === r.orgId ? link.orgB : link.orgB === r.orgId ? link.orgA : null;
+          return memberOrg !== null
+            && organizations.get(memberOrg)?.status === 'approved'
+            && (orgMembers.get(memberOrg)?.has(sender) ?? false);
+        });
+        if (!direct && !linked) return { state: 'org_not_member' };
+      }
       if (!r.members.has(sender)) return { state: 'not_member' };
       const seq = ++counters.eventSeq;
       r.events.push({ event_id: `$${seq}`, seq, room_id: roomId, sender, origin_server_ts: nowMs, type, content: structuredClone(content ?? null) });
-      if (afterAppend) return Promise.resolve(afterAppend(null, { seq, roomId, eventId: `$${seq}` })).then(() => seq);
+      if (type === 'm.room.encrypted') recordIncomingContactRequest(roomId, sender, nowMs);
+      if (afterAppend) return Promise.resolve(afterAppend(null, { seq, roomId, eventId: `${seq}` })).then(() => seq);
       return seq;
     },
-    roomEventRows(roomId, sinceSeq) {
+    roomEventRows(roomId, sinceSeq, limit = 200) {
       const r = rooms.get(roomId);
-      return (r ? r.events : []).filter((e) => e.seq > sinceSeq).map((e) => structuredClone(e));
+      return (r ? r.events : []).filter((e) => e.seq > sinceSeq).slice(0, limit).map((e) => structuredClone(e));
     },
 
     /** Всё, что сервер хранит по беседам и очереди. Нужно тестам: проверить, что открытого текста нет. */
@@ -1394,10 +1525,25 @@ export function createMemoryStore({ pinPepper }) {
           entry.userId === welcome.userId && entry.deviceId === welcome.deviceId && !entry.revoked);
         if (!welcomeDeviceActive) return { ok: false, reason: 'welcome_device_revoked', epoch: current };
       }
+      if (room.kind === 'direct' && (changes.removes?.length ?? 0) > 0) {
+        return { ok: false, reason: 'direct_membership_fixed', epoch: current };
+      }
+      if (room.kind === 'direct' && isBlockedPair(
+        directConversationsByRoom.get(roomId)?.userA,
+        directConversationsByRoom.get(roomId)?.userB,
+      )) return { ok: false, reason: 'user_blocked', epoch: current };
       if ((changes.adds ?? []).length > 0) {
-        const roomOrg = organizations.get(room.orgId);
-        if (!roomOrg || roomOrg.status !== 'approved') return { ok: false, reason: 'org_not_approved', epoch: current };
-        for (const targetUserId of [...changes.adds].sort()) {
+        if (room.kind === 'direct') {
+          const conversation = directConversationsByRoom.get(roomId);
+          const counterpart = conversation?.userA === senderId ? conversation.userB : conversation?.userB === senderId ? conversation.userA : null;
+          if (!conversation || conversation.status !== 'provisioning' || conversation.createdBy !== senderId
+            || changes.adds.length !== 1 || changes.adds[0] !== counterpart || !keyPackageClaimId || joinRequestUserId) {
+            return { ok: false, reason: 'direct_add_not_authorized', epoch: current };
+          }
+        } else {
+          const roomOrg = organizations.get(room.orgId);
+          if (!roomOrg || roomOrg.status !== 'approved') return { ok: false, reason: 'org_not_approved', epoch: current };
+          for (const targetUserId of [...changes.adds].sort()) {
           const direct = orgMembers.get(room.orgId)?.has(targetUserId) ?? false;
           const linked = !direct && [...orgLinks.values()].some((link) => {
             if (link.status !== 'active') return false;
@@ -1407,6 +1553,7 @@ export function createMemoryStore({ pinPepper }) {
               && (orgMembers.get(memberOrg)?.has(targetUserId) ?? false);
           });
           if (!direct && !linked) return { ok: false, reason: 'org_not_member', epoch: current };
+          }
         }
       }
       if (joinRequestUserId) {
@@ -1435,6 +1582,11 @@ export function createMemoryStore({ pinPepper }) {
       }
       for (const userId of changes.adds) {
         if (room && !room.members.has(userId)) { room.members.add(userId); room.joinedSeq.set(userId, counters.eventSeq); room.capabilities.set(userId, [...DEFAULT_MEMBER_CAPABILITIES]); room.readUpTo.set(userId, 0); }
+      }
+      if (room?.kind === 'direct' && (changes.adds ?? []).length === 1) {
+        const conversation = directConversationsByRoom.get(roomId);
+        if (!conversation || conversation.status !== 'provisioning') return { ok: false, reason: 'direct_state_changed', epoch: current };
+        conversation.status = 'active';
       }
       const next = current + 1;
       mlsGroups.set(roomId, next);
