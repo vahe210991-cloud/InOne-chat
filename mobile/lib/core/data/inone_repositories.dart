@@ -217,6 +217,33 @@ class InOneRepositories {
     ));
   }
 
+  /// Accepting a first-message contact prompt adds the sender to this account's contacts.
+  /// It does not participate in or delay the MLS message-delivery flow.
+  Future<void> acceptContactRequest(String requesterUserId) async {
+    final peer = requesterUserId.trim();
+    if (peer.isEmpty) throw ArgumentError.value(requesterUserId, 'requesterUserId');
+    final response = await session.request(
+      'POST',
+      '/contacts/${Uri.encodeComponent(peer)}/accept',
+    );
+    if (response['accepted'] != true || response['userId'] != peer) {
+      throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false);
+    }
+  }
+
+  /// Blocks a peer and prevents any further message delivery in their direct conversation.
+  Future<void> blockContact(String userId) async {
+    final peer = userId.trim();
+    if (peer.isEmpty) throw ArgumentError.value(userId, 'userId');
+    final response = await session.request(
+      'POST',
+      '/contacts/${Uri.encodeComponent(peer)}/block',
+    );
+    if (response['blocked'] != true || response['userId'] != peer) {
+      throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false);
+    }
+  }
+
   /// Searches only public rooms; the backend enforces the 2–50 character range.
   Future<List<InOnePublicRoom>> searchPublicRooms(String query) async {
     final normalized = query.trim();
