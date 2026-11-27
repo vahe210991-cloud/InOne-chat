@@ -1849,13 +1849,12 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
           [requesterId, recipientId],
         );
         if (!requestRows[0]) return { status: 'not_found' };
-        if (requestRows[0].status === 'blocked') return { status: 'blocked' };
-        if (requestRows[0].status === 'accepted') return { status: 'accepted' };
         const { rows: blocks } = await c.query(
           'SELECT 1 FROM user_blocks WHERE (blocker_id = $1 AND blocked_id = $2) OR (blocker_id = $2 AND blocked_id = $1) FOR SHARE',
           [recipientId, requesterId],
         );
-        if (blocks.length) return { status: 'blocked' };
+        if (requestRows[0].status === 'blocked' || blocks.length) return { status: 'blocked' };
+        if (requestRows[0].status === 'accepted') return { status: 'accepted' };
         await c.query(
           'INSERT INTO contacts (owner_id, contact_user_id, created_at) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
           [recipientId, requesterId, nowMs],
