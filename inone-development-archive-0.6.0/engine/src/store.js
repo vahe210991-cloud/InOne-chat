@@ -2778,8 +2778,8 @@ async mlsPendingRemovalsFor(userId) {
      * Consumes a verified-email ticket and creates the account in one transaction.
      * A failed account insert rolls back ticket consumption so the user can retry safely.
      */
-    async createVerifiedAccountWithEmailToken({ email, changeEmailCode, userId, passwordHash, pinHash, phoneE164 = null, nickname, nowMs, joinDefaultOrg = false }) {
-      if (typeof pinHash !== 'string' || pinHash.length < 1) throw new TypeError('PIN hash is required');
+    async createVerifiedAccountWithEmailToken({ email, changeEmailCode, userId, passwordHash, makePinHash, phoneE164 = null, nickname, nowMs, joinDefaultOrg = false }) {
+      if (typeof makePinHash !== 'function') throw new TypeError('PIN hash derivation is required');
       try {
         return await inTransaction(async (c) => {
           await c.query('INSERT INTO email_codes (email) VALUES ($1) ON CONFLICT (email) DO NOTHING', [email]);
@@ -2810,6 +2810,7 @@ async mlsPendingRemovalsFor(userId) {
             [email, next.codeHash, next.codeAttempts, next.codeExpiresAt, next.tokenHash, next.tokenExpiresAt, next.locale ?? locale],
           );
           if (result.outcome !== 'ok') return { outcome: result.outcome, created: null, locale };
+          const pinHash = await makePinHash();
           await c.query('INSERT INTO accounts (user_id, password_hash) VALUES ($1, $2)', [userId, passwordHash]);
           if (joinDefaultOrg) {
             await c.query("INSERT INTO org_members (org_id, user_id, role, joined_at) VALUES ('org-default', $1, 'member', $2) ON CONFLICT DO NOTHING", [userId, nowMs]);
