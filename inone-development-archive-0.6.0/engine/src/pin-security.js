@@ -119,7 +119,49 @@ export async function hashPin(pepper, pin) {
   const salt = randomBytes(16);
   const derived = Buffer.from(await derive(pin, salt, pepper));
   try {
-    return `argon2id$v=${ARGON2.version}$m=${ARGON2.memoryKiB},t=${ARGON2.iterations},p=${ARGON2.parallelism}${salt.toString('base64url')}${derived.toString('base64url')}`;
+    return ['argon2id', `v=${ARGON2.version}`, `m=${ARGON2.memoryKiB},t=${ARGON2.iterations},p=${ARGON2.parallelism}`, salt.toString('base64url'), derived.toString('base64url')].join('
+  } finally {
+    derived.fill(0);
+  }
+}
+
+export async function checkPin(pepper, pin, stored) {
+  if (typeof pepper !== 'string' || Buffer.byteLength(pepper, 'utf8') < 32) return false;
+  const current = parseArgonHash(stored);
+  if (current) {
+    if (!validatePin(pin)) return false;
+    const actual = Buffer.from(await derive(pin, current.salt, pepper));
+    try {
+      return actual.length === current.hash.length && timingSafeEqual(actual, current.hash);
+    } finally {
+      actual.fill(0);
+    }
+  }
+  const legacy = parseLegacyHash(stored);
+  if (!legacy || !validateLegacyPin(pin)) return false;
+  const secret = legacyPepperedPin(pepper, pin);
+  let actual;
+  try {
+    actual = await withKdfSlot(() => scryptAsync(secret, legacy.salt, 32, {
+      N: 16_384,
+      r: 8,
+      p: 1,
+      maxmem: 64 * 1024 * 1024,
+    }));
+  } finally {
+    secret.fill(0);
+  }
+  try {
+    return actual.length === legacy.hash.length && timingSafeEqual(actual, legacy.hash);
+  } finally {
+    actual.fill(0);
+  }
+}
+
+export function pinHashNeedsUpgrade(stored) {
+  return typeof stored !== 'string' || !stored.startsWith('argon2id$');
+}
+);
   } finally {
     derived.fill(0);
   }
