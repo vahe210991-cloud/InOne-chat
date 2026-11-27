@@ -1729,7 +1729,7 @@ mlsPendingRemovalsFor(userId) {
         if (p.emailVerified && p.email === email) return 'email';
         if (p.nickname.toLowerCase() === nickname.toLowerCase()) return 'nickname';
       }
-      if (phoneE164 && this.phoneOwner(phoneE164)) return 'phone';
+      if (phoneE164 && [...phones.values()].some((entry) => entry.phone === phoneE164)) return 'phone';
       const key = provider ? `${provider.provider}|${provider.sub}` : null;
       if (key && providerLinks.has(key)) return 'link';
       accounts.set(userId, passwordHash);
@@ -1760,7 +1760,7 @@ mlsPendingRemovalsFor(userId) {
         if (profile.emailVerified && profile.email === email) return { outcome: 'ok', created: 'email', locale };
         if (profile.nickname.toLowerCase() === nickname.toLowerCase()) return { outcome: 'ok', created: 'nickname', locale };
       }
-      if (phoneE164 && this.phoneOwner(phoneE164)) return { outcome: 'ok', created: 'phone', locale };
+      if (phoneE164 && [...phones.values()].some((entry) => entry.phone === phoneE164)) return { outcome: 'ok', created: 'phone', locale };
       // Commit the consumed ticket and account state together after every uniqueness check.
       if (joinDefaultOrg) addOrgMembership(DEFAULT_ORG_ID, userId, 'member', nowMs);
       emailCodes.set(email, structuredClone(next));
