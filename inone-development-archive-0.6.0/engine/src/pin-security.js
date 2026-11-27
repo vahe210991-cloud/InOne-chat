@@ -24,7 +24,9 @@ let activeKdfs = 0;
 const kdfQueue = [];
 
 async function withKdfSlot(work) {
-  if (activeKdfs >= MAX_ACTIVE_KDFS) {
+  if (activeKdfs < MAX_ACTIVE_KDFS) {
+    activeKdfs += 1;
+  } else {
     if (kdfQueue.length >= MAX_QUEUED_KDFS) {
       const error = new Error('PIN verification capacity is temporarily unavailable');
       error.code = 'PIN_KDF_BUSY';
@@ -32,12 +34,12 @@ async function withKdfSlot(work) {
     }
     await new Promise((resolve) => kdfQueue.push(resolve));
   }
-  activeKdfs += 1;
   try {
     return await work();
   } finally {
-    activeKdfs -= 1;
-    kdfQueue.shift()?.();
+    const next = kdfQueue.shift();
+    if (next) next();
+    else activeKdfs -= 1;
   }
 }
 
@@ -88,7 +90,7 @@ function parseArgonHash(stored) {
 
 async function derive(pin, salt, pepper) {
   return withKdfSlot(() => argon2idAsync(
-    Buffer.from(pin, 'utf8'),
+    pin,
     salt,
     {
       t: ARGON2.iterations,
@@ -96,7 +98,7 @@ async function derive(pin, salt, pepper) {
       p: ARGON2.parallelism,
       dkLen: ARGON2.outputBytes,
       maxmem: ARGON2.maxmem,
-      key: Buffer.from(pepper, 'utf8'),
+      key: pepper,
     },
   ));
 }
@@ -120,12 +122,18 @@ export async function checkPin(pepper, pin, stored) {
   }
   const legacy = parseLegacyHash(stored);
   if (!legacy) return false;
-  const actual = await scryptAsync(legacyPepperedPin(pepper, pin), legacy.salt, 32, {
-    N: 16_384,
-    r: 8,
-    p: 1,
-    maxmem: 64 * 1024 * 1024,
-  });
+  const secret = legacyPepperedPin(pepper, pin);
+  let actual;
+  try {
+    actual = await scryptAsync(secret, legacy.salt, 32, {
+      N: 16_384,
+      r: 8,
+      p: 1,
+      maxmem: 64 * 1024 * 1024,
+    });
+  } finally {
+    secret.fill(0);
+  }
   return actual.length === legacy.hash.length && timingSafeEqual(actual, legacy.hash);
 }
 
