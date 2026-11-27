@@ -1820,7 +1820,7 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
           [userId],
         ),
         pool.query(
-          `SELECT r.requester_id AS user_id, COALESCE(NULLIF(p.nickname, ''), r.requester_id) AS display_name,
+          `SELECT r.requester_id AS user_id, NULLIF(p.nickname, '') AS display_name,
                   r.room_id, r.created_at
              FROM contact_requests r LEFT JOIN profiles p ON p.user_id = r.requester_id
             WHERE r.recipient_id = $1 AND r.status = 'pending'
