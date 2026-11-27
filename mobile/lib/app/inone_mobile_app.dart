@@ -378,6 +378,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   }
 
   void _showForegroundPush(InOnePushRoute route) {
+    if (_session.isAuthenticated) unawaited(_loadMlsRooms());
     _messengerKey.currentState?.showSnackBar(
       SnackBar(
         content: const Text('Новое сообщение'),
@@ -418,12 +419,14 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       }
 
       if (!_session.hasNativeMlsSession) {
+        await _loadMlsRooms(syncMessages: false);
         if (mounted) setState(() => _screen = 'messages');
         _notice('Уведомление открыто. Для просмотра содержимого требуется активный нативный MLS-сеанс. Зашифрованное сообщение не открывается в обход MLS.');
         return;
       }
 
       await _session.syncMlsMessages();
+      await _loadMlsRooms(syncMessages: false);
       // Read the durable SQLCipher history first. This acknowledges only
       // readable inbox events that are already persisted for this room.
       final incoming = await _session.loadMlsRoomHistory(route.roomId);
@@ -1241,7 +1244,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     }
   }
 
-  Future<void> _loadMlsRooms() async {
+  Future<void> _loadMlsRooms({bool syncMessages = true}) async {
     if (mounted) {
       setState(() {
         _messagesLoading = true;
@@ -1252,7 +1255,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       // The authenticated room directory is a backend read and remains
       // available even while native MLS is opt-in/disabled. Only message
       // content, sync and outbox operations require the native Engine B session.
-      if (_session.hasNativeMlsSession) {
+      if (_session.hasNativeMlsSession && syncMessages) {
         try {
           await _session.syncMlsMessages();
         } catch (error) {
