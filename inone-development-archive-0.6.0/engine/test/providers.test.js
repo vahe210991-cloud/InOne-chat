@@ -294,10 +294,10 @@ test('P10: билет регистрации одноразовый; ошибк�
     await registerByEmail(base, srv, 'boris@example.test', 'Boris');
     const v = await providerSignIn(base, 'google', (n) => googleClaims(n));
     assert.equal((await call(base, 'POST', '/register/provider', { body: { ticket: v.body.ticket, nickname: 'ab', phone: PHONE, pin: PIN, pinConfirmation: PIN } })).status, 400);
-    assert.equal((await call(base, 'POST', '/register/provider', { body: { ticket: v.body.ticket, nickname: 'boris' } })).status, 409, 'ник занят');
-    const ok = await call(base, 'POST', '/register/provider', { body: { ticket: v.body.ticket, nickname: 'Anna.G' } });
+    assert.equal((await call(base, 'POST', '/register/provider', { body: { ticket: v.body.ticket, nickname: 'boris', phone: PHONE, pin: PIN, pinConfirmation: PIN } })).status, 409, 'ник занят');
+    const ok = await call(base, 'POST', '/register/provider', { body: { ticket: v.body.ticket, nickname: 'Anna.G', phone: PHONE, pin: PIN, pinConfirmation: PIN } });
     assert.equal(ok.status, 200, 'билет пережил ошибки в нике');
-    assert.equal((await call(base, 'POST', '/register/provider', { body: { ticket: v.body.ticket, nickname: 'Anna.Two' } })).status, 403, 'второй раз билет не принимается');
+    assert.equal((await call(base, 'POST', '/register/provider', { body: { ticket: v.body.ticket, nickname: 'Anna.Two', phone: PHONE, pin: PIN, pinConfirmation: PIN } })).status, 403, 'второй раз билет не принимается');
   } finally {
     await stop();
   }
