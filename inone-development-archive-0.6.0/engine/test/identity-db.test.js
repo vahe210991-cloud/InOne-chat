@@ -5,10 +5,14 @@ import assert from 'node:assert/strict';
 import { createServer } from '../src/server.js';
 import { createStore } from '../src/store.js';
 import { testDatabase } from './helpers.js';
+import { hashPin } from '../src/pin-security.js';
 
 const dbTest = process.env.DATABASE_URL ? test : test.skip;
 const PEPPER = randomBytes(24).toString('hex');
 const PW = 'длинный-пароль-1';
+const PIN = '80421697';
+let phoneSequence = 10;
+const testPhone = () => `+3747700${String(phoneSequence++).padStart(4, '0')}`;
 
 async function serve(store) {
   const srv = createServer({ defaultOrgAutoJoin: true, pinPepper: PEPPER, store, trustProxy: true });
@@ -31,7 +35,7 @@ async function registerByEmail(base, srv, email, nickname) {
   await call(base, 'POST', '/register/email', { body: { email, locale: 'ru' } });
   const code = srv.mailbox(email).filter((m) => m.templateId === 'registration_code').at(-1).text.match(/\b(\d{6})\b/)[1];
   const confirmed = await call(base, 'POST', '/register/email/confirm', { body: { email, code } });
-  return call(base, 'POST', '/register', { body: { email, registrationToken: confirmed.body.registrationToken, password: PW, nickname } });
+  return call(base, 'POST', '/register', { body: { email, registrationToken: confirmed.body.registrationToken, password: PW, nickname, phone: testPhone(), pin: PIN, pinConfirmation: PIN } });
 }
 
 dbTest('SD24: почта, никнейм и поиск переживают перезапуск; уникальность проверяет база', async () => {
@@ -60,8 +64,8 @@ dbTest('SD24: почта, никнейм и поиск переживают пе
 
     // Прямой вызов хранилища в обход проверок сервера: уникальность держат индексы базы.
     const direct = createStore({ pool: db.pool, pinPepper: PEPPER });
-    assert.equal(await direct.createVerifiedAccount({ userId: 'u-direct-1', passwordHash: 'x', email: 'other@example.test', nickname: 'ANNA.K', nowMs: 0 }), 'nickname');
-    assert.equal(await direct.createVerifiedAccount({ userId: 'u-direct-2', passwordHash: 'x', email: 'anna@example.test', nickname: 'Other.One', nowMs: 0 }), 'email');
+    assert.equal(await direct.createVerifiedAccount({ userId: 'u-direct-1', passwordHash: 'x', pinHash: await hashPin(PEPPER, PIN), phoneE164: testPhone(), email: 'other@example.test', nickname: 'ANNA.K', nowMs: 0 }), 'nickname');
+    assert.equal(await direct.createVerifiedAccount({ userId: 'u-direct-2', passwordHash: 'x', pinHash: await hashPin(PEPPER, PIN), phoneE164: testPhone(), email: 'anna@example.test', nickname: 'Other.One', nowMs: 0 }), 'email');
     assert.equal(await direct.userIdByEmail('anna@example.test'), anna.body.userId, 'отказ не оставил следов в базе');
   } finally {
     await db.close();
