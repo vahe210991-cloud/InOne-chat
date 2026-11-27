@@ -53,3 +53,12 @@ No test/build result is claimed until Actions reports it for the exact implement
 - Static UI refresh review found that active-thread metadata refresh updated unread/time but not contact prompt state. The refresh now also updates `incomingContactRequest`, `isPeerContact`, and `isBlocked`; the preview model has focused copy/update coverage.
 - Updated the Docker Compose acceptance workflow to assert that migration `0037-contacts-and-blocks` is applied, rather than stopping its schema check at migration 0031.
 - **Verification remains NOT RUN.** No tests, builds, migrations, Rust checks, Flutter checks, or Actions workflows have been started. The exact-SHA PR acceptance gate is intentionally deferred until source review and static preflight are complete.
+
+
+## 2026-11-27 — final contact-flow consistency pass
+
+- Repeated contact acceptance now checks the active block record before returning an old `accepted` state. A later block therefore remains authoritative across retries and devices; the backend regression asserts that accepting again after a block returns the generic unavailable response.
+- Direct-chat create-or-open now reports `mlsInitializationRequired=true` whenever the room is still provisioning and the caller is its creator, including a retry where `created=false`. Flutter DTO validation enforces this invariant; the backend and Flutter regression sources cover both initial creation and creator retry.
+- The chat-row widget regression includes a blocked peer with a stale pending flag and verifies the contact buttons remain hidden. The post-block notice now correctly states that new personal messages are blocked in both directions.
+- GitHub Compose migration-count preflight is set to 36 because the repository has migrations 0002–0037 (no 0001 SQL migration file); it also asserts the exact latest version `0037-contacts-and-blocks`.
+- No test or build has been run. All changes remain unaccepted until the final exact-SHA Actions run and owner approval.
