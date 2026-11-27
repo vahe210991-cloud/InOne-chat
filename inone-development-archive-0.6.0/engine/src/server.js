@@ -1201,7 +1201,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
           },
           userId,
           passwordHash: hashPassword(body.password),
-          pinHash: await hashPin(pinPepper, pin),
+          makePinHash: () => hashPin(pinPepper, pin),
           phoneE164: phoneV?.value.e164 ?? null,
           nickname: body.nickname,
           nowMs: now(),
