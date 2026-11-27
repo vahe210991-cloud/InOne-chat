@@ -158,7 +158,14 @@ class InOneChatPreview {
   final bool isPeerContact;
   final bool isBlocked;
 
-  InOneChatPreview copyWith({int? unread, String? lastMessage, String? time}) => InOneChatPreview(
+  InOneChatPreview copyWith({
+    int? unread,
+    String? lastMessage,
+    String? time,
+    bool? incomingContactRequest,
+    bool? isPeerContact,
+    bool? isBlocked,
+  }) => InOneChatPreview(
         id: id,
         name: name,
         lastMessage: lastMessage ?? this.lastMessage,
