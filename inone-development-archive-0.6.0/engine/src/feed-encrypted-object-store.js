@@ -47,6 +47,13 @@ function chunkAad(objectKey, keyId, counter, length) {
   );
 }
 
+function finalAad(objectKey, keyId, counter, totalBytes) {
+  return Buffer.from(
+    'inone-feed-final-v1|' + objectKey + '|' + keyId + '|' + counter + '|' + totalBytes,
+    'utf8',
+  );
+}
+
 function nonceFor(prefix, counter) {
   const nonce = Buffer.alloc(12);
   prefix.copy(nonce, 0);
@@ -78,8 +85,9 @@ async function* encryptedRecords(source, objectKey, keyProvider, chunkBytes) {
 
     let pending = Buffer.alloc(0);
     let counter = 0;
+    let totalBytes = 0;
     const emitChunk = (plain) => {
-      if (counter > 0xffffffff) throw new RangeError('Feed object contains too many encrypted chunks');
+      if (counter >= 0xffffffff) throw new RangeError('Feed object contains too many encrypted chunks');
       const nonce = nonceFor(noncePrefix, counter);
       const cipher = createCipheriv('aes-256-gcm', dek, nonce);
       cipher.setAAD(chunkAad(objectKey, keyId, counter, plain.length));
@@ -88,6 +96,8 @@ async function* encryptedRecords(source, objectKey, keyProvider, chunkBytes) {
       const frame = Buffer.alloc(4);
       frame.writeUInt32BE(plain.length, 0);
       counter += 1;
+      totalBytes += plain.length;
+      if (!Number.isSafeInteger(totalBytes)) throw new RangeError('Feed object size exceeds safe accounting range');
       return [frame, encrypted, tag];
     };
 
@@ -107,8 +117,13 @@ async function* encryptedRecords(source, objectKey, keyProvider, chunkBytes) {
       for (const record of emitChunk(pending)) yield record;
       pending.fill(0);
     }
+    const finalizer = createCipheriv('aes-256-gcm', dek, nonceFor(noncePrefix, counter));
+    finalizer.setAAD(finalAad(objectKey, keyId, counter, totalBytes));
+    finalizer.final();
+    const finalTag = finalizer.getAuthTag();
     const end = Buffer.alloc(4);
     yield end;
+    yield finalTag;
   } finally {
     dek.fill(0);
     kek.fill(0);
@@ -162,21 +177,32 @@ async function* decryptedRecords(source, objectKey, keyProvider, chunkBytes) {
     if (dek.length !== 32) throw new Error('Feed data key is invalid');
 
     let counter = 0;
+    let totalBytes = 0;
     while (true) {
       const frame = await take(4);
       if (!frame) throw new Error('Feed encrypted object is truncated before end marker');
       const length = frame.readUInt32BE(0);
-      if (length === 0) break;
+      if (length === 0) {
+        const finalTag = await take(16);
+        if (!finalTag) throw new Error('Feed encrypted object final authentication tag is missing');
+        const finalizer = createDecipheriv('aes-256-gcm', dek, nonceFor(noncePrefix, counter));
+        finalizer.setAAD(finalAad(objectKey, keyId, counter, totalBytes));
+        finalizer.setAuthTag(finalTag);
+        finalizer.final();
+        break;
+      }
       if (length > chunkBytes) throw new Error('Feed encrypted object chunk length exceeds limit');
       const encrypted = await take(length);
       const tag = await take(16);
       if (!encrypted || !tag) throw new Error('Feed encrypted object chunk is truncated');
-      if (counter > 0xffffffff) throw new RangeError('Feed encrypted object has too many chunks');
+      if (counter >= 0xffffffff) throw new RangeError('Feed encrypted object has too many chunks');
       const decipher = createDecipheriv('aes-256-gcm', dek, nonceFor(noncePrefix, counter));
       decipher.setAAD(chunkAad(objectKey, keyId, counter, length));
       decipher.setAuthTag(tag);
       const plain = Buffer.concat([decipher.update(encrypted), decipher.final()]);
       counter += 1;
+      totalBytes += plain.length;
+      if (!Number.isSafeInteger(totalBytes)) throw new RangeError('Feed encrypted object size exceeds safe accounting range');
       yield plain;
     }
     if (await take(1)) throw new Error('Feed encrypted object has trailing bytes');
