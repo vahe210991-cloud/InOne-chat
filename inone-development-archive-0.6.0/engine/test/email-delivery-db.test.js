@@ -4,6 +4,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { createEmailDelivery, parseEmailEncryptionKey } from '../src/email-delivery.js';
 import { testDatabase } from './helpers.js';
 import { createStore } from '../src/store.js';
+import { hashPin } from '../src/pin-security.js';
 
 async function waitFor(fn, timeoutMs = 5000) {
   const started = Date.now();
@@ -419,7 +420,9 @@ test('profile locale and pending registration locale persist in PostgreSQL', asy
   const store = createStore({ pool: db.pool, pinPepper: 'email-locale-store-test-pepper-0123456789' });
   try {
     const created = await store.createVerifiedAccount({
-      userId: '@email-locale-db', passwordHash: 'password-hash', email: 'locale-db@example.test',
+      userId: '@email-locale-db', passwordHash: 'password-hash',
+      pinHash: await hashPin('email-locale-store-test-pepper-0123456789', '80421697'),
+      phoneE164: '+37477000019', email: 'locale-db@example.test',
       nickname: 'LocaleDb', nowMs: Date.now(), locale: 'ru',
     });
     assert.equal(created, 'ok');
