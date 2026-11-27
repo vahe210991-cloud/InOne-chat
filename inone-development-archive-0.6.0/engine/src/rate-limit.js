@@ -17,6 +17,8 @@ export const DEFAULT_RATE_LIMITS = {
   authNoncePerAddress: [{ windowMs: HOUR_MS, limit: 60 }],
   providerAuthPerAddress: [{ windowMs: HOUR_MS, limit: 30 }],
   stepupPerAccount: [{ windowMs: HOUR_MS, limit: 5 }],
+  pinResetPerAccount: [{ windowMs: HOUR_MS, limit: 3 }],
+  pinResetPerAddress: [{ windowMs: HOUR_MS, limit: 5 }],
   backupEmailPerAccount: [{ windowMs: HOUR_MS, limit: 5 }],
   deviceWaitCancelPerEmail: [{ windowMs: HOUR_MS, limit: 10 }],
   recoveryCancelPerEmail: [{ windowMs: HOUR_MS, limit: 10 }],
