@@ -224,3 +224,12 @@ The owner has approved a two-application product structure:
 This is an authoritative product-boundary decision. Requirements, screen inventories, navigation, UX, and release scopes must identify which application owns each capability. Do not design the two products as one combined app/navigation.
 
 The product split does not automatically imply separate or shared identity services, databases, backends, repositories, infrastructure, or UI foundations. Those remain governed by existing approved decisions or require separate ADRs. Existing InOne Beta 1.0 screens and implementation must be audited and classified before any migration or code change. See [owner decisions](DECISIONS.md#7-product-split-inone-and-inone-business--2026-11-13).
+
+## 2026-11-27 — Feed implementation artifacts
+
+- Draft PR #174: `https://github.com/vahe210991-cloud/InOne-chat/pull/174`.
+- Stage report: `development/reports/2026-11-27-feed-domain-foundation.md`.
+- Draft API contract proposal: `development/architecture/FEED-BETA1-API-CONTRACT-PROPOSAL.md`.
+- Domain rules: `inone-development-archive-0.6.0/engine/src/feed-rules.js`; tests: `inone-development-archive-0.6.0/engine/test/feed-rules.test.js`, included from `test/api-contract.test.js`.
+- This is only the domain validation/cursor foundation. No Feed route, persistence, migration, media or Flutter screen is implemented/accepted yet.
+- Feed scope and cross-account visibility decisions are recorded separately in Draft PR #172; its changes are not yet in `main`.
