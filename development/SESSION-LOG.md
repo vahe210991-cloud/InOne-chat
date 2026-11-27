@@ -821,3 +821,12 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Fixed active-thread room-summary refresh to update contact prompt flags, not only unread/time metadata. Added model copy/update regression coverage.
 - Updated backend Compose CI's migration assertion to require `0037-contacts-and-blocks`.
 - Source review and code edits only. **No tests, builds, PostgreSQL migrations, Flutter/Rust checks, or GitHub Actions have been run yet.** Continue static review, then create the final PR and run the complete exact-SHA GitHub Actions gate. Native MLS remains disabled by default; do not merge without owner approval.
+
+
+## 2026-11-27 — Contact flow final consistency pass
+
+- Made the active block record authoritative even when a prior contact request had already reached `accepted`; repeated acceptance after a block now returns the same generic unavailable response. Added a regression assertion.
+- Corrected `POST /direct-chats/open` so the creator still receives `mlsInitializationRequired=true` on a provisioning retry (`created=false`). Flutter DTO now validates the setup flag against provisioning/creator state; backend and mobile regression sources cover the contract.
+- Added a blocked-peer row to the Flutter widget test to ensure a stale prompt flag cannot render **Принять**/**Заблокировать** after block. Updated the post-block notice to state the bidirectional restriction accurately.
+- Corrected backend Compose migration-count assertion to 36 (migrations 0002–0037) while requiring `0037-contacts-and-blocks`.
+- Source review only. No tests, builds, database migrations, Flutter/Rust checks, or Actions workflows have been run. Native MLS remains disabled; no merge.
