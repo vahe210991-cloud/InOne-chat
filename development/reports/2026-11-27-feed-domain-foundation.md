@@ -9,8 +9,11 @@
 - PR #174 branch: feat/feed-domain-foundation-beta1-main-7d34b99-20261127
 - Prior PR #174 head: 87783a37fe9361dec477458ff9ad921887d19e97
 - Architecture proposal update commit: 7db478a6d4e2491a273188ad0b55cca544eaba35
-- Domain implementation commits: a6648bebc7cbbcf5a62d2d8d84316d34087f3a0a and 95711b5f1a3d9bffa438cc9e2b4fe355cc5719c5, 52d3909bf20d61212854afc470b9222e4ac63bf3, and 26b94a6e376064aecddadc735392d651bbbfbc30
-- Domain test additions/fix commits: d182a94eaa7a3ee4f99ff882deef4d8a6e4f751d 83e6b81af42fd86b8dca2ccbfb9d9129cb22771a and 3f1467bed8acc5b8b48ce9ef396a5ca1d6dd9357 and 8acd93fb329d4bc95a85921fe03c586c408a47e1
+- Domain implementation commits: a6648bebc7cbbcf5a62d2d8d84316d34087f3a0a, 95711b5f1a3d9bffa438cc9e2b4fe355cc5719c5, 52d3909bf20d61212854afc470b9222e4ac63bf3, and 26b94a6e376064aecddadc735392d651bbbfbc30
+- Encrypted object-store commits: fc61e6838508af3383d92db6d1540c2f01d9959b and edf0163f2fae6e1c72f0fff91ec81eed79269a27
+- Backend test-entry wiring commit: 54f22ae20c3843f4d34b4a8458ca520274555fd4
+- Domain test commits: d182a94eaa7a3ee4f99ff882deef4d8a6e4f751d, 83e6b81af42fd86b8dca2ccbfb9d9129cb22771a, 3f1467bed8acc5b8b48ce9ef396a5ca1d6dd9357, and 8acd93fb329d4bc95a85921fe03c586c408a47e1
+- Encrypted-store test commits: c225f81145785bb19427d472e0e2f0c86fe3af5a, d32fe1df23a9cefaefc7be05422c26f23c8290d4, and 894b1a3af94e31cccf276afdab695c5098be629e
 - PR: https://github.com/vahe210991-cloud/InOne-chat/pull/174 (Draft, unmerged)
 
 ## Owner decision recorded
