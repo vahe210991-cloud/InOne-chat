@@ -1206,7 +1206,6 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   Future<InOneFailure?> _verifyRecoveryPin(String pin) async {
     try {
       await _session.verifyRecoveryPin(pin);
-      await _loadAuthenticatedData();
       return null;
     } catch (error) {
       return _toFailure(error);
@@ -1248,7 +1247,6 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         pinConfirmation: pinConfirmation,
       );
       _pinResetReturnScreen = null;
-      await _loadAuthenticatedData();
       return null;
     } catch (error) {
       return _toFailure(error);
@@ -3507,12 +3505,14 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           onSubmit: _verifyRecoveryPin,
           onForgotPin: _openPinReset,
           onLogout: () => setState(() => _screen = 'logout'),
+          onDone: () => unawaited(_loadAuthenticatedData()),
         );
       case 'pinReset':
         return InOnePinResetScreen(
           onStart: _startPinReset,
           onComplete: _completePinReset,
           onBack: () => setState(() => _screen = _pinResetReturnScreen ?? 'profile'),
+          onDone: () => unawaited(_loadAuthenticatedData()),
         );
       case 'logout':
         return InOneLogoutScreen(
