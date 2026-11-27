@@ -730,3 +730,10 @@ No tests, builds, PostgreSQL migration runs, Rust checks, Flutter checks, or dev
 - A creator reopening a still-provisioning direct conversation receives `mlsInitializationRequired=true` even when the reservation already exists. Flutter rejects contradictory server state.
 - Blocked chat rows suppress contact actions even if a stale pending flag is present; the UI notice accurately describes the bidirectional block.
 - CI migration-count assertion requires 36 SQL migrations and the exact 0037 marker. Verification remains pending; no WBS item is complete until exact-SHA acceptance passes and owner approval is given.
+
+
+### 13.7. Initial multi-device Welcome completeness — 2026-11-27
+
+- A direct-chat KeyPackage claim now fails closed if any currently active recipient device lacks an eligible regular or last-resort KeyPackage. PostgreSQL and memory implementations avoid consuming a partial package set and allow the same claim ID to retry when the missing device publishes a package.
+- The direct-chat regression source covers a two-device recipient with only one package initially, then a successful retry after the second package is uploaded.
+- This does not close post-claim device-add/revocation races; those remain explicitly in CHAT-D-02 and native MLS acceptance. No verification has been run.
