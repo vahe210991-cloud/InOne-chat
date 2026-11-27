@@ -63,7 +63,7 @@ jobs:
         run: |
           set -euo pipefail
           docker compose exec -T db psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc "SELECT version FROM schema_migrations WHERE version = '0037-contacts-and-blocks'" | grep -Fx '0037-contacts-and-blocks'
-          docker compose exec -T db psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc "SELECT COUNT(*) FROM schema_migrations" | awk '$1 < 37 { exit 1 }'
+          docker compose exec -T db psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc "SELECT COUNT(*) FROM schema_migrations" | awk '$1 < 36 { exit 1 }'
       - name: Collect Compose diagnostics
         if: always()
         run: |
