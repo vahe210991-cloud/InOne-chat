@@ -683,9 +683,15 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
     },
     async removeOrgMember(orgId, userId) {
       return inTransaction(async (c) => {
+        const { rows: activeLinks } = await c.query(
+          "SELECT link_id, CASE WHEN org_a = $1 THEN org_b ELSE org_a END AS linked_org_id FROM org_links WHERE status = 'active' AND (org_a = $1 OR org_b = $1) ORDER BY link_id FOR UPDATE",
+          [orgId],
+        );
+        const linkedOrgIds = activeLinks.map((row) => row.linked_org_id);
+        const affectedOrgIds = [orgId, ...linkedOrgIds];
         await c.query(
-          'SELECT room_id FROM rooms WHERE org_id = $1 AND (room_id IN (SELECT room_id FROM room_members WHERE user_id = $2) OR owner = $2) ORDER BY room_id FOR UPDATE',
-          [orgId, userId],
+          'SELECT room_id FROM rooms WHERE org_id = ANY($1::text[]) AND (room_id IN (SELECT room_id FROM room_members WHERE user_id = $2) OR owner = $2) ORDER BY room_id FOR UPDATE',
+          [affectedOrgIds, userId],
         );
         await c.query('SELECT user_id FROM org_members WHERE org_id = $1 AND user_id = $2 FOR UPDATE', [orgId, userId]);
         const { rows: mlsRooms } = await c.query(
@@ -693,12 +699,22 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
              FROM rooms r
              JOIN room_members rm ON rm.room_id = r.room_id
              JOIN mls_groups mg ON mg.room_id = r.room_id AND mg.epoch > 0
-            WHERE r.org_id = $1 AND rm.user_id = $2
+            WHERE rm.user_id = $2
+              AND (r.org_id = $1 OR (
+                r.org_id = ANY($3::text[])
+                AND NOT EXISTS (SELECT 1 FROM org_members direct_member WHERE direct_member.org_id = r.org_id AND direct_member.user_id = $2)
+              ))
             ORDER BY r.room_id`,
-          [orgId, userId],
+          [orgId, userId, linkedOrgIds],
         );
         if (mlsRooms.length) return { ok: false, reason: 'mls_removal_required', rooms: mlsRooms.map((row) => row.room_id) };
         await c.query('DELETE FROM room_members WHERE user_id = $2 AND room_id IN (SELECT room_id FROM rooms WHERE org_id = $1)', [orgId, userId]);
+        if (linkedOrgIds.length) {
+          await c.query(
+            'DELETE FROM room_members rm USING rooms r WHERE rm.room_id = r.room_id AND rm.user_id = $1 AND r.org_id = ANY($2::text[]) AND NOT EXISTS (SELECT 1 FROM org_members direct_member WHERE direct_member.org_id = r.org_id AND direct_member.user_id = $1)',
+            [userId, linkedOrgIds],
+          );
+        }
         await c.query('DELETE FROM org_members WHERE org_id = $1 AND user_id = $2', [orgId, userId]);
         return { ok: true };
       });
