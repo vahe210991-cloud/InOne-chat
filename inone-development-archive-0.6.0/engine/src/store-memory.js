@@ -1722,7 +1722,7 @@ mlsPendingRemovalsFor(userId) {
       }
       return null;
     },
-    createVerifiedAccount({ userId, passwordHash, email, nickname, nowMs, provider = null, joinDefaultOrg = false, locale = 'hy' }) {
+    createVerifiedAccount({ userId, passwordHash, pinHash, email, nickname, nowMs, provider = null, joinDefaultOrg = false, locale = 'hy' }) {
       if (accounts.has(userId)) return 'account';
       for (const p of profiles.values()) {
         if (p.emailVerified && p.email === email) return 'email';
@@ -1733,6 +1733,10 @@ mlsPendingRemovalsFor(userId) {
       accounts.set(userId, passwordHash);
       if (joinDefaultOrg) addOrgMembership(DEFAULT_ORG_ID, userId, 'member', nowMs);
       profiles.set(userId, { email, emailVerified: true, nickname, createdAt: nowMs, locale });
+      pins.set(userId, {
+        hash: pinHash, failed: 0, lockedUntil: null,
+        lastVerifiedAt: nowMs, reminderNextAt: nowMs + 7 * 24 * 60 * 60_000,
+      });
       if (key) providerLinks.set(key, { userId, email, linkedAt: nowMs });
       return 'ok';
     },
