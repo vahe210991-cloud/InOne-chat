@@ -85,6 +85,7 @@ test('Feed object key rotation reads old objects and writes new objects with the
 test('Feed object store rejects invalid object keys, key providers and chunk bounds', async () => {
   const rawStore = createMemoryObjectStore();
   assert.throws(() => createEncryptedFeedObjectStore(rawStore, null), TypeError);
+  assert.throws(() => createEncryptedFeedObjectStore(rawStore, { activeKeyId: 'k1' }), TypeError);
   assert.throws(() => createEncryptedFeedObjectStore(rawStore, provider(), { chunkBytes: 1024 }), RangeError);
   const encrypted = createEncryptedFeedObjectStore(rawStore, provider());
   await assert.rejects(() => encrypted.put('../escape', Buffer.from('x')), TypeError);
