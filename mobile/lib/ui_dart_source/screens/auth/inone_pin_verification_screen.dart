@@ -11,12 +11,14 @@ class InOnePinVerificationScreen extends StatefulWidget {
     required this.onForgotPin,
     required this.onLogout,
     required this.onDone,
+    this.legacyPin = false,
   });
 
   final Future<InOneFailure?> Function(String pin) onSubmit;
   final VoidCallback onForgotPin;
   final VoidCallback onLogout;
   final VoidCallback onDone;
+  final bool legacyPin;
 
   @override
   State<InOnePinVerificationScreen> createState() => _InOnePinVerificationScreenState();
@@ -46,10 +48,10 @@ class _InOnePinVerificationScreenState extends State<InOnePinVerificationScreen>
         InOneField(
           form: _form,
           name: 'pin',
-          label: inOnePinCopy(context, 'pinLabel'),
+          label: inOnePinCopy(context, widget.legacyPin ? 'legacyPinLabel' : 'pinLabel'),
           obscure: true,
           keyboardType: TextInputType.number,
-          maxLength: 8,
+          maxLength: widget.legacyPin ? 12 : 8,
           textInputAction: TextInputAction.done,
           onSubmitted: _submit,
         ),
