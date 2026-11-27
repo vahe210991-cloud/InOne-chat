@@ -338,6 +338,196 @@ mod tests {
         assert_eq!(alice_group.epoch().as_u64(), 1);
     }
 
+    fn file_provider(path: &Path) -> CandidateProvider<openmls_rust_crypto::RustCrypto> {
+        let mut connection = Connection::open(path).expect("open persistent SQLCipher database");
+        connection
+            .pragma_update(None, "key", format!("x'{TEST_KEY_HEX}'"))
+            .expect("apply persistent SQLCipher key");
+        {
+            let mut migrations = SqliteStorageProvider::<JsonCodec, _>::new(&mut connection);
+            migrations
+                .run_migrations()
+                .expect("migrate persistent MLS storage");
+        }
+        let connection = Arc::new(connection);
+        CandidateProvider {
+            crypto: openmls_rust_crypto::RustCrypto::default(),
+            storage: SqliteStorageProvider::new(connection),
+        }
+    }
+
+    #[test]
+    fn two_party_group_and_signing_keys_survive_sqlcipher_reopen() {
+        use openmls::prelude::tls_codec::{Deserialize, Serialize};
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock after UNIX epoch")
+            .as_nanos();
+        let alice_path = std::env::temp_dir().join(format!(
+            "inone-openmls-092-alice-{}-{nonce}.db",
+            std::process::id()
+        ));
+        let bob_path = std::env::temp_dir().join(format!(
+            "inone-openmls-092-bob-{}-{nonce}.db",
+            std::process::id()
+        ));
+
+        let alice_provider = file_provider(&alice_path);
+        let bob_provider = file_provider(&bob_path);
+        let alice_signer =
+            SignatureKeyPair::new(CIPHERSUITE.signature_algorithm()).expect("create Alice signer");
+        let bob_signer =
+            SignatureKeyPair::new(CIPHERSUITE.signature_algorithm()).expect("create Bob signer");
+        alice_signer
+            .store(alice_provider.storage())
+            .expect("persist Alice signing key");
+        bob_signer
+            .store(bob_provider.storage())
+            .expect("persist Bob signing key");
+
+        let alice_public_key = alice_signer.to_public_vec();
+        let bob_public_key = bob_signer.to_public_vec();
+        let alice_credential = CredentialWithKey {
+            credential: BasicCredential::new(b"inone-persistent-alice".to_vec()).into(),
+            signature_key: alice_public_key.clone().into(),
+        };
+        let bob_credential = CredentialWithKey {
+            credential: BasicCredential::new(b"inone-persistent-bob".to_vec()).into(),
+            signature_key: bob_public_key.clone().into(),
+        };
+        let config = MlsGroupCreateConfig::builder()
+            .ciphersuite(CIPHERSUITE)
+            .use_ratchet_tree_extension(true)
+            .max_past_epochs(16)
+            .build();
+        let mut alice_group =
+            MlsGroup::new(&alice_provider, &alice_signer, &config, alice_credential)
+                .expect("create persistent Alice group");
+        let bob_key_package = KeyPackage::builder()
+            .build(CIPHERSUITE, &bob_provider, &bob_signer, bob_credential)
+            .expect("build persistent Bob key package");
+        let (_commit, welcome, _) = alice_group
+            .add_members(
+                &alice_provider,
+                &alice_signer,
+                &[bob_key_package.key_package().clone()],
+            )
+            .expect("add persistent Bob member");
+        alice_group
+            .merge_pending_commit(&alice_provider)
+            .expect("commit persistent group membership");
+        let welcome_wire = welcome
+            .tls_serialize_detached()
+            .expect("serialize persistent Welcome");
+        let welcome = match MlsMessageIn::tls_deserialize_exact(&welcome_wire)
+            .expect("deserialize persistent Welcome")
+            .extract()
+        {
+            MlsMessageBodyIn::Welcome(welcome) => welcome,
+            _ => panic!("expected persistent Welcome"),
+        };
+        let join_config = MlsGroupJoinConfig::builder()
+            .use_ratchet_tree_extension(true)
+            .build();
+        let staged = StagedWelcome::new_from_welcome(
+            &bob_provider,
+            &join_config,
+            welcome,
+            None,
+        )
+        .expect("stage persistent Bob Welcome");
+        let bob_group = staged
+            .into_group(&bob_provider)
+            .expect("Bob joins persistent group");
+        let group_id = alice_group.group_id().clone();
+        assert_eq!(group_id, bob_group.group_id().clone());
+        assert_eq!(alice_group.epoch().as_u64(), 1);
+        assert_eq!(bob_group.epoch().as_u64(), 1);
+
+        drop(alice_group);
+        drop(bob_group);
+        drop(alice_provider);
+        drop(bob_provider);
+
+        let alice_provider = file_provider(&alice_path);
+        let bob_provider = file_provider(&bob_path);
+        let mut alice_group = MlsGroup::load(alice_provider.storage(), &group_id)
+            .expect("load Alice persistent group")
+            .expect("Alice group exists after reopen");
+        let mut bob_group = MlsGroup::load(bob_provider.storage(), &group_id)
+            .expect("load Bob persistent group")
+            .expect("Bob group exists after reopen");
+        assert_eq!(alice_group.epoch().as_u64(), 1);
+        assert_eq!(bob_group.epoch().as_u64(), 1);
+        assert_eq!(alice_group.members().count(), 2);
+        assert_eq!(bob_group.members().count(), 2);
+
+        let alice_key = SignatureKeyPair::read(
+            alice_provider.storage(),
+            &alice_public_key,
+            CIPHERSUITE.signature_algorithm(),
+        )
+        .expect("reload Alice private signing key");
+        let bob_key = SignatureKeyPair::read(
+            bob_provider.storage(),
+            &bob_public_key,
+            CIPHERSUITE.signature_algorithm(),
+        )
+        .expect("reload Bob private signing key");
+        let alice_signer = alice_key.signer(alice_provider.crypto());
+        let bob_signer = bob_key.signer(bob_provider.crypto());
+
+        let alice_wire = alice_group
+            .create_message(&alice_provider, &alice_signer, b"alice-after-reopen")
+            .expect("Alice encrypts after SQLCipher reopen")
+            .tls_serialize_detached()
+            .expect("serialize Alice message after reopen");
+        let alice_protocol = MlsMessageIn::tls_deserialize_exact(&alice_wire)
+            .expect("deserialize Alice message after reopen")
+            .try_into_protocol_message()
+            .expect("Alice message is protocol message");
+        let alice_received = bob_group
+            .process_message(&bob_provider, alice_protocol)
+            .expect("Bob decrypts after SQLCipher reopen");
+        match alice_received.into_content() {
+            ProcessedMessageContent::ApplicationMessage(message) => {
+                assert_eq!(message.into_bytes(), b"alice-after-reopen");
+            }
+            _ => panic!("expected Alice application message"),
+        }
+
+        let bob_wire = bob_group
+            .create_message(&bob_provider, &bob_signer, b"bob-after-reopen")
+            .expect("Bob encrypts after SQLCipher reopen")
+            .tls_serialize_detached()
+            .expect("serialize Bob message after reopen");
+        let bob_protocol = MlsMessageIn::tls_deserialize_exact(&bob_wire)
+            .expect("deserialize Bob message after reopen")
+            .try_into_protocol_message()
+            .expect("Bob message is protocol message");
+        let bob_received = alice_group
+            .process_message(&alice_provider, bob_protocol)
+            .expect("Alice decrypts after SQLCipher reopen");
+        match bob_received.into_content() {
+            ProcessedMessageContent::ApplicationMessage(message) => {
+                assert_eq!(message.into_bytes(), b"bob-after-reopen");
+            }
+            _ => panic!("expected Bob application message"),
+        }
+
+        drop(alice_group);
+        drop(bob_group);
+        drop(alice_provider);
+        drop(bob_provider);
+        for path in [&alice_path, &bob_path] {
+            let _ = std::fs::remove_file(path);
+            let _ = std::fs::remove_file(path.with_extension("db-wal"));
+            let _ = std::fs::remove_file(path.with_extension("db-shm"));
+        }
+    }
+
     #[test]
     fn rejects_a_wrong_sqlcipher_key() {
         let path = std::env::var("INONE_COMPAT_DB")
