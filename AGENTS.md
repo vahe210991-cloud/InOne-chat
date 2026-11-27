@@ -1,5 +1,7 @@
 # InOne repository instructions for all AI agents
 
+**Mandatory operating and test-launch policy:** `architecture/AI-AGENT-OPERATING-AND-TEST-EXECUTION-POLICY.md`. Every agent must follow it when planning work, selecting checks, launching GitHub Actions, handling queue delays, and reporting evidence.
+
 **Mandatory first read:** `development/AI-AGENT-MANDATE.md`, then `development/PROGRESS-BASELINE.md` in full.
 
 Before any work, read the mandate in full, then follow its required reading list and start-of-session checklist. The owner-approved Beta 1.0/Beta 2.0 WBS is the immutable planning baseline. Every task must map to a WBS row, stable screen ID, API contract, or acceptance criterion.
