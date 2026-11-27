@@ -185,6 +185,11 @@ async function* decryptedRecords(source, objectKey, keyProvider, chunkBytes) {
     dek?.fill(0);
     kek?.fill(0);
     buffered.fill(0);
+    try {
+      await iterator.return?.();
+    } catch {
+      // Preserve the original authentication/stream error.
+    }
   }
 }
 
@@ -205,6 +210,9 @@ export function createEncryptedFeedObjectStore(innerStore, keyProvider, {
     throw new RangeError('Feed encryption chunk size must be 16 KiB..1 MiB');
   }
   validateKeyId(keyProvider?.activeKeyId);
+  if (typeof keyProvider.getKey !== 'function') {
+    throw new TypeError('Feed encryption key provider must implement getKey(keyId)');
+  }
 
   const putStream = async (key, source) => {
     validateObjectKey(key);
