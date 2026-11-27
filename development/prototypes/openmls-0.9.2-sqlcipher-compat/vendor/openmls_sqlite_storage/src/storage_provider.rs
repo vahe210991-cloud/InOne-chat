@@ -61,6 +61,10 @@ impl<C: Codec, ConnectionRef: BorrowMut<Connection>> SqliteStorageProvider<C, Co
     pub fn run_migrations(&mut self) -> Result<(), refinery::Error> {
         let mut runner = migrations::runner();
         runner.set_migration_table_name("openmls_sqlite_storage_migrations");
+        // Keep schema changes and their migration-history rows in one SQLite
+        // transaction. Without grouping, a process crash after DDL commits but
+        // before the history row is written can replay non-idempotent migrations.
+        runner = runner.set_grouped(true);
 
         runner.run(self.connection.borrow_mut())?;
         Ok(())
