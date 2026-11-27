@@ -57,9 +57,9 @@ const CATALOG = {
     en: ['Your InOne account recovery code', ({ code }) => `Your account recovery code is ${code}. It expires in one hour. Sign-in will be available only 48 hours after the password change. If you did not request recovery, do not use this code.`],
   },
   recovery_requested: {
-    hy: ['Հարցում է ստացվել հաշիվը վերականգնելու համար', () => 'Ստացվել է ձեր InOne հաշվի հասանելիությունը վերականգնելու հարցում։ Կոդն ուղարկվել է պահուստային կամ հիմնական էլ․ փոստին։ Եթե հարցումը դուք չեք կատարել, մի՛ տրամադրեք որևէ կոդ և ստուգեք ձեր սարքերը։'],
-    ru: ['Запрошено восстановление аккаунта InOne', () => 'Получен запрос на восстановление доступа к вашему аккаунту InOne. Код отправлен на резервную или основную почту. Если это сделали не вы, никому не сообщайте коды и проверьте свои устройства.'],
-    en: ['An InOne account recovery was requested', () => 'A request to recover access to your InOne account was received. A code was sent to your backup or primary email. If this was not you, do not share any codes and review your devices.'],
+    hy: ['Հարցում է ստացվել հաշիվը վերականգնելու համար', () => 'Ստացվել է ձեր InOne հաշվի հասանելիությունը վերականգնելու հարցում։ Մեկանգամյա կոդն ուղարկվել է միայն ձեր հաստատված հիմնական էլ․ փոստին։ Պահուստային հասցեին կարող է ուղարկվել միայն անվտանգության ծանուցում։ Եթե հարցումը դուք չեք կատարել, մի՛ տրամադրեք որևէ կոդ և ստուգեք ձեր սարքերը։'],
+    ru: ['Запрошено восстановление аккаунта InOne', () => 'Получен запрос на восстановление доступа к вашему аккаунту InOne. Одноразовый код отправлен только на подтверждённую основную почту. На резервный адрес может прийти только уведомление безопасности. Если это сделали не вы, никому не сообщайте коды и проверьте свои устройства.'],
+    en: ['An InOne account recovery was requested', () => 'A request to recover access to your InOne account was received. The one-time code was sent only to your verified primary email. A backup address may receive a security notice only. If this was not you, do not share any codes and review your devices.'],
   },
   recovery_confirmation_link: {
     hy: ['Հաստատեք հաշվի վերականգնումը', ({ url, appUrl }) => `Բջջային հավելվածում հաստատելու համար բացեք InOne հղումը՝ ${appUrl}։ Վեբ տարբերակը՝ ${url}։ Հղումը վավեր է մեկ ժամ։ Եթե հարցումը դուք չեք կատարել, մի՛ բացեք հղումը։`],
