@@ -162,7 +162,10 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       unawaited(_clearDocumentPreviewCache().catchError((Object _) {}));
     }
     if (state != AppLifecycleState.resumed) return;
-    if (_session.isAuthenticated) unawaited(_checkPendingDeviceApprovals());
+    if (_session.isAuthenticated) {
+      unawaited(_refreshPinReminder());
+      unawaited(_checkPendingDeviceApprovals());
+    }
     final pushLifecycle = _pushLifecycle;
     if (pushLifecycle != null) {
       unawaited(pushLifecycle.refreshRegistration().catchError((Object _) {}));
