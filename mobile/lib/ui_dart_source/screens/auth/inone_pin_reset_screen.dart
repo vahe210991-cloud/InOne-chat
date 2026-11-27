@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../state/inone_state.dart';
 import '../../widgets/inone_widgets.dart';
+import 'inone_pin_copy.dart';
 
 class InOnePinResetScreen extends StatefulWidget {
   const InOnePinResetScreen({
@@ -62,23 +63,22 @@ class _InOnePinResetScreenState extends State<InOnePinResetScreen>
   @override
   Widget build(BuildContext context) {
     return InOneScreen.auth(
-      title: 'Замена PIN-кода',
+      title: inOnePinCopy(context, 'resetTitle'),
       onBack: widget.onBack,
-      banner: bannerText ??
-          'Для защиты аккаунта мы отправим одноразовый код на подтверждённую электронную почту. Новый PIN будет действовать сразу после подтверждения.',
+      banner: bannerText ?? inOnePinCopy(context, 'resetBanner'),
       dock: [
         if (_challengeId == null) ...[
           InOneField(
             form: _startForm,
             name: 'password',
-            label: 'Пароль аккаунта (если вход по паролю)',
+            label: inOnePinCopy(context, 'password'),
             obscure: true,
             maxLength: 128,
             textInputAction: TextInputAction.done,
             onSubmitted: _start,
           ),
           InOneButton(
-            label: 'Отправить код на почту',
+            label: inOnePinCopy(context, 'sendCode'),
             loading: isBusy('start'),
             onPressed: blocked ? null : _start,
           ),
@@ -86,7 +86,7 @@ class _InOnePinResetScreenState extends State<InOnePinResetScreen>
           InOneField(
             form: _completeForm,
             name: 'code',
-            label: 'Одноразовый код из письма',
+            label: inOnePinCopy(context, 'emailCode'),
             keyboardType: TextInputType.number,
             maxLength: 6,
             textInputAction: TextInputAction.next,
@@ -94,7 +94,7 @@ class _InOnePinResetScreenState extends State<InOnePinResetScreen>
           InOneField(
             form: _completeForm,
             name: 'pin',
-            label: 'Новый PIN · 8 цифр',
+            label: inOnePinCopy(context, 'newPin'),
             obscure: true,
             keyboardType: TextInputType.number,
             maxLength: 8,
@@ -103,7 +103,7 @@ class _InOnePinResetScreenState extends State<InOnePinResetScreen>
           InOneField(
             form: _completeForm,
             name: 'pinConfirmation',
-            label: 'Повторите новый PIN',
+            label: inOnePinCopy(context, 'confirmPin'),
             obscure: true,
             keyboardType: TextInputType.number,
             maxLength: 8,
@@ -111,13 +111,13 @@ class _InOnePinResetScreenState extends State<InOnePinResetScreen>
             onSubmitted: _complete,
           ),
           InOneButton(
-            label: 'Подтвердить и заменить PIN',
+            label: inOnePinCopy(context, 'completeReset'),
             loading: isBusy('complete'),
             onPressed: blocked ? null : _complete,
           ),
           TextButton(
             onPressed: blocked ? null : _start,
-            child: const Text('Отправить код повторно'),
+            child: Text(inOnePinCopy(context, 'resend')),
           ),
         ],
       ],
