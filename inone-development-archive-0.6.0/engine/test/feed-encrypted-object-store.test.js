@@ -14,7 +14,7 @@ function provider(activeKeyId = 'k1', keys = { k1: OLD_KEY }) {
   return {
     activeKeyId,
     getKey(keyId) {
-      return keys[keyId] ? Buffer.from(keys[keyId]) : null;
+      return Object.hasOwn(keys, keyId) ? Buffer.from(keys[keyId]) : null;
     },
   };
 }
