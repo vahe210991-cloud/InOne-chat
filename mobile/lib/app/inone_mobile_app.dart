@@ -1242,7 +1242,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     try {
       await _repositories.blockContact(peerUserId);
       await _loadMlsRooms();
-      _notice('Пользователь заблокирован. Новые сообщения от него не будут доставляться.');
+      _notice('Пользователь заблокирован. Новые личные сообщения в обе стороны не будут доставляться.');
     } catch (error) {
       _notice('Не удалось заблокировать пользователя: $error');
     }
