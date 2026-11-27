@@ -30,7 +30,7 @@ import { readFileSync } from 'node:fs';
 import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, randomInt, randomUUID, timingSafeEqual, createPublicKey, createVerify } from 'node:crypto';
 import { createMemoryStore } from './store-memory.js';
 import { LOGIN_POLICY } from './login-throttle.js';
-import { PIN_FREE_ATTEMPTS, PIN_REMINDER_INTERVAL_MS, PIN_VERIFICATION_INTERVAL_MS, checkPin, hashPin, lockDurationMs, pinHashNeedsUpgrade, validatePin, weakPinReason } from './pin-security.js';
+import { PIN_FREE_ATTEMPTS, PIN_REMINDER_INTERVAL_MS, PIN_VERIFICATION_INTERVAL_MS, checkPin, hashPin, lockDurationMs, pinHashNeedsUpgrade, validateLegacyPin, validatePin, weakPinReason } from './pin-security.js';
 import { windowOpen, requestCode, confirmLink, checkCode, completeRecovery, cancelWindow, issueIdentity, checkIdentity, closeWindowIfDue } from './recovery-rules.js';
 import { createMemorySms } from './sms.js';
 import { isPhone, requestPhoneCode, checkPhoneCode } from './phone-rules.js';
@@ -477,7 +477,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
       return valid;
     },
     upgrade: async (candidate, stored) =>
-      pinHashNeedsUpgrade(stored) ? hashPin(pinPepper, candidate) : null,
+      pinHashNeedsUpgrade(stored) && validatePin(candidate) ? hashPin(pinPepper, candidate) : null,
   });
 
   const pinError = (res, r) => {
