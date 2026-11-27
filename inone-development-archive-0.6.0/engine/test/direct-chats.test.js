@@ -239,8 +239,20 @@ test('direct chats require no recipient approval and activate automatically thro
       (error) => error.status === 403,
       'the direct pair cannot claim a Welcome for a third account',
     );
-    const blocked = await alice.raw('POST', `/contacts/${enc(BOB)}/block`);
-    assert.equal(blocked.blocked, true);
+    // Two devices can race the same prompt action. A completed block must win:
+    // acceptance may finish first, but it must never resurrect either contact edge.
+    const [acceptRace, blockRace] = await Promise.allSettled([
+      alice.raw('POST', `/contacts/${enc(BOB)}/accept`),
+      alice.raw('POST', `/contacts/${enc(BOB)}/block`),
+    ]);
+    assert.equal(blockRace.status, 'fulfilled');
+    assert.equal(blockRace.value.blocked, true);
+    if (acceptRace.status === 'rejected') {
+      assert.equal(acceptRace.reason.status, 409);
+      assert.ok(String(acceptRace.reason.message).includes('contact_request_unavailable'));
+    } else {
+      assert.equal(acceptRace.value.accepted, true);
+    }
     const aliceBlockedSummary = (await alice.raw('GET', '/rooms/mine')).rooms.find((room) => room.roomId === opened.roomId);
     assert.equal(aliceBlockedSummary.isBlocked, true);
     assert.equal(aliceBlockedSummary.incomingContactRequest, false);
