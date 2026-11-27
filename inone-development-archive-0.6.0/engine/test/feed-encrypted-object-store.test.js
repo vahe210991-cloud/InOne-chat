@@ -73,6 +73,27 @@ test('Feed object encryption authenticates object key, wrapped DEK and every chu
   await assert.rejects(() => encrypted.get(OBJECT_A));
 });
 
+test('Feed object store zeroizes ephemeral KEK buffers returned by the provider', async () => {
+  const rawStore = createMemoryObjectStore();
+  const writeKey = Buffer.from(OLD_KEY);
+  const writeProvider = {
+    activeKeyId: 'k1',
+    getKey() { return writeKey; },
+  };
+  const encrypted = createEncryptedFeedObjectStore(rawStore, writeProvider);
+  await encrypted.put(OBJECT_A, Buffer.from('secret-key-lifecycle'));
+  assert.deepEqual(writeKey, Buffer.alloc(32));
+
+  const readKey = Buffer.from(OLD_KEY);
+  const readProvider = {
+    activeKeyId: 'k1',
+    getKey() { return readKey; },
+  };
+  const reader = createEncryptedFeedObjectStore(rawStore, readProvider);
+  assert.deepEqual(await reader.get(OBJECT_A), Buffer.from('secret-key-lifecycle'));
+  assert.deepEqual(readKey, Buffer.alloc(32));
+});
+
 test('Feed object key rotation reads old objects and writes new objects with the active key ID', async () => {
   const rawStore = createMemoryObjectStore();
   const oldProvider = provider('old', { old: OLD_KEY });
