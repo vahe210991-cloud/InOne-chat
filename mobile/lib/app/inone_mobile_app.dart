@@ -68,6 +68,8 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   String? _pendingIdentityChallengeId;
   String _waitingActivateAt = '';
   bool _pinReminderDue = false;
+  bool _pinLegacyFormat = false;
+  bool _pinResetRequired = false;
   String? _pinResetReturnScreen;
   InOneProfile? _profile;
   List<InOneOrganization> _organizations = const [];
@@ -790,7 +792,8 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         if (!mounted) return;
         setState(() {
           _pinReminderDue = false;
-          _screen = pinState['configured'] == true ? 'pinVerification' : 'pinReset';
+          _pinLegacyFormat = pinState['legacy'] == true;
+          _screen = _pinResetRequired || pinState['configured'] != true ? 'pinReset' : 'pinVerification';
           _pinResetReturnScreen = 'pinVerification';
         });
         return;
@@ -806,6 +809,8 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         _organizations = organizations;
         _selectedOrganization = organizations.isEmpty ? null : organizations.first;
         _pinReminderDue = pinState['reminderDue'] == true;
+        _pinLegacyFormat = false;
+        _pinResetRequired = false;
         _organizationMemberCount = null;
         _organizationMembers = const [];
         _screen = 'messages';
@@ -1208,7 +1213,11 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
 
   Future<InOneFailure?> _verifyRecoveryPin(String pin) async {
     try {
-      await _session.verifyRecoveryPin(pin);
+      final result = await _session.verifyRecoveryPin(pin);
+      if (result['resetRequired'] == true) {
+        _pinResetRequired = true;
+        _pinResetReturnScreen = 'pinVerification';
+      }
       return null;
     } catch (error) {
       return _toFailure(error);
@@ -1250,6 +1259,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         pinConfirmation: pinConfirmation,
       );
       _pinResetReturnScreen = null;
+      _pinResetRequired = false;
       return null;
     } catch (error) {
       return _toFailure(error);
@@ -3359,13 +3369,18 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       if (state['verificationRequired'] == true) {
         if (_screen == 'pinReset') return;
         setState(() {
-          _screen = state['configured'] == true ? 'pinVerification' : 'pinReset';
+          _pinLegacyFormat = state['legacy'] == true;
+          _screen = _pinResetRequired || state['configured'] != true ? 'pinReset' : 'pinVerification';
           _pinResetReturnScreen = 'pinVerification';
           _pinReminderDue = false;
         });
         return;
       }
-      setState(() => _pinReminderDue = state['reminderDue'] == true);
+      setState(() {
+        _pinReminderDue = state['reminderDue'] == true;
+        _pinLegacyFormat = false;
+        _pinResetRequired = false;
+      });
     } catch (_) {
       // The backend remains authoritative and blocks protected APIs if verification is due.
     }
@@ -3510,6 +3525,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           onForgotPin: _openPinReset,
           onLogout: () => setState(() => _screen = 'logout'),
           onDone: () => unawaited(_loadAuthenticatedData()),
+          legacyPin: _pinLegacyFormat,
         );
       case 'pinReset':
         return InOnePinResetScreen(
