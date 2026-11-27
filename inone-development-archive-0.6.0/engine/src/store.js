@@ -263,19 +263,18 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
           [userId],
         );
         if (rows.length === 0) return { ok: false, reason: 'no-pin' };
-        let failed = rows[0].failed;
+        let failed = Number(rows[0].failed);
         let lockedUntil = rows[0].locked_until === null ? null : Number(rows[0].locked_until);
         const save = (f, l) => c.query('UPDATE pins SET failed = $2, locked_until = $3 WHERE user_id = $1', [userId, f, l]);
 
         if (lockedUntil && now < lockedUntil) return { ok: false, reason: 'locked', retryAt: lockedUntil };
         const expiredLockCleared = !!lockedUntil && now >= lockedUntil;
-        if (expiredLockCleared) lockedUntil = null;
-        failed += 1;
         if (failed > free && !expiredLockCleared) {
-          lockedUntil = now + lockDuration(failed);
+          lockedUntil = now + lockDuration(failed + 1);
           await save(failed, lockedUntil);
           return { ok: false, reason: 'locked', retryAt: lockedUntil };
         }
+        failed += 1;
         if (await check(pin, rows[0].pin_hash)) {
           const upgradedHash = upgrade ? await upgrade(pin, rows[0].pin_hash) : null;
           await c.query(
@@ -1520,15 +1519,16 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
           return { factor: 'pin', outcome: 'locked', retryAt: lockedUntil };
         }
         const expiredLockCleared = !!lockedUntil && now >= lockedUntil;
-        const failed = Number(pinRow.failed) + 1;
-        if (failed > free && !expiredLockCleared) {
-          const retryAt = now + lockDuration(failed);
+        const previousFailed = Number(pinRow.failed);
+        if (previousFailed > free && !expiredLockCleared) {
+          const retryAt = now + lockDuration(previousFailed + 1);
           await client.query(
-            'UPDATE pins SET failed = $2, locked_until = $3 WHERE user_id = $1',
-            [userId, failed, retryAt],
+            'UPDATE pins SET locked_until = $2 WHERE user_id = $1',
+            [userId, retryAt],
           );
           return { factor: 'pin', outcome: 'locked', retryAt };
         }
+        const failed = previousFailed + 1;
         const pinOk = await pinCheck(pin, pinRow.pin_hash);
         if (!pinOk.ok) {
           const retryAt = failed >= free ? now + lockDuration(failed) : null;
