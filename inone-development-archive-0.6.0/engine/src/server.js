@@ -3430,7 +3430,7 @@ if (req.method === 'POST' && p === '/login') {
           return send(res, 400, { error: `newPassword must be ${MIN_PASSWORD_LENGTH}-${MAX_PASSWORD_LENGTH} characters` });
         }
         if ((await storage.providerLinksOf(userId)).length > 0) {
-          return send(res, 409, { error: 'password recovery is disabled for accounts linked to Google or Apple' });
+          return send(res, 403, { error: 'recovery verification failed' });
         }
         const newPasswordHash = hashPassword(newPassword);
         const cancelCode = String(randomInt(0, 1_000_000)).padStart(6, '0');
