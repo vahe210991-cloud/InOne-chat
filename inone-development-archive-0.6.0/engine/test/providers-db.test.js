@@ -10,6 +10,8 @@ import { testDatabase } from './helpers.js';
 const dbTest = process.env.DATABASE_URL ? test : test.skip;
 const PEPPER = randomBytes(24).toString('hex');
 const PW = 'длинный-пароль-1';
+const PIN = '80421697';
+const PHONE = '+37477000032';
 const PROVIDERS = { google: { clientIds: ['g-client.apps.googleusercontent.com'] }, apple: { clientIds: ['ai.inone.app'] } };
 const trusted = generateKeyPairSync('rsa', { modulusLength: 2048 });
 const KEYS = { keys: [{ ...trusted.publicKey.export({ format: 'jwk' }), kid: 'test-key-1', alg: 'RS256', use: 'sig' }] };
@@ -52,7 +54,7 @@ async function registerByEmail(base, srv, email, nickname) {
   await call(base, 'POST', '/register/email', { body: { email, locale: 'ru' } });
   const code = srv.mailbox(email).filter((m) => m.templateId === 'registration_code').at(-1).text.match(/\b(\d{6})\b/)[1];
   const confirmed = await call(base, 'POST', '/register/email/confirm', { body: { email, code } });
-  return call(base, 'POST', '/register', { body: { email, registrationToken: confirmed.body.registrationToken, password: PW, nickname } });
+  return call(base, 'POST', '/register', { body: { email, registrationToken: confirmed.body.registrationToken, password: PW, nickname, phone: PHONE, pin: PIN, pinConfirmation: PIN } });
 }
 
 dbTest('SD25: связь с Google переживает перезапуск; один внешний аккаунт — один аккаунт на базе', async () => {
@@ -60,7 +62,7 @@ dbTest('SD25: связь с Google переживает перезапуск; о
   try {
     const first = await serve(createStore({ pool: db.pool, pinPepper: PEPPER }));
     const v = await providerSignIn(first.base, (n) => googleClaims(n));
-    const anna = await call(first.base, 'POST', '/register/provider', { body: { ticket: v.body.ticket, nickname: 'Anna.G' } });
+    const anna = await call(first.base, 'POST', '/register/provider', { body: { ticket: v.body.ticket, nickname: 'Anna.G', phone: PHONE, pin: PIN, pinConfirmation: PIN } });
     assert.equal(anna.status, 200);
     await first.stop();
 
