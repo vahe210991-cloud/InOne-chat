@@ -2081,7 +2081,8 @@ if (req.method === 'POST' && p === '/login') {
         const state = await storage.pinStatus(d.userId);
         return send(res, 200, {
           configured: state.configured,
-          verificationRequired: !state.configured || state.lastVerifiedAt === null
+          legacy: state.legacy === true,
+          verificationRequired: !state.configured || state.legacy === true || state.lastVerifiedAt === null
             || now() - state.lastVerifiedAt >= PIN_VERIFICATION_INTERVAL_MS,
           reminderDue: state.configured && state.reminderNextAt !== null && now() >= state.reminderNextAt,
           nextReminderAt: state.reminderNextAt === null ? null : new Date(state.reminderNextAt).toISOString(),
@@ -2092,10 +2093,19 @@ if (req.method === 'POST' && p === '/login') {
       if (req.method === 'POST' && p === '/pin/verify') {
         const d = await authed(req);
         if (!d) return send(res, 401, { error: 'unauthorized' });
-        if (!validatePin(body.pin)) return send(res, 400, { error: 'PIN must contain exactly eight digits' });
-        const verdict = await verifyPin(d.userId, body.pin, { markVerified: true });
+        const state = await storage.pinStatus(d.userId);
+        const legacyPin = state.legacy === true;
+        const validFormat = legacyPin ? validateLegacyPin(body.pin) : validatePin(body.pin);
+        if (!validFormat) {
+          return send(res, 400, {
+            error: legacyPin ? 'legacy PIN must contain 6 to 12 digits' : 'PIN must contain exactly eight digits',
+          });
+        }
+        const resetRequired = legacyPin && !validatePin(body.pin);
+        const verdict = await verifyPin(d.userId, body.pin, { markVerified: !resetRequired });
         if (!verdict.ok) return pinError(res, verdict);
-        return send(res, 200, { ok: true, verifiedAt: new Date(now()).toISOString() });
+        if (resetRequired) return send(res, 200, { ok: true, resetRequired: true });
+        return send(res, 200, { ok: true, resetRequired: false, verifiedAt: new Date(now()).toISOString() });
       }
 
       if (req.method === 'POST' && p === '/pin/reminder/ack') {
@@ -3450,12 +3460,15 @@ if (req.method === 'POST' && p === '/login') {
           },
           pin,
           pinCheck: async (candidate, stored) => {
-            if (!validatePin(candidate)) return { ok: false, upgradedHash: null };
+            const legacyPin = pinHashNeedsUpgrade(stored);
+            if (!(legacyPin ? validateLegacyPin(candidate) : validatePin(candidate))) {
+              return { ok: false, upgradedHash: null };
+            }
             const ok = await checkPin(pinPepper, candidate, stored);
             pinChecks += 1;
             return {
               ok,
-              upgradedHash: ok && pinHashNeedsUpgrade(stored)
+              upgradedHash: ok && legacyPin && validatePin(candidate)
                 ? await hashPin(pinPepper, candidate)
                 : null,
             };
