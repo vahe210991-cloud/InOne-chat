@@ -3125,12 +3125,27 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           onAttach: () => unawaited(_pickAndSendMlsAttachment()),
           onDownloadAttachment: (fileId) => unawaited(_downloadMlsAttachment(fileId)),
         );
+      case 'contactCard':
+        if (_profile == null) {
+          return InOneLoadingErrorScreen(onRetry: () => unawaited(_loadAuthenticatedData()));
+        }
+        return InOneContactCardScreen(
+          profile: _profile!,
+          onBack: () => setState(() => _screen = 'profile'),
+        );
       case 'profile':
         if (_profile == null) {
           return InOneLoadingErrorScreen(onRetry: () => unawaited(_loadAuthenticatedData()));
         }
         return InOneProfileScreen(
           profile: _userProfile,
+          menu: [
+            InOneProfileMenuItem(
+              label: 'Цифровая визитка',
+              icon: Icons.badge_outlined,
+              accentTile: true,
+              onTap: () => setState(() => _screen = 'contactCard'),
+            ),
           menu: [
             InOneProfileMenuItem(
               label: 'Рабочее пространство',

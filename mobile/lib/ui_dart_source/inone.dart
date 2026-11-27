@@ -42,3 +42,5 @@ export 'screens/main/inone_profile_screen.dart';
 export 'screens/main/inone_chat_thread_screen.dart';
 export 'screens/main/inone_empty_states_screen.dart';
 export 'screens/main/inone_loading_error_screen.dart';
+
+export 'screens/main/inone_contact_card_screen.dart';
