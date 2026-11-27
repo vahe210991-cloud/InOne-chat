@@ -1748,7 +1748,11 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
                      WHEN dc.user_a = $1 THEN dc.user_b ELSE dc.user_a END AS peer_user_id,
                 (peer_contact.owner_id IS NOT NULL) AS is_peer_contact,
                 (incoming.status = 'pending') AS incoming_contact_request,
-                (blocked.blocker_id IS NOT NULL) AS is_blocked,
+                EXISTS (
+                  SELECT 1 FROM user_blocks b
+                   WHERE (b.blocker_id = $1 AND b.blocked_id = CASE WHEN dc.user_a = $1 THEN dc.user_b ELSE dc.user_a END)
+                      OR (b.blocker_id = CASE WHEN dc.user_a = $1 THEN dc.user_b ELSE dc.user_a END AND b.blocked_id = $1)
+                ) AS is_blocked,
                 r.owner, m.is_admin,
                 last_message.seq AS last_event_seq,
                 last_message.origin_ts AS last_event_at,
@@ -1764,9 +1768,7 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
            LEFT JOIN contact_requests incoming
              ON incoming.requester_id = CASE WHEN dc.user_a = $1 THEN dc.user_b ELSE dc.user_a END
             AND incoming.recipient_id = $1 AND incoming.status = 'pending'
-           LEFT JOIN user_blocks blocked
-             ON (blocked.blocker_id = $1 AND blocked.blocked_id = CASE WHEN dc.user_a = $1 THEN dc.user_b ELSE dc.user_a END)
-             OR (blocked.blocker_id = CASE WHEN dc.user_a = $1 THEN dc.user_b ELSE dc.user_a END AND blocked.blocked_id = $1)
+
            LEFT JOIN LATERAL (
              SELECT e.seq, e.origin_ts
                FROM room_events e
@@ -2113,6 +2115,11 @@ async mlsPendingRemovalsFor(userId) {
               || counterpart !== targetUserId) {
               return { ok: false, reason: 'not_authorized' };
             }
+            const { rows: blocked } = await c.query(
+              'SELECT 1 FROM user_blocks WHERE (blocker_id = $1 AND blocked_id = $2) OR (blocker_id = $2 AND blocked_id = $1) FOR SHARE',
+              [requesterUserId, targetUserId],
+            );
+            if (blocked.length) return { ok: false, reason: 'user_blocked' };
             const { rows: lockedRoom } = await c.query(
               "SELECT kind FROM rooms WHERE room_id = $1 FOR SHARE",
               [roomId],
@@ -2514,6 +2521,14 @@ async mlsPendingRemovalsFor(userId) {
               || !keyPackageClaimId || joinRequestUserId) {
               await client.query('ROLLBACK');
               return { ok: false, reason: 'direct_add_not_authorized', epoch: current };
+            }
+            const { rows: blocked } = await client.query(
+              'SELECT 1 FROM user_blocks WHERE (blocker_id = $1 AND blocked_id = $2) OR (blocker_id = $2 AND blocked_id = $1) FOR SHARE',
+              [senderId, counterpart],
+            );
+            if (blocked.length) {
+              await client.query('ROLLBACK');
+              return { ok: false, reason: 'user_blocked', epoch: current };
             }
           } else {
             // Lock order is intentional: active organization links are locked before
