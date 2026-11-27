@@ -1530,7 +1530,12 @@ export function createMemoryStore({ pinPepper }) {
     phoneUpdate(userId, change) {
       if (!accounts.has(userId)) return change(freshPhone()).result;
       const cur = phones.get(userId);
-      const { next, result } = change(cur ? structuredClone(cur) : freshPhone());
+      const current = cur ? structuredClone(cur) : freshPhone();
+      const { next, result } = change(current);
+      if (next.phone && next.phone !== current.phone
+          && [...phones.entries()].some(([ownerId, entry]) => ownerId !== userId && entry.phone === next.phone)) {
+        return 'phone-taken';
+      }
       phones.set(userId, structuredClone(next));
       return result;
     },
