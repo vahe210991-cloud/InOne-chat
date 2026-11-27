@@ -1550,17 +1550,19 @@ export function createMemoryStore({ pinPepper }) {
       const cur = phones.get(userId);
       return cur ? structuredClone(cur) : freshPhone();
     },
-    phoneUpdate(userId, change) {
-      if (!accounts.has(userId)) return change(freshPhone()).result;
-      const cur = phones.get(userId);
-      const current = cur ? structuredClone(cur) : freshPhone();
-      const { next, result } = change(current);
-      if (next.phone && next.phone !== current.phone
-          && [...phones.entries()].some(([ownerId, entry]) => ownerId !== userId && entry.phone === next.phone)) {
-        return 'phone-taken';
-      }
-      phones.set(userId, structuredClone(next));
-      return result;
+    async phoneUpdate(userId, change) {
+      return withRegistrationLock(async () => {
+        if (!accounts.has(userId)) return change(freshPhone()).result;
+        const cur = phones.get(userId);
+        const current = cur ? structuredClone(cur) : freshPhone();
+        const { next, result } = change(current);
+        if (next.phone && next.phone !== current.phone
+            && [...phones.entries()].some(([ownerId, entry]) => ownerId !== userId && entry.phone === next.phone)) {
+          return 'phone-taken';
+        }
+        phones.set(userId, structuredClone(next));
+        return result;
+      });
     },
     mlsGroupEpoch(roomId) {
       return mlsGroups.get(roomId) ?? 0;
