@@ -126,7 +126,7 @@ dbTest('SD27: запасная почта хранится на базе; оди
     const first = await serve(createStore({ pool: db.pool, pinPepper: PEPPER }));
     const boris = await registerByEmail(first.base, first.srv, 'boris@example.test', 'Boris');
     const v = await providerSignIn(first.base, (n) => googleClaims(n));
-    const anna = await call(first.base, 'POST', '/register/provider', { body: { ticket: v.body.ticket, nickname: 'Anna.G' } });
+    const anna = await call(first.base, 'POST', '/register/provider', { body: { ticket: v.body.ticket, nickname: 'Anna.G', phone: PHONE, pin: PIN, pinConfirmation: PIN } });
     assert.equal(anna.status, 200);
     await first.stop();
 
