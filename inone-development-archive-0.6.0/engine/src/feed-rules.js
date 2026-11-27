@@ -1,7 +1,5 @@
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 
-export const POST_CONTENT_MAX_CODE_POINTS = 5_000;
-export const POST_CONTENT_MAX_UTF8_BYTES = 16_384;
 export const POST_ID_PATTERN = /^[0-9a-f]{32}$/u;
 export const POST_IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9_-]{16,128}$/u;
 
@@ -19,42 +17,15 @@ function hasUnpairedSurrogate(value) {
   return false;
 }
 
-export function normalizePostContent(value) {
-  if (typeof value !== 'string') return { ok: false, error: 'content_required' };
-
-  const content = value.normalize('NFC').replace(/\r\n?/gu, '\n').trim();
-  if (!content || content.includes('\0')) return { ok: false, error: 'content_required' };
-  if (hasUnpairedSurrogate(content)) return { ok: false, error: 'invalid_unicode' };
-
-  const codePoints = [...content].length;
-  if (codePoints > POST_CONTENT_MAX_CODE_POINTS) {
-    return { ok: false, error: 'content_too_long' };
-  }
-
-  const utf8Bytes = Buffer.byteLength(content, 'utf8');
-  if (utf8Bytes > POST_CONTENT_MAX_UTF8_BYTES) {
-    return { ok: false, error: 'content_too_large' };
-  }
-
-  return {
-    ok: true,
-    content,
-    codePoints,
-    utf8Bytes,
-    contentHash: createHash('sha256').update(content, 'utf8').digest('hex'),
-  };
-}
-
-
 export function normalizePostCaption(value) {
   if (value === undefined || value === null) {
     return { ok: true, caption: null, codePoints: 0, utf8Bytes: 0 };
   }
   if (typeof value !== 'string') return { ok: false, error: 'invalid_caption' };
 
-  const caption = value.normalize('NFC').replace(/\\r\\n?/gu, '\\n').trim();
+  const caption = value.normalize('NFC').replace(/\r\n?/gu, '\n').trim();
   if (!caption) return { ok: true, caption: null, codePoints: 0, utf8Bytes: 0 };
-  if (caption.includes('\\0')) return { ok: false, error: 'invalid_caption' };
+  if (caption.includes('\0')) return { ok: false, error: 'invalid_caption' };
   if (hasUnpairedSurrogate(caption)) return { ok: false, error: 'invalid_unicode' };
 
   return {
@@ -63,6 +34,14 @@ export function normalizePostCaption(value) {
     codePoints: [...caption].length,
     utf8Bytes: Buffer.byteLength(caption, 'utf8'),
   };
+}
+
+export function isValidPostId(value) {
+  return typeof value === 'string' && POST_ID_PATTERN.test(value);
+}
+
+export function isValidPostIdempotencyKey(value) {
+  return typeof value === 'string' && POST_IDEMPOTENCY_KEY_PATTERN.test(value);
 }
 
 export function validatePublishableMedia(media, authorId) {
@@ -89,6 +68,22 @@ export function validatePublishableMedia(media, authorId) {
   return { ok: true, mediaCount: seen.size };
 }
 
+export function hashPostRequest({ caption, mediaIds }) {
+  const normalized = normalizePostCaption(caption);
+  if (!normalized.ok) return normalized;
+  if (!Array.isArray(mediaIds) || mediaIds.length === 0
+    || mediaIds.some((id) => !isValidPostId(id))
+    || new Set(mediaIds).size !== mediaIds.length) {
+    return { ok: false, error: 'media_required_or_invalid' };
+  }
+  const canonical = JSON.stringify({ v: 1, caption: normalized.caption, mediaIds });
+  return {
+    ok: true,
+    caption: normalized.caption,
+    requestHash: createHash('sha256').update(canonical, 'utf8').digest('hex'),
+  };
+}
+
 function cursorKeyBytes(secret) {
   const key = Buffer.isBuffer(secret) ? secret : Buffer.from(String(secret ?? ''), 'utf8');
   if (key.length < 32) throw new TypeError('feed cursor key must contain at least 256 bits');
@@ -106,7 +101,7 @@ export function encodeSignedFeedCursor({ createdAt, postId, scope = 'global' }, 
   }), 'utf8').toString('base64url');
   const signature = createHmac('sha256', cursorKeyBytes(key.secret))
     .update(payload, 'ascii').digest('base64url');
-  return `${payload}.${signature}`;
+  return payload + '.' + signature;
 }
 
 export function parseSignedFeedCursor(value, keyring, expectedScope = 'global') {
@@ -114,7 +109,7 @@ export function parseSignedFeedCursor(value, keyring, expectedScope = 'global') 
     return { ok: true, cursor: null };
   }
   if (typeof value !== 'string' || value.length > 768
-    || !/^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$/u.test(value)) {
+    || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/u.test(value)) {
     return { ok: false, error: 'invalid_cursor' };
   }
 
@@ -152,53 +147,6 @@ export function parseSignedFeedCursor(value, keyring, expectedScope = 'global') 
   }
 }
 
-export function isValidPostId(value) {
-  return typeof value === 'string' && POST_ID_PATTERN.test(value);
-}
-
-export function isValidPostIdempotencyKey(value) {
-  return typeof value === 'string' && POST_IDEMPOTENCY_KEY_PATTERN.test(value);
-}
-
-export function encodeFeedCursor({ createdAt, postId }) {
-  if (!Number.isSafeInteger(createdAt) || createdAt < 0 || !isValidPostId(postId)) {
-    throw new TypeError('invalid feed cursor boundary');
-  }
-  return Buffer.from(JSON.stringify({ v: 1, createdAt, postId }), 'utf8').toString('base64url');
-}
-
-export function parseFeedCursor(value) {
-  if (value === undefined || value === null || value === '') {
-    return { ok: true, cursor: null };
-  }
-  if (typeof value !== 'string' || value.length > 512 || !/^[A-Za-z0-9_-]+$/u.test(value)) {
-    return { ok: false, error: 'invalid_cursor' };
-  }
-
-  try {
-    const bytes = Buffer.from(value, 'base64url');
-    if (bytes.toString('base64url') !== value) return { ok: false, error: 'invalid_cursor' };
-    const decoded = JSON.parse(bytes.toString('utf8'));
-    if (!decoded || typeof decoded !== 'object' || Array.isArray(decoded)) {
-      return { ok: false, error: 'invalid_cursor' };
-    }
-    const keys = Object.keys(decoded).sort().join(',');
-    if (keys !== 'createdAt,postId,v'
-      || decoded.v !== 1
-      || !Number.isSafeInteger(decoded.createdAt)
-      || decoded.createdAt < 0
-      || !isValidPostId(decoded.postId)) {
-      return { ok: false, error: 'invalid_cursor' };
-    }
-    return {
-      ok: true,
-      cursor: { createdAt: decoded.createdAt, postId: decoded.postId },
-    };
-  } catch {
-    return { ok: false, error: 'invalid_cursor' };
-  }
-}
-
 export function comparePostsNewestFirst(left, right) {
   if (!isValidPostId(left.postId) || !isValidPostId(right.postId)) {
     throw new TypeError('post id is invalid');
@@ -215,7 +163,8 @@ export function comparePostsNewestFirst(left, right) {
 
 export function isFeedRowAfterCursor(post, cursor) {
   if (!cursor) return true;
-  if (!Number.isSafeInteger(cursor.createdAt) || cursor.createdAt < 0 || !isValidPostId(cursor.postId)) {
+  if (!Number.isSafeInteger(cursor.createdAt) || cursor.createdAt < 0
+    || !isValidPostId(cursor.postId)) {
     throw new TypeError('feed cursor boundary is invalid');
   }
   if (!Number.isSafeInteger(Number(post.createdAt)) || !isValidPostId(post.postId)) {
@@ -226,11 +175,12 @@ export function isFeedRowAfterCursor(post, cursor) {
     || (createdAt === cursor.createdAt && post.postId < cursor.postId);
 }
 
-export function paginateFeedRows(rows, limit) {
+export function paginateFeedRows(rows, limit, cursorKey, scope = 'global') {
   if (!Array.isArray(rows)) throw new TypeError('feed rows must be an array');
   if (!Number.isInteger(limit) || limit < 1 || limit > 50) {
     throw new RangeError('feed limit must be between 1 and 50');
   }
+  if (!['global', 'own'].includes(scope)) throw new TypeError('invalid feed scope');
 
   const ordered = [...rows].sort(comparePostsNewestFirst);
   const hasMore = ordered.length > limit;
@@ -241,7 +191,9 @@ export function paginateFeedRows(rows, limit) {
     items,
     hasMore,
     nextCursor: hasMore && last
-      ? encodeFeedCursor({ createdAt: Number(last.createdAt), postId: last.postId })
+      ? encodeSignedFeedCursor({
+        createdAt: Number(last.createdAt), postId: last.postId, scope,
+      }, cursorKey)
       : null,
   };
 }
