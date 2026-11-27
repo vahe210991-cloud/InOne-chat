@@ -819,3 +819,8 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 
 
 - Follow-up domain hardening: removed the text-first mandatory-content helper from the Feed domain module; added canonical request hashing over optional normalized caption plus ordered media IDs; changed pagination helper to emit only HMAC-signed scope-bound cursors; rejected inherited keyring properties and non-canonical signature encodings. Rewrote domain tests to match the media-first contract. These tests remain unexecuted.
+
+
+- Added an isolated streaming Feed object-store wrapper in feed-encrypted-object-store.js: per-object random DEK, AES-256-GCM chunk records, wrapped DEK under a key-provider KEK, object/key/chunk-bound AAD, authenticated streaming decrypt, and key-ID rotation support. Added encrypted-store tests and included them from the existing api-contract.test.js test entry.
+- Storage audit: canonical backend currently has only filesystem streaming storage and in-memory test storage. Filesystem writes use restrictive permissions and atomic temp-file publication but are not encrypted at rest. No S3/MinIO/KMS adapter was found. The proposal now specifies a Feed-only encrypted namespace and a secret-manager-backed key-provider interface; KMS/HSM is a future adapter, not a current capability.
+- No production config, main/server/store/schema wiring was changed. No tests executed; all new test coverage remains authored but unverified.
