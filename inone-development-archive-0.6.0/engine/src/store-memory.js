@@ -1462,7 +1462,7 @@ export function createMemoryStore({ pinPepper }) {
       }
       if (!r.members.has(sender)) return { state: 'not_member' };
       const seq = ++counters.eventSeq;
-      r.events.push({ event_id: `${seq}`, seq, room_id: roomId, sender, origin_server_ts: nowMs, type, content: structuredClone(content ?? null) });
+      r.events.push({ event_id: `$${seq}`, seq, room_id: roomId, sender, origin_server_ts: nowMs, type, content: structuredClone(content ?? null) });
       if (type === 'm.room.encrypted') recordIncomingContactRequest(roomId, sender, nowMs);
       if (afterAppend) return Promise.resolve(afterAppend(null, { seq, roomId, eventId: `${seq}` })).then(() => seq);
       return seq;
