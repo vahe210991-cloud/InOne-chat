@@ -175,8 +175,8 @@ test('коды телефона, почты и восстановления оч
   try {
     await ChatClient.create(base, ALICE, 'A_PHONE', PW);
     const MAIL = 'почта.очистка@example.test';
-    store.phoneUpdate(ALICE, (p) => ({ next: { ...p, phone: '+37400123456', verified: true, codeHash: 'hash-phone', codeAttempts: 2, codeExpiresAt: 1 }, result: null }));
-    store.emailCodeUpdate(MAIL, (c) => ({ next: { ...c, codeHash: 'hash-mail', codeAttempts: 1, codeExpiresAt: 1, tokenHash: 'hash-token', tokenExpiresAt: 1 }, result: null }));
+    await store.phoneUpdate(ALICE, (p) => ({ next: { ...p, phone: '+37400123456', verified: true, codeHash: 'hash-phone', codeAttempts: 2, codeExpiresAt: 1 }, result: null }));
+    await store.emailCodeUpdate(MAIL, (c) => ({ next: { ...c, codeHash: 'hash-mail', codeAttempts: 1, codeExpiresAt: 1, tokenHash: 'hash-token', tokenExpiresAt: 1 }, result: null }));
     store.recoveryUpdate(ALICE, (r) => ({ next: { ...r, reqStatus: 'pending', reqStartedAt: 1, reqExpiresAt: 1, reqCodeHash: 'hash-reset', reqLinkHash: 'hash-link' }, result: null }));
     const cleared = store.clearExpiredCodes(Date.now());
     assert.equal(cleared.phoneCodes, 1, 'код телефона очищен');
