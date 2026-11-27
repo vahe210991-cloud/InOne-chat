@@ -25,8 +25,12 @@ void main() {
         {
           'roomId': 'direct-1',
           'kind': 'direct',
-          'name': null,
+          'name': 'New contact',
           'role': 'member',
+          'peerUserId': '@sender:inone.test',
+          'incomingContactRequest': true,
+          'isPeerContact': false,
+          'isBlocked': false,
         },
         {
           'roomId': 'support-1',
@@ -55,6 +59,10 @@ void main() {
     expect(chats[2].id, 'direct-1');
     expect(chats[2].name, 'Личный диалог');
     expect(chats[2].kind, InOneChatKind.person);
+    expect(chats[2].peerUserId, '@sender:inone.test');
+    expect(chats[2].incomingContactRequest, isTrue);
+    expect(chats[2].isPeerContact, isFalse);
+    expect(chats[2].isBlocked, isFalse);
     expect(chats[3].id, 'support-1');
     expect(chats[3].kind, InOneChatKind.support);
     expect(chats[4].kind, InOneChatKind.unknown);
