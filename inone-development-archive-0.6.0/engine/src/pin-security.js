@@ -94,6 +94,7 @@ async function derive(pin, salt, pepper) {
     return await withKdfSlot(() => argon2Async('argon2id', {
       message,
       nonce: salt,
+      version: ARGON2.version,
       parallelism: ARGON2.parallelism,
       tagLength: ARGON2.outputBytes,
       memory: ARGON2.memoryKiB,
@@ -128,12 +129,12 @@ export async function checkPin(pepper, pin, stored) {
   const secret = legacyPepperedPin(pepper, pin);
   let actual;
   try {
-    actual = await scryptAsync(secret, legacy.salt, 32, {
+    actual = await withKdfSlot(() => scryptAsync(secret, legacy.salt, 32, {
       N: 16_384,
       r: 8,
       p: 1,
       maxmem: 64 * 1024 * 1024,
-    });
+    }));
   } finally {
     secret.fill(0);
   }
