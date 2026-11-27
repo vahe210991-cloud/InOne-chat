@@ -262,7 +262,7 @@ class _ChatRow extends StatelessWidget {
                   TextButton(
                     onPressed: onBlockContact,
                     style: TextButton.styleFrom(
-                      foregroundColor: Colors.red.shade700,
+                      foregroundColor: c.dangerText,
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       minimumSize: const Size(0, 32),
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
