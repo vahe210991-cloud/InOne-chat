@@ -3384,52 +3384,83 @@ if (req.method === 'POST' && p === '/login') {
         const requestedLocale = body.locale === undefined ? null : resolveEmailLocale(body.locale);
         if (body.locale !== undefined && !requestedLocale) return send(res, 400, { error: 'locale must be hy, ru or en' });
         const { code, pin, newPassword } = body;
-        // Восстановление по почте: адрес вместо идентификатора (без входа идентификатора не знают).
-        const userId = body.userId ?? (typeof body.email === 'string' ? await storage.userIdByEmail(normalizeEmail(body.email)) : null);
-        if ((await storage.providerLinksOf(userId)).length > 0) return send(res, 409, { error: 'password recovery is disabled for accounts linked to Google or Apple' });
-        const check = await storage.recoveryUpdate(userId, (r) => {
-          const out = checkCode(r, {
-            nowMs: now(),
-            codeOk: typeof code === 'string' && !!r.reqCodeHash && sameHex(recoveryCodeHash(userId, code), r.reqCodeHash),
-          });
-          return { next: out.next, result: out.outcome };
-        });
-        if (check === 'none') return send(res, 404, { error: 'no active recovery' });
-        if (check === 'expired') return send(res, 410, { error: 'recovery expired' });
-        if (check === 'unconfirmed') return send(res, 403, { error: 'confirm the link from the email first' });
-        if (check === 'wrong' || check === 'locked') {
-          if (check === 'locked') await alertDevices(userId, { kind: 'recovery_locked' });
-          return send(res, 403, { error: 'wrong code' });
-        }
-        // PIN обязателен для каждого аккаунта. Отсутствующий legacy PIN никогда не включает email-only recovery.
+        const email = typeof body.email === 'string' ? normalizeEmail(body.email) : null;
+        const userId = typeof body.userId === 'string' && body.userId.length > 0
+          ? body.userId
+          : (email && isEmail(email) ? await storage.userIdByEmail(email) : null);
         if (!validatePin(pin)) return send(res, 403, { error: 'recovery verification failed' });
-        const pinVerdict = await verifyPin(userId, pin);
-        if (!pinVerdict.ok) {
-          if (pinVerdict.reason === 'no-pin') return send(res, 403, { error: 'recovery verification failed' });
-          return pinError(res, pinVerdict);
-        }
         if (typeof newPassword !== 'string' || Array.from(newPassword).length < MIN_PASSWORD_LENGTH || Array.from(newPassword).length > MAX_PASSWORD_LENGTH) {
           return send(res, 400, { error: `newPassword must be ${MIN_PASSWORD_LENGTH}-${MAX_PASSWORD_LENGTH} characters` });
         }
-        // Пароль, окно восстановления, код отмены и письмо фиксируются одной транзакцией.
-        const previousHash = await storage.accountHash(userId);
+        if ((await storage.providerLinksOf(userId)).length > 0) {
+          return send(res, 409, { error: 'password recovery is disabled for accounts linked to Google or Apple' });
+        }
         const newPasswordHash = hashPassword(newPassword);
         const cancelCode = String(randomInt(0, 1_000_000)).padStart(6, '0');
         const profile = await storage.profileGet(userId);
-        const primaryEmail = profile?.email ?? userId;
+        const primaryEmail = profile?.email ?? email ?? userId;
         const backup = await storage.backupEmailGet(userId);
         const locale = requestedLocale ?? profile?.locale ?? 'hy';
-        const keyResetAt = await storage.recoveryCompleteWithOutbox(
-          userId, newPasswordHash,
-          (r) => {
-            const next = completeRecovery(r, { nowMs: now(), previousHash });
+        const completedAt = now();
+        const completed = await storage.recoveryCompleteWithPin(userId, {
+          now: completedAt,
+          codeCheck: (current) => {
+            const result = checkCode(current, {
+              nowMs: completedAt,
+              codeOk: typeof code === 'string' && !!current.reqCodeHash
+                && sameHex(recoveryCodeHash(userId, code), current.reqCodeHash),
+            });
+            return { next: result.next, outcome: result.outcome };
+          },
+          pin,
+          pinCheck: async (candidate, stored) => {
+            const ok = await checkPin(pinPepper, candidate, stored);
+            pinChecks += 1;
+            return {
+              ok,
+              upgradedHash: ok && pinHashNeedsUpgrade(stored)
+                ? await hashPin(pinPepper, candidate)
+                : null,
+            };
+          },
+          free: FREE_PIN_ATTEMPTS,
+          lockDuration: lockDurationMs,
+          passwordHash: newPasswordHash,
+          complete: (current, previousHash) => {
+            const next = completeRecovery(current, { nowMs: completedAt, previousHash });
             return { next, result: next.windowKeyResetAt };
           },
-          recoveryCancelHash(userId, cancelCode),
-          (tx) => mailToRecipients([primaryEmail, backup?.email], '', '', 'recovery_completed', { cancelCode }, tx, locale),
-        );
-        await alertDevices(userId, { kind: 'recovery_completed', keyResetAt: new Date(keyResetAt).toISOString() });
-        return send(res, 200, { ok: true, keyResetAt: new Date(keyResetAt).toISOString() });
+          cancelCodeHash: recoveryCancelHash(userId, cancelCode),
+          enqueue: (tx) => mailToRecipients(
+            [primaryEmail, backup?.email],
+            '',
+            '',
+            'recovery_completed',
+            { cancelCode },
+            tx,
+            locale,
+          ),
+        });
+        if (completed.factor === 'email') {
+          if (completed.outcome === 'none') return send(res, 403, { error: 'recovery verification failed' });
+          if (completed.outcome === 'expired') return send(res, 410, { error: 'recovery expired' });
+          if (completed.outcome === 'unconfirmed') return send(res, 403, { error: 'confirm the link from the email first' });
+          if (completed.outcome === 'locked') await alertDevices(userId, { kind: 'recovery_locked' });
+          return send(res, 403, { error: 'recovery verification failed' });
+        }
+        if (completed.factor === 'pin') {
+          if (completed.outcome === 'no-pin') return send(res, 403, { error: 'recovery verification failed' });
+          return pinError(res, {
+            reason: completed.outcome === 'locked' ? 'locked' : 'wrong',
+            retryAt: completed.retryAt,
+          });
+        }
+        if (completed.outcome !== 'ok') return send(res, 403, { error: 'recovery verification failed' });
+        await alertDevices(userId, {
+          kind: 'recovery_completed',
+          keyResetAt: new Date(completed.keyResetAt).toISOString(),
+        });
+        return send(res, 200, { ok: true, keyResetAt: new Date(completed.keyResetAt).toISOString() });
       }
 
       return send(res, 404, { error: 'not found' });
