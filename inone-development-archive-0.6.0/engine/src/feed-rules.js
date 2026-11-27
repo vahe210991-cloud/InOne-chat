@@ -68,7 +68,11 @@ export function validatePublishableMedia(media, authorId) {
   return { ok: true, mediaCount: seen.size };
 }
 
-export function hashPostRequest({ caption, mediaIds }) {
+export function hashPostRequest(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    return { ok: false, error: 'invalid_post_request' };
+  }
+  const { caption, mediaIds } = input;
   const normalized = normalizePostCaption(caption);
   if (!normalized.ok) return normalized;
   if (!Array.isArray(mediaIds) || mediaIds.length === 0
@@ -129,7 +133,10 @@ export function parseSignedFeedCursor(value, keyring, expectedScope = 'global') 
       || !/^[A-Za-z0-9_-]{1,32}$/u.test(decoded.kid)) {
       return { ok: false, error: 'invalid_cursor' };
     }
-    const secret = keyring?.[decoded.kid];
+    if (!keyring || !Object.hasOwn(keyring, decoded.kid)) {
+      return { ok: false, error: 'invalid_cursor' };
+    }
+    const secret = keyring[decoded.kid];
     if (!secret) return { ok: false, error: 'invalid_cursor' };
     const expected = createHmac('sha256', cursorKeyBytes(secret))
       .update(payload, 'ascii').digest();
