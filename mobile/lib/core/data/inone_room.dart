@@ -11,6 +11,10 @@ class InOneRoom {
     this.lastEventAt,
     this.unreadCount = 0,
     this.hasSummary = false,
+    this.peerUserId,
+    this.isPeerContact = false,
+    this.incomingContactRequest = false,
+    this.isBlocked = false,
   });
 
   final String roomId;
@@ -21,6 +25,10 @@ class InOneRoom {
   final int? lastEventAt;
   final int unreadCount;
   final bool hasSummary;
+  final String? peerUserId;
+  final bool isPeerContact;
+  final bool incomingContactRequest;
+  final bool isBlocked;
 
   String get displayName {
     final value = name?.trim();
@@ -39,6 +47,10 @@ class InOneRoom {
     final lastEventSeq = json['lastEventSeq'];
     final lastEventAt = json['lastEventAt'];
     final unreadCount = json['unreadCount'];
+    final peerUserId = json['peerUserId'];
+    final isPeerContact = json['isPeerContact'] ?? false;
+    final incomingContactRequest = json['incomingContactRequest'] ?? false;
+    final isBlocked = json['isBlocked'] ?? false;
     final hasSummary = json.containsKey('lastEventSeq') &&
         json.containsKey('lastEventAt') &&
         json.containsKey('unreadCount');
@@ -48,6 +60,10 @@ class InOneRoom {
         kind is! String ||
         kind.trim().isEmpty ||
         (name != null && name is! String) ||
+        (peerUserId != null && (peerUserId is! String || peerUserId.trim().isEmpty)) ||
+        isPeerContact is! bool ||
+        incomingContactRequest is! bool ||
+        isBlocked is! bool ||
         role is! String ||
         !const {'owner', 'admin', 'member'}.contains(role) ||
         (lastEventSeq != null && lastEventSeq is! int) ||
@@ -70,6 +86,10 @@ class InOneRoom {
       lastEventAt: lastEventAt as int?,
       unreadCount: unreadCount as int? ?? 0,
       hasSummary: hasSummary,
+      peerUserId: peerUserId as String?,
+      isPeerContact: isPeerContact,
+      incomingContactRequest: incomingContactRequest,
+      isBlocked: isBlocked,
     );
   }
 }
