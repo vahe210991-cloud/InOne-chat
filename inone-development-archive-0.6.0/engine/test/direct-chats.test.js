@@ -134,6 +134,16 @@ test('direct chats require no recipient approval and activate automatically thro
     assert.equal(bobSummaryAfterAccept.incomingContactRequest, false);
     assert.equal(bobSummaryAfterAccept.isPeerContact, true);
     assert.ok((await bob.raw('GET', '/contacts')).contacts.some((contact) => contact.userId === ALICE));
+    const secondAliceMessage = Buffer.concat([
+      buildPrivateMessageHeader(opened.roomId, committed.epoch),
+      Buffer.from('opaque-mls-second-ciphertext'),
+    ]).toString('base64');
+    await alice.raw('POST', `/mls/groups/${enc(opened.roomId)}/messages`, {
+      message: secondAliceMessage,
+      kind: 'text',
+    });
+    const bobAfterSecondMessage = (await bob.raw('GET', '/rooms/mine')).rooms.find((room) => room.roomId === opened.roomId);
+    assert.equal(bobAfterSecondMessage.incomingContactRequest, false, 'accepted contacts do not see repeated contact prompts');
     const replyWireMessage = Buffer.concat([
       buildPrivateMessageHeader(opened.roomId, committed.epoch),
       Buffer.from('opaque-mls-reply-ciphertext'),
