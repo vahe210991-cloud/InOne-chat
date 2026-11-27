@@ -164,6 +164,10 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       } else {
         unawaited(_loadMlsRooms());
       }
+    } else if (_session.isAuthenticated) {
+      // Contact prompts are backend directory state and remain refreshable
+      // even when native MLS is disabled on this build.
+      unawaited(_loadMlsRooms(syncMessages: false));
     }
   }
 
