@@ -46,6 +46,10 @@ export function validatePin(pin) {
   return typeof pin === 'string' && /^[0-9]{8}$/.test(pin);
 }
 
+export function validateLegacyPin(pin) {
+  return typeof pin === 'string' && /^[0-9]{6,12}$/.test(pin);
+}
+
 export function weakPinReason(pin) {
   if (!validatePin(pin)) return 'PIN must contain exactly eight digits';
   if (/^(\d)\1{7}$/.test(pin)) return 'PIN is too simple';
@@ -122,9 +126,10 @@ export async function hashPin(pepper, pin) {
 }
 
 export async function checkPin(pepper, pin, stored) {
-  if (!validatePin(pin) || typeof pepper !== 'string' || Buffer.byteLength(pepper, 'utf8') < 32) return false;
+  if (typeof pepper !== 'string' || Buffer.byteLength(pepper, 'utf8') < 32) return false;
   const current = parseArgonHash(stored);
   if (current) {
+    if (!validatePin(pin)) return false;
     const actual = Buffer.from(await derive(pin, current.salt, pepper));
     try {
       return actual.length === current.hash.length && timingSafeEqual(actual, current.hash);
@@ -133,7 +138,7 @@ export async function checkPin(pepper, pin, stored) {
     }
   }
   const legacy = parseLegacyHash(stored);
-  if (!legacy) return false;
+  if (!legacy || !validateLegacyPin(pin)) return false;
   const secret = legacyPepperedPin(pepper, pin);
   let actual;
   try {
