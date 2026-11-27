@@ -5,11 +5,26 @@ export const POST_CONTENT_MAX_UTF8_BYTES = 16_384;
 export const POST_ID_PATTERN = /^[0-9a-f]{32}$/u;
 export const POST_IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9_-]{16,128}$/u;
 
+function hasUnpairedSurrogate(value) {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (!(next >= 0xdc00 && next <= 0xdfff)) return true;
+      index += 1;
+    } else if (code >= 0xdc00 && code <= 0xdfff) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function normalizePostContent(value) {
   if (typeof value !== 'string') return { ok: false, error: 'content_required' };
 
   const content = value.normalize('NFC').replace(/\r\n?/gu, '\n').trim();
   if (!content || content.includes('\0')) return { ok: false, error: 'content_required' };
+  if (hasUnpairedSurrogate(content)) return { ok: false, error: 'invalid_unicode' };
 
   const codePoints = [...content].length;
   if (codePoints > POST_CONTENT_MAX_CODE_POINTS) {
@@ -78,15 +93,15 @@ export function parseFeedCursor(value) {
 }
 
 export function comparePostsNewestFirst(left, right) {
+  if (!isValidPostId(left.postId) || !isValidPostId(right.postId)) {
+    throw new TypeError('post id is invalid');
+  }
   const leftTime = Number(left.createdAt);
   const rightTime = Number(right.createdAt);
   if (!Number.isSafeInteger(leftTime) || !Number.isSafeInteger(rightTime)) {
     throw new TypeError('post createdAt must be a safe integer');
   }
   if (leftTime !== rightTime) return rightTime > leftTime ? 1 : -1;
-  if (!isValidPostId(left.postId) || !isValidPostId(right.postId)) {
-    throw new TypeError('post id is invalid');
-  }
   if (left.postId === right.postId) return 0;
   return right.postId > left.postId ? 1 : -1;
 }
