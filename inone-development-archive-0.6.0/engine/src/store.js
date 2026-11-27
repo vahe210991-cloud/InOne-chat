@@ -285,8 +285,12 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
           );
           return { ok: true };
         }
-        if (failed > free) lockedUntil = now + lockDuration(failed);
-        await save(failed, lockedUntil);
+        if (failed > free) {
+          lockedUntil = now + lockDuration(failed);
+          await save(failed, lockedUntil);
+          return { ok: false, reason: 'locked', retryAt: lockedUntil };
+        }
+        await save(failed, null);
         return { ok: false, reason: 'wrong' };
       });
     },
