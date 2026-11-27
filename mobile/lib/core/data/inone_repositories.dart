@@ -203,6 +203,47 @@ class InOneRepositories {
   /// Returns the validated room-list DTO for the authenticated account.
   Future<InOneRoomList> myRooms() async =>
       InOneRoomList.fromJson(await session.request('GET', '/rooms/mine'));
+
+  /// Reserves or opens the one canonical private conversation for this account pair.
+  /// If the result is provisioning and this device is the creator, initialize the local
+  /// Engine B group and send the counterpart's per-device MLS Welcome. The peer never approves.
+  Future<InOneDirectConversation> openDirectConversation(String userId) async {
+    final peer = userId.trim();
+    if (peer.isEmpty) throw ArgumentError.value(userId, 'userId');
+    return InOneDirectConversation.fromJson(await session.request(
+      'POST',
+      '/direct-chats/open',
+      body: {'userId': peer},
+    ));
+  }
+
+  /// Accepting a first-message contact prompt adds the sender to this account's contacts.
+  /// It does not participate in or delay the MLS message-delivery flow.
+  Future<void> acceptContactRequest(String requesterUserId) async {
+    final peer = requesterUserId.trim();
+    if (peer.isEmpty) throw ArgumentError.value(requesterUserId, 'requesterUserId');
+    final response = await session.request(
+      'POST',
+      '/contacts/${Uri.encodeComponent(peer)}/accept',
+    );
+    if (response['accepted'] != true || response['userId'] != peer) {
+      throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false);
+    }
+  }
+
+  /// Blocks a peer and prevents any further message delivery in their direct conversation.
+  Future<void> blockContact(String userId) async {
+    final peer = userId.trim();
+    if (peer.isEmpty) throw ArgumentError.value(userId, 'userId');
+    final response = await session.request(
+      'POST',
+      '/contacts/${Uri.encodeComponent(peer)}/block',
+    );
+    if (response['blocked'] != true || response['userId'] != peer) {
+      throw const ApiException(code: 'invalid_response', statusCode: 200, retryable: false);
+    }
+  }
+
   /// Searches only public rooms; the backend enforces the 2–50 character range.
   Future<List<InOnePublicRoom>> searchPublicRooms(String query) async {
     final normalized = query.trim();
@@ -215,7 +256,7 @@ class InOneRepositories {
     return InOnePublicRoomSearch.fromJson(response).rooms;
   }
 
-  /// Joins an open public room or creates a join request for approval-only rooms.
+  /// Creates a join request. An authorized current member must approve it with an MLS Add Commit and per-device Welcome.
   Future<String> joinPublicRoom(String roomId) async {
     final response = await session.request(
       'POST', '/rooms/${Uri.encodeComponent(roomId)}/join',
