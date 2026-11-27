@@ -1341,6 +1341,7 @@ export function createServer({ pinPepper, mailer: externalMailer, store, trustPr
           throw e;
         }
         if (outcome === 'limit') return send(res, 429, { error: 'too many codes, try later' });
+        if (outcome === 'phone-taken') return send(res, 409, { error: 'phone already used by another account' });
         return send(res, 202, { ok: true });
       }
 
