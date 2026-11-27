@@ -1,11 +1,11 @@
 import { randomBytes } from 'node:crypto';
-// Восстановление после кражи (D1, D5, D8): код из SMS, ссылка из письма, окно 48 часов. Телефон аккаунта.
+// Account recovery: verified-primary-email OTP + recovery PIN, 48-hour device safety window.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, RECOVERY_DELAY_MS } from '../src/server.js';
 import { createMemoryStore } from '../src/store-memory.js';
 import { ChatClient, DEFAULT_PASSWORD as PW } from '../src/client.js';
-import { createVerified, startRecovery, smsCodeFrom, linkTokenFrom, confirmLink } from './recovery-helpers.js';
+import { createVerified, startRecovery, recoveryEmailCount, emailForUserId, TEST_PIN } from './recovery-helpers.js';
 
 const FIXTURE_1 = randomBytes(16).toString('hex');
 const FIXTURE_2 = randomBytes(16).toString('hex');
@@ -20,13 +20,17 @@ const IDENTITY_SUBJECT = 'Подтверждение входа после во�
 const HOUR = 3600_000;
 
 async function start({ store } = {}) {
+  const pinPepper = 'test-pepper-0123456789-0123456789-abcd';
+  const activeStore = store ?? createMemoryStore({ pinPepper });
   const srv = createServer({
     defaultOrgAutoJoin: true,
     registrationMode: 'open',
     requirePhone: false,
-    pinPepper: 'test-pepper-0123456789-0123456789-abcd',
-    store,
+    pinPepper,
+    store: activeStore,
   });
+  srv.testStore = activeStore;
+  srv.testPinPepper = pinPepper;
   await new Promise((resolve) => srv.server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${srv.server.address().port}`;
   return { srv, base, stop: () => new Promise((r) => srv.server.close(r)) };
@@ -72,12 +76,12 @@ async function rawLogin(base, userId, password, deviceId, identityCode) {
 
 /** Код входа после восстановления приходит письмом (D1). */
 const identityCodeFrom = (srv, userId) => {
-  const mail = srv.mailbox(userId).filter((m) => m.templateId === 'recovery_login_code' && /\b\d{6}\b/.test(m.text)).at(-1);
+  const mail = srv.mailbox(emailForUserId(userId)).filter((m) => m.templateId === 'recovery_login_code' && /\b\d{6}\b/.test(m.text)).at(-1);
   return mail.text.match(/\b(\d{6})\b/)[1];
 };
 
-/** Сколько SMS с кодом восстановления ушло на номер. */
-const recoverySmsCount = (srv, phone) => srv.smsOutbox(phone).filter((m) => m.text.includes('Код восстановления')).length;
+/** Number of recovery OTP emails sent to the verified primary address. */
+const recoveryCodeCount = (srv, userId) => recoveryEmailCount(srv, emailForUserId(userId));
 
 test('вход требует пароль: неверный пароль и неизвестный логин дают одинаковый отказ', async () => {
   const { base, stop } = await start();
@@ -109,8 +113,8 @@ test('восстановление: новый пароль сразу; перв
   try {
     const phone = await createVerified(base, srv, ALICE, 'A_PHONE', PW, PHONE_A);
     const code = await startRecovery(base, srv, ALICE, PHONE_A);
-    await assert.rejects(post(base, '/recovery/complete', { userId: ALICE, code: '000000', newPassword: NEW_PW }), (e) => e.status === 403);
-    await post(base, '/recovery/complete', { userId: ALICE, code, newPassword: NEW_PW });
+    await assert.rejects(post(base, '/recovery/complete', { userId: ALICE, code: '000000', pin: TEST_PIN, newPassword: NEW_PW }), (e) => e.status === 403);
+    await post(base, '/recovery/complete', { userId: ALICE, code, pin: TEST_PIN, newPassword: NEW_PW });
 
     // Старое устройство пока работает: отключаются они только через 48 часов.
     await phone.sync();
@@ -180,7 +184,7 @@ test('украденное старое устройство: после окн�
 
     // Кража: Bob восстанавливает аккаунт и входит на новом устройстве по коду из письма.
     const code = await startRecovery(base, srv, BOB, PHONE_B);
-    await post(base, '/recovery/complete', { userId: BOB, code, newPassword: NEW_PW });
+    await post(base, '/recovery/complete', { userId: BOB, code, pin: TEST_PIN, newPassword: NEW_PW });
     await rawLogin(base, BOB, NEW_PW, 'B_NEW');
     const bobNew = await ChatClient.login(base, BOB, NEW_PW, 'B_NEW', { identityCode: identityCodeFrom(srv, BOB), identityChallengeId: identityChallenges.get(`${BOB}|B_NEW`) });
     // Пока окно открыто, новое устройство ничего не меняет: ключи не публикуются.
@@ -216,11 +220,11 @@ test('после пяти неверных кодов восстановлени
     for (let i = 0; i < 5; i++) {
       await assert.rejects(post(base, '/recovery/complete', { userId: ALICE, code: '000000', newPassword: NEW_PW }), (e) => e.status === 403);
     }
-    await post(base, '/recovery/start', { userId: ALICE, locale: 'ru' });
-    assert.equal(recoverySmsCount(srv, PHONE_A), 1, 'во время блокировки новый код не выдаётся');
+    await post(base, '/recovery/start', { email: emailForUserId(ALICE), locale: 'ru' });
+    assert.equal(recoveryCodeCount(srv, ALICE), 1, 'во время блокировки новый email-код не выдаётся');
     srv.advance(HOUR + 1000);
     await post(base, '/recovery/start', { userId: ALICE, locale: 'ru' });
-    assert.equal(recoverySmsCount(srv, PHONE_A), 2, 'после часа код выдаётся снова');
+    assert.equal(recoveryCodeCount(srv, ALICE), 2, 'после часа email-код выдаётся снова');
   } finally {
     await stop();
   }
@@ -234,9 +238,9 @@ test('не больше трёх кодов восстановления в ча
       const code = await startRecovery(base, srv, ALICE, PHONE_A);
       await post(base, '/recovery/complete', { userId: ALICE, code, newPassword: `пароль-${i}-2026` });
     }
-    assert.equal(recoverySmsCount(srv, PHONE_A), 3);
+    assert.equal(recoveryCodeCount(srv, ALICE), 3);
     await post(base, '/recovery/start', { userId: ALICE, locale: 'ru' });
-    assert.equal(recoverySmsCount(srv, PHONE_A), 3, 'четвёртый код за час не выдаётся');
+    assert.equal(recoveryCodeCount(srv, ALICE), 3, 'четвёртый email-код за час не выдаётся');
   } finally {
     await stop();
   }
@@ -249,7 +253,7 @@ test('в окне восстановления старое устройство
     const code = await startRecovery(base, srv, ALICE, PHONE_A);
     await post(base, '/recovery/complete', { userId: ALICE, code, newPassword: NEW_PW });
     await phone.sync(); // читать можно
-    await assert.rejects(phone.raw('POST', '/pin/set', { pin: '246810' }), (e) => e.status === 403, 'старое устройство в окне не меняет PIN');
+    await assert.rejects(phone.raw('POST', '/pin/reset/start', { password: PW }), (e) => e.status === 403, 'старое устройство в окне не меняет PIN');
     await assert.rejects(phone.raw('POST', '/keys/upload', {}), (e) => e.status === 403, 'старое устройство в окне не меняет ключи');
 
     // Первый вход по коду проходит; второе новое устройство в окне не добавляется.
@@ -275,7 +279,7 @@ test('устройство, добавленное во время окна, ч�
     const frozen = await ChatClient.login(base, ALICE, NEW_PW, 'B_NEW', { identityCode: identityCodeFrom(srv, ALICE), identityChallengeId: identityChallenges.get(`${ALICE}|B_NEW`) });
 
     await frozen.sync(); // читать можно
-    await assert.rejects(frozen.raw('POST', '/pin/set', { pin: '246810' }), (e) => e.status === 403, 'PIN не ставится');
+    await assert.rejects(frozen.raw('POST', '/pin/reset/start', { password: NEW_PW }), (e) => e.status === 403, 'PIN reset недоступен в recovery window');
     await assert.rejects(frozen.raw('POST', '/keys/upload', {}), (e) => e.status === 403, 'ключи не публикуются');
     await assert.rejects(frozen.raw('POST', '/keys/claim', {}), (e) => e.status === 403, 'ключи собеседников не забираются');
     await assert.rejects(frozen.raw('POST', '/rooms', { roomId: ROOM, members: [ALICE] }), (e) => e.status === 403, 'комнаты не создаются');
@@ -298,7 +302,7 @@ test('после окна устройство, добавленное в окн
     await rawLogin(base, ALICE, NEW_PW, 'B_NEW');
     const frozen = await ChatClient.login(base, ALICE, NEW_PW, 'B_NEW', { identityCode: identityCodeFrom(srv, ALICE), identityChallengeId: identityChallenges.get(`${ALICE}|B_NEW`) });
     srv.advance(RECOVERY_DELAY_MS + 1000);
-    await frozen.raw('POST', '/pin/set', { pin: '246810' });
+    await frozen.raw('POST', '/pin/reset/start', { password: NEW_PW });
     await assert.rejects(phone.sync(), (e) => e.status === 401, 'старое устройство отключено');
   } finally {
     await stop();
@@ -317,7 +321,7 @@ test('второе восстановление внутри окна не сд�
     srv.advance(HOUR);
     const SECOND_PW = 'второй-пароль-2026';
     const code2 = await startRecovery(base, srv, ALICE, PHONE_A);
-    await post(base, '/recovery/complete', { userId: ALICE, code: code2, newPassword: SECOND_PW });
+    await post(base, '/recovery/complete', { userId: ALICE, code: code2, pin: TEST_PIN, newPassword: SECOND_PW });
 
     // Устройство, добавленное в первом окне, по-прежнему ограничено.
     await assert.rejects(added.raw('DELETE', '/devices/A_PHONE'), (e) => e.status === 403);
@@ -335,7 +339,7 @@ test('регистрация без телефона отклоняется, е�
   await new Promise((resolve) => srv.server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${srv.server.address().port}`;
   try {
-    await assert.rejects(ChatClient.create(base, ALICE, 'A_PHONE', PW), (e) => e.status === 400);
+    await assert.rejects(ChatClient.create(base, ALICE, 'A_PHONE', PW, { phone: '' }), (e) => e.status === 400);
     await assert.rejects(ChatClient.create(base, ALICE, 'A_PHONE', PW, { phone: 'не-номер' }), (e) => e.status === 400);
   } finally {
     await new Promise((r) => srv.server.close(r));
