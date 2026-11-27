@@ -741,3 +741,7 @@ Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone
 - PR #174 now contains a media-first API proposal and pure domain helpers for optional caption, required ready Feed media and signed HMAC cursors. The proposal remains DRAFT; helpers/tests have not been executed in this stage.
 - Production Feed routes, migrations, persistence, worker, storage encryption configuration, delivery, Flutter integration and dynamic security tests remain NOT STARTED.
 - Do not reuse existing /files authorization by broadening it. Implement Feed in a separate storage namespace/adapter. Keep PR #171/#172/#173 independent; #173 remains HOLD pending #169.
+
+
+- Added isolated chunked AES-256-GCM Feed object-store wrapper and tests. It wraps existing streaming object-store methods, uses per-object DEKs wrapped by a key-provider KEK, binds object/key/chunk metadata as AAD, and supports key-ID rotation. It is not wired to production configuration or storage yet; tests are authored but NOT RUN.
+- Storage finding: current canonical production path is filesystem object storage (streaming, atomic, restrictive permissions but not encrypted at rest); in-memory storage buffers full objects and is test-only. No S3/MinIO/KMS adapter found. Feed must use its own directory/namespace and secret-manager-backed key provider; do not modify chat storage.
