@@ -71,8 +71,9 @@ async function approveJoinRequestViaMls(owner, requester, targetUserId, claimId)
     deviceId: item.deviceId,
     welcome: b64(`WELCOME-${claimId}-${item.deviceId}`),
   }));
+  const epoch = (await owner.raw('GET', `/mls/groups/${enc(ROOM)}/epoch`)).epoch;
   return owner.raw('POST', `/mls/groups/${enc(ROOM)}/commits`, {
-    epoch: 0,
+    epoch,
     commit: b64(`COMMIT-${claimId}`),
     changes: { adds: [targetUserId], removes: [] },
     welcomes,
@@ -120,7 +121,7 @@ test('вступление по умолчанию по заявке: заявк
     assert.deepEqual((await requestsOf(c.alice)).requests.map((r) => r.userId), [DAVE]);
     await assert.rejects(requestsOf(c.bob), (e) => e.status === 403);
     await assert.rejects(decide(c.alice, DAVE, 'approve'), (error) => error.status === 409);
-    assert.equal((await approveJoinRequestViaMls(c.alice, c.dave, DAVE, 'join-approval-public-dave-0003')).epoch, 1);
+    assert.equal((await approveJoinRequestViaMls(c.alice, c.dave, DAVE, 'join-approval-public-dave-0003')).epoch, 2);
     assert.ok((await membersOf(c.alice)).members.includes(DAVE));
     assert.equal((await post(c.eve, '/join', {})).status, 'requested');
     assert.equal((await decide(c.alice, EVE, 'reject')).status, 'rejected');
@@ -130,13 +131,15 @@ test('вступление по умолчанию по заявке: заявк
   }
 });
 
-test('свободный вход: участник входит сразу и читает только то, что написано после вступления', async () => {
+test('открытая группа создаёт MLS-заявку; после Add Commit участник читает только новые события', async () => {
   const { base, stop } = await start();
   try {
     const c = await clubWith(base);
     await makePublic(c.alice, 'Соседи квартала', 'open');
     await c.alice.sendText(ROOM, 'до вступления');
-    assert.equal((await post(c.dave, '/join', {})).status, 'joined');
+    assert.equal((await post(c.dave, '/join', {})).status, 'requested');
+    assert.ok(!(await membersOf(c.alice)).members.includes(DAVE));
+    await approveJoinRequestViaMls(c.alice, c.dave, DAVE, 'join-approval-open-dave-0005');
     await c.alice.sync();
     await c.dave.sync();
     await c.alice.sendText(ROOM, 'после вступления');
@@ -156,7 +159,7 @@ test('одобрить заявку может только тот, у кого 
     await post(c.dave, '/join', {});
     await assert.rejects(decide(c.bob, DAVE, 'approve'), (e) => e.status === 403);
     await grant(c.alice, BOB, ['send_messages', 'invite_members']);
-    assert.equal((await approveJoinRequestViaMls(c.bob, c.dave, DAVE, 'join-approval-bob-dave-0001')).epoch, 1);
+    assert.equal((await approveJoinRequestViaMls(c.bob, c.dave, DAVE, 'join-approval-bob-dave-0001')).epoch, 2);
   } finally {
     await stop();
   }
