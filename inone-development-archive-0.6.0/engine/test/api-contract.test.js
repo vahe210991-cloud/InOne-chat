@@ -4,8 +4,11 @@ import assert from 'node:assert/strict';
 
 const read = (relative) => readFileSync(new URL(relative, import.meta.url), 'utf8');
 const server = read('../src/server.js');
+const store = read('../src/store.js');
+const memoryStore = read('../src/store-memory.js');
 const manifest = JSON.parse(read('../../../мусорный ящик/HTML-архив/mobile-assets/ui-approval/screen-manifest.json'));
 const nativeApp = read('../../../mobile/lib/app/inone_mobile_app.dart');
+const messagesScreen = read('../../../mobile/lib/ui_dart_source/screens/main/inone_messages_screen.dart');
 const mobileHost = read('../../../mobile/lib/main.dart');
 const mobilePubspec = read('../../../mobile/pubspec.yaml');
 
@@ -23,6 +26,10 @@ const routeEvidence = new Map([
   ['POST /recovery/cancel-by-code', /req\.method === 'POST' && p === '\/recovery\/cancel-by-code'/],
   ['POST /admission/cancel', /req\.method === 'POST' && p === '\/admission\/cancel'/],
   ['POST /logout', /req\.method === 'POST' && p === '\/logout'/],
+  ['POST /direct-chats/open', /req\.method === 'POST' && p === '\/direct-chats\/open'/u],
+  ['GET /contacts', /req\.method === 'GET' && p === '\/contacts'/u],
+  ['POST /contacts/:userId/accept', /contactAction && req\.method === 'POST'/u],
+  ['POST /contacts/:userId/block', /contactAction && req\.method === 'POST'/u],
   ['GET /rooms/mine', /req\.method === 'GET' && p === '\/rooms\/mine'/],
   ['GET /rooms/:id/events', /roomRoute && req\.method === 'GET'/u],
   ['GET /orgs/mine', /req\.method === 'GET' && p === '\/orgs\/mine'/],
@@ -62,6 +69,30 @@ test('every operation declared by the v0.8 approval manifest has a backend handl
   assert.match(server, /if \(req\.method === 'GET' && orgReqDoc\)/u);
   assert.match(server, /if \(req\.method === 'POST' && orgReqDecision\)/u);
   assert.match(server, /action === 'claim'/u);
+});
+
+test('direct conversations use a canonical pair and MLS-only activation', () => {
+  assert.match(server, /req\.method === 'POST' && p === '\/direct-chats\/open'/u);
+  assert.match(server, /createOrOpenDirectConversation/u);
+  assert.match(server, /direct_pair_only/u);
+  assert.match(server, /mlsInitializationRequired/u);
+  assert.match(server, /directConversation\.status !== 'provisioning'/u);
+  assert.match(server, /direct_membership_fixed/u);
+});
+
+test('first-message contact prompts never gate MLS delivery and block future direct messages', () => {
+  assert.match(server, /req\.method === 'GET' && p === '\/contacts'/u);
+  assert.match(server, /const contactAction = p\.match/u);
+  assert.match(server, /storage\.acceptContactRequest/u);
+  assert.match(server, /storage\.blockUser/u);
+  assert.match(server, /incomingContactRequest/u);
+  assert.match(store, /createIncomingContactRequest/u);
+  assert.match(memoryStore, /recordIncomingContactRequest/u);
+  assert.match(server, /user_blocked/u);
+  assert.match(nativeApp, /onAcceptContact: \(chat\)/u);
+  assert.match(nativeApp, /onBlockContact: \(chat\)/u);
+  assert.match(messagesScreen, /Принять/u);
+  assert.match(messagesScreen, /Заблокировать/u);
 });
 
 test('production Flutter entry uses native Dart UI and keeps MLS disabled by default', () => {
