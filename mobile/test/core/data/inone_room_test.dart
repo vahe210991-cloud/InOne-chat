@@ -32,6 +32,20 @@ void main() {
     expect(conversation.mlsInitializationRequired, isTrue);
   });
 
+  test('rejects a provisioning creator response that omits the required MLS setup flag', () {
+    expect(
+      () => InOneDirectConversation.fromJson({
+        'roomId': '!dm_opaque:inone.test',
+        'peerUserId': '@bob:inone.test',
+        'status': 'provisioning',
+        'created': false,
+        'isCreator': true,
+        'mlsInitializationRequired': false,
+      }),
+      throwsA(isA<ApiException>()),
+    );
+  });
+
   test('recipient can open an automatically provisioned direct conversation without accepting it', () {
     final conversation = InOneDirectConversation.fromJson({
       'roomId': '!dm_opaque:inone.test',
