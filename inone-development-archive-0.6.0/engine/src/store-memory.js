@@ -78,7 +78,7 @@ export function createMemoryStore({ pinPepper }) {
   const directConversationsByRoom = new Map();
   const contacts = new Map(); // owner user -> Set(contact user)
   const contactRequests = new Map(); // requester|recipient -> request state
-  const userBlocks = new Set(); // canonical unordered pair key
+  const userBlocks = new Set(); // blocker|blocked direction
   const mlsPackages = [];
   const mlsPackageClaims = new Map();
   const mlsGroups = new Map();
