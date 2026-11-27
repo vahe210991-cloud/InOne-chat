@@ -868,6 +868,67 @@ export function createMemoryStore({ pinPepper }) {
       return result;
     },
 
+    async recoveryCompleteWithPin(userId, {
+      now, codeCheck, pin, pinCheck, free, lockDuration,
+      passwordHash, complete, cancelCodeHash, enqueue,
+    }) {
+      return withPinLock(userId, async () => {
+        if (!accounts.has(userId)) return { factor: 'email', outcome: 'none' };
+        const current = recovery.get(userId) ? structuredClone(recovery.get(userId)) : freshRecovery();
+        const emailResult = codeCheck(current);
+        if (emailResult.outcome !== 'ok') {
+          recovery.set(userId, structuredClone(emailResult.next));
+          return { factor: 'email', outcome: emailResult.outcome };
+        }
+        const pinRecord = pins.get(userId);
+        if (!pinRecord) return { factor: 'pin', outcome: 'no-pin' };
+        if (pinRecord.lockedUntil && now < pinRecord.lockedUntil) {
+          return { factor: 'pin', outcome: 'locked', retryAt: pinRecord.lockedUntil };
+        }
+        const expiredLockCleared = !!pinRecord.lockedUntil && now >= pinRecord.lockedUntil;
+        pinRecord.lockedUntil = expiredLockCleared ? null : pinRecord.lockedUntil;
+        const failed = pinRecord.failed + 1;
+        if (failed > free && !expiredLockCleared) {
+          pinRecord.failed = failed;
+          pinRecord.lockedUntil = now + lockDuration(failed);
+          return { factor: 'pin', outcome: 'locked', retryAt: pinRecord.lockedUntil };
+        }
+        const pinResult = await pinCheck(pin, pinRecord.hash);
+        if (!pinResult.ok) {
+          pinRecord.failed = failed;
+          pinRecord.lockedUntil = failed >= free ? now + lockDuration(failed) : null;
+          return {
+            factor: 'pin',
+            outcome: pinRecord.lockedUntil ? 'locked' : 'wrong',
+            retryAt: pinRecord.lockedUntil,
+          };
+        }
+        const oldPassword = accounts.get(userId);
+        const oldRecovery = recovery.get(userId);
+        const oldCancel = recoveryCancels.get(userId);
+        const oldPinHash = pinRecord.hash;
+        pinRecord.hash = pinResult.upgradedHash ?? pinRecord.hash;
+        pinRecord.failed = 0;
+        pinRecord.lockedUntil = null;
+        const { next, result } = complete(current, oldPassword);
+        accounts.set(userId, passwordHash);
+        recovery.set(userId, structuredClone(next));
+        recoveryCancels.set(userId, { codeHash: cancelCodeHash, expiresAt: result });
+        try {
+          if (enqueue) await enqueue(null, result);
+        } catch (error) {
+          accounts.set(userId, oldPassword);
+          if (oldRecovery) recovery.set(userId, oldRecovery); else recovery.delete(userId);
+          if (oldCancel) recoveryCancels.set(userId, oldCancel); else recoveryCancels.delete(userId);
+          pinRecord.hash = oldPinHash;
+          pinRecord.failed = failed - 1;
+          pinRecord.lockedUntil = null;
+          throw error;
+        }
+        return { factor: 'complete', outcome: 'ok', keyResetAt: result };
+      });
+    },
+
     recoveryHashes() {
       return Object.fromEntries([...recovery]
         .filter(([, r]) => r.reqCodeHash)
