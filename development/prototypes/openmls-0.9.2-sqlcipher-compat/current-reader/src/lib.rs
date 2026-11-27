@@ -271,11 +271,22 @@ mod tests {
         assert_eq!(alice_group.epoch().as_u64(), 1);
         assert_eq!(alice_group.members().count(), 2);
 
-        let welcome: MlsMessageIn = welcome.into();
-        let welcome = welcome.into_welcome().expect("extract Bob Welcome");
+        let welcome_wire = welcome
+            .tls_serialize_detached()
+            .expect("serialize Bob Welcome");
+        let welcome = match MlsMessageIn::tls_deserialize_exact(&welcome_wire)
+            .expect("deserialize Bob Welcome")
+            .extract()
+        {
+            MlsMessageBodyIn::Welcome(welcome) => welcome,
+            _ => panic!("expected Welcome message"),
+        };
+        let join_config = MlsGroupJoinConfig::builder()
+            .use_ratchet_tree_extension(true)
+            .build();
         let staged = StagedWelcome::new_from_welcome(
             &bob_provider,
-            &MlsGroupJoinConfig::default(),
+            &join_config,
             welcome,
             None,
         )
@@ -298,7 +309,7 @@ mod tests {
             .process_message(
                 &bob_provider,
                 alice_message
-                    .into_protocol_message()
+                    .try_into_protocol_message()
                     .expect("Alice message is a protocol message"),
             )
             .expect("Bob decrypts Alice application message");
@@ -319,7 +330,7 @@ mod tests {
             .process_message(
                 &alice_provider,
                 bob_message
-                    .into_protocol_message()
+                    .try_into_protocol_message()
                     .expect("Bob message is a protocol message"),
             )
             .expect("Alice decrypts Bob application message");
