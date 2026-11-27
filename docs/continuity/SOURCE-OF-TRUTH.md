@@ -233,3 +233,8 @@ The product split does not automatically imply separate or shared identity servi
 - Domain rules: `inone-development-archive-0.6.0/engine/src/feed-rules.js`; tests: `inone-development-archive-0.6.0/engine/test/feed-rules.test.js`, included from `test/api-contract.test.js`.
 - This is only the domain validation/cursor foundation. No Feed route, persistence, migration, media or Flutter screen is implemented/accepted yet.
 - Feed scope and cross-account visibility decisions are recorded separately in Draft PR #172; its changes are not yet in `main`.
+
+
+## 2026-11-27 — Feed media encryption decision
+
+The owner approved Feed media variant A: a separate server-side media-processing pipeline, TLS in transit, encrypted object storage at rest and mandatory authenticated access with fresh authorization on every media delivery. This decision is Feed-only. It does not change MLS encryption, chat file storage, room membership authorization or existing chat upload/download behavior. Feed media must use a separate storage namespace/adapter and must not make the existing /files API cross-account readable.
