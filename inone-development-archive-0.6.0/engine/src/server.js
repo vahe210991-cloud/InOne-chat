@@ -2169,14 +2169,13 @@ if (req.method === 'POST' && p === '/login') {
         if (!validatePin(pinConfirmation) || pin !== pinConfirmation) {
           return send(res, 400, { error: 'PIN confirmation does not match' });
         }
-        const pinHash = await hashPin(pinPepper, pin);
         const profile = await storage.profileGet(d.userId);
         const backup = await storage.backupEmailGet(d.userId);
         const locale = profile?.locale ?? 'hy';
         const completed = await storage.completePinResetWithOutbox(d.userId, {
           challengeId,
           deviceId: d.deviceId,
-          pinHash,
+          makePinHash: () => hashPin(pinPepper, pin),
           now: now(),
           reminderNextAt: now() + PIN_REMINDER_INTERVAL_MS,
           codeOk: (storedHash) => sameHex(
