@@ -9,11 +9,13 @@ class InOnePinResetScreen extends StatefulWidget {
     required this.onStart,
     required this.onComplete,
     required this.onBack,
+    required this.onDone,
   });
 
   final Future<InOneFailure?> Function(String password, ValueChanged<String> onChallenge) onStart;
   final Future<InOneFailure?> Function(String challengeId, String code, String pin, String pinConfirmation) onComplete;
   final VoidCallback onBack;
+  final VoidCallback onDone;
 
   @override
   State<InOnePinResetScreen> createState() => _InOnePinResetScreenState();
@@ -53,6 +55,7 @@ class _InOnePinResetScreenState extends State<InOnePinResetScreen>
         _completeForm.value('pin'),
         _completeForm.value('pinConfirmation'),
       ),
+      onSuccess: widget.onDone,
     );
   }
 
