@@ -633,3 +633,7 @@ Latest documented checkpoint: code SHA `4824dfc3b3f4e3aab5d39b16c1adf934a108d660
 5. Produce evidence-based configurable limits for photo count, byte sizes, codecs, video duration/resolution and worker budgets; numeric values remain unapproved until justified.
 6. Implement Feed media lifecycle in isolated modules first, then Post/PostMedia persistence/routes. Do not modify MLS/chat file code.
 7. Re-audit exact Dart screen source paths across approved branches before Flutter integration. Keep UI design unchanged.
+
+
+- New isolated primitive: feed-encrypted-object-store.js and feed-encrypted-object-store.test.js. Before wiring, statically review chunk framing, GCM tag verification, key-provider failures, stream cancellation/backpressure, and rotation behavior. Tests have not been run.
+- Current backend has filesystem and in-memory object stores only; filesystem is not encrypted at rest. Add a Feed-only storage root and dedicated secret-manager-backed key provider after shared-file integration is safe. Do not change the chat /files or MLS path.
