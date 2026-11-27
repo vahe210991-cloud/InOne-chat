@@ -24,6 +24,7 @@ A recipient does not accept or reject the chat or the first message. Direct mess
 10. Added Flutter DTO/repository/preview tests for provisioning and active direct conversations, including rejection of the old `pending` response shape and suppression of opaque room IDs in display labels.
 11. Added a server-side room-list projection for encrypted last activity and per-user unread count, mirrored in the memory store; Flutter now renders timestamps/unread badges, supports the unread filter, and clears badges after a persisted read marker.
 12. Registered migration 0036 in the migration runner, included direct-chat and room-summary regressions in `npm test` and `npm run test:db`, and added schema assertions for fresh and upgraded PostgreSQL databases.
+13. Added migration 0037 for contacts, incoming contact prompts and blocks; wired `GET /contacts`, accept/block actions, room-list contact state and Flutter chat-row buttons. Message delivery is independent from accepting a contact.
 
 ## Important behavior and limits
 
