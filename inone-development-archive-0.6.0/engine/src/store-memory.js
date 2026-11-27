@@ -1269,6 +1269,7 @@ export function createMemoryStore({ pinPepper }) {
             || counterpart !== targetUserId || !room.members.has(requesterUserId)) {
             return { ok: false, reason: 'not_authorized' };
           }
+          if (isBlockedPair(requesterUserId, targetUserId)) return { ok: false, reason: 'user_blocked' };
         } else {
           if (organizations.get(room.orgId)?.status !== 'approved') return { ok: false, reason: 'org_not_approved' };
           if (!hasOrgAccess(requesterUserId, room.orgId) || !hasOrgAccess(targetUserId, room.orgId)) {
