@@ -113,8 +113,12 @@ export async function hashPin(pepper, pin) {
     throw new Error('PIN_PEPPER must contain at least 32 bytes');
   }
   const salt = randomBytes(16);
-  const derived = await derive(pin, salt, pepper);
-  return `argon2id$v=${ARGON2.version}$m=${ARGON2.memoryKiB},t=${ARGON2.iterations},p=${ARGON2.parallelism}$${salt.toString('base64url')}$${Buffer.from(derived).toString('base64url')}`;
+  const derived = Buffer.from(await derive(pin, salt, pepper));
+  try {
+    return `argon2id$v=${ARGON2.version}$m=${ARGON2.memoryKiB},t=${ARGON2.iterations},p=${ARGON2.parallelism}${salt.toString('base64url')}${derived.toString('base64url')}`;
+  } finally {
+    derived.fill(0);
+  }
 }
 
 export async function checkPin(pepper, pin, stored) {
@@ -122,7 +126,11 @@ export async function checkPin(pepper, pin, stored) {
   const current = parseArgonHash(stored);
   if (current) {
     const actual = Buffer.from(await derive(pin, current.salt, pepper));
-    return actual.length === current.hash.length && timingSafeEqual(actual, current.hash);
+    try {
+      return actual.length === current.hash.length && timingSafeEqual(actual, current.hash);
+    } finally {
+      actual.fill(0);
+    }
   }
   const legacy = parseLegacyHash(stored);
   if (!legacy) return false;
@@ -138,7 +146,11 @@ export async function checkPin(pepper, pin, stored) {
   } finally {
     secret.fill(0);
   }
-  return actual.length === legacy.hash.length && timingSafeEqual(actual, legacy.hash);
+  try {
+    return actual.length === legacy.hash.length && timingSafeEqual(actual, legacy.hash);
+  } finally {
+    actual.fill(0);
+  }
 }
 
 export function pinHashNeedsUpgrade(stored) {
