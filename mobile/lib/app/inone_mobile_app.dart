@@ -524,6 +524,9 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     _pendingLoginPassword = '';
     _pendingIdentityChallengeId = null;
     _waitingActivateAt = '';
+    _pinReminderDue = false;
+    _pinLegacyFormat = false;
+    _pinResetRequired = false;
     unawaited(_loadAuthenticatedData());
   }
 
@@ -1328,6 +1331,10 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       _organizationMemberCount = null;
       _organizationMembers = const [];
       _systemStatus = null;
+      _pinReminderDue = false;
+      _pinLegacyFormat = false;
+      _pinResetRequired = false;
+      _pinResetReturnScreen = null;
       _registrationEmail = '';
       _pendingPushRoutes.clear();
       _activeMlsRoomId = null;
