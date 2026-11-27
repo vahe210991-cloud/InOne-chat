@@ -985,7 +985,10 @@ mod tests {
 
         assert_eq!(alice_group.epoch().as_u64(), 7);
         assert_eq!(bob_group.epoch().as_u64(), 7);
-        assert_eq!(alice_group.epoch_authenticator(), bob_group.epoch_authenticator());
+        assert_eq!(
+            alice_group.epoch_authenticator().as_slice(),
+            bob_group.epoch_authenticator().as_slice()
+        );
 
         drop(alice_group);
         drop(bob_group);
