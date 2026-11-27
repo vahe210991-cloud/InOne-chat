@@ -106,6 +106,19 @@ export function comparePostsNewestFirst(left, right) {
   return right.postId > left.postId ? 1 : -1;
 }
 
+export function isFeedRowAfterCursor(post, cursor) {
+  if (!cursor) return true;
+  if (!Number.isSafeInteger(cursor.createdAt) || cursor.createdAt < 0 || !isValidPostId(cursor.postId)) {
+    throw new TypeError('feed cursor boundary is invalid');
+  }
+  if (!Number.isSafeInteger(Number(post.createdAt)) || !isValidPostId(post.postId)) {
+    throw new TypeError('post cursor boundary is invalid');
+  }
+  const createdAt = Number(post.createdAt);
+  return createdAt < cursor.createdAt
+    || (createdAt === cursor.createdAt && post.postId < cursor.postId);
+}
+
 export function paginateFeedRows(rows, limit) {
   if (!Array.isArray(rows)) throw new TypeError('feed rows must be an array');
   if (!Number.isInteger(limit) || limit < 1 || limit > 50) {
