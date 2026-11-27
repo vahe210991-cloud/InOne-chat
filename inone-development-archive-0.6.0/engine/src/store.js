@@ -2107,6 +2107,11 @@ async mlsPendingRemovalsFor(userId) {
           );
           if (!roomLookup[0]) return { ok: false, reason: 'room_not_found' };
           if (roomLookup[0].kind === 'direct') {
+            const { rows: pairAccounts } = await c.query(
+              'SELECT user_id FROM accounts WHERE user_id = ANY($1::text[]) ORDER BY user_id FOR SHARE',
+              [[requesterUserId, targetUserId]],
+            );
+            if (pairAccounts.length !== 2) return { ok: false, reason: 'not_authorized' };
             const { rows: conversations } = await c.query(
               'SELECT user_a, user_b, created_by, status FROM direct_conversations WHERE room_id = $1 FOR SHARE',
               [roomId],
@@ -2512,6 +2517,10 @@ async mlsPendingRemovalsFor(userId) {
         }
         if ((changes.adds ?? []).length > 0) {
           if (roomKind === 'direct') {
+            const { rows: pairAccounts } = await client.query(
+              'SELECT user_id FROM accounts WHERE user_id = ANY($1::text[]) ORDER BY user_id FOR SHARE',
+              [[senderId, roomKindRows[0].org_id].filter(Boolean)],
+            );
             const { rows: conversations } = await client.query(
               'SELECT user_a, user_b, created_by, status FROM direct_conversations WHERE room_id = $1 FOR UPDATE',
               [roomId],
