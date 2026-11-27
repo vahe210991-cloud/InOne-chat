@@ -90,7 +90,7 @@ export function createMemoryStore({ pinPepper }) {
   const counters = { eventSeq: 0, inboxSeq: 0 };
   const approvals = new Map();     // идентификатор -> запрос подтверждения входа
   const copy = (d) => ({ userId: d.userId, deviceId: d.deviceId, label: d.label, revoked: d.revoked, createdAt: d.createdAt });
-  const pairKey = (a, b) => JSON.stringify(a < b ? [a, b] : [b, a]);
+  const pairKey = (a, b) => JSON.stringify(Buffer.compare(Buffer.from(a, 'utf8'), Buffer.from(b, 'utf8')) <= 0 ? [a, b] : [b, a]);
   const requestKey = (requester, recipient) => JSON.stringify([requester, recipient]);
   const isBlockedPair = (a, b) => userBlocks.has(pairKey(a, b));
   function addContact(ownerId, contactUserId) {
