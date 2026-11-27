@@ -808,3 +808,14 @@ If regression is found, remove strikethrough and reopen while preserving history
 - Validation: 11 GitHub Actions checks were queued on the exact implementation head; no PASS, test completion or merge is claimed yet.
 - No migration, Flutter change, release flag change, WBS change or product-policy change.
 - Closure criteria remain unchanged. Do not strike through this task until PR merge, review, exact-SHA test evidence and acceptance are complete.
+
+
+## 21. Журнал выполнения PROFILE-SEC-001: контрольная точка 2026-11-27
+
+- Реализация: [PR #173](https://github.com/vahe210991-cloud/InOne-chat/pull/173), Draft, открыт, не слит.
+- Текущий точный SHA реализации: `4ea0cd4df246778ea1ee171e768f50f48910a4bb`; база `main`: `7d34b99fcc026a828b838e211d039c575aeace1d`.
+- Первый CI на SHA `1d36d809d111b6d7da73bdbaa98115e0e3f85c6b` выявил ошибки в legacy-тестах удаления, синтаксическую ошибку в тесте self-leave и несовпадение порядка PostgreSQL-блокировок с open-join. Эти причины разобраны, соответствующие исправления внесены.
+- Текущий CI перезапущен на новом SHA. Статус: QUEUED / IN PROGRESS. PASS пока не подтверждён.
+- Следующий критерий: все применимые проверки должны завершиться успешно именно на SHA `4ea0cd4df246778ea1ee171e768f50f48910a4bb`; затем обязательны review и проверка multi-room сценариев. До этого PROFILE-SEC-001 остаётся IN PROGRESS.
+- Автоматический multi-room workflow во Flutter ещё не реализован. Backend возвращает 409 и список комнат; каждую комнату требуется обработать валидным MLS Remove Commit, после чего повторить организационную операцию.
+- Не изменялись миграции, продуктовая политика, release gates и WBS v1.1. Задача не закрыта и не зачёркнута.
