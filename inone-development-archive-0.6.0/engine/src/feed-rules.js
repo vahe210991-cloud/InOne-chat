@@ -139,7 +139,8 @@ export function parseSignedFeedCursor(value, keyring, expectedScope = 'global') 
     const expected = createHmac('sha256', cursorKeyBytes(secret))
       .update(payload, 'ascii').digest();
     const supplied = Buffer.from(signature, 'base64url');
-    if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) {
+    if (supplied.toString('base64url') !== signature
+      || supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) {
       return { ok: false, error: 'invalid_cursor' };
     }
     return {
