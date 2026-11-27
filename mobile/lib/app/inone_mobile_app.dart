@@ -71,6 +71,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
   bool _pinLegacyFormat = false;
   bool _pinResetRequired = false;
   String? _pinResetReturnScreen;
+  String _logoutReturnScreen = 'profile';
   InOneProfile? _profile;
   List<InOneOrganization> _organizations = const [];
   InOneOrganization? _selectedOrganization;
@@ -1335,6 +1336,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       _pinLegacyFormat = false;
       _pinResetRequired = false;
       _pinResetReturnScreen = null;
+      _logoutReturnScreen = 'profile';
       _registrationEmail = '';
       _pendingPushRoutes.clear();
       _activeMlsRoomId = null;
@@ -3530,7 +3532,10 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
         return InOnePinVerificationScreen(
           onSubmit: _verifyRecoveryPin,
           onForgotPin: _openPinReset,
-          onLogout: () => setState(() => _screen = 'logout'),
+          onLogout: () {
+            _logoutReturnScreen = 'pinVerification';
+            setState(() => _screen = 'logout');
+          },
           onDone: () => unawaited(_loadAuthenticatedData()),
           legacyPin: _pinLegacyFormat,
         );
@@ -3540,6 +3545,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           onComplete: _completePinReset,
           onBack: () {
             if (_pinResetRequired) {
+              _logoutReturnScreen = 'pinReset';
               setState(() => _screen = 'logout');
               return;
             }
@@ -3551,7 +3557,7 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
       case 'logout':
         return InOneLogoutScreen(
           onLogout: _logout,
-          onCancel: () => setState(() => _screen = 'profile'),
+          onCancel: () => setState(() => _screen = _logoutReturnScreen),
           onDone: _finishLogout,
         );
       case 'adminRequestsLoading':
