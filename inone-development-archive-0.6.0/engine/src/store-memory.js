@@ -92,7 +92,8 @@ export function createMemoryStore({ pinPepper }) {
   const copy = (d) => ({ userId: d.userId, deviceId: d.deviceId, label: d.label, revoked: d.revoked, createdAt: d.createdAt });
   const pairKey = (a, b) => JSON.stringify(Buffer.compare(Buffer.from(a, 'utf8'), Buffer.from(b, 'utf8')) <= 0 ? [a, b] : [b, a]);
   const requestKey = (requester, recipient) => JSON.stringify([requester, recipient]);
-  const isBlockedPair = (a, b) => userBlocks.has(pairKey(a, b));
+  const blockKey = (blocker, blocked) => JSON.stringify([blocker, blocked]);
+  const isBlockedPair = (a, b) => userBlocks.has(blockKey(a, b)) || userBlocks.has(blockKey(b, a));
   function addContact(ownerId, contactUserId) {
     let set = contacts.get(ownerId);
     if (!set) { set = new Set(); contacts.set(ownerId, set); }
