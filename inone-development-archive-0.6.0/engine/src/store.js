@@ -601,11 +601,17 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
     },
     async removeOrgMemberAtomic({ orgId, actor, target, action, at }) {
       return inTransaction(async (client) => {
-        // Serialize membership revocation with room creation, room membership changes and MLS commits.
-        // Room rows are locked before organization/member rows to preserve the room -> authorization lock order.
+        // Lock active organization links before rooms, matching open-join's link -> room order.
+        // This freezes the inherited-room set while membership revocation is evaluated.
+        const { rows: activeLinks } = await client.query(
+          "SELECT link_id, CASE WHEN org_a = $1 THEN org_b ELSE org_a END AS linked_org_id FROM org_links WHERE status = 'active' AND (org_a = $1 OR org_b = $1) ORDER BY link_id FOR UPDATE",
+          [orgId],
+        );
+        const linkedOrgIds = activeLinks.map((row) => row.linked_org_id);
+        const affectedOrgIds = [orgId, ...linkedOrgIds];
         await client.query(
-          'SELECT room_id FROM rooms WHERE org_id = $1 AND (room_id IN (SELECT room_id FROM room_members WHERE user_id = $2) OR owner = $2) ORDER BY room_id FOR UPDATE',
-          [orgId, target],
+          'SELECT room_id FROM rooms WHERE org_id = ANY($1::text[]) AND (room_id IN (SELECT room_id FROM room_members WHERE user_id = $2) OR owner = $2) ORDER BY room_id FOR UPDATE',
+          [affectedOrgIds, target],
         );
         const { rows: orgRows } = await client.query('SELECT org_id FROM organizations WHERE org_id = $1 FOR UPDATE', [orgId]);
         if (!orgRows[0]) return { ok: false, reason: 'not_found' };
@@ -639,15 +645,25 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
              FROM rooms r
              JOIN room_members rm ON rm.room_id = r.room_id
              JOIN mls_groups mg ON mg.room_id = r.room_id AND mg.epoch > 0
-            WHERE r.org_id = $1 AND rm.user_id = $2
+            WHERE rm.user_id = $2
+              AND (r.org_id = $1 OR (
+                r.org_id = ANY($3::text[])
+                AND NOT EXISTS (SELECT 1 FROM org_members direct_member WHERE direct_member.org_id = r.org_id AND direct_member.user_id = $2)
+              ))
             ORDER BY r.room_id`,
-          [orgId, target],
+          [orgId, target, linkedOrgIds],
         );
         if (mlsRooms.length) return { ok: false, reason: 'mls_removal_required', rooms: mlsRooms.map((row) => row.room_id) };
         await client.query(
           'DELETE FROM room_members WHERE user_id = $2 AND room_id IN (SELECT room_id FROM rooms WHERE org_id = $1)',
           [orgId, target],
         );
+        if (linkedOrgIds.length) {
+          await client.query(
+            'DELETE FROM room_members rm USING rooms r WHERE rm.room_id = r.room_id AND rm.user_id = $1 AND r.org_id = ANY($2::text[]) AND NOT EXISTS (SELECT 1 FROM org_members direct_member WHERE direct_member.org_id = r.org_id AND direct_member.user_id = $1)',
+            [target, linkedOrgIds],
+          );
+        }
         await client.query('DELETE FROM org_members WHERE org_id = $1 AND user_id = $2', [orgId, target]);
         testHooks.beforeAdminActionInsert?.({ orgId, actor, action, target });
         await client.query(
