@@ -72,12 +72,15 @@ Processing failures leave the item unavailable and schedule safe cleanup. No unt
 ### 3.4 Encryption and key management (owner-approved variant A)
 
 - TLS is mandatory for client ↔ API, worker ↔ storage and internal processing connections.
-- Feed objects use a dedicated private bucket/container or isolated storage namespace, separate from chat/MLS objects.
-- At-rest protection should use envelope encryption: per-object data encryption key (DEK), authenticated encryption (AES-256-GCM or storage-provider equivalent), and a KMS/HSM-managed key-encryption key (KEK). KEKs and plaintext DEKs must not be stored in application tables or logs.
-- The worker receives narrowly scoped decrypt/encrypt permissions only for the Feed quarantine/processing namespace. Runtime credentials are short-lived and least-privilege.
-- Database rows store opaque object keys, checksums and key-version metadata, never raw keys.
+- Feed objects use a dedicated private storage namespace, separate from chat/MLS objects. The current canonical backend provides a streaming filesystem object store and an in-memory test store; no S3/MinIO or KMS adapter was found in the reviewed production path.
+- Beta 1.0 can use the existing filesystem storage technology in a separate Feed directory, with application-layer envelope encryption applied before bytes reach the object store. The directory must have restrictive permissions and persistent storage. This avoids claiming that filesystem permissions alone are encryption.
+- Each object receives a fresh random 256-bit DEK. The object is encrypted as independently authenticated AES-256-GCM chunks; the DEK is wrapped with a dedicated 256-bit Feed KEK using AES-256-GCM. AAD binds the object key, key ID, chunk counter and plaintext chunk length. The encrypted object header carries format version, key ID, nonce prefix, wrapped DEK and wrap tag; every chunk carries its length, ciphertext and tag.
+- The KEK is supplied through a Feed key-provider interface backed by the deployment secret manager. The provider supports a key ID and retained previous keys for rotation. A KMS/HSM implementation may back the same interface later; it is not currently present and must not be represented as already deployed.
+- KEKs and plaintext DEKs are never stored in application tables or logs. Database rows store opaque object keys, checksums and key-version metadata only.
+- The worker receives narrowly scoped decrypt/encrypt permissions only for the Feed namespace. Runtime credentials are short-lived and least-privilege.
 - Backups, replicas, thumbnails, previews and temporary files must receive equivalent encryption and access controls.
-- Rotation and deletion must include originals, renditions, replicas, backups according to documented retention guarantees.
+- Rotation and deletion must include originals, renditions, replicas and backups according to documented retention guarantees. Old key versions remain available until all objects are safely re-encrypted or deleted.
+- The in-memory object store buffers bytes and is test-only; production Feed upload must use the streaming store and must never buffer a whole media file in application memory.
 - This is server-side media processing, not E2EE. This decision applies only to Feed media and does not alter chat MLS.
 
 ### 3.5 Publish and association
