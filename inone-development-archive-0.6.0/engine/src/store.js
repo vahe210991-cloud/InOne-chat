@@ -2181,6 +2181,7 @@ async mlsPendingRemovalsFor(userId) {
           [targetUserId],
         );
         const activeDeviceIds = new Set(activeDeviceRows.map((row) => row.device_id));
+        if (activeDeviceIds.size === 0) return { ok: false, reason: 'no_active_devices' };
         await c.query(
           'INSERT INTO mls_key_package_claims (target_user_id, requester_user_id, requester_device_id, claim_id, room_id, state, result, created_at) VALUES ($1, $2, $3, $4, $5, \'reserved\', NULL, $6) ON CONFLICT (target_user_id, requester_user_id, requester_device_id, claim_id) DO NOTHING',
           [targetUserId, requesterUserId, requesterDeviceId, claimId, roomId ?? null, nowMs],
@@ -2201,6 +2202,10 @@ async mlsPendingRemovalsFor(userId) {
           );
         }
         if (claim.result !== null) {
+          const claimedDeviceIds = new Set(claim.result.map((item) => item.deviceId));
+          if ([...activeDeviceIds].some((deviceId) => !claimedDeviceIds.has(deviceId))) {
+            return { ok: false, reason: 'device_key_package_unavailable' };
+          }
           return {
             ok: true,
             packages: claim.result.filter((item) => activeDeviceIds.has(item.deviceId)).map((item) => ({
@@ -2211,6 +2216,18 @@ async mlsPendingRemovalsFor(userId) {
           };
         }
 
+        const { rows: availableDevices } = await c.query(
+          `SELECT DISTINCT device_id FROM mls_key_packages
+            WHERE user_id = $1 AND device_id = ANY($2::text[]) AND consumed_at IS NULL
+              AND ((last_resort = FALSE AND created_at >= $3)
+                OR (last_resort = TRUE AND created_at >= $4))
+            ORDER BY device_id`,
+          [targetUserId, [...activeDeviceIds], nowMs - MLS_REGULAR_MAX_AGE_MS, nowMs - MLS_LAST_RESORT_MAX_AGE_MS],
+        );
+        const availableDeviceIds = new Set(availableDevices.map((row) => row.device_id));
+        if ([...activeDeviceIds].some((deviceId) => !availableDeviceIds.has(deviceId))) {
+          return { ok: false, reason: 'device_key_package_unavailable' };
+        }
         const { rows: devices } = await c.query(
           `SELECT DISTINCT device_id FROM mls_key_packages
             WHERE user_id = $1 AND device_id = ANY($2::text[]) AND consumed_at IS NULL
@@ -2241,6 +2258,17 @@ async mlsPendingRemovalsFor(userId) {
             [targetUserId, deviceId, nowMs - MLS_LAST_RESORT_MAX_AGE_MS],
           );
           if (fallback[0]) out.push({ deviceId, packageId: Number(fallback[0].id), package: fallback[0].package });
+        }
+        if (out.length !== activeDeviceIds.size) {
+          for (const item of out) {
+            if (item.packageId !== null && item.packageId !== undefined) {
+              await c.query(
+                'UPDATE mls_key_packages SET consumed_at = NULL WHERE id = $1 AND user_id = $2 AND last_resort = FALSE AND consumed_at IS NOT NULL',
+                [item.packageId, targetUserId],
+              );
+            }
+          }
+          return { ok: false, reason: 'device_key_package_unavailable' };
         }
         const stored = out.map((item) => ({
           deviceId: item.deviceId,
