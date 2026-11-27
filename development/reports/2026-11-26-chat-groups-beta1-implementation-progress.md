@@ -62,3 +62,11 @@ No test/build result is claimed until Actions reports it for the exact implement
 - The chat-row widget regression includes a blocked peer with a stale pending flag and verifies the contact buttons remain hidden. The post-block notice now correctly states that new personal messages are blocked in both directions.
 - GitHub Compose migration-count preflight is set to 36 because the repository has migrations 0002–0037 (no 0001 SQL migration file); it also asserts the exact latest version `0037-contacts-and-blocks`.
 - No test or build has been run. All changes remain unaccepted until the final exact-SHA Actions run and owner approval.
+
+
+## 2026-11-27 — multi-device first-Welcome fail-closed check
+
+- Hardened KeyPackage claim reservation so a direct conversation cannot activate with a Welcome for only a subset of the recipient's currently active devices. The server now preflights a usable regular/last-resort KeyPackage for every active device before reserving packages; if any device is missing one, the claim remains retryable and no partial set is consumed.
+- PostgreSQL and memory stores now enforce the same all-active-device condition. Added a direct-chat regression that first publishes a package for only one of two active recipient devices, verifies the claim fails with `device_key_package_unavailable`, then publishes the second device's package and retries the same claim ID successfully with both devices.
+- This closes partial initial multi-device Welcome delivery. Device addition/revocation races after a claim has already been staged remain part of the separate device-revocation/rejoin acceptance gate; they are not declared complete here.
+- No tests or builds have been run.
