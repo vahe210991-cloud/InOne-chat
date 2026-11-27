@@ -46,6 +46,7 @@ The general feed is newest-first. The own-publications list is newest-first and 
 
 - Do not return email, phone, verification state, provider links, security hints, device identifiers, organization membership, or other account/profile fields.
 - Do not return the internal author user ID in the Feed DTO. `isMine` is computed server-side from the authenticated session.
+- Showing the author's nickname to every authenticated Feed reader is a proposed minimal identity disclosure, not yet separately approved. Owner review must explicitly confirm it; otherwise the DTO must use a non-identifying author label.
 - Content is rendered as plain text, not trusted HTML.
 - Deleted posts are not returned by list or detail operations.
 
