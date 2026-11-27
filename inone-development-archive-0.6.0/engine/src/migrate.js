@@ -10,7 +10,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 export const SCHEMA_FILE = path.join(here, 'schema.sql');
 export const MIGRATIONS_DIR = path.join(here, '..', 'migrations');
 /** Последняя миграция, уже включённая в schema.sql. Обновляется вместе с каждой новой миграцией. */
-export const SCHEMA_VERSION = '0035-push-registration-generations';
+export const SCHEMA_VERSION = '0037-contacts-and-blocks';
 const LOCK_KEY = 727001;
 
 /** Признак того, что миграция уже применена в базе, созданной до появления таблицы миграций. */
@@ -49,6 +49,8 @@ const MARKERS = {
   '0033-org-request-document-metadata': "EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'org_request_documents' AND column_name = 'filename') AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'org_request_documents' AND column_name = 'mime_type')",
   '0034-expired-security-state-indexes': "to_regclass('rate_limits_window_start_idx') IS NOT NULL AND to_regclass('login_throttle_expiry_idx') IS NOT NULL",
   '0035-push-registration-generations': "EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'push_deliveries' AND column_name = 'registration_generation') AND to_regclass('push_deliveries_registration_generation_idx') IS NOT NULL",
+  '0036-direct-conversations': "to_regclass('direct_conversations') IS NOT NULL AND to_regclass('direct_conversations_by_user_a') IS NOT NULL AND to_regclass('direct_conversations_by_user_b') IS NOT NULL AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'rooms' AND column_name = 'org_id' AND is_nullable = 'YES') AND EXISTS (SELECT 1 FROM information_schema.check_constraints WHERE constraint_schema = current_schema() AND constraint_name = 'rooms_kind_check' AND check_clause LIKE '%direct%') AND EXISTS (SELECT 1 FROM information_schema.check_constraints WHERE constraint_schema = current_schema() AND constraint_name = 'rooms_channel_has_name' AND check_clause LIKE '%channel%' AND check_clause LIKE '%<>%')",
+  '0037-contacts-and-blocks': "to_regclass('contacts') IS NOT NULL AND to_regclass('contact_requests') IS NOT NULL AND to_regclass('user_blocks') IS NOT NULL AND to_regclass('contact_requests_by_recipient_pending') IS NOT NULL",
 };
 
 export function listMigrations() {
