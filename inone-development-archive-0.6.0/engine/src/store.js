@@ -155,12 +155,35 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
       return deviceKey;
     },
 
-    async setPin(userId, pinHash) {
+    async setPin(userId, pinHash, nowMs = Date.now()) {
       await pool.query(
-        `INSERT INTO pins (user_id, pin_hash, failed, locked_until) VALUES ($1, $2, 0, NULL)
-         ON CONFLICT (user_id) DO UPDATE SET pin_hash = EXCLUDED.pin_hash, failed = 0, locked_until = NULL`,
-        [userId, pinHash],
+        `INSERT INTO pins (user_id, pin_hash, failed, locked_until, last_verified_at, reminder_next_at)
+         VALUES ($1, $2, 0, NULL, $3, $4)
+         ON CONFLICT (user_id) DO UPDATE SET pin_hash = EXCLUDED.pin_hash, failed = 0, locked_until = NULL,
+           last_verified_at = EXCLUDED.last_verified_at, reminder_next_at = EXCLUDED.reminder_next_at`,
+        [userId, pinHash, nowMs, nowMs + 7 * 24 * 60 * 60_000],
       );
+    },
+    async pinStatus(userId) {
+      const { rows } = await pool.query(
+        'SELECT last_verified_at, reminder_next_at, locked_until FROM pins WHERE user_id = $1',
+        [userId],
+      );
+      if (!rows.length) return { configured: false, lastVerifiedAt: null, reminderNextAt: null, lockedUntil: null };
+      const row = rows[0];
+      return {
+        configured: true,
+        lastVerifiedAt: row.last_verified_at === null ? null : Number(row.last_verified_at),
+        reminderNextAt: row.reminder_next_at === null ? null : Number(row.reminder_next_at),
+        lockedUntil: row.locked_until === null ? null : Number(row.locked_until),
+      };
+    },
+    async acknowledgePinReminder(userId, nextAt) {
+      const { rowCount } = await pool.query(
+        'UPDATE pins SET reminder_next_at = $2 WHERE user_id = $1',
+        [userId, nextAt],
+      );
+      return rowCount === 1;
     },
 
     /**
@@ -168,7 +191,7 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
      * Строка пользователя блокируется до конца проверки, поэтому попытки идут по одной:
      * число реальных проверок не зависит от того, сколько запросов пришло параллельно.
      */
-    async verifyPin(userId, pin, { now, free, lockDuration, check }) {
+    async verifyPin(userId, pin, { now, free, lockDuration, check, upgrade = null, markVerified = false }) {
       return inTransaction(async (c) => {
         const { rows } = await c.query(
           'SELECT failed, locked_until, pin_hash FROM pins WHERE user_id = $1 FOR UPDATE',
@@ -188,8 +211,14 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
           await save(failed, lockedUntil);
           return { ok: false, reason: 'locked', retryAt: lockedUntil };
         }
-        if (check(pin, rows[0].pin_hash)) {
-          await save(0, null);
+        if (await check(pin, rows[0].pin_hash)) {
+          const upgradedHash = upgrade ? await upgrade(pin, rows[0].pin_hash) : null;
+          await c.query(
+            `UPDATE pins SET pin_hash = COALESCE($2, pin_hash), failed = 0, locked_until = NULL,
+               last_verified_at = CASE WHEN $3 THEN $4 ELSE last_verified_at END
+             WHERE user_id = $1`,
+            [userId, upgradedHash, markVerified, now],
+          );
           return { ok: true };
         }
         if (failed >= free) lockedUntil = now + lockDuration(failed);
@@ -2519,7 +2548,7 @@ async mlsPendingRemovalsFor(userId) {
      * Consumes a verified-email ticket and creates the account in one transaction.
      * A failed account insert rolls back ticket consumption so the user can retry safely.
      */
-    async createVerifiedAccountWithEmailToken({ email, changeEmailCode, userId, passwordHash, nickname, nowMs, joinDefaultOrg = false }) {
+    async createVerifiedAccountWithEmailToken({ email, changeEmailCode, userId, passwordHash, pinHash, nickname, nowMs, joinDefaultOrg = false }) {
       try {
         return await inTransaction(async (c) => {
           await c.query('INSERT INTO email_codes (email) VALUES ($1) ON CONFLICT (email) DO NOTHING', [email]);
@@ -2548,6 +2577,10 @@ async mlsPendingRemovalsFor(userId) {
           await c.query(
             'INSERT INTO profiles (user_id, email, email_verified, nickname, created_at, locale) VALUES ($1, $2, TRUE, $3, $4, $5)',
             [userId, email, nickname, nowMs, locale],
+          );
+          await c.query(
+            'INSERT INTO pins (user_id, pin_hash, failed, locked_until, last_verified_at, reminder_next_at) VALUES ($1, $2, 0, NULL, $3, $4)',
+            [userId, pinHash, nowMs, nowMs + 7 * 24 * 60 * 60_000],
           );
           return { outcome: 'ok', created: 'ok', locale };
         });
