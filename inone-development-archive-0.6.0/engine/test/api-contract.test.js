@@ -4,8 +4,11 @@ import assert from 'node:assert/strict';
 
 const read = (relative) => readFileSync(new URL(relative, import.meta.url), 'utf8');
 const server = read('../src/server.js');
+const store = read('../src/store.js');
+const memoryStore = read('../src/store-memory.js');
 const manifest = JSON.parse(read('../../../мусорный ящик/HTML-архив/mobile-assets/ui-approval/screen-manifest.json'));
 const nativeApp = read('../../../mobile/lib/app/inone_mobile_app.dart');
+const messagesScreen = read('../../../mobile/lib/ui_dart_source/screens/main/inone_messages_screen.dart');
 const mobileHost = read('../../../mobile/lib/main.dart');
 const mobilePubspec = read('../../../mobile/pubspec.yaml');
 
@@ -83,10 +86,13 @@ test('first-message contact prompts never gate MLS delivery and block future dir
   assert.match(server, /storage\.acceptContactRequest/u);
   assert.match(server, /storage\.blockUser/u);
   assert.match(server, /incomingContactRequest/u);
-  assert.match(server, /createIncomingContactRequest/u);
+  assert.match(store, /createIncomingContactRequest/u);
+  assert.match(memoryStore, /recordIncomingContactRequest/u);
   assert.match(server, /user_blocked/u);
   assert.match(nativeApp, /onAcceptContact: \(chat\)/u);
   assert.match(nativeApp, /onBlockContact: \(chat\)/u);
+  assert.match(messagesScreen, /Принять/u);
+  assert.match(messagesScreen, /Заблокировать/u);
 });
 
 test('production Flutter entry uses native Dart UI and keeps MLS disabled by default', () => {
