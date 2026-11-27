@@ -42,18 +42,21 @@ fn лишний_участник_на_сервере_приостанавлив�
         "отправка приостановлена: {refused}"
     );
 
-    // Сервер выравнивается: Кэрол снова не участник. Отправка возобновляется.
+    // Legacy server-side deletion cannot reconcile an MLS group. Recovery remains required
+    // until a real MLS Commit is applied; changing only the server list is insufficient.
     assert_eq!(
         engine.command(&format!("REMOVE_MEMBER {ROOM} {CAROL}")),
         "OK"
     );
     bob.sync().unwrap();
-    assert_eq!(
-        bob.desync_reason(ROOM).unwrap(),
-        None,
-        "после выравнивания флаг снят"
+    assert!(
+        bob.desync_reason(ROOM).unwrap().is_some(),
+        "server-only membership edits must not clear the MLS recovery condition"
     );
-    bob.send_text(ROOM, "можно").unwrap();
+    assert!(
+        bob.send_text(ROOM, "нельзя").is_err(),
+        "sending remains blocked until a valid MLS reconciliation"
+    );
 }
 
 #[test]
@@ -92,14 +95,12 @@ fn серверное_удаление_не_останавливает_друг�
         vec!["вторая комната"],
         "вторая комната читается"
     );
-    assert!(
-        bob.desync_reason(gone).unwrap().is_some(),
-        "первая комната помечена расхождением"
+    assert_eq!(
+        bob.desync_reason(gone).unwrap(),
+        None,
+        "a blocked legacy removal leaves the first room's MLS membership consistent"
     );
-    assert!(
-        bob.send_text(gone, "нельзя").is_err(),
-        "в первую комнату отправка приостановлена"
-    );
+    bob.send_text(gone, "первая комната остаётся доступна").unwrap();
     assert_eq!(
         bob.desync_reason(kept).unwrap(),
         None,

@@ -601,6 +601,18 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
     },
     async removeOrgMemberAtomic({ orgId, actor, target, action, at }) {
       return inTransaction(async (client) => {
+        // Lock active organization links before rooms, matching open-join's link -> room order.
+        // This freezes the inherited-room set while membership revocation is evaluated.
+        const { rows: activeLinks } = await client.query(
+          "SELECT link_id, CASE WHEN org_a = $1 THEN org_b ELSE org_a END AS linked_org_id FROM org_links WHERE status = 'active' AND (org_a = $1 OR org_b = $1) ORDER BY link_id FOR UPDATE",
+          [orgId],
+        );
+        const linkedOrgIds = activeLinks.map((row) => row.linked_org_id);
+        const affectedOrgIds = [orgId, ...linkedOrgIds];
+        await client.query(
+          'SELECT room_id FROM rooms WHERE org_id = ANY($1::text[]) AND (room_id IN (SELECT room_id FROM room_members WHERE user_id = $2) OR owner = $2) ORDER BY room_id FOR UPDATE',
+          [affectedOrgIds, target],
+        );
         const { rows: orgRows } = await client.query('SELECT org_id FROM organizations WHERE org_id = $1 FOR UPDATE', [orgId]);
         if (!orgRows[0]) return { ok: false, reason: 'not_found' };
         const { rows } = await client.query(
@@ -628,10 +640,30 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
           [orgId, target],
         );
         if (ownedRooms.length) return { ok: false, reason: 'owns_rooms' };
+        const { rows: mlsRooms } = await client.query(
+          `SELECT DISTINCT r.room_id
+             FROM rooms r
+             JOIN room_members rm ON rm.room_id = r.room_id
+             JOIN mls_groups mg ON mg.room_id = r.room_id AND mg.epoch > 0
+            WHERE rm.user_id = $2
+              AND (r.org_id = $1 OR (
+                r.org_id = ANY($3::text[])
+                AND NOT EXISTS (SELECT 1 FROM org_members direct_member WHERE direct_member.org_id = r.org_id AND direct_member.user_id = $2)
+              ))
+            ORDER BY r.room_id`,
+          [orgId, target, linkedOrgIds],
+        );
+        if (mlsRooms.length) return { ok: false, reason: 'mls_removal_required', rooms: mlsRooms.map((row) => row.room_id) };
         await client.query(
           'DELETE FROM room_members WHERE user_id = $2 AND room_id IN (SELECT room_id FROM rooms WHERE org_id = $1)',
           [orgId, target],
         );
+        if (linkedOrgIds.length) {
+          await client.query(
+            'DELETE FROM room_members rm USING rooms r WHERE rm.room_id = r.room_id AND rm.user_id = $1 AND r.org_id = ANY($2::text[]) AND NOT EXISTS (SELECT 1 FROM org_members direct_member WHERE direct_member.org_id = r.org_id AND direct_member.user_id = $1)',
+            [target, linkedOrgIds],
+          );
+        }
         await client.query('DELETE FROM org_members WHERE org_id = $1 AND user_id = $2', [orgId, target]);
         testHooks.beforeAdminActionInsert?.({ orgId, actor, action, target });
         await client.query(
@@ -650,14 +682,41 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
       return rows[0].n;
     },
     async removeOrgMember(orgId, userId) {
-      // Lock the authorization row before removing room memberships. Open joins
-      // take FOR SHARE on this row inside their own transaction; this ordering
-      // prevents a revoke from deleting membership first and then leaving a
-      // stale room_members row inserted by an in-flight join.
-      await inTransaction(async (c) => {
+      return inTransaction(async (c) => {
+        const { rows: activeLinks } = await c.query(
+          "SELECT link_id, CASE WHEN org_a = $1 THEN org_b ELSE org_a END AS linked_org_id FROM org_links WHERE status = 'active' AND (org_a = $1 OR org_b = $1) ORDER BY link_id FOR UPDATE",
+          [orgId],
+        );
+        const linkedOrgIds = activeLinks.map((row) => row.linked_org_id);
+        const affectedOrgIds = [orgId, ...linkedOrgIds];
+        await c.query(
+          'SELECT room_id FROM rooms WHERE org_id = ANY($1::text[]) AND (room_id IN (SELECT room_id FROM room_members WHERE user_id = $2) OR owner = $2) ORDER BY room_id FOR UPDATE',
+          [affectedOrgIds, userId],
+        );
         await c.query('SELECT user_id FROM org_members WHERE org_id = $1 AND user_id = $2 FOR UPDATE', [orgId, userId]);
+        const { rows: mlsRooms } = await c.query(
+          `SELECT DISTINCT r.room_id
+             FROM rooms r
+             JOIN room_members rm ON rm.room_id = r.room_id
+             JOIN mls_groups mg ON mg.room_id = r.room_id AND mg.epoch > 0
+            WHERE rm.user_id = $2
+              AND (r.org_id = $1 OR (
+                r.org_id = ANY($3::text[])
+                AND NOT EXISTS (SELECT 1 FROM org_members direct_member WHERE direct_member.org_id = r.org_id AND direct_member.user_id = $2)
+              ))
+            ORDER BY r.room_id`,
+          [orgId, userId, linkedOrgIds],
+        );
+        if (mlsRooms.length) return { ok: false, reason: 'mls_removal_required', rooms: mlsRooms.map((row) => row.room_id) };
         await c.query('DELETE FROM room_members WHERE user_id = $2 AND room_id IN (SELECT room_id FROM rooms WHERE org_id = $1)', [orgId, userId]);
+        if (linkedOrgIds.length) {
+          await c.query(
+            'DELETE FROM room_members rm USING rooms r WHERE rm.room_id = r.room_id AND rm.user_id = $1 AND r.org_id = ANY($2::text[]) AND NOT EXISTS (SELECT 1 FROM org_members direct_member WHERE direct_member.org_id = r.org_id AND direct_member.user_id = $1)',
+            [userId, linkedOrgIds],
+          );
+        }
         await c.query('DELETE FROM org_members WHERE org_id = $1 AND user_id = $2', [orgId, userId]);
+        return { ok: true };
       });
     },
     async purgeRejectedOrgRequests(cutoffMs) {
@@ -755,25 +814,78 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
       return rows.map((r) => ({ linkId: r.link_id, orgA: r.org_a, orgB: r.org_b, status: r.status, proposingOrg: r.proposed_by_org }));
     },
     async removeCrossOrgMemberships(orgX, orgY) {
-      await pool.query(`DELETE FROM room_members rm USING rooms r
-        WHERE rm.room_id = r.room_id AND r.org_id = $1
-          AND rm.user_id IN (SELECT user_id FROM org_members WHERE org_id = $2)
-          AND rm.user_id NOT IN (SELECT user_id FROM org_members WHERE org_id = $1)`, [orgX, orgY]);
-      await pool.query(`DELETE FROM room_members rm USING rooms r
-        WHERE rm.room_id = r.room_id AND r.org_id = $2
-          AND rm.user_id IN (SELECT user_id FROM org_members WHERE org_id = $1)
-          AND rm.user_id NOT IN (SELECT user_id FROM org_members WHERE org_id = $2)`, [orgX, orgY]);
+      return inTransaction(async (c) => {
+        await c.query(
+          'SELECT room_id FROM rooms WHERE org_id = ANY($1::text[]) ORDER BY room_id FOR UPDATE',
+          [[orgX, orgY]],
+        );
+        const { rows: mlsRooms } = await c.query(
+          `SELECT DISTINCT r.room_id
+             FROM room_members rm
+             JOIN rooms r ON r.room_id = rm.room_id
+             JOIN mls_groups mg ON mg.room_id = r.room_id AND mg.epoch > 0
+            WHERE (r.org_id = $1
+                   AND rm.user_id IN (SELECT user_id FROM org_members WHERE org_id = $2)
+                   AND rm.user_id NOT IN (SELECT user_id FROM org_members WHERE org_id = $1))
+               OR (r.org_id = $2
+                   AND rm.user_id IN (SELECT user_id FROM org_members WHERE org_id = $1)
+                   AND rm.user_id NOT IN (SELECT user_id FROM org_members WHERE org_id = $2))
+            ORDER BY r.room_id`,
+          [orgX, orgY],
+        );
+        if (mlsRooms.length) return { ok: false, reason: 'mls_removal_required', rooms: mlsRooms.map((row) => row.room_id) };
+        await c.query(`DELETE FROM room_members rm USING rooms r
+          WHERE rm.room_id = r.room_id AND r.org_id = $1
+            AND rm.user_id IN (SELECT user_id FROM org_members WHERE org_id = $2)
+            AND rm.user_id NOT IN (SELECT user_id FROM org_members WHERE org_id = $1)`, [orgX, orgY]);
+        await c.query(`DELETE FROM room_members rm USING rooms r
+          WHERE rm.room_id = r.room_id AND r.org_id = $2
+            AND rm.user_id IN (SELECT user_id FROM org_members WHERE org_id = $1)
+            AND rm.user_id NOT IN (SELECT user_id FROM org_members WHERE org_id = $2)`, [orgX, orgY]);
+        return { ok: true };
+      });
     },
     // Revoke the cross-organization link, remove inherited room memberships and write both audit
     // records atomically. The org_links row lock serializes with join/invite paths that use FOR SHARE.
     async revokeOrgLink({ linkId, fromStatus, actor, at }) {
       return inTransaction(async (c) => {
+        const { rows: linkSnapshot } = await c.query(
+          'SELECT org_a, org_b, status FROM org_links WHERE link_id = $1',
+          [linkId],
+        );
+        if (!linkSnapshot[0] || linkSnapshot[0].status !== fromStatus) return false;
+        const { org_a: orgA, org_b: orgB } = linkSnapshot[0];
+        // Match open-join's link -> room lock order: join holds FOR SHARE on this row
+        // before it locks a room. Locking rooms first here would create a lock-order inversion.
+        const { rows: linkRows } = await c.query(
+          'SELECT org_a, org_b, status FROM org_links WHERE link_id = $1 FOR UPDATE',
+          [linkId],
+        );
+        if (!linkRows[0] || linkRows[0].status !== fromStatus) return false;
+        await c.query(
+          'SELECT room_id FROM rooms WHERE org_id = ANY($1::text[]) ORDER BY room_id FOR UPDATE',
+          [[orgA, orgB]],
+        );
+        const { rows: mlsRooms } = await c.query(
+          `SELECT DISTINCT r.room_id
+             FROM room_members rm
+             JOIN rooms r ON r.room_id = rm.room_id
+             JOIN mls_groups mg ON mg.room_id = r.room_id AND mg.epoch > 0
+            WHERE (r.org_id = $1
+                   AND rm.user_id IN (SELECT user_id FROM org_members WHERE org_id = $2)
+                   AND rm.user_id NOT IN (SELECT user_id FROM org_members WHERE org_id = $1))
+               OR (r.org_id = $2
+                   AND rm.user_id IN (SELECT user_id FROM org_members WHERE org_id = $1)
+                   AND rm.user_id NOT IN (SELECT user_id FROM org_members WHERE org_id = $2))
+            ORDER BY r.room_id`,
+          [orgA, orgB],
+        );
+        if (mlsRooms.length) return { ok: false, reason: 'mls_removal_required', rooms: mlsRooms.map((row) => row.room_id) };
         const { rows } = await c.query(
           "UPDATE org_links SET status = 'revoked', decided_by = $3, decided_at = $4 WHERE link_id = $1 AND status = $2 RETURNING org_a, org_b",
           [linkId, fromStatus, actor, at],
         );
         if (!rows[0]) return false;
-        const { org_a: orgA, org_b: orgB } = rows[0];
         await c.query(`DELETE FROM room_members rm USING rooms r
           WHERE rm.room_id = r.room_id AND r.org_id = $1
             AND rm.user_id IN (SELECT user_id FROM org_members WHERE org_id = $2)
@@ -1760,7 +1872,15 @@ async mlsPendingRemovalsFor(userId) {
     },
 
     async removeRoomMember(roomId, userId) {
-      await pool.query('DELETE FROM room_members WHERE room_id = $1 AND user_id = $2', [roomId, userId]);
+      return inTransaction(async (c) => {
+        await c.query('SELECT room_id FROM rooms WHERE room_id = $1 FOR UPDATE', [roomId]);
+        const { rows: groups } = await c.query('SELECT epoch FROM mls_groups WHERE room_id = $1 FOR UPDATE', [roomId]);
+        if (groups[0] && Number(groups[0].epoch) > 0) {
+          return { ok: false, reason: 'mls_commit_required', epoch: Number(groups[0].epoch) };
+        }
+        await c.query('DELETE FROM room_members WHERE room_id = $1 AND user_id = $2', [roomId, userId]);
+        return { ok: true };
+      });
     },
 
     async setRoomAppearance(roomId, patch) {
@@ -2200,6 +2320,11 @@ async mlsPendingRemovalsFor(userId) {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
+        const { rows: roomRows } = await client.query('SELECT room_id FROM rooms WHERE room_id = $1 FOR UPDATE', [roomId]);
+        if (!roomRows[0]) {
+          await client.query('ROLLBACK');
+          return { ok: false, reason: 'room_not_found', epoch: 0 };
+        }
         await client.query('INSERT INTO mls_groups (room_id, epoch) VALUES ($1, 0) ON CONFLICT (room_id) DO NOTHING', [roomId]);
         const { rows } = await client.query('SELECT epoch FROM mls_groups WHERE room_id = $1 FOR UPDATE', [roomId]);
         const current = Number(rows[0].epoch);

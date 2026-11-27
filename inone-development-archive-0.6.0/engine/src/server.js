@@ -1628,6 +1628,7 @@ if (req.method === 'DELETE' && orgMemberRoute) {
     if (removed.reason === 'forbidden') return send(res, 403, { error: 'org role required to remove this member', code: 'org_role_required' });
     if (removed.reason === 'last_owner') return send(res, 409, { error: 'the last owner cannot be removed', code: 'last_owner' });
     if (removed.reason === 'owns_rooms') return send(res, 409, { error: 'transfer ownership of the rooms first', code: 'owns_rooms' });
+    if (removed.reason === 'mls_removal_required') return send(res, 409, { error: 'remove the member from each MLS room with an MLS Remove Commit before removing organization membership', code: 'mls_removal_required', rooms: removed.rooms });
     throw new Error('organization member removal failed');
   }
   return send(res, 200, { removed: true });
@@ -1641,6 +1642,7 @@ if (req.method === 'POST' && orgLeaveRoute) {
     if (left.reason === 'not_found') return send(res, 404, { error: 'not found' });
     if (left.reason === 'last_owner') return send(res, 409, { error: 'the last owner cannot leave', code: 'last_owner' });
     if (left.reason === 'owns_rooms') return send(res, 409, { error: 'transfer ownership of the rooms first', code: 'owns_rooms' });
+    if (left.reason === 'mls_removal_required') return send(res, 409, { error: 'leave each MLS room with an MLS Remove Commit before leaving the organization', code: 'mls_removal_required', rooms: left.rooms });
     throw new Error('organization leave failed');
   }
   return send(res, 200, { left: true });
@@ -1739,7 +1741,10 @@ if (req.method === 'POST' && orgLinkActRoute) {
   }
   if (link.status === 'revoked') return send(res, 409, { error: 'link is already revoked' });
   const revoked = await storage.revokeOrgLink({ linkId, fromStatus: link.status, actor: d.userId, at: now() });
-  if (!revoked) return send(res, 409, { error: 'link state changed; reload and retry' });
+  if (!revoked || revoked === false) return send(res, 409, { error: 'link state changed; reload and retry' });
+  if (revoked.ok === false && revoked.reason === 'mls_removal_required') {
+    return send(res, 409, { error: 'remove inherited members from each MLS room with MLS Remove Commits before revoking the organization link', code: 'mls_removal_required', rooms: revoked.rooms });
+  }
   return send(res, 200, { status: 'revoked' });
 }
 // Журнал действий администраторов (шаг 5.7): читают владелец и администратор организации. Содержимое комнат сюда не попадает.
@@ -2344,8 +2349,11 @@ if (req.method === 'POST' && p === '/login') {
           if (!hasCapability(r, d.userId, 'remove_members')) return send(res, 403, { error: 'missing capability: remove_members' });
           if (r.admins.includes(target)) return send(res, 403, { error: 'an admin cannot remove another admin' });
         }
-        await storage.removeRoomMember(roomId, target); // при повторном добавлении история начинается заново
-        await markRoomChanged(roomId, r.members);       // прежние участники, включая удалённого, узнают об изменении
+        const removed = await storage.removeRoomMember(roomId, target);
+        if (removed?.ok === false && removed.reason === 'mls_commit_required') {
+          return send(res, 409, { error: 'membership changes for an MLS room must use an MLS Remove Commit', code: 'mls_commit_required', epoch: removed.epoch });
+        }
+        await markRoomChanged(roomId, r.members);
         return send(res, 200, { ok: true });
       }
 

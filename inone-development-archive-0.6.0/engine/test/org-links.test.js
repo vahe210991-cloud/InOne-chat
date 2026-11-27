@@ -182,7 +182,7 @@ test('F-04 PostgreSQL: a room invitation racing link revocation cannot leave sta
       const originalQuery = client.query.bind(client);
       client.query = async (query, ...params) => {
         const sql = typeof query === 'string' ? query : query?.text ?? '';
-        if (sql.includes('UPDATE org_links SET status')) signalRevokeAttempt();
+        if (sql.includes('SELECT org_a, org_b, status FROM org_links WHERE link_id = $1 FOR UPDATE')) signalRevokeAttempt();
         if (sql.includes('FOR SHARE OF member, member_org, link')) {
           const result = await originalQuery(query, ...params);
           signalInviteLock();
@@ -236,7 +236,7 @@ test('F-05 PostgreSQL: a room message write is serialized before link revocation
       const originalQuery = client.query.bind(client);
       client.query = async (query, ...params) => {
         const sql = typeof query === 'string' ? query : query?.text ?? '';
-        if (sql.includes('UPDATE org_links SET status')) signalRevokeAttempt();
+        if (sql.includes('SELECT org_a, org_b, status FROM org_links WHERE link_id = $1 FOR UPDATE')) signalRevokeAttempt();
         return originalQuery(query, ...params);
       };
       return client;
@@ -345,7 +345,7 @@ test('F-02 PostgreSQL: cross-organization link revocation waits for an in-flight
       const originalQuery = client.query.bind(client);
       client.query = async (query, ...params) => {
         const sql = typeof query === 'string' ? query : query?.text ?? '';
-        if (sql.includes('UPDATE org_links SET status')) signalRevokeAttempt();
+        if (sql.includes('SELECT org_a, org_b, status FROM org_links WHERE link_id = $1 FOR UPDATE')) signalRevokeAttempt();
         if (sql.includes('FOR SHARE OF member, member_org, link')) {
           const result = await originalQuery(query, ...params);
           signalShareLock();
@@ -374,6 +374,79 @@ test('F-02 PostgreSQL: cross-organization link revocation waits for an in-flight
   } finally {
     releaseJoin?.();
     restorePoolHooks();
+    await s.stop();
+  }
+});
+
+
+test('organization link revocation fails closed while inherited MLS room membership remains', async () => {
+  const s = await start();
+  try {
+    assert.equal((await call(s.base, 'POST', '/rooms', s.anna.token, { roomId: ROOM, orgId: ORG_A, members: [BORIS] })).status, 200);
+    const proposed = await call(s.base, 'POST', `/orgs/${ORG_A}/links`, s.boris.token, { targetOrgId: ORG_B });
+    assert.equal(proposed.status, 200);
+    const linkId = proposed.json.linkId;
+    assert.equal((await call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/accept`, s.carol.token, {})).status, 200);
+    assert.equal((await call(s.base, 'POST', `/rooms/${enc(ROOM)}/members`, s.anna.token, { userId: CAROL })).status, 200);
+
+    await s.anna.raw('POST', `/mls/groups/${enc(ROOM)}/commits`, {
+      epoch: 0, commit: Buffer.from('INITIAL-LINK-MLS').toString('base64'),
+      changes: { adds: [], removes: [] },
+    });
+    assert.ok((await s.store.getRoom(ROOM)).members.includes(CAROL), 'linked member is present in the room');
+    assert.equal((await s.anna.raw('GET', `/mls/groups/${enc(ROOM)}/epoch`)).epoch, 1, 'MLS epoch is active');
+    const blocked = await call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/revoke`, s.carol.token, {});
+    assert.equal(blocked.status, 409);
+    assert.equal(blocked.json.code, 'mls_removal_required');
+    assert.deepEqual(blocked.json.rooms, [ROOM]);
+    assert.equal((await s.store.getOrgLink(linkId)).status, 'active', 'link remains active until MLS revocation completes');
+    assert.ok((await s.store.getRoom(ROOM)).members.includes(CAROL), 'inherited room membership remains until MLS commit');
+
+    await s.anna.raw('POST', `/mls/groups/${enc(ROOM)}/commits`, {
+      epoch: 1, commit: Buffer.from('REMOVE-CAROL').toString('base64'),
+      changes: { adds: [], removes: [CAROL] },
+    });
+    const revoked = await call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/revoke`, s.carol.token, {});
+    assert.equal(revoked.status, 200);
+    assert.equal((await s.store.getOrgLink(linkId)).status, 'revoked');
+  } finally {
+    await s.stop();
+  }
+});
+
+
+test('organization member removal also guards inherited MLS memberships in linked organizations', async () => {
+  const s = await start();
+  const room = '!linked-member-org-remove:inone.test';
+  try {
+    assert.equal((await call(s.base, 'POST', '/rooms', s.carol.token, { roomId: room, orgId: ORG_B, members: [CAROL, DAVE] })).status, 200);
+    const proposed = await call(s.base, 'POST', `/orgs/${ORG_A}/links`, s.boris.token, { targetOrgId: ORG_B });
+    assert.equal(proposed.status, 200);
+    const linkId = proposed.json.linkId;
+    assert.equal((await call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/accept`, s.carol.token, {})).status, 200);
+    assert.equal((await call(s.base, 'POST', `/rooms/${enc(room)}/members`, s.carol.token, { userId: BORIS })).status, 200);
+
+    await s.carol.raw('POST', `/mls/groups/${enc(room)}/commits`, {
+      epoch: 0, commit: Buffer.from('INITIAL-INHERITED-MLS').toString('base64'),
+      changes: { adds: [], removes: [] },
+    });
+    assert.ok((await s.store.getRoom(room)).members.includes(BORIS), 'the linked organization member is in the MLS room');
+
+    const blocked = await call(s.base, 'DELETE', `/orgs/${ORG_A}/members/${enc(BORIS)}`, s.anna.token);
+    assert.equal(blocked.status, 409);
+    assert.equal(blocked.json.code, 'mls_removal_required');
+    assert.deepEqual(blocked.json.rooms, [room]);
+    assert.equal(await s.store.orgRoleOf(ORG_A, BORIS), 'admin', 'source organization membership remains intact');
+
+    await s.carol.raw('POST', `/mls/groups/${enc(room)}/commits`, {
+      epoch: 1, commit: Buffer.from('REMOVE-INHERITED-BORIS').toString('base64'),
+      changes: { adds: [], removes: [BORIS] },
+    });
+    const removed = await call(s.base, 'DELETE', `/orgs/${ORG_A}/members/${enc(BORIS)}`, s.anna.token);
+    assert.equal(removed.status, 200);
+    assert.equal(await s.store.orgRoleOf(ORG_A, BORIS), null);
+    assert.equal((await s.store.getRoom(room)).members.includes(BORIS), false, 'inherited room membership is cleaned after MLS removal');
+  } finally {
     await s.stop();
   }
 });

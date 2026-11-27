@@ -112,3 +112,22 @@ test('участник выходит сам коммитом с собстве�
     await g.stop();
   }
 });
+
+
+test('legacy room DELETE cannot remove a member after an MLS epoch exists', async () => {
+  const g = await group();
+  try {
+    await commit(g.alice, { epoch: 0, commit: b64('INITIAL-MLS-EPOCH'), changes: { adds: [], removes: [] } });
+    const response = await fetch(`${g.base}/rooms/${enc(ROOM)}/members/${enc(CAROL)}`, {
+      method: 'DELETE',
+      headers: { authorization: `Bearer ${g.alice.token}` },
+    });
+    const body = await response.json();
+    assert.equal(response.status, 409);
+    assert.equal(body.code, 'mls_commit_required');
+    assert.ok((await members(g.alice)).includes(CAROL), 'server membership remains unchanged');
+    assert.equal((await g.alice.raw('GET', `/mls/groups/${enc(ROOM)}/epoch`)).epoch, 1, 'MLS epoch is unchanged');
+  } finally {
+    await g.stop();
+  }
+});
