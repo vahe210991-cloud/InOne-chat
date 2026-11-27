@@ -20,6 +20,37 @@ async function assertOrgRequestDocumentMetadata(pool) {
   assert.deepEqual(rows.map((row) => row.column_name), ['filename', 'mime_type']);
 }
 
+async function assertDirectConversationSchema(pool) {
+  const { rows: tableRows } = await pool.query(
+    "SELECT to_regclass('direct_conversations') IS NOT NULL AS present",
+  );
+  assert.equal(tableRows[0].present, true, 'direct conversation pair table exists');
+  const { rows: indexRows } = await pool.query(
+    "SELECT to_regclass('direct_conversations_by_user_a') IS NOT NULL AS user_a, to_regclass('direct_conversations_by_user_b') IS NOT NULL AS user_b",
+  );
+  assert.equal(indexRows[0].user_a && indexRows[0].user_b, true, 'direct conversation participant indexes exist');
+  const { rows: roomRows } = await pool.query(
+    "SELECT is_nullable FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'rooms' AND column_name = 'org_id'",
+  );
+  assert.equal(roomRows[0]?.is_nullable, 'YES', 'personal rooms are not organization-scoped');
+  const { rows: kindRows } = await pool.query(
+    "SELECT check_clause FROM information_schema.check_constraints WHERE constraint_schema = current_schema() AND constraint_name = 'rooms_kind_check'",
+  );
+  assert.match(kindRows[0]?.check_clause ?? '', /direct/, 'rooms kind constraint accepts direct chats');
+  const { rows: channelNameRows } = await pool.query(
+    "SELECT check_clause FROM information_schema.check_constraints WHERE constraint_schema = current_schema() AND constraint_name = 'rooms_channel_has_name'",
+  );
+  assert.match(channelNameRows[0]?.check_clause ?? '', /channel/, 'channel-name constraint remains present');
+  assert.match(channelNameRows[0]?.check_clause ?? '', /<>/, 'direct rooms may omit a display name');
+}
+
+async function assertContactSchema(pool) {
+  const { rows } = await pool.query(
+    "SELECT to_regclass('contacts') IS NOT NULL AS contacts, to_regclass('contact_requests') IS NOT NULL AS requests, to_regclass('user_blocks') IS NOT NULL AS blocks, to_regclass('contact_requests_by_recipient_pending') IS NOT NULL AS request_index",
+  );
+  assert.deepEqual(rows[0], { contacts: true, requests: true, blocks: true, request_index: true });
+}
+
 async function isolatedPool() {
   const admin = new pg.Pool({ connectionString: URL_, max: 1 });
   const schema = `t_mig_${randomBytes(6).toString('hex')}`;
@@ -42,6 +73,8 @@ test('новая база создаётся из schema.sql и получает
     const { rows } = await db.pool.query('SELECT version FROM schema_migrations ORDER BY version');
     assert.deepEqual(rows.map((r) => r.version), listMigrations());
     await assertOrgRequestDocumentMetadata(db.pool);
+    await assertDirectConversationSchema(db.pool);
+    await assertContactSchema(db.pool);
     assert.deepEqual(await migrate(db.pool), [], 'повторный запуск ничего не меняет');
   } finally {
     await db.close();
@@ -64,6 +97,8 @@ test('старая база из выпуска alpha.21 обновляется,
     assert.deepEqual(room, { owner: '@alice', visibility: 'private', join_policy: 'approval' });
     assert.equal((await db.pool.query("SELECT to_regclass('group_assets') IS NOT NULL AS ok")).rows[0].ok, true);
     await assertOrgRequestDocumentMetadata(db.pool);
+    await assertDirectConversationSchema(db.pool);
+    await assertContactSchema(db.pool);
   } finally {
     await db.close();
   }
