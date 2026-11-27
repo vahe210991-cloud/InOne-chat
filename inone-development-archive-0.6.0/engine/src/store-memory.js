@@ -1,6 +1,6 @@
 // ============================================================================
 // Память PoC: тот же интерфейс, что у store.js (PostgreSQL), но без базы.
-// Операции синхронные: JavaScript не чередует их, поэтому гонок нет.
+// Асинхронные account/email-code transitions сериализуются, чтобы совпадать с транзакциями PostgreSQL.
 // Правила PIN совпадают с store.js (verifyPin). Токены лежат как ключевые хэши, как и в базе.
 // ============================================================================
 import { channelNameKey } from './room-names.js';
@@ -19,6 +19,19 @@ export function createMemoryStore({ pinPepper }) {
   const pins = new Map();     // пользователь -> durable PIN state mirror
   const pinResetChallenges = new Map();
   const pinLocks = new Map();
+  let registrationTail = Promise.resolve();
+  const withRegistrationLock = async (work) => {
+    const previous = registrationTail;
+    let release;
+    const current = new Promise((resolve) => { release = resolve; });
+    registrationTail = previous.then(() => current);
+    await previous;
+    try {
+      return await work();
+    } finally {
+      release();
+    }
+  };
   const withPinLock = async (userId, work) => {
     const previous = pinLocks.get(userId) ?? Promise.resolve();
     let release;
@@ -1745,47 +1758,52 @@ mlsPendingRemovalsFor(userId) {
       }
       return null;
     },
-    createOpenAccount({ userId, passwordHash, pinHash, phoneE164 = null, nowMs, joinDefaultOrg = false }) {
-      if (typeof pinHash !== 'string' || pinHash.length < 1) throw new TypeError('PIN hash is required');
-      if (accounts.has(userId)) return 'account';
-      if (phoneE164 && [...phones.values()].some((entry) => entry.phone === phoneE164)) return 'phone';
-      accounts.set(userId, passwordHash);
-      if (joinDefaultOrg) addOrgMembership(DEFAULT_ORG_ID, userId, 'member', nowMs);
-      pins.set(userId, {
-        hash: pinHash, failed: 0, lockedUntil: null,
-        lastVerifiedAt: nowMs, reminderNextAt: nowMs + 7 * 24 * 60 * 60_000,
+    async createOpenAccount({ userId, passwordHash, pinHash, phoneE164 = null, nowMs, joinDefaultOrg = false }) {
+      return withRegistrationLock(async () => {
+        if (typeof pinHash !== 'string' || pinHash.length < 1) throw new TypeError('PIN hash is required');
+        if (accounts.has(userId)) return 'account';
+        if (phoneE164 && [...phones.values()].some((entry) => entry.phone === phoneE164)) return 'phone';
+        accounts.set(userId, passwordHash);
+        if (joinDefaultOrg) addOrgMembership(DEFAULT_ORG_ID, userId, 'member', nowMs);
+        pins.set(userId, {
+          hash: pinHash, failed: 0, lockedUntil: null,
+          lastVerifiedAt: nowMs, reminderNextAt: nowMs + 7 * 24 * 60 * 60_000,
+        });
+        if (phoneE164) phones.set(userId, {
+          phone: phoneE164, verified: false, codeHash: null, codeAttempts: 0, codeExpiresAt: 0, sends: [],
+        });
+        return 'ok';
       });
-      if (phoneE164) phones.set(userId, {
-        phone: phoneE164, verified: false, codeHash: null, codeAttempts: 0, codeExpiresAt: 0, sends: [],
-      });
-      return 'ok';
     },
 
-    createVerifiedAccount({ userId, passwordHash, pinHash, phoneE164 = null, email, nickname, nowMs, provider = null, joinDefaultOrg = false, locale = 'hy' }) {
-      if (typeof pinHash !== 'string' || pinHash.length < 1) throw new TypeError('PIN hash is required');
-      if (accounts.has(userId)) return 'account';
-      for (const p of profiles.values()) {
-        if (p.emailVerified && p.email === email) return 'email';
-        if (p.nickname.toLowerCase() === nickname.toLowerCase()) return 'nickname';
-      }
-      if (phoneE164 && [...phones.values()].some((entry) => entry.phone === phoneE164)) return 'phone';
-      const key = provider ? `${provider.provider}|${provider.sub}` : null;
-      if (key && providerLinks.has(key)) return 'link';
-      accounts.set(userId, passwordHash);
-      if (joinDefaultOrg) addOrgMembership(DEFAULT_ORG_ID, userId, 'member', nowMs);
-      profiles.set(userId, { email, emailVerified: true, nickname, createdAt: nowMs, locale });
-      pins.set(userId, {
-        hash: pinHash, failed: 0, lockedUntil: null,
-        lastVerifiedAt: nowMs, reminderNextAt: nowMs + 7 * 24 * 60 * 60_000,
+    async createVerifiedAccount({ userId, passwordHash, pinHash, phoneE164 = null, email, nickname, nowMs, provider = null, joinDefaultOrg = false, locale = 'hy' }) {
+      return withRegistrationLock(async () => {
+        if (typeof pinHash !== 'string' || pinHash.length < 1) throw new TypeError('PIN hash is required');
+        if (accounts.has(userId)) return 'account';
+        for (const p of profiles.values()) {
+          if (p.emailVerified && p.email === email) return 'email';
+          if (p.nickname.toLowerCase() === nickname.toLowerCase()) return 'nickname';
+        }
+        if (phoneE164 && [...phones.values()].some((entry) => entry.phone === phoneE164)) return 'phone';
+        const key = provider ? `${provider.provider}|${provider.sub}` : null;
+        if (key && providerLinks.has(key)) return 'link';
+        accounts.set(userId, passwordHash);
+        if (joinDefaultOrg) addOrgMembership(DEFAULT_ORG_ID, userId, 'member', nowMs);
+        profiles.set(userId, { email, emailVerified: true, nickname, createdAt: nowMs, locale });
+        pins.set(userId, {
+          hash: pinHash, failed: 0, lockedUntil: null,
+          lastVerifiedAt: nowMs, reminderNextAt: nowMs + 7 * 24 * 60 * 60_000,
+        });
+        if (phoneE164) phones.set(userId, {
+          phone: phoneE164, verified: false, codeHash: null, codeAttempts: 0, codeExpiresAt: 0, sends: [],
+        });
+        if (key) providerLinks.set(key, { userId, email, linkedAt: nowMs });
+        return 'ok';
       });
-      if (phoneE164) phones.set(userId, {
-        phone: phoneE164, verified: false, codeHash: null, codeAttempts: 0, codeExpiresAt: 0, sends: [],
-      });
-      if (key) providerLinks.set(key, { userId, email, linkedAt: nowMs });
-      return 'ok';
     },
 
     async createVerifiedAccountWithEmailToken({ email, changeEmailCode, userId, passwordHash, makePinHash, phoneE164 = null, nickname, nowMs, joinDefaultOrg = false }) {
+      return withRegistrationLock(async () => {
       if (typeof makePinHash !== 'function') throw new TypeError('PIN hash derivation is required');
       const current = emailCodes.get(email) ?? freshEmailCode();
       const { next, result } = changeEmailCode(structuredClone(current));
@@ -1814,26 +1832,31 @@ mlsPendingRemovalsFor(userId) {
         phone: phoneE164, verified: false, codeHash: null, codeAttempts: 0, codeExpiresAt: 0, sends: [],
       });
       return { outcome: 'ok', created: 'ok', locale };
+      });
     },
     // ---- код подтверждения почты при регистрации ----
-    emailCodeUpdate(email, change) {
-      const cur = emailCodes.get(email);
-      const { next, result } = change(cur ? structuredClone(cur) : freshEmailCode());
-      emailCodes.set(email, structuredClone(next));
-      return result;
+    async emailCodeUpdate(email, change) {
+      return withRegistrationLock(async () => {
+        const cur = emailCodes.get(email);
+        const { next, result } = change(cur ? structuredClone(cur) : freshEmailCode());
+        emailCodes.set(email, structuredClone(next));
+        return result;
+      });
     },
 
     async emailCodeUpdateWithOutbox(email, change, enqueue, locale = 'hy') {
-      const cur = emailCodes.get(email);
-      const { next, result } = change(cur ? structuredClone(cur) : freshEmailCode());
-      emailCodes.set(email, structuredClone({ ...next, locale }));
-      try {
-        if (enqueue) await enqueue(null, result);
-      } catch (error) {
-        if (cur) emailCodes.set(email, cur); else emailCodes.delete(email);
-        throw error;
-      }
-      return result;
+      return withRegistrationLock(async () => {
+        const cur = emailCodes.get(email);
+        const { next, result } = change(cur ? structuredClone(cur) : freshEmailCode());
+        emailCodes.set(email, structuredClone({ ...next, locale }));
+        try {
+          if (enqueue) await enqueue(null, result);
+        } catch (error) {
+          if (cur) emailCodes.set(email, cur); else emailCodes.delete(email);
+          throw error;
+        }
+        return result;
+      });
     },
 
     // ---- открытый ключ устройства для биометрического подтверждения (этап 2б) ----
