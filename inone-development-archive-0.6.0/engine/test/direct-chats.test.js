@@ -246,6 +246,16 @@ test('direct chats require no recipient approval and activate automatically thro
     assert.equal(aliceBlockedSummary.incomingContactRequest, false);
     const bobBlockedSummary = (await bob.raw('GET', '/rooms/mine')).rooms.find((room) => room.roomId === opened.roomId);
     assert.equal(bobBlockedSummary.isBlocked, false, 'the blocked user is not told who initiated the block');
+    assert.equal(
+      (await alice.raw('GET', '/contacts')).contacts.some((contact) => contact.userId === BOB),
+      false,
+      'blocking removes the peer from the block initiator contact list',
+    );
+    assert.equal(
+      (await bob.raw('GET', '/contacts')).contacts.some((contact) => contact.userId === ALICE),
+      false,
+      'blocking removes the block initiator from the peer contact list as well',
+    );
     await assert.rejects(
       bob.raw('POST', `/mls/groups/${enc(opened.roomId)}/messages`, {
         message: replyWireMessage,
