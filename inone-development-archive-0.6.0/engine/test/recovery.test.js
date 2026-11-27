@@ -380,14 +380,15 @@ test('аккаунт без подтверждённой основной поч
 test('один телефон не может принадлежать двум аккаунтам и не является recovery-фактором', async () => {
   const { srv, base, stop } = await start();
   try {
-    const alice = await ChatClient.create(base, ALICE, 'A_PHONE', PW, { phone: PHONE_A });
+    await ChatClient.create(base, ALICE, 'A_PHONE', PW, { phone: PHONE_A });
     const duplicate = await fetch(`${base}/register`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ userId: BOB, password: PW, phone: PHONE_A, pin: TEST_PIN, pinConfirmation: TEST_PIN }),
     });
     assert.equal(duplicate.status, 409, 'регистрация с занятым номером отклоняется');
-    await assert.rejects(alice.raw('POST', '/account/phone', { password: PW, phone: PHONE_A }), (error) => error.status === 409);
+    const bob = await ChatClient.create(base, BOB, 'B_PHONE', PW, { phone: PHONE_B });
+    await assert.rejects(bob.raw('POST', '/account/phone', { password: PW, phone: PHONE_A }), (error) => error.status === 409);
     assert.equal(srv.smsOutbox(PHONE_A).length, 0, 'номер не требует SMS-подтверждения');
   } finally {
     await stop();
