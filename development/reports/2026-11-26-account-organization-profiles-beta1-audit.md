@@ -114,3 +114,13 @@ No tasks were closed or crossed out. No WBS percentage was recalculated.
 - Current-head GitHub Actions runs are queued/in progress, including Backend Node/PostgreSQL, Native MLS, P0 source validation, Compose runtime, Dev Container and exact-SHA acceptance. No PASS is claimed until all required jobs complete successfully on the exact head.
 - The remediation is still a backend fail-closed guard. Multi-room Flutter orchestration remains a follow-up; do not mark PROFILE-SEC-001 complete or strike it through.
 - No database migration, release flag, product policy or WBS change has been made.
+
+
+### 2026-11-27 — inherited cross-organization membership guard
+
+- Further source review identified an additional P0 edge case: removing a user from their source organization can also remove their inherited access to MLS rooms in a linked organization. The earlier guard checked only rooms owned by the source organization.
+- PR #173 was extended to lock active organization-link rows before room rows, inspect both direct and inherited MLS-protected memberships, and clean up inherited non-MLS room memberships only after the MLS guard passes. PostgreSQL and in-memory stores were updated.
+- Added a regression scenario: a linked organization member is placed in an MLS room owned by the other organization; source-organization removal must return 409 with the room ID; after a valid MLS Remove Commit, the organization removal can proceed.
+- Current exact implementation SHA: `e13bc51b95f90acc4dbd8f4023fe2b9239b71aa8`.
+- New exact-SHA GitHub Actions runs have been created and are queued. No PASS is claimed.
+- The implementation remains Draft, unmerged and not accepted. Multi-room Flutter orchestration remains outstanding.
