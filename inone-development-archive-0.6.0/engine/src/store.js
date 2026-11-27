@@ -285,7 +285,7 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
           );
           return { ok: true };
         }
-        if (failed >= free) lockedUntil = now + lockDuration(failed);
+        if (failed > free) lockedUntil = now + lockDuration(failed);
         await save(failed, lockedUntil);
         return { ok: false, reason: 'wrong' };
       });
@@ -1531,7 +1531,7 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
         const failed = previousFailed + 1;
         const pinOk = await pinCheck(pin, pinRow.pin_hash);
         if (!pinOk.ok) {
-          const retryAt = failed >= free ? now + lockDuration(failed) : null;
+          const retryAt = failed > free ? now + lockDuration(failed) : null;
           await client.query(
             'UPDATE pins SET failed = $2, locked_until = $3 WHERE user_id = $1',
             [userId, failed, retryAt],
