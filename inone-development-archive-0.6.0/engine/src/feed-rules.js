@@ -75,10 +75,15 @@ export function hashPostRequest(input) {
   const { caption, mediaIds } = input;
   const normalized = normalizePostCaption(caption);
   if (!normalized.ok) return normalized;
-  if (!Array.isArray(mediaIds) || mediaIds.length === 0
-    || mediaIds.some((id) => !isValidPostId(id))
-    || new Set(mediaIds).size !== mediaIds.length) {
+  if (!Array.isArray(mediaIds) || mediaIds.length === 0) {
     return { ok: false, error: 'media_required_or_invalid' };
+  }
+  const uniqueMediaIds = new Set();
+  for (const mediaId of mediaIds) {
+    if (!isValidPostId(mediaId) || uniqueMediaIds.has(mediaId)) {
+      return { ok: false, error: 'media_required_or_invalid' };
+    }
+    uniqueMediaIds.add(mediaId);
   }
   const canonical = JSON.stringify({ v: 1, caption: normalized.caption, mediaIds });
   return {
@@ -89,7 +94,10 @@ export function hashPostRequest(input) {
 }
 
 function cursorKeyBytes(secret) {
-  const key = Buffer.isBuffer(secret) ? secret : Buffer.from(String(secret ?? ''), 'utf8');
+  if (typeof secret !== 'string' && !Buffer.isBuffer(secret) && !(secret instanceof Uint8Array)) {
+    throw new TypeError('feed cursor key must be a string or byte array');
+  }
+  const key = Buffer.from(secret);
   if (key.length < 32) throw new TypeError('feed cursor key must contain at least 256 bits');
   return key;
 }
