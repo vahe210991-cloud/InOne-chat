@@ -193,6 +193,7 @@ class _ChatRow extends StatelessWidget {
     final c = context.inone;
     final showContactActions = chat.incomingContactRequest &&
         chat.peerUserId != null &&
+        !chat.isPeerContact &&
         !chat.isBlocked &&
         onAcceptContact != null &&
         onBlockContact != null;
