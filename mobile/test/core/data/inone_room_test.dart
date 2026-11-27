@@ -17,6 +17,21 @@ void main() {
     expect(conversation.requiresCreatorSetup, isTrue);
   });
 
+  test('creator retry keeps the MLS initialization requirement', () {
+    final conversation = InOneDirectConversation.fromJson({
+      'roomId': '!dm_opaque:inone.test',
+      'peerUserId': '@bob:inone.test',
+      'status': 'provisioning',
+      'created': false,
+      'isCreator': true,
+      'mlsInitializationRequired': true,
+    });
+
+    expect(conversation.created, isFalse);
+    expect(conversation.requiresCreatorSetup, isTrue);
+    expect(conversation.mlsInitializationRequired, isTrue);
+  });
+
   test('recipient can open an automatically provisioned direct conversation without accepting it', () {
     final conversation = InOneDirectConversation.fromJson({
       'roomId': '!dm_opaque:inone.test',
