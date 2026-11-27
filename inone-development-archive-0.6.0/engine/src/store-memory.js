@@ -116,6 +116,7 @@ export function createMemoryStore({ pinPepper }) {
       return rec ? {
         configured: true,
         legacy: !String(rec.hash ?? '').startsWith('argon2id' + String.fromCharCode(36)),
+        lastVerifiedAt: rec.lastVerifiedAt ?? null,
         reminderNextAt: rec.reminderNextAt ?? null,
         lockedUntil: rec.lockedUntil ?? null,
       } : { configured: false, legacy: false, lastVerifiedAt: null, reminderNextAt: null, lockedUntil: null };
