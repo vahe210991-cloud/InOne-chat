@@ -2203,17 +2203,33 @@ async mlsPendingRemovalsFor(userId) {
         }
         if (claim.result !== null) {
           const claimedDeviceIds = new Set(claim.result.map((item) => item.deviceId));
-          if ([...activeDeviceIds].some((deviceId) => !claimedDeviceIds.has(deviceId))) {
-            return { ok: false, reason: 'device_key_package_unavailable' };
+          const deviceSetMatches = claimedDeviceIds.size === activeDeviceIds.size
+            && [...activeDeviceIds].every((deviceId) => claimedDeviceIds.has(deviceId));
+          if (deviceSetMatches) {
+            return {
+              ok: true,
+              packages: claim.result.map((item) => ({
+                deviceId: item.deviceId,
+                packageId: item.packageId ?? null,
+                package: Buffer.from(item.package, 'base64'),
+              })),
+            };
           }
-          return {
-            ok: true,
-            packages: claim.result.filter((item) => activeDeviceIds.has(item.deviceId)).map((item) => ({
-              deviceId: item.deviceId,
-              packageId: item.packageId ?? null,
-              package: Buffer.from(item.package, 'base64'),
-            })),
-          };
+          // The intent is still claim_pending (a staged commit never calls this
+          // endpoint again). Refresh its reservation when the active device set
+          // changed before the client had staged the MLS Add Commit.
+          for (const item of claim.result) {
+            if (item.packageId !== undefined && item.packageId !== null) {
+              await c.query(
+                'UPDATE mls_key_packages SET consumed_at = NULL WHERE id = $1 AND user_id = $2 AND last_resort = FALSE AND consumed_at IS NOT NULL',
+                [item.packageId, targetUserId],
+              );
+            }
+          }
+          await c.query(
+            'UPDATE mls_key_package_claims SET result = NULL WHERE target_user_id = $1 AND requester_user_id = $2 AND requester_device_id = $3 AND claim_id = $4 AND state = \'reserved\'',
+            [targetUserId, requesterUserId, requesterDeviceId, claimId],
+          );
         }
 
         const { rows: availableDevices } = await c.query(
