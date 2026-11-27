@@ -1032,7 +1032,7 @@ export function createMemoryStore({ pinPepper }) {
     listContacts(userId) {
       const contactIds = [...(contacts.get(userId) ?? [])];
       const incomingRequests = [...contactRequests.values()]
-        .filter((request) => request.recipientId === userId && request.status === 'pending')
+        .filter((request) => request.recipientId === userId && request.status === 'pending' && !(contacts.get(userId)?.has(request.requesterId) ?? false))
         .map((request) => ({
           userId: request.requesterId,
           displayName: profiles.get(request.requesterId)?.nickname?.trim() || null,
