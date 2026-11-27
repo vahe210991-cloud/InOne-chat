@@ -1295,6 +1295,7 @@ export function createMemoryStore({ pinPepper }) {
       const activeDeviceIds = new Set([...devices.values()]
         .filter((device) => device.userId === targetUserId && !device.revoked)
         .map((device) => device.deviceId));
+      if (activeDeviceIds.size === 0) return { ok: false, reason: 'no_active_devices' };
       const claimKey = JSON.stringify([targetUserId, requesterUserId, requesterDeviceId, claimId]);
       const previous = mlsPackageClaims.get(claimKey);
       if (previous) {
@@ -1302,17 +1303,36 @@ export function createMemoryStore({ pinPepper }) {
         if (previous.state === 'committed') return { ok: false, reason: 'claim_committed' };
         if (roomId && previous.roomId && previous.roomId !== roomId) return { ok: false, reason: 'claim_room_mismatch' };
         if (roomId && !previous.roomId) previous.roomId = roomId;
+        const claimedDeviceIds = new Set(previous.packages.map((item) => item.deviceId));
+        if ([...activeDeviceIds].some((deviceId) => !claimedDeviceIds.has(deviceId))) {
+          return { ok: false, reason: 'device_key_package_unavailable' };
+        }
         return { ok: true, packages: previous.packages.filter((item) => activeDeviceIds.has(item.deviceId)).map((item) => ({
           deviceId: item.deviceId, packageId: item.packageId, package: Buffer.from(item.package),
         })) };
       }
+      const availableDeviceIds = new Set(mlsPackages
+        .filter((p) => p.userId === targetUserId && activeDeviceIds.has(p.deviceId) && p.consumedAt === null
+          && ((!p.lastResort && p.createdAt >= nowMs - MLS_REGULAR_MAX_AGE_MS)
+            || (p.lastResort && p.createdAt >= nowMs - MLS_LAST_RESORT_MAX_AGE_MS)))
+        .map((p) => p.deviceId));
+      if ([...activeDeviceIds].some((deviceId) => !availableDeviceIds.has(deviceId))) {
+        return { ok: false, reason: 'device_key_package_unavailable' };
+      }
       const out = [];
-      const targetDeviceIds = [...new Set(mlsPackages.filter((p) => p.userId === targetUserId && activeDeviceIds.has(p.deviceId) && p.consumedAt === null).map((p) => p.deviceId))].sort();
+      const targetDeviceIds = [...availableDeviceIds].sort();
       for (const deviceId of targetDeviceIds) {
         const next = mlsPackages.find((p) => p.userId === targetUserId && p.deviceId === deviceId && p.consumedAt === null && !p.lastResort && p.createdAt >= nowMs - MLS_REGULAR_MAX_AGE_MS);
         if (next) { next.consumedAt = nowMs; out.push({ deviceId, packageId: next.id, package: Buffer.from(next.package) }); continue; }
         const fallback = [...mlsPackages].reverse().find((p) => p.userId === targetUserId && p.deviceId === deviceId && p.lastResort && p.createdAt >= nowMs - MLS_LAST_RESORT_MAX_AGE_MS);
         if (fallback) out.push({ deviceId, packageId: fallback.id, package: Buffer.from(fallback.package) });
+      }
+      if (out.length !== activeDeviceIds.size) {
+        for (const item of out) {
+          const pack = mlsPackages.find((p) => p.id === item.packageId);
+          if (pack && !pack.lastResort) pack.consumedAt = null;
+        }
+        return { ok: false, reason: 'device_key_package_unavailable' };
       }
       mlsPackageClaims.set(claimKey, { roomId: roomId ?? null, state: 'reserved', packages: out.map((item) => ({
         deviceId: item.deviceId, packageId: item.packageId, package: Buffer.from(item.package),
