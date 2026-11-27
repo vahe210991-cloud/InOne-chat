@@ -722,3 +722,11 @@ No tests, builds, PostgreSQL migration runs, Rust checks, Flutter checks, or dev
 - The direct-chat room-summary refresh now carries contact flags into the existing chat preview, so an incoming prompt is refreshed after active-thread MLS sync/resume rather than waiting for a full screen reload.
 - The chat preview model and backend regression suite now cover these cases. Backend Compose acceptance checks for the latest `0037-contacts-and-blocks` migration.
 - These are implementation and test-source changes only. No verification was run; do not mark the WBS complete until exact-SHA Actions pass and the owner accepts the release gates.
+
+
+### 13.6. Contact-flow consistency follow-up — 2026-11-27
+
+- An active block now overrides a previously accepted contact-request state on repeated acceptance. The SQL path checks the block record before returning `accepted`, matching memory-store behavior.
+- A creator reopening a still-provisioning direct conversation receives `mlsInitializationRequired=true` even when the reservation already exists. Flutter rejects contradictory server state.
+- Blocked chat rows suppress contact actions even if a stale pending flag is present; the UI notice accurately describes the bidirectional block.
+- CI migration-count assertion requires 36 SQL migrations and the exact 0037 marker. Verification remains pending; no WBS item is complete until exact-SHA acceptance passes and owner approval is given.
