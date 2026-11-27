@@ -1,10 +1,11 @@
 # Chat & Groups Beta 1.0 implementation progress — 2026-11-26
 
-- **Base:** `main` at `216c6d9ea4e825182d3fc94b7aa6d9841e0ad250`.
-- **Working branch:** `work/chat-groups-beta1-implementation-2026-11-26`.
+- **Base:** `main` at `7d34b99fcc026a828b838e211d039c575aeace1d`.
+- **Working branch:** `work/chat-groups-beta1-implementation-2026-11-27`.
+- **Pull request:** [#176](https://github.com/vahe210991-cloud/InOne-chat/pull/176), ready for review; do not merge before owner approval.
 - **Detailed plan:** [CHAT-GROUPS-BETA-1.0-IMPLEMENTATION-PLAN.md](../CHAT-GROUPS-BETA-1.0-IMPLEMENTATION-PLAN.md).
 - **Status:** IMPLEMENTATION IN PROGRESS / NOT ACCEPTED.
-- **Tests:** not run. No claim of build or release readiness.
+- **Tests:** GitHub Actions were queued after static preflight; results pending. No claim of build or release readiness.
 
 ## Owner clarification: direct-message delivery
 
