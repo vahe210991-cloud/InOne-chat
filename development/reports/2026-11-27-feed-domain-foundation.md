@@ -188,3 +188,19 @@ No WBS weights or progress percentages were changed. No task was closed or struc
 - Quarantine and final encrypted Feed objects must remain in separate namespaces. Worker temp files must be private, bounded, cleaned on success/failure/cancellation, and never served directly. The deployment platform, durable queue, and shared private storage mechanism must be selected before wiring this topology.
 - This remains a design recommendation, not an implementation or production-readiness claim.
 
+### Candidate processing stack (research only; not yet added)
+
+The official Sharp installation matrix documents prebuilt Linux x64 and ARM64 musl binaries when musl is at least 1.2.5, and requires a Node-API v9 runtime (Node.js 20.9+). This makes Sharp a viable image-processing candidate for Node 22, but the exact worker base image/digest and musl version must be verified before dependency lock/update and container acceptance: https://sharp.pixelplumbing.com/install/.
+
+For video, use the FFmpeg/ffprobe toolchain inside the isolated worker rather than in the public API process. FFmpeg's own security page records active release branches and security fixes, including the 9.0 line; the worker therefore needs an explicit patch/update policy and vulnerability review before every accepted build: https://ffmpeg.org/security.html.
+
+Recommended boundary for the next design iteration:
+- API process: authenticate, reserve, stream to quarantine, enqueue durable work; no media decoder execution.
+- Worker: separate process/service, no public ingress, no credentials beyond the minimum private object/queue access, non-root, read-only root filesystem, bounded private temp space, CPU/memory/PID/time/concurrency limits, and network access disabled unless a narrowly documented need exists.
+- Image candidate: Sharp for decode, metadata removal and derivative generation; validate magic bytes and decoded dimensions/pixel count before producing fixed server-selected outputs.
+- Video candidate: FFmpeg/ffprobe from a pinned worker image; fixed argument arrays with shell disabled, local-file-only inputs, explicit demuxer/codec allowlist, bounded duration/resolution/frame rate and strict process timeout. Do not pass user-controlled URLs or arbitrary FFmpeg arguments.
+- Queue and storage: durable processing outbox/queue; private quarantine and final encrypted Feed namespace; atomic transition to READY only after every required derivative is validated and stored.
+- Keep exact supported formats and numeric limits open until the product requirements, device/network benchmarks and deployment target are confirmed.
+
+This is a candidate architecture, not a dependency approval or implementation. No package or image was added in this stage.
+
