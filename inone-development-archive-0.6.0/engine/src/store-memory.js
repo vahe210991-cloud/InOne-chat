@@ -170,7 +170,7 @@ export function createMemoryStore({ pinPepper }) {
         }
         const oldPin = pins.get(userId);
         const nextPin = {
-          hash: challenge.pinHash, failed: 0, lockedUntil: null,
+          hash: await challenge.makePinHash(), failed: 0, lockedUntil: null,
           lastVerifiedAt: challenge.now, reminderNextAt: challenge.reminderNextAt,
         };
         pins.set(userId, nextPin);
