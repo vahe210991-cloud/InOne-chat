@@ -13,7 +13,6 @@ const BOB = '@bob:inone.test';
 const CAROL = '@carol:inone.test';
 const EVE = '@eve:inone.test';
 const enc = encodeURIComponent;
-const b64 = (text) => Buffer.from(text, 'utf8').toString('base64');
 
 async function start() {
   const db = await storeForTest(PEPPER);
@@ -42,7 +41,8 @@ test('владелец передаёт владение участнику: н�
     const info = await roomInfo(g.bob);
     assert.equal(info.owner, BOB);
     assert.ok(!info.admins.includes(ALICE), 'прежний владелец не администратор');
-    assert.equal((await g.bob.raw('DELETE', `/rooms/${enc(ROOM)}/members/${enc(CAROL)}`)).ok, true, 'новый владелец удаляет участника');
+    await g.bob.removeMember(ROOM, CAROL);
+    assert.ok(!(await roomInfo(g.bob)).members.includes(CAROL), 'новый владелец удаляет участника через MLS');
   } finally {
     await g.stop();
   }
@@ -64,9 +64,9 @@ test('прежний владелец выходит только после п�
   try {
     await assert.rejects(g.alice.raw('DELETE', `/rooms/${enc(ROOM)}/members/${enc(ALICE)}`), (e) => e.status === 409, 'без передачи владелец не выходит');
     await g.alice.raw('POST', `/rooms/${enc(ROOM)}/owner`, { userId: BOB });
-    assert.equal((await g.alice.raw('DELETE', `/rooms/${enc(ROOM)}/members/${enc(ALICE)}`)).ok, true, 'после передачи прежний владелец выходит');
-    const r = await g.bob.raw('POST', `/mls/groups/${enc(ROOM)}/commits`, { epoch: 0, commit: b64('REMOVE-CAROL'), changes: { adds: [], removes: [CAROL] } });
-    assert.equal(r.epoch, 1, 'новый владелец удаляет участника коммитом MLS');
+    await g.alice.removeMember(ROOM, ALICE);
+    await g.bob.removeMember(ROOM, CAROL);
+    assert.ok(!(await roomInfo(g.bob)).members.includes(CAROL), 'новый владелец удаляет участника коммитом MLS');
     assert.ok(!(await roomInfo(g.bob)).members.includes(CAROL));
   } finally {
     await g.stop();
