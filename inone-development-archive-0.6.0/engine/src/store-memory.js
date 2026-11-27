@@ -1035,7 +1035,7 @@ export function createMemoryStore({ pinPepper }) {
         .filter((request) => request.recipientId === userId && request.status === 'pending')
         .map((request) => ({
           userId: request.requesterId,
-          displayName: profiles.get(request.requesterId)?.nickname?.trim() || request.requesterId,
+          displayName: profiles.get(request.requesterId)?.nickname?.trim() || null,
           roomId: request.roomId,
           createdAt: request.createdAt,
         }));
