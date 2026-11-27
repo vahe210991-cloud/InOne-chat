@@ -830,3 +830,10 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Added a blocked-peer row to the Flutter widget test to ensure a stale prompt flag cannot render **Принять**/**Заблокировать** after block. Updated the post-block notice to state the bidirectional restriction accurately.
 - Corrected backend Compose migration-count assertion to 36 (migrations 0002–0037) while requiring `0037-contacts-and-blocks`.
 - Source review only. No tests, builds, database migrations, Flutter/Rust checks, or Actions workflows have been run. Native MLS remains disabled; no merge.
+
+
+## 2026-11-27 — Fail-closed multi-device direct-chat initialization
+
+- KeyPackage claim now requires an eligible package for every active recipient device before it returns a claim. Missing one device package yields `device_key_package_unavailable`; partial package consumption is rolled back/restored so the same claim ID can retry after the missing device uploads a package.
+- Applied to PostgreSQL and memory stores. Extended the direct-chat test source to cover one-of-two-device failure followed by a successful retry returning both device packages.
+- This only covers the initial active-device set. Adding/revoking devices after a claim is staged remains an explicit D-02 acceptance item. No tests/builds/Actions have been run.
