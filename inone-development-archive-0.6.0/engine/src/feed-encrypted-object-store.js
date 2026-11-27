@@ -206,15 +206,17 @@ export function createEncryptedFeedObjectStore(innerStore, keyProvider, {
   }
   validateKeyId(keyProvider?.activeKeyId);
 
+  const putStream = async (key, source) => {
+    validateObjectKey(key);
+    const encrypted = Readable.from(encryptedRecords(source, key, keyProvider, chunkBytes));
+    return innerStore.putStream(key, encrypted);
+  };
+
   return {
     async put(key, bytes) {
-      return this.putStream(key, Readable.from([Buffer.from(bytes)]));
+      return putStream(key, Readable.from([Buffer.from(bytes)]));
     },
-    async putStream(key, source) {
-      validateObjectKey(key);
-      const encrypted = Readable.from(encryptedRecords(source, key, keyProvider, chunkBytes));
-      return innerStore.putStream(key, encrypted);
-    },
+    putStream,
     async get(key) {
       const stream = await this.getStream(key);
       if (!stream) return null;
