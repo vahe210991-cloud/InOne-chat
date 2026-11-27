@@ -9,8 +9,8 @@
 - PR #174 branch: feat/feed-domain-foundation-beta1-main-7d34b99-20261127
 - Prior PR #174 head: 87783a37fe9361dec477458ff9ad921887d19e97
 - Architecture proposal update commit: 7db478a6d4e2491a273188ad0b55cca544eaba35
-- Domain implementation commits: a6648bebc7cbbcf5a62d2d8d84316d34087f3a0a and 95711b5f1a3d9bffa438cc9e2b4fe355cc5719c5
-- Domain test additions/fix commits: d182a94eaa7a3ee4f99ff882deef4d8a6e4f751d and 83e6b81af42fd86b8dca2ccbfb9d9129cb22771a
+- Domain implementation commits: a6648bebc7cbbcf5a62d2d8d84316d34087f3a0a and 95711b5f1a3d9bffa438cc9e2b4fe355cc5719c5, 52d3909bf20d61212854afc470b9222e4ac63bf3, and 26b94a6e376064aecddadc735392d651bbbfbc30
+- Domain test additions/fix commits: d182a94eaa7a3ee4f99ff882deef4d8a6e4f751d 83e6b81af42fd86b8dca2ccbfb9d9129cb22771a and 3f1467bed8acc5b8b48ce9ef396a5ca1d6dd9357 and 8acd93fb329d4bc95a85921fe03c586c408a47e1
 - PR: https://github.com/vahe210991-cloud/InOne-chat/pull/174 (Draft, unmerged)
 
 ## Owner decision recorded
@@ -52,7 +52,7 @@ Required adaptation before production use:
 - existing unsigned cursor serialization is only a parsing/format helper and is not a tamper-proof production cursor. Production cursor must use a server-secret HMAC and constant-time verification;
 - old text-only create semantics and tests must not be used as production post contract.
 
-Added pure helpers for optional caption normalization, mandatory non-empty unique ready Feed media validation bound to the author, and HMAC-SHA-256 cursor signing/verification with key IDs, scope binding and constant-time signature comparison. Added corresponding tests to the existing feed-rules test file. These are domain primitives only; they are not wired into HTTP routes or persistence.
+Added pure helpers for optional caption normalization, canonical idempotency hashing over the normalized caption plus ordered media IDs, mandatory non-empty unique ready Feed media validation bound to the author, and HMAC-SHA-256 cursor signing/verification with key IDs, scope binding, canonical encoding checks and constant-time signature comparison. Pagination helper now emits signed cursors. Added corresponding tests to the existing feed-rules test file. These are domain primitives only; they are not wired into HTTP routes or persistence.
 
 No backend routes, SQL migrations, Post/PostMedia persistence, media worker, object encryption, media delivery or Flutter integration have been implemented in this stage.
 
@@ -74,7 +74,7 @@ No shared backend files were changed. No PR was merged. No tests were run in thi
 
 ## Next engineering sequence
 
-1. Complete static review of the new pure Feed domain helpers and tests, then execute the exact-head domain tests when the implementation batch is ready.
+1. Finish independent static review of the media-first helpers and test source. The tests remain NOT RUN; run them only after the implementation batch is ready and then report the exact tested SHA.
 2. Inspect the existing object-store abstraction and deployment/runtime capabilities for an isolated Feed bucket/namespace, encryption key provider and worker execution model.
 3. Propose evidence-based numeric limits for photo count, bytes, codecs, video duration/resolution, rendition profiles and processing resource budgets. Do not hard-code arbitrary values.
 4. Reconcile #171/#173/#169 integration order and capture a fresh exact main SHA before touching server/store/schema.
