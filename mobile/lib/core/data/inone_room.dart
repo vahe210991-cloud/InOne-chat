@@ -7,28 +7,69 @@ class InOneRoom {
     required this.kind,
     required this.name,
     required this.role,
+    this.lastEventSeq,
+    this.lastEventAt,
+    this.unreadCount = 0,
+    this.hasSummary = false,
+    this.peerUserId,
+    this.isPeerContact = false,
+    this.incomingContactRequest = false,
+    this.isBlocked = false,
   });
 
   final String roomId;
   final String kind;
   final String? name;
   final String role;
+  final int? lastEventSeq;
+  final int? lastEventAt;
+  final int unreadCount;
+  final bool hasSummary;
+  final String? peerUserId;
+  final bool isPeerContact;
+  final bool incomingContactRequest;
+  final bool isBlocked;
 
-  String get displayName => name?.trim().isNotEmpty == true ? name!.trim() : roomId;
+  String get displayName {
+    final value = name?.trim();
+    if (value != null && value.isNotEmpty) return value;
+    if (const {'direct', 'dm', 'person'}.contains(kind.toLowerCase())) {
+      return 'Личный диалог';
+    }
+    return roomId;
+  }
 
   factory InOneRoom.fromJson(Map<String, dynamic> json) {
     final roomId = json['roomId'];
     final kind = json['kind'];
     final name = json['name'];
     final role = json['role'];
+    final lastEventSeq = json['lastEventSeq'];
+    final lastEventAt = json['lastEventAt'];
+    final unreadCount = json['unreadCount'];
+    final peerUserId = json['peerUserId'];
+    final isPeerContact = json['isPeerContact'] ?? false;
+    final incomingContactRequest = json['incomingContactRequest'] ?? false;
+    final isBlocked = json['isBlocked'] ?? false;
+    final hasSummary = json.containsKey('lastEventSeq') &&
+        json.containsKey('lastEventAt') &&
+        json.containsKey('unreadCount');
 
     if (roomId is! String ||
         roomId.trim().isEmpty ||
         kind is! String ||
         kind.trim().isEmpty ||
         (name != null && name is! String) ||
+        (peerUserId != null && (peerUserId is! String || peerUserId.trim().isEmpty)) ||
+        isPeerContact is! bool ||
+        incomingContactRequest is! bool ||
+        isBlocked is! bool ||
         role is! String ||
-        !const {'owner', 'admin', 'member'}.contains(role)) {
+        !const {'owner', 'admin', 'member'}.contains(role) ||
+        (lastEventSeq != null && lastEventSeq is! int) ||
+        (lastEventAt != null && lastEventAt is! int) ||
+        (unreadCount != null && (unreadCount is! int || unreadCount < 0)) ||
+        hasSummary && unreadCount is! int) {
       throw const ApiException(
         code: 'invalid_response',
         statusCode: 200,
@@ -41,6 +82,14 @@ class InOneRoom {
       kind: kind,
       name: name as String?,
       role: role,
+      lastEventSeq: lastEventSeq as int?,
+      lastEventAt: lastEventAt as int?,
+      unreadCount: unreadCount as int? ?? 0,
+      hasSummary: hasSummary,
+      peerUserId: peerUserId as String?,
+      isPeerContact: isPeerContact,
+      incomingContactRequest: incomingContactRequest,
+      isBlocked: isBlocked,
     );
   }
 }
@@ -50,6 +99,8 @@ class InOneRoomList {
   const InOneRoomList(this.rooms);
 
   final List<InOneRoom> rooms;
+
+  bool get unreadCountsAvailable => rooms.every((room) => room.hasSummary);
 
   factory InOneRoomList.fromJson(Map<String, dynamic> json) {
     final rawRooms = json['rooms'];
@@ -65,6 +116,59 @@ class InOneRoomList {
     return InOneRoomList(List<InOneRoom>.unmodifiable(
       rawRooms.map((room) => InOneRoom.fromJson(room as Map<String, dynamic>)),
     ));
+  }
+}
+
+
+/// Result of POST /direct-chats/open. Provisioning is an internal MLS setup state,
+/// never a recipient approval request. The creator commits per-device Welcome automatically.
+class InOneDirectConversation {
+  const InOneDirectConversation({
+    required this.roomId,
+    required this.peerUserId,
+    required this.status,
+    required this.created,
+    required this.isCreator,
+    required this.mlsInitializationRequired,
+  });
+
+  final String roomId;
+  final String peerUserId;
+  final String status;
+  final bool created;
+  final bool isCreator;
+  final bool mlsInitializationRequired;
+
+  bool get requiresCreatorSetup => status == 'provisioning' && isCreator;
+
+  factory InOneDirectConversation.fromJson(Map<String, dynamic> json) {
+    final roomId = json['roomId'];
+    final peerUserId = json['peerUserId'];
+    final status = json['status'];
+    final created = json['created'];
+    final isCreator = json['isCreator'];
+    final mlsInitializationRequired = json['mlsInitializationRequired'];
+    if (roomId is! String || roomId.trim().isEmpty ||
+        peerUserId is! String || peerUserId.trim().isEmpty ||
+        status is! String || !const {'provisioning', 'active'}.contains(status) ||
+        created is! bool || isCreator is! bool ||
+        mlsInitializationRequired is! bool ||
+        created && (status != 'provisioning' || !isCreator || !mlsInitializationRequired) ||
+        status == 'active' && mlsInitializationRequired) {
+      throw const ApiException(
+        code: 'invalid_response',
+        statusCode: 200,
+        retryable: false,
+      );
+    }
+    return InOneDirectConversation(
+      roomId: roomId,
+      peerUserId: peerUserId,
+      status: status,
+      created: created,
+      isCreator: isCreator,
+      mlsInitializationRequired: mlsInitializationRequired,
+    );
   }
 }
 
@@ -134,6 +238,7 @@ class InOnePublicRoomSearch {
 class InOneRoomDetails {
   const InOneRoomDetails({
     required this.owner,
+    required this.kind,
     required this.admins,
     required this.members,
     required this.capabilities,
@@ -144,6 +249,7 @@ class InOneRoomDetails {
   });
 
   final String owner;
+  final String kind;
   final List<String> admins;
   final List<String> members;
   final Map<String, List<String>> capabilities;
@@ -154,6 +260,7 @@ class InOneRoomDetails {
 
   factory InOneRoomDetails.fromJson(Map<String, dynamic> json) {
     final owner = json['owner'];
+    final kind = json['kind'] ?? 'group';
     final admins = json['admins'];
     final members = json['members'];
     final rawCapabilities = json['capabilities'];
@@ -161,7 +268,9 @@ class InOneRoomDetails {
     final visibility = json['visibility'];
     final joinPolicy = json['join_policy'];
     final rawReadUpTo = json['read_upto'];
-    if (owner is! String || admins is! List ||
+    if (owner is! String || kind is! String ||
+        !const {'group', 'channel', 'direct'}.contains(kind) ||
+        admins is! List ||
         admins.any((value) => value is! String) ||
         members is! List || members.any((value) => value is! String) ||
         rawCapabilities is! Map || name != null && name is! String ||
@@ -193,6 +302,7 @@ class InOneRoomDetails {
     }
     return InOneRoomDetails(
       owner: owner,
+      kind: kind,
       admins: List<String>.unmodifiable(admins.cast<String>()),
       members: parsedMembers,
       capabilities: Map<String, List<String>>.unmodifiable(parsedCapabilities),
