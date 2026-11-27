@@ -58,6 +58,17 @@ test('Feed object encryption authenticates object key, wrapped DEK and every chu
   await rawStore.put(OBJECT_A, corrupted);
   await assert.rejects(() => encrypted.get(OBJECT_A));
 
+  const headerBytes = 8 + 2 + 2 + 8 + 12 + 32 + 16;
+  const firstChunkLength = original.readUInt32BE(headerBytes);
+  const firstChunkEnd = headerBytes + 4 + firstChunkLength + 16;
+  const forgedTruncation = Buffer.concat([
+    original.subarray(0, firstChunkEnd),
+    Buffer.alloc(4),
+    original.subarray(original.length - 16),
+  ]);
+  await rawStore.put(OBJECT_A, forgedTruncation);
+  await assert.rejects(() => encrypted.get(OBJECT_A));
+
   await rawStore.put(OBJECT_A, original.subarray(0, original.length - 3));
   await assert.rejects(() => encrypted.get(OBJECT_A));
 });
