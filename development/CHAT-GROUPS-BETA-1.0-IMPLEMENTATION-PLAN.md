@@ -683,7 +683,7 @@ The owner clarified the intended Beta 1.0 behavior:
 - Once the Add Commit is accepted, both paired accounts can exchange messages through the MLS-only message route.
 - If the sender is not in the recipient's contact list, the first delivered message creates a separate contact prompt beside the sender's name with **Принять** and **Заблокировать**. This prompt does not delay or gate delivery.
 - **Принять** adds the sender to the recipient's contacts and removes the prompt. If the sender is already in contacts, no prompt appears.
-- **Заблокировать** blocks the pair, removes reciprocal contact entries and pending prompts, prevents future direct messages in both directions and reopening the conversation. Previously delivered history remains available.
+- **Заблокировать** blocks the pair, removes reciprocal contact entries and pending prompts, prevents future direct messages in both directions and reopening the conversation. Previously delivered history remains available. The block initiator sees the block state; the blocked peer receives a generic unavailable response and is not told who initiated it.
 - The contact prompt is an address-book decision, not an MLS membership or message-approval decision.
 
 ### 13.2. Implemented on the working branch, not yet accepted
