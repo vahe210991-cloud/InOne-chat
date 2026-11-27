@@ -512,6 +512,8 @@ mod tests {
             _ => panic!("expected Bob application message"),
         }
 
+        drop(alice_signer);
+        drop(bob_signer);
         drop(alice_group);
         drop(bob_group);
         drop(alice_provider);
