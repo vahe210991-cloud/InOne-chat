@@ -725,3 +725,11 @@ Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone
 - Expanded source review confirms B-12 and B-13 defects; B-14 is already implemented at source level (invalid FID cleanup, non-retryable classification, queue cancellation, plaintext-free allowlisted push payload), pending DB-backed test execution; B-15 readiness is partial.
 - Current `main` already has device-bound signed downloads; avoid duplicating PR #86. PR #42 workflow targets old engine paths and does not implement atomic revocation. PR #65 is narrow and does not fix the global request boundary.
 - Updated Stage 0 report addendum in `development/reports/2026-11-24-cto-backend-security-remediation-stage0.md`.
+
+## 2026-11-27 — Feed implementation handoff
+
+- Owner-approved Beta 1.0 rule: published general-feed items are readable by every registered/authenticated InOne account; anonymous access is denied. Feed media inherits this rule and must be re-authorized at download. Privacy variant В remains binding outside Feed.
+- Draft PR #174 starts the implementation from `main` SHA `7d34b99fcc026a828b838e211d039c575aeace1d`. It contains isolated content/cursor domain rules, tests, and a DRAFT API contract proposal only.
+- No Feed API routes, posts table/migration, post persistence, cross-account read enforcement, media flow, Flutter repository/screen, or navigation activation exists from this stage. Feed is NOT ACCEPTED.
+- PR #172 contains the separate scope/owner-decision documentation and remains Draft/unmerged. PR #171 and #173 remain independent Draft branches; do not wholesale merge or copy their histories.
+- Report: `development/reports/2026-11-27-feed-domain-foundation.md`. API proposal: `development/architecture/FEED-BETA1-API-CONTRACT-PROPOSAL.md`.
