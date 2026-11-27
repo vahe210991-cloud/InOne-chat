@@ -20,11 +20,11 @@ This document is an implementation contract, not a completion report. AUTH-08 st
 
 ## 2. PIN KDF and secret handling
 
-- Use Argon2id with a unique cryptographically random salt per PIN, a 32-byte derived key and explicit versioned parameters. Parameters must be documented and calibrated against the production runtime/memory budget before enabling the feature.
+- Use Node.js native `crypto.argon2` (Node 24.7.0+) with Argon2id, a unique 16-byte cryptographically random salt, a 32-byte derived key and explicit versioned parameters: memory 65,536 KiB, passes 3, parallelism 1. The profile is fixed server-side; production latency/memory calibration remains a release gate.
 - Use a server-held pepper as an additional secret input, obtained from deployment secrets and never stored in PostgreSQL. Fail closed when the pepper is absent or below the required entropy/length.
 - Store a self-describing encoded record containing algorithm/version, parameters, salt and derived hash so future parameter upgrades can be performed safely.
 - Compare derived values with a constant-time comparison. Validate encoded records strictly before KDF work; malformed database values must fail closed without unbounded allocation.
-- Keep PIN KDF work asynchronous and bound concurrent KDF work to avoid event-loop stalls and memory-exhaustion denial of service. Do not accept client-selected KDF parameters.
+- Keep PIN KDF work asynchronous through Node's native crypto worker pool and bound it to two active derivations plus a finite queue of sixteen. Overflow fails closed with a retryable 503. Do not accept client-selected KDF parameters.
 - Do not silently downgrade existing PIN hashes. Existing accounts with legacy scrypt PIN records must enter a secure migration/verification path and be upgraded only after successful verification or protected reset. Legacy accounts without a PIN must complete protected PIN setup before protected account access and may not use email-only recovery.
 
 ## 3. Attempt policy and lockout state machine
@@ -50,10 +50,10 @@ The API returns a generic PIN failure and a retry time only when the caller is a
 ## 4. Registration flow
 
 1. Email verification produces the existing short-lived registration ticket.
-2. The mobile registration form collects nickname, password, required phone and PIN twice.
+2. Every registration path (verified email, provider-backed and development-only open registration) collects a required phone where configured and PIN twice. The canonical verified registration flow collects nickname, password, required phone and PIN twice.
 3. Client validation is UX only. Backend validates both PIN values as exactly eight ASCII digits and checks equality.
 4. Backend derives the PIN hash before opening the account-creation transaction.
-5. A single PostgreSQL transaction consumes the registration ticket, creates account/profile/phone state and inserts the PIN hash/security metadata. Any failure rolls back every write, including ticket consumption.
+5. A single PostgreSQL transaction consumes the registration ticket, creates account/profile/phone state and inserts the PIN hash/security metadata. Phone uniqueness is serialized with a transaction-scoped advisory lock; any failure rolls back every write, including ticket consumption. Optional SMS delivery occurs after commit and cannot turn a successfully created account into a failed/partial registration.
 6. The memory store must provide equivalent atomic semantics.
 7. The successful response must never include the PIN or its hash.
 
@@ -73,7 +73,7 @@ The API returns a generic PIN failure and a retry time only when the caller is a
 ### Authenticated PIN replacement
 
 - The settings reminder action «Не помню, заменить» opens a dedicated reset flow.
-- Require a valid authenticated session, recent password re-authentication (or applicable provider re-authentication for provider-only accounts), and a one-time code sent to the verified primary email.
+- Require a valid authenticated session and a one-time code sent to the verified primary email. Accounts with password sign-in must also re-enter the password at reset start. Provider-only accounts use their authenticated provider session plus the separate email challenge; no password is assumed or requested.
 - The email code is purpose-bound to PIN reset, short-lived, one-use, rate-limited and stored only as a keyed hash. It cannot be replayed as a registration, login, recovery or other step-up code.
 - New PIN is entered twice and validated server-side. PIN replacement and challenge consumption are atomic. The old PIN becomes invalid immediately after commit.
 - Send a security notification to the verified account email and other configured security-notification recipients. Never include the PIN or email code in the notification.
@@ -82,13 +82,13 @@ The API returns a generic PIN failure and a retry time only when the caller is a
 ### Legacy accounts without a PIN
 
 - A legacy account is not silently grandfathered into email-only recovery.
-- After password login, the server returns a restricted PIN-setup-required state. Only logout, refresh, PIN status/setup and security challenge endpoints remain available.
+- After any successful login, the server enforces a restricted PIN-setup-required state. Only logout, refresh, PIN status, protected reset and the minimal security endpoints remain available.
 - PIN setup requires authenticated re-authentication and verified-email confirmation. It does not accept a PIN-less recovery completion.
 
 ## 7. Monthly verification gate
 
 - Store last_verified_at durably per account, not in the mobile client or session memory.
-- After successful password authentication, if there is no PIN verification timestamp or 30 days have elapsed, issue the session in a restricted state and signal pinVerificationRequired to Flutter.
+- After any successful authentication, Flutter calls GET /pin/status. If there is no PIN verification timestamp or 30 days have elapsed, the server issues/keeps the session in a restricted state and the mobile host routes to the PIN gate.
 - A request-level backend gate blocks protected APIs until PIN verification. Allow only the minimal endpoints required to inspect PIN status, verify PIN, complete protected reset, refresh the session, change locale if necessary, and log out.
 - POST /pin/verify updates last_verified_at only after successful PIN verification. It must be atomic with the PIN attempt state.
 - Access-token refresh, process restart, device clock changes, replayed requests or a new session must not clear the gate.
@@ -100,7 +100,7 @@ The API returns a generic PIN failure and a retry time only when the caller is a
 - A reminder becomes due at most once per seven-day interval. The server persists the next reminder/acknowledgement time.
 - «Помню» records acknowledgement and schedules the next reminder no earlier than seven days later. It does not update the monthly verification timestamp and cannot satisfy the monthly gate.
 - «Не помню, заменить» starts the protected reset flow described above. The reminder remains pending until reset succeeds or the user explicitly acknowledges it.
-- The reminder copy is localized with the account locale. It must not contain or request the PIN itself.
+- The email templates are localized in Armenian, Russian and English. Mobile reminder/verification copy is currently authored in Russian; wiring it to the account locale remains a release task. It must not contain or request the PIN itself.
 
 ## 9. API surface
 
@@ -108,7 +108,7 @@ The final route names must be kept synchronized with OpenAPI/mobile API contract
 
 | Endpoint | Purpose |
 |---|---|
-| POST /register | Accept required matching PIN fields and atomically create account + PIN |
+| POST /register (verified/open) and POST /register/provider | Accept required matching PIN fields and atomically create account + PIN; phone is committed in the same transaction where required |
 | POST /recovery/start | Privacy-preserving email recovery request |
 | POST /recovery/complete | Complete only with verified email code + PIN + new password in the same pending recovery request |
 | GET /pin/status | Return PIN configured/gate/reminder state without exposing hash or attempt internals |
@@ -116,16 +116,16 @@ The final route names must be kept synchronized with OpenAPI/mobile API contract
 | POST /pin/reminder/ack | Record «Помню» and defer reminder by seven days |
 | POST /pin/reset/start | Start purpose-bound email challenge after authenticated re-authentication |
 | POST /pin/reset/complete | Consume reset challenge and replace PIN atomically |
-| POST /pin/set | Legacy compatibility only if needed; must not bypass registration/setup/reset security |
+| POST /pin/set and POST /pin/remove | Disabled with 410; PIN cannot be silently created or removed through legacy routes |
 
 Exact request/response schemas must be added to the API contract before client wiring. Responses must be no-store and must never include secret material.
 
 ## 10. Persistence and migration
 
 Add a forward-only migration (next available migration number) that:
-- extends the PIN record with KDF version/parameters, failure progression, monthly verification timestamp, weekly reminder timestamp and any required status fields;
-- creates a dedicated PIN-reset challenge table (or a rigorously purpose-scoped shared challenge table) with user, challenge hash, expiry, attempts, resend time, purpose and consumed timestamp;
-- adds foreign keys, unique constraints, indexes for expiry cleanup and check constraints for valid states;
+- extends the PIN record with failure progression, monthly verification timestamp and weekly reminder timestamp; KDF version and parameters are encoded in the hash record;
+- creates a dedicated PIN-reset challenge table with user, challenge ID, keyed code hash, device binding, expiry, attempts, resend time and consumed timestamp;
+- adds foreign keys, indexes for expiry cleanup and check constraints for valid states;
 - preserves existing PIN hashes for explicit legacy migration; does not fabricate a PIN for existing users;
 - updates both canonical schema and migration runner integrity checks.
 
@@ -155,4 +155,4 @@ Any schema/state update that affects a PIN attempt, reset challenge, recovery co
 9. Only after code and contracts are complete, run static analysis and targeted automated tests, then full backend/mobile/DB suites on the exact PR SHA.
 10. Require independent security review and all applicable CI checks before marking AUTH-08 done or merging.
 
-**No tests are authorized before the implementation and contract audit are complete.** A queued/pending workflow is not a passing result. No task is marked complete based on documentation or code presence alone.
+**No tests are authorized before the implementation and contract audit are complete.** A queued/pending workflow is not a passing result. No task is marked complete based on documentation or code presence alone. The current implementation has not been test-run; runtime performance calibration, exact-SHA automated tests and independent security review remain mandatory.
