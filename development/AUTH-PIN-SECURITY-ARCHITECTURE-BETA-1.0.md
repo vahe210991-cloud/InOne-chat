@@ -25,7 +25,7 @@ This document is an implementation contract, not a completion report. AUTH-08 st
 - Store a self-describing encoded record containing algorithm/version, parameters, salt and derived hash so future parameter upgrades can be performed safely.
 - Compare derived values with a constant-time comparison. Validate encoded records strictly before KDF work; malformed database values must fail closed without unbounded allocation.
 - Keep PIN KDF work asynchronous through Node's native crypto worker pool and bound it to two active derivations plus a finite queue of sixteen. Overflow fails closed with a retryable 503. Do not accept client-selected KDF parameters.
-- Do not silently downgrade existing PIN hashes. Existing accounts with legacy scrypt PIN records must enter a secure migration/verification path and be upgraded only after successful verification or protected reset. Legacy accounts without a PIN must complete protected PIN setup before protected account access and may not use email-only recovery.
+- Do not silently downgrade existing PIN hashes. Existing scrypt hashes from the previous 6–12 digit policy remain verifiable only through a compatibility path: a legacy 8-digit PIN upgrades to Argon2id on successful verification; a valid legacy PIN of another length is accepted only to prove possession and immediately routes the user to protected reset for a new 8-digit PIN. New Argon2id hashes accept exactly eight digits. Legacy accounts without a PIN must complete protected PIN setup before protected account access and may not use email-only recovery.
 
 ## 3. Attempt policy and lockout state machine
 
@@ -62,7 +62,7 @@ The API returns a generic PIN failure and a retry time only when the caller is a
 1. Client submits email to POST /recovery/start. The public response remains privacy-preserving and identical for existing and unknown addresses.
 2. For an eligible account without a Google/Apple recovery path, the backend sends a one-time code only to its verified primary email. It does not use the phone number, SMS or backup email as a recovery factor. Recovery challenges have a one-hour TTL and strict resend/start limits.
 3. The user enters the email code first. No email confirmation link is required for new Beta 1.0 recovery requests; the old deep-link confirmation endpoint remains only for challenges created before this change. The PIN is not checked before successful email-code validation.
-4. The user then enters the eight-digit PIN. The server validates the email code and PIN against the same pending recovery request, using one account-bound challenge and server-side expiry.
+4. The user then enters the PIN. New Argon2id accounts require exactly eight digits; a legacy scrypt record may accept its former 6–12 digit value solely for migration. A valid legacy value of any length other than eight still forces protected PIN replacement after recovery. The server validates the email code and PIN against the same pending recovery request, using one account-bound challenge and server-side expiry.
 5. Only after both factors pass may the recovery completion transaction change the password and begin the existing 48-hour recovery window.
 6. The challenge is consumed atomically with password update and recovery-state transition. A concurrent/replayed completion must not change the password twice or create a second recovery window.
 7. Wrong email codes use the existing recovery-code attempt/lock policy. Wrong PIN uses the shared PIN attempt policy above. Do not clear PIN lockout merely because a new recovery email code was requested.
@@ -79,9 +79,10 @@ The API returns a generic PIN failure and a retry time only when the caller is a
 - Send a security notification to the verified account email and other configured security-notification recipients. Never include the PIN or email code in the notification.
 - If the user has no authenticated session, they cannot reset the PIN using email alone. They must use the full account recovery flow, which still requires the existing PIN, or a separately approved high-assurance support process. No email-only escape hatch is introduced.
 
-### Legacy accounts without a PIN
+### Legacy accounts without a PIN or with an old-format PIN
 
 - A legacy account is not silently grandfathered into email-only recovery.
+- Legacy scrypt PINs from the previous 6–12 digit policy are identified server-side. An old 8-digit PIN upgrades to Argon2id after successful verification. A correct old PIN of another length does not unlock protected areas; it immediately routes the authenticated user to the email-code + password reset flow to create a new eight-digit PIN.
 - After any successful login, the server enforces a restricted PIN-setup-required state. Only logout, refresh, PIN status, protected reset and the minimal security endpoints remain available.
 - PIN setup requires authenticated re-authentication and verified-email confirmation. It does not accept a PIN-less recovery completion.
 
