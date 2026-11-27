@@ -2458,7 +2458,7 @@ if (req.method === 'POST' && p === '/login') {
         if (!d) return send(res, 401, { error: 'unauthorized' });
         return send(res, 200, await storage.listContacts(d.userId));
       }
-      const contactAction = p.match(/^\\/contacts\\/([^/]+)\\/(accept|block)$/);
+      const contactAction = p.match(/^\/contacts\/([^/]+)\/(accept|block)$/);
       if (contactAction && req.method === 'POST') {
         const d = await authed(req);
         if (!d) return send(res, 401, { error: 'unauthorized' });
