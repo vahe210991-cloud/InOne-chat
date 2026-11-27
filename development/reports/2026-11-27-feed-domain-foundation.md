@@ -1,82 +1,95 @@
-# Feed Beta 1.0 domain foundation — 2026-11-27
+# Feed Beta 1.0 media-first architecture — 2026-11-27
 
-## Result
+## Status
 
-**Status: IN PROGRESS / NOT ACCEPTED.** A first isolated domain-code slice and a draft API contract proposal were published on Draft PR #174. No production Feed endpoint or persistence path exists yet.
+**Architecture revision published to PR #174; implementation not yet started.** Owner approved variant A: a separate server-side Feed media pipeline, TLS in transit, encryption at rest and mandatory authentication. Chat MLS/file pipeline must remain untouched.
 
-- Repository: `vahe210991-cloud/InOne-chat`
-- Base branch: `main`
-- Exact base SHA: `7d34b99fcc026a828b838e211d039c575aeace1d`
-- Task branch: `feat/feed-domain-foundation-beta1-main-7d34b99-20261127`
-- Code/proposal head before this report: `9130b709248d2e6e5c0d0d46561a4f5f096523c0`
-- PR: [#174 — Feed domain foundation and API proposal](https://github.com/vahe210991-cloud/InOne-chat/pull/174), Draft, unmerged.
-- Scope decision: Feed Beta 1.0 and authenticated cross-account published-feed reads are owner-approved. The separate documentation PR #172 remains Draft/unmerged.
+- Repository: vahe210991-cloud/InOne-chat
+- Main SHA at review: 7d34b99fcc026a828b838e211d039c575aeace1d
+- PR #174 branch: feat/feed-domain-foundation-beta1-main-7d34b99-20261127
+- Prior PR #174 head: 87783a37fe9361dec477458ff9ad921887d19e97
+- Architecture proposal update commit: 7db478a6d4e2491a273188ad0b55cca544eaba35
+- PR: https://github.com/vahe210991-cloud/InOne-chat/pull/174 (Draft, unmerged)
 
-## Changes
+## Owner decision recorded
 
-1. Added `engine/src/feed-rules.js`:
-   - NFC normalization and newline normalization for plain-text post content;
-   - proposed 5,000-code-point / 16-KiB bounds;
-   - SHA-256 normalized-content hash;
-   - opaque post-ID and idempotency-key format validation;
-   - strict versioned cursor encode/parse;
-   - deterministic newest-first ordering and bounded page slicing.
-2. Added `engine/test/feed-rules.test.js` and imported it from the existing `test/api-contract.test.js`, so it is included by the current `npm test` entry without changing the package script.
-3. Added [FEED-BETA1-API-CONTRACT-PROPOSAL.md](../architecture/FEED-BETA1-API-CONTRACT-PROPOSAL.md), explicitly marked DRAFT for owner review.
+Feed media variant A is approved:
+- separate media pipeline and storage namespace for Feed;
+- TLS for transport;
+- encryption of stored objects and all derived renditions;
+- mandatory active-session authorization for upload, publication, listing and every media delivery;
+- server-side content validation and image/video derivative generation;
+- no change to chat MLS, room files or existing chat file authorization.
 
-## Architecture findings preserved
+This is server-side processing and is not E2EE. This decision applies only to Feed.
 
-- Canonical Node/PostgreSQL backend remains `inone-development-archive-0.6.0/engine/`.
-- Existing routes authenticate through active device sessions.
-- Current file flow is owner/device-bound or room-member-bound; it has no post association or authenticated cross-account Feed media path.
-- Approved UI manifest has no Feed/post-composer screen. Production UI must be native Flutter/Dart; no HTML/WebView is restored.
-- Open PR #171 changes the same server/store/schema/package areas needed for later Feed integration. Open PR #173 also changes server/store. They remain separate; no divergent feature branch was used as this task's base and none of their changes were copied into PR #174.
+## What changed in this stage
 
-## Validation
+Updated development/architecture/FEED-BETA1-API-CONTRACT-PROPOSAL.md from text-first to media-first.
 
-At report creation, PR #174 exact-head workflows were queued/in progress:
-- Backend Docker Compose runtime acceptance: run `45927486204`.
-- Email delivery and PostgreSQL validation: run `45927486240`.
-- Other repository acceptance workflows were also triggered by the engine-path change.
+The revised proposal defines:
+- Post with nullable caption and mandatory one-or-more ready media;
+- PostMedia association and media lifecycle states;
+- authenticated upload reservation, quarantine, content verification and processing worker;
+- isolated Feed storage namespace and envelope-encryption recommendation;
+- authenticated media delivery with session/device revalidation and parent-post authorization;
+- atomic publication and owner-only deletion with cleanup outbox;
+- nickname in Feed DTO and no internal account/device IDs;
+- HMAC-SHA-256 cursor integrity;
+- own-profile gallery endpoint only, without introducing public-profile semantics;
+- explicit integration boundary around existing /files and MLS pipeline;
+- security acceptance matrix and implementation gates.
 
-**No test is claimed PASS in this report.** Recheck all workflow/job conclusions on the current exact PR head after any branch update. No manual/local tests, production calls, deployment, or physical-device checks were performed.
+## Existing domain work: retain, adapt, do not misrepresent
 
-## Scope not yet implemented
+The existing pure domain helpers remain useful for opaque IDs, idempotency-key validation, Unicode validation, deterministic ordering, keyset boundary handling and page bounds.
 
-- No `/posts` or `/feed` HTTP routes.
-- No PostgreSQL posts table/migration or in-memory post store.
-- No idempotent create/edit/delete HTTP operations.
-- No server-side cross-account feed read implementation.
-- No post-media association or media upload/download support.
-- No typed Flutter repository, Feed screen, or navigation activation.
-- No comments, reactions, follows, subscriptions, public profiles, or ranking.
+Required adaptation before production use:
+- text content must become optional caption;
+- publication validation must require at least one ready media association;
+- existing unsigned cursor serialization is only a parsing/format helper and is not a tamper-proof production cursor. Production cursor must use a server-secret HMAC and constant-time verification;
+- old text-only create semantics and tests must not be used as production post contract.
 
-The proposed API routes, DTO, content limits, idempotency semantics, and text-first slice are proposals only until owner review. No implementation task is closed or struck through. WBS v1.1 weights and historical baseline percentages are unchanged; Feed scope amendment v1.2 remains in separate PR #172.
+No backend routes, SQL migrations, Post/PostMedia persistence, media worker, object encryption, media delivery or Flutter integration have been implemented in this stage.
 
-## Five previous tasks / evidence
+## Existing backend boundary
 
-1. Complete source audit of Feed and personal profile on the current backend/mobile tree.
-2. Obtain owner approval to include Feed/publications in Beta 1.0.
-3. Obtain owner approval that published general-feed items are readable by all registered/authenticated accounts and anonymous access is denied.
-4. Confirm canonical backend ownership, active-device auth, current file authorization, and absence of Feed routes/tables.
-5. Establish a unique task branch from the exact live `main` SHA and inspect overlapping open PRs.
+Current chat file flow remains owner/device-bound or room-member-bound. It includes active-device checks, upload reservation/completion, signed download authorization and object storage. It is not suitable to be made cross-account-readable for Feed by changing its existing policy.
 
-## Five next tasks
+Feed requires a dedicated media domain adapter and isolated namespace. Existing chat routes and MLS behavior must remain unchanged.
 
-1. Obtain owner review of the draft API contract and the first-slice boundary, especially text-only first increment versus media timing.
-2. Recheck PR #171 AUTH and PR #173 MLS-security exact-SHA Actions/reviews; selectively integrate only after their owner-authorized merges, resolving shared-file changes without wholesale branch merges.
-3. Implement posts schema/migration and PostgreSQL + in-memory store parity with atomic idempotency, ownership checks, revision control, and stable keyset query.
-4. Implement authenticated HTTP routes and regression matrix: cross-account allow for published posts, anonymous/revoked-device deny, author-only edit/delete, cursor tampering, idempotency replay, and DTO privacy.
-5. Add typed Flutter models/repository and a native Dart Feed/composer screen; implement secure media as a separate reviewed slice before exposing attachment UI.
+## PR coordination
+
+- #171 AUTH: open Draft, shared backend files affected; do not blindly integrate.
+- #173 MLS membership security: open Draft and explicitly on HOLD until #169 merges; do not run or rerun its workflows before that dependency is merged.
+- #172 Feed scope decision: open Draft, unmerged.
+- #174 Feed domain foundation: open Draft; revised proposal is still unapproved until owner reviews it.
+- Main remains at 7d34b99fcc026a828b838e211d039c575aeace1d at the time of this report.
+
+No shared backend files were changed. No PR was merged. No tests were run in this stage and no PASS is claimed.
+
+## Next engineering sequence
+
+1. Update the pure Feed domain contract and tests for optional caption + mandatory ready media; add signed-cursor helpers with key-version support.
+2. Inspect the existing object-store abstraction and deployment/runtime capabilities for an isolated Feed bucket/namespace, encryption key provider and worker execution model.
+3. Propose evidence-based numeric limits for photo count, bytes, codecs, video duration/resolution, rendition profiles and processing resource budgets. Do not hard-code arbitrary values.
+4. Reconcile #171/#173/#169 integration order and capture a fresh exact main SHA before touching server/store/schema.
+5. Implement Feed media reservation/quarantine/processing/storage/delivery in isolated modules, then transactional Post/PostMedia persistence and routes.
+6. Verify exact Dart UI sources in all relevant branches before connecting the approved screens.
+7. Add dynamic security and regression tests, then run applicable Actions on the exact final SHA.
 
 ## Acceptance status
 
 | Criterion | Status |
 |---|---|
-| Domain validation/cursor foundation authored | IN PROGRESS, awaiting exact-SHA CI |
-| API contract | DRAFT, owner review required |
-| HTTP routes and persistence | NOT STARTED |
-| Cross-account read enforcement | NOT STARTED |
-| Media authorization and lifecycle | NOT STARTED |
-| Flutter Feed UI | NOT STARTED |
-| Beta 1.0 Feed acceptance | NOT ACCEPTED |
+| Owner-approved media encryption direction | APPROVED |
+| Media-first API proposal | DRAFT, awaiting owner review |
+| Pure domain rules adapted to media-first | NOT STARTED |
+| Feed media upload/processing/storage | NOT STARTED |
+| Post/PostMedia persistence and routes | NOT STARTED |
+| Authenticated Feed and profile gallery | NOT STARTED |
+| Flutter integration | NOT STARTED |
+| Dynamic security acceptance | NOT STARTED |
+| Beta 1.0 Feed | NOT ACCEPTED |
+
+No WBS weights or progress percentages were changed. No task was closed or struck through.
