@@ -431,13 +431,8 @@ mod tests {
         let join_config = MlsGroupJoinConfig::builder()
             .use_ratchet_tree_extension(true)
             .build();
-        let staged = StagedWelcome::new_from_welcome(
-            &bob_provider,
-            &join_config,
-            welcome,
-            None,
-        )
-        .expect("stage persistent Bob Welcome");
+        let staged = StagedWelcome::new_from_welcome(&bob_provider, &join_config, welcome, None)
+            .expect("stage persistent Bob Welcome");
         let bob_group = staged
             .into_group(&bob_provider)
             .expect("Bob joins persistent group");
