@@ -173,7 +173,7 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
       const row = rows[0];
       return {
         configured: true,
-        legacy: !String(row.pin_hash ?? '').startsWith('argon2id' + String.fromCharCode(36))
+        legacy: !String(row.pin_hash ?? '').startsWith('argon2id' + String.fromCharCode(36)),
         reminderNextAt: row.reminder_next_at === null ? null : Number(row.reminder_next_at),
         lockedUntil: row.locked_until === null ? null : Number(row.locked_until),
       };
