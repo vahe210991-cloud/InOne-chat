@@ -6,7 +6,10 @@ InOneChatKind mapInOneRoomKind(String rawKind) {
   return switch (rawKind.toLowerCase()) {
     'direct' || 'dm' || 'person' => InOneChatKind.person,
     'support' => InOneChatKind.support,
-    _ => InOneChatKind.group,
+    'group' => InOneChatKind.group,
+    'channel' => InOneChatKind.channel,
+    'system' => InOneChatKind.system,
+    _ => InOneChatKind.unknown,
   };
 }
 
@@ -19,6 +22,11 @@ List<InOneChatPreview> mapInOneRoomsToChatPreviews(InOneRoomList roomList) {
       lastMessage: null,
       time: '',
       kind: mapInOneRoomKind(room.kind),
+      unread: room.unreadCount,
+      peerUserId: room.peerUserId,
+      incomingContactRequest: room.incomingContactRequest,
+      isPeerContact: room.isPeerContact,
+      isBlocked: room.isBlocked,
     );
   }));
 }
