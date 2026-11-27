@@ -751,3 +751,12 @@ Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone
 
 - Reviewed main, PR #171 head, native Dart G1, Flutter migration, UI archive stage1, Feed/Profile audit and profile-workspace branches. In all inspected branches, the Feed tab and Add Publication button exist in InOneBottomNav, but InOneMobileApp._selectTab routes Feed to a “not connected to Beta 1.0” notice. No Feed screen, create-publication, media picker, preview or post-gallery Dart source was found in the inspected main screen trees.
 - Personal and organization profile Dart screens exist. The personal profile shows avatar/name/handle/stats/menu but no publication gallery; organization profile shows cover/logo/about/stats/members but no publication gallery. Do not replace these screens. If another approved Feed Dart branch exists, identify it before Flutter wiring. Backend work can continue independently.
+
+## 2026-11-27 — Feed media runtime audit update
+
+- PR #174 remains Draft/open/unmerged on the isolated Feed branch. It now includes an ephemeral KEK-buffer zeroization fix and an authored regression test; test has NOT RUN.
+- Production engine image is Node 22 Alpine and installs only declared production npm dependencies. No image/video decoder, metadata sanitizer, thumbnail processor, video probe/transcoder or FFmpeg is present. The server is not yet a media-processing runtime.
+- Feed encryption keyring is not wired into config/main; encrypted storage adapter is not connected to a Feed-only filesystem namespace. Existing filesystem object storage remains plaintext at rest unless wrapped; do not broaden or change chat /files storage.
+- Next gate: select an Alpine-compatible, maintained media processing toolchain and define evidence-based configurable limits before implementing upload processing. No media library or numeric limits have been guessed.
+- Static review found and fixed a temporary KEK buffer zeroization gap; no cryptographic acceptance is claimed. All tests remain NOT RUN pending the #169 dependency gate.
+
