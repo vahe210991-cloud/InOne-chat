@@ -629,9 +629,7 @@ mod tests {
 
         let bob_index = alice_group
             .members()
-            .find(|member| {
-                member.credential.serialized_content() == b"inone-candidate-bob"
-            })
+            .find(|member| member.credential.serialized_content() == b"inone-candidate-bob")
             .map(|member| member.index)
             .expect("find Bob's current leaf index");
 
@@ -716,9 +714,9 @@ mod tests {
         assert_eq!(reopened_group.members().count(), 1);
         assert!(reopened_group.is_active());
         assert!(
-            !reopened_group.members().any(|member| {
-                member.credential.serialized_content() == b"inone-candidate-bob"
-            }),
+            !reopened_group
+                .members()
+                .any(|member| { member.credential.serialized_content() == b"inone-candidate-bob" }),
             "removed Bob must not reappear after SQLCipher reopen"
         );
 
@@ -736,7 +734,10 @@ mod tests {
                 b"alice-after-removal-reopen",
             )
             .expect("Alice can create a message after removal and reopen");
-        assert!(!post_reopen_message.tls_serialize_detached().unwrap().is_empty());
+        assert!(!post_reopen_message
+            .tls_serialize_detached()
+            .unwrap()
+            .is_empty());
 
         drop(reopened_signer);
         drop(reopened_group);
@@ -815,9 +816,13 @@ mod tests {
             .use_ratchet_tree_extension(true)
             .max_past_epochs(0)
             .build();
-        let mut alice_group =
-            MlsGroup::new(&alice_provider, &alice_signer, &create_config, alice_credential)
-                .expect("create persistent Alice group");
+        let mut alice_group = MlsGroup::new(
+            &alice_provider,
+            &alice_signer,
+            &create_config,
+            alice_credential,
+        )
+        .expect("create persistent Alice group");
 
         let bob_key_package = KeyPackage::builder()
             .build(CIPHERSUITE, &bob_provider, &bob_signer, bob_credential)
@@ -863,9 +868,8 @@ mod tests {
         for round in 0..3_u64 {
             let transient_id = format!("inone-epochs-transient-{round}");
             let transient_provider = in_memory_provider();
-            let transient_signer =
-                SignatureKeyPair::new(CIPHERSUITE.signature_algorithm())
-                    .expect("create transient member signer");
+            let transient_signer = SignatureKeyPair::new(CIPHERSUITE.signature_algorithm())
+                .expect("create transient member signer");
             transient_signer
                 .store(transient_provider.storage())
                 .expect("persist transient member signer");
@@ -903,9 +907,7 @@ mod tests {
 
             let transient_index = alice_group
                 .members()
-                .find(|member| {
-                    member.credential.serialized_content() == transient_id.as_bytes()
-                })
+                .find(|member| member.credential.serialized_content() == transient_id.as_bytes())
                 .map(|member| member.index)
                 .expect("find transient member leaf index");
 
@@ -1006,5 +1008,4 @@ mod tests {
             let _ = std::fs::remove_file(path.with_extension("db-shm"));
         }
     }
-
 }
