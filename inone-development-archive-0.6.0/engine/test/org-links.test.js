@@ -182,7 +182,7 @@ test('F-04 PostgreSQL: a room invitation racing link revocation cannot leave sta
       const originalQuery = client.query.bind(client);
       client.query = async (query, ...params) => {
         const sql = typeof query === 'string' ? query : query?.text ?? '';
-        if (sql.includes('UPDATE org_links SET status')) signalRevokeAttempt();
+        if (sql.includes('SELECT org_a, org_b, status FROM org_links WHERE link_id = $1 FOR UPDATE')) signalRevokeAttempt();
         if (sql.includes('FOR SHARE OF member, member_org, link')) {
           const result = await originalQuery(query, ...params);
           signalInviteLock();
@@ -236,7 +236,7 @@ test('F-05 PostgreSQL: a room message write is serialized before link revocation
       const originalQuery = client.query.bind(client);
       client.query = async (query, ...params) => {
         const sql = typeof query === 'string' ? query : query?.text ?? '';
-        if (sql.includes('UPDATE org_links SET status')) signalRevokeAttempt();
+        if (sql.includes('SELECT org_a, org_b, status FROM org_links WHERE link_id = $1 FOR UPDATE')) signalRevokeAttempt();
         return originalQuery(query, ...params);
       };
       return client;
@@ -345,7 +345,7 @@ test('F-02 PostgreSQL: cross-organization link revocation waits for an in-flight
       const originalQuery = client.query.bind(client);
       client.query = async (query, ...params) => {
         const sql = typeof query === 'string' ? query : query?.text ?? '';
-        if (sql.includes('UPDATE org_links SET status')) signalRevokeAttempt();
+        if (sql.includes('SELECT org_a, org_b, status FROM org_links WHERE link_id = $1 FOR UPDATE')) signalRevokeAttempt();
         if (sql.includes('FOR SHARE OF member, member_org, link')) {
           const result = await originalQuery(query, ...params);
           signalShareLock();
@@ -393,6 +393,8 @@ test('organization link revocation fails closed while inherited MLS room members
       epoch: 0, commit: Buffer.from('INITIAL-LINK-MLS').toString('base64'),
       changes: { adds: [], removes: [] },
     });
+    assert.ok((await s.store.getRoom(ROOM)).members.includes(CAROL), 'linked member is present in the room');
+    assert.equal((await s.anna.raw('GET', `/mls/groups/${enc(ROOM)}/epoch`)).epoch, 1, 'MLS epoch is active');
     const blocked = await call(s.base, 'POST', `/orgs/${ORG_B}/links/${enc(linkId)}/revoke`, s.carol.token, {});
     assert.equal(blocked.status, 409);
     assert.equal(blocked.json.code, 'mls_removal_required');
