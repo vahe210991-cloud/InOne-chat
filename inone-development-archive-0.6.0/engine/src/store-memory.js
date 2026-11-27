@@ -1304,12 +1304,20 @@ export function createMemoryStore({ pinPepper }) {
         if (roomId && previous.roomId && previous.roomId !== roomId) return { ok: false, reason: 'claim_room_mismatch' };
         if (roomId && !previous.roomId) previous.roomId = roomId;
         const claimedDeviceIds = new Set(previous.packages.map((item) => item.deviceId));
-        if ([...activeDeviceIds].some((deviceId) => !claimedDeviceIds.has(deviceId))) {
-          return { ok: false, reason: 'device_key_package_unavailable' };
+        const deviceSetMatches = claimedDeviceIds.size === activeDeviceIds.size
+          && [...activeDeviceIds].every((deviceId) => claimedDeviceIds.has(deviceId));
+        if (deviceSetMatches) {
+          return { ok: true, packages: previous.packages.map((item) => ({
+            deviceId: item.deviceId, packageId: item.packageId, package: Buffer.from(item.package),
+          })) };
         }
-        return { ok: true, packages: previous.packages.filter((item) => activeDeviceIds.has(item.deviceId)).map((item) => ({
-          deviceId: item.deviceId, packageId: item.packageId, package: Buffer.from(item.package),
-        })) };
+        // A claim_pending client has not staged its commit yet; refresh the
+        // reservation so a newly active device is included before staging.
+        for (const item of previous.packages) {
+          const pack = mlsPackages.find((p) => p.id === item.packageId);
+          if (pack && !pack.lastResort) pack.consumedAt = null;
+        }
+        previous.packages = [];
       }
       const availableDeviceIds = new Set(mlsPackages
         .filter((p) => p.userId === targetUserId && activeDeviceIds.has(p.deviceId) && p.consumedAt === null
