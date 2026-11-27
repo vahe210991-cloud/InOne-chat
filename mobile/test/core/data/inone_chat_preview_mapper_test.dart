@@ -70,6 +70,31 @@ void main() {
     expect(chats.every((chat) => chat.time.isEmpty), isTrue);
   });
 
+  test('refreshes incoming contact actions without rebuilding the chat preview', () {
+    final initial = InOneChatPreview(
+      id: 'direct-1',
+      name: 'New contact',
+      lastMessage: 'Hello',
+      time: '10:30',
+      kind: InOneChatKind.person,
+      peerUserId: '@sender:inone.test',
+      incomingContactRequest: true,
+    );
+
+    final accepted = initial.copyWith(
+      incomingContactRequest: false,
+      isPeerContact: true,
+    );
+    expect(accepted.incomingContactRequest, isFalse);
+    expect(accepted.isPeerContact, isTrue);
+    expect(accepted.peerUserId, '@sender:inone.test');
+    expect(accepted.lastMessage, 'Hello');
+
+    final blocked = accepted.copyWith(isBlocked: true);
+    expect(blocked.isBlocked, isTrue);
+    expect(blocked.isPeerContact, isTrue);
+  });
+
   test('maps an empty backend room list to an empty chat list', () {
     expect(
       mapInOneRoomsToChatPreviews(InOneRoomList.fromJson({'rooms': []})),
