@@ -57,6 +57,7 @@ test('idempotency request hash covers normalized optional caption and ordered me
   assert.equal(first.requestHash, retry.requestHash);
   assert.notEqual(first.requestHash, reordered.requestHash);
   assert.equal(noCaption.ok, true);
+  assert.equal(hashPostRequest(undefined).error, 'invalid_post_request');
   assert.equal(hashPostRequest({ caption: 'caption', mediaIds: [] }).error, 'media_required_or_invalid');
   assert.equal(hashPostRequest({ caption: 'caption', mediaIds: [id(1), id(1)] }).error, 'media_required_or_invalid');
 });
@@ -91,6 +92,7 @@ test('signed feed cursor rejects tampering, wrong scope, unknown key and non-can
   assert.equal(parseSignedFeedCursor(alteredPayload + '.' + signature, { k1: cursorKey.secret }).error, 'invalid_cursor');
   assert.equal(parseSignedFeedCursor(token, { k1: cursorKey.secret }, 'own').error, 'invalid_cursor');
   assert.equal(parseSignedFeedCursor(token, {}).error, 'invalid_cursor');
+  assert.equal(parseSignedFeedCursor(token, Object.create({ k1: cursorKey.secret })).error, 'invalid_cursor');
   assert.equal(parseSignedFeedCursor(payload + '.' + signature + '=', { k1: cursorKey.secret }).error, 'invalid_cursor');
   assert.throws(() => encodeSignedFeedCursor({
     createdAt: 1, postId: id(1),
