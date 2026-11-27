@@ -15,6 +15,8 @@ class InOneMessagesScreen extends StatefulWidget {
     required this.onSearch,
     required this.onTab,
     this.onAdd,
+    this.onAcceptContact,
+    this.onBlockContact,
     this.unreadCountsAvailable = true,
   });
 
@@ -26,6 +28,8 @@ class InOneMessagesScreen extends StatefulWidget {
 
   /// Starts a protected MLS room when the native Engine B session is active.
   final VoidCallback? onAdd;
+  final ValueChanged<InOneChatPreview>? onAcceptContact;
+  final ValueChanged<InOneChatPreview>? onBlockContact;
 
   @override
   State<InOneMessagesScreen> createState() => _InOneMessagesScreenState();
@@ -108,6 +112,12 @@ class _InOneMessagesScreenState extends State<InOneMessagesScreen> {
                         chat: chats[i],
                         last: i == chats.length - 1,
                         onTap: () => widget.onOpenChat(chats[i]),
+                        onAcceptContact: widget.onAcceptContact == null
+                            ? null
+                            : () => widget.onAcceptContact!(chats[i]),
+                        onBlockContact: widget.onBlockContact == null
+                            ? null
+                            : () => widget.onBlockContact!(chats[i]),
                       ),
                     ),
             ),
@@ -119,10 +129,18 @@ class _InOneMessagesScreenState extends State<InOneMessagesScreen> {
 }
 
 class _ChatRow extends StatelessWidget {
-  const _ChatRow({required this.chat, required this.last, required this.onTap});
+  const _ChatRow({
+    required this.chat,
+    required this.last,
+    required this.onTap,
+    this.onAcceptContact,
+    this.onBlockContact,
+  });
   final InOneChatPreview chat;
   final bool last;
   final VoidCallback onTap;
+  final VoidCallback? onAcceptContact;
+  final VoidCallback? onBlockContact;
 
   Widget _avatar(BuildContext context) {
     final c = context.inone;
@@ -173,47 +191,87 @@ class _ChatRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.inone;
-    return InkWell(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 13),
-        decoration: BoxDecoration(
-          border: last ? null : Border(bottom: BorderSide(color: c.rowLine)),
-        ),
-        child: Row(
-          children: [
-            _avatar(context),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+    final showContactActions = chat.incomingContactRequest &&
+        chat.peerUserId != null &&
+        !chat.isBlocked &&
+        onAcceptContact != null &&
+        onBlockContact != null;
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 13),
+      decoration: BoxDecoration(
+        border: last ? null : Border(bottom: BorderSide(color: c.rowLine)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          InkWell(
+            onTap: onTap,
+            child: Row(
+              children: [
+                _avatar(context),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(chat.name, style: InOneText.style(14, FontWeight.w700, c.text)),
+                      const SizedBox(height: 3),
+                      if (chat.lastMessage?.isNotEmpty == true)
+                        Text(
+                          chat.lastMessage!,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: InOneText.style(12, FontWeight.w400, c.muted),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    if (chat.time.isNotEmpty)
+                      Text(chat.time, style: InOneText.style(11, FontWeight.w400, c.muted)),
+                    if (chat.unread > 0) ...[
+                      const SizedBox(height: 5),
+                      InOneCountBadge(chat.unread),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+          ),
+          if (showContactActions)
+            Padding(
+              padding: const EdgeInsets.only(left: 56, top: 5),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 4,
                 children: [
-                  Text(chat.name, style: InOneText.style(14, FontWeight.w700, c.text)),
-                  const SizedBox(height: 3),
-                  if (chat.lastMessage?.isNotEmpty == true)
-                    Text(
-                      chat.lastMessage!,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: InOneText.style(12, FontWeight.w400, c.muted),
+                  TextButton(
+                    onPressed: onAcceptContact,
+                    style: TextButton.styleFrom(
+                      foregroundColor: c.link,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      minimumSize: const Size(0, 32),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
+                    child: const Text('Принять'),
+                  ),
+                  TextButton(
+                    onPressed: onBlockContact,
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.red.shade700,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      minimumSize: const Size(0, 32),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: const Text('Заблокировать'),
+                  ),
                 ],
               ),
             ),
-            const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                if (chat.time.isNotEmpty)
-                  Text(chat.time, style: InOneText.style(11, FontWeight.w400, c.muted)),
-                if (chat.unread > 0) ...[
-                  const SizedBox(height: 5),
-                  InOneCountBadge(chat.unread),
-                ],
-              ],
-            ),
-          ],
-        ),
+        ],
       ),
     );
   }
