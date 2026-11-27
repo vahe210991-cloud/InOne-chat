@@ -204,3 +204,7 @@ Recommended boundary for the next design iteration:
 
 This is a candidate architecture, not a dependency approval or implementation. No package or image was added in this stage.
 
+### Exact-head workflow observation
+
+At PR head `1d5f12af43b96ccc6a5830802e2d43513bf1460b`, GitHub reported six PR workflows in `queued` state: Backend Docker Compose runtime acceptance, Native MLS client validation, Validate recovered InOne P0 source, Dev Container Compose runtime validation, InOne exact-SHA acceptance gate, and Email delivery/PostgreSQL validation. These were automatically queued by GitHub following PR updates; none was manually dispatched or rerun. No PASS is claimed. The #169 dependency remains open and unmerged, so do not manually rerun or treat queued workflows as acceptance.
+
