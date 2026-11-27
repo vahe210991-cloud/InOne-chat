@@ -653,3 +653,5 @@ Latest documented checkpoint: code SHA `4824dfc3b3f4e3aab5d39b16c1adf934a108d660
 
 8. Deployment audit: current Compose is development-only and the deployment guide starts one Node backend process behind HTTPS; no production orchestrator or isolated media-worker deployment was found. Do not run CPU-heavy/untrusted media decoders inside the public HTTP process. Select a durable queue, private quarantine/final storage sharing model and separately resource-limited worker process/service before wiring.
 
+9. Candidate stack research: Sharp documents Node-API v9 support and prebuilt Linux musl x64/ARM64 binaries for musl >=1.2.5; FFmpeg/ffprobe should remain isolated in the media worker with a strict patch/CVE update policy. Treat this as a candidate only: verify exact worker base image/digest, native architecture, dependency versions and resource isolation before adding packages. References are recorded in the Feed report.
+
