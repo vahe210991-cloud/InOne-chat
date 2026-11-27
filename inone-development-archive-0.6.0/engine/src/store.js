@@ -1755,8 +1755,8 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
                 (incoming.status = 'pending') AS incoming_contact_request,
                 EXISTS (
                   SELECT 1 FROM user_blocks b
-                   WHERE (b.blocker_id = $1 AND b.blocked_id = CASE WHEN dc.user_a = $1 THEN dc.user_b ELSE dc.user_a END)
-                      OR (b.blocker_id = CASE WHEN dc.user_a = $1 THEN dc.user_b ELSE dc.user_a END AND b.blocked_id = $1)
+                   WHERE b.blocker_id = $1
+                     AND b.blocked_id = CASE WHEN dc.user_a = $1 THEN dc.user_b ELSE dc.user_a END
                 ) AS is_blocked,
                 r.owner, m.is_admin,
                 last_message.seq AS last_event_seq,
