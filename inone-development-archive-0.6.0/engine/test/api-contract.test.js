@@ -23,7 +23,10 @@ const routeEvidence = new Map([
   ['POST /recovery/cancel-by-code', /req\.method === 'POST' && p === '\/recovery\/cancel-by-code'/],
   ['POST /admission/cancel', /req\.method === 'POST' && p === '\/admission\/cancel'/],
   ['POST /logout', /req\.method === 'POST' && p === '\/logout'/],
-  ['POST /direct-chats/open', /req\\.method === 'POST' && p === '\\/direct-chats\\/open'/],
+  ['POST /direct-chats/open', /req\.method === 'POST' && p === '\/direct-chats\/open'/u],
+  ['GET /contacts', /req\.method === 'GET' && p === '\/contacts'/u],
+  ['POST /contacts/:userId/accept', /contactAction && req\.method === 'POST'/u],
+  ['POST /contacts/:userId/block', /contactAction && req\.method === 'POST'/u],
   ['GET /rooms/mine', /req\.method === 'GET' && p === '\/rooms\/mine'/],
   ['GET /rooms/:id/events', /roomRoute && req\.method === 'GET'/u],
   ['GET /orgs/mine', /req\.method === 'GET' && p === '\/orgs\/mine'/],
@@ -70,7 +73,7 @@ test('direct conversations use a canonical pair and MLS-only activation', () => 
   assert.match(server, /createOrOpenDirectConversation/u);
   assert.match(server, /direct_pair_only/u);
   assert.match(server, /mlsInitializationRequired/u);
-  assert.match(server, /directConversation\.status !== 'pending'/u);
+  assert.match(server, /directConversation\.status !== 'provisioning'/u);
   assert.match(server, /direct_membership_fixed/u);
 });
 
