@@ -9,6 +9,8 @@ import { createServer } from '../src/server.js';
 const PEPPER = randomBytes(24).toString('hex');
 const PW = 'длинный-пароль-1';
 const NEW_PW = 'новый-пароль-2';
+const PIN = '80421697';
+const PHONE = '+37477000021';
 const PROVIDERS = {
   google: { clientIds: ['g-client.apps.googleusercontent.com'] },
   apple: { clientIds: ['ai.inone.app'] },
@@ -53,7 +55,7 @@ async function registerByEmail(base, srv, email, nickname) {
   await call(base, 'POST', '/register/email', { body: { email, locale: 'ru' } });
   const code = srv.mailbox(email).filter((m) => m.templateId === 'registration_code').at(-1).text.match(/\b(\d{6})\b/)[1];
   const confirmed = await call(base, 'POST', '/register/email/confirm', { body: { email, code } });
-  return call(base, 'POST', '/register', { body: { email, registrationToken: confirmed.body.registrationToken, password: PW, nickname } });
+  return call(base, 'POST', '/register', { body: { email, registrationToken: confirmed.body.registrationToken, password: PW, nickname, phone: PHONE, pin: PIN, pinConfirmation: PIN } });
 }
 
 const identityChallenges = new Map();
@@ -85,7 +87,7 @@ const codeOf = (srv, mailbox, subject, pattern = /\b(\d{6})\b/) =>
 async function completedRecovery(base, srv, email, newPassword = NEW_PW) {
   assert.equal((await call(base, 'POST', '/recovery/start', { body: { email } })).status, 202);
   const code = codeOf(srv, email, SUBJECT_RECOVERY);
-  const done = await call(base, 'POST', '/recovery/complete', { body: { email, code, newPassword } });
+  const done = await call(base, 'POST', '/recovery/complete', { body: { email, code, pin: PIN, newPassword } });
   assert.equal(done.status, 200);
   return codeOf(srv, email, SUBJECT_DONE, /кода: (\d{6})/);
 }
@@ -116,8 +118,8 @@ test('R-E2: неверный код не меняет пароль; верный
     await registerByEmail(base, srv, 'boris@example.test', 'Boris');
     await call(base, 'POST', '/recovery/start', { body: { email: 'boris@example.test' } });
     const code = codeOf(srv, 'boris@example.test', SUBJECT_RECOVERY);
-    assert.equal((await call(base, 'POST', '/recovery/complete', { body: { email: 'boris@example.test', code: '000000', newPassword: NEW_PW } })).status, 403);
-    assert.equal((await call(base, 'POST', '/recovery/complete', { body: { email: 'boris@example.test', code, newPassword: NEW_PW } })).status, 200);
+    assert.equal((await call(base, 'POST', '/recovery/complete', { body: { email: 'boris@example.test', code: '000000', pin: PIN, newPassword: NEW_PW } })).status, 403);
+    assert.equal((await call(base, 'POST', '/recovery/complete', { body: { email: 'boris@example.test', code, pin: PIN, newPassword: NEW_PW } })).status, 200);
     assert.match(codeOf(srv, 'boris@example.test', SUBJECT_DONE, /кода: (\d{6})/), /^\d{6}$/);
   } finally {
     await stop();
@@ -172,11 +174,11 @@ test('R-E6: аккаунт с привязкой Google — кода восст�
   try {
     const nonce = (await call(base, 'POST', '/auth/nonce')).body.nonce;
     const v = await call(base, 'POST', '/auth/provider/verify', { body: { provider: 'google', idToken: signToken(googleClaims(nonce)), nonce } });
-    const anna = (await call(base, 'POST', '/register/provider', { body: { ticket: v.body.ticket, nickname: 'Anna.G' } })).body;
+    const anna = (await call(base, 'POST', '/register/provider', { body: { ticket: v.body.ticket, nickname: 'Anna.G', phone: PHONE, pin: PIN, pinConfirmation: PIN } })).body;
     assert.equal((await call(base, 'POST', '/recovery/start', { body: { email: 'anna@gmail.test' } })).status, 202);
     assert.equal(srv.mailbox('anna@gmail.test').filter((m) => m.templateId === SUBJECT_RECOVERY).length, 0, 'кода для аккаунта с Google нет');
-    const r = await call(base, 'POST', '/recovery/complete', { body: { userId: anna.userId, code: '000000', newPassword: NEW_PW } });
-    assert.equal(r.status, 409);
+    const r = await call(base, 'POST', '/recovery/complete', { body: { userId: anna.userId, code: '000000', pin: PIN, newPassword: NEW_PW } });
+    assert.equal(r.status, 403);
   } finally {
     await stop();
   }
