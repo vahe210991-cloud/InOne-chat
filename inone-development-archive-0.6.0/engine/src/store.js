@@ -1474,6 +1474,103 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
       });
     },
 
+    async recoveryCompleteWithPin(userId, {
+      now, codeCheck, pin, pinCheck, free, lockDuration,
+      passwordHash, complete, cancelCodeHash, enqueue,
+    }) {
+      return inTransaction(async (client) => {
+        const { rows: accountsFound } = await client.query(
+          'SELECT password_hash FROM accounts WHERE user_id = $1 FOR UPDATE',
+          [userId],
+        );
+        if (!accountsFound.length) return { factor: 'email', outcome: 'none' };
+        await client.query('INSERT INTO recovery (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING', [userId]);
+        const { rows: recoveryRows } = await client.query(
+          'SELECT * FROM recovery WHERE user_id = $1 FOR UPDATE',
+          [userId],
+        );
+        const current = fromRecoveryRow(recoveryRows[0]);
+        const emailResult = codeCheck(current);
+        if (emailResult.outcome !== 'ok') {
+          const next = emailResult.next;
+          await client.query(
+            `UPDATE recovery SET req_status = $2, req_started_at = $3, req_expires_at = $4, req_code_hash = $5,
+               req_attempts = $6, window_started_at = $7, window_key_reset_at = $8, window_previous_hash = $9,
+               identity_check = $10, identity_code_hash = $11, identity_attempts = $12, locked_until = $13, starts = $14,
+               req_link_hash = $15, req_link_confirmed = $16, identity_code_expires_at = $17, identity_device_id = $18,
+               identity_challenge_id = $19, identity_locked_until = $20, identity_last_sent_at = $21
+             WHERE user_id = $1`,
+            [userId, next.reqStatus, next.reqStartedAt, next.reqExpiresAt, next.reqCodeHash, next.reqAttempts,
+              next.windowStartedAt, next.windowKeyResetAt, next.windowPreviousHash, next.identityCheck,
+              next.identityCodeHash, next.identityAttempts, next.lockedUntil, JSON.stringify(next.starts),
+              next.reqLinkHash, next.reqLinkConfirmed, next.identityCodeExpiresAt, next.identityDeviceId,
+              next.identityChallengeId, next.identityLockedUntil, next.identityLastSentAt],
+          );
+          return { factor: 'email', outcome: emailResult.outcome };
+        }
+
+        const { rows: pinRows } = await client.query(
+          'SELECT failed, locked_until, pin_hash FROM pins WHERE user_id = $1 FOR UPDATE',
+          [userId],
+        );
+        if (!pinRows.length) return { factor: 'pin', outcome: 'no-pin' };
+        const pinRow = pinRows[0];
+        const lockedUntil = pinRow.locked_until === null ? null : Number(pinRow.locked_until);
+        if (lockedUntil && now < lockedUntil) {
+          return { factor: 'pin', outcome: 'locked', retryAt: lockedUntil };
+        }
+        const expiredLockCleared = !!lockedUntil && now >= lockedUntil;
+        const failed = Number(pinRow.failed) + 1;
+        if (failed > free && !expiredLockCleared) {
+          const retryAt = now + lockDuration(failed);
+          await client.query(
+            'UPDATE pins SET failed = $2, locked_until = $3 WHERE user_id = $1',
+            [userId, failed, retryAt],
+          );
+          return { factor: 'pin', outcome: 'locked', retryAt };
+        }
+        const pinOk = await pinCheck(pin, pinRow.pin_hash);
+        if (!pinOk.ok) {
+          const retryAt = failed >= free ? now + lockDuration(failed) : null;
+          await client.query(
+            'UPDATE pins SET failed = $2, locked_until = $3 WHERE user_id = $1',
+            [userId, failed, retryAt],
+          );
+          return { factor: 'pin', outcome: retryAt ? 'locked' : 'wrong', retryAt };
+        }
+
+        await client.query(
+          'UPDATE pins SET pin_hash = COALESCE($2, pin_hash), failed = 0, locked_until = NULL WHERE user_id = $1',
+          [userId, pinOk.upgradedHash ?? null],
+        );
+        const { next, result } = complete(current, accountsFound[0].password_hash);
+        await client.query(
+          'UPDATE accounts SET password_hash = $2 WHERE user_id = $1',
+          [userId, passwordHash],
+        );
+        await client.query(
+          `UPDATE recovery SET req_status = $2, req_started_at = $3, req_expires_at = $4, req_code_hash = $5,
+             req_attempts = $6, window_started_at = $7, window_key_reset_at = $8, window_previous_hash = $9,
+             identity_check = $10, identity_code_hash = $11, identity_attempts = $12, locked_until = $13, starts = $14,
+             req_link_hash = $15, req_link_confirmed = $16, identity_code_expires_at = $17, identity_device_id = $18,
+             identity_challenge_id = $19, identity_locked_until = $20, identity_last_sent_at = $21
+           WHERE user_id = $1`,
+          [userId, next.reqStatus, next.reqStartedAt, next.reqExpiresAt, next.reqCodeHash, next.reqAttempts,
+            next.windowStartedAt, next.windowKeyResetAt, next.windowPreviousHash, next.identityCheck,
+            next.identityCodeHash, next.identityAttempts, next.lockedUntil, JSON.stringify(next.starts),
+            next.reqLinkHash, next.reqLinkConfirmed, next.identityCodeExpiresAt, next.identityDeviceId,
+            next.identityChallengeId, next.identityLockedUntil, next.identityLastSentAt],
+        );
+        await client.query(
+          `INSERT INTO recovery_cancel_codes (user_id, code_hash, expires_at) VALUES ($1, $2, $3)
+           ON CONFLICT (user_id) DO UPDATE SET code_hash = EXCLUDED.code_hash, expires_at = EXCLUDED.expires_at`,
+          [userId, cancelCodeHash, result],
+        );
+        if (enqueue) await enqueue(client, result);
+        return { factor: 'complete', outcome: 'ok', keyResetAt: result };
+      });
+    },
+
     /** Только хэши кодов и статусы: для снимка состояния в тестах. */
     async recoveryHashes() {
       const { rows } = await pool.query('SELECT user_id, req_status, req_code_hash FROM recovery WHERE req_code_hash IS NOT NULL');
