@@ -28,7 +28,11 @@ async function loadKey(keyProvider, keyId) {
   if (!Buffer.isBuffer(value) && !(value instanceof Uint8Array)) {
     throw new Error('Feed encryption key provider must return 32 key bytes');
   }
-  const key = Buffer.from(value);
+  // getKey must return an ephemeral, caller-owned byte buffer. Adopt Buffer
+  // directly (or copy-and-clear a Uint8Array) so the caller's finally block
+  // can zeroize the only live copy instead of leaving a second key copy behind.
+  const key = Buffer.isBuffer(value) ? value : Buffer.from(value);
+  if (!Buffer.isBuffer(value)) value.fill(0);
   if (key.length !== 32) {
     key.fill(0);
     throw new Error('Feed encryption keys must be exactly 32 bytes');
