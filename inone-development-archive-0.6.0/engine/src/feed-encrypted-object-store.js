@@ -211,6 +211,12 @@ export function createEncryptedFeedObjectStore(innerStore, keyProvider, {
     const encrypted = Readable.from(encryptedRecords(source, key, keyProvider, chunkBytes));
     return innerStore.putStream(key, encrypted);
   };
+  const getStream = async (key) => {
+    validateObjectKey(key);
+    const encrypted = await innerStore.getStream(key);
+    if (!encrypted) return null;
+    return Readable.from(decryptedRecords(encrypted, key, keyProvider, chunkBytes));
+  };
 
   return {
     async put(key, bytes) {
@@ -218,18 +224,13 @@ export function createEncryptedFeedObjectStore(innerStore, keyProvider, {
     },
     putStream,
     async get(key) {
-      const stream = await this.getStream(key);
+      const stream = await getStream(key);
       if (!stream) return null;
       const chunks = [];
       for await (const chunk of stream) chunks.push(Buffer.from(chunk));
       return Buffer.concat(chunks);
     },
-    async getStream(key) {
-      validateObjectKey(key);
-      const encrypted = await innerStore.getStream(key);
-      if (!encrypted) return null;
-      return Readable.from(decryptedRecords(encrypted, key, keyProvider, chunkBytes));
-    },
+    getStream,
     async remove(key) {
       validateObjectKey(key);
       return innerStore.remove(key);
