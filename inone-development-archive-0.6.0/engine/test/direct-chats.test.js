@@ -85,8 +85,13 @@ test('direct chats require no recipient approval and activate automatically thro
     );
 
     await bob.raw('POST', '/mls/key-packages', { packages: [keyPackage('B_PHONE')] });
-    await bobTablet.raw('POST', '/mls/key-packages', { packages: [keyPackage('B_TABLET')] });
     const claimId = 'direct-chat-claim-bob-0001';
+    await assert.rejects(
+      alice.raw('POST', `/mls/key-packages/${enc(BOB)}/claims`, { claimId, roomId: opened.roomId }),
+      (error) => error.status === 409 && error.message.includes('device_key_package_unavailable'),
+      'a direct chat must not activate with a Welcome for only some active recipient devices',
+    );
+    await bobTablet.raw('POST', '/mls/key-packages', { packages: [keyPackage('B_TABLET')] });
     const claim = await alice.raw('POST', `/mls/key-packages/${enc(BOB)}/claims`, {
       claimId,
       roomId: opened.roomId,
