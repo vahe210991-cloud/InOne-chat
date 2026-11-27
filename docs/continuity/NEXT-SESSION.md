@@ -651,3 +651,5 @@ Latest documented checkpoint: code SHA `4824dfc3b3f4e3aab5d39b16c1adf934a108d660
 6. Feed keyring env/config, Feed-only storage root, production adapter construction, routes and migrations remain unwired. Do not touch shared server/store/schema/config/main while #171/#173/#169 integration remains unresolved.
 7. Do not run tests or Actions manually before #169 is merged. No merge without explicit owner approval; no MLS/chat-file or Flutter UI changes.
 
+8. Deployment audit: current Compose is development-only and the deployment guide starts one Node backend process behind HTTPS; no production orchestrator or isolated media-worker deployment was found. Do not run CPU-heavy/untrusted media decoders inside the public HTTP process. Select a durable queue, private quarantine/final storage sharing model and separately resource-limited worker process/service before wiring.
+
