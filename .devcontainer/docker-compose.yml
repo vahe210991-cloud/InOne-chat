@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: inone-codespaces:node22-flutter3.47.9
+    image: inone-codespaces:node24-flutter3.47.9
     init: true
     command: sleep infinity
     volumes:
