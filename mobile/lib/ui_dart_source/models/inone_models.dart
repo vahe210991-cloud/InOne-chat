@@ -141,6 +141,10 @@ class InOneChatPreview {
     required this.kind,
     this.unread = 0,
     this.initials,
+    this.peerUserId,
+    this.incomingContactRequest = false,
+    this.isPeerContact = false,
+    this.isBlocked = false,
   });
   final String id;
   final String name;
@@ -149,6 +153,10 @@ class InOneChatPreview {
   final InOneChatKind kind;
   final int unread;
   final String? initials;
+  final String? peerUserId;
+  final bool incomingContactRequest;
+  final bool isPeerContact;
+  final bool isBlocked;
 
   InOneChatPreview copyWith({int? unread, String? lastMessage, String? time}) => InOneChatPreview(
         id: id,
@@ -158,6 +166,10 @@ class InOneChatPreview {
         kind: kind,
         unread: unread ?? this.unread,
         initials: initials,
+        peerUserId: peerUserId,
+        incomingContactRequest: incomingContactRequest,
+        isPeerContact: isPeerContact,
+        isBlocked: isBlocked,
       );
 }
 
