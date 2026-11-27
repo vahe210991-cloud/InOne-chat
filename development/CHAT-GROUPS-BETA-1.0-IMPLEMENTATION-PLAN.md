@@ -696,7 +696,7 @@ The owner clarified the intended Beta 1.0 behavior:
 | Chat-list summary | Server returns encrypted last-event cursor/time and per-user unread count; Flutter renders time/unread filter and clears badge after persisted read marker; no plaintext is projected | Code and regression tests present; not run |
 | Direct create-or-open | Authenticated `POST /direct-chats/open`; opaque room ID; same room returned for either side of the pair | Code present; concurrency test pending |
 | MLS provisioning | Only the paired recipient can be claimed and added; direct membership activates only with the claimed Add Commit/Welcome | Code present; end-to-end test pending |
-| Recipient experience | Flutter DTO and UI treat provisioning as internal; no accept/reject action or approval prompt | Code present; Flutter tests pending |
+| Recipient experience | Flutter treats provisioning as internal and never gates message delivery; first message from a non-contact shows **Принять**/**Заблокировать** beside the sender name | Backend contact-request state, Flutter actions and tests authored; verification pending |
 | Device KeyPackages | Native Flutter app maintains a per-device KeyPackage reserve after authentication and on app resume | Code present; native runtime tests pending |
 | Message delivery | Backend regression covers MLS message route, pre-activation fail-closed behavior and recipient retrieval; Rust/OpenMLS scenario sends while both recipient devices are offline and verifies delivery after sync without an acceptance action | Tests authored; not run |
 
