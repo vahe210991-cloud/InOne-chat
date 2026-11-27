@@ -1199,6 +1199,48 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
     }
   }
 
+  Future<void> _acceptIncomingContact(InOneChatPreview chat) async {
+    final peerUserId = chat.peerUserId;
+    if (peerUserId == null || !chat.incomingContactRequest) return;
+    try {
+      await _repositories.acceptContactRequest(peerUserId);
+      await _loadMlsRooms();
+      _notice('Контакт добавлен. Переписка продолжает работать без ограничений.');
+    } catch (error) {
+      _notice('Не удалось принять контакт: $error');
+    }
+  }
+
+  Future<void> _blockIncomingContact(InOneChatPreview chat) async {
+    final peerUserId = chat.peerUserId;
+    if (peerUserId == null || !chat.incomingContactRequest) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Заблокировать пользователя?'),
+        content: const Text('Новые сообщения и взаимодействия с этим пользователем будут запрещены. Уже доставленная история останется в чате.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Заблокировать'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await _repositories.blockContact(peerUserId);
+      await _loadMlsRooms();
+      _notice('Пользователь заблокирован. Новые сообщения от него не будут доставляться.');
+    } catch (error) {
+      _notice('Не удалось заблокировать пользователя: $error');
+    }
+  }
+
   Future<void> _loadMlsRooms() async {
     if (mounted) {
       setState(() {
@@ -1281,6 +1323,10 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           time: previewTime,
           kind: kind,
           unread: row.unreadCount,
+          peerUserId: row.peerUserId,
+          incomingContactRequest: row.incomingContactRequest,
+          isPeerContact: row.isPeerContact,
+          isBlocked: row.isBlocked,
         ));
       }
       if (!mounted) return;
@@ -3213,6 +3259,8 @@ class _InOneMobileAppState extends State<InOneMobileApp> with WidgetsBindingObse
           chats: _mlsChats,
           unreadCountsAvailable: _unreadCountsAvailable,
           onOpenChat: _openMlsChat,
+          onAcceptContact: (chat) => unawaited(_acceptIncomingContact(chat)),
+          onBlockContact: (chat) => unawaited(_blockIncomingContact(chat)),
           onSearch: () => unawaited(_discoverPublicRooms()),
           onTab: _selectTab,
           onAdd: _session.hasNativeMlsSession
