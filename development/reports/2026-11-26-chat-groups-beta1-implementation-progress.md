@@ -43,3 +43,13 @@ A recipient does not accept or reject the chat or the first message. Direct mess
 - Confirm no unrelated Beta 2.0 work or release flag changes entered the branch.
 
 No test/build result is claimed until Actions reports it for the exact implementation SHA. Do not merge without explicit owner approval.
+
+
+## 2026-11-27 — owner UX clarification and static-review hardening
+
+- Confirmed the exact recipient UX: when the first message arrives from someone absent from the recipient's contacts, show **Принять** and **Заблокировать** directly beneath the sender name in the chat row. These controls are contact-list actions only; they do not accept, reject, delay, or otherwise gate the already-delivered message.
+- Confirmed the Flutter screen is wired through the production app host to authenticated accept/block repository calls. Existing contacts and blocked peers do not receive the prompt.
+- Static transaction review found an accept-vs-block race across two devices. Contact acceptance now locks both account rows in the same stable account-first order used by blocking before it locks the pending request. Added a concurrent accept/block regression; a committed block must leave no contact edge in either direction.
+- Static UI refresh review found that active-thread metadata refresh updated unread/time but not contact prompt state. The refresh now also updates `incomingContactRequest`, `isPeerContact`, and `isBlocked`; the preview model has focused copy/update coverage.
+- Updated the Docker Compose acceptance workflow to assert that migration `0037-contacts-and-blocks` is applied, rather than stopping its schema check at migration 0031.
+- **Verification remains NOT RUN.** No tests, builds, migrations, Rust checks, Flutter checks, or Actions workflows have been started. The exact-SHA PR acceptance gate is intentionally deferred until source review and static preflight are complete.
