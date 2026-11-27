@@ -2068,6 +2068,12 @@ if (req.method === 'POST' && p === '/login') {
       if (req.method === 'POST' && p === '/pin/reset/start') {
         const d = await authed(req);
         if (!d) return send(res, 401, { error: 'unauthorized' });
+        const perAccount = await checkRate('pinResetStartPerAccount', d.userId);
+        const perAddress = await checkRate('pinResetStartPerAddress', clientIp(req));
+        if (!perAccount.allowed || !perAddress.allowed) {
+          const retryAt = Math.max(perAccount.retryAt ?? 0, perAddress.retryAt ?? 0);
+          return send(res, 429, { error: 'too many PIN reset requests', retryAt: new Date(retryAt).toISOString() });
+        }
         if (await passwordSignInAllowed(d.userId)) {
           const stored = await storage.accountHash(d.userId);
           if (typeof body.password !== 'string' || !checkPassword(body.password, stored)) {
@@ -2076,12 +2082,6 @@ if (req.method === 'POST' && p === '/login') {
         }
         const profile = await storage.profileGet(d.userId);
         if (!profile?.emailVerified || !profile.email) return send(res, 403, { error: 'verified email required' });
-        const perAccount = await checkRate('pinResetStartPerAccount', d.userId);
-        const perAddress = await checkRate('pinResetStartPerAddress', clientIp(req));
-        if (!perAccount.allowed || !perAddress.allowed) {
-          const retryAt = Math.max(perAccount.retryAt ?? 0, perAddress.retryAt ?? 0);
-          return send(res, 429, { error: 'too many PIN reset requests', retryAt: new Date(retryAt).toISOString() });
-        }
         const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
         const challengeId = randomBytes(24).toString('base64url');
         const createdAt = now();
@@ -2108,6 +2108,12 @@ if (req.method === 'POST' && p === '/login') {
       if (req.method === 'POST' && p === '/pin/reset/complete') {
         const d = await authed(req);
         if (!d) return send(res, 401, { error: 'unauthorized' });
+        const perAccount = await checkRate('pinResetCompletePerAccount', d.userId);
+        const perAddress = await checkRate('pinResetCompletePerAddress', clientIp(req));
+        if (!perAccount.allowed || !perAddress.allowed) {
+          const retryAt = Math.max(perAccount.retryAt ?? 0, perAddress.retryAt ?? 0);
+          return send(res, 429, { error: 'too many PIN reset attempts', retryAt: new Date(retryAt).toISOString() });
+        }
         const challengeId = typeof body.challengeId === 'string' ? body.challengeId : '';
         const code = typeof body.code === 'string' ? body.code : '';
         const pin = typeof body.pin === 'string' ? body.pin : '';
@@ -2119,12 +2125,6 @@ if (req.method === 'POST' && p === '/login') {
         if (pinErrorText) return send(res, 400, { error: pinErrorText });
         if (!validatePin(pinConfirmation) || pin !== pinConfirmation) {
           return send(res, 400, { error: 'PIN confirmation does not match' });
-        }
-        const perAccount = await checkRate('pinResetCompletePerAccount', d.userId);
-        const perAddress = await checkRate('pinResetCompletePerAddress', clientIp(req));
-        if (!perAccount.allowed || !perAddress.allowed) {
-          const retryAt = Math.max(perAccount.retryAt ?? 0, perAddress.retryAt ?? 0);
-          return send(res, 429, { error: 'too many PIN reset attempts', retryAt: new Date(retryAt).toISOString() });
         }
         const pinHash = await hashPin(pinPepper, pin);
         const profile = await storage.profileGet(d.userId);
