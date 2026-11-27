@@ -795,3 +795,13 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Confirmed current `main` already contains device-bound signed file downloads (same class of work as PR #86); do not duplicate. PR #42 is only a PostgreSQL workflow against old `inone-engine-poc-0.6.0` paths, not a current-engine transaction fix. PR #65 only hardens one error catch, not the global request boundary.
 - Reviewed mobile code-search results for legacy KeyPackage/to-device endpoint usage; no direct mobile references surfaced in the searched source paths. This is not yet a complete API compatibility proof; inspect Rust/Flutter transport adapters and runtime traces before retiring legacy API.
 - Expanded the Stage 0 report with the updated matrix and exact PR dispositions. No source changes, test runs, issue closures, merges, secret edits or repo setting changes.
+
+## 2026-11-27 — Feed domain foundation started (Draft PR #174)
+
+- Started from live `main` SHA `7d34b99fcc026a828b838e211d039c575aeace1d` on isolated branch `feat/feed-domain-foundation-beta1-main-7d34b99-20261127`, following the main-first integration policy.
+- Added pure Feed domain rules and unit tests for normalized bounded plain-text content, content hashing, opaque post IDs, idempotency-key shape, strict versioned keyset cursors, deterministic ordering and bounded pagination.
+- Added draft API contract proposal `development/architecture/FEED-BETA1-API-CONTRACT-PROPOSAL.md` and stage report `development/reports/2026-11-27-feed-domain-foundation.md`.
+- Draft PR #174 opened against `main`. The PR is deliberately isolated from open PR #171 AUTH, #173 MLS security and #172 Feed scope documentation; no changes from those branches were copied.
+- No API route, DB schema/migration, PostgreSQL/in-memory persistence, media path, Flutter repository/screen, or navigation was changed. No implementation task was closed.
+- Exact-head GitHub Actions were queued/in progress at report creation; no PASS is claimed until the final PR SHA's jobs complete.
+- WBS weights and historical percentages remain unchanged. Feed scope/visibility owner decisions are documented separately in Draft PR #172.
