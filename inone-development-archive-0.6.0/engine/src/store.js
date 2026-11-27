@@ -1547,8 +1547,8 @@ export function createStore({ pool, pinPepper, testHooks = {} }) {
         }
 
         await client.query(
-          'UPDATE pins SET pin_hash = COALESCE($2, pin_hash), failed = 0, locked_until = NULL WHERE user_id = $1',
-          [userId, pinOk.upgradedHash ?? null],
+          'UPDATE pins SET pin_hash = COALESCE($2, pin_hash), failed = 0, locked_until = NULL, last_verified_at = $3 WHERE user_id = $1',
+          [userId, pinOk.upgradedHash ?? null, now],
         );
         const { next, result } = complete(current, accountsFound[0].password_hash);
         await client.query(
