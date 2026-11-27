@@ -611,3 +611,14 @@ Latest documented checkpoint: code SHA `4824dfc3b3f4e3aab5d39b16c1adf934a108d660
 - Do not reimplement B-14 FCM invalid-registration cleanup without evidence; add/execute PostgreSQL regression for re-registration racing with old failed delivery.
 - B-15: define exact dependency contract for readiness; keep liveness independent of PostgreSQL and avoid exposing dependency/configuration details.
 - Before deprecating legacy MLS endpoint, finish mobile transport/API call-site audit (Flutter, Rust bridge, generated bindings, integration tests); code-search hits did not show direct Flutter call sites but are not a complete proof.
+
+# Next execution — Feed Beta 1.0 implementation (2026-11-27)
+
+1. Read `development/reports/2026-11-27-feed-domain-foundation.md` and `development/architecture/FEED-BETA1-API-CONTRACT-PROPOSAL.md`.
+2. Re-fetch live `main`, PR #172, #171, #173 and #174. Record exact SHAs and review all current Actions jobs before changing shared backend files.
+3. Obtain owner review of the proposed API contract and first-slice boundary. Do not treat proposal routes/limits as approved until confirmed.
+4. Keep the implementation main-first and isolated. PR #171 and #173 both touch canonical server/store files; selectively integrate their accepted behavior only after owner-authorized merges. Do not wholesale merge their branches.
+5. Implement the posts migration/store parity, then authenticated routes and HTTP/PostgreSQL security regression tests. Do not expose cross-account reads until server-side enforcement passes.
+6. Implement media association/download as a separate reviewed slice. Never publish unauthenticated object URLs; re-authorize the parent post and active device on each download.
+7. Add typed Flutter/Dart repository and a new native Feed/composer screen only after the API contract and backend routes are verified. Do not restore HTML/WebView.
+8. Keep every PR Draft until all applicable exact-head Actions are green and review is complete. Never merge without explicit owner approval. Do not close or strike through implementation tasks before accepted evidence.
