@@ -837,3 +837,6 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - KeyPackage claim now requires an eligible package for every active recipient device before it returns a claim. Missing one device package yields `device_key_package_unavailable`; partial package consumption is rolled back/restored so the same claim ID can retry after the missing device uploads a package.
 - Applied to PostgreSQL and memory stores. Extended the direct-chat test source to cover one-of-two-device failure followed by a successful retry returning both device packages.
 - This only covers the initial active-device set. Adding/revoking devices after a claim is staged remains an explicit D-02 acceptance item. No tests/builds/Actions have been run.
+
+
+- Reserved claim replay now refreshes its package set if the active recipient-device set changed before the client staged the MLS commit. Old regular package reservations are restored and the same claim ID is rebuilt against the current active devices in both stores.
