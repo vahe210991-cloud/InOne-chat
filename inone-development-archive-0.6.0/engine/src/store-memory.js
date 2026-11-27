@@ -907,6 +907,8 @@ export function createMemoryStore({ pinPepper }) {
         const oldRecovery = recovery.get(userId);
         const oldCancel = recoveryCancels.get(userId);
         const oldPinHash = pinRecord.hash;
+        const oldPinFailed = pinRecord.failed;
+        const oldPinLockedUntil = pinRecord.lockedUntil;
         pinRecord.hash = pinResult.upgradedHash ?? pinRecord.hash;
         pinRecord.failed = 0;
         pinRecord.lockedUntil = null;
@@ -921,8 +923,8 @@ export function createMemoryStore({ pinPepper }) {
           if (oldRecovery) recovery.set(userId, oldRecovery); else recovery.delete(userId);
           if (oldCancel) recoveryCancels.set(userId, oldCancel); else recoveryCancels.delete(userId);
           pinRecord.hash = oldPinHash;
-          pinRecord.failed = failed - 1;
-          pinRecord.lockedUntil = null;
+          pinRecord.failed = oldPinFailed;
+          pinRecord.lockedUntil = oldPinLockedUntil;
           throw error;
         }
         return { factor: 'complete', outcome: 'ok', keyResetAt: result };
