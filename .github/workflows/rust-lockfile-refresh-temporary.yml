@@ -8,12 +8,14 @@ on:
       - "inone-development-archive-0.6.0/engine/mobile-mls/**"
       - "inone-engine-poc-0.6.0/mobile-mls/**"
       - "mobile/rust/Cargo.toml"
+      - ".github/workflows/rust-lockfile-refresh-temporary.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   refresh-lockfiles:
+    if: ${{ !startsWith(github.event.head_commit.message, 'chore(security): refresh MLS lockfiles') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -38,6 +40,24 @@ jobs:
           cp inone-engine-poc-0.6.0/mobile-mls/mls-client/Cargo.lock "${RUNNER_TEMP}/refreshed-lockfiles/engine-poc-mls-client.Cargo.lock"
           cp inone-engine-poc-0.6.0/mobile-mls/mls-bridge/Cargo.lock "${RUNNER_TEMP}/refreshed-lockfiles/engine-poc-mls-bridge.Cargo.lock"
           cp mobile/rust/Cargo.lock "${RUNNER_TEMP}/refreshed-lockfiles/mobile-rust.Cargo.lock"
+      - name: Commit refreshed lockfiles to this exact PR branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            inone-development-archive-0.6.0/engine/mobile-mls/mls-client/Cargo.lock \
+            inone-development-archive-0.6.0/engine/mobile-mls/mls-bridge/Cargo.lock \
+            inone-engine-poc-0.6.0/mobile-mls/mls-client/Cargo.lock \
+            inone-engine-poc-0.6.0/mobile-mls/mls-bridge/Cargo.lock \
+            mobile/rust/Cargo.lock
+          if git diff --cached --quiet; then
+            echo "Lockfiles are already current."
+          else
+            git commit -m "chore(security): refresh MLS lockfiles"
+            git push origin "HEAD:${GITHUB_REF}"
+          fi
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: refreshed-rust-lockfiles-${{ github.sha }}
