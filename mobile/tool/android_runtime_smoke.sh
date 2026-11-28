@@ -24,9 +24,9 @@ timeout 60 flutter devices --device-timeout 60
 adb uninstall com.inone.app >/dev/null 2>&1 || true
 adb install -r build/app/outputs/flutter-apk/app-x86_64-debug.apk
 adb shell pm grant com.inone.app android.permission.POST_NOTIFICATIONS
-notification_permission="$(adb shell pm check-permission com.inone.app android.permission.POST_NOTIFICATIONS | tr -d '\\r')"
-if [ "$notification_permission" != "granted" ]; then
-  echo "::error::Android notification permission was not granted for the headless smoke test (state=$notification_permission)"
+notification_permission="$(adb shell dumpsys package com.inone.app | tr -d '\r' | grep -F 'android.permission.POST_NOTIFICATIONS: granted=true' || true)"
+if [ -z "$notification_permission" ]; then
+  echo "::error::Android notification permission was not granted for the headless smoke test"
   exit 1
 fi
 adb logcat -c || true
