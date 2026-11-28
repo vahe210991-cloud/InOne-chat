@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Сборка ядра MLS для Android: три архитектуры, результат кладётся в проект Flutter.
-# Нужны: Rust 1.91+ с целями Android, cargo-ndk, Android NDK (переменная ANDROID_NDK_HOME).
+# Нужны: Rust 1.92+ с целями Android, cargo-ndk, Android NDK (переменная ANDROID_NDK_HOME).
 set -euo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
 out="${1:-$here/../flutter_app/android/app/src/main/jniLibs}"

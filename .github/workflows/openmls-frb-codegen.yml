@@ -67,7 +67,7 @@ jobs:
       - name: Install Rust toolchain and Android targets
         uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master snapshot verified 2026-11-25
         with:
-          toolchain: "1.91.0"
+          toolchain: "1.92.0"
           components: rustfmt
           targets: "aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android"
 
@@ -313,7 +313,7 @@ jobs:
       - name: Install Rust iOS targets
         uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master snapshot verified 2026-11-25
         with:
-          toolchain: "1.91.0"
+          toolchain: "1.92.0"
           components: rustfmt
           targets: "aarch64-apple-ios,aarch64-apple-ios-sim"
 

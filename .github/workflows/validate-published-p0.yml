@@ -29,7 +29,7 @@ env:
 
 jobs:
   rust-format:
-    name: Rust format (1.91)
+    name: Rust format (1.92)
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -38,7 +38,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master snapshot verified 2026-11-25
         with:
-          toolchain: "1.91"
+          toolchain: "1.92"
           components: rustfmt
       - name: Record Rust format toolchain versions
         run: |
@@ -234,7 +234,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master snapshot verified 2026-11-25
         with:
-          toolchain: "1.91"
+          toolchain: "1.92"
       - name: Install pinned RustSec cargo-audit
         run: cargo install --locked --version 0.23.0 cargo-audit
       - name: Record default-feature dependency graphs for all MLS targets
@@ -262,7 +262,7 @@ jobs:
           record_graph legacy-engine-a-bridge inone-engine-poc-0.6.0/mobile-mls/mls-bridge/Cargo.toml
           if [[ -f development/prototypes/openmls-0.10-sqlcipher-compat/current-reader/Cargo.toml ]]; then
             # This isolated prerelease prototype explicitly requires Rust 1.94;
-            # keep the production MLS graphs on the repository's Rust 1.91 toolchain.
+            # keep the production MLS graphs on the repository's Rust 1.92 toolchain.
             rustup toolchain install 1.94.0 --profile minimal --no-self-update
             record_graph openmls-010-sqlcipher-prototype development/prototypes/openmls-0.10-sqlcipher-compat/current-reader/Cargo.toml 1.94.0
           fi
@@ -355,7 +355,7 @@ jobs:
           cache-dependency-path: inone-development-archive-0.6.0/engine/package-lock.json
       - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master snapshot verified 2026-11-25
         with:
-          toolchain: "1.91"
+          toolchain: "1.92"
       - run: npm ci
         working-directory: ${{ env.ENGINE_DIR }}
       - name: Record OpenMLS toolchain versions
@@ -392,7 +392,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master snapshot verified 2026-11-25
         with:
-          toolchain: "1.91"
+          toolchain: "1.92"
       - name: Record Rust bridge toolchain versions
         run: |
           rustc --version | tee "$RUNNER_TEMP/rust-bridge-toolchain.txt"
