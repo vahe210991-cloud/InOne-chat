@@ -76,22 +76,12 @@ jobs:
       - name: Prepare Android NDK context for native secure storage
         run: node tool/prepare_android_mls.mjs
 
-      - name: Configure Maven repositories for Flutter's included Gradle build
+      - name: Configure Gradle Plugin Portal before rate-limited Maven Central
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p "$HOME/.gradle/init.d"
-          cat > "$HOME/.gradle/init.d/inone-flutter-plugin-repositories.gradle" <<'EOF'
-          // Flutter's included Gradle build has independent plugin repositories.
-          // Ensure its Kotlin DSL transitive dependencies can resolve from Maven Central.
-          gradle.beforeSettings { settings ->
-              settings.pluginManagement.repositories {
-                  google()
-                  mavenCentral()
-                  gradlePluginPortal()
-              }
-          }
-          EOF
+          install -m 0644 tool/gradle-plugin-repositories.init.gradle "$HOME/.gradle/init.d/inone-flutter-plugin-repositories.gradle"
           test -s "$HOME/.gradle/init.d/inone-flutter-plugin-repositories.gradle"
       - name: Record generated Android Gradle wrapper
         shell: bash
