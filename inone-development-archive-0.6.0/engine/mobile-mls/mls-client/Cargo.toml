@@ -24,5 +24,8 @@ zeroize = "1.9.1"
 url = "2.5.9"
 
 [patch.crates-io]
+openmls_rust_crypto = { path = "../vendor/openmls_rust_crypto" }
+openmls_basic_credential = { path = "../vendor/openmls_basic_credential" }
+openmls_libcrux_crypto = { path = "../vendor/openmls_libcrux_crypto" }
 openmls_sqlite_storage = { path = "../vendor/openmls_sqlite_storage" }
 refinery-core = { path = "../vendor/refinery-core" }

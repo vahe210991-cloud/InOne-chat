@@ -14,5 +14,8 @@ openmls_basic_credential = "=0.6.0"
 openmls_traits = "=0.6.0"
 
 [patch.crates-io]
+openmls_rust_crypto = { path = "../../../inone-development-archive-0.6.0/engine/mobile-mls/vendor/openmls_rust_crypto" }
+openmls_basic_credential = { path = "../../../inone-development-archive-0.6.0/engine/mobile-mls/vendor/openmls_basic_credential" }
+openmls_libcrux_crypto = { path = "../../../inone-development-archive-0.6.0/engine/mobile-mls/vendor/openmls_libcrux_crypto" }
 openmls_sqlite_storage = { path = "../../../inone-development-archive-0.6.0/engine/mobile-mls/vendor/openmls_sqlite_storage" }
 refinery-core = { path = "../../../inone-development-archive-0.6.0/engine/mobile-mls/vendor/refinery-core" }
