@@ -1010,7 +1010,7 @@ mod tests {
     }
 
     #[test]
-    fn grouped_migration_failure_rolls_back_v2_and_retry_preserves_legacy_rows() {
+    fn grouped_migration_failure_rolls_back_v8_and_retry_preserves_legacy_rows() {
         let path = std::env::var("INONE_COMPAT_RECOVERY_DB")
             .expect("INONE_COMPAT_RECOVERY_DB must point to an independent legacy fixture");
         let path = Path::new(&path);
@@ -1042,14 +1042,14 @@ mod tests {
                 [],
                 |row| row.get(0),
             )
-            .expect("check V2 migration history before migration");
+            .expect("check V8 migration history before migration");
         assert_eq!(
-            original_v2_rows, 0,
-            "legacy fixture must not have V2 applied"
+            original_v2_rows, 1,
+            "legacy fixture must retain the legacy V8 migration"
         );
 
         // The legacy schema can hold this row only when CHECK enforcement is
-        // deliberately bypassed. Candidate V2 creates its constrained replacement
+        // deliberately bypassed. Candidate V8 creates its constrained replacement
         // table, copies rows, and must fail during that copy.
         let invalid_group_id = b"inone-migration-rollback-probe";
         connection
@@ -1068,12 +1068,12 @@ mod tests {
         drop(connection);
 
         let migration_error = match load_group(path, openmls_rust_crypto::RustCrypto::default()) {
-            Ok(_) => panic!("V2 migration unexpectedly accepted an invalid legacy row"),
+            Ok(_) => panic!("V8 migration unexpectedly accepted an invalid legacy row"),
             Err(error) => error.to_string(),
         };
         assert!(
             migration_error.contains("CHECK constraint failed"),
-            "expected V2 copy to fail on the new constraint, got: {migration_error}"
+            "expected V8 copy to fail on the new constraint, got: {migration_error}"
         );
 
         // The grouped batch must roll back CREATE TABLE, the copy, and every
@@ -1113,18 +1113,18 @@ mod tests {
             .expect("read migration history after rollback");
         assert_eq!(
             history_rows, original_history_rows,
-            "all pre-existing migration history rows must survive the failed V2 batch"
+            "all pre-existing migration history rows must survive the failed V8 batch"
         );
-        let v2_rows_after_failure: i64 = connection
+        let v8_rows_after_failure: i64 = connection
             .query_row(
-                "SELECT COUNT(*) FROM openmls_sqlite_storage_migrations WHERE version = 2",
+                "SELECT COUNT(*) FROM openmls_sqlite_storage_migrations WHERE version = 8",
                 [],
                 |row| row.get(0),
             )
-            .expect("verify V2 history after rollback");
+            .expect("verify V8 history after rollback");
         assert_eq!(
-            v2_rows_after_failure, 0,
-            "the failed V2 migration must not leave a history row"
+            v8_rows_after_failure, 0,
+            "the failed V8 migration must not leave a history row"
         );
         let integrity: String = connection
             .query_row("PRAGMA integrity_check", [], |row| row.get(0))
@@ -1137,27 +1137,27 @@ mod tests {
             )
             .expect("remove deliberate failure probe before retry");
 
-        // This second failure happens after V2 has completed every DDL statement,
+        // This second failure happens after V8 has completed every DDL statement,
         // but before Refinery can record V2 in its history table. Grouped mode must
         // roll the schema change back together with the failed history write.
         connection
             .execute_batch(
-                "CREATE TRIGGER reject_v2_migration_history
+                "CREATE TRIGGER reject_v8_migration_history
                  BEFORE INSERT ON openmls_sqlite_storage_migrations
-                 WHEN NEW.version = 2
+                 WHEN NEW.version = 8
                  BEGIN
-                   SELECT RAISE(ABORT, 'injected V2 migration history failure');
+                   SELECT RAISE(ABORT, 'injected V8 migration history failure');
                  END;",
             )
             .expect("install migration-history failure trigger");
         drop(connection);
 
         let history_error = match load_group(path, openmls_rust_crypto::RustCrypto::default()) {
-            Ok(_) => panic!("V2 migration unexpectedly ignored the history failure trigger"),
+            Ok(_) => panic!("V8 migration unexpectedly ignored the history failure trigger"),
             Err(error) => error.to_string(),
         };
         assert!(
-            history_error.contains("injected V2 migration history failure"),
+            history_error.contains("injected V8 migration history failure"),
             "expected injected history write failure, got: {history_error}"
         );
 
@@ -1175,7 +1175,7 @@ mod tests {
             .expect("read group-data schema after history failure");
         assert!(
             !group_data_schema.contains("application_export_tree"),
-            "V2 DDL must roll back when its history insert fails"
+            "V8 DDL must roll back when its history insert fails"
         );
         let replacement_table_count: i64 = connection
             .query_row(
@@ -1186,7 +1186,7 @@ mod tests {
             .expect("check replacement table after history failure");
         assert_eq!(
             replacement_table_count, 0,
-            "V2 replacement table must not survive history failure"
+            "V8 replacement table must not survive history failure"
         );
         let history_rows: i64 = connection
             .query_row(
@@ -1199,25 +1199,25 @@ mod tests {
             history_rows, original_history_rows,
             "all pre-existing migration history rows must remain after the history-write failure"
         );
-        let v2_rows_after_history_failure: i64 = connection
+        let v8_rows_after_history_failure: i64 = connection
             .query_row(
-                "SELECT COUNT(*) FROM openmls_sqlite_storage_migrations WHERE version = 2",
+                "SELECT COUNT(*) FROM openmls_sqlite_storage_migrations WHERE version = 8",
                 [],
                 |row| row.get(0),
             )
-            .expect("verify V2 history after history failure");
-        assert_eq!(v2_rows_after_history_failure, 0);
+            .expect("verify V8 history after history failure");
+        assert_eq!(v8_rows_after_history_failure, 0);
         let integrity: String = connection
             .query_row("PRAGMA integrity_check", [], |row| row.get(0))
             .expect("check database integrity after history failure");
         assert_eq!(integrity, "ok");
         connection
-            .execute_batch("DROP TRIGGER reject_v2_migration_history")
+            .execute_batch("DROP TRIGGER reject_v8_migration_history")
             .expect("remove migration-history failure trigger");
         drop(connection);
 
         // Reopening after repair must retry the migrations, preserve the original
-        // MLS records, and commit V2 history exactly once.
+        // MLS records, and commit V8 history exactly once.
         let (group, _, _) = load_group(path, openmls_rust_crypto::RustCrypto::default())
             .expect("retry grouped migration after repairing the fixture");
         assert_eq!(group.group_id().as_slice(), GROUP_ID);
@@ -1238,16 +1238,16 @@ mod tests {
             migrated_rows, original_rows,
             "all legacy MLS rows must be preserved"
         );
-        let v2_rows: i64 = connection
+        let v8_rows: i64 = connection
             .query_row(
-                "SELECT COUNT(*) FROM openmls_sqlite_storage_migrations WHERE version = 2",
+                "SELECT COUNT(*) FROM openmls_sqlite_storage_migrations WHERE version = 8",
                 [],
                 |row| row.get(0),
             )
-            .expect("verify V2 migration history");
+            .expect("verify V8 migration history");
         assert_eq!(
             v2_rows, 1,
-            "V2 history must be committed exactly once after retry"
+            "V8 history must be committed exactly once after retry"
         );
         let integrity: String = connection
             .query_row("PRAGMA integrity_check", [], |row| row.get(0))
