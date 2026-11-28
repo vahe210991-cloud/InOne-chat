@@ -725,3 +725,38 @@ Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone
 - Expanded source review confirms B-12 and B-13 defects; B-14 is already implemented at source level (invalid FID cleanup, non-retryable classification, queue cancellation, plaintext-free allowlisted push payload), pending DB-backed test execution; B-15 readiness is partial.
 - Current `main` already has device-bound signed downloads; avoid duplicating PR #86. PR #42 workflow targets old engine paths and does not implement atomic revocation. PR #65 is narrow and does not fix the global request boundary.
 - Updated Stage 0 report addendum in `development/reports/2026-11-24-cto-backend-security-remediation-stage0.md`.
+
+## 2026-11-27 — Feed implementation handoff
+
+- Owner-approved Beta 1.0 rule: published general-feed items are readable by every registered/authenticated InOne account; anonymous access is denied. Feed media inherits this rule and must be re-authorized at download. Privacy variant В remains binding outside Feed.
+- Draft PR #174 starts the implementation from `main` SHA `7d34b99fcc026a828b838e211d039c575aeace1d`. It contains isolated content/cursor domain rules, tests, and a DRAFT API contract proposal only.
+- No Feed API routes, posts table/migration, post persistence, cross-account read enforcement, media flow, Flutter repository/screen, or navigation activation exists from this stage. Feed is NOT ACCEPTED.
+- PR #172 contains the separate scope/owner-decision documentation and remains Draft/unmerged. PR #171 and #173 remain independent Draft branches; do not wholesale merge or copy their histories.
+- Report: `development/reports/2026-11-27-feed-domain-foundation.md`. API proposal: `development/architecture/FEED-BETA1-API-CONTRACT-PROPOSAL.md`.
+
+
+## 2026-11-27 — Feed media-first owner decision and implementation update
+
+- Owner approved Feed variant A: separate server-side media processing; TLS in transit; encryption at rest; mandatory active-session authorization and re-authorization for each media delivery. This does not change chat MLS or the existing chat file pipeline.
+- PR #174 now contains a media-first API proposal and pure domain helpers for optional caption, required ready Feed media and signed HMAC cursors. The proposal remains DRAFT; helpers/tests have not been executed in this stage.
+- Production Feed routes, migrations, persistence, worker, storage encryption configuration, delivery, Flutter integration and dynamic security tests remain NOT STARTED.
+- Do not reuse existing /files authorization by broadening it. Implement Feed in a separate storage namespace/adapter. Keep PR #171/#172/#173 independent; #173 remains HOLD pending #169.
+
+
+- Added isolated chunked AES-256-GCM Feed object-store wrapper and tests. It wraps existing streaming object-store methods, uses per-object DEKs wrapped by a key-provider KEK, binds object/key/chunk metadata as AAD, and supports key-ID rotation. It is not wired to production configuration or storage yet; tests are authored but NOT RUN.
+- Storage finding: current canonical production path is filesystem object storage (streaming, atomic, restrictive permissions but not encrypted at rest); in-memory storage buffers full objects and is test-only. No S3/MinIO/KMS adapter found. Feed must use its own directory/namespace and secret-manager-backed key provider; do not modify chat storage.
+
+
+## Dart Feed/Profile source re-audit
+
+- Reviewed main, PR #171 head, native Dart G1, Flutter migration, UI archive stage1, Feed/Profile audit and profile-workspace branches. In all inspected branches, the Feed tab and Add Publication button exist in InOneBottomNav, but InOneMobileApp._selectTab routes Feed to a “not connected to Beta 1.0” notice. No Feed screen, create-publication, media picker, preview or post-gallery Dart source was found in the inspected main screen trees.
+- Personal and organization profile Dart screens exist. The personal profile shows avatar/name/handle/stats/menu but no publication gallery; organization profile shows cover/logo/about/stats/members but no publication gallery. Do not replace these screens. If another approved Feed Dart branch exists, identify it before Flutter wiring. Backend work can continue independently.
+
+## 2026-11-27 — Feed media runtime audit update
+
+- PR #174 remains Draft/open/unmerged on the isolated Feed branch. It now includes an ephemeral KEK-buffer zeroization fix and an authored regression test; test has NOT RUN.
+- Production engine image is Node 22 Alpine and installs only declared production npm dependencies. No image/video decoder, metadata sanitizer, thumbnail processor, video probe/transcoder or FFmpeg is present. The server is not yet a media-processing runtime.
+- Feed encryption keyring is not wired into config/main; encrypted storage adapter is not connected to a Feed-only filesystem namespace. Existing filesystem object storage remains plaintext at rest unless wrapped; do not broaden or change chat /files storage.
+- Next gate: select an Alpine-compatible, maintained media processing toolchain and define evidence-based configurable limits before implementing upload processing. No media library or numeric limits have been guessed.
+- Static review found and fixed a temporary KEK buffer zeroization gap; no cryptographic acceptance is claimed. All tests remain NOT RUN pending the #169 dependency gate.
+

@@ -611,3 +611,47 @@ Latest documented checkpoint: code SHA `4824dfc3b3f4e3aab5d39b16c1adf934a108d660
 - Do not reimplement B-14 FCM invalid-registration cleanup without evidence; add/execute PostgreSQL regression for re-registration racing with old failed delivery.
 - B-15: define exact dependency contract for readiness; keep liveness independent of PostgreSQL and avoid exposing dependency/configuration details.
 - Before deprecating legacy MLS endpoint, finish mobile transport/API call-site audit (Flutter, Rust bridge, generated bindings, integration tests); code-search hits did not show direct Flutter call sites but are not a complete proof.
+
+# Next execution — Feed Beta 1.0 implementation (2026-11-27)
+
+1. Read `development/reports/2026-11-27-feed-domain-foundation.md` and `development/architecture/FEED-BETA1-API-CONTRACT-PROPOSAL.md`.
+2. Re-fetch live `main`, PR #172, #171, #173 and #174. Record exact SHAs and review all current Actions jobs before changing shared backend files.
+3. Obtain owner review of the proposed API contract and first-slice boundary. Do not treat proposal routes/limits as approved until confirmed.
+4. Keep the implementation main-first and isolated. PR #171 and #173 both touch canonical server/store files; selectively integrate their accepted behavior only after owner-authorized merges. Do not wholesale merge their branches.
+5. Implement the posts migration/store parity, then authenticated routes and HTTP/PostgreSQL security regression tests. Do not expose cross-account reads until server-side enforcement passes.
+6. Implement media association/download as a separate reviewed slice. Never publish unauthenticated object URLs; re-authorize the parent post and active device on each download.
+7. Add typed Flutter/Dart repository and a new native Feed/composer screen only after the API contract and backend routes are verified. Do not restore HTML/WebView.
+8. Keep every PR Draft until all applicable exact-head Actions are green and review is complete. Never merge without explicit owner approval. Do not close or strike through implementation tasks before accepted evidence.
+
+
+## Feed continuation update — 2026-11-27
+
+1. Owner-approved media variant A is binding: separate Feed processing/storage pipeline, TLS, encrypted objects at rest, fresh active-session authorization on every media delivery; no MLS/chat-file changes.
+2. Review the updated media-first API proposal and the new caption/media/signed-cursor domain helpers on PR #174. Do not claim test PASS; current new tests were not run.
+3. Before shared backend files are touched, re-fetch main and PR #169/#171/#172/#173/#174 exact SHAs and establish the safe integration order. PR #173 remains on HOLD until #169 is merged.
+4. Inspect object-store adapters and deployment support for isolated Feed namespace, KMS/envelope encryption, worker execution, streaming upload and cleanup. Do not create public object URLs.
+5. Produce evidence-based configurable limits for photo count, byte sizes, codecs, video duration/resolution and worker budgets; numeric values remain unapproved until justified.
+6. Implement Feed media lifecycle in isolated modules first, then Post/PostMedia persistence/routes. Do not modify MLS/chat file code.
+7. Re-audit exact Dart screen source paths across approved branches before Flutter integration. Keep UI design unchanged.
+
+
+- New isolated primitive: feed-encrypted-object-store.js and feed-encrypted-object-store.test.js. Before wiring, statically review chunk framing, GCM tag verification, key-provider failures, stream cancellation/backpressure, and rotation behavior. Tests have not been run.
+- Current backend has filesystem and in-memory object stores only; filesystem is not encrypted at rest. Add a Feed-only storage root and dedicated secret-manager-backed key provider after shared-file integration is safe. Do not change the chat /files or MLS path.
+
+
+- Dart UI source re-audit across main, PR #171 head, G1 native Dart, Flutter migration, archive stage1, Feed/Profile audit and profile-workspace branches: bottom-nav Feed/Add affordances exist, but Feed route is a placeholder; no Feed/Create/Picker/Preview/PostGallery Dart source found in the inspected trees. Personal/org profile screens are real but have no publication gallery. Do not invent or replace approved UI. Obtain exact approved source branch/path before Flutter integration if one exists outside these inspected branches.
+
+## Feed runtime audit continuation — 2026-11-27
+
+1. PR #174 remains Draft/open/unmerged. Current implementation head is being advanced on `feat/feed-domain-foundation-beta1-main-7d34b99-20261127`; re-fetch exact PR/head SHA before any next write.
+2. Static review confirmed production Docker is Node 22 Alpine with production-only npm dependencies and no image/video decoder, metadata sanitizer, thumbnail generator, video probe/transcoder or FFmpeg. Select and document an Alpine-compatible, maintained processing strategy before adding dependencies or accepting media.
+3. Do not guess supported codecs, photo/video sizes, dimensions, duration, rendition profiles or processing budgets. Keep the API contract's configurable-limit gate open pending benchmarks and owner review.
+4. A key-buffer zeroization defect in the encrypted object-store adapter was corrected and a regression case authored. Tests remain NOT RUN; provider implementations must return fresh caller-owned ephemeral buffers. No cryptographic acceptance is claimed.
+5. Continue static review of bounded stream framing/backpressure and key lifecycle. Production must use `getStream()`, not the whole-object `get()` convenience method.
+6. Feed keyring env/config, Feed-only storage root, production adapter construction, routes and migrations remain unwired. Do not touch shared server/store/schema/config/main while #171/#173/#169 integration remains unresolved.
+7. Do not run tests or Actions manually before #169 is merged. No merge without explicit owner approval; no MLS/chat-file or Flutter UI changes.
+
+8. Deployment audit: current Compose is development-only and the deployment guide starts one Node backend process behind HTTPS; no production orchestrator or isolated media-worker deployment was found. Do not run CPU-heavy/untrusted media decoders inside the public HTTP process. Select a durable queue, private quarantine/final storage sharing model and separately resource-limited worker process/service before wiring.
+
+9. Candidate stack research: Sharp documents Node-API v9 support and prebuilt Linux musl x64/ARM64 binaries for musl >=1.2.5; FFmpeg/ffprobe should remain isolated in the media worker with a strict patch/CVE update policy. Treat this as a candidate only: verify exact worker base image/digest, native architecture, dependency versions and resource isolation before adding packages. References are recorded in the Feed report.
+

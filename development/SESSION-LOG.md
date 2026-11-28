@@ -795,3 +795,49 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Confirmed current `main` already contains device-bound signed file downloads (same class of work as PR #86); do not duplicate. PR #42 is only a PostgreSQL workflow against old `inone-engine-poc-0.6.0` paths, not a current-engine transaction fix. PR #65 only hardens one error catch, not the global request boundary.
 - Reviewed mobile code-search results for legacy KeyPackage/to-device endpoint usage; no direct mobile references surfaced in the searched source paths. This is not yet a complete API compatibility proof; inspect Rust/Flutter transport adapters and runtime traces before retiring legacy API.
 - Expanded the Stage 0 report with the updated matrix and exact PR dispositions. No source changes, test runs, issue closures, merges, secret edits or repo setting changes.
+
+## 2026-11-27 — Feed domain foundation started (Draft PR #174)
+
+- Started from live `main` SHA `7d34b99fcc026a828b838e211d039c575aeace1d` on isolated branch `feat/feed-domain-foundation-beta1-main-7d34b99-20261127`, following the main-first integration policy.
+- Added pure Feed domain rules and unit tests for normalized bounded plain-text content, content hashing, opaque post IDs, idempotency-key shape, strict versioned keyset cursors, deterministic ordering and bounded pagination.
+- Added draft API contract proposal `development/architecture/FEED-BETA1-API-CONTRACT-PROPOSAL.md` and stage report `development/reports/2026-11-27-feed-domain-foundation.md`.
+- Draft PR #174 opened against `main`. The PR is deliberately isolated from open PR #171 AUTH, #173 MLS security and #172 Feed scope documentation; no changes from those branches were copied.
+- No API route, DB schema/migration, PostgreSQL/in-memory persistence, media path, Flutter repository/screen, or navigation was changed. No implementation task was closed.
+- Exact-head GitHub Actions were queued/in progress at report creation; no PASS is claimed until the final PR SHA's jobs complete.
+- WBS weights and historical percentages remain unchanged. Feed scope/visibility owner decisions are documented separately in Draft PR #172.
+
+
+## 2026-11-27 — Feed media-first architecture and domain revision
+
+- Owner explicitly approved Feed media variant A: separate server-side media processing, TLS in transit, encrypted object storage at rest, mandatory authenticated access and fresh authorization at media delivery. Chat MLS and the existing chat file pipeline are out of scope.
+- Replaced the text-first draft in development/architecture/FEED-BETA1-API-CONTRACT-PROPOSAL.md with a media-first Post/PostMedia and upload/quarantine/processing/delivery/deletion contract. Text-only posts are rejected; caption is nullable; nickname is required in the author DTO; internal IDs are excluded.
+- Added pure domain helpers for optional caption normalization, mandatory non-empty unique ready Feed media validation bound to the author, and HMAC-SHA-256 cursor signing/verification with key IDs, query-scope binding and constant-time comparison.
+- Added unit test cases for the new domain rules. Tests have NOT been executed in this stage; no PASS is claimed.
+- Updated development/reports/2026-11-27-feed-domain-foundation.md. Production routes, schema/migrations, storage worker, object encryption, media delivery and Flutter integration remain NOT STARTED.
+- No shared server/store/schema files changed. No changes to chat/MLS files. PR #174 remains Draft and unmerged; PR #171/#172/#173 remain separate and unmerged. PR #173 remains on owner-directed HOLD pending #169.
+- Current work remains isolated on feat/feed-domain-foundation-beta1-main-7d34b99-20261127. No WBS weights/progress percentages changed and no task closed.
+
+
+- Follow-up domain hardening: removed the text-first mandatory-content helper from the Feed domain module; added canonical request hashing over optional normalized caption plus ordered media IDs; changed pagination helper to emit only HMAC-signed scope-bound cursors; rejected inherited keyring properties and non-canonical signature encodings. Rewrote domain tests to match the media-first contract. These tests remain unexecuted.
+
+
+- Added an isolated streaming Feed object-store wrapper in feed-encrypted-object-store.js: per-object random DEK, AES-256-GCM chunk records, wrapped DEK under a key-provider KEK, object/key/chunk-bound AAD, authenticated streaming decrypt, and key-ID rotation support. Added encrypted-store tests and included them from the existing api-contract.test.js test entry.
+- Storage audit: canonical backend currently has only filesystem streaming storage and in-memory test storage. Filesystem writes use restrictive permissions and atomic temp-file publication but are not encrypted at rest. No S3/MinIO/KMS adapter was found. The proposal now specifies a Feed-only encrypted namespace and a secret-manager-backed key-provider interface; KMS/HSM is a future adapter, not a current capability.
+- No production config, main/server/store/schema wiring was changed. No tests executed; all new test coverage remains authored but unverified.
+
+
+- Added Feed keyring provider primitive: strict bounded JSON keyring parsing, 32-byte hex/canonical-Base64 validation, active key selection, previous-key lookup for rotation, copied key material on reads and explicit zeroization on dispose. Added provider tests and wired them into the existing backend test entry. No production config/environment wiring yet; test cases remain unexecuted.
+
+- Security review of the encrypted object framing identified and fixed a truncation risk: the format now includes an authenticated final record binding chunk count and total plaintext bytes, so an attacker cannot truncate at a valid chunk boundary and append an unauthenticated end marker. A forged boundary-truncation regression case was added; tests remain NOT RUN.
+
+## 2026-11-27 — Feed media runtime and cryptographic review
+
+- Re-fetched PR #174 and confirmed it remains open, Draft, mergeable and unmerged. Work remains on `feat/feed-domain-foundation-beta1-main-7d34b99-20261127`; no main changes.
+- Inspected the exact branch sources for the encrypted object store, key provider, domain rules, object-store adapters, engine package manifest, Dockerfile, config and server startup.
+- Confirmed the production container is `node:22-alpine` with `npm ci --omit=dev`; the declared production dependencies do not include an image decoder/encoder, metadata sanitizer, video probe/transcoder or thumbnail processor. No FFmpeg/system media tooling is installed. Media processing cannot be safely wired until a runtime strategy is selected and validated.
+- Confirmed Feed keyring configuration and encrypted object-store construction are not yet wired into config/main. Existing filesystem storage is streaming but plaintext at rest; memory storage buffers full objects and remains test-only.
+- Static review found that the encrypted adapter copied provider-returned KEK bytes, leaving the provider's temporary copy outside the adapter's zeroization path. Fixed this on the PR branch by adopting caller-owned ephemeral Buffer values (and clearing Uint8Array inputs) so the existing finally blocks clear the key bytes. Added a regression test for both encryption and decryption key-buffer cleanup. The provider contract must return a fresh caller-owned ephemeral buffer, never shared retained key storage.
+- Rechecked AES-GCM nonce/counter allocation, AAD binding, wrapped-DEK authentication, final-record truncation protection and key rotation. No cryptographic acceptance is claimed. Production parser/adapter chunk bounds remain an explicit review item; production must use streaming APIs, not the whole-object convenience getter.
+- Updated `development/reports/2026-11-27-feed-domain-foundation.md` with the runtime findings and media-processing decision gate. No guessed media library, format, codec or numeric limit was introduced.
+- Tests remain NOT RUN and no Actions were manually dispatched/rerun, honoring the #169 gate. No shared server/store/schema/config/main files, MLS/chat files or Flutter UI were changed. No PR merged; WBS weights and progress unchanged.
+
