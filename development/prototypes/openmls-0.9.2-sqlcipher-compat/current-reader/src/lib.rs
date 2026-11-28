@@ -1123,7 +1123,9 @@ mod tests {
             .pragma_update(None, "key", format!("x'{TEST_KEY_HEX}'"))
             .expect("reapply SQLCipher key after successful migration");
         let migrated_rows: i64 = connection
-            .query_row("SELECT COUNT(*) FROM openmls_group_data", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM openmls_group_data", [], |row| {
+                row.get(0)
+            })
             .expect("count migrated MLS rows");
         assert_eq!(
             migrated_rows, original_rows,
