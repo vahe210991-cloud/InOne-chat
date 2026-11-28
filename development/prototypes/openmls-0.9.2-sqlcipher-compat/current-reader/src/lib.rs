@@ -1126,16 +1126,16 @@ mod tests {
             v7_rows_after_failure, 0,
             "the failed V7 migration must not leave a history row"
         );
-        let integrity: String = connection
-            .query_row("PRAGMA integrity_check", [], |row| row.get(0))
-            .expect("check database integrity after rollback");
-        assert_eq!(integrity, "ok");
         connection
             .execute(
                 "DELETE FROM openmls_group_data WHERE group_id = ?1 AND data_type = 'invalid_migration_probe'",
                 [invalid_group_id.as_slice()],
             )
             .expect("remove deliberate failure probe before retry");
+        let integrity: String = connection
+            .query_row("PRAGMA integrity_check", [], |row| row.get(0))
+            .expect("check database integrity after rollback and probe cleanup");
+        assert_eq!(integrity, "ok");
 
         // This second failure happens after V7 has completed every DDL statement,
         // but before Refinery can record V7 in its history table. Grouped mode must
