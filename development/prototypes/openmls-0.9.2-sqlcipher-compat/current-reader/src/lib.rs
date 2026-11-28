@@ -1024,6 +1024,13 @@ mod tests {
                 row.get::<_, i64>(0)
             })
             .expect("verify SQLCipher key before migration test");
+        let original_group_data_schema: String = connection
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'openmls_group_data'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("capture legacy group-data schema before V7");
         let original_rows: i64 = connection
             .query_row("SELECT COUNT(*) FROM openmls_group_data", [], |row| {
                 row.get(0)
@@ -1173,9 +1180,9 @@ mod tests {
                 |row| row.get(0),
             )
             .expect("read group-data schema after history failure");
-        assert!(
-            !group_data_schema.contains("application_export_tree"),
-            "V7 DDL must roll back when its history insert fails"
+        assert_eq!(
+            group_data_schema, original_group_data_schema,
+            "V7 DDL must roll back to the exact legacy schema when its history insert fails"
         );
         let replacement_table_count: i64 = connection
             .query_row(
