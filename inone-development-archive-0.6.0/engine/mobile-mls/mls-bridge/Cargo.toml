@@ -2,7 +2,7 @@
 name = "mls-bridge"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.92"
+rust-version = "1.94"
 
 [lib]
 crate-type = ["cdylib", "staticlib", "rlib"]
