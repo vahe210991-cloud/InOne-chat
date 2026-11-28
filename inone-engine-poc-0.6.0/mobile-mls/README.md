@@ -1,7 +1,7 @@
 # Мобильный мост MLS для Flutter
 
-- **Что здесь:** `mls-bridge` — Rust-библиотека поверх OpenMLS 0.8.3 с простым интерфейсом (личность, группа, приглашение, приветствие, сообщение, коммит), которую будет вызывать Flutter. Скрипты сборки для Android и iOS. Конвейер GitHub Actions — в `.github/workflows/mls-mobile.yml`.
-- **Тесты на Linux:** `cd mls-bridge && cargo test --locked` (нужен Rust 1.91 или новее).
+- **Что здесь:** `mls-bridge` — Rust-библиотека поверх OpenMLS 0.9.2 с простым интерфейсом (личность, группа, приглашение, приветствие, сообщение, коммит), которую будет вызывать Flutter. Скрипты сборки для Android и iOS. Конвейер GitHub Actions — в `.github/workflows/mls-mobile.yml`.
+- **Тесты на Linux:** `cd mls-bridge && cargo test --locked` (нужен Rust 1.94 или новее).
 - **Сборка Android:** `scripts/build-android.sh` — нужны Rust с целями Android, cargo-ndk и Android NDK (`ANDROID_NDK_HOME`).
 - **Сборка iOS:** `scripts/build-ios.sh` — только на macOS с Xcode.
 - **Статус:** тесты на Linux проходят; сборки Android и iOS не выполнялись (в песочнице нет NDK, Flutter SDK и целей Rust для мобильных платформ). Конвейер не запускался на GitHub.

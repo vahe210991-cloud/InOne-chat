@@ -29,7 +29,7 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Checkout PR head
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
@@ -44,7 +44,7 @@ jobs:
           echo "Validated source SHA: $actual"
 
       - name: Install Flutter
-        uses: subosito/flutter-action@v2
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           flutter-version: "3.47.9"
           channel: stable
@@ -65,9 +65,9 @@ jobs:
         run: rm -f test/widget_test.dart integration_test/simple_test.dart
 
       - name: Install Rust toolchain and Android targets
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master snapshot verified 2026-11-25
         with:
-          toolchain: "1.91.0"
+          toolchain: "1.94.0"
           components: rustfmt
           targets: "aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android"
 
@@ -186,7 +186,7 @@ jobs:
 
       - name: Upload generated FRB outputs for iOS validation
         id: upload-generated
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: inone-mls-frb-generated
           path: ${{ runner.temp }}/inone-mls-frb-generated
@@ -194,7 +194,7 @@ jobs:
 
       - name: Build Android with native OpenMLS assets
         working-directory: mobile
-        run: flutter build apk --debug
+        run: flutter build apk --debug --target-platform android-x64
 
       - name: Enable KVM for Android emulator
         run: |
@@ -206,7 +206,7 @@ jobs:
           test -r /dev/kvm && test -w /dev/kvm
 
       - name: Android Keystore runtime smoke test
-        uses: reactivecircus/android-emulator-runner@v2
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
           api-level: 35
           target: google_apis
@@ -230,7 +230,7 @@ jobs:
             sh -c 'set -eu; adb devices; adb wait-for-device; apk="$GITHUB_WORKSPACE/mobile/build/app/outputs/flutter-apk/app-debug.apk"; test -f "$apk"; aapt="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)"; test -x "$aapt"; package_name="$("$aapt" dump badging "$apk" | head -n 1 | cut -d " " -f 2 | cut -d "=" -f 2 | tr -d "\\047")"; test -n "$package_name"; adb install -r "$apk"; adb shell pm grant "$package_name" android.permission.POST_NOTIFICATIONS; cd "$GITHUB_WORKSPACE/mobile"; flutter test integration_test/mls_secure_store_test.dart -d emulator-5554 || { adb logcat -d -t 5000 || true; exit 1; }'
 
       - name: Upload Android preview APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: inone-mls-android-apk
           path: mobile/build/app/outputs/flutter-apk/app-debug.apk
@@ -246,7 +246,7 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: Checkout source branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
@@ -261,7 +261,7 @@ jobs:
           echo "Validated source SHA: $actual"
 
       - name: Download generated bridge artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: inone-mls-frb-generated
           path: ${{ runner.temp }}/inone-mls-frb-generated
@@ -304,16 +304,16 @@ jobs:
           cp "$GENERATED/pubspec.lock" mobile/pubspec.lock
 
       - name: Install Flutter and iOS Rust targets
-        uses: subosito/flutter-action@v2
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           flutter-version: "3.47.9"
           channel: stable
           cache: true
 
       - name: Install Rust iOS targets
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master snapshot verified 2026-11-25
         with:
-          toolchain: "1.91.0"
+          toolchain: "1.94.0"
           components: rustfmt
           targets: "aarch64-apple-ios,aarch64-apple-ios-sim"
 
@@ -377,7 +377,7 @@ jobs:
         run: flutter build ios --no-codesign --verbose
 
       - name: Upload unsigned iOS simulator build
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: inone-mls-ios-simulator-build
           path: mobile/build/ios/iphonesimulator/Runner.app

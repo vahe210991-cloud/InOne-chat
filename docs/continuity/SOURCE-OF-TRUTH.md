@@ -224,3 +224,17 @@ The owner has approved a two-application product structure:
 This is an authoritative product-boundary decision. Requirements, screen inventories, navigation, UX, and release scopes must identify which application owns each capability. Do not design the two products as one combined app/navigation.
 
 The product split does not automatically imply separate or shared identity services, databases, backends, repositories, infrastructure, or UI foundations. Those remain governed by existing approved decisions or require separate ADRs. Existing InOne Beta 1.0 screens and implementation must be audited and classified before any migration or code change. See [owner decisions](DECISIONS.md#7-product-split-inone-and-inone-business--2026-11-13).
+
+
+## Beta 1.0 Stage 5 supply-chain evidence — 2026-11-25
+
+- Active candidate PR: [#159](https://github.com/vahe210991-cloud/InOne-chat/pull/159), branch `security/beta1-stage5-supply-chain-main-2026-11-25`, based on `main` SHA `74169a449de182ea734049e21d8424dfc4091c88`.
+- Audit: [2026-11-25 Stage 5 supply-chain audit](../../development/reports/2026-11-25-beta1-stage5-supply-chain-audit.md).
+- Operations: [Beta 1.0 production operations runbook](../../development/runbooks/beta1-production-operations-runbook.md).
+- Dependabot: `.github/dependabot.yml`; weekly reviewed update PRs only.
+- RustSec: `.github/workflows/validate-published-p0.yml`, job `rust-advisory-audit`; all five committed Cargo.lock files and JSON artifacts.
+- SBOM: same workflow, job `source-sbom`; SPDX JSON plus source SHA/checksum sidecar. CI evidence only, not release attestation.
+- Action pins: all external `uses:` references in the 10 inspected workflows are immutable 40-character SHAs; inventory and provenance notes are in the audit report.
+- Image pins: canonical/archived engine Dockerfiles, Compose and CI service image digests are recorded in the audit report. Production deployment manifest is not present.
+- Superseded historical PR: #157 (stacked Stage 5 branch); do not use for acceptance. Stage 4 PR #154 remains separate Draft/unmerged.
+- Status: Stage 5 NOT ACCEPTED until exact-head Actions and advisory/SBOM review complete.

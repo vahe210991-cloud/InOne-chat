@@ -725,3 +725,15 @@ Canonical decision: [DECISIONS.md, section 7](DECISIONS.md#7-product-split-inone
 - Expanded source review confirms B-12 and B-13 defects; B-14 is already implemented at source level (invalid FID cleanup, non-retryable classification, queue cancellation, plaintext-free allowlisted push payload), pending DB-backed test execution; B-15 readiness is partial.
 - Current `main` already has device-bound signed downloads; avoid duplicating PR #86. PR #42 workflow targets old engine paths and does not implement atomic revocation. PR #65 is narrow and does not fix the global request boundary.
 - Updated Stage 0 report addendum in `development/reports/2026-11-24-cto-backend-security-remediation-stage0.md`.
+
+
+## Beta 1.0 CTO Stage 5 — supply-chain hardening (2026-11-25)
+
+- Active candidate: Draft PR [#159](https://github.com/vahe210991-cloud/InOne-chat/pull/159), branch `security/beta1-stage5-supply-chain-main-2026-11-25`, created directly from live `main` SHA `74169a449de182ea734049e21d8424dfc4091c88`.
+- PR #157 is the earlier stacked Draft, marked superseded; keep it only for historical traceability. Do not merge/use it for acceptance.
+- Stage 4 PR #154 remains a separate Draft and unmerged; Stage 5 does not include Stage 4 changes.
+- Implemented on Stage 5 branch: immutable full-SHA pins for external GitHub Actions; OCI digest pins for Node and PostgreSQL across engine/Compose/CI; pinned RustSec audit for five committed Cargo.lock files; pinned Syft SPDX source SBOM with source SHA/checksum sidecar; weekly Dependabot proposals; production-config regression tests; audit and operations runbook.
+- Current report: [Stage 5 supply-chain audit](../../development/reports/2026-11-25-beta1-stage5-supply-chain-audit.md). Runbook: [Beta 1.0 production operations](../../development/runbooks/beta1-production-operations-runbook.md).
+- No production deployment manifest is present in the repository. Existing Compose files are development/test profiles. Production host, cloud IAM, secret manager, backup/restore, SMTP/domain and monitoring acceptance remain owner/operator evidence.
+- Exact-head Actions are pending/queued on the active branch; inspect all jobs after the final commit and do not reuse results from older SHAs. RustSec results and SBOM contents have not yet been reviewed.
+- Stage 5 status: **NOT ACCEPTED**. No merge, deployment, main mutation, secrets/settings mutation or auto-upgrades. WBS v1.1 unchanged at Beta 1.0 42% implementation / 31% verification.

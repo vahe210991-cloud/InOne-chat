@@ -14,6 +14,14 @@ const CIPHERSUITE: Ciphersuite = Ciphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA2
 /// после коммита не открываются. 16 эпох покрывают обычный пропуск связи; клиент всё равно читает по порядку эпох.
 const MAX_PAST_EPOCHS: usize = 16;
 
+fn ensure_supported_welcome_ciphersuite(suite: Ciphersuite) -> Result<(), String> {
+    if suite == CIPHERSUITE {
+        Ok(())
+    } else {
+        Err("unsupported MLS ciphersuite; only X25519/Ed25519 is enabled".to_string())
+    }
+}
+
 /// Результат обработки входящего сообщения группы.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Received {
@@ -153,6 +161,7 @@ pub fn join_group(identity: String, welcome: Vec<u8>) -> Result<String, String> 
         .build();
     let staged =
         StagedWelcome::new_from_welcome(&me.provider, &join_config, welcome, None).map_err(text)?;
+    ensure_supported_welcome_ciphersuite(staged.group_context().ciphersuite())?;
     let group = staged.into_group(&me.provider).map_err(text)?;
     let group_id = String::from_utf8_lossy(group.group_id().as_slice()).to_string();
     groups.insert((identity, group_id.clone()), group);
@@ -282,5 +291,19 @@ mod tests {
         let last = message.len() - 1;
         message[last] ^= 1;
         assert!(decrypt("t2-bob".into(), group, message).is_err());
+    }
+}
+
+#[cfg(test)]
+mod security_policy_tests {
+    use super::*;
+
+    #[test]
+    fn welcome_policy_rejects_p256_ciphersuite() {
+        assert!(ensure_supported_welcome_ciphersuite(CIPHERSUITE).is_ok());
+        assert!(ensure_supported_welcome_ciphersuite(
+            Ciphersuite::MLS_128_DHKEMP256_AES128GCM_SHA256_P256
+        )
+        .is_err());
     }
 }

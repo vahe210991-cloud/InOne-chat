@@ -37,13 +37,13 @@ jobs:
     outputs:
       sha: ${{ steps.commit.outputs.sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master snapshot verified 2026-11-25
         with:
-          toolchain: "1.91.0"
+          toolchain: "1.94.0"
           components: rustfmt
       - name: Verify committed lockfiles and Rust formatting without modifying the checkout
         run: |
@@ -52,7 +52,7 @@ jobs:
           test -s mobile/rust/Cargo.lock
           cargo fmt --manifest-path inone-development-archive-0.6.0/engine/mobile-mls/mls-client/Cargo.toml -- --check
           cargo fmt --manifest-path mobile/rust/Cargo.toml -- --check
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
           cache: npm
@@ -88,7 +88,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ needs.prepare.outputs.sha }}
       - name: Verify exact source SHA
@@ -99,14 +99,14 @@ jobs:
           actual="$(git rev-parse HEAD)"
           test "$actual" = "$EXPECTED_SHA"
           echo "Validated source SHA: $actual"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: inone-development-archive-0.6.0/engine/package-lock.json
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master snapshot verified 2026-11-25
         with:
-          toolchain: "1.91.0"
+          toolchain: "1.94.0"
           components: rustfmt
       - name: Install canonical engine dependencies for real-server integration tests
         run: npm ci
@@ -125,7 +125,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ needs.prepare.outputs.sha }}
       - name: Verify exact source SHA
@@ -136,14 +136,14 @@ jobs:
           actual="$(git rev-parse HEAD)"
           test "$actual" = "$EXPECTED_SHA"
           echo "Validated canonical B source SHA: $actual"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: inone-development-archive-0.6.0/engine/package-lock.json
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master snapshot verified 2026-11-25
         with:
-          toolchain: "1.91.0"
+          toolchain: "1.94.0"
           components: rustfmt
       - name: Install canonical engine dependencies for real-server integration tests
         run: npm ci
@@ -162,8 +162,13 @@ jobs:
     name: iOS Keychain native target build
     runs-on: macos-15
     timeout-minutes: 45
+    # Rust defaults aarch64-apple-ios to 10.0. OpenSSL/SQLCipher objects built
+    # by the Xcode 18.5 SDK reference ___chkstk_darwin, available from iOS 13.
+    # Match the app's supported minimum (15.0) for both C compilation and rustc.
+    env:
+      IPHONEOS_DEPLOYMENT_TARGET: "15.0"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ needs.prepare.outputs.sha }}
       - name: Verify exact source SHA
@@ -182,10 +187,10 @@ jobs:
           else
             echo "available=false" >> "$GITHUB_OUTPUT"
           fi
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master snapshot verified 2026-11-25
         if: steps.bridge.outputs.available == 'true'
         with:
-          toolchain: "1.91.0"
+          toolchain: "1.94.0"
           targets: "aarch64-apple-ios"
       - name: Verify committed iOS bridge lockfile
         if: steps.bridge.outputs.available == 'true'
@@ -200,7 +205,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ needs.prepare.outputs.sha }}
       - name: Verify exact source SHA
@@ -211,9 +216,9 @@ jobs:
           actual="$(git rev-parse HEAD)"
           test "$actual" = "$EXPECTED_SHA"
           echo "Validated source SHA: $actual"
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master snapshot verified 2026-11-25
         with:
-          toolchain: "1.91.0"
+          toolchain: "1.94.0"
           components: rustfmt
       - name: Detect whether the persistent bridge crate exists on this branch
         id: bridge

@@ -2,6 +2,10 @@
 # Сборка ядра MLS для iOS: устройство и симулятор на Apple Silicon, упаковка в XCFramework.
 # Работает только на macOS с установленным Xcode.
 set -euo pipefail
+
+# Keep C/assembly objects and rustc's iOS link target on the same supported
+# deployment version. Rust otherwise defaults aarch64-apple-ios to 10.0.
+export IPHONEOS_DEPLOYMENT_TARGET="${IPHONEOS_DEPLOYMENT_TARGET:-15.0}"
 if [ "$(uname -s)" != "Darwin" ]; then
   echo "iOS-сборка работает только на macOS с Xcode" >&2
   exit 1

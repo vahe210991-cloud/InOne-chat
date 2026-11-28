@@ -795,3 +795,19 @@ This log is a durable GitHub record. Add newest entries at the top. Keep each en
 - Confirmed current `main` already contains device-bound signed file downloads (same class of work as PR #86); do not duplicate. PR #42 is only a PostgreSQL workflow against old `inone-engine-poc-0.6.0` paths, not a current-engine transaction fix. PR #65 only hardens one error catch, not the global request boundary.
 - Reviewed mobile code-search results for legacy KeyPackage/to-device endpoint usage; no direct mobile references surfaced in the searched source paths. This is not yet a complete API compatibility proof; inspect Rust/Flutter transport adapters and runtime traces before retiring legacy API.
 - Expanded the Stage 0 report with the updated matrix and exact PR dispositions. No source changes, test runs, issue closures, merges, secret edits or repo setting changes.
+
+
+## 2026-11-25 — Beta 1.0 Stage 5 supply-chain hardening (Draft / NOT ACCEPTED)
+
+- Read the repository agent mandate, working rules, main-first integration policy and owner-approved WBS. Canonical live main SHA at branch creation: `74169a449de182ea734049e21d8424dfc4091c88`.
+- Stage 4 PR #154 remains separate Draft/unmerged. Its exact-SHA 15/15 result on `ee787deacb051cee981ef5c76038fd71e65cd305` is historical evidence only; Stage 5 does not depend on or include Stage 4 changes.
+- Initial stacked Stage 5 PR #157 was marked superseded in its description after policy review. It remains open Draft for traceability and must not be used for acceptance.
+- Created clean main-based branch `security/beta1-stage5-supply-chain-main-2026-11-25`; active Draft PR #159: https://github.com/vahe210991-cloud/InOne-chat/pull/159.
+- The report, session log and continuity records were subsequently updated in this branch; the exact current head must always be re-fetched from PR #159 before validating or handing off. Do not reuse an earlier SHA.
+- Ported only Stage 5-specific files. Compare against main: 20 commits ahead, 0 behind, 19 changed files. No Stage 4 migration/database changes were ported; main was not modified.
+- Implemented: all external Actions pinned to full commit SHAs across 10 workflows; Node and PostgreSQL OCI image indexes pinned by digest across Dockerfiles/Compose/CI; RustSec cargo-audit 0.23.0 job for all five committed Cargo.lock files with JSON artifacts; pinned Syft/SPDX source SBOM with SHA provenance sidecar; weekly Dependabot proposals; negative tests for existing production config guards; supply-chain audit and operations runbook.
+- Docker Hub official-image metadata and upstream GitHub action refs were consulted to resolve immutable digests/SHAs. One Android emulator action commit was unsigned in GitHub's verification response; its immutable SHA is pinned but no signature-verification claim is made.
+- Source review confirmed engine Compose is development-only and no production deployment manifest is present in this repository. Do not describe CI/dev PostgreSQL image pin as production deployment acceptance.
+- WBS v1.1 mapping: QA/CI/E2E (10%) and DevOps/release readiness (5%). No WBS weight or cumulative percentage change; Beta 1.0 baseline remains 42% implementation / 31% verification.
+- Actions were queued on the earlier implementation head; after each commit the exact SHA changes and earlier runs do not count. Final-head checks are pending. RustSec findings, SBOM contents and runtime hardening remain unverified. Stage 5 status: NOT ACCEPTED.
+- No merge, deploy, main mutation, secret/settings mutation, issue closure or dependency auto-upgrade. See `development/reports/2026-11-25-beta1-stage5-supply-chain-audit.md` and `development/runbooks/beta1-production-operations-runbook.md`.

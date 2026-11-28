@@ -1,0 +1,77 @@
+name: OpenMLS 0.10 SQLCipher compatibility prototype
+
+on:
+  push:
+    branches:
+      - security/prototype-openmls-signer-compat-2026-11-26
+  pull_request:
+    branches:
+      - security/beta1-stage5-supply-chain-main-2026-11-25
+    paths:
+      - "development/prototypes/openmls-0.10-sqlcipher-compat/**"
+      - ".github/workflows/openmls-sqlcipher-compat-prototype.yml"
+  workflow_dispatch:
+
+# This experiment must be read-only. Generated lockfiles and reports are retained
+# as workflow artifacts; a human reviews and commits any accepted change.
+permissions:
+  contents: read
+
+jobs:
+  compatibility:
+    name: Legacy 0.8.1 SQLCipher database read by candidate 0.10
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout prototype
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Validate the stacked Stage 5 RustSec workflow YAML
+        run: ruby -e 'require "yaml"; YAML.load_file(".github/workflows/validate-published-p0.yml")'
+      - name: Validate Stage 5 workflow with actionlint
+        run: |
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+          "$(go env GOPATH)/bin/actionlint" .github/workflows/validate-published-p0.yml
+
+      - name: Install Rust 1.94
+        uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # pinned toolchain action snapshot
+        with:
+          toolchain: "1.94.0"
+          components: rustfmt
+
+      - name: Check prototype formatting
+        run: |
+          cargo fmt --manifest-path development/prototypes/openmls-0.10-sqlcipher-compat/legacy-writer/Cargo.toml -- --check
+          cargo fmt --manifest-path development/prototypes/openmls-0.10-sqlcipher-compat/current-reader/Cargo.toml -- --check
+
+      - name: Generate legacy SQLCipher database and validate candidate reader
+        run: bash development/prototypes/openmls-0.10-sqlcipher-compat/scripts/run.sh
+
+      - name: Install pinned RustSec CLI
+        run: cargo install --locked --version 0.23.0 cargo-audit
+
+      - name: Audit the candidate lockfile with retained JSON report
+        id: rustsec_audit
+        continue-on-error: true
+        run: |
+          mkdir -p "$RUNNER_TEMP/rustsec"
+          cargo audit --file development/prototypes/openmls-0.10-sqlcipher-compat/current-reader/Cargo.lock --json > "$RUNNER_TEMP/rustsec/openmls-010-candidate.json"
+
+      - name: Upload candidate lockfile and RustSec evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: openmls-010-candidate-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            development/prototypes/openmls-0.10-sqlcipher-compat/current-reader/Cargo.lock
+            development/prototypes/openmls-0.10-sqlcipher-compat/legacy-writer/src/main.rs
+            development/prototypes/openmls-0.10-sqlcipher-compat/current-reader/src/lib.rs
+            ${{ runner.temp }}/rustsec/openmls-010-candidate.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Keep RustSec findings blocking after preserving test evidence
+        if: steps.rustsec_audit.outcome == 'failure'
+        run: |
+          echo "::error::Candidate RustSec audit found advisories; generated lockfile and evidence were preserved for review."
+          exit 1

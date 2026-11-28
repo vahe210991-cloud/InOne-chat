@@ -611,3 +611,19 @@ Latest documented checkpoint: code SHA `4824dfc3b3f4e3aab5d39b16c1adf934a108d660
 - Do not reimplement B-14 FCM invalid-registration cleanup without evidence; add/execute PostgreSQL regression for re-registration racing with old failed delivery.
 - B-15: define exact dependency contract for readiness; keep liveness independent of PostgreSQL and avoid exposing dependency/configuration details.
 - Before deprecating legacy MLS endpoint, finish mobile transport/API call-site audit (Flutter, Rust bridge, generated bindings, integration tests); code-search hits did not show direct Flutter call sites but are not a complete proof.
+
+
+## Next actions — Stage 5 supply-chain hardening (2026-11-25)
+
+Active work is [Draft PR #159](https://github.com/vahe210991-cloud/InOne-chat/pull/159), branch `security/beta1-stage5-supply-chain-main-2026-11-25`, based directly on `main` SHA `74169a449de182ea734049e21d8424dfc4091c88`. Re-fetch its live head before any action. PR #157 is a superseded stacked Draft; do not use it. PR #154 Stage 4 remains separate and unmerged.
+
+1. Poll Actions runs for the exact live PR #159 head. Inspect every job, including the new `RustSec advisory audit (all committed Cargo lockfiles)` and `Source SBOM (SPDX JSON)` jobs. Any prior-SHA success is stale for acceptance.
+2. If RustSec reports vulnerabilities, classify advisory ID, affected version, dependency path, target platform and reachability. Fix only after compatibility review; never run `cargo audit fix` automatically or upgrade MLS/crypto dependencies blindly.
+3. Download/inspect the SPDX SBOM artifact and provenance sidecar. Confirm source SHA equals the checked-out PR head and recompute the SBOM checksum. Treat it as PR CI evidence only, not a release attestation.
+4. Review any action/container digest failures against the pinned refs. Preserve exact 40-character SHA pins and OCI index digests; do not revert to mutable tags.
+5. Review Dependabot YAML/PR behavior. It proposes weekly updates only; no auto-merge is configured.
+6. Verify the production config regression tests and the full backend/PostgreSQL, Dev Container, Flutter, iOS, MLS and exact-SHA workflow results on one final SHA.
+7. Production Compose/manifest is absent; current Compose is explicitly development-only. Do not claim production deployment acceptance. Obtain actual deployment configuration and operator evidence for read-only root FS, dropped capabilities, resource limits, cloud IAM, secrets, backups/restore, monitoring, HTTPS/proxy and SMTP/domain.
+8. Keep PR #159 Draft. No merge, deployment, main mutation, repository settings/secrets changes, dependency auto-upgrades, issue closure or native MLS enablement without owner approval. WBS v1.1 remains unchanged.
+
+Source documents: `development/reports/2026-11-25-beta1-stage5-supply-chain-audit.md` and `development/runbooks/beta1-production-operations-runbook.md`.

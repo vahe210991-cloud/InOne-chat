@@ -4,7 +4,9 @@ on:
   workflow_dispatch:
   pull_request:
   push:
-    branches: [main]
+    branches:
+      - main
+      - "security/**"
     paths:
       - "inone-development-archive-0.6.0/engine/**"
       - "inone-engine-poc-0.6.0/mobile-mls/**"
@@ -17,7 +19,7 @@ permissions:
 # Keep runs for distinct SHAs alive: each job set is a complete, reproducible
 # acceptance run for exactly one PR head, and all independent gates run in parallel.
 concurrency:
-  group: p0-validate-${{ github.event.pull_request.head.ref || github.ref_name }}-${{ github.event.pull_request.head.sha || github.sha }}
+  group: p0-validate-${{ github.event_name }}-${{ github.event.pull_request.head.ref || github.ref_name }}-${{ github.event.pull_request.head.sha || github.sha }}
   cancel-in-progress: true
 
 env:
@@ -27,16 +29,16 @@ env:
 
 jobs:
   rust-format:
-    name: Rust format (1.91)
+    name: Rust format (1.94)
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master snapshot verified 2026-11-25
         with:
-          toolchain: "1.91"
+          toolchain: "1.94"
           components: rustfmt
       - name: Record Rust format toolchain versions
         run: |
@@ -47,7 +49,7 @@ jobs:
         run: |
           cargo fmt --manifest-path mls-client/Cargo.toml -- --check
           cargo fmt --manifest-path mls-bridge/Cargo.toml -- --check
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: rust-format-evidence
@@ -60,10 +62,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
           cache: npm
@@ -83,7 +85,7 @@ jobs:
           set -o pipefail
           npm test 2>&1 | tee "$RUNNER_TEMP/backend-node-test.log"
         working-directory: ${{ env.ENGINE_DIR }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: backend-node-test-evidence
@@ -98,10 +100,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
           cache: npm
@@ -116,7 +118,7 @@ jobs:
           set -o pipefail
           node --test test/rooms-mine.test.js 2>&1 | tee "$RUNNER_TEMP/room-list-test.log"
         working-directory: ${{ env.ENGINE_DIR }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: room-list-test-evidence
@@ -132,7 +134,7 @@ jobs:
     timeout-minutes: 35
     services:
       postgres:
-        image: postgres:16
+        image: postgres:16@sha256:07abc3f43c9395b0bdbbab36bc25ddb0e8d83cd4fcafb5fb7d6abe14ff156dd8
         env:
           POSTGRES_DB: inone_test
           POSTGRES_USER: inone
@@ -147,10 +149,10 @@ jobs:
     env:
       DATABASE_URL: postgresql://inone:inone@localhost:5432/inone_test
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
           cache: npm
@@ -173,7 +175,7 @@ jobs:
           set -o pipefail
           npm run test:db 2>&1 | tee "$RUNNER_TEMP/postgres-test.log"
         working-directory: ${{ env.ENGINE_DIR }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: postgres-integration-evidence
@@ -183,22 +185,177 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+
+
+  source-sbom:
+    name: Source SBOM (SPDX JSON)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Generate source SBOM with pinned Syft
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0, Syft v1.42.3
+        with:
+          path: .
+          format: spdx-json
+          syft-version: v1.42.3
+          output-file: ${{ runner.temp }}/inone-source.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      - name: Record SBOM provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "source_sha=$(git rev-parse HEAD)"
+            echo "sbom_sha256=$(sha256sum "$RUNNER_TEMP/inone-source.spdx.json" | cut -d' ' -f1)"
+            echo "format=SPDX-JSON"
+            echo "generator=Syft v1.42.3 via anchored action commit e22c389904149dbc22b58101806040fa8d37a610"
+          } > "$RUNNER_TEMP/inone-source-sbom.provenance.txt"
+      - name: Upload SBOM and provenance as non-release CI evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: inone-source-sbom-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/inone-source.spdx.json
+            ${{ runner.temp }}/inone-source-sbom.provenance.txt
+          if-no-files-found: error
+          retention-days: 14
+
+  rust-advisory-audit:
+    name: RustSec advisory audit (all committed Cargo lockfiles)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master snapshot verified 2026-11-25
+        with:
+          toolchain: "1.94"
+      - name: Install pinned RustSec cargo-audit
+        run: cargo install --locked --version 0.23.0 cargo-audit
+      - name: Record default-feature dependency graphs for all MLS targets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/rustsec"
+          record_graph() {
+            local name="$1"
+            local manifest="$2"
+            local toolchain="${3:-}"
+            local output="$RUNNER_TEMP/rustsec/${name}-default-feature-tree.txt"
+            if [[ -n "$toolchain" ]]; then
+              cargo "+$toolchain" tree --locked --manifest-path "$manifest" --all-targets --edges all --prefix none > "$output"
+            else
+              cargo tree --locked --manifest-path "$manifest" --all-targets --edges all --prefix none > "$output"
+            fi
+            echo "Resolved default-feature graph: $name"
+            grep -E '(^|[[:space:]])(libcrux-[^ ]+|openmls_libcrux_crypto|crypto-bigint|libsqlite3-sys|url) v' "$output" || true
+          }
+          record_graph mobile-rust-bridge mobile/rust/Cargo.toml
+          record_graph canonical-mls-client inone-development-archive-0.6.0/engine/mobile-mls/mls-client/Cargo.toml
+          record_graph canonical-mls-bridge inone-development-archive-0.6.0/engine/mobile-mls/mls-bridge/Cargo.toml
+          record_graph legacy-engine-a-client inone-engine-poc-0.6.0/mobile-mls/mls-client/Cargo.toml
+          record_graph legacy-engine-a-bridge inone-engine-poc-0.6.0/mobile-mls/mls-bridge/Cargo.toml
+          if [[ -f development/prototypes/openmls-0.10-sqlcipher-compat/current-reader/Cargo.toml ]]; then
+            # This isolated prerelease prototype explicitly requires Rust 1.94;
+            # keep the production MLS graphs on the repository's Rust 1.94 toolchain.
+            rustup toolchain install 1.94.0 --profile minimal --no-self-update
+            record_graph openmls-010-sqlcipher-prototype development/prototypes/openmls-0.10-sqlcipher-compat/current-reader/Cargo.toml 1.94.0
+          fi
+      - name: Audit all committed Rust lockfiles without changing dependencies
+        shell: bash
+        run: |
+          set -u
+          mkdir -p "$RUNNER_TEMP/rustsec"
+          status=0
+          audit_lockfile() {
+            local name="$1"
+            local lockfile="$2"
+            local output="$RUNNER_TEMP/rustsec/$name.json"
+            test -f "$lockfile" || { echo "::error::Missing committed Cargo.lock: $lockfile"; status=1; return; }
+            echo "Auditing $lockfile"
+            local result=0
+            if cargo audit --file "$lockfile" --json > "$output"; then
+              result=0
+            else
+              result=$?
+            fi
+            echo "$name cargo-audit exit: $result"
+            if [ "$result" -ne 0 ]; then status=1; fi
+          }
+          required_lockfiles=(
+            mobile/rust/Cargo.lock
+            inone-development-archive-0.6.0/engine/mobile-mls/mls-client/Cargo.lock
+            inone-development-archive-0.6.0/engine/mobile-mls/mls-bridge/Cargo.lock
+            inone-engine-poc-0.6.0/mobile-mls/mls-client/Cargo.lock
+            inone-engine-poc-0.6.0/mobile-mls/mls-bridge/Cargo.lock
+          )
+          for lockfile in "${required_lockfiles[@]}"; do
+            if [[ ! -f "$lockfile" ]]; then
+              echo "::error::Missing required committed Cargo.lock: $lockfile"
+              status=1
+            fi
+          done
+
+          required_lockfiles=(
+            mobile/rust/Cargo.lock
+            inone-development-archive-0.6.0/engine/mobile-mls/mls-client/Cargo.lock
+            inone-development-archive-0.6.0/engine/mobile-mls/mls-bridge/Cargo.lock
+            inone-engine-poc-0.6.0/mobile-mls/mls-client/Cargo.lock
+            inone-engine-poc-0.6.0/mobile-mls/mls-bridge/Cargo.lock
+          )
+          for lockfile in "${required_lockfiles[@]}"; do
+            if [[ ! -f "$lockfile" ]]; then
+              echo "::error::Missing required committed Cargo.lock: $lockfile"
+              status=1
+            fi
+          done
+
+          echo "Discovering every tracked Cargo.lock in the checked-out PR tree:"
+          found_lockfiles=0
+          while IFS= read -r lockfile; do
+            if [[ "$lockfile" == "Cargo.lock" || "$lockfile" == */Cargo.lock ]]; then
+              found_lockfiles=1
+              name="$(printf '%s' "$lockfile" | sed 's#/#-#g; s#\.lock$##')"
+              audit_lockfile "$name" "$lockfile"
+            fi
+          done < <(git ls-files)
+          if [[ "$found_lockfiles" -eq 0 ]]; then
+            echo "::error::No tracked Cargo.lock files found"
+            status=1
+          fi
+          exit "$status"
+      - name: Upload RustSec machine-readable reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: rustsec-cargo-audit-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/rustsec/*.json
+            ${{ runner.temp }}/rustsec/*-default-feature-tree.txt
+          if-no-files-found: warn
+          retention-days: 14
+
   openmls-client:
     name: OpenMLS client check and tests
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: inone-development-archive-0.6.0/engine/package-lock.json
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master snapshot verified 2026-11-25
         with:
-          toolchain: "1.91"
+          toolchain: "1.94"
       - run: npm ci
         working-directory: ${{ env.ENGINE_DIR }}
       - name: Record OpenMLS toolchain versions
@@ -215,7 +372,7 @@ jobs:
         run: |
           set -o pipefail
           cargo test --locked --no-fail-fast 2>&1 | tee "$RUNNER_TEMP/openmls-client-test.log"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: openmls-client-test-evidence
@@ -230,12 +387,12 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master snapshot verified 2026-11-25
         with:
-          toolchain: "1.91"
+          toolchain: "1.94"
       - name: Record Rust bridge toolchain versions
         run: |
           rustc --version | tee "$RUNNER_TEMP/rust-bridge-toolchain.txt"
@@ -249,7 +406,7 @@ jobs:
         run: |
           set -o pipefail
           cargo test --locked --no-fail-fast 2>&1 | tee "$RUNNER_TEMP/rust-bridge-test.log"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: rust-bridge-test-evidence
@@ -259,4 +416,3 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-# Exact-head P0 validation is enabled for this stacked PR branch.

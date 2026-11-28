@@ -32,7 +32,7 @@ jobs:
       run:
         working-directory: mobile
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           # PR validation must run on the writable head branch, not GitHub's synthetic merge ref.
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -44,7 +44,7 @@ jobs:
           actual="$(git rev-parse HEAD)"
           test "$actual" = "$EXPECTED_SHA"
           echo "Validated source SHA: $actual"
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           flutter-version: '3.47.9'
           channel: stable
@@ -60,9 +60,9 @@ jobs:
         run: rm -f test/widget_test.dart
 
       - name: Install Rust toolchain and Android targets
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master snapshot verified 2026-11-25
         with:
-          toolchain: "1.91.0"
+          toolchain: "1.94.0"
           components: rustfmt
           targets: "aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android"
 
@@ -76,23 +76,31 @@ jobs:
       - name: Prepare Android NDK context for native secure storage
         run: node tool/prepare_android_mls.mjs
 
-      - name: Configure Maven repositories for Flutter's included Gradle build
+      - name: Configure Gradle Plugin Portal before rate-limited Maven Central
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p "$HOME/.gradle/init.d"
-          cat > "$HOME/.gradle/init.d/inone-flutter-plugin-repositories.gradle" <<'EOF'
-          // Flutter's included Gradle build has independent plugin repositories.
-          // Ensure its Kotlin DSL transitive dependencies can resolve from Maven Central.
-          gradle.beforeSettings { settings ->
-              settings.pluginManagement.repositories {
-                  google()
-                  mavenCentral()
-                  gradlePluginPortal()
-              }
-          }
-          EOF
+          install -m 0644 tool/gradle-plugin-repositories.init.gradle "$HOME/.gradle/init.d/inone-flutter-plugin-repositories.gradle"
           test -s "$HOME/.gradle/init.d/inone-flutter-plugin-repositories.gradle"
+      - name: Record generated Android Gradle wrapper
+        shell: bash
+        run: |
+          set -euo pipefail
+          wrapper="android/gradle/wrapper/gradle-wrapper.properties"
+          test -s "$wrapper" || { echo "::error::Generated Gradle wrapper properties are missing"; exit 1; }
+          cp "$wrapper" "$RUNNER_TEMP/android-gradle-wrapper.properties"
+          grep -E '^distributionUrl=' "$wrapper"
+      - name: Verify Gradle Kotlin DSL plugin marker availability
+        shell: bash
+        run: |
+          set -euo pipefail
+          marker_url="https://plugins.gradle.org/m2/org/gradle/kotlin/kotlin-dsl/org.gradle.kotlin.kotlin-dsl.gradle.plugin/6.4.2/org.gradle.kotlin.kotlin-dsl.gradle.plugin-6.4.2.pom"
+          marker="$RUNNER_TEMP/gradle-kotlin-dsl-plugin-marker-6.4.2.pom"
+          curl --fail --location --silent --show-error --retry 3 --retry-delay 2 --retry-all-errors "$marker_url" --output "$marker"
+          test -s "$marker"
+          sha256sum "$marker"
+          sed -n '1,40p' "$marker"
       - name: Fetch and verify owner UI archive
         working-directory: .
         shell: bash
@@ -156,7 +164,36 @@ jobs:
       - run: flutter analyze lib test integration_test
       - run: flutter test
       - name: Build Android preview APK
-        run: flutter build apk --debug
+        shell: bash
+        env:
+          GRADLE_OPTS: "-Dorg.gradle.logging.level=info"
+        run: |
+          set -o pipefail
+          flutter build apk --debug --split-per-abi --verbose 2>&1 | tee "$RUNNER_TEMP/flutter-android-build.log"
+      - name: Verify native MLS bridge for every Android ABI
+        working-directory: mobile
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk_dir="build/app/outputs/flutter-apk"
+          for pair in "armeabi-v7a:android_arm" "arm64-v8a:android_arm64" "x86_64:android_x64"; do
+            abi="${pair%%:*}"
+            dart_arch="${pair##*:}"
+            apk="$apk_dir/app-${abi}-debug.apk"
+            test -s "$apk" || { echo "::error::Missing split APK for $abi"; exit 1; }
+            unzip -Z1 "$apk" | grep -Fx "lib/$abi/libinone_mls_frb.so" >/dev/null || {
+              echo "::error::MLS bridge library missing from $abi APK"
+              exit 1
+            }
+            manifest="$(unzip -p "$apk" assets/flutter_assets/NativeAssetsManifest.json)"
+            printf '%s' "$manifest" | grep -Fq "\"$dart_arch\"" || {
+              echo "::error::NativeAssetsManifest missing $dart_arch in $apk"
+              printf '%s\n' "$manifest"
+              exit 1
+            }
+            echo "Verified libinone_mls_frb.so and $dart_arch in $apk"
+          done
+
       - name: Verify and grant access to KVM on the ephemeral runner
         working-directory: .
         shell: bash
@@ -167,7 +204,7 @@ jobs:
           test -r /dev/kvm && test -w /dev/kvm || { echo "::error::KVM device is not readable and writable"; exit 1; }
           echo "KVM device is available; hardware acceleration is required."
       - name: Android runtime smoke — Keystore and SQLCipher lifecycle
-        uses: reactivecircus/android-emulator-runner@v2
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
           api-level: 35
           target: google_apis
@@ -180,17 +217,24 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
           script: cd mobile && sh tool/android_runtime_smoke.sh
 
-      - name: Upload Android runtime diagnostics
+      - name: Upload Android runtime and Gradle diagnostics
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: inone-android-runtime-diagnostics-${{ github.run_id }}
-          path: /tmp/inone-android-runtime-diagnostics/**
+          path: |
+            /tmp/inone-android-runtime-diagnostics/**
+            ${{ runner.temp }}/flutter-android-build.log
+            ${{ runner.temp }}/android-gradle-wrapper.properties
+            ${{ runner.temp }}/gradle-kotlin-dsl-plugin-marker-6.4.2.pom
+            mobile/android/gradle/wrapper/gradle-wrapper.properties
+            mobile/android/settings.gradle
+            mobile/android/build.gradle
           if-no-files-found: ignore
           retention-days: 7
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: inone-beta1-android-preview
-          path: mobile/build/app/outputs/flutter-apk/app-debug.apk
+          path: mobile/build/app/outputs/flutter-apk/app-*-debug.apk
           if-no-files-found: error
           retention-days: 14

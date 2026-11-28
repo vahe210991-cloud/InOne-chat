@@ -80,3 +80,11 @@ Read [PROGRESS-BASELINE.md](PROGRESS-BASELINE.md) in full before every implement
 
 - [Full Beta 1.0 / 2.0 audit](reports/2026-11-09-0935-full-beta-audit.md)
 - [UI source import and integration stage](reports/2026-11-09-1015-ui-integration-start.md)
+
+
+## CTO Beta 1.0 security remediation — Stage 5
+
+- Active Draft PR: [#159 — supply-chain and production hardening](https://github.com/vahe210991-cloud/InOne-chat/pull/159), based directly on main.
+- Audit: [Stage 5 supply-chain audit](reports/2026-11-25-beta1-stage5-supply-chain-audit.md).
+- Operations: [Beta 1.0 production operations runbook](runbooks/beta1-production-operations-runbook.md).
+- Current status: NOT ACCEPTED pending exact-head CI, RustSec advisory triage, SBOM review and production-platform evidence. WBS v1.1 baseline unchanged.
