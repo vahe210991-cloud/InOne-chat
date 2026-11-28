@@ -18,6 +18,10 @@ adb start-server
 timeout 90 adb wait-for-device
 adb -s emulator-5554 get-state
 timeout 60 flutter devices --device-timeout 60
+# The emulator image may contain an older InOne build (for example versionCode
+# 4001). Remove it once so flutter drive can reinstall this branch's versionCode
+# without a downgrade/uninstall cycle that would revoke the permission grant.
+adb uninstall com.inone.app >/dev/null 2>&1 || true
 adb install -r build/app/outputs/flutter-apk/app-x86_64-debug.apk
 adb shell pm grant com.inone.app android.permission.POST_NOTIFICATIONS
 notification_permission="$(adb shell pm check-permission com.inone.app android.permission.POST_NOTIFICATIONS | tr -d '\\r')"
