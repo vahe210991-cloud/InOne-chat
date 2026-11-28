@@ -228,7 +228,7 @@ The following source-only changes were committed to the existing PR #174 branch:
 - `1a9fa1e` / `13bde7c` — add regression coverage for oversized stream chunks and non-canonical key-ID bytes; correct asynchronous stream consumption in the test.
 - `efd5274` — clear the pending plaintext buffer when encrypted source streaming fails or is cancelled.
 
-Current PR #174 head after these commits: `efd5274d4e05e694998ffcfcfe0f6571e2b602f7`. The new/updated tests have **NOT BEEN RUN**. No test PASS or cryptographic acceptance is claimed.
+Feed primitive hardening is captured in `efd5274d4e05e694998ffcfcfe0f6571e2b602f7`. The new/updated tests have **NOT BEEN RUN**. No test PASS or cryptographic acceptance is claimed.
 
 ### Remaining integration gates
 
@@ -241,3 +241,14 @@ Current PR #174 head after these commits: `efd5274d4e05e694998ffcfcfe0f6571e2b60
 - PR #171 and closed-unmerged PR #175 still have colliding migration versions 0036/0037. Do not merge either migration history without a single coordinated monotonic migration sequence. PR #173 remains on hold until PR #169 is merged.
 - Do not start test suites or manually rerun workflows before the PR #169 merge gate is satisfied.
 
+
+### Isolated Feed filesystem runtime primitive
+
+Additional independent work on PR #174:
+
+- `39c836d` — added `feed-runtime.js`, a factory that composes the existing streaming filesystem store with the Feed envelope-encryption adapter and key-ring provider.
+- The factory requires absolute, non-overlapping Feed and chat storage roots; validates key material before filesystem creation; rejects a symlink/non-directory Feed root; enforces directory mode 0700; and exposes explicit key-provider disposal for graceful shutdown.
+- `c10fde3` — added runtime coverage for encrypted-at-rest bytes, round-trip streaming access, private filesystem permissions, separation from chat storage, invalid path/key configuration and disposal.
+- `af691aa` — wired the runtime tests into the existing backend API-contract test entry.
+
+This is an isolated construction primitive only. It is deliberately **not wired into `config.js`, `main.js` or `server.js`** because those are shared integration surfaces also changed by the still-open AUTH work. Production startup therefore does not yet instantiate this Feed store, and no claim of production Feed encryption is made. Tests remain **NOT RUN** under the PR #169 gate.
