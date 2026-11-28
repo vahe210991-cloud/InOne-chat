@@ -5,6 +5,7 @@ const MAGIC = Buffer.from('INONEF01', 'ascii');
 const FORMAT_VERSION = 1;
 const DEFAULT_CHUNK_BYTES = 64 * 1024;
 const MAX_KEY_ID_BYTES = 32;
+const MAX_SOURCE_CHUNK_BYTES = 1024 * 1024;
 const OBJECT_KEY_PATTERN = /^[a-f0-9]{32}$/u;
 
 function validateObjectKey(value) {
@@ -106,6 +107,10 @@ async function* encryptedRecords(source, objectKey, keyProvider, chunkBytes) {
     };
 
     for await (const input of source) {
+      if (!(Buffer.isBuffer(input) || input instanceof Uint8Array)
+        || input.byteLength > MAX_SOURCE_CHUNK_BYTES) {
+        throw new RangeError('Feed source chunk exceeds the 1 MiB byte-stream limit');
+      }
       const chunk = Buffer.from(input);
       let combined = pending.length ? Buffer.concat([pending, chunk]) : chunk;
       let offset = 0;
@@ -143,6 +148,10 @@ async function* decryptedRecords(source, objectKey, keyProvider, chunkBytes) {
     while (buffered.length < length) {
       const next = await iterator.next();
       if (next.done) return null;
+      if (!(Buffer.isBuffer(next.value) || next.value instanceof Uint8Array)
+        || next.value.byteLength > MAX_SOURCE_CHUNK_BYTES) {
+        throw new RangeError('Feed source chunk exceeds the 1 MiB byte-stream limit');
+      }
       const chunk = Buffer.from(next.value);
       buffered = buffered.length ? Buffer.concat([buffered, chunk]) : chunk;
     }
@@ -173,6 +182,9 @@ async function* decryptedRecords(source, objectKey, keyProvider, chunkBytes) {
     }
     const keyId = keyIdBytes.toString('ascii');
     validateKeyId(keyId);
+    if (!Buffer.from(keyId, 'ascii').equals(keyIdBytes)) {
+      throw new Error('Feed encrypted object key ID encoding is invalid');
+    }
     kek = await loadKey(keyProvider, keyId);
     const unwrapper = createDecipheriv('aes-256-gcm', kek, wrapNonce);
     unwrapper.setAAD(wrapAad(objectKey, keyId));
