@@ -194,7 +194,7 @@ jobs:
 
       - name: Build Android with native OpenMLS assets
         working-directory: mobile
-        run: flutter build apk --debug
+        run: flutter build apk --debug --target-platform android-x64
 
       - name: Enable KVM for Android emulator
         run: |
