@@ -142,13 +142,13 @@ test('Feed encrypted object store bounds stream fragments and rejects non-canoni
   nonCanonicalHeader[10] |= 0x80;
   await rawStore.put(OBJECT_A, nonCanonicalHeader);
   await assert.rejects(
-    () => collect(encrypted.getStream(OBJECT_A)),
+    async () => collect(await encrypted.getStream(OBJECT_A)),
     /key ID encoding is invalid/u,
   );
 
   await rawStore.put(OBJECT_B, Buffer.alloc(1024 * 1024 + 1));
   await assert.rejects(
-    () => collect(encrypted.getStream(OBJECT_B)),
+    async () => collect(await encrypted.getStream(OBJECT_B)),
     /1 MiB byte-stream limit/u,
   );
 });
