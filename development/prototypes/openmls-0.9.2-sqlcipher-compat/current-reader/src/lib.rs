@@ -1094,8 +1094,19 @@ mod tests {
             )
             .expect("read migration history after rollback");
         assert_eq!(
-            history_rows, 0,
-            "no migration history row may survive the failed batch"
+            history_rows, 1,
+            "the already-applied V1 history row must survive the failed V2 batch"
+        );
+        let v2_rows_after_failure: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM openmls_sqlite_storage_migrations WHERE version = 2",
+                [],
+                |row| row.get(0),
+            )
+            .expect("verify V2 history after rollback");
+        assert_eq!(
+            v2_rows_after_failure, 0,
+            "the failed V2 migration must not leave a history row"
         );
         let integrity: String = connection
             .query_row("PRAGMA integrity_check", [], |row| row.get(0))
