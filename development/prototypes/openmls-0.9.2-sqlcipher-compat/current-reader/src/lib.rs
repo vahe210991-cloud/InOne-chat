@@ -1008,4 +1008,123 @@ mod tests {
             let _ = std::fs::remove_file(path.with_extension("db-shm"));
         }
     }
+
+    #[test]
+    fn grouped_migration_failure_rolls_back_v2_and_retry_preserves_legacy_rows() {
+        let path = std::env::var("INONE_COMPAT_RECOVERY_DB")
+            .expect("INONE_COMPAT_RECOVERY_DB must point to an independent legacy fixture");
+        let path = Path::new(&path);
+
+        let mut connection = Connection::open(path).expect("open legacy recovery fixture");
+        connection
+            .pragma_update(None, "key", format!("x'{TEST_KEY_HEX}'"))
+            .expect("apply SQLCipher key");
+        connection
+            .query_row("SELECT count(*) FROM sqlite_master", [], |row| row.get::<_, i64>(0))
+            .expect("verify SQLCipher key before migration test");
+        let original_rows: i64 = connection
+            .query_row("SELECT COUNT(*) FROM openmls_group_data", [], |row| row.get(0))
+            .expect("count original MLS rows");
+
+        // The legacy schema can hold this row only when CHECK enforcement is
+        // deliberately bypassed. Candidate V2 creates its constrained replacement
+        // table, copies rows, and must fail during that copy.
+        let invalid_group_id = b"inone-migration-rollback-probe";
+        connection
+            .pragma_update(None, "ignore_check_constraints", "ON")
+            .expect("temporarily permit a deliberately invalid legacy row");
+        connection
+            .execute(
+                "INSERT INTO openmls_group_data (provider_version, group_id, data_type, group_data)
+                 VALUES (1, ?1, 'invalid_migration_probe', X'01')",
+                [invalid_group_id.as_slice()],
+            )
+            .expect("insert migration failure probe");
+        connection
+            .pragma_update(None, "ignore_check_constraints", "OFF")
+            .expect("restore CHECK enforcement");
+        drop(connection);
+
+        let migration_error = match load_group(path, openmls_rust_crypto::RustCrypto::default()) {
+            Ok(_) => panic!("V2 migration unexpectedly accepted an invalid legacy row"),
+            Err(error) => error.to_string(),
+        };
+        assert!(
+            migration_error.contains("CHECK constraint failed"),
+            "expected V2 copy to fail on the new constraint, got: {migration_error}"
+        );
+
+        // The grouped batch must roll back CREATE TABLE, the copy, and every
+        // migration-history insert while preserving the original table and rows.
+        let mut connection = Connection::open(path).expect("reopen fixture after failed migration");
+        connection
+            .pragma_update(None, "key", format!("x'{TEST_KEY_HEX}'"))
+            .expect("reapply SQLCipher key after failed migration");
+        let probe_rows: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM openmls_group_data WHERE data_type = 'invalid_migration_probe'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read original table after rollback");
+        assert_eq!(probe_rows, 1, "legacy table and probe row must survive rollback");
+        let replacement_table_count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'openmls_group_data_new'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("check replacement table after rollback");
+        assert_eq!(replacement_table_count, 0, "replacement table must be rolled back");
+        let history_rows: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM openmls_sqlite_storage_migrations",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read migration history after rollback");
+        assert_eq!(history_rows, 0, "no migration history row may survive the failed batch");
+        let integrity: String = connection
+            .query_row("PRAGMA integrity_check", [], |row| row.get(0))
+            .expect("check database integrity after rollback");
+        assert_eq!(integrity, "ok");
+        connection
+            .execute(
+                "DELETE FROM openmls_group_data WHERE group_id = ?1 AND data_type = 'invalid_migration_probe'",
+                [invalid_group_id.as_slice()],
+            )
+            .expect("remove deliberate failure probe before retry");
+        drop(connection);
+
+        // Reopening after repair must retry the migrations, preserve the original
+        // MLS records, and commit V2 history exactly once.
+        let (group, _, _) = load_group(path, openmls_rust_crypto::RustCrypto::default())
+            .expect("retry grouped migration after repairing the fixture");
+        assert_eq!(group.group_id().as_slice(), GROUP_ID);
+        assert_eq!(group.epoch().as_u64(), 0);
+        assert_eq!(group.members().count(), 1);
+        drop(group);
+
+        let mut connection = Connection::open(path).expect("reopen successfully migrated fixture");
+        connection
+            .pragma_update(None, "key", format!("x'{TEST_KEY_HEX}'"))
+            .expect("reapply SQLCipher key after successful migration");
+        let migrated_rows: i64 = connection
+            .query_row("SELECT COUNT(*) FROM openmls_group_data", [], |row| row.get(0))
+            .expect("count migrated MLS rows");
+        assert_eq!(migrated_rows, original_rows, "all legacy MLS rows must be preserved");
+        let v2_rows: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM openmls_sqlite_storage_migrations WHERE version = 2",
+                [],
+                |row| row.get(0),
+            )
+            .expect("verify V2 migration history");
+        assert_eq!(v2_rows, 1, "V2 history must be committed exactly once after retry");
+        let integrity: String = connection
+            .query_row("PRAGMA integrity_check", [], |row| row.get(0))
+            .expect("check database integrity after successful retry");
+        assert_eq!(integrity, "ok");
+    }
+
 }
