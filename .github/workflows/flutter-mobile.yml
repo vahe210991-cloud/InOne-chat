@@ -169,7 +169,31 @@ jobs:
           GRADLE_OPTS: "-Dorg.gradle.logging.level=info"
         run: |
           set -o pipefail
-          flutter build apk --debug --verbose 2>&1 | tee "$RUNNER_TEMP/flutter-android-build.log"
+          flutter build apk --debug --split-per-abi --verbose 2>&1 | tee "$RUNNER_TEMP/flutter-android-build.log"
+      - name: Verify native MLS bridge for every Android ABI
+        working-directory: mobile
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk_dir="build/app/outputs/flutter-apk"
+          for pair in "armeabi-v7a:android_arm" "arm64-v8a:android_arm64" "x86_64:android_x64"; do
+            abi="${pair%%:*}"
+            dart_arch="${pair##*:}"
+            apk="$apk_dir/app-${abi}-debug.apk"
+            test -s "$apk" || { echo "::error::Missing split APK for $abi"; exit 1; }
+            unzip -Z1 "$apk" | grep -Fx "lib/$abi/libinone_mls_frb.so" >/dev/null || {
+              echo "::error::MLS bridge library missing from $abi APK"
+              exit 1
+            }
+            manifest="$(unzip -p "$apk" assets/flutter_assets/NativeAssetsManifest.json)"
+            printf '%s' "$manifest" | grep -Fq "\"$dart_arch\"" || {
+              echo "::error::NativeAssetsManifest missing $dart_arch in $apk"
+              printf '%s\n' "$manifest"
+              exit 1
+            }
+            echo "Verified libinone_mls_frb.so and $dart_arch in $apk"
+          done
+
       - name: Verify and grant access to KVM on the ephemeral runner
         working-directory: .
         shell: bash
@@ -211,6 +235,6 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: inone-beta1-android-preview
-          path: mobile/build/app/outputs/flutter-apk/app-debug.apk
+          path: mobile/build/app/outputs/flutter-apk/app-*-debug.apk
           if-no-files-found: error
           retention-days: 14
