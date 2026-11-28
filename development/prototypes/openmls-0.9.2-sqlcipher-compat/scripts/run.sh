@@ -5,8 +5,11 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 DB="$WORK/openmls-081-fixture.db"
+RECOVERY_DB="$WORK/openmls-081-recovery-fixture.db"
 
 cargo run --manifest-path "$ROOT/legacy-writer/Cargo.toml" -- "$DB"
+# Keep an independent legacy database for the migration rollback/retry test.
+cargo run --manifest-path "$ROOT/legacy-writer/Cargo.toml" -- "$RECOVERY_DB"
 
 # The candidate reader is an independent Cargo project. Generate its lockfile
 # explicitly before inspecting it or running RustSec; cargo run on the legacy
@@ -33,4 +36,4 @@ PY
   cargo tree -i libsqlite3-sys@0.40.0
 )
 
-INONE_COMPAT_DB="$DB" cargo test --manifest-path "$ROOT/current-reader/Cargo.toml" -- --nocapture --test-threads=1
+INONE_COMPAT_DB="$DB" INONE_COMPAT_RECOVERY_DB="$RECOVERY_DB" cargo test --manifest-path "$ROOT/current-reader/Cargo.toml" -- --nocapture --test-threads=1
