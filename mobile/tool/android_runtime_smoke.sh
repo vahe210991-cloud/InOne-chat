@@ -18,8 +18,17 @@ adb start-server
 timeout 90 adb wait-for-device
 adb -s emulator-5554 get-state
 timeout 60 flutter devices --device-timeout 60
-adb install -r build/app/outputs/flutter-apk/app-debug.apk
+# The emulator image may contain an older InOne build (for example versionCode
+# 4001). Remove it once so flutter drive can reinstall this branch's versionCode
+# without a downgrade/uninstall cycle that would revoke the permission grant.
+adb uninstall com.inone.app >/dev/null 2>&1 || true
+adb install -r build/app/outputs/flutter-apk/app-x86_64-debug.apk
 adb shell pm grant com.inone.app android.permission.POST_NOTIFICATIONS
+notification_permission="$(adb shell dumpsys package com.inone.app | tr -d '\r' | grep -F 'android.permission.POST_NOTIFICATIONS: granted=true' || true)"
+if [ -z "$notification_permission" ]; then
+  echo "::error::Android notification permission was not granted for the headless smoke test"
+  exit 1
+fi
 adb logcat -c || true
 adb logcat -b all -v threadtime > "$diag_dir/logcat.txt" 2>&1 &
 logcat_pid=$!
@@ -44,7 +53,7 @@ if [ "$smoke_status" -ne 0 ]; then
     echo "=== adb devices ==="
     adb devices -l || true
     echo "=== app process memory ==="
-    adb shell dumpsys meminfo com.inone.inone_mobile || true
+    adb shell dumpsys meminfo com.inone.app || true
     echo "=== Android activity processes ==="
     adb shell dumpsys activity processes || true
     echo "=== host memory ==="

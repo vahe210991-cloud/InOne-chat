@@ -1,9 +1,6 @@
 name: OpenMLS 0.9.2 SQLCipher compatibility prototype
 
 on:
-  push:
-    branches:
-      - security/prototype-openmls-092-sqlcipher-compat-2026-11-26
   pull_request:
     branches:
       - security/beta1-stage5-supply-chain-main-2026-11-25
@@ -15,14 +12,20 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: openmls-092-compat-${{ github.event_name }}-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
   compatibility:
     name: OpenMLS 0.8.1 legacy database read by stable 0.9.2
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
-      - name: Checkout prototype
+      - name: Checkout exact PR head
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Install Rust 1.94
         uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc

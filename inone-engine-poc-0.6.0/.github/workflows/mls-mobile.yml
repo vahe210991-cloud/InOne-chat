@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: "1.91"
+          toolchain: "1.94"
       - name: Тесты моста на Linux
         working-directory: mobile-mls/mls-bridge
         run: cargo test --locked
@@ -27,7 +27,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: "1.91"
+          toolchain: "1.94"
           targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
       - name: Установка cargo-ndk
         run: cargo install cargo-ndk --locked
@@ -45,7 +45,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: "1.91"
+          toolchain: "1.94"
           targets: aarch64-apple-ios,aarch64-apple-ios-sim
       - name: Сборка XCFramework
         run: ./mobile-mls/scripts/build-ios.sh "$RUNNER_TEMP/MlsBridge.xcframework"

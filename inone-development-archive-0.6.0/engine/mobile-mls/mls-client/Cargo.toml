@@ -2,19 +2,19 @@
 name = "mls-client"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.91"
+rust-version = "1.94"
 
 [dependencies]
-openmls = "0.8"
-openmls_rust_crypto = "0.5"
-openmls_basic_credential = "0.5"
-openmls_traits = "0.5"
+openmls = { version = "=0.9.2", default-features = false, features = ["openmls_rust_crypto", "0-8-1-storage-format"] }
+openmls_rust_crypto = "=0.6.0"
+openmls_basic_credential = "=0.6.0"
+openmls_traits = "=0.6.0"
 serde_json = "1"
 base64 = "0.22"
 ureq = { version = "2", features = ["json"] }
 urlencoding = "2"
-openmls_sqlite_storage = "=0.2.0"
-rusqlite = { version = "0.32", features = ["bundled-sqlcipher-vendored-openssl"] }
+openmls_sqlite_storage = { path = "../vendor/openmls_sqlite_storage" }
+rusqlite = { version = "=0.42.0", features = ["bundled-sqlcipher-vendored-openssl"] }
 serde = "1"
 aes-gcm = { version = "0.10.3", features = ["zeroize"] }
 aes = { version = "0.8", features = ["zeroize"] }
@@ -22,3 +22,10 @@ ghash = { version = "0.5", features = ["zeroize"] }
 sha2 = "0.10.9"
 zeroize = "1.9.1"
 url = "2.5.9"
+
+[patch.crates-io]
+openmls_rust_crypto = { path = "../vendor/openmls_rust_crypto" }
+openmls_basic_credential = { path = "../vendor/openmls_basic_credential" }
+openmls_libcrux_crypto = { path = "../vendor/openmls_libcrux_crypto" }
+openmls_sqlite_storage = { path = "../vendor/openmls_sqlite_storage" }
+refinery-core = { path = "../vendor/refinery-core" }
