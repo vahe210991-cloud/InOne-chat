@@ -1020,10 +1020,14 @@ mod tests {
             .pragma_update(None, "key", format!("x'{TEST_KEY_HEX}'"))
             .expect("apply SQLCipher key");
         connection
-            .query_row("SELECT count(*) FROM sqlite_master", [], |row| row.get::<_, i64>(0))
+            .query_row("SELECT count(*) FROM sqlite_master", [], |row| {
+                row.get::<_, i64>(0)
+            })
             .expect("verify SQLCipher key before migration test");
         let original_rows: i64 = connection
-            .query_row("SELECT COUNT(*) FROM openmls_group_data", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM openmls_group_data", [], |row| {
+                row.get(0)
+            })
             .expect("count original MLS rows");
 
         // The legacy schema can hold this row only when CHECK enforcement is
@@ -1067,7 +1071,10 @@ mod tests {
                 |row| row.get(0),
             )
             .expect("read original table after rollback");
-        assert_eq!(probe_rows, 1, "legacy table and probe row must survive rollback");
+        assert_eq!(
+            probe_rows, 1,
+            "legacy table and probe row must survive rollback"
+        );
         let replacement_table_count: i64 = connection
             .query_row(
                 "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'openmls_group_data_new'",
@@ -1075,7 +1082,10 @@ mod tests {
                 |row| row.get(0),
             )
             .expect("check replacement table after rollback");
-        assert_eq!(replacement_table_count, 0, "replacement table must be rolled back");
+        assert_eq!(
+            replacement_table_count, 0,
+            "replacement table must be rolled back"
+        );
         let history_rows: i64 = connection
             .query_row(
                 "SELECT COUNT(*) FROM openmls_sqlite_storage_migrations",
@@ -1083,7 +1093,10 @@ mod tests {
                 |row| row.get(0),
             )
             .expect("read migration history after rollback");
-        assert_eq!(history_rows, 0, "no migration history row may survive the failed batch");
+        assert_eq!(
+            history_rows, 0,
+            "no migration history row may survive the failed batch"
+        );
         let integrity: String = connection
             .query_row("PRAGMA integrity_check", [], |row| row.get(0))
             .expect("check database integrity after rollback");
@@ -1112,7 +1125,10 @@ mod tests {
         let migrated_rows: i64 = connection
             .query_row("SELECT COUNT(*) FROM openmls_group_data", [], |row| row.get(0))
             .expect("count migrated MLS rows");
-        assert_eq!(migrated_rows, original_rows, "all legacy MLS rows must be preserved");
+        assert_eq!(
+            migrated_rows, original_rows,
+            "all legacy MLS rows must be preserved"
+        );
         let v2_rows: i64 = connection
             .query_row(
                 "SELECT COUNT(*) FROM openmls_sqlite_storage_migrations WHERE version = 2",
@@ -1120,11 +1136,13 @@ mod tests {
                 |row| row.get(0),
             )
             .expect("verify V2 migration history");
-        assert_eq!(v2_rows, 1, "V2 history must be committed exactly once after retry");
+        assert_eq!(
+            v2_rows, 1,
+            "V2 history must be committed exactly once after retry"
+        );
         let integrity: String = connection
             .query_row("PRAGMA integrity_check", [], |row| row.get(0))
             .expect("check database integrity after successful retry");
         assert_eq!(integrity, "ok");
     }
-
 }
