@@ -1029,6 +1029,21 @@ mod tests {
                 row.get(0)
             })
             .expect("count original MLS rows");
+        let original_history_rows: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM openmls_sqlite_storage_migrations",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count pre-existing migration history");
+        let original_v2_rows: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM openmls_sqlite_storage_migrations WHERE version = 2",
+                [],
+                |row| row.get(0),
+            )
+            .expect("check V2 migration history before migration");
+        assert_eq!(original_v2_rows, 0, "legacy fixture must not have V2 applied");
 
         // The legacy schema can hold this row only when CHECK enforcement is
         // deliberately bypassed. Candidate V2 creates its constrained replacement
@@ -1094,8 +1109,8 @@ mod tests {
             )
             .expect("read migration history after rollback");
         assert_eq!(
-            history_rows, 1,
-            "the already-applied V1 history row must survive the failed V2 batch"
+            history_rows, original_history_rows,
+            "all pre-existing migration history rows must survive the failed V2 batch"
         );
         let v2_rows_after_failure: i64 = connection
             .query_row(
@@ -1178,8 +1193,8 @@ mod tests {
             )
             .expect("read migration history after history failure");
         assert_eq!(
-            history_rows, 1,
-            "only the already-applied V1 history row must remain"
+            history_rows, original_history_rows,
+            "all pre-existing migration history rows must remain after the history-write failure"
         );
         let v2_rows_after_history_failure: i64 = connection
             .query_row(
