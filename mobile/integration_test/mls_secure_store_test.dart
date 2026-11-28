@@ -20,12 +20,15 @@ void main() {
       if (!registration.isCompleted) registration.complete(fid);
     });
     try {
-      // Android CI grants POST_NOTIFICATIONS through adb before launching the
-      // app. Calling requestPermission is then idempotent and reads the granted
-      // runtime permission without showing a dialog. Keep the same native
-      // permission request path on iOS.
-      final settings = await FirebaseMessaging.instance.requestPermission();
-      expect(settings.authorizationStatus, AuthorizationStatus.authorized);
+      // FCM installation registration is independent from notification
+      // display permission on Android. Do not open a runtime permission
+      // dialog in the headless emulator; iOS still exercises the native
+      // notification authorization flow.
+      if (Platform.isIOS) {
+        final settings =
+            await FirebaseMessaging.instance.requestPermission();
+        expect(settings.authorizationStatus, AuthorizationStatus.authorized);
+      }
       await FirebaseMessaging.instance.register();
       final fid = await registration.future.timeout(const Duration(seconds: 45));
       expect(fid, matches(RegExp(r'^[A-Za-z0-9_-]{22}$')));
