@@ -125,3 +125,30 @@ test('Feed object store rejects invalid object keys, key providers and chunk bou
   const encrypted = createEncryptedFeedObjectStore(rawStore, provider());
   await assert.rejects(() => encrypted.put('../escape', Buffer.from('x')), TypeError);
 });
+
+
+test('Feed encrypted object store bounds stream fragments and rejects non-canonical key ID bytes', async () => {
+  const rawStore = createMemoryObjectStore();
+  const encrypted = createEncryptedFeedObjectStore(rawStore, provider(), { chunkBytes: 16 * 1024 });
+
+  await assert.rejects(
+    () => encrypted.putStream(OBJECT_A, Readable.from([Buffer.alloc(1024 * 1024 + 1)])),
+    /1 MiB byte-stream limit/u,
+  );
+
+  await encrypted.put(OBJECT_A, Buffer.from('authenticated payload'));
+  const original = await rawStore.get(OBJECT_A);
+  const nonCanonicalHeader = Buffer.from(original);
+  nonCanonicalHeader[10] |= 0x80;
+  await rawStore.put(OBJECT_A, nonCanonicalHeader);
+  await assert.rejects(
+    () => collect(encrypted.getStream(OBJECT_A)),
+    /key ID encoding is invalid/u,
+  );
+
+  await rawStore.put(OBJECT_B, Buffer.alloc(1024 * 1024 + 1));
+  await assert.rejects(
+    () => collect(encrypted.getStream(OBJECT_B)),
+    /1 MiB byte-stream limit/u,
+  );
+});
