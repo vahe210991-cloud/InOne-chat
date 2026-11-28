@@ -1118,6 +1118,84 @@ mod tests {
                 [invalid_group_id.as_slice()],
             )
             .expect("remove deliberate failure probe before retry");
+
+        // This second failure happens after V2 has completed every DDL statement,
+        // but before Refinery can record V2 in its history table. Grouped mode must
+        // roll the schema change back together with the failed history write.
+        connection
+            .execute_batch(
+                "CREATE TRIGGER reject_v2_migration_history
+                 BEFORE INSERT ON openmls_sqlite_storage_migrations
+                 WHEN NEW.version = 2
+                 BEGIN
+                   SELECT RAISE(ABORT, 'injected V2 migration history failure');
+                 END;",
+            )
+            .expect("install migration-history failure trigger");
+        drop(connection);
+
+        let history_error = match load_group(path, openmls_rust_crypto::RustCrypto::default()) {
+            Ok(_) => panic!("V2 migration unexpectedly ignored the history failure trigger"),
+            Err(error) => error.to_string(),
+        };
+        assert!(
+            history_error.contains("injected V2 migration history failure"),
+            "expected injected history write failure, got: {history_error}"
+        );
+
+        let mut connection =
+            Connection::open(path).expect("reopen fixture after migration-history failure");
+        connection
+            .pragma_update(None, "key", format!("x'{TEST_KEY_HEX}'"))
+            .expect("reapply SQLCipher key after history failure");
+        let group_data_schema: String = connection
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'openmls_group_data'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read group-data schema after history failure");
+        assert!(
+            !group_data_schema.contains("application_export_tree"),
+            "V2 DDL must roll back when its history insert fails"
+        );
+        let replacement_table_count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'openmls_group_data_new'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("check replacement table after history failure");
+        assert_eq!(
+            replacement_table_count, 0,
+            "V2 replacement table must not survive history failure"
+        );
+        let history_rows: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM openmls_sqlite_storage_migrations",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read migration history after history failure");
+        assert_eq!(
+            history_rows, 1,
+            "only the already-applied V1 history row must remain"
+        );
+        let v2_rows_after_history_failure: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM openmls_sqlite_storage_migrations WHERE version = 2",
+                [],
+                |row| row.get(0),
+            )
+            .expect("verify V2 history after history failure");
+        assert_eq!(v2_rows_after_history_failure, 0);
+        let integrity: String = connection
+            .query_row("PRAGMA integrity_check", [], |row| row.get(0))
+            .expect("check database integrity after history failure");
+        assert_eq!(integrity, "ok");
+        connection
+            .execute_batch("DROP TRIGGER reject_v2_migration_history")
+            .expect("remove migration-history failure trigger");
         drop(connection);
 
         // Reopening after repair must retry the migrations, preserve the original
