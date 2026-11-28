@@ -252,3 +252,19 @@ Additional independent work on PR #174:
 - `af691aa` — wired the runtime tests into the existing backend API-contract test entry.
 
 This is an isolated construction primitive only. It is deliberately **not wired into `config.js`, `main.js` or `server.js`** because those are shared integration surfaces also changed by the still-open AUTH work. Production startup therefore does not yet instantiate this Feed store, and no claim of production Feed encryption is made. Tests remain **NOT RUN** under the PR #169 gate.
+
+
+### Cross-branch relationship snapshot — 2026-11-28
+
+Read-only GitHub comparisons against `main` at `7d34b99fcc026a828b838e211d039c575aeace1d`:
+
+| Workstream | PR | Branch relation to main | Integration note |
+|---|---:|---|---|
+| OpenMLS 0.9.2 / SQLCipher | #169 | PR targets `security/beta1-stage5-supply-chain-main-2026-11-25`, not main | Its target branch is diverged from main: 60 commits ahead and 15 behind, merge base `baec9c083ed51ab5004e5f1b1e99aca6b4f2476a`. Do not assume this PR is directly merge-ready for main. |
+| AUTH | #171 | 274 commits ahead, 0 behind | Open Draft; shared server/store/config/migration and workflow surfaces. |
+| MLS membership revocation | #173 | 24 commits ahead, 0 behind | Open Draft; remain on hold until #169 merges. |
+| Feed domain foundation | #174 | 92 commits ahead, 0 behind before this report-only commit | Independent of #169 source changes; keep production wiring away from shared startup/schema until coordination is complete. |
+| Feed scope decision | #172 | 27 commits ahead, 0 behind | Open Draft; product scope decision remains separately documented. |
+| Chat/groups/contact flow | #175 | Closed, unmerged; 299 commits at close | Migration versions 0036/0037 collide with #171. Do not reopen or integrate without a coordinated migration plan. |
+
+The #169-related branch inventory also includes the Stage 5 supply-chain branches, OpenMLS 0.9.2 hardening/prototype branches, the OpenMLS 0.10 prototype, the signer compatibility prototype, the native MLS/FRB/G2 branches and the MLS production-acceptance branch. They were inventoried only; no branch was rewritten, rebased, merged or deleted.
