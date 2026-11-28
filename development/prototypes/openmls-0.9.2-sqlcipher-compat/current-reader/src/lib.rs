@@ -1043,7 +1043,10 @@ mod tests {
                 |row| row.get(0),
             )
             .expect("check V2 migration history before migration");
-        assert_eq!(original_v2_rows, 0, "legacy fixture must not have V2 applied");
+        assert_eq!(
+            original_v2_rows, 0,
+            "legacy fixture must not have V2 applied"
+        );
 
         // The legacy schema can hold this row only when CHECK enforcement is
         // deliberately bypassed. Candidate V2 creates its constrained replacement
