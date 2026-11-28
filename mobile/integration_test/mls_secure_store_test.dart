@@ -20,7 +20,14 @@ void main() {
       if (!registration.isCompleted) registration.complete(fid);
     });
     try {
-      final settings = await FirebaseMessaging.instance.requestPermission();
+      // Android CI grants POST_NOTIFICATIONS through adb before launching
+      // the app. Do not open the interactive system permission dialog from
+      // flutter drive: the headless emulator cannot answer it and the driver
+      // remains blocked until the smoke-test timeout. iOS still exercises the
+      // native permission request path.
+      final settings = Platform.isAndroid
+          ? await FirebaseMessaging.instance.getNotificationSettings()
+          : await FirebaseMessaging.instance.requestPermission();
       expect(settings.authorizationStatus, AuthorizationStatus.authorized);
       await FirebaseMessaging.instance.register();
       final fid = await registration.future.timeout(const Duration(seconds: 45));
