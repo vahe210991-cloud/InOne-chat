@@ -17,7 +17,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: openmls-092-compat-${{ github.event.pull_request.head.ref || github.ref_name }}
+  group: openmls-092-compat-${{ github.event_name }}-${{ github.event.pull_request.head.ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
