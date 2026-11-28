@@ -73,6 +73,7 @@ async function* encryptedRecords(source, objectKey, keyProvider, chunkBytes) {
   const dek = randomBytes(32);
   const noncePrefix = randomBytes(8);
   const wrapNonce = randomBytes(12);
+  let pending = Buffer.alloc(0);
   try {
     const wrapper = createCipheriv('aes-256-gcm', kek, wrapNonce);
     wrapper.setAAD(wrapAad(objectKey, keyId));
@@ -88,7 +89,6 @@ async function* encryptedRecords(source, objectKey, keyProvider, chunkBytes) {
       wrapTag,
     ]);
 
-    let pending = Buffer.alloc(0);
     let counter = 0;
     let totalBytes = 0;
     const emitChunk = (plain) => {
@@ -119,7 +119,9 @@ async function* encryptedRecords(source, objectKey, keyProvider, chunkBytes) {
         for (const record of emitChunk(plain)) yield record;
         offset += chunkBytes;
       }
-      pending = Buffer.from(combined.subarray(offset));
+      const nextPending = Buffer.from(combined.subarray(offset));
+      pending.fill(0);
+      pending = nextPending;
       combined = null;
     }
     if (pending.length) {
@@ -138,6 +140,7 @@ async function* encryptedRecords(source, objectKey, keyProvider, chunkBytes) {
     kek.fill(0);
     noncePrefix.fill(0);
     wrapNonce.fill(0);
+    pending.fill(0);
   }
 }
 
