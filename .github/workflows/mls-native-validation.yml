@@ -162,6 +162,11 @@ jobs:
     name: iOS Keychain native target build
     runs-on: macos-15
     timeout-minutes: 45
+    # Rust defaults aarch64-apple-ios to 10.0. OpenSSL/SQLCipher objects built
+    # by the Xcode 18.5 SDK reference ___chkstk_darwin, available from iOS 13.
+    # Match the app's supported minimum (15.0) for both C compilation and rustc.
+    env:
+      IPHONEOS_DEPLOYMENT_TARGET: "15.0"
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
