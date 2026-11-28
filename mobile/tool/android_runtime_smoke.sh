@@ -18,7 +18,7 @@ adb start-server
 timeout 90 adb wait-for-device
 adb -s emulator-5554 get-state
 timeout 60 flutter devices --device-timeout 60
-adb install -r build/app/outputs/flutter-apk/app-debug.apk
+adb install -r build/app/outputs/flutter-apk/app-x86_64-debug.apk
 adb shell pm grant com.inone.app android.permission.POST_NOTIFICATIONS
 adb logcat -c || true
 adb logcat -b all -v threadtime > "$diag_dir/logcat.txt" 2>&1 &
