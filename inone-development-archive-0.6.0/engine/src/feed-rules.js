@@ -98,8 +98,20 @@ function cursorKeyBytes(secret) {
     throw new TypeError('feed cursor key must be a string or byte array');
   }
   const key = Buffer.from(secret);
-  if (key.length < 32) throw new TypeError('feed cursor key must contain at least 256 bits');
+  if (key.length < 32) {
+    key.fill(0);
+    throw new TypeError('feed cursor key must contain at least 256 bits');
+  }
   return key;
+}
+
+function withCursorKey(secret, operation) {
+  const key = cursorKeyBytes(secret);
+  try {
+    return operation(key);
+  } finally {
+    key.fill(0);
+  }
 }
 
 export function encodeSignedFeedCursor({ createdAt, postId, scope = 'global' }, key) {
@@ -111,8 +123,8 @@ export function encodeSignedFeedCursor({ createdAt, postId, scope = 'global' }, 
   const payload = Buffer.from(JSON.stringify({
     v: 1, kid: key.keyId, createdAt, postId, scope,
   }), 'utf8').toString('base64url');
-  const signature = createHmac('sha256', cursorKeyBytes(key.secret))
-    .update(payload, 'ascii').digest('base64url');
+  const signature = withCursorKey(key.secret, (secret) => createHmac('sha256', secret)
+    .update(payload, 'ascii').digest('base64url'));
   return payload + '.' + signature;
 }
 
@@ -146,8 +158,8 @@ export function parseSignedFeedCursor(value, keyring, expectedScope = 'global') 
     }
     const secret = keyring[decoded.kid];
     if (!secret) return { ok: false, error: 'invalid_cursor' };
-    const expected = createHmac('sha256', cursorKeyBytes(secret))
-      .update(payload, 'ascii').digest();
+    const expected = withCursorKey(secret, (keyBytes) => createHmac('sha256', keyBytes)
+      .update(payload, 'ascii').digest());
     const supplied = Buffer.from(signature, 'base64url');
     if (supplied.toString('base64url') !== signature
       || supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) {
