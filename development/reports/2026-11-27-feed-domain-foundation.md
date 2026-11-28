@@ -208,3 +208,36 @@ This is a candidate architecture, not a dependency approval or implementation. N
 
 At PR head `1d5f12af43b96ccc6a5830802e2d43513bf1460b`, GitHub reported six PR workflows in `queued` state: Backend Docker Compose runtime acceptance, Native MLS client validation, Validate recovered InOne P0 source, Dev Container Compose runtime validation, InOne exact-SHA acceptance gate, and Email delivery/PostgreSQL validation. These were automatically queued by GitHub following PR updates; none was manually dispatched or rerun. No PASS is claimed. The #169 dependency remains open and unmerged, so do not manually rerun or treat queued workflows as acceptance.
 
+
+
+## Continuation audit — 2026-11-28
+
+### PR #169 dependency status (read-only observation)
+
+- PR #169 remains Draft and unmerged at head `928f1cbf57963f1c4a1835f54216082828b4353b`; its base remains `security/beta1-stage5-supply-chain-main-2026-11-25`.
+- No PR #169 branch, commit, file, review, or workflow was modified or manually dispatched by this continuation.
+- Existing exact-head workflow observations: PostgreSQL/email, Backend Docker Compose, Dev Container Compose and recovered-P0 validation completed successfully. The OpenMLS 0.9.2 compatibility workflow failed in `grouped_migration_failure_rolls_back_v2_and_retry_preserves_legacy_rows` (7 passed, 1 failed). The exact-SHA gate failed because that required workflow failed. Flutter mobile validation also completed with exit code 124 during the Android emulator/runtime stage. OpenMLS FRB generation and native MLS validation were queued, while Flutter iOS was still in progress at the latest status read.
+- These are recorded observations only. They are not authorization to edit PR #169 or to repair its failures. No test was started by this continuation.
+
+### Independent Feed primitive hardening on PR #174
+
+The following source-only changes were committed to the existing PR #174 branch:
+
+- `adfa12c` — enforce a 1 MiB maximum on individual source-stream chunks on both encrypted writes and reads; reject non-byte stream fragments; reject non-canonical ASCII key-ID bytes in the encrypted header.
+- `9f52933` — zeroize temporary cursor-signing key copies after HMAC generation/verification, including the invalid-short-key path.
+- `1a9fa1e` / `13bde7c` — add regression coverage for oversized stream chunks and non-canonical key-ID bytes; correct asynchronous stream consumption in the test.
+- `efd5274` — clear the pending plaintext buffer when encrypted source streaming fails or is cancelled.
+
+Current PR #174 head after these commits: `efd5274d4e05e694998ffcfcfe0f6571e2b602f7`. The new/updated tests have **NOT BEEN RUN**. No test PASS or cryptographic acceptance is claimed.
+
+### Remaining integration gates
+
+- Feed encryption key provider is still not wired into production configuration/startup; no production Feed namespace is constructed.
+- Feed-specific filesystem namespace, quarantine store, durable processing queue/outbox and isolated media worker are not implemented.
+- Image/video decoder, metadata sanitizer, rendition generator and bounded processing runtime have not been selected or integrated.
+- Feed/Post/PostMedia persistence, authenticated upload/delivery routes and cleanup lifecycle are not implemented.
+- Flutter Feed/create-publication/media-picker/profile-gallery screens and repository integration remain unimplemented; existing Feed navigation still points to a placeholder.
+- The media-first API contract remains a Draft proposal. Variant A is owner-approved; exact format/size/duration/resource limits and the full API contract remain unapproved.
+- PR #171 and closed-unmerged PR #175 still have colliding migration versions 0036/0037. Do not merge either migration history without a single coordinated monotonic migration sequence. PR #173 remains on hold until PR #169 is merged.
+- Do not start test suites or manually rerun workflows before the PR #169 merge gate is satisfied.
+
