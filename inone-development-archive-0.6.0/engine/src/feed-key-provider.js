@@ -11,10 +11,15 @@ function decodeKey(value, keyId) {
     key = Buffer.from(value, 'hex');
   } else if (/^[A-Za-z0-9+/]+={0,2}$/u.test(value)) {
     key = Buffer.from(value, 'base64');
+    if (key.length !== 32) {
+      key.fill(0);
+      throw new Error('Feed encryption key ' + keyId + ' must decode to exactly 32 bytes');
+    }
     if (key.toString('base64') !== value) {
       key.fill(0);
       throw new Error('Feed encryption key ' + keyId + ' must use canonical base64');
     }
+    return key;
   } else {
     throw new Error('Feed encryption key ' + keyId + ' must be 64 hex characters or canonical base64');
   }
