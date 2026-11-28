@@ -111,6 +111,60 @@ test('membership commit retries replay the accepted epoch; operation ID reuse co
   }
 });
 
+
+test('membership commit fingerprint binds every mutable payload field', async () => {
+  const s = await start();
+  try {
+    await ChatClient.create(s.base, BOB, 'B_PHONE', PW);
+    await s.alice.createRoom(COMMIT_ROOM, [ALICE, BOB]);
+    const operationId = 'commit-fingerprint-00000001';
+    const body = {
+      epoch: 0,
+      commit: b64('FINGERPRINT-BASE'),
+      changes: { adds: [], removes: [], removeDevices: [] },
+      welcomes: [{ userId: BOB, deviceId: 'B_PHONE', welcome: b64('BASE-WELCOME') }],
+      clientOperationId: operationId,
+    };
+    const accepted = await s.alice.raw('POST', commitPath(COMMIT_ROOM), body);
+    assert.equal(accepted.epoch, 1);
+
+    const variants = [
+      ['epoch', { ...body, epoch: 1 }],
+      ['commit', { ...body, commit: b64('FINGERPRINT-CHANGED-COMMIT') }],
+      ['changes.adds', { ...body, changes: { ...body.changes, adds: [BOB] } }],
+      ['changes.removes', { ...body, changes: { ...body.changes, removes: [BOB] } }],
+      ['changes.removeDevices', { ...body, changes: { ...body.changes, removeDevices: ['B_PHONE'] } }],
+      ['welcomes[0].userId', { ...body, welcomes: [{ ...body.welcomes[0], userId: '@mallory:inone.test' }] }],
+      ['welcomes[0].deviceId', { ...body, welcomes: [{ ...body.welcomes[0], deviceId: 'B_OTHER_DEVICE' }] }],
+      ['welcomes[0].welcome', { ...body, welcomes: [{ ...body.welcomes[0], welcome: b64('CHANGED-WELCOME') }] }],
+      ['keyPackageClaimId', {
+        ...body,
+        keyPackageClaimId: operationId,
+        changes: { adds: [BOB], removes: [], removeDevices: [] },
+      }],
+      ['joinRequestUserId', {
+        ...body,
+        keyPackageClaimId: operationId,
+        joinRequestUserId: BOB,
+        changes: { adds: [BOB], removes: [], removeDevices: [] },
+      }],
+    ];
+
+    for (const [field, changed] of variants) {
+      await assert.rejects(
+        s.alice.raw('POST', commitPath(COMMIT_ROOM), changed),
+        (error) => error.status === 409 && error.message.includes('"code":"operation_id_reused"'),
+        `${field} changes must not replay the accepted operation`,
+      );
+    }
+
+    const history = await s.alice.raw('GET', `/mls/groups/${enc(COMMIT_ROOM)}/commits?since=0`);
+    assert.equal(history.commits.length, 1, 'mismatched payloads must not append additional commits');
+  } finally {
+    await s.stop();
+  }
+});
+
 test('concurrent membership commit retries with one operation ID advance one epoch', async () => {
   const s = await start();
   try {
